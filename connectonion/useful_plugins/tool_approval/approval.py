@@ -719,6 +719,41 @@ def load_permission_patterns(co_dir=None) -> dict:
     return permissions
 
 
+# The files that decide what this agent may do and who may command it. An
+# operator who whitelists `write` — which every coding agent needs — was also
+# handing over these, and `load_config_permissions()` reads the first one back
+# as the whitelist. So a prompt-injected turn could write itself `Bash(*)` and
+# every later turn, in every later session, was unrestricted (#722).
+#
+# Not all of `.co/`: agents write `dashboard.html` on purpose — it *is* the Home
+# page, built by the dashboard skill — and logs, docs and skills are content
+# too. The line is what a file decides, not where it lives.
+CONTROL_FILES = ("host.yaml", "schedule.yaml", "admins.txt")
+CONTROL_DIRS = ("keys",)
+
+
+def _is_control_file(path: str) -> bool:
+    """True if this path is one of the agent's own control files.
+
+    Compared on the normalised path so `./co/..`, `../.co/x` and an absolute
+    path all reach the same answer — a check that only matches the tidy
+    spelling is a check with a published bypass.
+    """
+    import os
+
+    normalised = os.path.normpath(str(path)).replace(os.sep, "/")
+    parts = normalised.split("/")
+    if CO_DIR_NAME not in parts:
+        return False
+    tail = parts[parts.index(CO_DIR_NAME) + 1:]
+    if not tail:
+        return False
+    return tail[0] in CONTROL_FILES or tail[0] in CONTROL_DIRS
+
+
+CO_DIR_NAME = ".co"
+
+
 def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tuple[bool, str]:
     """Check one tool call against a permission whitelist. Returns (allowed, reason).
 
@@ -731,6 +766,30 @@ def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tup
 
     if not permissions:
         return False, "no permissions configured"
+
+    # Before the whitelist, not through it: these are refused however generously
+    # the operator configured file writing, because they are what "how
+    # generously" is stored in.
+    for key in ("file_path", "path", "target", "filename"):
+        candidate = tool_args.get(key)
+        if candidate and _is_control_file(candidate):
+            return False, (f"{Path(str(candidate)).name} decides what this agent may do — "
+                           f"the agent does not get to write it")
+
+    # A speed bump for bash, not a boundary — and worth being exact about which.
+    # It catches a control path written literally (`> .co/host.yaml`). It does
+    # not catch `cd .co && echo x > host.yaml`, and nothing word-shaped can:
+    # reaching that would mean interpreting the shell.
+    #
+    # What actually bounds bash is the operator's own whitelist. `Bash(*)` has
+    # already granted everything, and this does not take it back. The complete
+    # protection here is for the file tools above, where the path is an argument
+    # rather than a string to be interpreted.
+    if tool_name == 'bash' and 'command' in tool_args:
+        command = str(tool_args['command'])
+        if any(_is_control_file(word.strip("'\"")) for word in command.split()):
+            return False, ("this command names a file that decides what this agent "
+                           "may do")
 
     # Bash chains: every subcommand in "a && b | c" must be individually
     # permitted. This is AUTHORITATIVE for bash — we never fall through to the
