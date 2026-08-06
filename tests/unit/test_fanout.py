@@ -40,9 +40,16 @@ def test_detected_tools_only_lists_existing_dirs(fake_home):
 
 
 def test_install_claude_symlinks_whole_bundle(fake_home, bundle):
+    """The link is one plugin; the number reported is how many skills it carries.
+
+    This asserted n == 1 while the same bundle gave codex 2 — the two counts
+    disagreed on one fixture, under a heading that says "installed N skill(s)".
+    install_claude returned a constant, so a bundle with no skills at all
+    reported one; see test_fanout_counts_skills_not_plugins.
+    """
     n = fanout.install_claude(bundle, "alice")
     plugin = fake_home / ".claude" / "plugins" / "alice"
-    assert n == 1
+    assert n == 2
     assert plugin.is_symlink()
     assert plugin.resolve() == bundle.resolve()
 
@@ -88,7 +95,8 @@ def test_install_all_only_fans_into_detected_tools(fake_home, bundle):
     results = fanout.install_all(bundle, "alice")
 
     assert set(results.keys()) == {"claude", "codex"}
-    assert results["claude"] == 1
+    # Both count skills now, so both see the same bundle the same way.
+    assert results["claude"] == 2
     assert results["codex"] == 2
 
 

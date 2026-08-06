@@ -85,10 +85,29 @@ def _fetch_profile(address: str, relay: str) -> dict:
     return data.get("profile", data)
 
 
-def _fetch_skill(address: str, name: str, relay: str) -> str:
+def _fetch_skill(address: str, name: str, relay: str):
+    """A skill's body, or None when the publisher kept it back.
+
+    The relay answers a withheld body with 200 and an error inside it:
+
+        GET /api/agents/0xcf1619…/skills/candidate-mapping
+        HTTP 200  {"error": "skill body not published"}
+
+    so raise_for_status() passes and indexing ["body"] raised KeyError — a
+    traceback out of `co sub sync` for anyone subscribing to an agent that
+    announces a skill without publishing its contents. That is the default
+    (`publish: false`), so it was the common case, and the subscriber had done
+    nothing wrong.
+
+    A real transport or server failure still raises; only a 200 that carries no
+    body is treated as "nothing to mirror".
+    """
     r = httpx.get(f"{relay}/api/agents/{address}/skills/{name}", timeout=30)
     r.raise_for_status()
-    return r.json()["body"]
+    payload = r.json()
+    if isinstance(payload, dict) and "body" in payload:
+        return payload["body"]
+    return None
 
 
 def _declared_tools(body: str) -> str:
@@ -175,6 +194,14 @@ def _mirror_bundle(address: str, alias: str, profile: dict, relay: str) -> int:
     for skill in profile.get("skills", []):
         name = skill["name"]
         body = _fetch_skill(address, name, relay)
+        if body is None:
+            # Announced but not published. Named, because the profile promised a
+            # skill the subscriber will not find, and skipped rather than written
+            # — an error document saved as SKILL.md would reach an agent as
+            # instructions.
+            console.print(f"[dim]{name}: skipped — the publisher did not "
+                          f"publish its body[/dim]")
+            continue
         (skills_root / name).mkdir(parents=True, exist_ok=True)
         cleaned = strip_tool_grants(body, name)
         if cleaned != body:

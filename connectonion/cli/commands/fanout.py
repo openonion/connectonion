@@ -41,15 +41,42 @@ def _replace(dst: Path, src: Path) -> None:
 
 
 def install_claude(bundle: Path, alias: str) -> int:
+    """Link the bundle as one Claude plugin; report how many skills it carries.
+
+    This returned a constant 1 — the number of plugins installed, under a
+    heading that reads `installed N skill(s)`. Subscribing to an agent that
+    announced a skill without publishing it printed:
+
+        mirrored 0 skill(s) → ~/.co/subs/naturewill-mapping
+        claude: installed 1 skill(s)          <- there were none
+
+    The link is right and stays; every other tool in this module counts skills,
+    so the number is what was out of step.
+    """
     _replace(HOME / ".claude" / "plugins" / alias, bundle)
-    return 1
+    return _skill_count(bundle)
+
+
+def _skills_in(bundle: Path):
+    """The skill directories in a bundle — a dir holding a SKILL.md.
+
+    One definition, so a count cannot disagree with what gets installed. That is
+    how `claude: installed 1 skill(s)` came to be printed for a bundle with none.
+    """
+    root = bundle / "skills"
+    if not root.is_dir():
+        return []
+    return [d for d in sorted(root.iterdir())
+            if d.is_dir() and (d / "SKILL.md").exists()]
+
+
+def _skill_count(bundle: Path) -> int:
+    return len(_skills_in(bundle))
 
 
 def install_skill_dirs(bundle: Path, alias: str, tool: str) -> int:
     n = 0
-    for skill in sorted((bundle / "skills").iterdir()):
-        if not skill.is_dir() or not (skill / "SKILL.md").exists():
-            continue
+    for skill in _skills_in(bundle):
         _replace(HOME / f".{tool}" / "skills" / f"{alias}-{skill.name}", skill)
         n += 1
     return n
@@ -59,10 +86,13 @@ def install_cursor(bundle: Path, alias: str) -> int:
     rules = HOME / ".cursor" / "rules"
     rules.mkdir(parents=True, exist_ok=True)
     n = 0
-    for skill in sorted((bundle / "skills").iterdir()):
+    # Same traversal as everywhere else; the extra filter below is cursor's own,
+    # because a .mdc rule needs a description out of the frontmatter and a skill
+    # without one has nothing to write. So this count is legitimately lower than
+    # the others, which is why the filter stays here rather than moving into
+    # _skills_in.
+    for skill in _skills_in(bundle):
         md = skill / "SKILL.md"
-        if not md.exists():
-            continue
         m = FRONTMATTER_RE.match(md.read_text(encoding="utf-8"))
         if not m:
             continue
