@@ -99,6 +99,51 @@ class TestTheBuildCommandIsTheRealOne:
         assert "python -m build" in skill or "hatch build" in skill
 
 
+class TestTheBuiltinIsWhatAFreshInstallLoads:
+    """Editing the file is not the same as changing what an agent reads.
+
+    Both copies were corrected, and on the machine this was found on the agent
+    still loaded a *third* — ~/.co/skills/ship-feature/SKILL.md, a personal copy
+    that outranks the builtin by design (a user override is meant to win). So
+    checking the file I edited said nothing about what a new user gets.
+
+    With a clean HOME the builtin wins, and that is the copy the fix has to be in.
+    """
+
+    def test_a_clean_home_loads_the_builtin(self, tmp_path, monkeypatch):
+        from connectonion.useful_plugins.skills import _load_skill
+
+        monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+        monkeypatch.chdir(tmp_path)
+
+        loaded = _load_skill("ship-feature")
+
+        assert loaded is not None
+        assert "co_ai/skills/builtin" in loaded["path"]
+
+    def test_what_it_loads_names_the_real_version_files(self, tmp_path, monkeypatch):
+        from connectonion.useful_plugins.skills import _load_skill
+
+        monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+        monkeypatch.chdir(tmp_path)
+
+        body = _load_skill("ship-feature")["instructions"]
+
+        assert "_version.py" in body
+        assert "pyproject.toml" in body
+
+    def test_what_it_loads_does_not_instruct_a_setup_py_build(self, tmp_path, monkeypatch):
+        from connectonion.useful_plugins.skills import _load_skill
+
+        monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+        monkeypatch.chdir(tmp_path)
+
+        body = _load_skill("ship-feature")["instructions"]
+
+        assert "python setup.py" not in body
+        assert "python -m build" in body
+
+
 class TestTheSkillIsStillAReleaseProcedure:
     """Guard against fixing this by gutting the file."""
 
