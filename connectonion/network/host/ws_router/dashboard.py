@@ -496,7 +496,9 @@ def scheduled_entries():
         when = last_run(state, e.name)
         out.append({
             "name": e.name,
-            "run": e.run,
+            # An exec entry has no prompt, and a blank here is a scheduled
+            # task that looks like it does nothing (#709).
+            "run": e.run or e.exec,
             "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
             "status": st.get("status"),
             "last_run": when,
