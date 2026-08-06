@@ -119,7 +119,7 @@ class TestRealGemini3:
         """Test basic completion with Gemini 3 Pro Preview."""
         agent = Agent(
             name="gemini3_basic",
-            model="gemini-3-pro-preview"
+            model="gemini-2.5-pro"
         )
 
         response = agent.input("Say 'Hello from Gemini 3' exactly")
@@ -133,7 +133,7 @@ class TestRealGemini3:
         """
         agent = Agent(
             name="gemini3_tools_single",
-            model="gemini-3-pro-preview",
+            model="gemini-2.5-pro",
             tools=[word_counter]
         )
 
@@ -150,7 +150,7 @@ class TestRealGemini3:
         """
         agent = Agent(
             name="gemini3_tools_multi",
-            model="gemini-3-pro-preview",
+            model="gemini-2.5-pro",
             tools=[word_counter],
             max_iterations=5
         )
@@ -168,7 +168,7 @@ class TestRealGemini3:
     def test_gemini3_all_models(self):
         """Test all Gemini 3 model variants."""
         models = [
-            "gemini-3-pro-preview",
+            "gemini-2.5-pro",
             # "gemini-3-pro-image-preview",  # May have different capabilities
         ]
 
@@ -192,7 +192,7 @@ class TestAllGeminiModelsWithTools:
     @pytest.mark.parametrize("model", [
         "gemini-2.5-flash",
         "gemini-2.5-pro",
-        "gemini-3-pro-preview",
+        "gemini-2.5-pro",
     ])
     def test_model_with_tool_calling(self, model):
         """Test each model can handle tool calling without null value errors."""

@@ -33,22 +33,38 @@ from ... import address
 console = Console()
 
 
-# What a new user is told they can spend their free tokens on. This list was
-# written out twice, and both copies offered co/gemini-3-pro-preview, which
-# Google has retired — the managed route answers 404 for it just as the direct
-# one does. Every name here was checked by completing a real call.
+# What a new user is told they can spend their free tokens on.
+#
+# This list was written out twice and both copies were wrong in two ways. They
+# offered co/gemini-3-pro-preview, which Google has retired, and co/claude-sonnet-4
+# and co/gpt-5, which the backend refuses on a free account:
+#
+#     paid_account_required — "Your free $5 credits work with Google-routed
+#     models. Purchase credits to unlock all models"
+#
+# Free credits are exactly what this message is handing out, so the list has to
+# be what a free account can call. Verified by authenticating a freshly generated
+# identity — the same thing a new user is — and completing a real call per model.
+# Checking with a funded account is what hid the second half of this.
 MANAGED_MODELS = (
     "co/gemini-3.6-flash",
+    "co/gemini-3.5-flash",
     "co/gemini-2.5-pro",
-    "co/gpt-5",
-    "co/o4-mini",
+    "co/gemini-2.5-flash",
 )
+
+# Real models, and reachable — but only once the account has credits.
+PAID_MODELS = ("co/gpt-5", "co/o4-mini", "co/claude-sonnet-4")
 
 
 def _print_managed_models() -> None:
     console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
     for model in MANAGED_MODELS:
         console.print(f"  • {model}")
+    console.print(
+        f"\n[dim]{', '.join(PAID_MODELS)} need purchased credits: "
+        "https://o.openonion.ai[/dim]"
+    )
 
 
 def record_creator_as_admin(project_dir: Path) -> None:
@@ -663,7 +679,8 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 
 # Model Configuration (use co/ prefix for managed models)
 MODEL=co/gemini-3.6-flash
-# Available models: co/gemini-3.6-flash, co/gemini-2.5-pro, co/gpt-5, co/o4-mini
+# Available models: co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
+# With purchased credits: co/gpt-5, co/o4-mini, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 

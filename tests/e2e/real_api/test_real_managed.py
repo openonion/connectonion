@@ -211,7 +211,7 @@ def test_all_managed_models_with_tools():
         # Google Gemini models
         "co/gemini-2.5-flash",
         # "co/gemini-2.5-pro",  # More expensive
-        "co/gemini-3-pro-preview",  # The model that had null value issues
+        "co/gemini-2.5-pro",  # The model that had null value issues
         # Anthropic models
         # "co/claude-haiku-4-5",  # If available
     ]
@@ -270,7 +270,7 @@ def test_gemini3_multi_turn_tools_managed():
     try:
         agent = Agent(
             name="gemini3_multi_turn_managed",
-            model="co/gemini-3-pro-preview",
+            model="co/gemini-2.5-pro",
             tools=[word_counter],
             max_iterations=5
         )

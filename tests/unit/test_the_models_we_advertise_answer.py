@@ -5,12 +5,18 @@ managed models to spend them on. Two of the four did not work:
 
     co/gemini-3.6-flash        ok
     co/gemini-3-pro-preview    404  This model is no longer available
-    co/gpt-5                   ok
-    co/claude-sonnet-4         401  Anthropic API error (upstream credential)
+    co/gpt-5                   403  paid_account_required
+    co/claude-sonnet-4         403  paid_account_required
 
-so half of a brand-new user's first list is a dead end. The Claude 401 comes
-from the managed backend's own upstream key and cannot be fixed here; it is
-filed against oo-api. The retired Gemini model is ours to stop offering.
+Google has retired the second. The other two are real and reachable, but the
+backend refuses them without purchased credits:
+
+    "Your free $5 credits work with Google-routed models. Purchase credits to
+    unlock all models"
+
+Free credits are precisely what the surrounding message is handing out, so the
+list has to be what a free account can call. It now is, with the paid ones named
+on a separate line rather than dropped, since they are real.
 
 The list was also written out twice, in two branches of the same auth flow, with
 both copies naming the retired model — the shape that has caused most of this
@@ -20,7 +26,7 @@ than against a copy of it.
 
 import pytest
 
-from connectonion.cli.commands.project_cmd_lib import MANAGED_MODELS
+from connectonion.cli.commands.project_cmd_lib import MANAGED_MODELS, PAID_MODELS
 
 
 RETIRED = ("gemini-3-pro-preview", "gemini-2.0-flash-exp", "gemini-2.0-flash-thinking-exp")
@@ -60,14 +66,58 @@ class TestTheListIsUsable:
 
 @pytest.mark.network
 class TestEveryAdvertisedModelAnswers:
-    """One real managed call per advertised name."""
+    """One real managed call per advertised name, as a new user.
+
+    The identity is freshly generated on purpose. Running this against the
+    machine's own account is what hid half the problem: that account has a
+    funded balance, so co/gpt-5 answered for me and 403'd for everyone this
+    message is written for.
+    """
+
+    @pytest.fixture(scope="class")
+    def free_account_token(self):
+        import time
+
+        import requests
+        from nacl.encoding import HexEncoder
+        from nacl.signing import SigningKey
+
+        signing_key = SigningKey.generate()
+        public_key = "0x" + signing_key.verify_key.encode(encoder=HexEncoder).decode()
+        message = f"ConnectOnion-Auth-{public_key}-{int(time.time())}"
+        response = requests.post(
+            "https://oo.openonion.ai/api/v1/auth",
+            json={
+                "public_key": public_key,
+                "message": message,
+                "signature": signing_key.sign(message.encode()).signature.hex(),
+            },
+            timeout=15,
+        )
+        if response.status_code != 200:
+            pytest.skip(f"could not open a fresh account: {response.status_code}")
+        return response.json()["token"]
 
     @pytest.mark.parametrize("model", MANAGED_MODELS)
-    def test_it_completes_a_call(self, model):
-        from connectonion.core.llm import create_llm
+    def test_a_free_account_can_call_it(self, model, free_account_token):
+        from connectonion.core.llm import OpenOnionLLM
 
-        response = create_llm(model=model).complete(
+        response = OpenOnionLLM(api_key=free_account_token, model=model).complete(
             [{"role": "user", "content": "Reply with the single word: ok"}]
         )
 
         assert response.content.strip()
+
+    @pytest.mark.parametrize("model", PAID_MODELS)
+    def test_a_paid_model_is_refused_for_the_stated_reason(
+        self, model, free_account_token
+    ):
+        """If these start working on free credits, they belong on the main list."""
+        from connectonion.core.llm import OpenOnionLLM
+
+        with pytest.raises(Exception) as excinfo:
+            OpenOnionLLM(api_key=free_account_token, model=model).complete(
+                [{"role": "user", "content": "ok"}]
+            )
+
+        assert "paid_account_required" in str(excinfo.value)
