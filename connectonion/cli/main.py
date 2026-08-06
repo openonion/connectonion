@@ -21,6 +21,7 @@ if sys.platform == "win32":
         if hasattr(_stream, "reconfigure"):
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -45,20 +46,46 @@ console = Console()
 
 
 class _OneSuggestion(typer.core.TyperGroup):
-    """Answer a mistyped command once.
+    """Answer a mistyped command once (#714).
 
-    Click builds "No such command 'skil'. Did you mean 'skills'?" and Typer's
-    resolve_command appends its own to whatever Click produced, so every typo
-    read `Did you mean 'skills'? Did you mean 'skills'?` — at every level,
-    including subcommands (#714).
+        $ co skil
+        No such command 'skil'. Did you mean 'skills'? Did you mean 'skills'?
 
-    Ours is the one that goes: Click's is what would still be there if Typer
-    were dropped tomorrow.
+    Two layers each append one: Click builds the message with its own suggestion
+    and Typer's resolve_command adds a second to whatever Click produced. It read
+    that way at every level, including the nested `co outlook contact` group.
+
+    The two arrive by different routes, which is why this does not just switch a
+    layer off. Click 8.4's NoSuchCommand keeps `possibilities` and appends the
+    clause when the message is *rendered*:
+
+        def format_message(self):
+            if not self.possibilities:
+                return self.message
+            return f"{self.message} {_format_possibilities(self.possibilities)}"
+
+    while Typer writes its own copy into `.message` beforehand. So the fix is to
+    drop the text copy exactly when the exception is going to render one of its
+    own, and to leave it alone when it is not.
+
+    Which layer speaks is not stable: turning Typer's `suggest_commands` off
+    fixed this on typer 0.20 and left plain `No such command 'skil'.` on 0.27,
+    where Typer's is the only clause because Click gets no possibilities.
+    pyproject asks for `typer>=0.20.0`, so a user has either.
     """
 
-    def __init__(self, *args, **kwargs):
-        kwargs["suggest_commands"] = False
-        super().__init__(*args, **kwargs)
+    def resolve_command(self, ctx, args):
+        import click
+
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as error:
+            if getattr(error, "possibilities", None):
+                error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
+            raise
+
+
+_SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
 
 
 def _typer_app(**kwargs) -> typer.Typer:
@@ -110,7 +137,13 @@ def _show_help():
     console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
     console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
     console.print()
-    console.print("[bold]Commands:[/bold]")
+    # A selection, not the register. Eight real commands are not here — ai,
+    # announce, call, reset, server, setup, skills, sub — and calling this
+    # "Commands:" read as the whole list. `co --help` is generated from the
+    # commands themselves and does show all of them, so the honest fix is to
+    # say which of the two this is and point at the other. Which of the eight
+    # belong on a new user's first screen is a product call, not this one's.
+    console.print("[bold]Common commands:[/bold]")
     console.print("  [green]create[/green]  <name>     Create new project")
     console.print("  [green]init[/green]              Initialize in current directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
@@ -127,6 +160,8 @@ def _show_help():
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check credentials, account, and deployments")
     console.print("  [green]doctor[/green]            Diagnose installation")
+    console.print()
+    console.print("  [dim]co --help[/dim]         All commands")
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")

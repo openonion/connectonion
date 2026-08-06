@@ -16,9 +16,16 @@ produced:
 Cosmetic, but on the path every new user takes — getting the name wrong is how
 anyone learns a CLI — and it reads like the program is stuttering.
 
-Typer's own switch turns its layer off (`suggest_commands`), leaving Click's,
-which is the one that would still be there if Typer were dropped tomorrow. That
-is why the fix disables ours rather than Click's.
+The two arrive by different routes. Click 8.4's NoSuchCommand keeps
+`possibilities` and appends its clause when the message is *rendered*; Typer
+writes a copy into `.message` first. So the fix drops the text copy exactly when
+the exception will render one of its own.
+
+Switching Typer's `suggest_commands` off was the first attempt. It fixed typer
+0.20 and, on 0.27 — where Click is handed no possibilities and Typer's copy is
+the only clause — left plain `No such command 'skil'.` with no suggestion at
+all. CI runs 0.27, this machine had 0.20, and pyproject asks for
+`typer>=0.20.0`, so neither version may be assumed.
 
 This asserts against the real app object and every sub-app registered on it, not
 against a copy of the command list: the doubling was at every level, and a test
@@ -66,6 +73,66 @@ class TestOneSuggestionPerTypo:
         assert "ls" in _invoke("server", "lst")
 
 
+class TestWhichClauseSurvives:
+    """The two arrive by different routes, and only one of them is text.
+
+    Click 8.4 keeps `possibilities` on the exception and appends the clause when
+    the message is rendered; Typer writes a copy into `.message` first. So the
+    text copy is dropped exactly when the exception will render one itself.
+
+    Turning Typer's `suggest_commands` off instead fixed typer 0.20 and left
+    `No such command 'skil'.` with no suggestion on 0.27, where Click is handed
+    no possibilities and Typer's copy is the only one. CI runs 0.27, this
+    machine had 0.20, and pyproject allows both — so neither may be assumed.
+    """
+
+    def _resolve(self, possibilities, monkeypatch):
+        """Drive the real _OneSuggestion.resolve_command.
+
+        The layer underneath is stubbed to raise what Typer hands up — a message
+        already carrying Typer's text copy, and Click's `possibilities` set or
+        not. The production method is the thing under test; an earlier version of
+        this test reimplemented it, which would have passed no matter what the
+        code did.
+        """
+        import click
+        import typer.core
+
+        from connectonion.cli.main import _OneSuggestion
+
+        def raise_no_such_command(self, ctx, args):
+            raise click.exceptions.NoSuchCommand(
+                "skil",
+                message="No such command 'skil'. Did you mean 'skills'?",
+                possibilities=possibilities,
+            )
+
+        monkeypatch.setattr(
+            typer.core.TyperGroup, "resolve_command", raise_no_such_command
+        )
+
+        group = _OneSuggestion(name="root")
+        with pytest.raises(click.UsageError) as excinfo:
+            group.resolve_command(click.Context(group), ["skil"])
+        return excinfo.value
+
+    def test_the_rendered_message_has_one_clause(self, monkeypatch):
+        error = self._resolve(["skills", "status"], monkeypatch)
+
+        assert error.format_message().count("Did you mean") == 1
+
+    def test_the_rendered_message_still_suggests_something(self, monkeypatch):
+        error = self._resolve(["skills", "status"], monkeypatch)
+
+        assert "skills" in error.format_message()
+
+    def test_without_possibilities_the_text_copy_is_kept(self, monkeypatch):
+        """typer 0.27's case: Click renders nothing, so Typer's must stay."""
+        error = self._resolve(None, monkeypatch)
+
+        assert error.format_message().count("Did you mean") == 1
+
+
 class TestEverySubAppBehavesTheSame:
     """The doubling was at every level, so every registered group must be fixed."""
 
@@ -93,15 +160,18 @@ class TestEverySubAppBehavesTheSame:
     def test_a_nested_group_is_included(self):
         assert any(name.endswith("contact") for name, _ in self._groups())
 
-    def test_none_of_them_add_a_second_suggestion(self):
+    def test_every_group_collapses_repeats(self):
+        """Not "has the flag off" — that was the version-dependent fix."""
+        from connectonion.cli.main import _OneSuggestion
+
         offenders = [
-            name
-            for name, group in self._groups()
-            if getattr(group, "suggest_commands", False)
+            name for name, group in self._groups()
+            if not isinstance(group, _OneSuggestion)
         ]
 
         assert offenders == [], (
-            f"these still append Typer's own suggestion on top of Click's: {offenders}"
+            f"these groups were built with a plain typer.Typer, so a typo there "
+            f"is still answered twice: {offenders}"
         )
 
 

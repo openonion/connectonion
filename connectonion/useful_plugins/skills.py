@@ -192,14 +192,62 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
     yaml_text = match.group(1)
     instructions = match.group(2).strip()
 
-    # Parse YAML frontmatter
-    import yaml
-    try:
-        frontmatter = yaml.safe_load(yaml_text) or {}
-    except yaml.YAMLError:
-        frontmatter = {}
+    return _read_frontmatter(yaml_text), instructions
 
-    return frontmatter, instructions
+
+# The only keys worth rescuing from a frontmatter YAML refuses to parse.
+#
+# Deliberately not `tools:`. test_one_reader_for_skill_frontmatter records why
+# the strict reader won: "neither invents a reading of a file that has a syntax
+# error in it", and `tools:` is fed to _grant_skill_permissions — guessing it
+# from a file that does not parse would widen an agent's permissions on the
+# strength of a line split. These two only decide whether the model is told the
+# skill exists and what it is for.
+_RECOVERABLE_KEYS = ('name', 'description')
+
+
+def _read_frontmatter(yaml_text: str) -> Dict[str, Any]:
+    """Frontmatter as YAML; if YAML refuses, rescue the name and description.
+
+    This returned `{}` on a YAMLError, which was chosen on purpose — the strict
+    reader replaced a line splitter, and `co doctor` was taught to name the file
+    and line so that the skills which stop being read are reported loudly.
+
+    What that left is still a silent failure at the only moment that matters.
+    The description is what the model is given to decide whether a skill
+    applies, so an empty frontmatter means the skill is listed with nothing
+    about when to use it, and is never chosen. Nothing at load time says so; you
+    have to think to run `co doctor`.
+
+    And the shape is not rare. An unquoted colon inside a value is invalid YAML
+    and is what people write:
+
+        description: Orchestrate a workflow from a Markdown draft: prepare a
+                     cover, draft the article...
+
+    Eight skills installed on the machine this was found on were unreadable for
+    that reason, every one authored by Claude Code, which loads them all.
+
+    So YAML stays the authority — a valid file keeps its lists and nested
+    values, and anything with consequences comes from YAML or not at all — and a
+    file it rejects gives up only its `tools:`, not its identity. `co doctor`
+    goes on reporting the file, because it should still be fixed.
+    """
+    import yaml
+
+    try:
+        return yaml.safe_load(yaml_text) or {}
+    except yaml.YAMLError:
+        pass
+
+    recovered = {}
+    for line in yaml_text.splitlines():
+        if line.startswith((' ', '\t')) or ':' not in line:
+            continue
+        key, value = line.split(':', 1)
+        if key.strip() in _RECOVERABLE_KEYS:
+            recovered[key.strip()] = value.strip().strip('"').strip("'")
+    return recovered
 
 
 def _skill_search_paths(co_dir: Optional[Path] = None,

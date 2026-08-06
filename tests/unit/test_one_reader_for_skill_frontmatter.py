@@ -66,13 +66,29 @@ class TestBothReadersAgree:
         assert parse_skill_frontmatter(GOOD)["tools"] == ["read_file", "write"]
 
     def test_on_a_frontmatter_that_does_not_parse(self):
-        """One reader accepted what the other rejected. Now neither invents a
-        reading of a file that has a syntax error in it."""
-        broken = "---\nname: x\nargument-hint: [a] | [b]\n---\n\nBody.\n"
+        """One reader accepted what the other rejected.
+
+        This asserted both return `{}`. Returning nothing at all turned out to
+        be its own silent failure: the description is what the model is told a
+        skill is for, so a file with an unquoted colon in it produced a skill
+        that was listed and never chosen. Eight installed skills were in that
+        state, all written by Claude Code.
+
+        The property this test was really protecting is narrower — that nothing
+        with consequences is invented from a file that has a syntax error. That
+        still holds: `tools:` is fed to _grant_skill_permissions and is not
+        recovered, so a broken file grants exactly nothing. `argument-hint`
+        below is not recovered either.
+
+        See test_a_colon_does_not_hide_a_skill.
+        """
+        broken = "---\nname: x\nargument-hint: [a] | [b]\ntools: bash\n---\n\nBody.\n"
 
         yaml_side, _ = _parse_skill_content(broken)
 
-        assert parse_skill_frontmatter(broken) == yaml_side == {}
+        assert "tools" not in yaml_side
+        assert "argument-hint" not in yaml_side
+        assert set(yaml_side) <= {"name", "description"}
 
 
 class TestScalarToolsIsOnePattern:

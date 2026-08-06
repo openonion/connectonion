@@ -36,7 +36,7 @@ class TestCliHelp:
         assert __version__ in result.output
         assert "ConnectOnion" in result.output
         assert "Quick Start:" in result.output
-        assert "Commands:" in result.output
+        assert "Common commands:" in result.output
         assert "init" in result.output
         assert "create" in result.output
         assert "copy" in result.output
@@ -156,7 +156,7 @@ class TestCliHelp:
         line_count = len(result.output.split('\n'))
         assert line_count < 50, "Brief help should be scannable (< 50 lines)"
         assert "Quick Start:" in result.output
-        assert "Commands:" in result.output
+        assert "Common commands:" in result.output
 
     def test_invalid_command_shows_help(self):
         """Test that invalid command shows helpful error."""
