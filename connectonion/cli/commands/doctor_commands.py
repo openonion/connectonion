@@ -47,6 +47,47 @@ def verdict(problems: list) -> int:
     return 1
 
 
+EVALS_NOTE_THRESHOLD_MB = 20
+
+
+def disk_usage_note() -> "str | None":
+    """What to say about the space `co` has taken, or None.
+
+    `co ai` writes one eval per distinct first prompt, plus a directory of runs
+    for it. Runs inside an eval are capped at KEEP_RUNS_PER_EVAL and trimmed
+    after every write, so a repeated prompt stays bounded. The number of evals
+    is not capped by anything: a one-off prompt leaves its directory for good.
+
+    On the machine this was written on, ~/.co/evals held 857 evals across 227 MB
+    and nothing in `co doctor` or `co status` mentioned it — the largest thing
+    `co` writes was the one thing the diagnostic did not report.
+
+    A note, not a problem row, and not a deletion: which evals are worth keeping
+    is the user's call. Not being able to see the size is what stops them making
+    it. Quiet below the threshold, because a line printed every run is a line
+    nobody reads.
+    """
+    evals = Path.home() / ".co" / "evals"
+    if not evals.is_dir():
+        return None
+
+    total = 0
+    count = 0
+    for path in evals.rglob("*"):
+        if path.is_file():
+            total += path.stat().st_size
+            if path.suffix == ".yaml" and path.parent == evals:
+                count += 1
+
+    megabytes = total / (1024 * 1024)
+    if megabytes < EVALS_NOTE_THRESHOLD_MB:
+        return None
+
+    return (f"~/.co/evals holds {count} evals across {megabytes:.0f} MB — "
+            f"runs within one eval are capped, the number of evals is not. "
+            f"Delete the ones you no longer want.")
+
+
 def model_pricing_note(model) -> "str | None":
     """What to say about a model 1.6.0 no longer prices, or None.
 
@@ -182,6 +223,10 @@ def handle_doctor():
             config_table.add_row("Model", f"[green]✓[/green] {model}")
     else:
         config_table.add_row("Config", "[yellow]○[/yellow] Not found (optional)")
+
+    disk = disk_usage_note()
+    if disk:
+        config_table.add_row("Disk", f"[yellow]○[/yellow] {disk}")
 
     # Check for keys
     local_keys = project_co_dir() / "keys" / "agent.key"
