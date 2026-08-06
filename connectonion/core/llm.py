@@ -1,7 +1,7 @@
 """
 Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, Groq, Grok, Mistral, OpenRouter, and OpenOnion
 LLM-Note:
-  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, yaml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/unit/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/test_billing_error_agent.py]
+  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, yaml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/unit/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/unit/test_exceptions.py, tests/unit/test_uniform_provider_errors.py]
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
   State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads OPENONION_API_KEY from env / .env / ~/.co/keys.env | makes HTTP requests to LLM APIs | no caching or persistence
   Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
@@ -92,9 +92,10 @@ Imported by:
   - conftest.py: Test fixtures
 
 Tested by:
-  - tests/test_llm.py: Unit tests with mocked APIs
-  - tests/test_llm_do.py: Integration tests
-  - tests/test_real_*.py: Real API integration tests
+  - tests/unit/test_llm.py: Unit tests with mocked APIs
+  - tests/unit/test_exceptions.py, tests/unit/test_uniform_provider_errors.py:
+    the error translation (402/403/503 → typed errors)
+  - tests/e2e/real_api/: real API integration tests, marked real_api
 
 Environment Variables
 --------------------
