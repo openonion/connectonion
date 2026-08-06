@@ -88,6 +88,26 @@ MODEL_CONTEXT_LIMITS = {
 DEFAULT_PRICING = {"input": 1.00, "output": 3.00, "cached": 0.50}
 DEFAULT_CONTEXT_LIMIT = 128000
 
+# Which managed models a free account can call. The backend refuses the rest
+# with error='paid_account_required': "Your free $5 credits work with
+# Google-routed models."
+#
+# Another model fact, so it lives with the other two tables. The CLI prints it
+# after `co auth` and PaidModelRequiredError offers it when a free account picks
+# a paid model — one list, because the two copies it replaced had gone stale in
+# different directions. Verified by authenticating a fresh identity and
+# completing a real call per model; see
+# tests/unit/test_the_models_we_advertise_answer.py.
+FREE_MANAGED_MODELS = (
+    "co/gemini-3.6-flash",
+    "co/gemini-3.5-flash",
+    "co/gemini-2.5-pro",
+    "co/gemini-2.5-flash",
+)
+
+# Real and reachable, once the account has credits.
+PAID_MANAGED_MODELS = ("co/gpt-5", "co/o4-mini", "co/claude-sonnet-4")
+
 
 def _priced_name(model: str) -> str:
     """The name this model is listed under, if it is listed at all.

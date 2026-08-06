@@ -112,12 +112,20 @@ class TestEveryAdvertisedModelAnswers:
     def test_a_paid_model_is_refused_for_the_stated_reason(
         self, model, free_account_token
     ):
-        """If these start working on free credits, they belong on the main list."""
+        """If these start working on free credits, they belong on the main list.
+
+        Asserts the type, not the backend's wording. This first checked for
+        "paid_account_required" in the message, which passed only because the
+        raw JSON was reaching the user — the thing PaidModelRequiredError was
+        then added to stop. The two assertions contradicted each other and this
+        is the one that was measuring the symptom.
+        """
+        from connectonion.core.exceptions import PaidModelRequiredError
         from connectonion.core.llm import OpenOnionLLM
 
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(PaidModelRequiredError) as excinfo:
             OpenOnionLLM(api_key=free_account_token, model=model).complete(
                 [{"role": "user", "content": "ok"}]
             )
 
-        assert "paid_account_required" in str(excinfo.value)
+        assert excinfo.value.model_requested == model.removeprefix("co/")

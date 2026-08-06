@@ -3,10 +3,10 @@ ConnectOnion exceptions.
 
 Purpose: Custom exceptions for ConnectOnion framework with formatted, actionable error messages
 LLM-Note:
-  Dependencies: none | imported by [llm.py] | tested by [no direct test file]
-  Data flow: OpenOnionLLM catches openai.APIStatusError(402) → transforms to InsufficientCreditsError → raises with formatted message
-  State/Effects: parses error detail from API response | formats beautiful error message with account, balance, cost, shortfall | preserves original error in __cause__
-  Integration: exposes InsufficientCreditsError exception class | raised by OpenOnionLLM when insufficient credits
+  Dependencies: usage (FREE_MANAGED_MODELS, for the list PaidModelRequiredError offers) | imported by [llm.py] | tested by [test_a_paid_model_says_which_ones_are_free.py]
+  Data flow: OpenOnionLLM._call catches openai.APIStatusError → 402 becomes InsufficientCreditsError, 503 becomes ProviderServiceError, 403 with error='paid_account_required' becomes PaidModelRequiredError; any other status is logged and re-raised
+  State/Effects: parses error detail from API response | formats a message naming what to do next | preserves original error in __cause__
+  Integration: exposes InsufficientCreditsError, PaidModelRequiredError, ProviderServiceError and the LLM* error family
   Performance: lightweight exception creation | formats string message once on init
   Errors: none (this module defines error types)
 """
@@ -152,6 +152,56 @@ class LLMConnectionError(LLMProviderError):
             f"   - Check your internet connection\n"
             f"   - Disable proxy/VPN and retry\n"
             f"   - Run 'curl https://oo.openonion.ai/health' to test\n"
+            f"\n"
+            f"{'='*70}\n"
+        )
+
+
+class PaidModelRequiredError(LLMProviderError):
+    """Raised when a free account asks for a model behind a paid provider (403).
+
+    Not the same as InsufficientCreditsError. That one means the money ran out;
+    this one means the money is there and does not cover this provider. A new
+    account has $5 of free credits that work with Google-routed models, so this
+    is the most likely first failure anyone has — and until now the only one of
+    the three without a formatted message, so it reached the user as a raw
+    openai.PermissionDeniedError with the response JSON printed twice.
+
+    Attributes:
+        model_requested (str): The model the backend refused
+        free_models (tuple): Managed models a free account can call
+    """
+
+    def __init__(self, original_error):
+        # Read the list from the one place that maintains it, rather than
+        # restating it here. The CLI prints the same tuple after `co auth`, and a
+        # second copy would be the next thing to go stale.
+        from .usage import FREE_MANAGED_MODELS
+
+        body = getattr(original_error, 'body', {}) or {}
+        detail = body.get('detail', {}) if isinstance(body, dict) else {}
+
+        self.model_requested = detail.get('model_requested', 'unknown')
+        self.free_models = FREE_MANAGED_MODELS
+        self.original_message = detail.get('message', '')
+
+        super().__init__(self._format_message())
+        self.__cause__ = original_error
+
+    def _format_message(self):
+        offered = "\n".join(f"   • {m}" for m in self.free_models)
+        return (
+            f"\n"
+            f"{'='*70}\n"
+            f"❌ '{self.model_requested}' needs purchased credits\n"
+            f"{'='*70}\n"
+            f"\n"
+            f"Free credits cover Google-routed models. These work now:\n"
+            f"{offered}\n"
+            f"\n"
+            f"💡 To use {self.model_requested}:\n"
+            f"   • Purchase credits: https://o.openonion.ai\n"
+            f"   • Check balance: Run 'co status' in terminal\n"
             f"\n"
             f"{'='*70}\n"
         )

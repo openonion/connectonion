@@ -30,31 +30,14 @@ from typing import Optional, Tuple, List
 from ... import __version__
 from ... import address
 
+# What a new user may spend free credits on. The list lives in core.usage with
+# the other model facts, and PaidModelRequiredError offers the same tuple when a
+# free account picks a paid model. It used to be written out twice in this file,
+# and both copies had gone stale.
+from ...core.usage import FREE_MANAGED_MODELS as MANAGED_MODELS
+from ...core.usage import PAID_MANAGED_MODELS as PAID_MODELS
+
 console = Console()
-
-
-# What a new user is told they can spend their free tokens on.
-#
-# This list was written out twice and both copies were wrong in two ways. They
-# offered co/gemini-3-pro-preview, which Google has retired, and co/claude-sonnet-4
-# and co/gpt-5, which the backend refuses on a free account:
-#
-#     paid_account_required — "Your free $5 credits work with Google-routed
-#     models. Purchase credits to unlock all models"
-#
-# Free credits are exactly what this message is handing out, so the list has to
-# be what a free account can call. Verified by authenticating a freshly generated
-# identity — the same thing a new user is — and completing a real call per model.
-# Checking with a funded account is what hid the second half of this.
-MANAGED_MODELS = (
-    "co/gemini-3.6-flash",
-    "co/gemini-3.5-flash",
-    "co/gemini-2.5-pro",
-    "co/gemini-2.5-flash",
-)
-
-# Real models, and reachable — but only once the account has credits.
-PAID_MODELS = ("co/gpt-5", "co/o4-mini", "co/claude-sonnet-4")
 
 
 def _print_managed_models() -> None:

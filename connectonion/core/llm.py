@@ -193,8 +193,16 @@ from .exceptions import (
     LLMConnectionError,
     LLMProviderError,
     LLMRateLimitError,
+    PaidModelRequiredError,
     ProviderServiceError,
 )
+
+
+def _is_paid_account_required(error) -> bool:
+    """Whether a 403 is the backend saying this model needs purchased credits."""
+    body = getattr(error, 'body', {}) or {}
+    detail = body.get('detail', {}) if isinstance(body, dict) else {}
+    return isinstance(detail, dict) and detail.get('error') == 'paid_account_required'
 
 
 @dataclass
@@ -1157,6 +1165,11 @@ class OpenOnionLLM(LLM):
                 raise InsufficientCreditsError(e) from e
             elif e.status_code == 503:
                 raise ProviderServiceError(e) from e
+            elif e.status_code == 403 and _is_paid_account_required(e):
+                # Keyed on the backend's own error code, not on the status: a
+                # 403 can mean other things, and guessing from the status alone
+                # would tell a suspended account to go buy credits.
+                raise PaidModelRequiredError(e) from e
             logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
             raise
         except (openai.APITimeoutError, openai.APIConnectionError) as e:
