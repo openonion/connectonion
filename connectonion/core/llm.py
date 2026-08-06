@@ -1131,11 +1131,22 @@ class OpenOnionLLM(LLM):
             cost = getattr(response.usage, 'cost_usd', None)
             if cost is None:
                 cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+            # total_tokens for the same reason as cost_usd, and it was the half of
+            # this decision left undone: the cost came from the server while the
+            # token count stayed on the two fields just described as not naming
+            # the reasoning tokens. Measured here: prompt 17 + completion 3
+            # printed as "20 tok · $0.0017" on a call the server billed 243
+            # tokens for — a line 34x off itself.
+            #
+            # Only when it exceeds the sum. Equal or smaller means the provider is
+            # restating those two fields and there is nothing extra to report.
+            server_total = getattr(response.usage, 'total_tokens', 0) or 0
             usage = TokenUsage(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cached_tokens=cached_tokens,
                 cost=cost,
+                total_tokens=server_total if server_total > input_tokens + output_tokens else 0,
             )
 
         return LLMResponse(

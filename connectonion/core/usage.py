@@ -22,6 +22,27 @@ class TokenUsage(BaseModel):
     cached_tokens: int = 0      # Tokens read from cache (subset of input_tokens)
     cache_write_tokens: int = 0  # Tokens written to cache (Anthropic only)
     cost: float = 0.0           # USD cost for this call
+    total_tokens: int = 0       # What the server says it billed for; 0 = it didn't say
+
+    @property
+    def billed_tokens(self) -> int:
+        """The token count that goes with `cost`, so the two can be reconciled.
+
+        input + output is not that number on a reasoning model: measured against
+        the real backend, prompt 17 + completion 3 accompanied a charge for 243.
+        The OpenAI-shaped fields never name the reasoning tokens, and the cost
+        already comes from the server for exactly that reason (see core/llm.py).
+        Printing the sum beside that cost made a line that is 34x off itself.
+
+        Only what the server states — never a locally reconstructed figure, which
+        is how the 11.6x undercount arose in the first place. Absent, the sum is
+        the whole story: a direct provider call has no hidden tokens.
+
+        input_tokens/output_tokens keep their meaning: they are the
+        context-window numbers, and reasoning tokens are not in the context
+        window, so `% ctx` must go on reading those.
+        """
+        return self.total_tokens or (self.input_tokens + self.output_tokens)
 
 
 # Pricing per 1M tokens (USD)
@@ -290,5 +311,9 @@ def totals_from_trace(trace: list) -> tuple:
     usages = [t.get('usage') for t in trace if t.get('type') == 'llm_result']
     usages = [u for u in usages if u]
 
-    return (sum(u['input_tokens'] + u['output_tokens'] for u in usages),
+    # Same reconciliation as TokenUsage.billed_tokens, over a trace read back
+    # from disk: sessions written before total_tokens existed have no such key,
+    # and .get() rather than [] is what lets one of those still be summed.
+    return (sum(u.get('total_tokens') or u['input_tokens'] + u['output_tokens']
+                for u in usages),
             sum(u['cost'] for u in usages))
