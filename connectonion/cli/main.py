@@ -319,10 +319,17 @@ def call(
     """Run one command on a remote agent and print the result (no LLM).
 
     The remote twin of `co browser` — everything after the address runs on the
-    remote agent, gated by its .co/host.yaml whitelist:
+    remote agent as a bash command, gated by its .co/host.yaml whitelist:
 
         co call 0x3d40... co status
         co call --out shot.png 0x3d40... co browser take_screenshot
+
+    Bare `co`, not `.venv/bin/co`: the whitelist entry is `Bash(co *)`, and the
+    unit file puts the venv on PATH so that name resolves. The path form is the
+    one that gets refused.
+
+    Note this sends bash, not a tool call: a whitelist entry for the `read` TOOL
+    does not permit a `read` command, and vice versa.
     """
     from .commands.call_commands import handle_call
     raise typer.Exit(handle_call(args or []))
