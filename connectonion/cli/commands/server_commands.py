@@ -250,12 +250,17 @@ def handle_server_list() -> bool:
     for name in sorted(servers):
         entry = servers[name] or {}
         last = entry.get("last_check")
+        age = _how_long_ago(entry.get("last_check_at"))
         if last is None:
             shown = "[dim]never checked[/dim]"
         elif last == "ok":
             shown = "[green]ok[/green]"
         else:
             shown = f"[red]{last}[/red]"
+        if age:
+            # An entry from before stamping has no age, and inventing one would
+            # be worse than leaving the column as it was.
+            shown += f" [dim]{age}[/dim]"
 
         row = [name, entry.get("ssh", "[red]?[/red]"), shown]
         if billed is not None:
@@ -415,11 +420,45 @@ def handle_server_check(name: str) -> bool:
 
 
 def _record(name: str, outcome: str) -> None:
+    """Store the outcome and when it was learned.
+
+    `co server ls` renders this cache and does not probe — deliberately, so that
+    being offline still lists your targets. Without a time next to it, a server
+    that passed once and died since reads `ok` forever under a column named
+    LAST CHECK, and that is the table you look at before `co deploy --to`.
+    """
+    from datetime import datetime, timezone
+
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
     def note(servers):
         if name in servers:
             servers[name]["last_check"] = outcome
+            servers[name]["last_check_at"] = stamp
 
     _update(note)
+
+
+def _how_long_ago(stamp: Optional[str]) -> str:
+    """"3d", "20m", "just now" — or "" for an entry written before stamping."""
+    if not stamp:
+        return ""
+    from datetime import datetime, timezone
+
+    try:
+        then = datetime.fromisoformat(stamp)
+    except ValueError:
+        return ""
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+
+    seconds = (datetime.now(timezone.utc) - then).total_seconds()
+    if seconds < 60:
+        return "just now"
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if seconds >= size:
+            return f"{int(seconds // size)}{unit} ago"
+    return "just now"
 
 
 def handle_server_ssh(name: str, command: Optional[str] = None) -> bool:

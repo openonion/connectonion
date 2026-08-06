@@ -121,6 +121,56 @@ def _priced_name(model: str) -> str:
     return model[len("co/"):] if model.startswith("co/") else model
 
 
+def _extends_same_model(name: str, key: str) -> bool:
+    """Whether `name` is `key` with a version pinned, rather than another model.
+
+    The prefix fallback was written for the first case and applied to both:
+
+        o4-mini-2025-04-16      is o4-mini with a date          -> same price
+        gemini-2.5-flash-lite   is a cheaper, different model   -> not Flash's price
+
+    Thirteen real Gemini models were taking a price that belongs to something
+    else — -lite, -image, -preview-tts, -native-audio — and because a borrowed
+    price is returned exactly like a looked-up one, `is_estimated_price` said
+    False and the figure was shown without its `~`. Lite is cheaper than Flash;
+    image and audio are billed on different units entirely.
+
+    So the remainder must read as a version. Every token in it has to be digits,
+    or `latest`, or `preview` immediately followed by digits:
+
+        -2025-04-16    -001    -0    .1    -latest       same model
+        -preview-05-06                                   same model, dated preview
+        -lite   -image   -preview-tts   -native-audio    another model
+
+    `preview` is the one that needs the lookahead: `gemini-2.5-pro-preview-05-06`
+    is 2.5 Pro before release and prices as it, while `gemini-2.5-pro-preview-tts`
+    is a different model that happens to share the word.
+
+    Known limit: a bare digit cannot say whether it is an alias or the next minor
+    version. `claude-sonnet-4-0` is Sonnet 4 and `claude-sonnet-4-5` is Sonnet
+    4.5, and both read as a version here. They cost the same today, so nothing is
+    misreported — but if a future minor prices differently, it needs its own row
+    rather than a cleverer rule. Adding one makes a prefix pair, which the
+    longest-first sort handles and test_the_longest_price_match_wins currently
+    forbids on purpose; that test is the place to record the decision.
+    """
+    remainder = name[len(key):]
+    if not remainder or remainder[0] not in "-.":
+        return False
+
+    tokens = remainder.replace(".", "-").strip("-").split("-")
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.isdigit() or token == "latest":
+            index += 1
+        elif token == "preview" and index + 1 < len(tokens) and tokens[index + 1].isdigit():
+            index += 2
+        else:
+            return False
+    return bool(tokens)
+
+
 def get_pricing(model: str) -> dict:
     """Get pricing for a model, with fallback to default."""
     name = _priced_name(model)
@@ -129,8 +179,8 @@ def get_pricing(model: str) -> dict:
     if name in MODEL_PRICING:
         return MODEL_PRICING[name]
 
-    # Try prefix match (e.g., "gemini-2.5-pro-preview" -> "gemini-2.5-pro"),
-    # longest first.
+    # Try prefix match for a pinned version (e.g. "o4-mini-2025-04-16" ->
+    # "o4-mini"), longest first.
     #
     # Taking the first key that matched let dict order decide. Exact matches are
     # tried above, so a listed name was always fine — but a pinned, dated name is
@@ -140,8 +190,14 @@ def get_pricing(model: str) -> dict:
     # test enforces that), but the ordering is what makes it safe to add one.
     # The longest match is the most specific one, which is what a prefix match
     # is for.
+    #
+    # _extends_same_model is what keeps this to versions. "gemini-2.5-pro-preview"
+    # used to be the example here and is exactly what it now rejects: -preview,
+    # -lite, -image and -tts name other models, and lending them a price they did
+    # not earn also hid it, because a borrowed price is indistinguishable from a
+    # looked-up one at the display.
     for known_model in sorted(MODEL_PRICING, key=len, reverse=True):
-        if name.startswith(known_model):
+        if name.startswith(known_model) and _extends_same_model(name, known_model):
             return MODEL_PRICING[known_model]
 
     return DEFAULT_PRICING
@@ -174,7 +230,7 @@ def get_context_limit(model: str) -> int:
     # thousands of tokens it did not have: auto-compaction fired too late and the
     # provider rejected the request for length.
     for known_model in sorted(MODEL_CONTEXT_LIMITS, key=len, reverse=True):
-        if name.startswith(known_model):
+        if name.startswith(known_model) and _extends_same_model(name, known_model):
             return MODEL_CONTEXT_LIMITS[known_model]
 
     return DEFAULT_CONTEXT_LIMIT

@@ -36,7 +36,7 @@ response = llm_do("Hello", model="co/gpt-4o")
 Works across providers:
 - `co/gpt-4o`, `co/gpt-4o-mini`
 - `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- `co/gemini-3.6-flash` (default), `co/gemini-3-pro-preview`, `co/gemini-2.5-flash`
+- `co/gemini-3.6-flash` (default), `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 
 ## Troubleshooting
 

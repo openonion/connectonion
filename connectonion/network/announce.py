@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: get_ips() makes HTTP request to ipify (one-time) | pure function otherwise | deterministic JSON serialization (matches server verification) | signature is hex string without 0x prefix
   Integration: exposes get_ips(), create_announce_message(address_data, summary, endpoints) | used by host() to announce agent presence to relay network | relay server verifies signature using address (public key) | heartbeat re-sends with updated timestamp
   Performance: Ed25519 signing is fast (sub-millisecond) | get_ips() ~300-500ms for ipify call (runs once at startup)
-  Errors: raises KeyError if address_data missing required keys | address.sign() errors bubble up | ipify timeout returns without public IP
+  Errors: raises KeyError if address_data missing required keys | address.sign() errors bubble up | any ipify failure (timeout, DNS, 5xx) returns the local addresses without a public one — it used to raise out of get_endpoints() into host startup, which this line already claimed it did not
 
 Build ANNOUNCE messages for relay registration.
 
@@ -74,8 +74,21 @@ def get_ips() -> List[str]:
             if isinstance(ip.ip, str) and not ip.ip.startswith('127.'):
                 ips.append(ip.ip)
 
-    # Public IP
-    ips.append(httpx.get("https://api.ipify.org", timeout=5).text)
+    # Public IP, from a third party, which is the one address this project cannot
+    # work out for itself. Everything above is already collected, and those are
+    # what a neighbour on the same LAN would use — so a service on the internet
+    # being briefly unavailable must not cost the agent every endpoint it has.
+    # ipify was answering 520 when this was written; unguarded, that raised out
+    # of get_endpoints() and into host startup.
+    #
+    # This is the exception to fail-fast: losing the public address costs
+    # reachability from outside NAT, losing the list costs the agent entirely.
+    try:
+        public_ip = httpx.get("https://api.ipify.org", timeout=5).text.strip()
+    except Exception:
+        public_ip = ""
+    if public_ip:
+        ips.append(public_ip)
 
     return ips
 
