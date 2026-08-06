@@ -91,6 +91,14 @@ MODEL_PRICING = {
                          # applies to a direct Gemini API call.
                          "cached": 0.15},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
+    # Solved from real charges, two calls: (in=4, total=28, $0.000074) and
+    # (in=2006, total=2101, $0.001288) give input 0.50 / output 3.00 and both
+    # reproduce to the cent. It was falling through to DEFAULT_PRICING at
+    # 1.00/3.00 — twice the input rate — while one of our own agents
+    # (browser-agent on chat.openonion.ai) runs on it. Not in
+    # FREE_MANAGED_MODELS/PAID_MANAGED_MODELS: the CLI does not offer it, the
+    # backend routes it. cached is the stated 25%, not a measurement.
+    "gemini-3-flash-preview": {"input": 0.50, "output": 3.00, "cached": 0.125},
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00, "cached": 0.50},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 0.134},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00, "cached": 0.3125},
@@ -112,6 +120,12 @@ MODEL_CONTEXT_LIMITS = {
     # Gemini
     "gemini-3.6-flash": 1000000,
     "gemini-3.5-flash": 1000000,
+    # Without this row it took the 128,000 default, so `% ctx` read 7.8x high and
+    # auto-compaction fired about eight times too early — discarding context that
+    # was nowhere near full and paying for a compaction call to do it. A
+    # 150,008-token prompt was accepted and answered, which rules 128,000 out;
+    # 1,000,000 is what every other Gemini here carries.
+    "gemini-3-flash-preview": 1000000,
     "gemini-3-pro-preview": 1000000,
     "gemini-3-pro-image-preview": 65000,
     "gemini-2.5-pro": 1000000,
