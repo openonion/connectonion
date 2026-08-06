@@ -57,6 +57,7 @@ from pydantic import BaseModel, Field
 from . import element_finder
 from . import humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
+from .chrome_finder import find_system_chrome
 
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
@@ -149,6 +150,44 @@ def _browser_proxy_from_env():
     if p.password:
         proxy["password"] = urllib.parse.unquote(p.password)
     return proxy
+
+
+def _patchright_chromium_path():
+    """Where patchright would look for its downloaded chromium, per patchright.
+
+    Asking the driver rather than rebuilding the path: the directory carries the
+    build number (chromium-1228) and its layout differs per OS, so a
+    hand-written probe is a guess that goes stale on their next release.
+    """
+    from patchright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        return p.chromium.executable_path
+
+
+def installed_browser_path():
+    """A browser this machine could actually launch, or None.
+
+    Two ways to have one, and `open_browser` uses either: a real desktop Chrome
+    (which it pins when present) or patchright's downloaded chromium. Reporting
+    only the patchright package — which is what `co doctor` and `co browser
+    status` did — calls a machine healthy when every browser command on it fails
+    with "Executable doesn't exist at .../chromium-1228/chrome-linux64/chrome".
+
+    Costs starting the patchright driver, so this is for the commands that
+    report state, not for the path every browser command takes.
+    """
+    chrome = find_system_chrome()
+    if chrome:
+        return chrome
+    try:
+        path = _patchright_chromium_path()
+    except Exception:
+        # A patchright too broken to answer is not a browser. This function is
+        # called by `co doctor`, which runs when things are already wrong and
+        # must still print its report.
+        return None
+    return path if path and os.path.exists(path) else None
 
 
 def headless_without_a_display(headless: bool) -> bool:

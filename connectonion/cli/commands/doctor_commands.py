@@ -283,8 +283,15 @@ def handle_doctor():
     browser_table.add_column("Check", style="cyan")
     browser_table.add_column("Status")
 
-    from ...useful_tools.browser_tools.browser import driver_stealth_status
+    from ...useful_tools.browser_tools.browser import (
+        driver_stealth_status, installed_browser_path,
+    )
     status, browser_version, detail = driver_stealth_status()
+    # The package being healthy says nothing about there being a browser to
+    # launch. A deployed agent reported "Patchright ✓ / Stealth driver ✓ /
+    # nothing wrong" while every browser command answered "Executable doesn't
+    # exist at .../chromium-1228/chrome-linux64/chrome".
+    browser_binary = installed_browser_path() if status != "missing" else None
     if status == "ok":
         browser_table.add_row("Patchright", f"[green]✓[/green] {browser_version}")
         browser_table.add_row("Stealth driver", f"[green]✓[/green] {detail}")
@@ -294,6 +301,15 @@ def handle_doctor():
         found.append(f"stealth driver: {detail}")
     else:  # missing
         browser_table.add_row("Patchright", f"[yellow]○[/yellow] {detail}")
+
+    if status != "missing":
+        if browser_binary:
+            browser_table.add_row("Browser binary", f"[green]✓[/green] {browser_binary}")
+        else:
+            browser_table.add_row(
+                "Browser binary",
+                "[red]✗[/red] none installed — run: patchright install chromium")
+            found.append("no browser is installed — run: patchright install chromium")
 
     console.print(Panel(browser_table, title="[bold]Browser[/bold]", border_style="cyan"))
     console.print()
