@@ -32,10 +32,21 @@ MODEL_PRICING = {
     "o4-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
 
     # Anthropic Claude models - cached = 10% of input, cache_write = 125% of input
-
-    # Claude 4 models
-    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
-    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00, "cached": 1.50, "cache_write": 18.75},
+    #
+    # Keyed on the family, not on a pinned date. The prefix fallback only widens
+    # one way — a queried name may be longer than a key — so a table of dated
+    # names left every bare alias in MODEL_REGISTRY (claude-sonnet-4,
+    # claude-opus-4-1, claude-opus-4.1, ...) falling through to DEFAULT_PRICING
+    # at 1.00/3.00. Sonnet 4 billed a quarter of its real cost that way.
+    # One row per family covers the aliases and the dated names both.
+    #
+    # Opus 4 and 4.1 cost the same, so `claude-opus-4` prices the whole family
+    # and no entry shadows another. If a future Opus prices differently, adding
+    # it makes a prefix pair and the longest-first sort in get_pricing is what
+    # keeps it correct — test_the_longest_price_match_wins covers that.
+    "claude-sonnet-4": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
+    "claude-opus-4": {"input": 15.00, "output": 75.00, "cached": 1.50, "cache_write": 18.75},
+    "claude-3-7-sonnet": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
 
     # Google Gemini models - cached = 25% of input (75% discount)
     "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
@@ -53,9 +64,10 @@ MODEL_CONTEXT_LIMITS = {
     "o3-mini": 200000,
     "o4-mini": 200000,
 
-    # Anthropic
-    "claude-sonnet-4-20250514": 200000,
-    "claude-opus-4-20250514": 200000,
+    # Anthropic - keyed on the family, as in MODEL_PRICING above
+    "claude-sonnet-4": 200000,
+    "claude-opus-4": 200000,
+    "claude-3-7-sonnet": 200000,
 
     # Gemini
     "gemini-3.6-flash": 1000000,
