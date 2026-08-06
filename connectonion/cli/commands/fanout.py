@@ -31,12 +31,41 @@ def detected_tools() -> list[str]:
 
 
 def _report_kept(dst: Path, *, removing: bool = False) -> None:
-    """Say which path was left alone, so the skip is not silent."""
-    why = ("not deleting a real directory on the way out"
+    """Say which path was left alone, so the skip is not silent.
+
+    Says file or directory from the path, not from a fixed string: the message
+    read "not deleting a real directory" about a hand-written .mdc file.
+    """
+    what = "directory" if dst.is_dir() and not dst.is_symlink() else "file"
+    why = (f"not deleting a {what} we did not write"
            if removing else
-           "not replacing a real directory with a subscription; "
-           "move or rename it to sync this skill")
+           f"not overwriting your own {what} with a subscription; "
+           f"move or rename it to sync this skill")
     print(f"  kept your own {dst} — {why}")
+
+
+# What this module stamps into every file it generates, so a re-sync can tell its
+# own output from a rule the user wrote by hand. Symlink paths need no marker —
+# being a symlink we made is already the evidence — but cursor and kiro write
+# real files, and "who wrote this" is not otherwise knowable.
+OURS_MARKER = "connectonion:subscription"
+
+
+def _may_write(dst: Path) -> bool:
+    """Whether we may write `dst`: absent, or a file we generated before.
+
+    install_cursor and install_kiro write files rather than symlink, so the
+    _replace guard did not cover them: a hand-written
+    ~/.cursor/rules/<alias>-<name>.mdc or ~/.kiro/steering/<alias>-<name>.md was
+    overwritten with the publisher's content. Measured before this — both lost
+    their contents on a sync.
+    """
+    if not dst.exists():
+        return True
+    try:
+        return OURS_MARKER in dst.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
 
 
 def _replace(dst: Path, src: Path) -> bool:
@@ -136,8 +165,13 @@ def install_cursor(bundle: Path, alias: str) -> int:
             (l.split(":", 1)[1].strip() for l in fm.splitlines() if l.startswith("description:")),
             "",
         )
-        (rules / f"{alias}-{skill.name}.mdc").write_text(
-            f"---\ndescription: {desc}\nalwaysApply: false\n---\n{body}",
+        dst = rules / f"{alias}-{skill.name}.mdc"
+        if not _may_write(dst):
+            _report_kept(dst)
+            continue
+        dst.write_text(
+            f"---\ndescription: {desc}\nalwaysApply: false\n"
+            f"# {OURS_MARKER}\n---\n{body}",
             encoding="utf-8",
         )
         n += 1
@@ -149,7 +183,14 @@ def install_kiro(bundle: Path, alias: str) -> int:
     steering.mkdir(parents=True, exist_ok=True)
     n = 0
     for md in sorted((bundle / "skills").glob("*/SKILL.md")):
-        shutil.copy(md, steering / f"{alias}-{md.parent.name}.md")
+        dst = steering / f"{alias}-{md.parent.name}.md"
+        if not _may_write(dst):
+            _report_kept(dst)
+            continue
+        # Copy with the marker prepended as a comment, so a re-sync recognises
+        # its own output; shutil.copy would leave nothing to recognise.
+        dst.write_text(f"<!-- {OURS_MARKER} -->\n"
+                       + md.read_text(encoding="utf-8"), encoding="utf-8")
         n += 1
     return n
 
@@ -182,7 +223,14 @@ def uninstall_all(alias: str) -> None:
     # subscription must not delete it either. Matching by prefix is a guess about
     # ownership; being a symlink we made is not.
     for t in targets:
-        if t.is_symlink() or t.is_file():
-            t.unlink()
+        if t.is_symlink():
+            t.unlink()            # a link we made
+        elif t.is_file():
+            # A file with our marker is ours; one without it is the user's, and
+            # the name prefix alone is a guess about who wrote it.
+            if _may_write(t):
+                t.unlink()
+            else:
+                _report_kept(t, removing=True)
         elif t.is_dir():
             _report_kept(t, removing=True)

@@ -48,7 +48,11 @@ def _bundle(tmp_path, *names):
     for name in names:
         skill = root / "skills" / name
         skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(f"# {name} from the relay\n", encoding="utf-8")
+        # With frontmatter: install_cursor skips a body that has none, so a
+        # bundle without it makes the cursor cases pass for the wrong reason.
+        (skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: from the relay\n---\n\n"
+            f"# {name} from the relay\n", encoding="utf-8")
     return root
 
 
@@ -187,11 +191,33 @@ class TestRemoveOnlyRemovesWhatWeInstalled:
         fanout, root = home
         rule = root / ".cursor" / "rules" / "mapper-thing.mdc"
         rule.parent.mkdir(parents=True)
-        rule.write_text("---\n---\n", encoding="utf-8")
+        rule.write_text(f"---\n# {fanout.OURS_MARKER}\n---\n", encoding="utf-8")
 
         fanout.uninstall_all("mapper")
 
         assert not rule.exists()
+
+    def test_a_hand_written_rule_with_our_name_survives_removal(self, home):
+        """The prefix is a guess about ownership; the marker is not."""
+        fanout, root = home
+        rule = root / ".cursor" / "rules" / "mapper-thing.mdc"
+        rule.parent.mkdir(parents=True)
+        rule.write_text("---\ndescription: MY RULE\n---\nmine\n", encoding="utf-8")
+
+        fanout.uninstall_all("mapper")
+
+        assert rule.exists()
+        assert "MY RULE" in rule.read_text()
+
+    def test_a_hand_written_kiro_doc_survives_removal(self, home):
+        fanout, root = home
+        doc = root / ".kiro" / "steering" / "mapper-thing.md"
+        doc.parent.mkdir(parents=True)
+        doc.write_text("MY STEERING DOC\n", encoding="utf-8")
+
+        fanout.uninstall_all("mapper")
+
+        assert doc.exists()
 
     def test_a_real_claude_plugin_dir_survives_removal(self, home, tmp_path):
         fanout, root = home
@@ -204,8 +230,14 @@ class TestRemoveOnlyRemovesWhatWeInstalled:
         assert (mine / "mine.md").exists()
 
 
-class TestClaudeAndCursorToo:
-    """Every install path goes through the same guard."""
+class TestEveryInstallPathIsGuarded:
+    """Three of five went through _replace; cursor and kiro write files directly.
+
+    Fixing only the symlink paths left the same hole in the two that do not use
+    them — `co sub sync` overwrote a hand-written ~/.cursor/rules/<alias>-<name>.mdc
+    and ~/.kiro/steering/<alias>-<name>.md with the publisher's content. Measured
+    before this: both files lost their contents.
+    """
 
     def test_the_claude_plugin_dir_is_not_destroyed(self, home, tmp_path):
         fanout, root = home
@@ -216,3 +248,46 @@ class TestClaudeAndCursorToo:
         fanout.install_claude(_bundle(tmp_path, "thing"), "mapper")
 
         assert (mine / "mine.md").exists()
+
+    def test_a_hand_written_cursor_rule_survives(self, home, tmp_path):
+        fanout, root = home
+        rules = root / ".cursor" / "rules"
+        rules.mkdir(parents=True)
+        mine = rules / "mapper-thing.mdc"
+        mine.write_text("---\ndescription: MY RULE\n---\nmy careful rule\n",
+                        encoding="utf-8")
+
+        n = fanout.install_cursor(_bundle(tmp_path, "thing"), "mapper")
+
+        assert "MY RULE" in mine.read_text()
+        assert n == 0
+
+    def test_a_hand_written_kiro_doc_survives(self, home, tmp_path):
+        fanout, root = home
+        steering = root / ".kiro" / "steering"
+        steering.mkdir(parents=True)
+        mine = steering / "mapper-thing.md"
+        mine.write_text("MY STEERING DOC\n", encoding="utf-8")
+
+        n = fanout.install_kiro(_bundle(tmp_path, "thing"), "mapper")
+
+        assert "MY STEERING" in mine.read_text()
+        assert n == 0
+
+    def test_a_file_we_wrote_before_is_still_refreshed(self, home, tmp_path):
+        """Re-sync must keep working: our own output carries a marker."""
+        fanout, root = home
+        rules = root / ".cursor" / "rules"
+        rules.mkdir(parents=True)
+
+        bundle = _bundle(tmp_path, "thing")
+        assert fanout.install_cursor(bundle, "mapper") == 1
+        assert fanout.install_cursor(bundle, "mapper") == 1
+
+    def test_kiro_re_sync_still_works(self, home, tmp_path):
+        fanout, root = home
+        (root / ".kiro" / "steering").mkdir(parents=True)
+
+        bundle = _bundle(tmp_path, "thing")
+        assert fanout.install_kiro(bundle, "mapper") == 1
+        assert fanout.install_kiro(bundle, "mapper") == 1
