@@ -254,7 +254,12 @@ def send(line: str, headless: bool = False, tab: str = None,
     if payload.startswith("unknown command: {"):
         payload = (
             "an old browser daemon (pre-upgrade) is still running and does not speak "
-            "this client's protocol.\nrestart it:  pkill -f connectonion.cli.browser_agent.daemon"
+            "this client's protocol.\n"
+            # The bracketed [.] is load-bearing. `pkill -f` matches whole command
+            # lines, so the plain pattern matches the shell running it and kills
+            # that shell — measured on Linux: anything after it in the same
+            # command never runs. An agent reads this line and runs it that way.
+            "restart it:  pkill -f 'connectonion.cli.browser_agent[.]daemon'"
         )
     print(payload, file=sys.stderr)
     # "ERR" = generic failure (1); "ERR <n>" carries a distinct code so callers can

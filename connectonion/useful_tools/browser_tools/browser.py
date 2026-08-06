@@ -151,6 +151,34 @@ def _browser_proxy_from_env():
     return proxy
 
 
+def headless_without_a_display(headless: bool) -> bool:
+    """Force headless on a machine that has no display to draw a window on.
+
+    `co browser` defaults to headless=False, which is right on a laptop and
+    impossible on a deployed agent. Measured on a Linux server with DISPLAY
+    unset and chromium installed:
+
+        launch(headless=False) -> Target page, context or browser has been closed
+        launch(headless=True)  -> ok
+
+    The headed message names nothing actionable, and the documented remote
+    browser path (`co call <address> co browser take_screenshot`) goes straight
+    through it, so it was unusable on every deployed agent.
+
+    Applied here, where headless becomes effective, rather than in the CLI: the
+    daemon, the agent tools and a plain library caller each arrive by a different
+    route, and a decision made in only some of the places that reach it is the
+    mistake this release keeps repeating.
+
+    Only Linux has a display that can be absent — macOS and Windows always have
+    one, and neither sets DISPLAY, so checking it there would force headless on
+    every desktop.
+    """
+    if headless or platform.system() != "Linux":
+        return headless
+    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def _pid_alive(pid: int) -> bool:
     """True if a process with this pid exists (signal 0 probes it without touching it)."""
     try:
@@ -363,7 +391,7 @@ class BrowserAutomation:
         self.form_data: Dict[str, Any] = {}
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
-        self._headless = headless
+        self._headless = headless_without_a_display(headless)
         self._seed_state = seed_state
         self._seeded = False
         self.screenshots_dir = str(SCREENSHOTS_DIR)
