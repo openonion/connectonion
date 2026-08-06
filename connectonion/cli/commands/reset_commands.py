@@ -73,9 +73,9 @@ def handle_reset():
         console.print("✓ Deleted ~/.co/keys.env")
 
     # Recreate directory structure
-    global_dir.mkdir(exist_ok=True)
-    keys_dir.mkdir(exist_ok=True)
-    (global_dir / "logs").mkdir(exist_ok=True)
+    global_dir.mkdir(parents=True, exist_ok=True)
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    (global_dir / "logs").mkdir(parents=True, exist_ok=True)
 
     # Generate new keypair
     console.print("\n🔑 Generating new Ed25519 keypair...")

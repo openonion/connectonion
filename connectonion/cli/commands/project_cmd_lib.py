@@ -1219,10 +1219,13 @@ def ensure_global_config() -> None:
     console.print(f"\n🚀 Welcome to ConnectOnion!")
     console.print(f"✨ Setting up global configuration...")
 
-    # Create directories
-    global_dir.mkdir(exist_ok=True)
-    (global_dir / "keys").mkdir(exist_ok=True)
-    (global_dir / "logs").mkdir(exist_ok=True)
+    # parents=True: ~/.co is the first thing we put under HOME, and a HOME that
+    # has not been created — containers, sandboxes — left mkdir with no parent to
+    # work in, so a first run ended in a raw FileNotFoundError traceback rather
+    # than a message. It cannot do less than exist_ok alone did.
+    global_dir.mkdir(parents=True, exist_ok=True)
+    (global_dir / "keys").mkdir(parents=True, exist_ok=True)
+    (global_dir / "logs").mkdir(parents=True, exist_ok=True)
 
     # Generate master keys - fail fast if libraries missing
     addr_data = address.generate()
