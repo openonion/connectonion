@@ -81,7 +81,11 @@ def _docs_site_version() -> str:
 def test_pyproject_and_the_package_agree():
     assert _pyproject_version() == connectonion.__version__, (
         f"pyproject.toml says {_pyproject_version()}, "
-        f"connectonion/__init__.py says {connectonion.__version__}"
+        f"connectonion.__version__ is {connectonion.__version__}"
+        # Not "connectonion/__init__.py says": __init__ holds no literal, it
+        # re-exports from ._version. Naming the wrong file here is how the
+        # release runbook came to instruct an edit to it — see
+        # TestTheFileTheCliReadsIsTheOneThatWasBumped below.
     )
 
 
@@ -108,3 +112,67 @@ def test_the_docs_site_advertises_the_version_that_exists():
         f"  If that checkout is simply behind, pull it. If it is current, the "
         f"site is advertising a version that does not exist — update and deploy."
     )
+
+
+class TestTheFileTheCliReadsIsTheOneThatWasBumped:
+    """test_pyproject_and_the_package_agree asks `connectonion.__version__` — an
+    attribute, not a file. `co --version` does not read that attribute: it reads
+    connectonion/_version.py directly, which is the entire reason that module
+    exists (importing the package to print six characters pulled in the provider
+    SDKs and the TUI).
+
+    So the two can disagree, and the release runbook instructs exactly the edit
+    that makes them. `~/.claude/commands/release.md` step 3.3 says to bump:
+
+        pyproject.toml              version = "X.Y.Z"
+        connectonion/__init__.py    __version__ = "X.Y.Z"
+
+    but __init__.py holds no literal — it does `from ._version import
+    __version__`. Adding the instructed line after that import shadows it, and
+    the result was measured on this checkout:
+
+        pyproject.toml           1.6.0
+        __init__.py              1.6.0   (added, as instructed)
+        connectonion/_version.py 1.5.11  (never touched)
+
+        test_pyproject_and_the_package_agree   PASSED
+        co --version                           co 1.5.11
+
+    The only test that failed was the docs-site one, which is a different claim
+    about a sibling repo and is skipped in CI — so following the runbook ships a
+    green suite and a CLI that reports the previous release.
+    """
+
+    def test_the_version_module_holds_the_pyproject_version(self):
+        literal = re.search(r'__version__\s*=\s*"([^"]+)"',
+                            (REPO / 'connectonion/_version.py').read_text(encoding='utf-8'))
+
+        assert literal, "connectonion/_version.py has no __version__ literal"
+        assert literal.group(1) == _pyproject_version(), (
+            f"_version.py says {literal.group(1)}, pyproject.toml says "
+            f"{_pyproject_version()}. _version.py is what `co --version` reads."
+        )
+
+    def test_init_does_not_define_a_second_version(self):
+        """One literal. A second one shadows the import and nothing else notices."""
+        text = (REPO / 'connectonion/__init__.py').read_text(encoding='utf-8')
+
+        assert not re.search(r'^__version__\s*=\s*["\']', text, re.MULTILINE), (
+            "connectonion/__init__.py assigns its own __version__. It should only "
+            "re-export from ._version, which is the file `co --version` reads — "
+            "otherwise the two drift and every check that asks the attribute "
+            "agrees with the wrong one."
+        )
+
+    def test_the_cli_prints_the_version_being_shipped(self):
+        """The end of the chain, asked the way a user asks it."""
+        from typer.testing import CliRunner
+
+        from connectonion.cli.main import app
+
+        output = CliRunner().invoke(app, ["--version"], env={"COLUMNS": "200"}).output
+
+        assert _pyproject_version() in output, (
+            f"`co --version` printed {output.strip()!r}, but this release is "
+            f"{_pyproject_version()}"
+        )
