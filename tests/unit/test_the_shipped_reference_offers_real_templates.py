@@ -53,16 +53,21 @@ def _documented_templates():
 
 
 def _real_templates():
-    """What `co create --help` says, which is generated from the code."""
-    from typer.testing import CliRunner
+    """What `co create -t` accepts, from the code that accepts it.
 
-    from connectonion.cli.main import app
+    This read `co create --help` and parsed the rendered line. Rich wraps to the
+    terminal width, so CI's narrower output split a name and the test asserted
+    the CLI offered a template called 'm'. Parsing rendered text measures the
+    renderer, not the thing.
 
-    output = CliRunner().invoke(app, ["create", "--help"]).output
-    line = " ".join(output.split())
-    match = re.search(r"Template:\s*([^│]+?)\s*(?:│|--|$)", line)
-    assert match, f"could not read the template option from --help: {line[:200]}"
-    return set(re.findall(r"[a-z][a-z0-9-]*", match.group(1))) - {"default"}
+    create.py accepts a directory under TEMPLATES_DIR, or the literal 'custom':
+
+        if template != 'custom' and not (TEMPLATES_DIR / template).exists():
+    """
+    from connectonion.cli.commands.create import TEMPLATES_DIR
+
+    shipped = {d.name for d in TEMPLATES_DIR.iterdir() if d.is_dir()}
+    return shipped | {"custom"}
 
 
 class TestTheDocOffersWhatTheCliOffers:

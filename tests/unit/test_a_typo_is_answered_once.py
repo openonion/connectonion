@@ -42,8 +42,12 @@ runner = CliRunner()
 
 
 def _invoke(*args):
-    result = runner.invoke(app, list(args))
-    # Rich wraps the error box; join so a suggestion split across lines is seen.
+    # Pin the width. Rich wraps the error box to the terminal, so on a narrow one
+    # "Did you mean" is split across a box border and counting it in the rendered
+    # text measures the wrapping rather than the behaviour — at COLUMNS=40 this
+    # file failed for that reason alone. TestWhichClauseSurvives asserts the same
+    # rule against the exception itself, which no width can affect.
+    result = runner.invoke(app, list(args), env={"COLUMNS": "200"})
     return " ".join(result.output.split())
 
 

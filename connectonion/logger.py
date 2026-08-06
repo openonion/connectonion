@@ -34,7 +34,25 @@ from .project import project_co_dir as _project_co_dir
 
 
 def _slugify(text: str, max_length: int = 50) -> str:
-    """Convert text to URL-friendly slug for filenames.
+    """Convert text to a filename, keeping whatever script it was written in.
+
+    This kept `[a-zA-Z0-9]` only, so a prompt in Chinese, Japanese, Korean,
+    Russian or Greek reduced to nothing and became the literal name `default`:
+
+        '写一个爬虫'   -> 'default'
+        '分析销售数据'  -> 'default'
+        'Привет мир'  -> 'default'
+
+    The module header one line above promises "one file per unique first input";
+    for anyone not writing prompts in English it was one file for every input,
+    with unrelated runs accumulating in .co/evals/default.yaml. Mixed prompts
+    were quieter and no better — '帮我看一下这个 bug' became 'bug', which two
+    unrelated Chinese prompts can share while describing neither.
+
+    `\\w` is Unicode-aware for str patterns, so widening to it keeps CJK and
+    Cyrillic while still excluding every path separator: '../../etc/passwd'
+    stays 'etc_passwd'. A test covers that, because a narrow character class is
+    often the only thing guarding something.
 
     Args:
         text: Input text to slugify
@@ -44,7 +62,7 @@ def _slugify(text: str, max_length: int = 50) -> str:
         Lowercase slug with words separated by underscores
     """
     # Lowercase and replace spaces/special chars with underscores
-    slug = re.sub(r'[^a-zA-Z0-9]+', '_', text.lower())
+    slug = re.sub(r'[^\w]+', '_', text.lower())
     # Remove leading/trailing underscores
     slug = slug.strip('_')
     # Truncate to max length at word boundary
