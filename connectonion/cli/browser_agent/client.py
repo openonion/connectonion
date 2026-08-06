@@ -240,8 +240,6 @@ def send(line: str, headless: bool = False, tab: str = None,
         if payload:
             print(payload)
         return 0
-    # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
-    # token — which, after shlex strips the quotes, is 'unknown command: {v:1,...'.
     # A warm daemon reached the launcher and found no browser. The cold-start
     # provisioning above was skipped because the connect succeeded, so without
     # this every page command on this box fails identically forever. The daemon's
@@ -251,6 +249,8 @@ def send(line: str, headless: bool = False, tab: str = None,
         if _ensure_browser_ready(line):
             return send(line, headless=headless, tab=tab, _provisioned=True)
 
+    # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
+    # token — which, after shlex strips the quotes, is 'unknown command: {v:1,...'.
     if payload.startswith("unknown command: {"):
         payload = (
             "an old browser daemon (pre-upgrade) is still running and does not speak "

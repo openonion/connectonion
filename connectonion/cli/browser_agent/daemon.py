@@ -211,15 +211,18 @@ def launch_failure_advice(first_line: str) -> str:
     if platform.system() == "Darwin":
         return ("Run `co browser` from a desktop Terminal (a logged-in window "
                 f"session), not over ssh/cron/detached.\n{log}")
-    if platform.system() == "Linux":
-        # A headed launch with no working X server fails exactly this way, and
-        # the exception ("Target page, context or browser has been closed") says
-        # nothing. BrowserAutomation already forces headless when DISPLAY is
-        # unset, so reaching here means DISPLAY *is* set — pointing at a display
-        # that is not answering, which is what `ENV DISPLAY=:99` without a
-        # running Xvfb looks like.
-        return (f"DISPLAY={os.environ.get('DISPLAY', '')!r} is set but no display "
-                "answered, so a headed browser could not start.\n"
+    display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    if platform.system() == "Linux" and display and "has been closed" in first_line:
+        # A headed launch against a display that is configured but dead fails
+        # exactly this way, and the exception says nothing. Both conditions are
+        # required, or this becomes the mistake the docstring above describes:
+        # with DISPLAY unset the text contradicted itself ("DISPLAY='' is set"),
+        # and on any other Linux failure — a profile lock, an OOM kill — it
+        # blamed the display confidently and sent the reader nowhere.
+        #
+        # `ENV DISPLAY=:99` with no Xvfb behind it is what this looks like.
+        return (f"DISPLAY={display!r} is set but no display answered, so a headed "
+                "browser could not start.\n"
                 "Either start the X server (Xvfb) or unset DISPLAY — with no "
                 "display set, the browser runs headless by itself.\n" + log)
     return log

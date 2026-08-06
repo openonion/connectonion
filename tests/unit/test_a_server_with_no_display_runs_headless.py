@@ -31,7 +31,6 @@ import platform
 import pytest
 
 from connectonion.useful_tools.browser_tools import browser as browser_module
-from connectonion.cli.browser_agent.daemon import launch_failure_advice
 
 
 class TestHeadlessIsForcedWhenThereIsNoDisplay:
@@ -106,33 +105,10 @@ class TestTheBrowserItselfHonoursIt:
             automation._executor.shutdown(wait=False)
 
 
-class TestTheAdviceCoversADeadDisplay:
-    """A DISPLAY that is set with no X server behind it — what the co-ai
-    Dockerfile's `ENV DISPLAY=:99` produces if Xvfb is not running — still fails
-    headed, and the advice for it was an empty string plus a log path."""
-
-    MEASURED = "BrowserType.launch: Target page, context or browser has been closed"
-
-    def test_linux_gets_more_than_a_log_path(self, monkeypatch):
-        monkeypatch.setattr("connectonion.cli.browser_agent.daemon.platform.system",
-                            lambda: "Linux")
-
-        advice = launch_failure_advice(self.MEASURED)
-
-        assert "--headless" in advice or "headless" in advice.lower()
-        assert "DISPLAY" in advice
-
-    def test_it_does_not_hand_a_server_the_macos_advice(self, monkeypatch):
-        monkeypatch.setattr("connectonion.cli.browser_agent.daemon.platform.system",
-                            lambda: "Linux")
-
-        assert "desktop Terminal" not in launch_failure_advice(self.MEASURED)
-
-    def test_a_missing_executable_still_says_install(self, monkeypatch):
-        """The existing branch, which is the more common failure — unchanged."""
-        monkeypatch.setattr("connectonion.cli.browser_agent.daemon.platform.system",
-                            lambda: "Linux")
-
-        advice = launch_failure_advice("Executable doesn't exist at /home/co/.cache/...")
-
-        assert "patchright install chromium" in advice
+# The advice for a launch failure is not tested here. It moved to
+# test_browser_launch_advice.py::TestTheDisplayAdviceOnlyFiresWhenItApplies,
+# which already owned "the advice must match the failure" and now covers the
+# cases this file's first version got wrong: it asserted the Linux display
+# advice with DISPLAY unset, which is the normal case (BrowserAutomation runs
+# headless then, so a headed launch never happens) and made the message
+# contradict itself — "DISPLAY='' is set". One rule, one place.
