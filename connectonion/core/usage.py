@@ -51,6 +51,13 @@ MODEL_PRICING = {
     # OpenAI models - cached = 50% of input
     "o3-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
     "o4-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
+    # Solved from real charges and then pinned at scale: (in=9, total=83,
+    # $0.000751) and (in=2010, total=2148, $0.003893) give 1.25/10.00, and
+    # (in=150012, total=150150, $0.188895) reproduces at ratio 1.0000. It was on
+    # PAID_MANAGED_MODELS — sold to users — with no row here at all, so every cost
+    # shown for it was DEFAULT_PRICING at 1.00/3.00 behind a `~`.
+    # cached: OpenAI rows above use 50% of input; not measured for this model.
+    "gpt-5": {"input": 1.25, "output": 10.00, "cached": 0.625},
 
     # Anthropic Claude models - cached = 10% of input, cache_write = 125% of input
     #
@@ -111,6 +118,11 @@ MODEL_CONTEXT_LIMITS = {
     # OpenAI
     "o3-mini": 200000,
     "o4-mini": 200000,
+    # 272,000, stated by the provider itself when a deliberately oversized
+    # request was refused (unbilled): "Input tokens exceed the configured limit
+    # of 272000 tokens. Your messages resulted in 450012 tokens." 150,012 was
+    # accepted. Not the 128k default it had been taking, and not a round number.
+    "gpt-5": 272000,
 
     # Anthropic - keyed on the family, as in MODEL_PRICING above
     "claude-sonnet-4": 200000,
