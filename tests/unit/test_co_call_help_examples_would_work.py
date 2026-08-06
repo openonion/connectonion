@@ -33,6 +33,7 @@ which no import links.
 """
 
 import pathlib
+import re
 
 import pytest
 import yaml
@@ -50,10 +51,25 @@ HOST_YAML = (pathlib.Path(__file__).resolve().parents[2]
 ADDRESS = "0x3d40..."
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 @pytest.fixture
 def help_text():
+    """The help as a reader sees it, with styling removed.
+
+    Rich emits ANSI when FORCE_COLOR is set, which is CI's environment and not
+    this laptop's — and the style codes land INSIDE the option names, so `--out`
+    stops being a substring of the output. `test_it_still_documents_the_options`
+    failed on all four Linux jobs for that and nothing else. Reproduced locally
+    with FORCE_COLOR=1: `ansi: True | plain --out found: False`.
+
+    Third time a test of mine has broken on rendered output (the others read
+    Rich-wrapped text). Hence TestTheOptionsAreDeclared below, which asks the
+    command object instead of the panel — the durable form of this claim.
+    """
     result = runner.invoke(app, ["call", "--help"], env={"COLUMNS": "200"})
-    return " ".join(result.output.split())
+    return " ".join(ANSI.sub("", result.output).split())
 
 
 @pytest.fixture
@@ -123,6 +139,54 @@ class TestTheWhitelistedNameIsTheOneOnPath:
 
     def test_the_whitelist_grants_the_bare_name(self, shipped_permissions):
         assert any(p.startswith("Bash(co ") for p in shipped_permissions)
+
+
+class TestTheHelpStillDescribesTheCommand:
+    """Guard against satisfying the above by deleting the examples."""
+
+    def test_it_still_explains_what_call_does(self, help_text):
+        assert "remote" in help_text.lower()
+
+    def test_it_still_documents_the_options(self, help_text):
+        for option in ("--out", "--timeout", "--relay"):
+            assert option in help_text
+
+
+class TestTheOptionsAreDeclared:
+    """The same claim asked of the declaration rather than the rendered panel.
+
+    `co call` declares exactly one parameter — `args` — because it parses
+    --out/--timeout/--relay itself out of the token list. So they are not click
+    params, and the first version of this class asserted they were and failed
+    correctly. Where they ARE declared is that argument's own help string:
+
+        args  [ARGS]...  [--out F] [--timeout S] [--relay U] <address> <command...>
+
+    which is what the panel renders and what Rich styles. Reading it from the
+    declaration is the same claim with the renderer out of the way.
+    """
+
+    @staticmethod
+    def _args_help() -> str:
+        import typer.main
+
+        call = typer.main.get_command(app).commands["call"]
+        args = [param for param in call.params if "args" in param.opts]
+
+        assert args, f"co call no longer declares `args`: {[p.opts for p in call.params]}"
+        return args[0].help or ""
+
+    @pytest.mark.parametrize("option", ["--out", "--timeout", "--relay"])
+    def test_the_argument_help_names_it(self, option):
+        assert option in self._args_help(), (
+            f"{option} is not named in `args`'s help: {self._args_help()!r}"
+        )
+
+    def test_it_still_says_what_the_positional_arguments_are(self):
+        """Guard against satisfying the above by listing only options."""
+        declared = self._args_help()
+
+        assert "<address>" in declared and "command" in declared
 
 
 class TestTheHelpStillDescribesTheCommand:
