@@ -30,14 +30,43 @@ def detected_tools() -> list[str]:
     return [t for t in TOOLS if (HOME / f".{t}").is_dir()]
 
 
-def _replace(dst: Path, src: Path) -> None:
+def _report_kept(dst: Path, *, removing: bool = False) -> None:
+    """Say which path was left alone, so the skip is not silent."""
+    why = ("not deleting a real directory on the way out"
+           if removing else
+           "not replacing a real directory with a subscription; "
+           "move or rename it to sync this skill")
+    print(f"  kept your own {dst} — {why}")
+
+
+def _replace(dst: Path, src: Path) -> bool:
+    """Point `dst` at `src`. False, without touching anything, if dst is not ours.
+
+    This used to `shutil.rmtree(dst)` any real directory in the way. Replacing a
+    symlink this module made is right — that is what a re-sync is — but a real
+    directory is the user's, and it went with everything in it. Measured:
+
+        ~/.codex/skills/mapper-candidate-mapping/
+            SKILL.md   hand-written
+            notes.md   hand-written
+        co sub sync 0x…   ->  the path became a symlink, notes.md was gone
+
+    The `{alias}-{name}` prefix makes that unlikely, not impossible: an alias is
+    a string the publisher picked, so two publishers can pick the same one, and a
+    subscriber may have named their own skills the same way.
+
+    Losing a synced skill is recoverable by syncing again. Losing the notes
+    underneath it is not, so the directory wins and the caller reports it.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    if dst.is_symlink() or dst.exists():
-        if dst.is_dir() and not dst.is_symlink():
-            shutil.rmtree(dst)
-        else:
-            dst.unlink()
+    if dst.is_symlink():
+        dst.unlink()          # ours, or stale — either way replaceable
+    elif dst.exists():
+        if dst.is_dir():
+            return False      # somebody's real directory; not ours to delete
+        dst.unlink()          # a plain file we wrote before
     dst.symlink_to(src)
+    return True
 
 
 def install_claude(bundle: Path, alias: str) -> int:
@@ -53,7 +82,10 @@ def install_claude(bundle: Path, alias: str) -> int:
     The link is right and stays; every other tool in this module counts skills,
     so the number is what was out of step.
     """
-    _replace(HOME / ".claude" / "plugins" / alias, bundle)
+    dst = HOME / ".claude" / "plugins" / alias
+    if not _replace(dst, bundle):
+        _report_kept(dst)
+        return 0
     return _skill_count(bundle)
 
 
@@ -77,7 +109,10 @@ def _skill_count(bundle: Path) -> int:
 def install_skill_dirs(bundle: Path, alias: str, tool: str) -> int:
     n = 0
     for skill in _skills_in(bundle):
-        _replace(HOME / f".{tool}" / "skills" / f"{alias}-{skill.name}", skill)
+        dst = HOME / f".{tool}" / "skills" / f"{alias}-{skill.name}"
+        if not _replace(dst, skill):
+            _report_kept(dst)
+            continue
         n += 1
     return n
 
@@ -141,8 +176,13 @@ def uninstall_all(alias: str) -> None:
     for base in (HOME / ".cursor" / "rules", HOME / ".kiro" / "steering"):
         if base.is_dir():
             targets += [p for p in base.iterdir() if p.name.startswith(f"{alias}-")]
+    # Only what this module creates: symlinks (claude/codex/openclaw) and the
+    # files it writes (cursor .mdc, kiro .md). A real directory matching the name
+    # prefix is the user's — the install refuses to overwrite one, and removing a
+    # subscription must not delete it either. Matching by prefix is a guess about
+    # ownership; being a symlink we made is not.
     for t in targets:
         if t.is_symlink() or t.is_file():
             t.unlink()
         elif t.is_dir():
-            shutil.rmtree(t)
+            _report_kept(t, removing=True)
