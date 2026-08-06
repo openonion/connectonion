@@ -117,3 +117,44 @@ class TestTheRunSummaryAddsUpTheBilledTokens:
         tokens, cost = totals_from_trace(trace)
 
         assert tokens == 20
+
+
+class TestNobodyRebuildsTheSum:
+    """This fix landed in two of four places on the first pass.
+
+    console.py and totals_from_trace were changed; tui/chat.py and the `/cost`
+    command still added input + output, and `/cost` could not even run (it read
+    the object as a dict — see test_the_cost_command_reads_a_real_usage.py). One
+    fact, five places, fixed in two: the shape this release keeps finding.
+
+    Two sites are allowed to write the sum and no others:
+      core/usage.py     — the definition of billed_tokens
+      core/llm.py       — deciding whether the server's total says anything more
+
+    Anywhere else it is a token count that will not reconcile with the cost
+    printed beside it.
+    """
+
+    ALLOWED = {"connectonion/core/usage.py", "connectonion/core/llm.py"}
+
+    def test_no_other_file_adds_the_two_fields(self):
+        import pathlib
+        import re
+
+        root = pathlib.Path(__file__).resolve().parents[2]
+        pattern = re.compile(r"input_tokens\s*\+|\+\s*(?:\w+\.)?output_tokens")
+        offenders = []
+
+        for path in (root / "connectonion").rglob("*.py"):
+            relative = path.relative_to(root).as_posix()
+            if relative in self.ALLOWED:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if pattern.search(line) and not line.lstrip().startswith("#"):
+                    offenders.append(f"{relative}:{number}: {line.strip()}")
+
+        assert not offenders, (
+            "these rebuild the token total instead of reading billed_tokens, so "
+            "the count will not match the cost shown with it:\n  "
+            + "\n  ".join(offenders)
+        )

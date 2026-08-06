@@ -472,7 +472,10 @@ class Chat(App):
             @after_llm
             def _update_tokens(agent):
                 if agent.last_usage:
-                    total_tokens = agent.last_usage.input_tokens + agent.last_usage.output_tokens
+                    # billed_tokens: this is displayed beside agent.total_cost,
+                    # and the sum of these two fields does not account for that
+                    # cost on a reasoning model (see TokenUsage.billed_tokens).
+                    total_tokens = agent.last_usage.billed_tokens
                     chat.call_from_thread(chat._update_tokens, total_tokens, agent.total_cost)
 
             @on_complete

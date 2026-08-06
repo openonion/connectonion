@@ -43,10 +43,17 @@ def test_cmd_cost_no_session():
 
 
 def test_cmd_cost_with_agent():
+    # last_usage is a TokenUsage, which is what agent.py assigns
+    # (`self.last_usage = response.usage`). The dict that used to be here is why
+    # cmd_cost was written with .get() and raised AttributeError on every real
+    # session after the first model call — the fake taught the code the wrong
+    # contract. See test_the_cost_command_reads_a_real_usage.py.
+    from connectonion.core.usage import TokenUsage
+
     agent = SimpleNamespace(
         llm=SimpleNamespace(model="m"),
         total_cost=0.005,
-        last_usage={"input_tokens": 10, "output_tokens": 5},
+        last_usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.005),
         context_percent=25,
         current_session={"messages": [1, 2, 3]},
     )

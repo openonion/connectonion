@@ -78,11 +78,18 @@ def cmd_cost(args: str = "") -> str:
     # Token usage
     last_usage = getattr(agent, 'last_usage', None)
     if last_usage:
-        input_tokens = last_usage.get('input_tokens', 0)
-        output_tokens = last_usage.get('output_tokens', 0)
+        # A TokenUsage, not a dict — agent.py does `self.last_usage =
+        # response.usage`, and pydantic models have no .get, so this raised
+        # AttributeError after the first model call. The `if` above hid it:
+        # before that call it is None and the block never ran.
+        input_tokens = last_usage.input_tokens
+        output_tokens = last_usage.output_tokens
         table.add_row("Input Tokens", f"{input_tokens:,}")
         table.add_row("Output Tokens", f"{output_tokens:,}")
-        table.add_row("Total Tokens", f"{input_tokens + output_tokens:,}")
+        # billed_tokens, not the sum: the cost printed two rows up comes from the
+        # server and covers reasoning tokens these two fields never name, so the
+        # sum would be 29x off the cost in the same table.
+        table.add_row("Total Tokens", f"{last_usage.billed_tokens:,}")
 
     # Context usage
     context_percent = getattr(agent, 'context_percent', 0)
