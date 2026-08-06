@@ -394,17 +394,40 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         return None
 
     import yaml
+    yaml_text = match.group(1)
     try:
-        yaml.safe_load(match.group(1))
+        yaml.safe_load(yaml_text)
     except yaml.YAMLError as e:
         detail = str(e).split('\n')[0]
         mark = getattr(e, 'problem_mark', None)
-        if mark is None:
-            return f'SKILL.md frontmatter is not valid YAML: {detail}'
         # The mark counts lines within the frontmatter, 0-based. Add one for the
         # opening `---` and one for counting from 1, so the number is the line an
         # editor puts the cursor on.
-        return f'SKILL.md frontmatter is not valid YAML at line {mark.line + 2}: {detail}'
+        where = f' at line {mark.line + 2}' if mark is not None else ''
+
+        # Say what it costs, which is no longer "everything". _read_frontmatter
+        # rescues name and description from a file YAML rejects, so these skills
+        # work — reporting them as unreadable teaches people to stop reading the
+        # doctor. What is genuinely lost is `tools:`, which is not rescued because
+        # it grants permissions, so a file that declares one is the real problem:
+        # the declaration does nothing and the author cannot tell.
+        recovered = _read_frontmatter(yaml_text)
+        # `tools:` only. `allowed-tools:` is another tool's key and _tool_patterns
+        # never reads it, so it is ignored whether or not the YAML parses —
+        # blaming the bad quoting for that would be a false claim, and most of
+        # these files declare allowed-tools rather than tools.
+        declares_tools = any(
+            line.split(':', 1)[0].strip() == 'tools'
+            for line in yaml_text.splitlines()
+            if ':' in line and not line.startswith((' ', '\t'))
+        )
+        if declares_tools:
+            return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
+                    f'— its tools: declaration is being ignored')
+        if recovered.get('description'):
+            return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
+                    f'— name and description were still read')
+        return f'SKILL.md frontmatter is not valid YAML{where}: {detail}'
 
     return None
 
