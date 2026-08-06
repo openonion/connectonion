@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [socket, os, json, sys, time, pathlib, browser_agent.daemon (default_sock_path, _owner_alive), browser_agent.transport] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: send(line, headless, tab) → _caller() derives identity (CO_WHO, else claude-<CLAUDE_JOB_DIR>, else "") → build wire-v1 envelope json{v:1, caller, tab, line} (structured caller/tab means any character in a name is safe — nothing is spliced into the shlex-parsed command line) → _connect(default_sock_path()) or _spawn_daemon() → POSIX: send, half-close, read reply to EOF over raw AF_UNIX | Windows: send_bytes/recv_bytes one framed message each way over an HMAC-authenticated named pipe (transport.win_connect + load_or_create_authkey) → header "OK" prints payload to stdout & returns 0 | header "ERR"/"ERR <n>" prints payload to stderr & returns the int (1 default, else 2/3/4) → a pre-upgrade daemon's "unknown command: {…" reply is rewritten to a restart hint
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
-  Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
+  Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
   Performance: one connect + request/response | daemon spawn adds browser launch latency on first call
   Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | ALL setup RuntimeErrors (Windows authkey mismatch/corruption, daemon didn't start) are caught in send() → one clean stderr line + exit 1, NEVER a traceback (typer's pretty exceptions would print frame locals, which hold the HMAC secret on the connect path) | daemon dying mid-request → clean stderr line + exit 1
 """
@@ -132,21 +132,26 @@ def _caller() -> str:
 PAGELESS_VERBS = {"status", "tab", "help", "use", "switch", "close", "closetab"}
 
 
-def _ensure_browser_ready(line: str):
+def _ensure_browser_ready(line: str) -> bool:
     """First-run auto-install: if this command will drive a page and no browser
     exists, install one NOW — the user just runs `co browser ...` and it works.
     Nobody should have to learn about patchright or doctor commands first.
 
-    Only called on the cold-start path (no daemon yet), so a warm daemon pays
-    nothing. `patchright install chrome` is idempotent — a re-run when the
-    browser is already downloaded returns in about a second without downloading.
+    Returns whether an install was attempted, so a caller that is retrying can
+    tell "provisioned, worth another go" from "nothing to provision".
+
+    Called on the cold-start path (no daemon yet), and again if a warm daemon
+    answers that no browser is installed — a daemon that outlived the missing
+    browser would otherwise never reach this and fail identically forever.
+    `patchright install chrome` is idempotent — a re-run when the browser is
+    already downloaded returns in about a second without downloading.
     """
     verb = line.split()[0] if line.strip() else ""
     if verb in PAGELESS_VERBS:
-        return
+        return False
     from connectonion.useful_tools.browser_tools.chrome_finder import find_system_chrome
     if find_system_chrome():
-        return  # a real desktop Chrome is installed — nothing to provision
+        return False  # a real desktop Chrome is installed — nothing to provision
     import subprocess
     print("First run: setting up a browser for co browser (one-time download)...",
           file=sys.stderr)
@@ -159,9 +164,11 @@ def _ensure_browser_ready(line: str):
         # daemon's launch error is actionable if it truly can't start.
         print("Browser setup did not complete — trying to run anyway "
               "(if launch fails: python -m patchright install chromium)", file=sys.stderr)
+    return True
 
 
-def send(line: str, headless: bool = False, tab: str = None) -> int:
+def send(line: str, headless: bool = False, tab: str = None,
+         _provisioned: bool = False) -> int:
     """Send one request; print the reply; return the process exit code.
 
     Wire v1 is a JSON envelope {caller, tab, line} — caller identity and tab
@@ -235,6 +242,15 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
         return 0
     # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
     # token — which, after shlex strips the quotes, is 'unknown command: {v:1,...'.
+    # A warm daemon reached the launcher and found no browser. The cold-start
+    # provisioning above was skipped because the connect succeeded, so without
+    # this every page command on this box fails identically forever. The daemon's
+    # verdict is the signal: whether patchright's downloaded chromium exists is
+    # not something to guess at from a version-numbered cache path.
+    if "No browser is installed for this user" in payload and not _provisioned:
+        if _ensure_browser_ready(line):
+            return send(line, headless=headless, tab=tab, _provisioned=True)
+
     if payload.startswith("unknown command: {"):
         payload = (
             "an old browser daemon (pre-upgrade) is still running and does not speak "
