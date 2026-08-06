@@ -408,8 +408,38 @@ class BrowserAutomation:
             return False
 
         def run():
-            # Alive = the context still answers protocol calls. Zero open pages is
-            # still alive (a page opens on demand), so listing pages IS the check.
+            # Only a round-trip can answer this. Everything local lies once the
+            # browser is gone — measured with the browser process killed, which is
+            # how it goes in the field:
+            #
+            #     is_closed()      ->  False   local flag, set by close() only
+            #     len(ctx.pages)   ->  1       local list, still holds the dead tab
+            #     ctx.cookies()    ->  TargetClosedError
+            #     ctx.new_page()   ->  TargetClosedError   <- what the user hits
+            #
+            # Listing pages used to be the whole check, on the reasoning that it
+            # "answers protocol calls". It does not, so this reported alive while
+            # every command failed: the serve loop never exited and `status` said
+            # "open" (#711). Swapping in is_closed() looked right and is the same
+            # mistake — a killed browser still reports False.
+            is_closed = getattr(self.browser, "is_closed", None)
+            if callable(is_closed):
+                try:
+                    if is_closed():
+                        return False   # sufficient on its own; the reverse is not
+                except Exception:
+                    return False
+
+            # cookies() is the cheapest call that actually reaches the browser.
+            cookies = getattr(self.browser, "cookies", None)
+            if callable(cookies):
+                try:
+                    cookies()
+                except Exception:
+                    return False
+                return True
+
+            # A driver with neither: the old reading, rather than declaring it dead.
             try:
                 list(self.browser.pages)
             except Exception:
