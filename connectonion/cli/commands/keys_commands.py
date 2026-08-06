@@ -74,10 +74,26 @@ def _load_env_vars() -> dict:
     }
 
 
-def _mask(value: str, show: int = 8) -> str:
-    """Mask a secret, showing only first N chars."""
+def _mask(value: str, show: int = 8, secret: bool = False) -> str:
+    """Mask a value, showing a prefix — or nothing at all when `secret`.
+
+    A prefix is useful for an API key: `eyJhbGci` is the constant base64 of a
+    JWT header, carries nothing, and is how you tell two configured keys apart.
+
+    It is not useful for the recovery phrase, which was masked the same way and
+    so printed its first two words under a panel that ends "Secrets are masked."
+    Ten unknown words still carry ~110 bits, so nothing is brute-forced from it
+    — but the prefix identifies nothing anyone needs, which leaves no benefit to
+    weigh against showing part of the one credential that moves an identity and
+    its balance, in output people paste because they were told it was hidden.
+
+    `secret=True` also fixes the width, so the mask does not report how long the
+    value was. `co keys --reveal` is unchanged.
+    """
     if not value:
         return ""
+    if secret:
+        return "*" * 16
     if len(value) <= show:
         return value
     return f"{value[:show]}...{'*' * 12}"
@@ -159,7 +175,7 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     # Recovery phrase
     seed = addr_data.get("seed_phrase")
     if seed:
-        sec_table.add_row("Recovery", seed if reveal else _mask(seed, 12))
+        sec_table.add_row("Recovery", seed if reveal else _mask(seed, secret=True))
     else:
         sec_table.add_row("Recovery", "[dim]missing (recovery.txt not found)[/dim]")
 
