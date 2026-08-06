@@ -181,7 +181,19 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
                 # open raised PermissionError, which the RuntimeError below does
                 # not catch, and the CLI printed a traceback instead of a status
                 # (#356).
-                print("Browser daemon: not running — the next page command starts one")
+                #
+                # A failed connect is not "nobody listening": a daemon whose
+                # backlog is full behind a long command refuses connections too.
+                # Saying "not running — the next page command starts one" then
+                # sends the reader in the wrong direction, and every command they
+                # try answers "busy". _owner_alive reads the pidfile and asks
+                # whether that pid lives — no spawn, no log, so the #356
+                # constraint above still holds.
+                if _owner_alive(sock_path):
+                    print("Browser daemon: running, busy with a long command "
+                          "— try again shortly")
+                else:
+                    print("Browser daemon: not running — the next page command starts one")
                 return 0
             _ensure_browser_ready(line)  # cold start: provision the browser first
             conn = _spawn_daemon(sock_path, headless)

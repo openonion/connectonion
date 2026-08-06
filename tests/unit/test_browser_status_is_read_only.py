@@ -36,8 +36,17 @@ from connectonion.cli.browser_agent import client
 
 @pytest.fixture
 def no_daemon(monkeypatch, tmp_path):
-    """A cold start: nothing listening, and a home nobody may write to."""
+    """A cold start: nothing listening, and a home nobody may write to.
+
+    `_owner_alive` is pinned too. A refused connection alone does not mean no
+    daemon — one whose backlog is full behind a long command refuses as well —
+    so status now consults the pidfile to tell those apart
+    (test_browser_status_can_tell_busy_from_absent). Without pinning it, this
+    fixture describes a cold start on a machine that has no browser and a busy
+    daemon on one that does, and the file it belongs to is about the cold start.
+    """
     monkeypatch.setattr(client, "_connect", lambda *a, **k: None)
+    monkeypatch.setattr(client, "_owner_alive", lambda *a, **k: False)
 
     def refuse(*args, **kwargs):
         raise AssertionError("status spawned a daemon")
