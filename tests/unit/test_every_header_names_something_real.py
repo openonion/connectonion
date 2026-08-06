@@ -24,6 +24,12 @@ while the code moved — and this release has now hit it in docs/connectonion.md
 in create.py/init.py, in the model lists, and in fanout.py, which I had edited
 myself. A per-file fix each time does not stop the next one; the invariant does.
 
+The `tested by [...]` half of the same header is already covered by
+test_the_tested_by_pointers_resolve — which records 106 pointers, 48 dead, and
+why a dead one cannot be repaired by name similarity. I wrote a second copy of
+that check here before finding it; a second implementation of a rule is what
+most of this release has been about, so it is gone and that file owns it.
+
 ## What this asserts, and what it deliberately does not
 
 Only the `exposes` clause, and only names written with `()`. Prose elsewhere in a
@@ -121,60 +127,6 @@ class TestNoNewHeaderGoesStale:
             "these were fixed — drop them from KNOWN_STALE: "
             f"{sorted(KNOWN_STALE - stale)}"
         )
-
-
-def _tested_by_refs(tree):
-    """The test files a header claims cover it."""
-    doc = ast.get_docstring(tree) or ""
-    match = re.search(r"tested by \[([^\]]+)\]", doc)
-    if not match:
-        return set()
-    return set(re.findall(r"[\w/]+\.py", match.group(1)))
-
-
-class TestEveryTestedByReferenceResolves:
-    """A header pointing at a test file that does not exist is worse than silence.
-
-    Six references were dead — renamed or removed files — and each one told a
-    reader that a module had coverage somewhere they could go look at:
-
-        core/llm.py                    tests/test_billing_error_agent.py
-        llm_do.py                      tests/test_llm_do_comprehensive.py
-                                       tests/test_real_llm_do.py
-        network/connect.py             tests/integration/test_remote_agent.py
-        tool_approval/__init__.py      tests/integration/test_bash_chain_permissions.py
-        tool_approval/approval.py      (same)
-
-    Correcting them turned up something the dead links had hidden: `llm_do` has
-    no test file of its own. Its header now says so, rather than naming two files
-    that were never there.
-    """
-
-    def test_no_header_points_at_a_missing_test_file(self):
-        tests_root = ROOT.parent / "tests"
-        missing = []
-        for path in sorted(ROOT.rglob("*.py")):
-            if "__pycache__" in str(path):
-                continue
-            try:
-                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-            except SyntaxError:
-                continue
-            for ref in _tested_by_refs(tree):
-                if not list(tests_root.rglob(pathlib.Path(ref).name)):
-                    missing.append((str(path.relative_to(ROOT)), ref))
-
-        assert missing == [], f"headers point at test files that do not exist: {missing}"
-
-    def test_the_scan_finds_clauses_to_check(self):
-        found = sum(
-            1 for path in ROOT.rglob("*.py")
-            if "__pycache__" not in str(path)
-            and _tested_by_refs(ast.parse(
-                path.read_text(encoding="utf-8", errors="replace"))) 
-        )
-
-        assert found > 50, f"only {found} headers named a test file"
 
 
 class TestTheScanReadsTheRightThing:
