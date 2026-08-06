@@ -33,6 +33,7 @@ import pytest
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
+import connectonion.useful_tools.browser_tools.browser as browser_module
 
 
 runner = CliRunner()
@@ -95,6 +96,15 @@ class TestAnInstalledBrowserIsReportedGreen:
 
 class TestTheProbeItself:
     """installed_browser_path() must answer from patchright, not from a guess."""
+
+    @pytest.fixture(autouse=True)
+    def no_memo(self):
+        """A found browser is remembered for the process (see
+        test_the_browser_probe_is_not_paid_twice.py), so one test's tmp_path
+        answered the next test's question until this was added."""
+        browser_module.forget_browser_path()
+        yield
+        browser_module.forget_browser_path()
 
     @pytest.fixture(autouse=True)
     def no_desktop_chrome(self, monkeypatch, request):

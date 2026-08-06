@@ -165,6 +165,15 @@ def _patchright_chromium_path():
         return p.chromium.executable_path
 
 
+_found_browser = None  # see installed_browser_path: only a FOUND browser is kept
+
+
+def forget_browser_path():
+    """Drop the memo. For tests, and for anything that changes what is installed."""
+    global _found_browser
+    _found_browser = None
+
+
 def installed_browser_path():
     """A browser this machine could actually launch, or None.
 
@@ -174,12 +183,22 @@ def installed_browser_path():
     status` did — calls a machine healthy when every browser command on it fails
     with "Executable doesn't exist at .../chromium-1228/chrome-linux64/chrome".
 
-    Costs starting the patchright driver, so this is for the commands that
-    report state, not for the path every browser command takes.
+    Costs starting the patchright driver — measured at 1.0s on Linux — so this is
+    for the commands that report state, not the path every browser command takes.
+    A found browser is remembered, because `co browser status` is a PAGELESS_VERB
+    and paying a second for it every time is what those verbs exist to avoid.
+
+    Only the positive is remembered. A machine with no browser is one somebody is
+    in the middle of fixing, and `status` is how they check; answering "none
+    installed" from a cache would keep saying so after they fixed it. Re-probing
+    costs a second on a machine that cannot browse at all.
     """
+    global _found_browser
+    if _found_browser:
+        return _found_browser
     chrome = find_system_chrome()
     if chrome:
-        return chrome
+        return chrome  # 0.1ms — nothing to save by remembering it
     try:
         path = _patchright_chromium_path()
     except Exception:
@@ -187,7 +206,9 @@ def installed_browser_path():
         # called by `co doctor`, which runs when things are already wrong and
         # must still print its report.
         return None
-    return path if path and os.path.exists(path) else None
+    if path and os.path.exists(path):
+        _found_browser = path
+    return _found_browser
 
 
 def headless_without_a_display(headless: bool) -> bool:
