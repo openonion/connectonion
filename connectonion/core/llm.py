@@ -602,7 +602,9 @@ class AnthropicLLM(LLM):
 class GeminiLLM(LLM):
     """Google Gemini LLM implementation using OpenAI-compatible endpoint."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-exp", **kwargs):
+    # gemini-2.0-flash-exp was the default and Google has retired it: a bare
+    # GeminiLLM(api_key=...) answered 404 for every call.
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.6-flash", **kwargs):
         import openai
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
@@ -1017,12 +1019,18 @@ MODEL_REGISTRY = {
     # Google Gemini models
     "gemini-3.6-flash": "google",
     "gemini-3.5-flash": "google",
-    "gemini-3-pro-preview": "google",
     "gemini-3-pro-image-preview": "google",
     "gemini-2.5-pro": "google",
     "gemini-2.5-flash": "google",
-    "gemini-2.0-flash-exp": "google",
-    "gemini-2.0-flash-thinking-exp": "google",
+    # gemini-3-pro-preview, gemini-2.0-flash-exp and gemini-2.0-flash-thinking-exp
+    # used to be here. Google answers each with 404 "no longer available", so
+    # offering them handed the user a name that cannot complete a call —
+    # -flash-exp was this module's own GeminiLLM default.
+    #
+    # Note that ListModels still advertises gemini-3-pro-preview and
+    # gemini-2.0-flash. Being listed is not being callable, which is why
+    # test_the_registry_offers_models_that_exist sends a real request per model
+    # instead of comparing against that list.
 }
 
 

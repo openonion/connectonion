@@ -44,6 +44,11 @@ MODEL_PRICING = {
     # and no entry shadows another. If a future Opus prices differently, adding
     # it makes a prefix pair and the longest-first sort in get_pricing is what
     # keeps it correct — test_the_longest_price_match_wins covers that.
+    #
+    # A price here is not evidence the model still exists: the two Gemini
+    # entries that were missing from this table turned out to be retired at the
+    # provider, and one was a class default. MODEL_REGISTRY is where that is
+    # checked.
     "claude-sonnet-4": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
     "claude-opus-4": {"input": 15.00, "output": 75.00, "cached": 1.50, "cache_write": 18.75},
     "claude-3-7-sonnet": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},

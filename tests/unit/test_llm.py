@@ -54,7 +54,8 @@ class TestMultiLLMSupport:
 
         # Test Google models
         assert MODEL_REGISTRY["gemini-3.6-flash"] == "google"
-        assert MODEL_REGISTRY["gemini-3-pro-preview"] == "google"
+        # gemini-3-pro-preview was here; Google retired it — see
+        # test_the_registry_offers_models_that_exist.
         assert MODEL_REGISTRY["gemini-3-pro-image-preview"] == "google"
         assert MODEL_REGISTRY["gemini-2.5-flash"] == "google"
 

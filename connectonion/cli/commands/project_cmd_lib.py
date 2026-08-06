@@ -33,6 +33,24 @@ from ... import address
 console = Console()
 
 
+# What a new user is told they can spend their free tokens on. This list was
+# written out twice, and both copies offered co/gemini-3-pro-preview, which
+# Google has retired — the managed route answers 404 for it just as the direct
+# one does. Every name here was checked by completing a real call.
+MANAGED_MODELS = (
+    "co/gemini-3.6-flash",
+    "co/gemini-2.5-pro",
+    "co/gpt-5",
+    "co/o4-mini",
+)
+
+
+def _print_managed_models() -> None:
+    console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
+    for model in MANAGED_MODELS:
+        console.print(f"  • {model}")
+
+
 def record_creator_as_admin(project_dir: Path) -> None:
     """Let whoever made this agent command it.
 
@@ -327,11 +345,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         if authenticate(co_dir):
                             console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                             console.print("[green]You now have 100k free tokens![/green]")
-                            console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                            console.print("  • co/gemini-3.6-flash")
-                            console.print("  • co/gemini-3-pro-preview")
-                            console.print("  • co/gpt-5")
-                            console.print("  • co/claude-sonnet-4")
+                            _print_managed_models()
 
                             return "star", "connectonion", temp_dir  # Return the temp directory
                         else:
@@ -408,11 +422,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         authenticate(Path(".co"))
                         console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                         console.print("[green]You now have 100k free tokens![/green]")
-                        console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                        console.print("  • co/gemini-3.6-flash")
-                        console.print("  • co/gemini-3-pro-preview")
-                        console.print("  • co/gpt-5")
-                        console.print("  • co/claude-sonnet-4")
+                        _print_managed_models()
                         break  # Success, exit the loop
                     except Exception as e:
                         console.print(f"\n[red]Authentication failed: {e}[/red]")
@@ -653,7 +663,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 
 # Model Configuration (use co/ prefix for managed models)
 MODEL=co/gemini-3.6-flash
-# Available models: co/gemini-3.6-flash, co/gemini-3-pro-preview, co/gpt-5, co/claude-sonnet-4
+# Available models: co/gemini-3.6-flash, co/gemini-2.5-pro, co/gpt-5, co/o4-mini
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 

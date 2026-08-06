@@ -114,15 +114,20 @@ class TestTheClaudeRowsAreReachableBothWays:
 
 
 class TestTheGeminiClassDefaultIsPriced:
-    """`GeminiLLM(model=...)` defaults to a name the table does not hold."""
+    """`GeminiLLM()` used to default to an unpriced name.
 
-    def test_the_flash_exp_default_is_not_a_guess(self):
-        assert not is_estimated_price("gemini-2.0-flash-exp")
+    It defaulted to gemini-2.0-flash-exp, which is unpriced *and* retired — see
+    test_the_registry_offers_models_that_exist. Both halves are fixed: the
+    default now names a served model, and that model has a price.
+    """
 
-    def test_it_costs_what_flash_costs(self):
-        assert get_pricing("gemini-2.0-flash-exp")["input"] == get_pricing(
-            "gemini-2.0-flash"
-        )["input"]
+    def test_the_default_is_not_a_guess(self):
+        import inspect
+
+        from connectonion.core.llm import GeminiLLM
+
+        default = inspect.signature(GeminiLLM.__init__).parameters["model"].default
+        assert not is_estimated_price(default)
 
 
 class TestTheFallbackStillFallsBack:
