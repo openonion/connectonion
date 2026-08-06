@@ -169,9 +169,12 @@ def install_cursor(bundle: Path, alias: str) -> int:
         if not _may_write(dst):
             _report_kept(dst)
             continue
+        # The marker goes in the body, not the frontmatter. Inside the header it
+        # survives only because YAML treats `#` as a comment — our string in
+        # someone else's block, working on a bet about how Cursor parses it.
         dst.write_text(
-            f"---\ndescription: {desc}\nalwaysApply: false\n"
-            f"# {OURS_MARKER}\n---\n{body}",
+            f"---\ndescription: {desc}\nalwaysApply: false\n---\n"
+            f"<!-- {OURS_MARKER} -->\n{body}",
             encoding="utf-8",
         )
         n += 1

@@ -230,6 +230,47 @@ class TestRemoveOnlyRemovesWhatWeInstalled:
         assert (mine / "mine.md").exists()
 
 
+class TestTheMarkerStaysOutOfTheirFormat:
+    """The marker has to be recognisable to us and invisible to the tool.
+
+    It first went inside the .mdc frontmatter as `# connectonion:subscription`.
+    YAML treats that as a comment so nothing broke — but it is our string inside
+    someone else's header, and it only works while Cursor reads that block with a
+    YAML parser. The body's first line does the same job without the bet.
+    """
+
+    def test_the_frontmatter_is_only_cursors_keys(self, home, tmp_path):
+        import yaml
+
+        fanout, root = home
+        (root / ".cursor" / "rules").mkdir(parents=True)
+
+        fanout.install_cursor(_bundle(tmp_path, "thing"), "mapper")
+        text = (root / ".cursor" / "rules" / "mapper-thing.mdc").read_text()
+        front = text.split("---")[1]
+
+        assert set(yaml.safe_load(front)) == {"description", "alwaysApply"}
+        assert fanout.OURS_MARKER not in front
+
+    def test_the_marker_is_still_findable(self, home, tmp_path):
+        fanout, root = home
+        (root / ".cursor" / "rules").mkdir(parents=True)
+
+        fanout.install_cursor(_bundle(tmp_path, "thing"), "mapper")
+        text = (root / ".cursor" / "rules" / "mapper-thing.mdc").read_text()
+
+        assert fanout.OURS_MARKER in text
+
+    def test_the_skill_body_survives_intact(self, home, tmp_path):
+        fanout, root = home
+        (root / ".cursor" / "rules").mkdir(parents=True)
+
+        fanout.install_cursor(_bundle(tmp_path, "thing"), "mapper")
+        text = (root / ".cursor" / "rules" / "mapper-thing.mdc").read_text()
+
+        assert "# thing from the relay" in text
+
+
 class TestEveryInstallPathIsGuarded:
     """Three of five went through _replace; cursor and kiro write files directly.
 
