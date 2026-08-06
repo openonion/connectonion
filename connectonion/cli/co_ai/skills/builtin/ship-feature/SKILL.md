@@ -86,14 +86,16 @@ Apply versioning rules (from VERSIONING.md):
 
 ### 5b. Update version in all files
 
-Update these files with the new version:
-1. `connectonion/__init__.py` — `__version__ = "X.Y.Z"`
-2. `setup.py` — `version="X.Y.Z"`
+Update these files with the new version. Both hold the literal and they
+must agree — `connectonion/__init__.py` only re-exports it, and there is no
+`setup.py` in this repo:
+1. `connectonion/_version.py` — `__version__ = "X.Y.Z"`
+2. `pyproject.toml` — `version = "X.Y.Z"`
 
 ### 5c. Commit, tag, push
 
 ```bash
-git add connectonion/__init__.py setup.py tests/ docs/
+git add connectonion/_version.py pyproject.toml tests/ docs/
 git commit -m "Release vX.Y.Z: <feature description>"
 git tag vX.Y.Z
 git push
@@ -102,8 +104,10 @@ git push origin vX.Y.Z
 
 ### 5d. Build and publish to PyPI
 
+The build backend is hatchling, so the PEP 517 front end is what builds it:
+
 ```bash
-python setup.py sdist bdist_wheel
+python -m build
 twine upload dist/*
 ```
 
@@ -114,7 +118,7 @@ Confirm upload succeeded by checking the output for "View at: https://pypi.org/p
 - [ ] Tests updated and passing
 - [ ] `docs/` updated
 - [ ] `docs-site/` updated and pushed
-- [ ] Version bumped in `__init__.py` and `setup.py`
+- [ ] Version bumped in `_version.py` and `pyproject.toml`, and the two match
 - [ ] Committed and tagged
 - [ ] Pushed to remote
 - [ ] Published to PyPI
