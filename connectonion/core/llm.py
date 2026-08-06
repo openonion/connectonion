@@ -1023,9 +1023,14 @@ MODEL_REGISTRY = {
     "gemini-2.5-pro": "google",
     "gemini-2.5-flash": "google",
     # gemini-3-pro-preview, gemini-2.0-flash-exp and gemini-2.0-flash-thinking-exp
-    # used to be here. Google answers each with 404 "no longer available", so
-    # offering them handed the user a name that cannot complete a call —
-    # -flash-exp was this module's own GeminiLLM default.
+    # used to be here. Google answers each with 404 "no longer available", and
+    # -flash-exp was this module's own GeminiLLM default, so a bare
+    # GeminiLLM(api_key=...) could not complete a call.
+    #
+    # Removing them does not stop anyone selecting them: create_llm falls
+    # through to the prefix branch below and a `gemini-` name routes regardless.
+    # This table is the curated list — what we vouch for and price — so what
+    # dropping them buys is that we no longer recommend a dead name.
     #
     # Note that ListModels still advertises gemini-3-pro-preview and
     # gemini-2.0-flash. Being listed is not being callable, which is why

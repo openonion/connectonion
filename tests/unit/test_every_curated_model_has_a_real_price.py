@@ -1,9 +1,18 @@
-"""A model you can select must not be costed from a made-up number.
+"""A model we vouch for must not be costed from a made-up number.
 
-`MODEL_REGISTRY` is the list of models a user may pass to `Agent(model=...)`.
+`MODEL_REGISTRY` is not a gate on what a user may select — `create_llm` consults
+it first and then infers the provider from the name's prefix, so any `gpt-*`,
+`claude-*` or `gemini-*` name routes whether it is listed or not. What the
+registry is, is the curated list: the names this project names, prices, and
+holds itself to.
+
 `MODEL_PRICING` and `MODEL_CONTEXT_LIMITS` are two other lists. Eleven of the
-twenty-one routable models appear in neither, so their tokens are costed from
+twenty-one curated models appeared in neither, so their tokens were costed from
 `DEFAULT_PRICING` — 1.00/3.00, a figure that is not any real model's price.
+
+An unlisted model falling back to a guess is the design working: it is marked
+with a leading `~` where it is shown. A model on our own list falling back is
+the bug.
 
 The prefix fallback was meant to cover this, and it only widens in one
 direction: a queried name may be *longer* than a table key.
@@ -52,25 +61,25 @@ from connectonion.core.usage import (
 )
 
 
-ROUTABLE = sorted(MODEL_REGISTRY)
+CURATED = sorted(MODEL_REGISTRY)
 
 
-class TestNothingRoutableIsGuessed:
+class TestNothingCuratedIsGuessed:
 
-    @pytest.mark.parametrize("model", ROUTABLE)
+    @pytest.mark.parametrize("model", CURATED)
     def test_it_has_a_real_price(self, model):
         assert not is_estimated_price(model), (
-            f"{model} is selectable but costed from DEFAULT_PRICING"
+            f"{model} is on our curated list but costed from DEFAULT_PRICING"
         )
 
-    @pytest.mark.parametrize("model", ROUTABLE)
+    @pytest.mark.parametrize("model", CURATED)
     def test_it_has_a_real_context_limit(self, model):
         # No listed model's window is 128000, so getting it back means the
         # fallback fired. Believing a larger window than the model has is what
         # makes auto-compaction fire too late; believing a smaller one throws
         # away history the model could still have seen.
         assert get_context_limit(model) != DEFAULT_CONTEXT_LIMIT, (
-            f"{model} is selectable but has no context limit of its own"
+            f"{model} is on our curated list but has no context limit of its own"
         )
 
 

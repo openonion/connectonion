@@ -1,8 +1,17 @@
-"""A model you can select must be one the provider still serves.
+"""A model we put our name to must be one the provider still serves.
 
-`MODEL_REGISTRY` offered three Gemini models that Google has retired. Asked for
-any of them the provider answers 404 — including for this module's own class
-default, so
+`MODEL_REGISTRY` is not a gate: `create_llm` falls back to inferring the provider
+from the name's prefix, so a user can select `gemini-3-pro-preview` whether it is
+listed or not, and Google's 404 is the answer either way. The registry is the
+curated list — the names this project vouches for, prices, and prints to users.
+Taking a retired name out of it does not block anyone; it stops us recommending
+something that cannot work.
+
+Two things here *are* functional, not editorial: the class default below, and the
+list the CLI prints (see test_the_models_we_advertise_answer).
+
+It offered three Gemini models that Google has retired. Asked for any of them the
+provider answers 404 — including for this module's own class default, so
 
     GeminiLLM(api_key=...)          # no model argument
 
@@ -34,8 +43,7 @@ what this asks, once per model.
 
 `gemini-2.0-flash` and `gemini-3-pro-preview` keep their rows in MODEL_PRICING
 deliberately: a price for a retired model costs nothing and lets an old session's
-tokens still cost correctly. The registry is the list of what a user may select,
-and that is the one that has to be true.
+tokens still cost correctly.
 """
 
 import inspect
