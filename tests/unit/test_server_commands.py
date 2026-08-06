@@ -172,7 +172,11 @@ class TestServerCheck:
             assert sc.handle_server_check("prod") is False
 
         saved = yaml.safe_load(servers_file.read_text())
-        assert saved["servers"]["prod"]["last_check"] == "Ubuntu 24.04"
+        # "needs Ubuntu 24.04", not "Ubuntu 24.04": the bare requirement name sat
+        # in a column headed LAST CHECK and read as the OS the box has — on this
+        # very input (version 22.04) it stated the opposite of the truth. See
+        # test_a_cached_check_reads_as_a_verdict.py.
+        assert saved["servers"]["prod"]["last_check"] == "needs Ubuntu 24.04"
 
     def test_an_unreachable_box_records_unreachable(self, servers_file):
         with patch.object(sc, "_ssh", return_value=_ok("ok")):

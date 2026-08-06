@@ -415,8 +415,27 @@ def handle_server_check(name: str) -> bool:
         console.print(f"[red]✗ {requirement}[/red] [dim]— {detail}[/dim]")
     console.print(f"\n[dim]co deploy --to {name} needs all of these. "
                   f"Only Ubuntu {SUPPORTED_UBUNTU} is supported.[/dim]\n")
-    _record(name, failures[0][0])
+    _record_requirement_failure(name, failures[0][0])
     return False
+
+
+def _record_requirement_failure(name: str, requirement: str) -> None:
+    """Cache an unmet requirement as a verdict, not as its own name.
+
+    The requirement names are bare nouns — Ubuntu 24.04, python3, systemd,
+    permission to manage units — and under a column headed LAST CHECK they read
+    as facts about the server. A real listing showed
+
+        nw-runner    claude-runner     Ubuntu 24.04    not ours
+
+    for a machine running Ubuntu 22.04, so the cell stated the opposite of the
+    truth. Red was the only thing marking it as bad news, and that is lost the
+    moment anyone pipes the output.
+
+    "needs" reads correctly for every one of them, and matches the line already
+    printed under a failed check: "co deploy --to <name> needs all of these".
+    """
+    _record(name, f"needs {requirement}")
 
 
 def _record(name: str, outcome: str) -> None:
