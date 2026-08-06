@@ -1,9 +1,9 @@
 """
 Purpose: Token usage tracking and cost calculation for LLM calls
 LLM-Note:
-  Dependencies: pydantic | imported by [llm.py, agent.py]
+  Dependencies: pydantic | imported by [cli/commands/doctor_commands.py, cli/commands/eval_commands.py, cli/commands/project_cmd_lib.py, console.py, core/__init__.py, core/agent.py, core/exceptions.py, core/llm.py, logger.py]
   Data flow: receives model name + token counts → returns cost in USD
-  Integration: exposes TokenUsage, MODEL_PRICING, MODEL_CONTEXT_LIMITS, calculate_cost(), get_context_limit()
+  Integration: exposes TokenUsage, MODEL_PRICING, MODEL_CONTEXT_LIMITS, calculate_cost(), get_context_limit(), is_estimated_price(), FREE_MANAGED_MODELS and PAID_MANAGED_MODELS (read by exceptions.py for PaidModelRequiredError and by project_cmd_lib.py for what `co auth` prints)
 """
 
 from pydantic import BaseModel
