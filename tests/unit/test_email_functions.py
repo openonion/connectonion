@@ -26,7 +26,7 @@ import importlib
 # actual module object via importlib so patch.object targets the module, not the fn.
 send_email_module = importlib.import_module("connectonion.useful_tools.send_email")
 from connectonion.useful_tools.send_email import send_email, get_agent_email, is_email_active
-from connectonion.useful_tools.get_emails import get_emails, mark_read, mark_unread
+from connectonion.useful_tools.get_emails import get_emails, get_sent, mark_read, mark_unread
 
 # Import test configuration
 from tests.utils.config_helpers import (
@@ -181,6 +181,63 @@ def test_get_emails_no_project():
     """Test getting emails without OPENONION_API_KEY."""
     with pytest.raises(ValueError) as exc:
         get_emails()
+    assert "OPENONION_API_KEY not found" in str(exc.value)
+
+
+# === The Sent mailbox (issue #662) ===
+
+A_SENT_ROW = {
+    "id": 7,
+    "to": "alice@example.com",
+    "from": "0xtest@mail.openonion.ai",
+    "subject": "hello",
+    "body": "<p>hi</p>",
+    "status": "sent",
+    "message_id": "re_123",
+    "sent_at": "2026-08-07T03:00:00",
+}
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_sent_returns_what_was_sent(mock_get):
+    """A sent email can be read back: recipient, body, status, message id."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"emails": [A_SENT_ROW], "count": 1}
+    mock_get.return_value = mock_response
+
+    emails = get_sent(last=5)
+
+    assert len(emails) == 1
+    assert emails[0]["to"] == "alice@example.com"
+    assert emails[0]["body"] == "<p>hi</p>"
+    assert emails[0]["status"] == "sent"
+    assert emails[0]["message_id"] == "re_123"
+    assert emails[0]["timestamp"] == "2026-08-07T03:00:00"
+
+    call_args = mock_get.call_args
+    assert call_args[0][0].endswith("/api/v1/email/sent")
+    assert call_args[1]["params"] == {"limit": 5}
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_sent_filters_by_recipient(mock_get):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"emails": [], "count": 0}
+    mock_get.return_value = mock_response
+
+    get_sent(to="alice@example.com")
+
+    assert mock_get.call_args[1]["params"] == {"limit": 10, "to": "alice@example.com"}
+
+
+@patch.dict('os.environ', {}, clear=True)
+def test_get_sent_without_auth_says_so():
+    with pytest.raises(ValueError) as exc:
+        get_sent()
     assert "OPENONION_API_KEY not found" in str(exc.value)
 
 

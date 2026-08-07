@@ -77,6 +77,32 @@ co email send bob@example.com "Hi" "Just checking in."
 co email send bob@example.com "Receipt" "<h1>Paid</h1><p>Thanks!</p>"
 ```
 
+### `co email sent` — List sent email
+
+```bash
+co email sent                        # last 10
+co email sent --last 25              # last 25  (alias: -n 25)
+co email sent --to alice@example.com # only mail sent to alice
+```
+
+What your agent has sent, newest first, with each message's last known status.
+The leftmost `#` is the email's id — pass it to `co email sent read`. Useful
+after a failed batch: if a send is listed here, the server accepted it, and
+retrying would produce a duplicate.
+
+Options:
+- `--last, -n` — how many to show (default 10)
+- `--to` — only messages sent to this address
+
+### `co email sent read <#>` — Read one sent message
+
+```bash
+co email sent read 7
+```
+
+Prints the recipient, sender address, status, provider message id, date, and
+the body that was actually sent.
+
 ## Customizing your address (paid)
 
 The two commands below spend ConnectOnion credits. Each shows you the price or

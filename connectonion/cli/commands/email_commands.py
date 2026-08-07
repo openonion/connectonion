@@ -97,6 +97,68 @@ def handle_email_inbox(last: int = 10, unread: bool = False):
     console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]\n")
 
 
+def handle_email_sent(last: int = 10, to: str = None):
+    """List emails the agent has sent."""
+    if not _require_auth():
+        return
+
+    from ...useful_tools.get_emails import get_sent
+    emails = get_sent(last=last, to=to)
+
+    if not emails:
+        scope = f" to {to}" if to else ""
+        console.print(f"\n[cyan]Sent:[/cyan] no emails{scope}\n")
+        return
+
+    table = Table(title="📤 Sent", show_header=True, header_style="bold cyan")
+    table.add_column("#", justify="right")
+    table.add_column("To")
+    table.add_column("Subject")
+    table.add_column("Status")
+    table.add_column("Sent")
+
+    for email in emails:
+        table.add_row(
+            str(email.get("id", "")),
+            str(email.get("to", "")),
+            str(email.get("subject", "")),
+            str(email.get("status", "")),
+            str(email.get("timestamp", ""))[:19],
+        )
+
+    console.print()
+    console.print(table)
+    console.print("\n[dim]Read one with:[/dim] [bold]co email sent read <#>[/bold]\n")
+
+
+def handle_email_sent_read(email_id: str):
+    """Show a single sent email's body."""
+    if not _require_auth():
+        return
+
+    from ...useful_tools.get_emails import get_sent
+    emails = get_sent(last=100)
+    match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
+
+    if not match:
+        console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail.[/yellow]\n")
+        return
+
+    header = (
+        f"[cyan]To:[/cyan]         {match.get('to', '')}\n"
+        f"[cyan]From:[/cyan]       {match.get('from', '')}\n"
+        f"[cyan]Subject:[/cyan]    {match.get('subject', '')}\n"
+        f"[cyan]Status:[/cyan]     {match.get('status', '')}\n"
+        f"[cyan]Message ID:[/cyan] {match.get('message_id', '')}\n"
+        f"[cyan]Date:[/cyan]       {match.get('timestamp', '')}"
+    )
+    console.print()
+    console.print(Panel.fit(header, title=f"📤 Sent #{email_id}", border_style="cyan"))
+    console.print()
+    console.print(match.get("body", "") or "[dim](empty body)[/dim]")
+    console.print()
+
+
 def handle_email_read(email_id: str):
     """Show a single email's body and mark it read."""
     if not _require_auth():

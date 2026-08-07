@@ -86,6 +86,60 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
     return formatted_emails
 
 
+def get_sent(last: int = 10, to: str = None) -> List[Dict]:
+    """Get emails the agent has sent (the Sent mailbox).
+
+    Args:
+        last: Number of emails to retrieve (default: 10)
+        to: Only emails sent to this address (default: all)
+
+    Returns:
+        List of email dictionaries containing:
+            - id: Record ID (use with `co email sent read <id>`)
+            - to: Recipient's email address
+            - from: The address it went out as
+            - subject: Email subject
+            - body: What was sent
+            - status: Last known status (e.g. "sent")
+            - message_id: Provider message ID
+            - timestamp: ISO format send time
+    """
+    token = os.getenv("OPENONION_API_KEY")
+
+    if not token:
+        raise ValueError(
+            "OPENONION_API_KEY not found in .env file. "
+            "Agent emails are hosted by OpenOnion and require authentication. "
+            "Check your .env file for OPENONION_API_KEY, or run 'co init' to copy "
+            "OPENONION_API_KEY from ~/.co/keys.env to your project."
+        )
+
+    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
+
+    params = {"limit": last}
+    if to:
+        params["to"] = to
+
+    response = requests.get(
+        f"{backend_url}/api/v1/email/sent",
+        params=params,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        timeout=10,
+    )
+    response.raise_for_status()
+
+    return [{
+        "id": email.get("id", ""),
+        "to": email.get("to", ""),
+        "from": email.get("from", ""),
+        "subject": email.get("subject", ""),
+        "body": email.get("body", ""),
+        "status": email.get("status", ""),
+        "message_id": email.get("message_id", ""),
+        "timestamp": email.get("sent_at", ""),
+    } for email in response.json().get("emails", [])]
+
+
 def mark_read(email_ids: Union[str, List[str]]) -> bool:
     """Mark email(s) as read.
 
