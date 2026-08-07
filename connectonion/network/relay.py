@@ -19,6 +19,11 @@ import json
 import asyncio
 from typing import Dict, Any
 import websockets
+# websockets >= 14 stopped re-exporting submodules lazily: `websockets.exceptions`
+# only resolves if some other module already imported it. The except at the
+# bottom of serve_loop needs the explicit import or it raises AttributeError
+# at the exact moment a connection drops.
+import websockets.exceptions
 
 
 async def connect(relay_url: str = "wss://oo.openonion.ai"):

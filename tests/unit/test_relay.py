@@ -28,6 +28,7 @@ import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from connectonion.network import relay
 import websockets
+import websockets.exceptions  # not re-exported by the package since websockets 14
 
 
 class TestRelayConnection:

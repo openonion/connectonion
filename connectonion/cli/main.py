@@ -691,6 +691,29 @@ def email_read(email_id: str = typer.Argument(..., help="Email # from the inbox 
     handle_email_read(email_id)
 
 
+sent_app = _typer_app(help="List and read emails the agent has sent")
+email_app.add_typer(sent_app, name="sent")
+
+
+@sent_app.callback(invoke_without_command=True)
+def email_sent(
+    ctx: typer.Context,
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    to: str = typer.Option(None, "--to", help="Only emails sent to this address"),
+):
+    """With no subcommand, list recent sent emails."""
+    if ctx.invoked_subcommand is None:
+        from .commands.email_commands import handle_email_sent
+        handle_email_sent(last=last, to=to)
+
+
+@sent_app.command("read")
+def email_sent_read(email_id: str = typer.Argument(..., help="Email # from the sent list")):
+    """Show one sent email's body."""
+    from .commands.email_commands import handle_email_sent_read
+    handle_email_sent_read(email_id)
+
+
 @email_app.command("name")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
