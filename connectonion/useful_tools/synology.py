@@ -142,7 +142,15 @@ def pick_reachable(candidates: list, timeout: float = 3.0) -> str:
             )
         except httpx.RequestError:
             continue
-        if reply.status_code == 200 and reply.json().get("success"):
+        if reply.status_code != 200:
+            continue
+        # A portal or reverse proxy can answer 200 with an HTML page. That is
+        # "not DSM", the same as no answer — move on to the next candidate.
+        try:
+            body = reply.json()
+        except ValueError:
+            continue
+        if body.get("success"):
             return base
 
     raise ValueError(
