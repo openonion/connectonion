@@ -111,6 +111,25 @@ def test_pick_reachable_falls_past_unreachable_candidates():
         assert pick_reachable(["https://192.168.1.50:5001", "https://relay"]) == "https://relay"
 
 
+def test_pick_reachable_falls_past_a_200_that_is_not_dsm():
+    """A portal or proxy answering 200 with HTML is "not DSM", same as no answer.
+
+    Seen for real: `co syno login openonion-nas` resolved four candidates and
+    died with a JSONDecodeError on the first one instead of probing the rest.
+    """
+    from connectonion.useful_tools.synology import pick_reachable
+
+    def get(url, **kwargs):
+        if "portal" in url:
+            reply = MagicMock(status_code=200)
+            reply.json.side_effect = ValueError("Expecting value: line 1 column 1 (char 0)")
+            return reply
+        return MagicMock(status_code=200, json=lambda: {"success": True})
+
+    with patch("httpx.get", side_effect=get):
+        assert pick_reachable(["https://portal", "https://relay"]) == "https://relay"
+
+
 def test_pick_reachable_raises_when_nothing_answers():
     from connectonion.useful_tools.synology import pick_reachable
 
