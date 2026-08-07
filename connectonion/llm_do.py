@@ -1,7 +1,7 @@
 """
 Purpose: One-shot LLM function for simple single-round calls without agent overhead
 LLM-Note:
-  Dependencies: imports from [typing, pathlib, pydantic, dotenv, prompts.py, llm.py] | imported by [debug_explainer/explain_context.py, user code, examples] | tested by [tests/e2e/real_api/test_llm_do.py, tests/test_llm_do_comprehensive.py, tests/test_real_llm_do.py]
+  Dependencies: imports from [typing, pathlib, pydantic, dotenv, prompts.py, llm.py] | imported by [debug_explainer/explain_context.py, user code, examples] | tested by [tests/unit/test_llm_do.py, tests/e2e/real_api/]
   Data flow: user calls llm_do(input, output, system_prompt, model, api_key, **kwargs) → validates input non-empty → loads system_prompt via load_system_prompt() → builds messages [system, user] → calls create_llm(model, api_key) factory → calls llm.complete(messages, **kwargs) OR llm.structured_complete(messages, output, **kwargs) → returns string OR Pydantic model instance
   State/Effects: loads .env via dotenv.load_dotenv() | reads system_prompt files if Path provided | makes one LLM API request | no caching or persistence | stateless
   Integration: exposes llm_do(input, output, system_prompt, model, api_key, **kwargs) | default model="co/gemini-3.6-flash" (managed keys) | default temperature=0.1 | supports all create_llm() providers | **kwargs pass through to provider (max_tokens, temperature, etc.)

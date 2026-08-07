@@ -2,7 +2,7 @@
 Purpose: Register, list and preflight the machines `co deploy --to` can target
 LLM-Note:
   Dependencies: imports from [subprocess, shutil, pathlib, yaml, rich] | imported by [cli/main.py via handle_server_*] | tested by [tests/unit/test_server_commands.py]
-  Data flow: handle_server_add(name, ssh_target) → _load()/_save() ~/.co/servers.yaml → handle_server_list() renders the table | handle_server_check(name) → _ssh(target, probe script) → parses one KEY=value line per requirement → prints the first failure by name
+  Data flow: handle_server_add(name, ssh_target) → _load()/_save() ~/.co/servers.yaml → handle_server_list() renders the table | handle_server_check(name) → _ssh(target, probe script) → parses one KEY=value line per requirement → prints every failure by name, and caches the first as `needs <requirement>` (the bare name read as a fact about the server in the LAST CHECK column)
   State/Effects: reads and writes ~/.co/servers.yaml (name → ssh target, last check result) | shells out to the system ssh binary | never stores a credential
   Integration: exposes handle_server_add(), handle_server_list(), handle_server_check(), load_server() for deploy | requirement list is Ubuntu 24.04, python 3.11+, systemd the user may manage, free disk
   Performance: one ssh round trip per check; the probe is a single command, not one per requirement
@@ -250,12 +250,17 @@ def handle_server_list() -> bool:
     for name in sorted(servers):
         entry = servers[name] or {}
         last = entry.get("last_check")
+        age = _how_long_ago(entry.get("last_check_at"))
         if last is None:
             shown = "[dim]never checked[/dim]"
         elif last == "ok":
             shown = "[green]ok[/green]"
         else:
             shown = f"[red]{last}[/red]"
+        if age:
+            # An entry from before stamping has no age, and inventing one would
+            # be worse than leaving the column as it was.
+            shown += f" [dim]{age}[/dim]"
 
         row = [name, entry.get("ssh", "[red]?[/red]"), shown]
         if billed is not None:
@@ -410,16 +415,69 @@ def handle_server_check(name: str) -> bool:
         console.print(f"[red]✗ {requirement}[/red] [dim]— {detail}[/dim]")
     console.print(f"\n[dim]co deploy --to {name} needs all of these. "
                   f"Only Ubuntu {SUPPORTED_UBUNTU} is supported.[/dim]\n")
-    _record(name, failures[0][0])
+    _record_requirement_failure(name, failures[0][0])
     return False
 
 
+def _record_requirement_failure(name: str, requirement: str) -> None:
+    """Cache an unmet requirement as a verdict, not as its own name.
+
+    The requirement names are bare nouns — Ubuntu 24.04, python3, systemd,
+    permission to manage units — and under a column headed LAST CHECK they read
+    as facts about the server. A real listing showed
+
+        nw-runner    claude-runner     Ubuntu 24.04    not ours
+
+    for a machine running Ubuntu 22.04, so the cell stated the opposite of the
+    truth. Red was the only thing marking it as bad news, and that is lost the
+    moment anyone pipes the output.
+
+    "needs" reads correctly for every one of them, and matches the line already
+    printed under a failed check: "co deploy --to <name> needs all of these".
+    """
+    _record(name, f"needs {requirement}")
+
+
 def _record(name: str, outcome: str) -> None:
+    """Store the outcome and when it was learned.
+
+    `co server ls` renders this cache and does not probe — deliberately, so that
+    being offline still lists your targets. Without a time next to it, a server
+    that passed once and died since reads `ok` forever under a column named
+    LAST CHECK, and that is the table you look at before `co deploy --to`.
+    """
+    from datetime import datetime, timezone
+
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
     def note(servers):
         if name in servers:
             servers[name]["last_check"] = outcome
+            servers[name]["last_check_at"] = stamp
 
     _update(note)
+
+
+def _how_long_ago(stamp: Optional[str]) -> str:
+    """"3d", "20m", "just now" — or "" for an entry written before stamping."""
+    if not stamp:
+        return ""
+    from datetime import datetime, timezone
+
+    try:
+        then = datetime.fromisoformat(stamp)
+    except ValueError:
+        return ""
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+
+    seconds = (datetime.now(timezone.utc) - then).total_seconds()
+    if seconds < 60:
+        return "just now"
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if seconds >= size:
+            return f"{int(seconds // size)}{unit} ago"
+    return "just now"
 
 
 def handle_server_ssh(name: str, command: Optional[str] = None) -> bool:

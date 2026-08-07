@@ -2,9 +2,9 @@
 Purpose: Low-level keyboard input primitives with bracketed paste and arrow key support
 LLM-Note:
   Dependencies: imports from [sys, tty, termios, select] | imported by [tui/input.py] | tested by [no direct test file]
-  Data flow: enable_bracketed_paste() sends ESC[?2004h → read_key() reads from sys.stdin.buffer → detects paste markers (ESC[200~/ESC[201~) → returns Key enum or paste string | disable_bracketed_paste() sends ESC[?2004l → restore_terminal() resets termios
+  Data flow: enable_bracketed_paste() sends ESC[?2004h → read_key() reads from sys.stdin.buffer → detects paste markers (ESC[200~/ESC[201~) → returns Key enum or paste string | disable_bracketed_paste() sends ESC[?2004l → disable_bracketed_paste() resets termios
   State/Effects: modifies terminal mode (raw mode via tty.setraw) | enables/disables bracketed paste mode | stores original termios settings | reads from stdin (blocking)
-  Integration: exposes enable_bracketed_paste(), disable_bracketed_paste(), restore_terminal(), read_key() → Key|str | Key enum for special keys (UP, DOWN, ENTER, BACKSPACE, etc.) | used by Input widget for character-by-character input
+  Integration: exposes enable_bracketed_paste(), disable_bracketed_paste(), disable_bracketed_paste(), read_key() → Key|str | Key enum for special keys (UP, DOWN, ENTER, BACKSPACE, etc.) | used by Input widget for character-by-character input
   Performance: blocking read with select() for responsiveness | minimal overhead (direct termios)
   Errors: restores terminal on exception | paste detection falls back to raw characters if markers missing
 Low-level keyboard input primitives with bracketed paste support.

@@ -81,3 +81,107 @@ def test_failed_install_warns_but_does_not_raise(monkeypatch, capsys):
     c._ensure_browser_ready("do fill the form")  # must not raise
     err = capsys.readouterr().err
     assert "patchright install chromium" in err  # the manual remedy is named
+
+
+class TestAWarmDaemonWithNoBrowserStillProvisions:
+    """The gate above is `if conn is None` — daemon coldness, not browser absence.
+
+    Found on the real deployed nw-map agent, whose daemon was already running:
+
+        $ co call 0xcf1619cb… co browser status
+        Browser: not open · headless=false
+        Stealth driver: ✓ patchright 1.61.2 — stealth patches present
+
+        $ co call 0xcf1619cb… co browser go_to https://example.com
+        Error: BrowserType.launch_persistent_context: Executable doesn't exist at
+        /home/co/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome
+
+    Every page command fails the same way, forever: the connect succeeds, so the
+    cold-start branch that would have installed a browser is never reached. The
+    auto-install promise ("`co browser` just works with zero setup") holds only
+    for a machine whose very first browser command is a page command.
+
+    The signal used here is the daemon's own verdict, not a path probe. There is
+    no cheap way to ask whether patchright's downloaded chromium exists —
+    find_system_chrome() only knows about desktop Chrome, and the download lives
+    under a version-numbered directory (chromium-1228) whose layout is
+    patchright's business. Probing it would be a guess that goes stale on the
+    next patchright release; the launch failure is the authority, and it arrives
+    exactly when it matters. Same reason `cookies()` beats `is_closed()` (#711).
+    """
+
+    @staticmethod
+    def _warm_daemon(monkeypatch, replies):
+        """A daemon that is up and answers `replies` in order."""
+        from connectonion.cli.browser_agent import transport
+
+        monkeypatch.setattr(transport, "IS_WINDOWS", False)
+        monkeypatch.setattr(c.transport, "IS_WINDOWS", False, raising=False)
+        sent = []
+
+        class _Conn:
+            def sendall(self, data):
+                sent.append(data.decode())
+
+            def shutdown(self, _how):
+                pass
+
+            def recv(self, _size):
+                if getattr(self, "_done", False):
+                    return b""
+                self._done = True
+                return replies[len(sent) - 1].encode()
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(c, "_connect", lambda _p: _Conn())
+        monkeypatch.setattr(c, "default_sock_path", lambda: "/tmp/never-used.sock")
+        return sent
+
+    NO_BROWSER = ("ERR\nBrowserType.launch_persistent_context: Executable doesn't exist\n"
+                  "Chrome failed to start. No browser is installed for this user.\n"
+                  "Install it with:  patchright install chromium")
+
+    def test_it_installs_when_the_daemon_says_no_browser(self, monkeypatch):
+        run = _RecordingRun(returncode=0)
+        _patch_env(monkeypatch, None, run)
+        self._warm_daemon(monkeypatch, [self.NO_BROWSER, "OK\ndone"])
+
+        c.send("go_to https://example.com")
+
+        assert run.calls == [[sys.executable, "-m", "patchright", "install", "chromium"]]
+
+    def test_it_retries_the_command_after_installing(self, monkeypatch):
+        run = _RecordingRun(returncode=0)
+        _patch_env(monkeypatch, None, run)
+        sent = self._warm_daemon(monkeypatch, [self.NO_BROWSER, "OK\ndone"])
+
+        code = c.send("go_to https://example.com")
+
+        assert len(sent) == 2, "the command was not resent after provisioning"
+        assert code == 0
+
+    def test_it_does_not_loop_when_the_install_does_not_help(self, monkeypatch):
+        """A box where the install cannot fix it must fail, not retry forever."""
+        run = _RecordingRun(returncode=0)
+        _patch_env(monkeypatch, None, run)
+        sent = self._warm_daemon(monkeypatch, [self.NO_BROWSER, self.NO_BROWSER])
+
+        code = c.send("go_to https://example.com")
+
+        assert len(sent) == 2
+        assert code == 1
+
+    def test_an_unrelated_error_provisions_nothing(self, monkeypatch):
+        """Only the missing-browser verdict provisions. Any other failure is
+        reported as-is — reinstalling a browser is not a general remedy."""
+        run = _RecordingRun(returncode=0)
+        _patch_env(monkeypatch, None, run)
+        sent = self._warm_daemon(monkeypatch, ["ERR 3\nunknown tab: research"])
+
+        code = c.send("go_to https://example.com")
+
+        assert run.calls == []
+        assert len(sent) == 1
+        assert code == 3

@@ -190,10 +190,15 @@ class TestModelPricing:
         assert "o3-mini" in MODEL_PRICING
         assert "o4-mini" in MODEL_PRICING
 
-    def test_anthropic_models_exist(self):
-        """Test Anthropic models are in pricing."""
-        assert "claude-sonnet-4-20250514" in MODEL_PRICING
-        assert "claude-opus-4-20250514" in MODEL_PRICING
+    def test_anthropic_models_are_priced(self):
+        """The dated names resolve, whichever spelling the table keys on.
+
+        This asked whether a literal key was in the dict, which is not the same
+        question as whether the model gets priced — the table was keyed on dated
+        names and every bare alias fell through to the default.
+        """
+        assert get_pricing("claude-sonnet-4-20250514")["input"] == 3.00
+        assert get_pricing("claude-opus-4-20250514")["input"] == 15.00
 
     def test_gemini_models_exist(self):
         """Test Gemini models are in pricing."""
@@ -212,10 +217,10 @@ class TestModelContextLimits:
         assert "o4-mini" in MODEL_CONTEXT_LIMITS
         assert MODEL_CONTEXT_LIMITS["o4-mini"] == 200000
 
-    def test_anthropic_models_exist(self):
-        """Test Anthropic models are in context limits."""
-        assert "claude-sonnet-4-20250514" in MODEL_CONTEXT_LIMITS
-        assert MODEL_CONTEXT_LIMITS["claude-sonnet-4-20250514"] == 200000
+    def test_anthropic_models_have_a_limit(self):
+        """As above: ask the lookup, not the dict."""
+        assert get_context_limit("claude-sonnet-4-20250514") == 200000
+        assert get_context_limit("claude-opus-4-20250514") == 200000
 
     def test_gemini_models_exist(self):
         """Test Gemini models are in context limits."""

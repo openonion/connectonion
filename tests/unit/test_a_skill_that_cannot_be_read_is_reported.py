@@ -182,9 +182,16 @@ class TestLoadingStaysForgiving:
     """Reported, not raised — a broken skill must not stop the agent starting."""
 
     def test_parsing_broken_frontmatter_still_returns(self):
+        """Returns rather than raises — which is what this class is about.
+
+        It also asserted `frontmatter == {}`. The name and description are now
+        rescued from a file YAML rejects, because returning nothing made the
+        skill invisible to the model instead of merely unconfigured. Nothing
+        with consequences is rescued; see test_a_colon_does_not_hide_a_skill.
+        """
         frontmatter, instructions = _parse_skill_content(BROKEN_YAML)
 
-        assert frontmatter == {}
+        assert frontmatter["description"] == "x"
         assert "Do the thing." in instructions
 
     def test_parsing_an_empty_file_still_returns(self):

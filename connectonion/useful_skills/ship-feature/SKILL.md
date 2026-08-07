@@ -130,7 +130,9 @@ Confirm upload succeeded by checking the output for "View at: https://pypi.org/p
 - [ ] Tests updated and passing
 - [ ] `docs/` updated
 - [ ] `docs-site/` updated and pushed
-- [ ] Version bumped in `__init__.py` and `setup.py`
+- [ ] Version bumped in every file that held it, and they agree
+      (in connectonion: `connectonion/_version.py` and `pyproject.toml`;
+       `__init__.py` only re-exports it and there is no `setup.py`)
 - [ ] Committed and tagged
 - [ ] Pushed to remote
 - [ ] Published to PyPI

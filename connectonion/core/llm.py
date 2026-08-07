@@ -1,7 +1,7 @@
 """
 Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, Groq, Grok, Mistral, OpenRouter, and OpenOnion
 LLM-Note:
-  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, yaml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/unit/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/test_billing_error_agent.py]
+  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, yaml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/unit/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/unit/test_exceptions.py, tests/unit/test_uniform_provider_errors.py]
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
   State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads OPENONION_API_KEY from env / .env / ~/.co/keys.env | makes HTTP requests to LLM APIs | no caching or persistence
   Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
@@ -92,9 +92,10 @@ Imported by:
   - conftest.py: Test fixtures
 
 Tested by:
-  - tests/test_llm.py: Unit tests with mocked APIs
-  - tests/test_llm_do.py: Integration tests
-  - tests/test_real_*.py: Real API integration tests
+  - tests/unit/test_llm.py: Unit tests with mocked APIs
+  - tests/unit/test_exceptions.py, tests/unit/test_uniform_provider_errors.py:
+    the error translation (402/403/503 → typed errors)
+  - tests/e2e/real_api/: real API integration tests, marked real_api
 
 Environment Variables
 --------------------
@@ -193,8 +194,16 @@ from .exceptions import (
     LLMConnectionError,
     LLMProviderError,
     LLMRateLimitError,
+    PaidModelRequiredError,
     ProviderServiceError,
 )
+
+
+def _is_paid_account_required(error) -> bool:
+    """Whether a 403 is the backend saying this model needs purchased credits."""
+    body = getattr(error, 'body', {}) or {}
+    detail = body.get('detail', {}) if isinstance(body, dict) else {}
+    return isinstance(detail, dict) and detail.get('error') == 'paid_account_required'
 
 
 @dataclass
@@ -602,7 +611,9 @@ class AnthropicLLM(LLM):
 class GeminiLLM(LLM):
     """Google Gemini LLM implementation using OpenAI-compatible endpoint."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-exp", **kwargs):
+    # gemini-2.0-flash-exp was the default and Google has retired it: a bare
+    # GeminiLLM(api_key=...) answered 404 for every call.
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.6-flash", **kwargs):
         import openai
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
@@ -1017,12 +1028,23 @@ MODEL_REGISTRY = {
     # Google Gemini models
     "gemini-3.6-flash": "google",
     "gemini-3.5-flash": "google",
-    "gemini-3-pro-preview": "google",
     "gemini-3-pro-image-preview": "google",
     "gemini-2.5-pro": "google",
     "gemini-2.5-flash": "google",
-    "gemini-2.0-flash-exp": "google",
-    "gemini-2.0-flash-thinking-exp": "google",
+    # gemini-3-pro-preview, gemini-2.0-flash-exp and gemini-2.0-flash-thinking-exp
+    # used to be here. Google answers each with 404 "no longer available", and
+    # -flash-exp was this module's own GeminiLLM default, so a bare
+    # GeminiLLM(api_key=...) could not complete a call.
+    #
+    # Removing them does not stop anyone selecting them: create_llm falls
+    # through to the prefix branch below and a `gemini-` name routes regardless.
+    # This table is the curated list — what we vouch for and price — so what
+    # dropping them buys is that we no longer recommend a dead name.
+    #
+    # Note that ListModels still advertises gemini-3-pro-preview and
+    # gemini-2.0-flash. Being listed is not being callable, which is why
+    # test_the_registry_offers_models_that_exist sends a real request per model
+    # instead of comparing against that list.
 }
 
 
@@ -1109,11 +1131,22 @@ class OpenOnionLLM(LLM):
             cost = getattr(response.usage, 'cost_usd', None)
             if cost is None:
                 cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+            # total_tokens for the same reason as cost_usd, and it was the half of
+            # this decision left undone: the cost came from the server while the
+            # token count stayed on the two fields just described as not naming
+            # the reasoning tokens. Measured here: prompt 17 + completion 3
+            # printed as "20 tok · $0.0017" on a call the server billed 243
+            # tokens for — a line 34x off itself.
+            #
+            # Only when it exceeds the sum. Equal or smaller means the provider is
+            # restating those two fields and there is nothing extra to report.
+            server_total = getattr(response.usage, 'total_tokens', 0) or 0
             usage = TokenUsage(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cached_tokens=cached_tokens,
                 cost=cost,
+                total_tokens=server_total if server_total > input_tokens + output_tokens else 0,
             )
 
         return LLMResponse(
@@ -1144,6 +1177,11 @@ class OpenOnionLLM(LLM):
                 raise InsufficientCreditsError(e) from e
             elif e.status_code == 503:
                 raise ProviderServiceError(e) from e
+            elif e.status_code == 403 and _is_paid_account_required(e):
+                # Keyed on the backend's own error code, not on the status: a
+                # 403 can mean other things, and guessing from the status alone
+                # would tell a suspended account to go buy credits.
+                raise PaidModelRequiredError(e) from e
             logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
             raise
         except (openai.APITimeoutError, openai.APIConnectionError) as e:

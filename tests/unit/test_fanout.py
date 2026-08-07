@@ -40,9 +40,16 @@ def test_detected_tools_only_lists_existing_dirs(fake_home):
 
 
 def test_install_claude_symlinks_whole_bundle(fake_home, bundle):
+    """The link is one plugin; the number reported is how many skills it carries.
+
+    This asserted n == 1 while the same bundle gave codex 2 — the two counts
+    disagreed on one fixture, under a heading that says "installed N skill(s)".
+    install_claude returned a constant, so a bundle with no skills at all
+    reported one; see test_fanout_counts_skills_not_plugins.
+    """
     n = fanout.install_claude(bundle, "alice")
     plugin = fake_home / ".claude" / "plugins" / "alice"
-    assert n == 1
+    assert n == 2
     assert plugin.is_symlink()
     assert plugin.resolve() == bundle.resolve()
 
@@ -88,7 +95,8 @@ def test_install_all_only_fans_into_detected_tools(fake_home, bundle):
     results = fanout.install_all(bundle, "alice")
 
     assert set(results.keys()) == {"claude", "codex"}
-    assert results["claude"] == 1
+    # Both count skills now, so both see the same bundle the same way.
+    assert results["claude"] == 2
     assert results["codex"] == 2
 
 
@@ -99,16 +107,29 @@ def test_install_is_idempotent(fake_home, bundle):
     assert (fake_home / ".claude" / "plugins" / "alice").is_symlink()
 
 
-def test_install_replaces_existing_directory_with_symlink(fake_home, bundle):
-    """If a plain directory exists where we want a symlink, we replace it."""
+def test_install_keeps_an_existing_real_directory(fake_home, bundle):
+    """A real directory in the way is left alone, and the install reports it.
+
+    This asserted the opposite — that we replace it — for idempotent re-install.
+    But a re-install meets the *symlink* the first install made, which
+    test_install_is_idempotent covers; a real directory is something else, and
+    replacing it meant `shutil.rmtree` on a path we did not create. Measured on a
+    hand-written ~/.codex/skills/mapper-candidate-mapping: notes.md was gone
+    after a sync. See test_sync_does_not_delete_your_own_work.
+
+    A directory left behind by an older version of this module is the cost:
+    move or rename it and the sync takes over. Losing a synced skill is
+    recoverable by syncing again; losing the notes underneath it is not.
+    """
     target = fake_home / ".claude" / "plugins" / "alice"
     target.mkdir(parents=True)
     (target / "stale.txt").write_text("old", encoding="utf-8")
 
-    fanout.install_claude(bundle, "alice")
+    n = fanout.install_claude(bundle, "alice")
 
-    assert target.is_symlink()
-    assert target.resolve() == bundle.resolve()
+    assert not target.is_symlink()
+    assert (target / "stale.txt").read_text() == "old"
+    assert n == 0
 
 
 def test_uninstall_all_removes_every_per_tool_install(fake_home, bundle):

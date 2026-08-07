@@ -227,3 +227,9 @@ def test_the_remote_browser_answers(server, project):
 
     assert "Permission denied" not in result.stderr, result.stderr[:300]
     assert "Stealth driver" in result.stdout, result.stdout[:300]
+    # "Stealth driver ✓" is about the patchright PACKAGE, and this assertion used
+    # to stop there — so it passed against a server with no browser on it at all,
+    # which is what a fresh provision is (nothing installs one). Whether it
+    # SHOULD is a separate question; what this checks is that the answer says
+    # which case it is, instead of a green line that means neither.
+    assert "Browser binary" in result.stdout, result.stdout[:400]

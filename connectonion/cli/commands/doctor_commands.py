@@ -47,6 +47,86 @@ def verdict(problems: list) -> int:
     return 1
 
 
+EVALS_NOTE_THRESHOLD_MB = 20
+
+
+def disk_usage_note() -> "str | None":
+    """What to say about the space `co` has taken, or None.
+
+    One eval per distinct first prompt, plus a directory of runs for it. Runs
+    inside an eval are capped at KEEP_RUNS_PER_EVAL and trimmed after every
+    write, so a repeated prompt stays bounded. The number of evals is not capped
+    by anything: a one-off prompt leaves its directory for good.
+
+    Two directories grow this way, and only one used to be reported. `co ai`
+    writes to ~/.co/evals; the library's logger writes to the PROJECT's
+    .co/evals whenever an agent runs inside a project, which is the normal case
+    for `Agent(...)` — the shipped quickstart from a fresh `co init` put its eval
+    in <project>/.co/evals/.
+
+    On the machine this was written on, ~/.co/evals held 857 evals across 227 MB
+    and nothing in `co doctor` or `co status` mentioned it — the largest thing
+    `co` writes was the one thing the diagnostic did not report.
+
+    A note, not a problem row, and not a deletion: which evals are worth keeping
+    is the user's call. Not being able to see the size is what stops them making
+    it. Quiet below the threshold, because a line printed every run is a line
+    nobody reads.
+    """
+    # Both places, because they are different growths. `co ai` writes to
+    # ~/.co/evals, and the library's logger writes to the PROJECT's .co/evals
+    # whenever an agent runs inside a project — which is the normal case for
+    # `Agent(...)`. Measured on this machine: ~/.co/evals held 1085 evals across
+    # 237 MB while the project directory beside it held its own, and only the
+    # first was ever reported. A project that crossed the threshold said nothing.
+    candidates = [("~/.co/evals", Path.home() / ".co" / "evals")]
+    project = project_co_dir()
+    if project:
+        here = project / "evals"
+        if here.resolve() != (Path.home() / ".co" / "evals").resolve():
+            # _shown, not the absolute path: this panel is narrow, and the helper
+            # exists because resolving the project properly once made these rows
+            # print the machine's whole directory tree. An absolute path here
+            # wrapped so far that the note began mid-sentence with "holds 3
+            # evals across 42 MB" and never said which directory.
+            candidates.append((_shown(here), here))
+
+    notes = [_evals_note(label, path) for label, path in candidates]
+    notes = [n for n in notes if n]
+    return "  ".join(notes) if notes else None
+
+
+def _evals_note(label: str, evals: Path) -> "str | None":
+    """The note for one evals directory, or None if it is absent or small."""
+    if not evals.is_dir():
+        return None
+
+    # scandir, not rglob+stat: the directory entry already carries the size, so
+    # this does not stat() every file. 0.05s against 0.145s on the 227 MB that
+    # prompted this — and the cost grows with the directory, which is exactly the
+    # case this note exists for.
+    total = 0
+    count = 0
+    stack = [str(evals)]
+    while stack:
+        with os.scandir(stack.pop()) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                elif entry.is_file(follow_symlinks=False):
+                    total += entry.stat().st_size
+                    if entry.name.endswith(".yaml") and Path(entry.path).parent == evals:
+                        count += 1
+
+    megabytes = total / (1024 * 1024)
+    if megabytes < EVALS_NOTE_THRESHOLD_MB:
+        return None
+
+    return (f"{label} holds {count} evals across {megabytes:.0f} MB — "
+            f"runs within one eval are capped, the number of evals is not. "
+            f"Delete the ones you no longer want.")
+
+
 def model_pricing_note(model) -> "str | None":
     """What to say about a model 1.6.0 no longer prices, or None.
 
@@ -183,6 +263,10 @@ def handle_doctor():
     else:
         config_table.add_row("Config", "[yellow]○[/yellow] Not found (optional)")
 
+    disk = disk_usage_note()
+    if disk:
+        config_table.add_row("Disk", f"[yellow]○[/yellow] {disk}")
+
     # Check for keys
     local_keys = project_co_dir() / "keys" / "agent.key"
     global_keys = Path.home() / ".co" / "keys" / "agent.key"
@@ -229,8 +313,15 @@ def handle_doctor():
     browser_table.add_column("Check", style="cyan")
     browser_table.add_column("Status")
 
-    from ...useful_tools.browser_tools.browser import driver_stealth_status
+    from ...useful_tools.browser_tools.browser import (
+        driver_stealth_status, installed_browser_path,
+    )
     status, browser_version, detail = driver_stealth_status()
+    # The package being healthy says nothing about there being a browser to
+    # launch. A deployed agent reported "Patchright ✓ / Stealth driver ✓ /
+    # nothing wrong" while every browser command answered "Executable doesn't
+    # exist at .../chromium-1228/chrome-linux64/chrome".
+    browser_binary = installed_browser_path() if status != "missing" else None
     if status == "ok":
         browser_table.add_row("Patchright", f"[green]✓[/green] {browser_version}")
         browser_table.add_row("Stealth driver", f"[green]✓[/green] {detail}")
@@ -240,6 +331,15 @@ def handle_doctor():
         found.append(f"stealth driver: {detail}")
     else:  # missing
         browser_table.add_row("Patchright", f"[yellow]○[/yellow] {detail}")
+
+    if status != "missing":
+        if browser_binary:
+            browser_table.add_row("Browser binary", f"[green]✓[/green] {browser_binary}")
+        else:
+            browser_table.add_row(
+                "Browser binary",
+                "[red]✗[/red] none installed — run: patchright install chromium")
+            found.append("no browser is installed — run: patchright install chromium")
 
     console.print(Panel(browser_table, title="[bold]Browser[/bold]", border_style="cyan"))
     console.print()

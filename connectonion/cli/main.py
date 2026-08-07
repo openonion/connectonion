@@ -1,10 +1,10 @@
 """
 Purpose: Entry point for ConnectOnion CLI application using Typer framework with Rich formatting
 LLM-Note:
-  Dependencies: imports from [typer, rich.console, typing, __version__] | imported by [setup.py entry_points, __main__.py] | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
+  Dependencies: imports from [typer, rich.console, typing, __version__] | imported by [__main__.py] | the `co` and `connectonion` commands come from pyproject.toml [project.scripts] -> connectonion.cli.main:cli; there is no setup.py in this repo | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
   Data flow: cli() entry point → creates Typer app → registers command callbacks (init, create, deploy, auth, status, reset, doctor, browser) → Typer parses args (including status --reveal/-r) → invokes corresponding handle_*() function from commands module → command outputs via rich.Console
   State/Effects: no persistent state | writes to stdout via rich.Console | lazy imports command handlers on invocation | registers typer.Option and typer.Argument decorators | uses typer.Exit() for early termination
-  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status (--reveal/-r), reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
+  Integration: exposes cli() entry point registered in pyproject.toml [project.scripts] as the 'co' and 'connectonion' commands | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status (--reveal/-r), reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
   Performance: fast startup (lazy imports) | Typer arg parsing is O(n) args | Rich console initialization is lightweight
   Errors: typer.Exit() on --version or --browser | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
 """
@@ -21,6 +21,7 @@ if sys.platform == "win32":
         if hasattr(_stream, "reconfigure"):
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -42,13 +43,71 @@ for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
         load_dotenv(_env_file)
 
 console = Console()
+
+
+class _OneSuggestion(typer.core.TyperGroup):
+    """Answer a mistyped command once (#714).
+
+        $ co skil
+        No such command 'skil'. Did you mean 'skills'? Did you mean 'skills'?
+
+    Two layers each append one: Click builds the message with its own suggestion
+    and Typer's resolve_command adds a second to whatever Click produced. It read
+    that way at every level, including the nested `co outlook contact` group.
+
+    The two arrive by different routes, which is why this does not just switch a
+    layer off. Click 8.4's NoSuchCommand keeps `possibilities` and appends the
+    clause when the message is *rendered*:
+
+        def format_message(self):
+            if not self.possibilities:
+                return self.message
+            return f"{self.message} {_format_possibilities(self.possibilities)}"
+
+    while Typer writes its own copy into `.message` beforehand. So the fix is to
+    drop the text copy exactly when the exception is going to render one of its
+    own, and to leave it alone when it is not.
+
+    Which layer speaks is not stable: turning Typer's `suggest_commands` off
+    fixed this on typer 0.20 and left plain `No such command 'skil'.` on 0.27,
+    where Typer's is the only clause because Click gets no possibilities.
+    pyproject asks for `typer>=0.20.0`, so a user has either.
+    """
+
+    def resolve_command(self, ctx, args):
+        try:
+            return super().resolve_command(ctx, args)
+        except Exception as error:
+            # Not `except click.UsageError`: typer 0.27 vendors its own Click
+            # (typer._click), so the exception it raises is a different class from
+            # the installed click's and the handler would silently never run —
+            # inert in exactly the version where CI runs. Catching broadly is safe
+            # because this always re-raises and only touches an object carrying
+            # both of the attributes it is about to use.
+            if getattr(error, "possibilities", None) and hasattr(error, "message"):
+                error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
+            raise
+
+
+_SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
+
+
+def _typer_app(**kwargs) -> typer.Typer:
+    """Every group in this CLI. One place, so no sub-app is left behind.
+
+    The doubling above was present on all twelve groups, and a fix applied at
+    the call sites is a fix that the thirteenth group will not get.
+    """
+    return typer.Typer(cls=_OneSuggestion, **kwargs)
+
+
 # pretty_exceptions_show_locals defaults to True in Typer, which dumps every
 # local variable of every frame on an uncaught exception. The OAuth paths hold
 # OPENONION_API_KEY, refresh tokens and access tokens in locals, so a routine
 # "session expired" crash printed live credentials into the terminal — and from
 # there into scrollback, CI logs, and any error output a user pastes into a
 # chat or an issue.
-app = typer.Typer(
+app = _typer_app(
     add_completion=False,
     no_args_is_help=False,
     pretty_exceptions_show_locals=False,
@@ -82,7 +141,13 @@ def _show_help():
     console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
     console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
     console.print()
-    console.print("[bold]Commands:[/bold]")
+    # A selection, not the register. Eight real commands are not here — ai,
+    # announce, call, reset, server, setup, skills, sub — and calling this
+    # "Commands:" read as the whole list. `co --help` is generated from the
+    # commands themselves and does show all of them, so the honest fix is to
+    # say which of the two this is and point at the other. Which of the eight
+    # belong on a new user's first screen is a product call, not this one's.
+    console.print("[bold]Common commands:[/bold]")
     console.print("  [green]create[/green]  <name>     Create new project")
     console.print("  [green]init[/green]              Initialize in current directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
@@ -99,6 +164,8 @@ def _show_help():
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check credentials, account, and deployments")
     console.print("  [green]doctor[/green]            Diagnose installation")
+    console.print()
+    console.print("  [dim]co --help[/dim]         All commands")
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")
@@ -252,10 +319,17 @@ def call(
     """Run one command on a remote agent and print the result (no LLM).
 
     The remote twin of `co browser` — everything after the address runs on the
-    remote agent, gated by its .co/host.yaml whitelist:
+    remote agent as a bash command, gated by its .co/host.yaml whitelist:
 
         co call 0x3d40... co status
         co call --out shot.png 0x3d40... co browser take_screenshot
+
+    Bare `co`, not `.venv/bin/co`: the whitelist entry is `Bash(co *)`, and the
+    unit file puts the venv on PATH so that name resolves. The path form is the
+    one that gets refused.
+
+    Note this sends bash, not a tool call: a whitelist entry for the `read` TOOL
+    does not permit a `read` command, and vice versa.
     """
     from .commands.call_commands import handle_call
     raise typer.Exit(handle_call(args or []))
@@ -336,7 +410,7 @@ def announce(
 
 
 # Server command group — the machines `co deploy --to` can target
-server_app = typer.Typer(help="Register, list and preflight the servers you can deploy to")
+server_app = _typer_app(help="Register, list and preflight the servers you can deploy to")
 app.add_typer(server_app, name="server")
 
 
@@ -431,7 +505,7 @@ def server_destroy(
 
 
 # Skills command group
-skills_app = typer.Typer(help="Discover, copy, and list SKILL.md files from agent tool directories")
+skills_app = _typer_app(help="Discover, copy, and list SKILL.md files from agent tool directories")
 app.add_typer(skills_app, name="skills")
 
 
@@ -496,7 +570,7 @@ def skills_link(
 
 
 # Trust command group
-trust_app = typer.Typer(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
+trust_app = _typer_app(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
 app.add_typer(trust_app, name="trust")
 
 
@@ -558,7 +632,7 @@ def trust_unblock(address: str = typer.Argument(..., help="Address to unblock"))
 
 
 # Admin subcommand group
-admin_app = typer.Typer(help="Manage admins (super admin only)")
+admin_app = _typer_app(help="Manage admins (super admin only)")
 trust_app.add_typer(admin_app, name="admin")
 
 
@@ -577,7 +651,7 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
 
 
 # Email command group. `co email` (no args) shows the inbox.
-email_app = typer.Typer(help="Send and read email from the agent's address")
+email_app = _typer_app(help="Send and read email from the agent's address")
 app.add_typer(email_app, name="email")
 
 
@@ -640,7 +714,7 @@ def email_upgrade(
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
-gmail_app = typer.Typer(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
+gmail_app = _typer_app(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
 app.add_typer(gmail_app, name="gmail")
 
 
@@ -714,7 +788,7 @@ def gmail_search(
     handle_gmail_search(query, last=last)
 # Google Drive command group. `co gdrive` (no args) lists recent files.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
-gdrive_app = typer.Typer(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
+gdrive_app = _typer_app(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
 app.add_typer(gdrive_app, name="gdrive")
 
 
@@ -776,7 +850,7 @@ def gdrive_rm(
 
 # Synology command group. `co syno` (no args) lists your shared folders.
 # Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
-syno_app = typer.Typer(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
+syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
 app.add_typer(syno_app, name="syno")
 
 
@@ -850,7 +924,7 @@ def syno_share(
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
-outlook_app = typer.Typer(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
+outlook_app = _typer_app(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
 app.add_typer(outlook_app, name="outlook")
 
 
@@ -862,7 +936,7 @@ def outlook_callback(ctx: typer.Context):
         handle_outlook_inbox()
 
 
-outlook_contact_app = typer.Typer(
+outlook_contact_app = _typer_app(
     help="Add, list, and search Outlook contacts.",
     no_args_is_help=True,
 )
@@ -976,7 +1050,7 @@ def outlook_search(
 
 # Subscription command group. `co sub` (no args) syncs every subscription.
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
-sub_app = typer.Typer(help="Subscribe to published agents — sync skills from the relay into your coding agents")
+sub_app = _typer_app(help="Subscribe to published agents — sync skills from the relay into your coding agents")
 app.add_typer(sub_app, name="sub")
 
 

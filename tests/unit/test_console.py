@@ -284,11 +284,12 @@ class TestLLMLogging:
     def test_log_llm_response_shows_flash(self, mock_print):
         """LLM response shows flash symbol (thinking complete)."""
         c = console_mod.Console()
-        # Create mock usage object
-        usage = Mock()
-        usage.input_tokens = 100
-        usage.output_tokens = 50
-        usage.cost = 0.001
+        # A real TokenUsage, not Mock(): a bare Mock answers every attribute, so
+        # this test kept passing while the code read a field the fake did not
+        # model — and the numeric formatting of that Mock is what finally failed.
+        from connectonion.core.usage import TokenUsage
+
+        usage = TokenUsage(input_tokens=100, output_tokens=50, cost=0.001)
 
         c.log_llm_response("gpt-4", duration_ms=1000.0, tool_count=0, usage=usage)
 

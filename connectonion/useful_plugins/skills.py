@@ -192,14 +192,62 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
     yaml_text = match.group(1)
     instructions = match.group(2).strip()
 
-    # Parse YAML frontmatter
-    import yaml
-    try:
-        frontmatter = yaml.safe_load(yaml_text) or {}
-    except yaml.YAMLError:
-        frontmatter = {}
+    return _read_frontmatter(yaml_text), instructions
 
-    return frontmatter, instructions
+
+# The only keys worth rescuing from a frontmatter YAML refuses to parse.
+#
+# Deliberately not `tools:`. test_one_reader_for_skill_frontmatter records why
+# the strict reader won: "neither invents a reading of a file that has a syntax
+# error in it", and `tools:` is fed to _grant_skill_permissions — guessing it
+# from a file that does not parse would widen an agent's permissions on the
+# strength of a line split. These two only decide whether the model is told the
+# skill exists and what it is for.
+_RECOVERABLE_KEYS = ('name', 'description')
+
+
+def _read_frontmatter(yaml_text: str) -> Dict[str, Any]:
+    """Frontmatter as YAML; if YAML refuses, rescue the name and description.
+
+    This returned `{}` on a YAMLError, which was chosen on purpose — the strict
+    reader replaced a line splitter, and `co doctor` was taught to name the file
+    and line so that the skills which stop being read are reported loudly.
+
+    What that left is still a silent failure at the only moment that matters.
+    The description is what the model is given to decide whether a skill
+    applies, so an empty frontmatter means the skill is listed with nothing
+    about when to use it, and is never chosen. Nothing at load time says so; you
+    have to think to run `co doctor`.
+
+    And the shape is not rare. An unquoted colon inside a value is invalid YAML
+    and is what people write:
+
+        description: Orchestrate a workflow from a Markdown draft: prepare a
+                     cover, draft the article...
+
+    Eight skills installed on the machine this was found on were unreadable for
+    that reason, every one authored by Claude Code, which loads them all.
+
+    So YAML stays the authority — a valid file keeps its lists and nested
+    values, and anything with consequences comes from YAML or not at all — and a
+    file it rejects gives up only its `tools:`, not its identity. `co doctor`
+    goes on reporting the file, because it should still be fixed.
+    """
+    import yaml
+
+    try:
+        return yaml.safe_load(yaml_text) or {}
+    except yaml.YAMLError:
+        pass
+
+    recovered = {}
+    for line in yaml_text.splitlines():
+        if line.startswith((' ', '\t')) or ':' not in line:
+            continue
+        key, value = line.split(':', 1)
+        if key.strip() in _RECOVERABLE_KEYS:
+            recovered[key.strip()] = value.strip().strip('"').strip("'")
+    return recovered
 
 
 def _skill_search_paths(co_dir: Optional[Path] = None,
@@ -346,17 +394,40 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         return None
 
     import yaml
+    yaml_text = match.group(1)
     try:
-        yaml.safe_load(match.group(1))
+        yaml.safe_load(yaml_text)
     except yaml.YAMLError as e:
         detail = str(e).split('\n')[0]
         mark = getattr(e, 'problem_mark', None)
-        if mark is None:
-            return f'SKILL.md frontmatter is not valid YAML: {detail}'
         # The mark counts lines within the frontmatter, 0-based. Add one for the
         # opening `---` and one for counting from 1, so the number is the line an
         # editor puts the cursor on.
-        return f'SKILL.md frontmatter is not valid YAML at line {mark.line + 2}: {detail}'
+        where = f' at line {mark.line + 2}' if mark is not None else ''
+
+        # Say what it costs, which is no longer "everything". _read_frontmatter
+        # rescues name and description from a file YAML rejects, so these skills
+        # work — reporting them as unreadable teaches people to stop reading the
+        # doctor. What is genuinely lost is `tools:`, which is not rescued because
+        # it grants permissions, so a file that declares one is the real problem:
+        # the declaration does nothing and the author cannot tell.
+        recovered = _read_frontmatter(yaml_text)
+        # `tools:` only. `allowed-tools:` is another tool's key and _tool_patterns
+        # never reads it, so it is ignored whether or not the YAML parses —
+        # blaming the bad quoting for that would be a false claim, and most of
+        # these files declare allowed-tools rather than tools.
+        declares_tools = any(
+            line.split(':', 1)[0].strip() == 'tools'
+            for line in yaml_text.splitlines()
+            if ':' in line and not line.startswith((' ', '\t'))
+        )
+        if declares_tools:
+            return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
+                    f'— its tools: declaration is being ignored')
+        if recovered.get('description'):
+            return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
+                    f'— name and description were still read')
+        return f'SKILL.md frontmatter is not valid YAML{where}: {detail}'
 
     return None
 

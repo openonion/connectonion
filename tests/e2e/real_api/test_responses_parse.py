@@ -51,7 +51,7 @@ GEMINI_MODELS = [
     "co/gemini-2.0-flash",
     "co/gemini-2.0-flash-lite",
     "co/gemini-3.5-flash",
-    "co/gemini-3-pro-preview",
+    "co/gemini-2.5-pro",
 ]
 
 # Note: Only Claude 4.5/4.1 models support structured outputs (per Anthropic docs Dec 2025)

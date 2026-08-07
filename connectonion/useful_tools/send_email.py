@@ -2,9 +2,9 @@
 Purpose: Send emails via OpenOnion API using agent's authenticated email address
 LLM-Note:
   Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → detects HTML vs plain text → POST to oo.openonion.ai/api/email with auth token → returns {success, message_id, from, error}
+  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → POST to oo.openonion.ai/api/v1/email/send with auth token → returns {success, message_id, from, error}
   State/Effects: reads .env files from filesystem | loads environment variables via dotenv | makes HTTP POST request to OpenOnion API | no local state persistence
-  Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/email with Bearer token
+  Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/v1/email/send with Bearer token
   Performance: file search up to 5 parent dirs | one HTTP request per email | no caching | synchronous (blocks on network)
   Errors: returns {success: False, error: str} for: missing .env, missing keys, invalid email format, API failures | HTTP errors caught and wrapped | validates @ and . in email | let-it-crash pattern (returns errors, doesn't raise)
 """
@@ -84,14 +84,16 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             "error": f"Invalid email address: {to}"
         }
     
-    # Detect if message contains HTML
-    is_html = "<" in message and ">" in message
-    
     # Prepare email payload
     payload = {
         "to": to,
         "subject": subject,
-        "body": message  # Simple direct body
+        # The body goes as-is. A local `is_html = "<" in message and ">" in
+        # message` used to be computed here and thrown away — the payload has no
+        # html field to put it in — while the header claimed the function
+        # "detects HTML vs plain text". Whether a body renders as HTML is the
+        # backend's decision, and nothing here influences it.
+        "body": message
     }
     
     # Send email via backend API

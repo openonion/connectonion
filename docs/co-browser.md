@@ -250,8 +250,13 @@ exactly one daemon — the loser exits and its command is served by the winner.
 - **Nuclear option** — kill the daemon and let the next command start fresh
   (logins survive: they live in the profile, not the daemon):
 
+  <!-- The bracketed [.] is load-bearing: `pkill -f` matches every process's whole
+       command line, so the un-bracketed pattern matches the shell running it and
+       kills that shell (measured on Linux — everything after it in the same
+       command never runs). An agent following these steps runs commands exactly
+       that way. -->
   ```bash
-  pkill -f connectonion.cli.browser_agent.daemon
+  pkill -f 'connectonion.cli.browser_agent[.]daemon'
   ```
 
 - **State locations** — profile (cookies/logins): `~/.co/browser_profile/` ·

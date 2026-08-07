@@ -56,6 +56,31 @@ def _build_listed_skills(profile: dict) -> list:
     return skills_out
 
 
+def print_announce_summary(alias: str, skills: list) -> None:
+    """How many skills were listed, how many carry a body, and which ones do.
+
+    The names used to be all of them, printed straight after "N with public
+    body". On this machine that read:
+
+        Listing linkedin-thumbup without body: … not found
+        ...
+        skills: 39 listed, 19 with public body (co-install, …,
+        linkedin-comment-draft, linkedin-comment-generate, linkedin-thumbup, …
+
+    — the three the same command had just reported as missing, inside the list a
+    reader takes to be the nineteen. The count was right; the names beside it
+    were everything.
+
+    A listed skill without a body is legitimate: it advertises something you have
+    not published. So the total still says how many, and only the published ones
+    are named.
+    """
+    published = [s["name"] for s in skills if "body" in s]
+    console.print(f"  skills: {len(skills)} listed, {len(published)} with public body" + (
+        f" ({', '.join(published)})" if published else ""
+    ))
+
+
 def _announce_ws_url(relay_url: str) -> str:
     """Return the concrete /ws/announce URL for a base or endpoint relay URL."""
     url = relay_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1).rstrip("/")
@@ -109,10 +134,7 @@ def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
 
     console.print(f"[cyan]Announcing[/cyan] {addr_data['address']} → {relay_url}")
     console.print(f"  alias:  {profile['alias']}")
-    body_count = sum(1 for s in skills if "body" in s)
-    console.print(f"  skills: {len(skills)} listed, {body_count} with public body" + (
-        f" ({', '.join(s['name'] for s in skills)})" if skills else ""
-    ))
+    print_announce_summary(profile['alias'], skills)
 
     if dry_run:
         console.print_json(data=message)

@@ -554,8 +554,15 @@ class Console:
             usage: TokenUsage object with input_tokens, output_tokens, cached_tokens, cost
             context_percent: Optional context window usage percentage (0-100)
         """
-        # Format tokens with cache info
-        total_tokens = usage.input_tokens + usage.output_tokens
+        # Format tokens with cache info. billed_tokens, not input + output: the
+        # cost beside it comes from the server and covers reasoning tokens the
+        # OpenAI-shaped fields do not name, so the sum printed a line 34x off
+        # itself (20 tok · $0.0017 on a call the server billed 243 tokens for).
+        # usage is the TokenUsage from response.usage (agent.py:519 is the only
+        # caller) — read the property, do not getattr-with-a-fallback around it.
+        # The fallback protected nothing real and made a bare Mock() in
+        # test_console.py answer with a Mock instead of failing.
+        total_tokens = usage.billed_tokens
         tokens_str = f"{total_tokens/1000:.1f}k tok" if total_tokens >= 1000 else f"{total_tokens} tok"
         cached = getattr(usage, 'cached_tokens', 0)
         if cached:

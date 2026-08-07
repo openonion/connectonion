@@ -54,7 +54,7 @@ ANTHROPIC_MODELS = [
 GEMINI_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-pro",
-    "gemini-3-pro-preview",
+    "gemini-2.5-pro",
 ]
 
 OPENONION_MODELS = [

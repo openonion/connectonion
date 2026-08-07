@@ -56,6 +56,12 @@ class TestOpenOnionLLM:
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_response.usage.prompt_tokens_details = None
+            # A real usage object has ints in these fields. Left as MagicMock
+            # they answer any attribute, so the code reading total_tokens got a
+            # MagicMock and the comparison raised — the fake diverging from the
+            # thing it stands in for, not the code being wrong.
+            mock_response.usage.total_tokens = 30
+            mock_response.usage.cost_usd = None
 
             llm = OpenOnionLLM(model="co/o4-mini")
 
@@ -82,6 +88,12 @@ class TestOpenOnionLLM:
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_response.usage.prompt_tokens_details = None
+            # A real usage object has ints in these fields. Left as MagicMock
+            # they answer any attribute, so the code reading total_tokens got a
+            # MagicMock and the comparison raised — the fake diverging from the
+            # thing it stands in for, not the code being wrong.
+            mock_response.usage.total_tokens = 30
+            mock_response.usage.cost_usd = None
 
             llm = OpenOnionLLM(model="co/o4-mini")
 
@@ -106,6 +118,12 @@ class TestOpenOnionLLM:
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_response.usage.prompt_tokens_details = None
+            # A real usage object has ints in these fields. Left as MagicMock
+            # they answer any attribute, so the code reading total_tokens got a
+            # MagicMock and the comparison raised — the fake diverging from the
+            # thing it stands in for, not the code being wrong.
+            mock_response.usage.total_tokens = 30
+            mock_response.usage.cost_usd = None
 
             # Mock tool call
             mock_tool_call = MagicMock()

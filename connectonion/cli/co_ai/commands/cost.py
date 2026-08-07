@@ -30,6 +30,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from ....core.usage import totals_from_trace
+
 console = Console()
 
 # Module-level storage for agent reference
@@ -76,13 +78,30 @@ def cmd_cost(args: str = "") -> str:
     table.add_row("Total Cost", cost_str)
 
     # Token usage
+    # The total has to cover what the cost above covers. total_cost accumulates
+    # over the agent's life and the session persists across input() calls, so the
+    # session trace is the matching scope — measured over two turns, the trace
+    # cost and total_cost agree exactly ($0.001176), while last_usage was 101 of
+    # the 192 tokens and was the number labelled "Total Tokens".
+    session = getattr(agent, 'current_session', None) or {}
+    session_tokens, _ = totals_from_trace(session.get('trace', []))
+    if session_tokens:
+        table.add_row("Total Tokens", f"{session_tokens:,}")
+
     last_usage = getattr(agent, 'last_usage', None)
     if last_usage:
-        input_tokens = last_usage.get('input_tokens', 0)
-        output_tokens = last_usage.get('output_tokens', 0)
-        table.add_row("Input Tokens", f"{input_tokens:,}")
-        table.add_row("Output Tokens", f"{output_tokens:,}")
-        table.add_row("Total Tokens", f"{input_tokens + output_tokens:,}")
+        # A TokenUsage, not a dict — agent.py does `self.last_usage =
+        # response.usage`, and pydantic models have no .get, so this raised
+        # AttributeError after the first model call. The `if` above hid it:
+        # before that call it is None and the block never ran.
+        #
+        # Kept because the per-call figures are useful, and labelled for what
+        # they are. billed_tokens, not the sum of the two rows above it: the cost
+        # comes from the server and covers reasoning tokens those fields never
+        # name, so the sum would be 29x off the cost in the same table.
+        table.add_row("Last Call", f"{last_usage.input_tokens:,} in · "
+                                   f"{last_usage.output_tokens:,} out · "
+                                   f"{last_usage.billed_tokens:,} billed")
 
     # Context usage
     context_percent = getattr(agent, 'context_percent', 0)

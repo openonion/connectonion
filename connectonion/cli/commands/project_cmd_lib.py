@@ -30,7 +30,24 @@ from typing import Optional, Tuple, List
 from ... import __version__
 from ... import address
 
+# What a new user may spend free credits on. The list lives in core.usage with
+# the other model facts, and PaidModelRequiredError offers the same tuple when a
+# free account picks a paid model. It used to be written out twice in this file,
+# and both copies had gone stale.
+from ...core.usage import FREE_MANAGED_MODELS as MANAGED_MODELS
+from ...core.usage import PAID_MANAGED_MODELS as PAID_MODELS
+
 console = Console()
+
+
+def _print_managed_models() -> None:
+    console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
+    for model in MANAGED_MODELS:
+        console.print(f"  • {model}")
+    console.print(
+        f"\n[dim]{', '.join(PAID_MODELS)} need purchased credits: "
+        "https://o.openonion.ai[/dim]"
+    )
 
 
 def record_creator_as_admin(project_dir: Path) -> None:
@@ -327,11 +344,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         if authenticate(co_dir):
                             console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                             console.print("[green]You now have 100k free tokens![/green]")
-                            console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                            console.print("  • co/gemini-3.6-flash")
-                            console.print("  • co/gemini-3-pro-preview")
-                            console.print("  • co/gpt-5")
-                            console.print("  • co/claude-sonnet-4")
+                            _print_managed_models()
 
                             return "star", "connectonion", temp_dir  # Return the temp directory
                         else:
@@ -408,11 +421,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         authenticate(Path(".co"))
                         console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                         console.print("[green]You now have 100k free tokens![/green]")
-                        console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                        console.print("  • co/gemini-3.6-flash")
-                        console.print("  • co/gemini-3-pro-preview")
-                        console.print("  • co/gpt-5")
-                        console.print("  • co/claude-sonnet-4")
+                        _print_managed_models()
                         break  # Success, exit the loop
                     except Exception as e:
                         console.print(f"\n[red]Authentication failed: {e}[/red]")
@@ -653,7 +662,8 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 
 # Model Configuration (use co/ prefix for managed models)
 MODEL=co/gemini-3.6-flash
-# Available models: co/gemini-3.6-flash, co/gemini-3-pro-preview, co/gpt-5, co/claude-sonnet-4
+# Available models: co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
+# With purchased credits: co/gpt-5, co/o4-mini, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -1209,10 +1219,13 @@ def ensure_global_config() -> None:
     console.print(f"\n🚀 Welcome to ConnectOnion!")
     console.print(f"✨ Setting up global configuration...")
 
-    # Create directories
-    global_dir.mkdir(exist_ok=True)
-    (global_dir / "keys").mkdir(exist_ok=True)
-    (global_dir / "logs").mkdir(exist_ok=True)
+    # parents=True: ~/.co is the first thing we put under HOME, and a HOME that
+    # has not been created — containers, sandboxes — left mkdir with no parent to
+    # work in, so a first run ended in a raw FileNotFoundError traceback rather
+    # than a message. It cannot do less than exist_ok alone did.
+    global_dir.mkdir(parents=True, exist_ok=True)
+    (global_dir / "keys").mkdir(parents=True, exist_ok=True)
+    (global_dir / "logs").mkdir(parents=True, exist_ok=True)
 
     # Generate master keys - fail fast if libraries missing
     addr_data = address.generate()

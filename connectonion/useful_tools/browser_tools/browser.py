@@ -57,6 +57,7 @@ from pydantic import BaseModel, Field
 from . import element_finder
 from . import humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
+from .chrome_finder import find_system_chrome
 
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
@@ -149,6 +150,93 @@ def _browser_proxy_from_env():
     if p.password:
         proxy["password"] = urllib.parse.unquote(p.password)
     return proxy
+
+
+def _patchright_chromium_path():
+    """Where patchright would look for its downloaded chromium, per patchright.
+
+    Asking the driver rather than rebuilding the path: the directory carries the
+    build number (chromium-1228) and its layout differs per OS, so a
+    hand-written probe is a guess that goes stale on their next release.
+    """
+    from patchright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        return p.chromium.executable_path
+
+
+_found_browser = None  # see installed_browser_path: only a FOUND browser is kept
+
+
+def forget_browser_path():
+    """Drop the memo. For tests, and for anything that changes what is installed."""
+    global _found_browser
+    _found_browser = None
+
+
+def installed_browser_path():
+    """A browser this machine could actually launch, or None.
+
+    Two ways to have one, and `open_browser` uses either: a real desktop Chrome
+    (which it pins when present) or patchright's downloaded chromium. Reporting
+    only the patchright package — which is what `co doctor` and `co browser
+    status` did — calls a machine healthy when every browser command on it fails
+    with "Executable doesn't exist at .../chromium-1228/chrome-linux64/chrome".
+
+    Costs starting the patchright driver — measured at 1.0s on Linux — so this is
+    for the commands that report state, not the path every browser command takes.
+    A found browser is remembered, because `co browser status` is a PAGELESS_VERB
+    and paying a second for it every time is what those verbs exist to avoid.
+
+    Only the positive is remembered. A machine with no browser is one somebody is
+    in the middle of fixing, and `status` is how they check; answering "none
+    installed" from a cache would keep saying so after they fixed it. Re-probing
+    costs a second on a machine that cannot browse at all.
+    """
+    global _found_browser
+    if _found_browser:
+        return _found_browser
+    chrome = find_system_chrome()
+    if chrome:
+        return chrome  # 0.1ms — nothing to save by remembering it
+    try:
+        path = _patchright_chromium_path()
+    except Exception:
+        # A patchright too broken to answer is not a browser. This function is
+        # called by `co doctor`, which runs when things are already wrong and
+        # must still print its report.
+        return None
+    if path and os.path.exists(path):
+        _found_browser = path
+    return _found_browser
+
+
+def headless_without_a_display(headless: bool) -> bool:
+    """Force headless on a machine that has no display to draw a window on.
+
+    `co browser` defaults to headless=False, which is right on a laptop and
+    impossible on a deployed agent. Measured on a Linux server with DISPLAY
+    unset and chromium installed:
+
+        launch(headless=False) -> Target page, context or browser has been closed
+        launch(headless=True)  -> ok
+
+    The headed message names nothing actionable, and the documented remote
+    browser path (`co call <address> co browser take_screenshot`) goes straight
+    through it, so it was unusable on every deployed agent.
+
+    Applied here, where headless becomes effective, rather than in the CLI: the
+    daemon, the agent tools and a plain library caller each arrive by a different
+    route, and a decision made in only some of the places that reach it is the
+    mistake this release keeps repeating.
+
+    Only Linux has a display that can be absent — macOS and Windows always have
+    one, and neither sets DISPLAY, so checking it there would force headless on
+    every desktop.
+    """
+    if headless or platform.system() != "Linux":
+        return headless
+    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def _pid_alive(pid: int) -> bool:
@@ -363,7 +451,7 @@ class BrowserAutomation:
         self.form_data: Dict[str, Any] = {}
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
-        self._headless = headless
+        self._headless = headless_without_a_display(headless)
         self._seed_state = seed_state
         self._seeded = False
         self.screenshots_dir = str(SCREENSHOTS_DIR)
@@ -408,8 +496,38 @@ class BrowserAutomation:
             return False
 
         def run():
-            # Alive = the context still answers protocol calls. Zero open pages is
-            # still alive (a page opens on demand), so listing pages IS the check.
+            # Only a round-trip can answer this. Everything local lies once the
+            # browser is gone — measured with the browser process killed, which is
+            # how it goes in the field:
+            #
+            #     is_closed()      ->  False   local flag, set by close() only
+            #     len(ctx.pages)   ->  1       local list, still holds the dead tab
+            #     ctx.cookies()    ->  TargetClosedError
+            #     ctx.new_page()   ->  TargetClosedError   <- what the user hits
+            #
+            # Listing pages used to be the whole check, on the reasoning that it
+            # "answers protocol calls". It does not, so this reported alive while
+            # every command failed: the serve loop never exited and `status` said
+            # "open" (#711). Swapping in is_closed() looked right and is the same
+            # mistake — a killed browser still reports False.
+            is_closed = getattr(self.browser, "is_closed", None)
+            if callable(is_closed):
+                try:
+                    if is_closed():
+                        return False   # sufficient on its own; the reverse is not
+                except Exception:
+                    return False
+
+            # cookies() is the cheapest call that actually reaches the browser.
+            cookies = getattr(self.browser, "cookies", None)
+            if callable(cookies):
+                try:
+                    cookies()
+                except Exception:
+                    return False
+                return True
+
+            # A driver with neither: the old reading, rather than declaring it dead.
             try:
                 list(self.browser.pages)
             except Exception:
