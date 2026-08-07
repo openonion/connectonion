@@ -134,5 +134,19 @@ def handle_call(args) -> int:
         print(dest)
         return 0
 
+    # `--out` only applies to an image result, which the usage text says. What it
+    # did not say is what happens without one: the option was dropped in silence,
+    # so `co call --out result.txt <addr> co status` — which reads like "save the
+    # output to a file" — produced no file and no explanation. Measured against a
+    # real agent: text printed, exit 0, nothing at the path.
+    #
+    # stderr, not stdout: stdout is the result, per this module's contract. Exit
+    # stays 0 because the call succeeded; only the save did not apply. And the
+    # text is not written to the path — putting it in a .png would be worse than
+    # not writing.
+    if out:
+        print(f"--out {out}: not written — the result is text, not an image "
+              f"(--out saves a screenshot)", file=sys.stderr)
+
     print(result.text)
     return 0
