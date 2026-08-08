@@ -100,9 +100,16 @@ When releasing a new version:
 - [ ] Create git tag: `git tag vX.Y.Z`
 - [ ] Push commits: `git push`
 - [ ] Push tag: `git push origin vX.Y.Z`
+- [ ] Remove artifacts from older releases: `rm -rf dist/`
 - [ ] Build package: `python -m build`
+- [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
-- [ ] Upload to PyPI: `twine upload dist/*`
+- [ ] Upload only the two artifacts just validated: `python -m twine upload dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
+
+Replace `X.Y.Z` with the version being released. Do not upload the whole dist
+directory with a wildcard: build does not remove older artifacts, so that can
+mix a previous release into the current upload. PyPI uploads are not an atomic
+transaction; one file can succeed before a stale or duplicate file fails.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to
