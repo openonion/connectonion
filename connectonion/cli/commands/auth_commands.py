@@ -245,9 +245,16 @@ def handle_google_auth():
     api_url = f"{backend_url()}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
-    # Clear any existing connection first - this ensures we wait for NEW OAuth to complete
-    # (otherwise /google/status returns connected=true immediately from old credentials)
-    requests.delete(f"{api_url}/google/revoke", headers=headers)
+    # Keep the existing refresh token alive while re-authenticating. Deleting it
+    # here breaks deployed agents immediately. Remember the old expiry instead,
+    # then wait until the callback writes a newer credential row.
+    previous_expiry = None
+    previously_connected = False
+    previous_status = requests.get(f"{api_url}/google/status", headers=headers)
+    if previous_status.status_code == 200:
+        previous = previous_status.json()
+        previously_connected = bool(previous.get("connected"))
+        previous_expiry = previous.get("expires_at")
 
     # Get OAuth URL
     console.print("🔑 Initializing Google OAuth...", style="cyan")
@@ -276,7 +283,9 @@ def handle_google_auth():
         status_response = requests.get(f"{api_url}/google/status", headers=headers)
         if status_response.status_code == 200:
             status = status_response.json()
-            if status.get('connected'):
+            if status.get('connected') and (
+                not previously_connected or status.get('expires_at') != previous_expiry
+            ):
                 console.print("✓ Authorization successful!", style="green")
                 break
     else:
