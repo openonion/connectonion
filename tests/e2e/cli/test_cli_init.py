@@ -395,7 +395,7 @@ class TestCliInit:
             config = yaml.safe_load(content)
             assert config["trust"] == "careful"
             assert config["port"] == 8000
-            assert config["relay_url"] == "wss://oo.openonion.ai"
+            assert "relay_url" not in config
             assert "permissions" in config
 
     def test_init_host_yaml_has_permissions_from_template(self):
@@ -414,8 +414,8 @@ class TestCliInit:
             assert permissions.get("glob", {}).get("allowed") is True
             assert permissions.get("grep", {}).get("allowed") is True
 
-    def test_init_host_yaml_matches_template_relay_url(self):
-        """Test that relay_url is base URL only (client appends /ws/announce)."""
+    def test_init_host_yaml_leaves_runtime_relay_unpinned(self):
+        """Generated projects must follow the runtime backend by default."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
@@ -423,9 +423,7 @@ class TestCliInit:
             assert result.exit_code == 0
 
             config = yaml.safe_load(open(".co/host.yaml"))
-            # Must be base URL — client code in relay.py auto-appends /ws/announce
-            assert config["relay_url"] == "wss://oo.openonion.ai"
-            assert not config["relay_url"].endswith("/ws/announce")
+            assert "relay_url" not in config
 
     def test_init_copies_all_docs_to_co_docs(self):
         """Test that init copies all documentation to .co/docs/ folder."""
