@@ -408,7 +408,7 @@ def setup(
 
 @app.command()
 def announce(
-    relay: Optional[str] = typer.Option(None, "--relay", "-r", help="Relay URL (default: wss://oo.openonion.ai)"),
+    relay: Optional[str] = typer.Option(None, "--relay", "-r", help="Relay URL (default: configured backend)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the signed message, don't send"),
 ):
     """Publish ~/.co/agent.json + SKILL.md bodies (publish:true) to the relay."""

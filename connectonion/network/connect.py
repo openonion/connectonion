@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [asyncio, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), .. address (sign)] | imported by [network/__init__.py (re-exports connect, RemoteAgent, Response), connectonion/__init__.py (top-level re-export)] | tested by [tests/unit/test_connect.py, tests/unit/test_connect.py]
   Data flow: connect(address, keys, relay_url) → RemoteAgent → .input(prompt) opens ws → CONNECT (signed payload {to, timestamp, signed_commands}, optional session) → CONNECTED {session_id} → INPUT (complete command duplicated top-level for v1 compatibility and signed as payload for v2) → streams (tool_call, tool_result, thinking, assistant, ask_user, ONBOARD_REQUIRED/SUCCESS) → OUTPUT {result, session} → returns Response(text, done)
   State/Effects: mutates self._current_session, self._ui_events, self._status; opens outbound websocket connection; performs signed payloads via address.sign(keys, canonical_json) when keys provided; resolve_endpoint() makes httpx GETs to relay /api/agents/{addr} and /info on each candidate to pick localhost/LAN/public WS endpoint (cached after first attempt)
-  Integration: exposes connect(address, keys=None, relay_url="wss://oo.openonion.ai") -> RemoteAgent | RemoteAgent.input/input_async/reset, .status, .current_session, .ui properties | Response dataclass(text, done) | resolve_endpoint(agent_address, relay_url, timeout=3.0) helper
+  Integration: exposes connect(address, keys=None, relay_url=None) -> RemoteAgent | omitted relay resolves from the shared backend selector | RemoteAgent.input/input_async/reset, .status, .current_session, .ui properties | Response dataclass(text, done) | resolve_endpoint(agent_address, relay_url, timeout=3.0) helper
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
   Errors: raises ConnectionError on auth/agent ERROR frames | TimeoutError on ws recv timeout | RuntimeError if .input() called from async context | ValueError when interactive onboard prompt yields no credentials
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
@@ -254,13 +254,16 @@ class RemoteAgent:
         agent_address: str,
         *,
         keys: Optional[Dict[str, Any]] = None,
-        relay_url: str = "wss://oo.openonion.ai"
+        relay_url: Optional[str] = None,
     ):
         self.address = agent_address
         # None means "I did not choose" -- find the caller's identity, because
         # an unsigned client cannot talk to a default agent. False means "no
         # keys, deliberately", which trust: open accepts and people use in dev.
         self._keys = _this_callers_identity() if keys is None else (keys or None)
+        if relay_url is None:
+            from ..backend import backend_ws_url
+            relay_url = backend_ws_url()
         self._relay_url = relay_url.rstrip("/")
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
@@ -878,7 +881,7 @@ def connect(
     address: str,
     *,
     keys: Optional[Dict[str, Any]] = None,
-    relay_url: str = "wss://oo.openonion.ai"
+    relay_url: Optional[str] = None,
 ) -> RemoteAgent:
     """
     Connect to a remote agent.
@@ -889,7 +892,7 @@ def connect(
               (then this machine's ~/.co). Every trust level above `open`
               refuses an unsigned request, `careful` included. Pass
               keys=False to connect anonymously to a `trust: open` agent.
-        relay_url: Relay server base URL (default: production)
+        relay_url: Relay server base URL (default: the configured backend)
 
     Returns:
         RemoteAgent interface with real-time UI updates

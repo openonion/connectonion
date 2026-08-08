@@ -35,18 +35,19 @@ class TestRelayConnection:
     """Test relay connection establishment."""
 
     @pytest.mark.asyncio
-    async def test_connect_default_url(self):
-        """Test connecting to default relay URL."""
+    async def test_connect_default_url(self, monkeypatch):
+        """An omitted relay follows the same runtime backend selection."""
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "http://127.0.0.1:9000/")
         with patch('websockets.connect', new_callable=AsyncMock) as mock_connect:
             mock_ws = AsyncMock()
             mock_connect.return_value = mock_ws
 
             result = await relay.connect()
 
-            # Should connect to production relay. ping_interval is disabled
+            # ping_interval is disabled
             # because Cloudflare drops WS control frames; see relay.py.
             mock_connect.assert_called_once_with(
-                "wss://oo.openonion.ai/ws/announce", ping_interval=None
+                "ws://127.0.0.1:9000/ws/announce", ping_interval=None
             )
             assert result == mock_ws
 

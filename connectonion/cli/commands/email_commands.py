@@ -1,7 +1,7 @@
 """
 Purpose: CLI surface for the agent mailbox — send, list (inbox), and read emails from the terminal
 LLM-Note:
-  Dependencies: imports from [rich.console, rich.table, rich.panel, .project_cmd_lib.load_api_key, ...useful_tools.send_email.send_email, ...useful_tools.get_emails.get_emails/mark_read] | imported by [cli/main.py via handle_email_*()] | hits backend through the engine tools at [oo.openonion.ai/api/v1/email/*]
+  Dependencies: imports from [rich.console, rich.table, rich.panel, .project_cmd_lib.load_api_key, ...useful_tools.send_email.send_email, ...useful_tools.get_emails.get_emails/mark_read] | imported by [cli/main.py via handle_email_*()] | hits the configured backend through the engine tools at [/api/v1/email/*]
   Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread) → Rich table | handle_email_read() → get_emails() → find by id → print body → mark_read(id)
   State/Effects: no local state | network calls happen inside the engine tools | mark_read() flips server-side read status | writes to stdout via rich.Console
   Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read() for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py | requires prior 'co auth'

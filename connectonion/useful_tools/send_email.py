@@ -2,7 +2,7 @@
 Purpose: Send emails via OpenOnion API using agent's authenticated email address
 LLM-Note:
   Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → POST to oo.openonion.ai/api/v1/email/send with auth token → returns {success, message_id, from, error}
+  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → POST to the configured backend /api/v1/email/send with auth token → returns {success, message_id, from, error}
   State/Effects: reads .env files from filesystem | loads environment variables via dotenv | makes HTTP POST request to OpenOnion API | no local state persistence
   Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/v1/email/send with Bearer token
   Performance: file search up to 5 parent dirs | one HTTP request per email | no caching | synchronous (blocks on network)

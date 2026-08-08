@@ -11,6 +11,7 @@ import os
 
 
 DEFAULT_BACKEND_URL = "https://oo.openonion.ai"
+DEFAULT_BACKEND_WS_URL = "wss://oo.openonion.ai"
 _LEGACY_ENV_VARS = ("OPENONION_API_URL", "OPENONION_BASE_URL")
 
 

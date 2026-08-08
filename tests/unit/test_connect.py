@@ -116,10 +116,11 @@ class TestConnectFactory:
         agent = connect("0x123abc")
         assert isinstance(agent, RemoteAgent)
 
-    def test_connect_with_default_relay(self):
-        """Test connect() uses default relay URL."""
+    def test_connect_with_default_relay(self, monkeypatch):
+        """The default relay follows the same runtime backend selection."""
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "https://staging.example.test/")
         agent = connect("0x123abc")
-        assert agent._relay_url == "wss://oo.openonion.ai"
+        assert agent._relay_url == "wss://staging.example.test"
 
     def test_connect_with_custom_relay(self):
         """Test connect() accepts custom relay URL."""
