@@ -45,20 +45,26 @@ def _err(response) -> str:
     return response.text.strip() or f"HTTP {response.status_code}"
 
 
-def handle_email_send(to: str, subject: str, message: str):
+def handle_email_send(to: str, subject: str, message: str, idempotency_key: str = None):
     """Send an email from the agent's address."""
     if not _require_auth():
         return
 
     from ...useful_tools.send_email import send_email
-    result = send_email(to, subject, message)
+    result = send_email(to, subject, message, idempotency_key=idempotency_key)
 
     if result.get("success"):
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
         console.print(f"  From:       {result.get('from', '')}")
         console.print(f"  Message ID: {result.get('message_id', '')}\n")
     else:
-        console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}\n")
+        console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}")
+        if result.get("request_id"):
+            console.print(f"  Request ID: {result['request_id']}")
+        if result.get("retryable") and result.get("idempotency_key"):
+            console.print(f"  Safe retry key: {result['idempotency_key']}")
+            console.print("  [dim]Retry the same command with --idempotency-key <key>[/dim]")
+        console.print()
 
 
 def handle_email_inbox(last: int = 10, unread: bool = False):
@@ -103,7 +109,22 @@ def handle_email_sent(last: int = 10, to: str = None):
         return
 
     from ...useful_tools.get_emails import get_sent
-    emails = get_sent(last=last, to=to)
+    try:
+        emails = get_sent(last=last, to=to)
+    except requests.HTTPError as exc:
+        response = exc.response
+        if response is not None and response.status_code == 404:
+            console.print(
+                "\n[yellow]Sent mail is not available on this backend yet.[/yellow] "
+                "The oo-api Sent endpoint must be deployed before this command can be used.\n"
+            )
+        else:
+            status = response.status_code if response is not None else "unknown"
+            console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
+        return
+    except requests.RequestException:
+        console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
+        return
 
     if not emails:
         scope = f" to {to}" if to else ""
@@ -137,7 +158,22 @@ def handle_email_sent_read(email_id: str):
         return
 
     from ...useful_tools.get_emails import get_sent
-    emails = get_sent(last=100)
+    try:
+        emails = get_sent(last=100)
+    except requests.HTTPError as exc:
+        response = exc.response
+        if response is not None and response.status_code == 404:
+            console.print(
+                "\n[yellow]Sent mail is not available on this backend yet.[/yellow] "
+                "The oo-api Sent endpoint must be deployed before this command can be used.\n"
+            )
+        else:
+            status = response.status_code if response is not None else "unknown"
+            console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
+        return
+    except requests.RequestException:
+        console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
+        return
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:

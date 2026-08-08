@@ -13,19 +13,28 @@ import os
 import json
 import yaml
 import requests
+import uuid
 from pathlib import Path
 from ..project import project_co_dir
 from typing import Dict, Optional
 from dotenv import load_dotenv
 
 
-def send_email(to: str, subject: str, message: str) -> Dict:
+def send_email(
+    to: str,
+    subject: str,
+    message: str,
+    idempotency_key: Optional[str] = None,
+) -> Dict:
     """Send an email using the agent's email address.
 
     Args:
         to: Recipient email address
         subject: Email subject line
         message: Email body (plain text or HTML)
+        idempotency_key: Reuse the key from a failed result to retry without
+            sending the same email twice while the provider retry window is
+            still active. A new key is generated when omitted.
 
     Returns:
         dict: Success status and details
@@ -33,7 +42,11 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             - message_id (str): ID of sent message
             - from (str): Sender email address
             - error (str): Error message if failed
+            - request_id (str): Correlation ID for support and server logs
+            - idempotency_key (str): Correlation key for this send attempt
+            - retryable (bool): Whether retrying this key is currently safe
     """
+    send_key = idempotency_key or str(uuid.uuid4())
     # Credentials come from the environment. A .env file is a convenience fallback,
     # NOT a precondition: env vars set directly (container / CI / systemd, or already
     # loaded by the `co` CLI) are equally valid. Load a .env if we can find one to
@@ -68,20 +81,29 @@ def send_email(to: str, subject: str, message: str) -> Dict:
     if not token:
         return {
             "success": False,
-            "error": "OPENONION_API_KEY not set. Run 'co auth' to authenticate."
+            "error": "OPENONION_API_KEY not set. Run 'co auth' to authenticate.",
+            "request_id": send_key,
+            "idempotency_key": send_key,
+            "retryable": False,
         }
 
     if not from_email:
         return {
             "success": False,
-            "error": "AGENT_EMAIL not set. Run 'co auth' to set up email."
+            "error": "AGENT_EMAIL not set. Run 'co auth' to set up email.",
+            "request_id": send_key,
+            "idempotency_key": send_key,
+            "retryable": False,
         }
     
     # Validate recipient email
     if not "@" in to or not "." in to.split("@")[-1]:
         return {
             "success": False,
-            "error": f"Invalid email address: {to}"
+            "error": f"Invalid email address: {to}",
+            "request_id": send_key,
+            "idempotency_key": send_key,
+            "retryable": False,
         }
     
     # Prepare email payload
@@ -102,7 +124,9 @@ def send_email(to: str, subject: str, message: str) -> Dict:
     
     headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-Request-ID": send_key,
+        "Idempotency-Key": send_key,
     }
     
     try:
@@ -118,17 +142,31 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             return {
                 "success": True,
                 "message_id": data.get("message_id", "msg_unknown"),
-                "from": data.get("from", from_email)  # actual server-side sender (reflects custom name)
+                "from": data.get("from", from_email),
+                "request_id": data.get("request_id", _response_header(response, "X-Request-ID", send_key)),
+                "idempotency_key": data.get("idempotency_key", send_key),
             }
         elif response.status_code == 429:
+            error_msg, request_id, returned_key, retryable = _email_error(
+                response, "Rate limit exceeded", send_key, default_retryable=False
+            )
             return {
                 "success": False,
-                "error": "Rate limit exceeded"
+                "error": error_msg,
+                "request_id": request_id,
+                "idempotency_key": returned_key,
+                "retryable": retryable,
             }
         elif response.status_code == 401:
+            _, request_id, returned_key, retryable = _email_error(
+                response, "Authentication failed", send_key, default_retryable=False
+            )
             return {
                 "success": False,
-                "error": "Authentication failed. Run 'co auth' to re-authenticate."
+                "error": "Authentication failed. Run 'co auth' to re-authenticate.",
+                "request_id": request_id,
+                "idempotency_key": returned_key,
+                "retryable": retryable,
             }
         else:
             # The backend answers errors in JSON; the gateway in front of it
@@ -140,30 +178,83 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             # deploy_commands._error_text and server_commands._report_failure
             # already guard the same call; auth (fixed above) and this were the
             # two that were missed.
-            try:
-                error_msg = response.json().get("detail", "Unknown error")
-            except ValueError:
-                error_msg = f"HTTP {response.status_code} (the reply was not JSON)"
+            error_msg, request_id, returned_key, retryable = _email_error(
+                response,
+                f"HTTP {response.status_code} (the reply was not JSON)",
+                send_key,
+                default_retryable=response.status_code >= 500,
+            )
             return {
                 "success": False,
-                "error": error_msg
+                "error": error_msg,
+                "request_id": request_id,
+                "idempotency_key": returned_key,
+                "retryable": retryable,
             }
             
     except requests.exceptions.Timeout:
         return {
             "success": False,
-            "error": "Request timed out. Please try again."
+            "error": "Request timed out. Retry with the same idempotency key.",
+            "request_id": send_key,
+            "idempotency_key": send_key,
+            "retryable": True,
         }
     except requests.exceptions.ConnectionError:
         return {
             "success": False,
-            "error": "Cannot connect to email service. Check your internet connection."
+            "error": "Cannot connect to email service. Retry with the same idempotency key when it is reachable.",
+            "request_id": send_key,
+            "idempotency_key": send_key,
+            "retryable": True,
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"Failed to send email: {str(e)}"
+            "error": f"Failed to send email: {str(e)}",
+            "request_id": send_key,
+            "idempotency_key": send_key,
+            "retryable": False,
         }
+
+
+def _email_error(
+    response,
+    fallback: str,
+    send_key: str,
+    *,
+    default_retryable: bool,
+):
+    """Read the stable API error shape, with a gateway-safe fallback."""
+    request_id = _response_header(response, "X-Request-ID", send_key)
+    returned_key = send_key
+    retryable = default_retryable
+    try:
+        data = response.json()
+        if not isinstance(data, dict):
+            return fallback, request_id, returned_key, retryable
+        request_id = data.get("request_id", request_id)
+        returned_key = data.get("idempotency_key", returned_key)
+        error = data.get("error")
+        if isinstance(error, dict) and isinstance(error.get("retryable"), bool):
+            retryable = error["retryable"]
+        detail = data.get("detail")
+        if detail:
+            return str(detail), request_id, returned_key, retryable
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"]), request_id, returned_key, retryable
+    except (ValueError, AttributeError):
+        pass
+    return fallback, request_id, returned_key, retryable
+
+
+def _response_header(response, name: str, fallback: str) -> str:
+    """Read a response header without requiring test doubles to provide it."""
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return fallback
+    value = headers.get(name, fallback)
+    return value if isinstance(value, str) else fallback
 
 
 def get_agent_email() -> Optional[str]:

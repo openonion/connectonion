@@ -668,10 +668,15 @@ def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
     subject: str = typer.Argument(..., help="Subject line"),
     message: str = typer.Argument(..., help="Body (plain text or HTML)"),
+    idempotency_key: Optional[str] = typer.Option(
+        None,
+        "--idempotency-key",
+        help="Reuse a failed send's key to retry without sending twice",
+    ),
 ):
     """Send an email from the agent's address."""
     from .commands.email_commands import handle_email_send
-    handle_email_send(to, subject, message)
+    handle_email_send(to, subject, message, idempotency_key=idempotency_key)
 
 
 @email_app.command("inbox")
