@@ -177,9 +177,9 @@ Two paths depending on whether an agent is already running:
 6. Spawn `forward_task = asyncio.create_task(forward_agent_msgs_to_client(...))` to pipe `io.read_msgs_from_agent()` events out via `send_msg`. On agent completion, sends `OUTPUT` (or `ERROR` on exception).
 
 **Runtime input (inline in `session.py`)** when `existing.status == 'running'`:
-1. Push `{type: RUNTIME_INPUT, id, prompt}` onto `existing.io._runtime_inputs` (separate queue from `receive()`'s mailbox to avoid being eaten by ask_user/approval pops).
-2. Reply `RUNTIME_INPUT_ACK`. No new agent thread, no new OUTPUT cycle.
-3. The agent's `apply_runtime_input` plugin (in `useful_plugins/runtime_input.py`) drains the queue at the next iteration boundary and appends each prompt to message history with an additive framing prefix.
+1. Atomically offer `{type: RUNTIME_INPUT, id, prompt}` to `existing.io._runtime_inputs` (separate from `receive()`'s mailbox so ask-user/approval reads cannot consume it).
+2. Reply `RUNTIME_INPUT_ACK` only when the running turn is still accepting input. A sealed turn, or an agent without the `runtime_input` plugin, receives retryable `RUNTIME_INPUT_REJECTED` instead.
+3. The `runtime_input` plugin drains ordinary arrivals at the next iteration boundary. Before a no-tool response completes, it performs one final atomic drain-or-seal; pending input extends the same turn for another LLM answer.
 
 See [websocket-protocol.md](websocket-protocol.md) for full message reference.
 
@@ -200,9 +200,9 @@ Agent thread                          Async event loop                 Client
      │  (block until client sends, e.g.      │  (per-message dispatch     │
      │   ASK_USER_RESPONSE)                  │   in run_ws_session)          │
      │                                       │                            │
-     │  io.pop_runtime_inputs() (separate    │   push_runtime_input from  │
-     │  queue, drained at iteration start    │   INPUT-during-running     │
-     │  by apply_runtime_input plugin)       │   inline branch            │
+     │  pop/finish_runtime_inputs()          │   push_runtime_input from  │
+     │  (drained at iteration start and      │   INPUT-during-running;    │
+     │   atomically before completion)       │   ACK only when accepted   │
 ```
 
 Three independent channels on one `WebSocketIO`:
@@ -211,7 +211,7 @@ Three independent channels on one `WebSocketIO`:
 |---|---|---|---|
 | `_msgs_from_agent` | agent → client | append-only list, cursor-indexed for replay | written by `io.send`, read by `forward_task` via `read_msgs_from_agent` |
 | `_msgs_from_client` | client → agent | mailbox (consumed on read) | written by `send_to_agent`, read by `io.receive` (blocking) |
-| `_runtime_inputs` | client → agent | drain-all queue | written by `push_runtime_input`, drained by `apply_runtime_input` plugin |
+| `_runtime_inputs` | client → agent | drain-all queue with an atomic acceptance boundary | written by `push_runtime_input`; drained at iteration start and before final completion by the `runtime_input` plugin |
 
 ---
 
