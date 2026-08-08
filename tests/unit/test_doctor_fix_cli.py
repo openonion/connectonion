@@ -13,6 +13,7 @@ def test_help_exposes_fix_and_explicit_noninteractive_approval():
 
     assert "--fix" in output
     assert "--yes" in output
+    assert "--json" in output
 
 
 def test_yes_without_fix_fails_closed():
