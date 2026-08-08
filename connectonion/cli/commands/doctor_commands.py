@@ -11,6 +11,7 @@ LLM-Note:
 
 import sys
 import os
+import shlex
 import shutil
 from pathlib import Path
 
@@ -23,6 +24,49 @@ from ...backend import backend_url
 from rich import box
 
 console = Console()
+
+
+def _repair_runtime(*, yes: bool) -> None:
+    """Show the complete plan, apply approved mutations, and print outcomes."""
+    import typer
+
+    from .doctor_runtime import repair_runtime, runtime_checks
+
+    checks = runtime_checks()
+    unhealthy = [check for check in checks if check.status not in {"ok", "idle"}]
+    plan = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
+    plan.add_column("Check", style="cyan")
+    plan.add_column("State")
+    plan.add_column("Proposed change")
+    for check in unhealthy:
+        change = shlex.join(check.repair) if check.repair else "no safe automatic repair"
+        plan.add_row(check.label, check.status, change)
+    if not unhealthy:
+        plan.add_row("Runtime", "healthy", "nothing to change")
+    console.print(Panel(plan, title="[bold]Repair plan[/bold]", border_style="yellow"))
+
+    def approve(check):
+        if yes:
+            return True
+        return typer.confirm(f"Apply repair for {check.label}: {shlex.join(check.repair)}?", default=False)
+
+    outcomes = repair_runtime(checks, approve=approve)
+    result = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
+    result.add_column("Check", style="cyan")
+    result.add_column("Outcome")
+    result.add_column("Detail")
+    if outcomes:
+        for outcome in outcomes:
+            style = {"repaired": "green", "still-blocked": "red"}.get(outcome.outcome, "yellow")
+            result.add_row(
+                outcome.label,
+                f"[{style}]{outcome.outcome}[/{style}]",
+                outcome.detail,
+            )
+    else:
+        result.add_row("Runtime", "[green]healthy[/green]", "no repair needed")
+    console.print(Panel(result, title="[bold]Repair results[/bold]", border_style="cyan"))
+    console.print()
 
 
 def verdict(problems: list) -> int:
@@ -172,19 +216,25 @@ def _shown(path: Path) -> str:
         return os.path.relpath(path, Path.cwd())
 
 
-def handle_doctor():
+def handle_doctor(*, fix: bool = False, yes: bool = False):
     """Run comprehensive diagnostics on ConnectOnion installation.
 
     TODO: Replace manual checks with `co ai` powered diagnosis —
     let an LLM agent inspect the environment, interpret errors,
     and suggest fixes conversationally.
     """
+    if fix:
+        _repair_runtime(yes=yes)
+
     # `found`, not `problems`: find_skill_problems() already puts a list of
     # (location, name, reason) tuples in a local called `problems`, and
     # shadowing it made the loop below unpack my strings into three names.
     # The real CLI caught that; the unit tests could not see it.
     found: list[str] = []
     from ... import __version__
+    from .doctor_runtime import runtime_checks
+
+    runtime = {check.id: check for check in runtime_checks()}
 
     console.print("\n[bold cyan]🔍 ConnectOnion Diagnostics[/bold cyan]\n")
 
@@ -197,10 +247,20 @@ def handle_doctor():
     system_table.add_row("Version", f"[green]✓[/green] {__version__}")
 
     # Python
+    python_check = runtime["python"]
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     python_path = sys.executable
-    system_table.add_row("Python", f"[green]✓[/green] {python_version}")
+    python_mark = "[green]✓[/green]" if python_check.status == "ok" else "[red]✗[/red]"
+    system_table.add_row("Python", f"{python_mark} {python_check.detail}")
+    if python_check.status != "ok":
+        found.append(python_check.detail)
     system_table.add_row("Python Path", f"[dim]{python_path}[/dim]")
+
+    platform_check = runtime["platform"]
+    platform_mark = "[green]✓[/green]" if platform_check.status == "ok" else "[red]✗[/red]"
+    system_table.add_row("Operating system", f"{platform_mark} {platform_check.detail}")
+    if platform_check.status != "ok":
+        found.append(platform_check.detail)
 
     # Virtual environment
     in_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
@@ -340,6 +400,15 @@ def handle_doctor():
     from ...useful_tools.browser_tools.browser import (
         driver_stealth_status, installed_browser_path,
     )
+    daemon = runtime["browser-daemon"]
+    daemon_mark = "[green]✓[/green]" if daemon.status == "ok" else "[yellow]○[/yellow]"
+    browser_table.add_row("Browser daemon", f"{daemon_mark} {daemon.detail}")
+    os_prerequisites = runtime["os-prerequisites"]
+    prereq_mark = "[green]✓[/green]" if os_prerequisites.status == "ok" else "[yellow]○[/yellow]"
+    if os_prerequisites.status == "blocked":
+        prereq_mark = "[red]✗[/red]"
+        found.append(f"browser OS prerequisites: {os_prerequisites.detail}")
+    browser_table.add_row("OS prerequisites", f"{prereq_mark} {os_prerequisites.detail}")
     status, browser_version, detail = driver_stealth_status()
     # The package being healthy says nothing about there being a browser to
     # launch. A deployed agent reported "Patchright ✓ / Stealth driver ✓ /
