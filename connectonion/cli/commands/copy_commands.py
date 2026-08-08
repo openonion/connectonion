@@ -99,7 +99,10 @@ TRUST = {
 SKILLS = {
     "browser-workflow-skill-builder": "browser-workflow-skill-builder",
     "co-browser": "co-browser",
+    "co-mail-and-drive": "co-mail-and-drive",
+    "commit": "commit",
     "install-connectonion": "install-connectonion",
+    "review-pr": "review-pr",
     "ship-feature": "ship-feature",
 }
 

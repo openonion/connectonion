@@ -1,14 +1,6 @@
 ---
 name: topup
 description: Check the OpenOnion balance and open the recharge page with the user's own key pre-filled. Reports the balance in plain money, says how long it lasts at $0.10/hour of browser time, and hands over a purchase link that needs no login — the key is already in it. If connectonion is not installed yet, install it first (install-connectonion). Use when the user says "top up", "add credit", "recharge", "check my balance", "how much do I have left", "充值", or a paid action failed because the balance is empty.
-tools:
-  - Bash(python *)
-  - Bash(python3 *)
-  - Bash(py *)
-  - Bash(co *)
-  - Bash(curl *)
-  - shell
-  - read_file
 ---
 
 # Top-up Skill

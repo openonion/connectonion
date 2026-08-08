@@ -1,12 +1,6 @@
 ---
 name: co-mail-and-drive
 description: Read and send mail from the user's own Gmail or Outlook account, manage their Outlook contacts, and list/search/download/upload their Google Drive files — with `co gmail`, `co outlook`, and `co gdrive`. Use when the user asks about *their* inbox, an email they received or want to send, a contact, or a file in their Drive.
-tools:
-  - Bash(co gmail *)
-  - Bash(co outlook *)
-  - Bash(co gdrive *)
-  - Bash(co auth *)
-  - read_file
 ---
 
 # co gmail / co outlook / co gdrive
