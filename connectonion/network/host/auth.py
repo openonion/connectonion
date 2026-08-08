@@ -190,6 +190,29 @@ def sign_request(keys: dict, method: str, path: str, timestamp=None) -> dict:
     }
 
 
+def sign_request_body(keys: dict, method: str, path: str, payload=None,
+                      timestamp=None) -> dict:
+    """Build a signed JSON request whose authority is bound to its route.
+
+    POST admin calls carry arguments as well as the method and path. Keeping
+    all of them in one signed payload prevents a captured promote request from
+    being submitted to block, or to any other admin endpoint.
+    """
+    from ... import address as _address
+
+    signed_payload = dict(payload or {})
+    signed_payload.update(
+        method=method.upper(),
+        path=path,
+        timestamp=int(timestamp if timestamp is not None else time.time()),
+    )
+    return {
+        "payload": signed_payload,
+        "from": keys["address"],
+        "signature": _address.sign(keys, _canonical(signed_payload)).hex(),
+    }
+
+
 def request_from_headers(headers: dict, method: str, path: str) -> dict:
     """Turn a signed GET into the dict every other authenticated frame is.
 
