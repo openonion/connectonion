@@ -107,6 +107,25 @@ class TestHostRelayKeyManagement:
 class TestHostRelayConnection:
     """Test relay connection handling in host()."""
 
+    def test_documented_host_agent_path_does_not_warn_against_itself(
+        self, tmp_path, create_mock_agent
+    ):
+        agent = create_mock_agent()
+        mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
+
+        with patch.object(Path, 'cwd', return_value=tmp_path), \
+             patch('connectonion.address.load', return_value=mock_addr), \
+             patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())), \
+             patch.object(host_module, 'create_schedule_lifespan', return_value=(None, None)), \
+             patch('uvicorn.run'), \
+             patch.object(host_module, '_print_host_banner'), \
+             patch.object(host_module.Console, 'print') as console_print:
+            host_module.host(agent, port=8080)
+
+        warnings = "\n".join(str(call) for call in console_print.call_args_list)
+        assert "pass a factory" not in warnings
+        assert "Warning: host(agent)" not in warnings
+
     def test_profile_publishes_project_scoped_skills_only(self):
         """Published profile carries display fields only. Both project-tree skill
         categories are advertised (project = .co/skills, claude-project = .claude/skills);
