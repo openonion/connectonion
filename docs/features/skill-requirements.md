@@ -65,3 +65,13 @@ Skill 'send-report': requirements.required.python[0].version: must be a non-empt
 
 Schema version `1` describes requirements only. It never installs packages,
 starts an OAuth flow, probes the network, or changes the machine.
+
+Platform runtimes advertise capabilities locally through the comma-separated
+`CONNECTONION_CAPABILITIES` environment variable. When a capability has a
+version constraint, its version is read from
+`CONNECTONION_CAPABILITY_VERSIONS` as comma-separated `name=version` pairs.
+
+The same local preflight runs after `co skills copy`, in `co doctor`, and when
+`co ai` starts. Missing required entries stop that skill before its instructions
+or temporary permissions are loaded. Missing optional entries are shown as
+informational setup hints and do not stop the skill.
