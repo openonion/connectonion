@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [network/io/base.IO, asyncio, threading, time, uuid] | imported by [network/host/ws_router/agent_io.py] | tested by [tests/unit/test_io.py, tests/unit/test_io_image_support.py]
   Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
   State/Effects: maintains incoming + outgoing channels (async-safe) | finished flag prevents sends after close | unblocks agent's blocking receive on close
-  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs for mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
+  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
   Performance: queue-based coordination between sync agent thread and async transport | blocking receive() is intended for agent thread | _wait_for_msgs_from_agent waits at most ~1s so idle-session forwarders don't pin executor-pool threads
   Errors: closed IO unblocks pending receive() so agent thread doesn't hang | no exceptions raised — channel coordination handled internally
 """
@@ -40,6 +40,9 @@ class WebSocketIO(IO):
         # ── Runtime input (client→agent, separate from receive()) ──
         self._runtime_inputs: list[Dict[str, Any]] = []
         self._runtime_input_lock = threading.Lock()
+        # Runtime input is opt-in. The plugin opens this at each turn boundary;
+        # without it, the host must reject rather than ACK a queue nobody drains.
+        self._accepting_runtime_inputs = False
 
         self._closed = False
 
@@ -105,10 +108,13 @@ class WebSocketIO(IO):
             self._msgs_from_client.append(msg)
             self._client_condition.notify_all()
 
-    def push_runtime_input(self, msg: Dict[str, Any]) -> None:
-        """Queue a mid-execution user message; agent drains at next iteration."""
+    def push_runtime_input(self, msg: Dict[str, Any]) -> bool:
+        """Queue mid-execution input only while the current turn can consume it."""
         with self._runtime_input_lock:
+            if not self._accepting_runtime_inputs:
+                return False
             self._runtime_inputs.append(msg)
+            return True
 
     def pop_runtime_inputs(self) -> list[Dict[str, Any]]:
         """Drain queued runtime inputs (agent calls at iteration start)."""
@@ -116,6 +122,25 @@ class WebSocketIO(IO):
             result = list(self._runtime_inputs)
             self._runtime_inputs.clear()
             return result
+
+    def finish_runtime_inputs(self) -> list[Dict[str, Any]]:
+        """Atomically drain pending input or seal a turn that has none left.
+
+        A non-empty result keeps acceptance open because the agent will run
+        another iteration. An empty result seals the window, so transport code
+        rejects rather than falsely acknowledges a too-late message.
+        """
+        with self._runtime_input_lock:
+            result = list(self._runtime_inputs)
+            self._runtime_inputs.clear()
+            if not result:
+                self._accepting_runtime_inputs = False
+            return result
+
+    def open_runtime_inputs(self) -> None:
+        """Open a fresh turn's runtime-input window on a reused IO instance."""
+        with self._runtime_input_lock:
+            self._accepting_runtime_inputs = True
 
     def rewind_to(self, last_msg_id=None):
         """Rewind cursor for replay on reconnect. None or unknown id → replay all."""

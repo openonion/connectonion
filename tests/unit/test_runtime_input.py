@@ -2,10 +2,16 @@
 
 from unittest.mock import Mock
 
+from connectonion import Agent
+from connectonion.core.llm import LLMResponse
+from connectonion.core.usage import TokenUsage
+from connectonion.network.io import WebSocketIO
 from connectonion.useful_plugins.runtime_input import (
     RUNTIME_INPUT_FRAME_PREFIX,
     apply_runtime_input,
+    runtime_input,
 )
+from tests.utils.mock_helpers import MockLLM
 
 
 class FakeAgent:
@@ -113,3 +119,50 @@ def test_turn_defaults_to_zero_when_missing():
     del agent.current_session['turn']  # simulate older session
     apply_runtime_input(agent)
     assert agent.current_session['trace'][0]['turn'] == 0
+
+
+def test_input_arriving_during_a_final_llm_call_gets_an_answer():
+    """An ACK-able follow-up must survive a one-iteration, no-tool turn."""
+    io = WebSocketIO()
+    calls = 0
+
+    def answer(messages, tools):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            assert io.push_runtime_input({'id': 'late', 'prompt': 'and TCP too'})
+            return LLMResponse(
+                content='HTTP is an application protocol.',
+                tool_calls=[],
+                raw_response=None,
+                usage=TokenUsage(),
+            )
+        return LLMResponse(
+            content='TCP is a transport protocol.',
+            tool_calls=[],
+            raw_response=None,
+            usage=TokenUsage(),
+        )
+
+    agent = Agent(
+        'runtime-input',
+        llm=MockLLM(on_complete=answer),
+        plugins=[runtime_input],
+        max_iterations=1,
+        quiet=True,
+        log=False,
+    )
+    agent.io = io
+
+    result = agent.input('what is HTTP?')
+
+    assert result == 'TCP is a transport protocol.'
+    assert calls == 2
+    assert any(
+        message.get('content') == RUNTIME_INPUT_FRAME_PREFIX + 'and TCP too'
+        for message in agent.current_session['messages']
+    )
+    assert any(
+        entry.get('id') == 'late' and entry.get('runtime_input') is True
+        for entry in agent.current_session['trace']
+    )

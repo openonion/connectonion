@@ -2,7 +2,7 @@
 Purpose: Agent thread orchestration + io → client streaming — the bridge between the sync agent and the async transport
 LLM-Note:
   Dependencies: imports from [...io (WebSocketIO), ..session (session_to_chat_items via lazy import), asyncio, threading, rich.console] | imported by [.session (start_agent), .connect (resume_forwarding)]
-  Data flow: start_agent: validate INPUT → create WebSocketIO → register in registry BEFORE thread.start (race-safe) → spawn _agent_thread_body (thread target running route_handlers["ws_input"]) → spawn forward_task = forward_agent_msgs_to_client → return (io, task) | resume_forwarding: same forward_task spawn but on existing active.io | forward_agent_msgs_to_client: read_msgs_from_agent → send_msg loop → on agent finish read result_holder → emit OUTPUT (success) / ERROR (exception)
+  Data flow: start_agent: validate INPUT → create WebSocketIO → register in registry BEFORE thread.start (race-safe) → spawn _agent_thread_body (thread target running route_handlers["ws_input"]) → success or exception always returns registry to connected → spawn forward_task = forward_agent_msgs_to_client → return (io, task) | resume_forwarding: same forward_task spawn but on existing active.io | forward_agent_msgs_to_client: read_msgs_from_agent → send_msg loop → on agent finish read result_holder → emit OUTPUT (success) / ERROR (exception)
   State/Effects: spawns daemon Thread + asyncio.Task | mutates registry (register / mark_session_running) | calls io.mark_agent_done() in finally
   Integration: start_agent(data, send_msg, conn, route_handlers, storage, registry) → (io, forward_task) | None | resume_forwarding(send_msg, active, registry, session_id, storage, conn) → (io, forward_task) | forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder, conn, storage) — async, runs until io marked done
   Performance: thread-per-INPUT (worker isolation) | one forward_task per WS connection
@@ -22,10 +22,12 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
     try:
         result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files,
                                                       requester_address=requester_address)
-        registry.mark_session_connected(session_id)
     except Exception as e:
         result_holder[0] = e
     finally:
+        # A failed run is finished too. Leaving it marked "running" routes the
+        # next INPUT into a dead IO queue and creates another false ACK.
+        registry.mark_session_connected(session_id)
         io.mark_agent_done()
 
 

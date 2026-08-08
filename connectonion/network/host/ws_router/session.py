@@ -105,9 +105,20 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         await send_msg({"type": "ERROR", "message": "prompt required"})
                     else:
                         rid = str(uuid.uuid4())
-                        existing.io.push_runtime_input({"type": "RUNTIME_INPUT", "id": rid, "prompt": prompt})
-                        console.print(f"[yellow]↳ RUNTIME_INPUT[/yellow] session={sid[:8]}... prompt={prompt[:50]}...")
-                        await send_msg({"type": "RUNTIME_INPUT_ACK", "session_id": sid, "id": rid})
+                        accepted = existing.io.push_runtime_input({
+                            "type": "RUNTIME_INPUT", "id": rid, "prompt": prompt,
+                        })
+                        if accepted is not False:
+                            console.print(f"[yellow]↳ RUNTIME_INPUT[/yellow] session={sid[:8]}... prompt={prompt[:50]}...")
+                            await send_msg({"type": "RUNTIME_INPUT_ACK", "session_id": sid, "id": rid})
+                        else:
+                            await send_msg({
+                                "type": "ERROR",
+                                "code": "RUNTIME_INPUT_REJECTED",
+                                "message": "running turn is not accepting runtime input; retry after OUTPUT",
+                                "session_id": sid,
+                                "retryable": True,
+                            })
                 else:
                     result = await start_agent(data, send_msg, conn, route_handlers, storage, registry)
                     if result:
