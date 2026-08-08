@@ -14,6 +14,7 @@ import json
 import requests
 from pathlib import Path
 from typing import List, Dict, Optional, Union
+from ..backend import backend_url
 
 
 def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
@@ -45,8 +46,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
         )
     
     # Fetch emails from backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/received"
+    endpoint = f"{backend_url()}/api/v1/email/received"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -114,14 +114,12 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
             "OPENONION_API_KEY from ~/.co/keys.env to your project."
         )
 
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-
     params = {"limit": last}
     if to:
         params["to"] = to
 
     response = requests.get(
-        f"{backend_url}/api/v1/email/sent",
+        f"{backend_url()}/api/v1/email/sent",
         params=params,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         timeout=10,
@@ -167,8 +165,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
         )
     
     # Mark emails as read via backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/s/mark-read"
+    endpoint = f"{backend_url()}/api/v1/email/s/mark-read"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -215,8 +212,7 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
         )
 
     # Mark emails as unread via backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/s/mark-unread"
+    endpoint = f"{backend_url()}/api/v1/email/s/mark-unread"
 
     headers = {
         "Authorization": f"Bearer {token}",

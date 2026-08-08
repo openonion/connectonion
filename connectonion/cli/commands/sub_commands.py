@@ -8,7 +8,7 @@ LLM-Note:
     list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, skill count
     remove(target) → match by address or alias → fanout.uninstall_all() drops every per-tool install → rmtree ~/.co/subs/<alias>/ → rewrite subscriptions.txt without the line
   State/Effects: writes ~/.co/subscriptions.txt | writes ~/.co/subs/<alias>/agent.json + skills/<name>/SKILL.md | symlinks/files under ~/.<tool>/ via fanout | one synchronous httpx.get per profile + per skill body (no auth, no cache)
-  Integration: exposes handle_sub_sync_one(target, relay=None), handle_sub_sync_all(relay=None), handle_sub_list(), handle_sub_remove(target) called from cli/main.py's `sub` typer group | module-level CO_HOME, SUBS_DIR, SUBS_LIST, DEFAULT_RELAY are monkeypatched by tests | httpx.get is the seam tests stub
+  Integration: exposes handle_sub_sync_one(target, relay=None), handle_sub_sync_all(relay=None), handle_sub_list(), handle_sub_remove(target) called from cli/main.py's `sub` typer group | module-level CO_HOME, SUBS_DIR, SUBS_LIST are monkeypatched by tests | httpx.get is the seam tests stub
   Performance: 1 + N HTTP GETs per subscribe (1 profile + 1 per skill body) | linear file I/O for mirror | idempotent (re-subscribe overwrites bundle, dedupes the line)
   Errors: SystemExit(1) when target isn't a 0x address and isn't a locally-pinned alias (aliases are mutable; first-time subscriptions require an address) | raise_for_status() bubbles network errors | missing skill body raises (relay should never return 404 for a name listed in profile)
 
@@ -37,18 +37,18 @@ from rich.console import Console
 from rich.table import Table
 
 from .fanout import install_all, uninstall_all
+from ...backend import backend_url
 
 console = Console()
 
 CO_HOME = Path.home() / ".co"
 SUBS_DIR = CO_HOME / "subs"
 SUBS_LIST = CO_HOME / "subscriptions.txt"
-DEFAULT_RELAY = "https://oo.openonion.ai"
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
 def _relay_base(relay: Optional[str]) -> str:
-    return (relay or DEFAULT_RELAY).rstrip("/")
+    return (relay or backend_url()).rstrip("/")
 
 
 def _read_subs() -> list[tuple[str, str]]:

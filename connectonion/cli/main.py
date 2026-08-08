@@ -1080,7 +1080,7 @@ app.add_typer(sub_app, name="sub")
 @sub_app.callback(invoke_without_command=True)
 def sub_callback(
     ctx: typer.Context,
-    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
     """With no subcommand, sync every subscription in ~/.co/subscriptions.txt."""
     if ctx.invoked_subcommand is None:
@@ -1091,7 +1091,7 @@ def sub_callback(
 @sub_app.command("sync")
 def sub_sync(
     target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
-    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
     """Sync one publisher: fetch profile, mirror skills, fan out to coding agents.
 

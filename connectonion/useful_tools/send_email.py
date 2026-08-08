@@ -17,6 +17,7 @@ from pathlib import Path
 from ..project import project_co_dir
 from typing import Dict, Optional
 from dotenv import load_dotenv
+from ..backend import backend_url
 
 
 def send_email(to: str, subject: str, message: str) -> Dict:
@@ -97,8 +98,7 @@ def send_email(to: str, subject: str, message: str) -> Dict:
     }
     
     # Send email via backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/send"
+    endpoint = f"{backend_url()}/api/v1/email/send"
     
     headers = {
         "Authorization": f"Bearer {token}",

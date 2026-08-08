@@ -21,6 +21,7 @@ from typing import Optional
 from rich.console import Console
 
 from ... import address
+from ...backend import backend_ws_url
 from ...network.announce import create_announce_message
 
 console = Console()
@@ -28,7 +29,6 @@ console = Console()
 CO_HOME = Path.home() / ".co"
 AGENT_JSON = CO_HOME / "agent.json"
 SKILLS_DIR = CO_HOME / "skills"
-DEFAULT_RELAY = "wss://oo.openonion.ai"
 
 
 def _load_profile() -> dict:
@@ -123,7 +123,7 @@ def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
     }
     summary = profile_file.get("bio") or f"Agent {profile['alias']}"
 
-    relay_url = relay or DEFAULT_RELAY
+    relay_url = relay or backend_ws_url()
     message = create_announce_message(
         address_data=addr_data,
         summary=summary[:1000],

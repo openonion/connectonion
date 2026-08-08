@@ -49,6 +49,7 @@ import os
 from pathlib import Path
 
 import httpx
+from ..backend import backend_url
 
 
 class Outlook:
@@ -120,7 +121,7 @@ class Outlook:
         Returns:
             New access token
         """
-        backend_url = os.getenv("OPENONION_API_URL", "https://oo.openonion.ai")
+        selected_backend = backend_url()
         api_key = os.getenv("OPENONION_API_KEY")
 
         if not api_key:
@@ -130,7 +131,7 @@ class Outlook:
             )
 
         response = httpx.post(
-            f"{backend_url}/api/v1/oauth/microsoft/refresh",
+            f"{selected_backend}/api/v1/oauth/microsoft/refresh",
             headers={"Authorization": f"Bearer {api_key}"},
             json={"refresh_token": refresh_token}
         )
