@@ -77,14 +77,14 @@ co email send bob@example.com "Subject line" "Body text" \
 
 The same key must only be reused with the same recipient, subject, and body.
 
-All three arguments are positional and required. HTML is auto-detected: if the
-body contains tags (`<...>`), it's sent as HTML, otherwise as plain text.
+All three arguments are positional and required. The message body is sent as
+provided; HTML markup is supported, and ordinary text can be passed directly.
 
 ```bash
 # Plain text
 co email send bob@example.com "Hi" "Just checking in."
 
-# HTML (auto-detected)
+# HTML
 co email send bob@example.com "Receipt" "<h1>Paid</h1><p>Thanks!</p>"
 ```
 
