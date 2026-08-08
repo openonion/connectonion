@@ -28,7 +28,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     direct ASGI WebSocket path and the relay-routed path, each providing its
     own send_msg/recv_msg adapters.
     """
-    conn = {"authenticated": False, "agent_address": None, "session_id": None, "session": None}
+    conn = {"authenticated": False, "agent_address": None, "session_id": None,
+            "session": None, "signed_commands": False, "recipient_address": None}
     active_io = None
     forward_task = None
     exec_tasks = set()
@@ -42,6 +43,36 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 break
 
             msg_type = data.get("type")
+
+            # A v2 CONNECT signs the capability that enables this gate. Keep the
+            # few transport/authentication frames outside it; every application
+            # command, including approval and ask-user responses forwarded below,
+            # must be signed and is replaced with the verified payload before use.
+            exempt = {"CONNECT", "PONG", "SESSION_STATUS", "ONBOARD_SUBMIT"}
+            if (conn.get("authenticated") and conn.get("signed_commands")
+                    and msg_type not in exempt):
+                from ..auth import authenticated_command_payload
+
+                signed_frame = data
+                verified, command_error = authenticated_command_payload(
+                    data, conn["agent_address"], conn.get("recipient_address")
+                )
+                if command_error:
+                    await send_msg({"type": "ERROR", "message": command_error})
+                    continue
+                # ADMIN handlers independently authenticate their frame. Preserve
+                # that envelope while replacing every actionable top-level field
+                # with its verified copy. Other handlers only need the payload.
+                if (msg_type or "").startswith("ADMIN_"):
+                    data = {
+                        **verified,
+                        "payload": verified,
+                        "from": signed_frame.get("from"),
+                        "signature": signed_frame.get("signature"),
+                    }
+                else:
+                    data = verified
+                msg_type = data.get("type")
             if msg_type not in ("CONNECT", "INPUT", "SESSION_STATUS", "PONG"):
                 console.print(f"[dim]← recv: {msg_type}[/dim]")
 

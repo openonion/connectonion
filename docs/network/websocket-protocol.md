@@ -28,8 +28,8 @@ See [Trust Gate](#trust-gate-onboarding).
 │                                                                │
 │   Every connection:  WS open → CONNECT → CONNECTED → ...      │
 │                                                                │
-│   CONNECT carries:   auth + session (conversation history)     │
-│   INPUT carries:     just the prompt (session already set)     │
+│   CONNECT carries:   auth + session + signed-command capability│
+│   INPUT carries:     signed prompt/attachments (session set)   │
 │                                                                │
 │   Server decides:    new / connected / running                 │
 │                      …or, for a caller the trust policy denies │
@@ -243,7 +243,11 @@ Authenticate, restore session, and sync conversation. **Always the first message
   "session_id": "550e8400-...",
   "session": { "messages": [...], "mode": "safe" },
   "last_msg_id": "ev-9f12...",
-  "payload": { "to": "0x3d4017c3e843...", "timestamp": 1702234567 },
+  "payload": {
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567,
+    "signed_commands": 1
+  },
   "from": "0xClientPublicKey",
   "signature": "0x..."
 }
@@ -257,6 +261,11 @@ Authenticate, restore session, and sync conversation. **Always the first message
 | `payload` | Yes | Signed payload for authentication |
 | `from` | Yes | Client's public address |
 | `signature` | Yes | Ed25519 signature of payload |
+
+`payload.signed_commands: 1` is itself signed. It opts the connection into the
+v2 command gate described below. A new server continues accepting a v1 CONNECT
+without it, so an older client is not stranded; it does not receive v2's
+per-command injection/replay protection.
 
 Server response based on state:
 
@@ -284,11 +293,17 @@ written down. The shipped policy declares `invite_code: [$CO_INVITE_CODE]` and
 onboarding to offer, so a stranger gets `ERROR` from the policy rather than an
 `ONBOARD_REQUIRED` leading nowhere.
 
-**A CONNECT signature opens one connection.** Replaying a captured one is
-refused with `ERROR unauthorized: this CONNECT was already used`. EXEC carries
-no signature of its own, so the connection is the unit of authentication and a
-replayed CONNECT would otherwise be the whole whitelisted tool surface for the
-five-minute freshness window.
+**A signature is single-use.** Replaying a captured CONNECT is refused with
+`ERROR unauthorized: this CONNECT was already used`. A v2 client also signs every
+application command; replaying one is refused with `signed command already used`.
+
+**A v2 command signs what the server executes.** Its payload contains `type`, all
+command fields, `to`, `timestamp`, and a random `nonce`. The server verifies the
+signer is the caller that opened this connection, verifies the recipient and
+type, then discards the unsigned compatibility copy and dispatches the signed
+payload. INPUT, EXEC, runtime input, approval responses and ask-user responses
+all pass through this gate. PONG and SESSION_STATUS are transport/status frames;
+ONBOARD_SUBMIT and ADMIN frames retain their existing independent signatures.
 
 This decision is made **per caller**, after the signature is verified, so an admin, a
 contact, or anyone who onboarded earlier never sees the gate at all.
@@ -302,9 +317,24 @@ Send a prompt. Only valid after CONNECTED. **No session data — just the prompt
   "type": "INPUT",
   "prompt": "Translate hello to Spanish",
   "images": ["data:image/png;base64,..."],
-  "files": [{ "name": "doc.pdf", "data": "data:application/pdf;base64,..." }]
+  "files": [{ "name": "doc.pdf", "data": "data:application/pdf;base64,..." }],
+  "payload": {
+    "type": "INPUT",
+    "input_id": "7c2a...",
+    "prompt": "Translate hello to Spanish",
+    "images": ["data:image/png;base64,..."],
+    "files": [{ "name": "doc.pdf", "data": "data:application/pdf;base64,..." }],
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567,
+    "nonce": "550e8400-..."
+  },
+  "from": "0xClientPublicKey",
+  "signature": "0x..."
 }
 ```
+
+The command fields remain at the top level only so a v2 client can talk to a v1
+host. A v2 host executes the verified `payload`, never those duplicates.
 
 If sent while the session's agent is already running, this message is routed as runtime input: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
 
@@ -317,7 +347,18 @@ Run one registered tool directly — no LLM, no session, no history. Only valid 
   "type": "EXEC",
   "exec_id": "7c2a...",
   "tool": "bash",
-  "args": { "command": "co status" }
+  "args": { "command": "co status" },
+  "payload": {
+    "type": "EXEC",
+    "exec_id": "7c2a...",
+    "tool": "bash",
+    "args": { "command": "co status" },
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567,
+    "nonce": "550e8400-..."
+  },
+  "from": "0xClientPublicKey",
+  "signature": "0x..."
 }
 ```
 

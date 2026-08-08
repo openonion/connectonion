@@ -73,6 +73,10 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     """
     conn["authenticated"] = True
     conn["agent_address"] = agent_address
+    conn["signed_commands"] = (
+        data.get("payload", {}).get("signed_commands") == 1
+    )
+    conn["recipient_address"] = data.get("payload", {}).get("to")
     session_id = data.get("session_id") or str(uuid.uuid4())
     conn["session_id"] = session_id
     conn["session"] = data.get("session")
