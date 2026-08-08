@@ -208,3 +208,82 @@ def repair_runtime(
 
 def repairable_checks(checks: Iterable[RuntimeCheck]) -> list[RuntimeCheck]:
     return [check for check in checks if check.repair]
+
+
+def _check_json(check: RuntimeCheck) -> dict:
+    return {
+        "id": check.id,
+        "label": check.label,
+        "status": check.status,
+        "detail": check.detail,
+    }
+
+
+def runtime_json_report(
+    *,
+    fix: bool,
+    approved: bool,
+    probe: Callable[[], list[RuntimeCheck]] | None = None,
+    run: Callable[..., subprocess.CompletedProcess] | None = None,
+) -> tuple[dict, int]:
+    """Return schema-v1 runtime diagnostics with no timestamps or secret values."""
+    probe = runtime_checks if probe is None else probe
+    run = subprocess.run if run is None else run
+    initial = probe()
+    plan = [
+        {
+            "check_id": check.id,
+            "label": check.label,
+            "command": list(check.repair),
+            "requires_approval": True,
+        }
+        for check in initial
+        if check.status not in {"ok", "idle"} and check.repair
+    ]
+    final = initial
+
+    def capture_recheck():
+        nonlocal final
+        final = probe()
+        return final
+
+    outcomes: list[RepairOutcome] = []
+    if fix:
+        outcomes = repair_runtime(
+            initial,
+            approve=lambda _check: approved,
+            run=run,
+            recheck=capture_recheck,
+        )
+
+    approval_required = bool(fix and plan and not approved)
+    blocked = [
+        check.id
+        for check in final
+        if check.status not in {"ok", "idle", "pending"}
+    ]
+    code = 1 if blocked or approval_required else 0
+    report = {
+        "schema_version": 1,
+        "command": "co doctor",
+        "fix_requested": fix,
+        "approved_noninteractive": approved,
+        "approval_required": approval_required,
+        "checks": [_check_json(check) for check in final],
+        "plan": plan,
+        "outcomes": [
+            {
+                "check_id": outcome.id,
+                "label": outcome.label,
+                "outcome": outcome.outcome,
+                "detail": outcome.detail,
+            }
+            for outcome in outcomes
+        ],
+        "summary": {
+            "status": "blocked" if code else "healthy",
+            "exit_code": code,
+            "blocked_check_ids": blocked,
+        },
+    }
+    return report, code

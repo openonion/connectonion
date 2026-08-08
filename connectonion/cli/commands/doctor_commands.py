@@ -48,6 +48,8 @@ def _repair_runtime(*, yes: bool) -> None:
     def approve(check):
         if yes:
             return True
+        if not sys.stdin.isatty():
+            return False
         return typer.confirm(f"Apply repair for {check.label}: {shlex.join(check.repair)}?", default=False)
 
     outcomes = repair_runtime(checks, approve=approve)
@@ -216,13 +218,33 @@ def _shown(path: Path) -> str:
         return os.path.relpath(path, Path.cwd())
 
 
-def handle_doctor(*, fix: bool = False, yes: bool = False):
+def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = False):
     """Run comprehensive diagnostics on ConnectOnion installation.
 
     TODO: Replace manual checks with `co ai` powered diagnosis —
     let an LLM agent inspect the environment, interpret errors,
     and suggest fixes conversationally.
     """
+    if json_output:
+        import json
+        import subprocess
+
+        from .doctor_runtime import runtime_json_report
+
+        def quiet_run(command, **kwargs):
+            return subprocess.run(
+                command,
+                **kwargs,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        report, code = runtime_json_report(fix=fix, approved=yes, run=quiet_run)
+        # stdout.write, not Rich: wrapping or styling would make the document
+        # invalid JSON for the CI/support-bundle consumer this mode exists for.
+        sys.stdout.write(json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n")
+        return code
+
     if fix:
         _repair_runtime(yes=yes)
 
