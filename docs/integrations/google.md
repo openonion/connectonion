@@ -98,58 +98,21 @@ agent.input("Send an email to alice@example.com saying hello")
 ### Read Calendar Events
 
 ```python
-from connectonion import Agent
-import os
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from datetime import datetime, timedelta
+from connectonion import Agent, GoogleCalendar
 
-def check_calendar(days_ahead: int = 7) -> str:
-    """Check Google Calendar for upcoming events."""
-    # Load credentials from environment
-    creds = Credentials(
-        token=os.getenv("GOOGLE_ACCESS_TOKEN"),
-        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),  # From backend
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/calendar.readonly"]
-    )
-
-    service = build('calendar', 'v3', credentials=creds)
-
-    # Get events from now to days_ahead
-    now = datetime.utcnow().isoformat() + 'Z'
-    end = (datetime.utcnow() + timedelta(days=days_ahead)).isoformat() + 'Z'
-
-    events_result = service.events().list(
-        calendarId='primary',
-        timeMin=now,
-        timeMax=end,
-        maxResults=10,
-        singleEvents=True,
-        orderBy='startTime'
-    ).execute()
-
-    events = events_result.get('items', [])
-
-    if not events:
-        return f"No events in the next {days_ahead} days"
-
-    summary = f"Upcoming events ({len(events)}):\n"
-    for event in events:
-        start = event['start'].get('dateTime', event['start'].get('date'))
-        summary += f"- {start}: {event['summary']}\n"
-
-    return summary
+calendar = GoogleCalendar()
 
 agent = Agent(
     "Calendar Assistant",
-    tools=[check_calendar]
+    tools=[calendar]
 )
 
 agent.input("What's on my calendar this week?")
 ```
+
+Use the built-in tool instead of constructing `Credentials` with a Google
+client ID or secret. Those secrets stay on the OpenOnion backend, which also
+refreshes short-lived access tokens.
 
 ---
 
@@ -158,80 +121,14 @@ agent.input("What's on my calendar this week?")
 Here's a full agent that can check your calendar and send meeting invites:
 
 ```python
-from connectonion import Agent, send_email
-import os
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from datetime import datetime, timedelta
+from connectonion import Agent, Gmail, GoogleCalendar
 
-class SchedulingAssistant:
-    """AI assistant that manages your calendar and sends meeting emails."""
-
-    def __init__(self):
-        # Initialize Google Calendar API
-        creds = Credentials(
-            token=os.getenv("GOOGLE_ACCESS_TOKEN"),
-            refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=os.getenv("GOOGLE_CLIENT_ID"),
-            client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-            scopes=["https://www.googleapis.com/auth/calendar.readonly"]
-        )
-        self.calendar = build('calendar', 'v3', credentials=creds)
-
-    def check_availability(self, date_str: str) -> str:
-        """Check if a specific date/time is free on calendar."""
-        # Parse date and check calendar
-        target_date = datetime.fromisoformat(date_str)
-
-        events_result = self.calendar.events().list(
-            calendarId='primary',
-            timeMin=target_date.isoformat() + 'Z',
-            timeMax=(target_date + timedelta(hours=1)).isoformat() + 'Z',
-            singleEvents=True
-        ).execute()
-
-        events = events_result.get('items', [])
-
-        if events:
-            return f"Not available - {len(events)} event(s) scheduled"
-        return "Available"
-
-    def send_meeting_invite(
-        self,
-        to: str,
-        subject: str,
-        datetime_str: str,
-        duration_hours: int = 1
-    ) -> str:
-        """Send meeting invitation email."""
-        meeting_time = datetime.fromisoformat(datetime_str)
-
-        body = f"""
-Hi,
-
-I'd like to schedule a meeting with you.
-
-Date & Time: {meeting_time.strftime('%A, %B %d, %Y at %I:%M %p')}
-Duration: {duration_hours} hour(s)
-
-Please let me know if this works for you.
-
-Best regards
-"""
-
-        result = send_email(to, subject, body)
-        return f"Meeting invite sent to {to}"
-
-# Create tools from methods
-assistant = SchedulingAssistant()
+gmail = Gmail()
+calendar = GoogleCalendar()
 
 agent = Agent(
     "Scheduling Agent",
-    tools=[
-        assistant.check_availability,
-        assistant.send_meeting_invite
-    ],
+    tools=[calendar, gmail],
     system_prompt="""You are a scheduling assistant.
 
 You can:
@@ -245,7 +142,6 @@ When asked to schedule a meeting:
 """
 )
 
-# Use it
 agent.input("""
 Schedule a 1-hour meeting with bob@example.com
 for tomorrow at 2pm. Subject: Q4 Planning Discussion
@@ -274,7 +170,7 @@ If the browser window doesn't complete authorization within 5 minutes:
 co auth google
 ```
 
-The command polls the backend every 2 seconds waiting for your authorization.
+The command polls the backend every 5 seconds waiting for your authorization.
 
 ### Access Denied / User Cancelled
 
@@ -303,7 +199,8 @@ If credentials exist but don't work, re-authenticate:
 co auth google
 ```
 
-This will clear old credentials and set up fresh ones.
+This replaces the credentials only after the new authorization succeeds, so
+running deployments keep working while the browser flow is in progress.
 
 ### Switch Google Account
 
@@ -313,7 +210,8 @@ To use a different Google account:
 co auth google
 ```
 
-This automatically clears the old connection before starting a new OAuth flow. Pick your desired account in the browser.
+Pick your desired account in the browser. The old connection remains usable
+until the new OAuth callback completes.
 
 ### Revoke Access
 
@@ -365,10 +263,10 @@ To disconnect your Google account:
 
 Behind the scenes, `co auth google`:
 
-1. **Clears existing connection**: Calls `/api/v1/oauth/google/revoke` to remove old credentials (allows switching accounts)
+1. **Keeps the current connection alive** while re-authorization is in progress
 2. **Initiates OAuth flow**: Calls `/api/v1/oauth/google/init` with your `OPENONION_API_KEY`
 3. **Opens browser**: Launches Google's OAuth consent screen with required scopes
-4. **Polls for completion**: Checks `/api/v1/oauth/google/status` every 5 seconds
+4. **Polls for completion**: Checks `/api/v1/oauth/google/status` for a newly written credential
 5. **Retrieves credentials**: Gets tokens from `/api/v1/oauth/google/credentials`
 6. **Saves locally**: Writes credentials to `.env` files with secure permissions
 

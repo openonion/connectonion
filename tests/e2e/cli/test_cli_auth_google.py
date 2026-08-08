@@ -237,10 +237,6 @@ class TestAuthGoogleFlow:
             # Setup: Create .env with API key
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            # Mock API responses
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404  # No existing connection to revoke
-
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
@@ -249,7 +245,17 @@ class TestAuthGoogleFlow:
 
             mock_status_response = Mock()
             mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {'connected': True}
+            mock_status_response.json.return_value = {
+                'connected': True,
+                'expires_at': '2025-12-31T23:59:59',
+            }
+
+            mock_previous_status = Mock()
+            mock_previous_status.status_code = 200
+            mock_previous_status.json.return_value = {
+                'connected': True,
+                'expires_at': '2025-12-31T22:59:59',
+            }
 
             mock_creds_response = Mock()
             mock_creds_response.status_code = 200
@@ -262,8 +268,8 @@ class TestAuthGoogleFlow:
             }
 
             # Setup mock to return different responses
-            mock_requests.delete.return_value = mock_revoke_response  # /google/revoke
             mock_requests.get.side_effect = [
+                mock_previous_status,  # existing /google/status baseline
                 mock_init_response,  # /google/init
                 mock_status_response,  # /google/status
                 mock_creds_response  # /google/credentials
@@ -277,8 +283,8 @@ class TestAuthGoogleFlow:
                 from connectonion.cli.main import cli
                 result = self.runner.invoke(cli, ['auth', 'google'])
 
-            # Verify revoke was called first (to clear any existing connection)
-            mock_requests.delete.assert_called_once()
+            # Re-auth must not revoke credentials used by running deployments.
+            mock_requests.delete.assert_not_called()
 
             # Verify browser was opened
             mock_webbrowser.open.assert_called_once()
@@ -296,16 +302,14 @@ class TestAuthGoogleFlow:
             # Setup: Create .env with API key
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            # Mock revoke (always called first)
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-            mock_requests.delete.return_value = mock_revoke_response
-
             # Mock failed init response
             mock_response = Mock()
             mock_response.status_code = 500
             mock_response.text = 'Internal Server Error'
-            mock_requests.get.return_value = mock_response
+            mock_previous_status = Mock()
+            mock_previous_status.status_code = 200
+            mock_previous_status.json.return_value = {'connected': False}
+            mock_requests.get.side_effect = [mock_previous_status, mock_response]
 
             from connectonion.cli.main import cli
             result = self.runner.invoke(cli, ['auth', 'google'])
@@ -322,11 +326,6 @@ class TestAuthGoogleFlow:
             # Setup: Create .env with API key
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            # Mock revoke (always called first)
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-            mock_requests.delete.return_value = mock_revoke_response
-
             # Mock init response
             mock_init_response = Mock()
             mock_init_response.status_code = 200
@@ -340,6 +339,7 @@ class TestAuthGoogleFlow:
             mock_status_response.json.return_value = {'connected': False}
 
             mock_requests.get.side_effect = [
+                mock_status_response,  # existing /google/status baseline
                 mock_init_response,
                 *[mock_status_response] * 60  # Never becomes connected
             ]
@@ -349,5 +349,3 @@ class TestAuthGoogleFlow:
 
             # Should timeout and show error
             assert 'timed out' in result.output.lower() or result.exit_code != 0
-
-
