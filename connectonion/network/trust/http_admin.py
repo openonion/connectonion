@@ -2,11 +2,11 @@
 
 Purpose: Authenticate and dispatch /admin/* and /superadmin/* HTTP requests for the hosted agent's trust controls (promote/demote/block/unblock, level lookup, super-admin add/remove, and legacy admin logs/sessions).
 LLM-Note:
-  Dependencies: imports from [hmac, json, os] | imported by [network/host/http_router.py (handle_admin_routes called for paths starting with /admin or /superadmin)] | tested by [no direct test file]
-  Data flow: receives ASGI scope/receive + parsed method/path from http_router → /admin/logs and /admin/sessions accept EITHER Bearer OPENONION_API_KEY (hmac.compare_digest) or a signed admin request; /admin/trust/* and /superadmin/* require the signed one. Both go through _admin_signature — one implementation, so the check guarding the trust routes cannot drift from the check guarding the logs. GETs may sign via X-From/X-Signature/X-Timestamp headers (proxies often strip GET bodies). A route_handlers without "auth" or "trust_agent" has no signed path and answers 401 rather than raising → calls into route_handlers callbacks (admin_logs, admin_sessions, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove) → responds via send_json/send_text
+  Dependencies: imports from [hmac, json, os, network/host/auth.py] | imported by [network/host/http_router.py (handle_admin_routes called for paths starting with /admin or /superadmin)] | tested by [tests/unit/test_admin_signatures_are_route_bound.py, tests/unit/test_an_admin_signature_is_used_once.py, tests/unit/test_reading_logs_does_not_need_the_billing_key.py]
+  Data flow: receives ASGI scope/receive + parsed method/path from http_router → /admin/logs and /admin/sessions accept EITHER Bearer OPENONION_API_KEY (hmac.compare_digest) or a signed admin request; /admin/trust/* and /superadmin/* require a signature over payload + actual method/path. GETs use the shared X-Co-From/X-Co-Signature/X-Co-Timestamp scheme; legacy X-From headers remain read-only for 1.6 compatibility → calls into route_handlers callbacks (admin_logs, admin_sessions, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove) → responds via send_json/send_text
   State/Effects: invokes route_handlers (which mutate trust agent state, file logs, sessions) | reads OPENONION_API_KEY from env for legacy auth | logs nothing directly
   Integration: exposes async handle_admin_routes(method, path, scope, receive, route_handlers, *, send_json, send_text, read_body) -> bool (always True after this function — it owns the response for /admin/* and /superadmin/*) | route_handlers dict must include "trust_agent", "auth", and the admin_* callbacks
-  Errors: returns 401 unauthorized on bad bearer/signature or a route_handlers with no verifier wired, 403 forbidden when not admin/superadmin, 400 on missing client_id/admin_id or invalid X-Timestamp/JSON, 404 catch-all for unknown admin paths — never raises
+  Errors: returns 401 unauthorized on bad/unbound bearer/signature or a route_handlers with no verifier wired, 403 forbidden when not admin/superadmin, 400 on missing client_id/admin_id or invalid signature timestamp/JSON, 404 catch-all for unknown admin paths — never raises
   Security: ⚠️ bearer comparison uses hmac.compare_digest to avoid timing leaks | signature verification delegated to route_handlers["auth"] | the bearer key is the model billing credential, which is why signing is now an alternative (#670)
 """
 
@@ -15,7 +15,7 @@ import json
 import os
 
 
-async def _admin_signature(method, scope, receive, route_handlers, *, read_body,
+async def _admin_signature(method, path, scope, receive, route_handlers, *, read_body,
                            require_super=False):
     """Verify a signed admin request. -> (ok, status, error, data).
 
@@ -28,18 +28,40 @@ async def _admin_signature(method, scope, receive, route_handlers, *, read_body,
     that spends its money (#670). A second copy of a signature check is the
     thing most likely to drift out of step with the one that guards more.
 
-    GETs may carry the signature in X-From / X-Signature / X-Timestamp, because
-    proxies strip GET bodies.
+    GETs carry the shared X-Co-* headers because proxies strip GET bodies.
+    Legacy X-* headers remain accepted only for the two read-only activity
+    routes. A legacy signature can therefore still read what it was designed
+    to read, but cannot be redirected to a trust mutation.
     """
-    headers_dict = dict(scope.get("headers", []))
-    header_from = headers_dict.get(b"x-from", b"").decode()
-    header_sig = headers_dict.get(b"x-signature", b"").decode()
-    header_ts = headers_dict.get(b"x-timestamp", b"").decode()
+    headers = {
+        key.decode().lower(): value.decode()
+        for key, value in scope.get("headers", [])
+    }
+    from ..host.auth import (
+        FROM_HEADER,
+        SIGNATURE_HEADER,
+        TIMESTAMP_HEADER,
+        request_from_headers,
+    )
 
-    if method == "GET" and header_from and header_sig and header_ts:
+    bound_header_present = any(
+        headers.get(name)
+        for name in (FROM_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER)
+    )
+    legacy_from = headers.get("x-from")
+    legacy_sig = headers.get("x-signature")
+    legacy_ts = headers.get("x-timestamp")
+
+    if method == "GET" and bound_header_present:
         try:
-            data = {"payload": {"timestamp": float(header_ts)},
-                    "from": header_from, "signature": header_sig}
+            data = request_from_headers(headers, method, path)
+        except (TypeError, ValueError):
+            return False, 400, "Invalid X-Co-Timestamp header", {}
+    elif (method == "GET" and legacy_from and legacy_sig and legacy_ts
+          and path in ("/admin/logs", "/admin/sessions")):
+        try:
+            data = {"payload": {"timestamp": float(legacy_ts)},
+                    "from": legacy_from, "signature": legacy_sig}
         except ValueError:
             return False, 400, "Invalid X-Timestamp header", {}
     else:
@@ -48,6 +70,20 @@ async def _admin_signature(method, scope, receive, route_handlers, *, read_body,
             data = json.loads(body) if body else {}
         except json.JSONDecodeError:
             return False, 400, "Invalid JSON", {}
+
+    payload = data.get("payload", {})
+    is_bound = (
+        payload.get("method") == method.upper()
+        and payload.get("path") == path
+    )
+    legacy_read_only = (
+        method == "GET"
+        and path in ("/admin/logs", "/admin/sessions")
+        and "method" not in payload
+        and "path" not in payload
+    )
+    if not is_bound and not legacy_read_only:
+        return False, 401, "unauthorized: route-bound method and path required", data
 
     # A caller that wires no signature verifier has no signed path — say so
     # rather than raising KeyError. The legacy routes reach here now, and they
@@ -69,11 +105,6 @@ async def _admin_signature(method, scope, receive, route_handlers, *, read_body,
     # signature_already_used() is auth.py's, the same record CONNECT uses against
     # the replay in #649, called here rather than reimplemented.
     #
-    # What this does not fix: the payload is {timestamp} alone, so a signature is
-    # still not bound to the route it was made for. Binding it to method and path
-    # — which auth.py's own signed-GET scheme does, over {method, path,
-    # timestamp} with x-co-* headers — is a protocol change for any client
-    # already signing admin calls, so it is filed rather than slipped in here.
     from ..host.auth import signature_already_used
 
     if signature_already_used(data):
@@ -113,7 +144,7 @@ async def handle_admin_routes(method, path, scope, receive, route_handlers, *, s
 
         if not by_key:
             signed, status, error, _ = await _admin_signature(
-                method, scope, receive, route_handlers, read_body=read_body
+                method, path, scope, receive, route_handlers, read_body=read_body
             )
             if not signed:
                 await send_json({"error": error}, status)
@@ -134,7 +165,7 @@ async def handle_admin_routes(method, path, scope, receive, route_handlers, *, s
     # Admin trust routes (signed request + admin check)
     if path.startswith("/admin/trust/") or path.startswith("/superadmin/"):
         ok, status, error, data = await _admin_signature(
-            method, scope, receive, route_handlers, read_body=read_body,
+            method, path, scope, receive, route_handlers, read_body=read_body,
             require_super=path.startswith("/superadmin/"),
         )
         if not ok:

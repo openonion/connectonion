@@ -497,7 +497,7 @@
         <li><code>strict</code> - Signature required (production)</li>
       </ul>
       <p style="margin:12px 0 0;font-size:12px;color:var(--muted);">
-        For signed requests: <code>payload.to</code> should match agent address, <code>payload.timestamp</code> should be within 5 minutes.
+        For signed input requests: <code>payload.to</code> should match agent address. Admin requests also bind <code>payload.method</code> and <code>payload.path</code> to the route. All signatures must be within 5 minutes.
       </p>
     </div>
   </main>
