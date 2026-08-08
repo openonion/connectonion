@@ -28,10 +28,11 @@ signature decided nothing.
 This is the half of #649 that is a gap rather than a decision: the HTTP path
 already establishes the intended reading, and nothing on the wire changes.
 
-What stays a decision, and is not done here: whether a signature should be
-*required*. A client built without keys sends none, and the connection it is on
-was authenticated by its CONNECT. Honouring a signature that is present is the
-part with no trade in it.
+Protocol v2 now resolves the remaining decision: a client opts in through its
+signed CONNECT and every subsequent application command requires a complete
+signature. Protocol v1 remains accepted for compatibility. This test keeps
+recording the earlier invariant that, whenever an INPUT signature is present,
+the server runs the signed prompt rather than an unsigned duplicate.
 """
 
 import json

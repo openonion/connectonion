@@ -209,11 +209,10 @@ def request_from_headers(headers: dict, method: str, path: str) -> dict:
 
 # ─────────────────────────── replay ───────────────────────────
 #
-# EXEC carries no signature of its own -- the signature authenticates the
-# *connection*, and every command on it is trusted because of who opened it. So
-# a captured CONNECT, replayed inside the five-minute freshness window, is not
-# "repeat what the caller did": it is any whitelisted tool with any arguments,
-# because the attacker writes the EXEC frames themselves (#649, measured).
+# In protocol v1, EXEC carried no signature of its own: the signature authenticated
+# the connection and every command on it was trusted because of who opened it. A
+# captured CONNECT could therefore be replayed and followed by attacker-authored
+# EXEC frames (#649, measured).
 #
 # One signature opens one connection. The attack has to *open* one; without a
 # MITM position an attacker cannot inject into somebody else's live socket.
@@ -223,8 +222,9 @@ def request_from_headers(headers: dict, method: str, path: str) -> dict:
 # deliberately does not replay the frame -- see ws_router/connect.py, "no
 # CONNECT replay, its signature may have aged past the 5-minute window".
 #
-# Signing each command is the complete answer and a protocol change (#649
-# option 3). This closes the route without breaking a client.
+# Protocol v2 advertises per-command signatures inside the signed CONNECT. Its
+# commands include type, recipient and a random nonce in their signed payload;
+# v1 remains accepted so an upgraded host does not strand an older client.
 
 _seen_signatures: Dict[str, float] = {}
 
@@ -249,6 +249,36 @@ def signature_already_used(data: dict) -> bool:
         return True
     _seen_signatures[signature] = now
     return False
+
+
+def authenticated_command_payload(
+    data: dict, expected_address: str, expected_recipient: str = None
+):
+    """Return a verified command payload bound to the connected caller.
+
+    CONNECT authenticates the socket. Protocol-v2 clients additionally sign
+    every command with its type and a random nonce, so possession or injection
+    into that socket is not enough to invent a different command.
+    """
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        return None, "unauthorized: signed command required"
+
+    _, caller, error = _authenticate_signed(
+        data, recipient_address=expected_recipient
+    )
+    if error:
+        return None, error
+    if caller != expected_address:
+        return None, "unauthorized: command signer does not own this connection"
+    if payload.get("type") != data.get("type"):
+        return None, "unauthorized: signed command type mismatch"
+    nonce = payload.get("nonce")
+    if not isinstance(nonce, str) or not nonce:
+        return None, "unauthorized: signed command nonce required"
+    if signature_already_used(data):
+        return None, "unauthorized: signed command already used"
+    return payload, None
 
 
 def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
@@ -286,8 +316,11 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
     if abs(now - timestamp) > SIGNATURE_EXPIRY_SECONDS:
         return None, agent_address, "unauthorized: signature expired"
 
-    # Optionally verify 'to' matches agent address
-    if recipient_address and to_address and to_address != recipient_address:
+    # When the caller supplies the host address, the signed payload must name
+    # that exact recipient. Treating a missing ``to`` as acceptable would let
+    # the same otherwise-valid command be replayed against a different host,
+    # whose replay cache is necessarily independent.
+    if recipient_address and to_address != recipient_address:
         return None, agent_address, "unauthorized: wrong recipient"
 
     # Verify signature ALWAYS (no whitelist bypass - that's at policy level)

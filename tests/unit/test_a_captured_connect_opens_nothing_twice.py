@@ -14,7 +14,7 @@ the attacker, not captured:
     2nd (CONNECT replayed verbatim)  -> ran 2 times
     3rd (replayed again)             -> ran 3 times
 
-Two things are fixed here, neither of them a protocol change.
+This test records the first two defenses, which did not change the protocol.
 
 **A CONNECT signature opens one connection.** Seen once, refused after. The
 attack needs to *open* a connection; without a MITM position an attacker cannot
@@ -30,10 +30,10 @@ anyone who can observe the traffic can capture a CONNECT. Plaintext is now used
 only for loopback, where there is no network to observe; a `wss://` endpoint is
 preferred when offered, and otherwise the relay carries it.
 
-What is *not* fixed here is signing each command (#649's option 3). That is the
-complete answer and a protocol change: every EXEC and INPUT carrying its own
-signature over its own contents. These two close the route without breaking a
-single client.
+Per-command signing is now covered separately by
+`test_each_command_is_signed.py`: a v2 CONNECT negotiates it without breaking a
+v1 client, then every application command is bound to its type, contents,
+recipient, caller and a single-use nonce.
 """
 
 import time
