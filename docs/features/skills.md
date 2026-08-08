@@ -235,6 +235,10 @@ Markdown content after frontmatter - instructions for the agent.
 
 ## Creating Skills
 
+Skills that rely on Python packages, executables, credentials, OAuth, or
+platform features can declare a versioned, required/optional runtime contract.
+See [Skill Runtime Requirements](skill-requirements.md) for the complete schema.
+
 ### 1. Project-Level Skill (Specific to one project)
 
 ```bash
