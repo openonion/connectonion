@@ -50,6 +50,14 @@ class TestLastToolSignature:
     def test_none_when_no_tool_calls(self):
         assert _last_tool_signature([{'role': 'user', 'content': 'hi'}]) is None
 
+    def test_final_assistant_answer_does_not_repeat_an_old_tool(self):
+        messages = [
+            _assistant_call('search', '{}'),
+            {'role': 'tool', 'content': 'result'},
+            {'role': 'assistant', 'content': 'done'},
+        ]
+        assert _last_tool_signature(messages) is None
+
 
 class TestNoProgressGuard:
     def test_stops_after_repeated_identical_calls(self):

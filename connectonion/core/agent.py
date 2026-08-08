@@ -449,10 +449,9 @@ class Agent:
             if not response.tool_calls:
                 content = response.content or ""
                 self.current_session['messages'].append({"role": "assistant", "content": content})
-                return content
-
-            # Process tool calls
-            self._execute_and_record_tools(response.tool_calls)
+            else:
+                # Process tool calls
+                self._execute_and_record_tools(response.tool_calls)
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
@@ -461,6 +460,14 @@ class Agent:
             if self.current_session.pop('stop_signal', None):
                 self._invoke_events('on_stop_signal')
                 return "What would you like me to do?"
+
+            if not response.tool_calls:
+                if self.current_session.pop('_continue_iteration', False):
+                    # An accepted follow-up is new work. Give it the LLM call it
+                    # needs even when the original request used its full budget.
+                    max_iterations += 1
+                    continue
+                return content
 
         # Hit max iterations
         return f"Task incomplete: Maximum iterations ({max_iterations}) reached."
