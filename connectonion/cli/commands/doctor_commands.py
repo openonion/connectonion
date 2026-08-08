@@ -279,32 +279,55 @@ def handle_doctor():
     else:
         config_table.add_row("Keys", "[yellow]○[/yellow] Not found (run 'co auth' to create)")
 
-    # Check for API key
-    api_key = os.getenv("OPENONION_API_KEY")
-    if api_key:
-        api_key_display = f"{api_key[:20]}..." if len(api_key) > 20 else api_key
-        config_table.add_row("API Key", f"[green]✓[/green] Found in environment")
-        config_table.add_row("Key Preview", f"[dim]{api_key_display}[/dim]")
-    else:
-        # Check .env files
-        from dotenv import load_dotenv
-        local_env = Path(".env")
-        global_env = Path.home() / ".co" / "keys.env"
+    # The same redacted discovery `co status` uses. Doctor used to print the
+    # first 20 characters of OPENONION_API_KEY as a "preview" in normal output;
+    # that is enough credential material to leak into support logs and has no
+    # diagnostic value.
+    from .status_commands import _credential_rows, _oauth_rows
 
-        if local_env.exists():
-            load_dotenv(local_env)
+    credential_actions = {
+        "OPENONION_API_KEY": "co auth",
+        "OPENAI_API_KEY": "set OPENAI_API_KEY in <project>/.env",
+        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in <project>/.env",
+        "GEMINI_API_KEY": "set GEMINI_API_KEY in <project>/.env",
+        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in <project>/.env",
+        "GROQ_API_KEY": "set GROQ_API_KEY in <project>/.env",
+        "XAI_API_KEY": "set XAI_API_KEY in <project>/.env",
+        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
+        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
+    }
+    api_key = None
+    for row in _credential_rows(project_dir=project_co_dir().parent):
+        status = row["status"]
+        action = credential_actions[row["credential"]]
+        if status == "configured":
+            mark, style = "✓", "green"
+        elif status == "conflict":
+            mark, style = "✗", "red"
+            found.append(f"credential {row['credential']} is shadowed — {action}")
+        else:
+            mark, style = "○", "yellow"
+        config_table.add_row(
+            row["provider"],
+            f"[{style}]{mark}[/{style}] {status} · {row['source']} · {action}",
+        )
+        if row["credential"] == "OPENONION_API_KEY" and status == "configured":
+            # Presence gates the probe; the secret itself is never rendered.
+            # Normal CLI startup has already loaded the selected project env.
             api_key = os.getenv("OPENONION_API_KEY")
-            if api_key:
-                config_table.add_row("API Key", f"[green]✓[/green] Found in .env")
-
-        if not api_key and global_env.exists():
-            load_dotenv(global_env)
-            api_key = os.getenv("OPENONION_API_KEY")
-            if api_key:
-                config_table.add_row("API Key", f"[green]✓[/green] Found in ~/.co/keys.env")
-
-        if not api_key:
-            config_table.add_row("API Key", "[yellow]○[/yellow] Not configured (run 'co auth')")
+    for row in _oauth_rows(project_dir=project_co_dir().parent):
+        status = row["status"]
+        if status == "connected":
+            mark, style = "✓", "green"
+        elif status in {"conflict", "expired", "invalid expiry", "incomplete (scopes missing)"}:
+            mark, style = "✗", "red"
+            found.append(f"{row['provider']} is {status} — {row['action']}")
+        else:
+            mark, style = "○", "yellow"
+        config_table.add_row(
+            row["provider"],
+            f"[{style}]{mark}[/{style}] {status} · {row['source']} · {row['action']}",
+        )
 
     console.print(Panel(config_table, title="[bold]Configuration[/bold]", border_style="green"))
     console.print()
