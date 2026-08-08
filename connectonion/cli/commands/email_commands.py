@@ -59,7 +59,7 @@ def handle_email_send(to: str, subject: str, message: str, idempotency_key: str 
         console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}")
         if result.get("request_id"):
             console.print(f"  Request ID: {result['request_id']}")
-        if result.get("idempotency_key"):
+        if result.get("retryable") and result.get("idempotency_key"):
             console.print(f"  Safe retry key: {result['idempotency_key']}")
             console.print("  [dim]Retry the same command with --idempotency-key <key>[/dim]")
         console.print()
