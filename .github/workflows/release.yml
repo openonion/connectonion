@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (for example 1.6.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+    secrets: inherit
+
+  release:
+    needs: tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the exact release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve and validate the release version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            raw="$MANUAL_VERSION"
+          else
+            raw="$TAG_NAME"
+          fi
+          version="${raw#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.-]+)?$ ]]; then
+            echo "Invalid release version: $raw" >&2
+            exit 1
+          fi
+          python - "$version" <<'PY'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          expected = sys.argv[1]
+          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          source = pathlib.Path("connectonion/_version.py").read_text()
+          match = re.search(r'^__version__ = "([^"]+)"$', source, re.MULTILINE)
+          versioning = pathlib.Path("VERSIONING.md").read_text()
+          values = {
+              "pyproject.toml": project["project"]["version"],
+              "connectonion/_version.py": match.group(1) if match else None,
+              "VERSIONING.md": (
+                  re.search(r"^## Current Version: (\S+)$", versioning, re.MULTILINE).group(1)
+                  if re.search(r"^## Current Version: (\S+)$", versioning, re.MULTILINE)
+                  else None
+              ),
+          }
+          wrong = {name: value for name, value in values.items() if value != expected}
+          if wrong:
+              raise SystemExit(f"release {expected} disagrees with version files: {wrong}")
+          PY
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and validate only this version's artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python -m pip install --upgrade pip build twine
+          rm -rf dist
+          python -m build
+          wheel="dist/connectonion-${VERSION}-py3-none-any.whl"
+          sdist="dist/connectonion-${VERSION}.tar.gz"
+          test -f "$wheel"
+          test -f "$sdist"
+          test "$(find dist -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+          python -m twine check "$wheel" "$sdist"
+
+      - name: Exercise the built wheel like an installed package
+        run: pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow -v --tb=short
+
+      - name: Preserve the reviewed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: connectonion-${{ steps.version.outputs.version }}
+          path: |
+            dist/connectonion-${{ steps.version.outputs.version }}-py3-none-any.whl
+            dist/connectonion-${{ steps.version.outputs.version }}.tar.gz
+          if-no-files-found: error
+
+      - name: Publish to PyPI with trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+
+      - name: Verify the published package in a clean environment
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for attempt in {1..12}; do
+            check="$RUNNER_TEMP/published-check-$attempt"
+            python -m venv "$check"
+            if "$check/bin/python" -m pip install --no-cache-dir "connectonion==$VERSION"; then
+              if "$check/bin/python" -c "import connectonion; assert connectonion.__version__ == '$VERSION'"; then
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "PyPI never served an importable connectonion==$VERSION" >&2
+          exit 1
+
+      - name: Create or repair the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          wheel="dist/connectonion-${VERSION}-py3-none-any.whl"
+          sdist="dist/connectonion-${VERSION}.tar.gz"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$wheel" "$sdist" --clobber
+          else
+            gh release create "$TAG" "$wheel" "$sdist" \
+              --target "$GITHUB_SHA" \
+              --generate-notes \
+              --title "$TAG"
+          fi
+
+      # Public announcements deliberately live outside this workflow. A broken
+      # Discord/LinkedIn integration must be visible, but must never roll back or
+      # mark a verified package release as failed (#300).
