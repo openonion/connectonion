@@ -140,7 +140,10 @@ match data["type"]:
 
 `CONNECT` must come first — it authenticates and populates `conn`. `INPUT` and most others require `conn["authenticated"] == True`.
 
-`SESSION_STATUS`, `ONBOARD_SUBMIT`, `ADMIN_*` carry their own auth and don't require prior CONNECT.
+`SESSION_STATUS` uses the verified connection identity after CONNECT. On a
+temporary status-only socket it carries its own protocol-v2 signature and is
+bound to the session owner. `ONBOARD_SUBMIT` and `ADMIN_*` carry their own auth
+and don't require prior CONNECT.
 
 ---
 
