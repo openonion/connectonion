@@ -37,7 +37,15 @@ import pytest
 from nacl.signing import SigningKey
 
 from connectonion import Agent
+from connectonion.network.host import get_agent_address
 from tests.utils.mock_helpers import MockLLM, LLMResponseBuilder
+
+
+class _HostedAgentIdentity:
+    name = "ws-agent"
+
+
+HOST_ADDRESS = get_agent_address(_HostedAgentIdentity())
 
 
 def sign_init(signing_key: SigningKey = None):
@@ -46,7 +54,7 @@ def sign_init(signing_key: SigningKey = None):
         signing_key = SigningKey.generate()
 
     public_key = f"0x{signing_key.verify_key.encode().hex()}"
-    payload = {"timestamp": time.time()}
+    payload = {"timestamp": time.time(), "to": HOST_ADDRESS}
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     signature = f"0x{signing_key.sign(canonical.encode()).signature.hex()}"
 
@@ -218,7 +226,7 @@ class TestWebSocketStrict:
     def test_strict_invalid_signature(self, app_strict):
         signing_key = SigningKey.generate()
         public_key = f"0x{signing_key.verify_key.encode().hex()}"
-        payload = {"timestamp": time.time()}
+        payload = {"timestamp": time.time(), "to": HOST_ADDRESS}
         data = {"type": "CONNECT", "payload": payload, "from": public_key, "signature": "0x" + "00" * 64}
 
         client = ASGIWebSocketClient(app_strict)
@@ -246,7 +254,7 @@ class TestWebSocketAccessLists:
     def test_blacklisted(self, app_strict_bw):
         data = {
             "type": "CONNECT",
-            "payload": {"timestamp": time.time()},
+            "payload": {"timestamp": time.time(), "to": HOST_ADDRESS},
             "from": "0xbad",
             "signature": "0x" + "00" * 64
         }
@@ -263,7 +271,7 @@ class TestWebSocketAccessLists:
         """
         data = {
             "type": "CONNECT",
-            "payload": {"timestamp": time.time()},
+            "payload": {"timestamp": time.time(), "to": HOST_ADDRESS},
             "from": "0xgood",
             "signature": "0x" + "00" * 64  # Invalid signature
         }
