@@ -12,7 +12,10 @@ Components under test:
 
 import connectonion.cli.commands.ai_commands as ai_mod
 import connectonion.cli.commands.trust_commands as trust_mod
+import pytest
+import typer
 from connectonion.cli.co_ai.agent import GLOBAL_CO_DIR
+from connectonion.core.exceptions import LLMAuthenticationError
 
 
 def test_handle_ai_calls_start_server(monkeypatch):
@@ -70,6 +73,41 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
     assert created["prompt"] == "task"
     assert created["yolo_turns"] is None
     assert capsys.readouterr().out.endswith("done\n")
+
+
+def test_handle_ai_reports_a_provider_failure_without_a_traceback(monkeypatch, capsys):
+    class FakeAgent:
+        def input(self, prompt):
+            raise LLMAuthenticationError(
+                RuntimeError("raw upstream implementation detail"),
+                model="co/claude-sonnet-4",
+            )
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent", lambda **kwargs: FakeAgent()
+    )
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(prompt="task")
+
+    output = capsys.readouterr().out
+    assert caught.value.exit_code == 1
+    assert "Model request failed" in output
+    assert "service-side configuration" in output
+    assert "raw upstream implementation detail" not in output
+
+
+def test_handle_ai_does_not_hide_programmer_errors(monkeypatch):
+    class FakeAgent:
+        def input(self, prompt):
+            raise TypeError("our bug")
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent", lambda **kwargs: FakeAgent()
+    )
+
+    with pytest.raises(TypeError, match="our bug"):
+        ai_mod.handle_ai(prompt="task")
 
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
