@@ -94,10 +94,27 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     registry.update_ping(conn["session_id"])
 
             elif msg_type == "SESSION_STATUS":
-                # SESSION_STATUS query: lookup by sid, reply with current registry status.
+                # A live connection already has a verified identity. A temporary
+                # status-only socket must independently sign the query as a v2
+                # command. In either case, a caller only sees its own active
+                # session; every other case has the same not_found answer so the
+                # endpoint is not an existence oracle (#766).
+                requester = conn.get("agent_address") if conn.get("authenticated") else None
                 sid = (data.get("session") or {}).get("session_id")
-                active = registry.get(sid) if sid else None
-                status = active.status if active else "not_found"
+                if requester is None:
+                    from ..auth import authenticated_command_payload
+
+                    metadata = route_handlers.get("agent_metadata") or {}
+                    verified, status_error = authenticated_command_payload(
+                        data, data.get("from"), metadata.get("address")
+                    )
+                    if status_error is None:
+                        requester = data.get("from")
+                        sid = verified.get("session_id")
+
+                active = registry.get(sid) if requester and sid else None
+                owner = getattr(active, "owner", None) if active else None
+                status = active.status if active and owner == requester else "not_found"
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
             elif msg_type == "ONBOARD_SUBMIT":
