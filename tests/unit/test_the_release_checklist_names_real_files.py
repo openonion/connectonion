@@ -128,3 +128,22 @@ class TestTheBuildCommandCanRun:
         assert "python -m build" in _release_sections(), (
             "the checklist does not use the PEP 517 build this project is set up for"
         )
+
+
+class TestReleaseArtifactsCannotMixVersions:
+    def test_old_artifacts_are_removed_before_building(self):
+        sections = _release_sections()
+
+        assert sections.index("rm -rf dist/") < sections.index("python -m build")
+
+    def test_artifacts_are_checked_before_upload(self):
+        sections = _release_sections()
+
+        assert sections.index("python -m twine check") < sections.index("python -m twine upload")
+
+    def test_upload_is_limited_to_the_current_version(self):
+        sections = _release_sections()
+
+        assert "twine upload dist/*" not in sections
+        assert "dist/connectonion-X.Y.Z.tar.gz" in sections
+        assert "dist/connectonion-X.Y.Z-py3-none-any.whl" in sections
