@@ -86,15 +86,29 @@ class TestCodeStillWins:
 
 class TestTheDefaultStillApplies:
 
-    def test_a_project_with_no_relay_line_gets_the_public_one(self, tmp_path):
+    def test_a_project_with_no_relay_line_gets_the_configured_backend(self, tmp_path, monkeypatch):
         co = tmp_path / ".co"
         co.mkdir()
         (co / "host.yaml").write_text("name: billing\n")
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "https://staging.example.test/")
 
-        assert resolve_relay_url(UNSET, load_host_config(co)) == DEFAULT_RELAY_URL
+        assert resolve_relay_url(UNSET, load_host_config(co)) == "wss://staging.example.test"
 
-    def test_no_config_file_at_all(self, tmp_path):
-        assert resolve_relay_url(UNSET, load_host_config(tmp_path / ".co")) == DEFAULT_RELAY_URL
+    def test_no_config_file_at_all(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "http://127.0.0.1:9000")
+        assert resolve_relay_url(UNSET, load_host_config(tmp_path / ".co")) == "ws://127.0.0.1:9000"
+
+    def test_legacy_generated_production_value_follows_the_configured_backend(
+        self, tmp_path, monkeypatch
+    ):
+        co = tmp_path / ".co"
+        co.mkdir()
+        (co / "host.yaml").write_text(
+            f"name: billing\nrelay_url: {DEFAULT_RELAY_URL}\n"
+        )
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "https://staging.example.test")
+
+        assert resolve_relay_url(UNSET, load_host_config(co)) == "wss://staging.example.test"
 
 
 class TestTurningItOffStillWorks:

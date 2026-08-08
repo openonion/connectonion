@@ -25,7 +25,7 @@ USAGE = (
     "Options (before the address):\n"
     "  --out PATH        save an image result (screenshot) to PATH; else ./screenshot.png\n"
     "  --timeout SEC     seconds to wait for the result (default 60)\n"
-    "  --relay URL       relay server (default wss://oo.openonion.ai)\n"
+    "  --relay URL       relay server (default: configured backend)\n"
     "\n"
     "Everything AFTER the address is the remote command, verbatim. It runs on the\n"
     "remote agent, gated by ITS .co/host.yaml permission whitelist — `co ...`\n"

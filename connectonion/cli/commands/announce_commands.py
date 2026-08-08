@@ -8,7 +8,7 @@ LLM-Note:
     2. List all skills as metadata; inline body only when publish: true
     3. Build profile {alias, bio, version, skills:[{name, description, body?}]}
     4. create_announce_message(..., profile=profile) — signs everything
-    5. WS connect wss://oo.openonion.ai/ws/announce → send → close
+    5. WS connect to the configured backend /ws/announce → send → close
   State/Effects: reads ~/.co/agent.json + ~/.co/skills/<name>/SKILL.md | opens one outbound WS | no local writes
   Integration: skills are listed by default; publish: true controls whether the body is public.
 """

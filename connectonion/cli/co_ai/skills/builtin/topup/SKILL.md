@@ -51,7 +51,8 @@ user. `/auth/me` returns `balance_usd` directly (credits minus what has been spe
 
 ```bash
 TOKEN=$(python3 -c "from connectonion.cli.commands.project_cmd_lib import load_api_key; print(load_api_key() or '')")
-curl -s https://oo.openonion.ai/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
+BACKEND=$(python3 -c "from connectonion.backend import backend_url; print(backend_url())")
+curl -s "$BACKEND/api/v1/auth/me" -H "Authorization: Bearer $TOKEN"
 ```
 
 Read `balance_usd` from the JSON. (Verified against production: `/auth/me` gives

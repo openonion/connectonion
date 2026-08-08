@@ -3,7 +3,12 @@
 import pytest
 from pathlib import Path
 
-from connectonion.backend import DEFAULT_BACKEND_URL, backend_url, backend_ws_url
+from connectonion.backend import (
+    DEFAULT_BACKEND_URL,
+    DEFAULT_BACKEND_WS_URL,
+    backend_url,
+    backend_ws_url,
+)
 
 
 @pytest.mark.parametrize(
@@ -44,12 +49,29 @@ def test_websocket_url_uses_the_same_origin(monkeypatch):
     assert backend_ws_url() == "ws://127.0.0.1:9"
 
 
-def test_no_python_network_client_hardcodes_the_production_origin():
+def test_default_websocket_url_matches_the_default_http_origin(monkeypatch):
+    for name in (
+        "CONNECTONION_BACKEND_URL",
+        "OPENONION_API_URL",
+        "OPENONION_BASE_URL",
+        "OPENONION_DEV",
+        "ENVIRONMENT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert backend_ws_url() == DEFAULT_BACKEND_WS_URL
+
+
+def test_no_packaged_network_client_hardcodes_the_production_origin():
     package = Path(__file__).parents[2] / "connectonion"
     allowed = {package / "backend.py", package / "derive.py"}
     offenders = [
         path.relative_to(package)
-        for path in package.rglob("*.py")
-        if path not in allowed and "https://oo.openonion.ai" in path.read_text(encoding="utf-8")
+        for path in package.rglob("*")
+        if path.suffix in {".py", ".yaml", ".yml"} or path.name == "SKILL.md"
+        if path not in allowed
+        and any(
+            origin in path.read_text(encoding="utf-8")
+            for origin in ("https://oo.openonion.ai", "wss://oo.openonion.ai")
+        )
     ]
     assert offenders == []

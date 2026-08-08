@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [network/asgi/, network/host/ws_router/ (run_ws_session), network/trust/, network/host/session/, network/host/auth.py, network/host/http_router.py, network/announce.py, network/relay.py] | imported by [network/__init__.py as host()] | tested by [tests/e2e/test_host.py]
   Data flow: host(create_agent, port, trust) → _create_route_handlers() wraps all routes → asgi_create_app() creates FastAPI/Starlette app → uvicorn.run() starts server → each request calls create_agent() for fresh instance → executes via input_handler()/ws_input() → returns result + session | trust enforcement via extract_and_authenticate() at request boundary
   State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server, publishing a display profile (alias/tools/model + project-level skills only — user/builtin skills stay private) with the first ANNOUNCE of each connection | each request gets fresh agent instance (no state bleeding)
-  Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url="wss://oo.openonion.ai") | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
+  Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url=UNSET) | omitted relay resolves from host.yaml then the shared backend selector | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
   Performance: factory pattern creates fresh agent per request (thread-safe) | SessionStorage auto-expires old results via TTL | WebSocket supports real-time bidirectional I/O | relay connection runs in background thread
   Errors: trust errors return 401/403 via extract_and_authenticate() | missing sessions return None (404) | raises if port already in use
 Host an agent over HTTP/WebSocket.
@@ -38,6 +38,7 @@ import websockets
 from rich.console import Console
 
 from ... import address
+from ...backend import DEFAULT_BACKEND_WS_URL
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from .ws_router import run_ws_session
@@ -603,9 +604,16 @@ def resolve_relay_url(param, config: dict) -> str | None:
     if param is not UNSET:
         return param or None          # explicit, including None for "off"
 
+    from ...backend import backend_ws_url
     from_file = config.get("relay_url", UNSET)
     if from_file is UNSET:
-        return DEFAULT_RELAY_URL      # nothing said anywhere
+        return backend_ws_url()       # nothing said anywhere
+    # Older generated host.yaml files wrote the production relay as if the
+    # operator had chosen it. Treat that one legacy template value as a default
+    # so CONNECTONION_BACKEND_URL can move an existing project as a whole.
+    # A genuinely custom/private relay remains an explicit override.
+    if from_file == DEFAULT_RELAY_URL:
+        return backend_ws_url()
     return from_file or None          # an empty value in the file means off
 
 def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, *, profile: dict | None = None):
@@ -707,7 +715,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
     return on_startup, on_shutdown
 
 
-DEFAULT_RELAY_URL = "wss://oo.openonion.ai"
+DEFAULT_RELAY_URL = DEFAULT_BACKEND_WS_URL
 
 
 def host(
@@ -757,7 +765,7 @@ def host(
         result_ttl: How long to keep results in seconds (default: 86400 or from config)
         workers: Number of worker processes (default: 1 or from config)
         reload: Auto-reload on code changes (default: False or from config)
-        relay_url: P2P relay URL (default: wss://oo.openonion.ai)
+        relay_url: P2P relay URL (default: the configured backend)
             - Set to None or "" to disable relay and run local-only
         blacklist: Blocked identities (default: from .co/blacklist.txt)
         whitelist: Allowed identities (default: from .co/whitelist.txt)
