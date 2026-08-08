@@ -32,11 +32,19 @@ class LLMAuthenticationError(LLMProviderError):
     def __init__(self, original_error, model: str = "unknown"):
         self.model = model
         self.status_code = getattr(original_error, "status_code", None)
-        super().__init__(
-            f"Authentication failed for {model}. Check the API key for this "
-            f"provider — the key that works for one provider is not the key for "
-            f"another. Original: {type(original_error).__name__}: {original_error}"
-        )
+        if model.startswith("co/"):
+            message = (
+                f"The managed provider credential for {model} was rejected. "
+                "This is a service-side configuration problem; retry later or "
+                "contact OpenOnion support."
+            )
+        else:
+            message = (
+                f"Authentication failed for {model}. Check the API key for this "
+                "provider — the key that works for one provider is not the key for "
+                "another."
+            )
+        super().__init__(message)
         self.__cause__ = original_error
 
 

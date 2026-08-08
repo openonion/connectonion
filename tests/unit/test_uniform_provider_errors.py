@@ -76,6 +76,19 @@ class TestAuthFailsTheSameWayEverywhere:
         with pytest.raises(LLMAuthenticationError):
             llm.complete([{"role": "user", "content": "hi"}])
 
+    def test_managed_provider_auth_is_a_service_error_for_the_user(self):
+        llm = create_llm("co/claude-sonnet-4", api_key="caller-token")
+        original = _openai_error(openai.AuthenticationError, 401)
+        _make_fail(llm, original)
+
+        with pytest.raises(LLMAuthenticationError) as caught:
+            llm.complete([{"role": "user", "content": "hi"}])
+
+        assert caught.value.model == "co/claude-sonnet-4"
+        assert "service-side configuration" in str(caught.value)
+        assert "caller-token" not in str(caught.value)
+        assert caught.value.__cause__ is original
+
 
 class TestRateLimit:
     def test_openai(self, monkeypatch):
