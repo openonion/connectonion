@@ -106,6 +106,11 @@ class TestSendEmailToo:
     instead unwinds the turn.
     """
 
+    @pytest.fixture(autouse=True)
+    def _email_identity(self, monkeypatch):
+        """Reach the HTTP error branch without borrowing a developer's .env."""
+        monkeypatch.setenv("AGENT_EMAIL", "agent@example.com")
+
     def test_a_gateway_page_becomes_an_error_result(self, monkeypatch):
         import importlib
         send_email_mod = importlib.import_module('connectonion.useful_tools.send_email')
