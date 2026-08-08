@@ -19,7 +19,7 @@ co create my-agent
 # Navigate to the project
 cd my-agent
 
-# Run your agent (API key setup is automatic!)
+# Run your agent (uses your configured provider or ConnectOnion login)
 python agent.py
 ```
 
@@ -30,29 +30,27 @@ That's it! You now have a working agent ready to use. 🎉
 ```python
 from connectonion import Agent
 
-# Define what your agent can do
-def calculate(expression: str) -> str:
-    """Do math calculations."""
-    return str(eval(expression))
+# Define a small, deterministic tool
+def word_count(text: str) -> int:
+    """Count words in text."""
+    return len(text.split())
 
 # Create your agent
 agent = Agent(
     "assistant", 
-    tools=[calculate],
-    max_iterations=5  # Simple calculations don't need many iterations
+    tools=[word_count],
+    max_iterations=5  # This task needs only a few iterations
 )
 
 # Use it!
-result = agent.input("What is 42 * 17?")
+result = agent.input("How many words are in 'agents use typed tools'?")
 print(result)
 ```
 
 **Output:**
 
 ```
-To calculate 42 * 17, I'll use the calculator tool.
-
-The result is 714.
+There are 4 words.
 ```
 
 That's it! You just built an AI agent that can use tools. 🎉
@@ -62,9 +60,9 @@ That's it! You just built an AI agent that can use tools. 🎉
 Want your agent to do more? Just add more functions:
 
 ```python
-def search(query: str) -> str:
-    """Search the web."""
-    return f"Results for {query}: [simulated results]"
+def uppercase(text: str) -> str:
+    """Convert text to uppercase."""
+    return text.upper()
 
 def get_time() -> str:
     """Get current time."""
@@ -74,12 +72,12 @@ def get_time() -> str:
 # Create a more capable agent
 agent = Agent(
     name="assistant",
-    tools=[calculate, search, get_time],
+    tools=[word_count, uppercase, get_time],
     max_iterations=100  # Default for general purpose agents
 )
 
 # It can use multiple tools in one request!
-result = agent.input("Search for Python tutorials and tell me what time it is")
+result = agent.input("Uppercase 'hello agent', count its words, and tell me the time")
 print(result)
 ```
 
@@ -92,14 +90,14 @@ Give your agent a personality with flexible system prompts:
 agent = Agent(
     name="friendly_bot",
     system_prompt="You are a cheerful assistant who loves to help!",
-    tools=[calculate, search, get_time]
+    tools=[word_count, uppercase, get_time]
 )
 
 # Option 2: Load from file (auto-detected)
 agent = Agent(
     name="expert_bot",
     system_prompt="prompts/expert.md",  # Loads from file
-    tools=[calculate, search, get_time]
+    tools=[word_count, uppercase, get_time]
 )
 
 # Option 3: Using Path object
@@ -107,7 +105,7 @@ from pathlib import Path
 agent = Agent(
     name="custom_bot",
     system_prompt=Path("prompts/custom_personality.txt"),
-    tools=[calculate, search, get_time]
+    tools=[word_count, uppercase, get_time]
 )
 
 result = agent.input("Hello!")
@@ -120,7 +118,7 @@ ConnectOnion tracks all agent behavior automatically to `.co/logs/{name}.log` an
 
 ```python
 # Check token usage after a task
-result = agent.input("What is 42 * 17?")
+result = agent.input("Count the words in 'safe tools are easier to trust'")
 print(f"Cost: ${agent.total_cost:.4f}")
 print(f"Context used: {agent.context_percent:.1f}%")
 ```
@@ -247,7 +245,7 @@ from tools.gmail import Gmail  # Now you can customize it!
 ```
 my-agent/
 ├── agent.py                                              # Main agent implementation
-├── .env                                                  # API keys (auto-configured)
+├── .env                                                  # Project settings and provider credentials
 ├── co-vibecoding-principles-docs-contexts-all-in-one.md  # Complete framework docs
 ├── .gitignore                                            # Git configuration
 └── .co/                                                  # ConnectOnion metadata
