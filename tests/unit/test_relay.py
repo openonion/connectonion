@@ -349,6 +349,43 @@ class TestServeLoop:
             f"without a signing key")
 
     @pytest.mark.asyncio
+    async def test_signed_heartbeat_republishes_updated_profile(self):
+        mock_ws = AsyncMock()
+        profile = {"alias": "agent", "balance_usd": 4.99}
+        announce_msg = {
+            "type": "ANNOUNCE",
+            "address": "0xtest",
+            "timestamp": 1,
+            "profile": profile,
+        }
+        mock_ws.recv.side_effect = [
+            asyncio.TimeoutError(),
+            websockets.exceptions.ConnectionClosed(None, None),
+        ]
+
+        def fresh_announce(_addr, _summary, **kwargs):
+            return {"type": "ANNOUNCE", "profile": kwargs["profile"], "signature": "sig"}
+
+        # The balance refresher mutates the shared profile before the next
+        # heartbeat; that heartbeat must carry it instead of dropping profile.
+        profile["balance_usd"] = 0.0005
+        with patch('rich.console.Console.print'), patch(
+            'connectonion.network.announce.create_announce_message',
+            side_effect=fresh_announce,
+        ) as create:
+            await relay.serve_loop(
+                mock_ws,
+                announce_msg,
+                heartbeat_interval=1,
+                addr_data={"private": "present"},
+                session_handler=AsyncMock(),
+            )
+
+        assert create.call_args.kwargs["profile"]["balance_usd"] == 0.0005
+        heartbeat = json.loads(mock_ws.send.call_args_list[1].args[0])
+        assert heartbeat["profile"]["balance_usd"] == 0.0005
+
+    @pytest.mark.asyncio
     async def test_serve_loop_exits_on_connection_closed(self):
         """Test that serve_loop exits gracefully when connection closes."""
         mock_ws = AsyncMock()
