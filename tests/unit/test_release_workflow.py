@@ -71,10 +71,11 @@ def test_only_the_current_pair_is_built_and_attached():
 
 def test_artifact_job_installs_what_its_wheel_acceptance_test_needs():
     build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
-    install = "python -m pip install --upgrade pip build twine pytest -r requirements.txt"
+    install = 'python -m pip install --upgrade pip build twine ".[dev]"'
     acceptance = "pytest tests/e2e/test_the_wheel_works_when_installed.py"
 
     assert install in build_job
+    assert "requirements.txt" not in build_job
     assert build_job.index(install) < build_job.index(acceptance)
 
 
