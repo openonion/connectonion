@@ -64,6 +64,44 @@ class TestMicrosoftCalendarTokenManagement:
             token = calendar._get_access_token()
             assert token == "test-token"
 
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_refresh_persists_rotated_token_locally(
+        self, mock_httpx, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            "MICROSOFT_ACCESS_TOKEN=old-access\n"
+            "MICROSOFT_REFRESH_TOKEN=old-refresh\n"
+        )
+        config_dir = tmp_path / "co"
+        config_dir.mkdir()
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "access_token": "new-access",
+            "refresh_token": "rotated-refresh",
+            "expires_at": "2099-12-31T23:59:59Z",
+        }
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",
+            "MICROSOFT_ACCESS_TOKEN": "old-access",
+            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2000-01-01T00:00:00Z",
+            "OPENONION_API_KEY": "test-key",
+            "AGENT_CONFIG_PATH": str(config_dir),
+        }, clear=False):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            assert MicrosoftCalendar()._get_access_token() == "new-access"
+
+        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in (
+            config_dir / "keys.env"
+        ).read_text()
+        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in (
+            tmp_path / ".env"
+        ).read_text()
+
 
 class TestMicrosoftCalendarDateTimeParsing:
     """Test datetime parsing utilities."""

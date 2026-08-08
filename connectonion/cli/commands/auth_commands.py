@@ -16,7 +16,9 @@ import json
 import webbrowser
 import os
 import base64
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from time import monotonic
 from urllib.parse import parse_qs, urlparse
 from nacl.public import PrivateKey, SealedBox
 from rich.console import Console
@@ -359,6 +361,52 @@ def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict
     return credentials
 
 
+def _microsoft_callback_server():
+    """Bind a one-command loopback receiver; nothing is written by the backend."""
+    result = {}
+    expected_state = {"value": None}
+
+    class CallbackHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            state = params.get("state", [None])[0]
+            if parsed.path != "/callback" or state != expected_state["value"]:
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            error = params.get("error", [None])[0]
+            ciphertext = params.get("ciphertext", [None])[0]
+            if error:
+                result["error"] = error
+                status = 400
+                message = b"Microsoft authorization was cancelled. You may close this tab."
+            elif ciphertext:
+                result["ciphertext"] = ciphertext
+                status = 200
+                message = b"Microsoft authorization complete. You may close this tab."
+            else:
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(message)))
+            self.end_headers()
+            self.wfile.write(message)
+
+        def log_message(self, format, *args):
+            # Query parameters carry ciphertext; never put them in terminal logs.
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), CallbackHandler)
+    callback_url = f"http://127.0.0.1:{server.server_port}/callback"
+    return server, callback_url, expected_state, result
+
+
 def handle_microsoft_auth():
     """Authenticate with Microsoft OAuth for Outlook/Calendar access."""
 
@@ -377,62 +425,60 @@ def handle_microsoft_auth():
     console.print("🔑 Initializing Microsoft OAuth...", style="cyan")
 
     handoff_private_key = PrivateKey.generate()
-    response = requests.get(
-        f"{api_url}/microsoft/init",
-        headers=headers,
-        params={"handoff_public_key": bytes(handoff_private_key.public_key).hex()},
+    callback_server, callback_url, expected_state, callback_result = (
+        _microsoft_callback_server()
     )
-    if response.status_code != 200:
-        console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
-        return
-
-    auth_url = response.json()['auth_url']
-    state = parse_qs(urlparse(auth_url).query).get("state", [None])[0]
-    if not state:
-        console.print("\n❌ OAuth response did not contain a state", style="red")
-        return
-
-    # Open browser
-    console.print(f"\n🌐 Opening browser for Microsoft authentication...")
-    console.print(f"    URL: {auth_url}\n", style="dim")
-
-    webbrowser.open(auth_url)
-
-    # Poll for completion
-    console.print("⏳ Waiting for authorization...", style="yellow")
-    console.print("   (Complete the authorization in your browser)\n", style="dim")
-
-    max_attempts = 60  # 5 minutes (5 second intervals)
-    for attempt in range(max_attempts):
-        time.sleep(5)
-
-        handoff_response = requests.get(
-            f"{api_url}/microsoft/handoff",
+    try:
+        response = requests.get(
+            f"{api_url}/microsoft/init",
             headers=headers,
-            params={"state": state},
+            params={
+                "handoff_public_key": bytes(handoff_private_key.public_key).hex(),
+                "handoff_url": callback_url,
+            },
         )
-        if handoff_response.status_code == 204:
-            continue
-        if handoff_response.status_code != 200:
-            console.print(
-                f"\n❌ Failed to receive OAuth handoff ({handoff_response.status_code})",
-                style="red",
-            )
+        if response.status_code != 200:
+            console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
+            return
+
+        auth_url = response.json()['auth_url']
+        state = parse_qs(urlparse(auth_url).query).get("state", [None])[0]
+        if not state:
+            console.print("\n❌ OAuth response did not contain a state", style="red")
+            return
+        expected_state["value"] = state
+
+        # Open browser
+        console.print(f"\n🌐 Opening browser for Microsoft authentication...")
+        console.print(f"    URL: {auth_url}\n", style="dim")
+
+        webbrowser.open(auth_url)
+
+        console.print("⏳ Waiting for authorization...", style="yellow")
+        console.print("   (Complete the authorization in your browser)\n", style="dim")
+
+        deadline = monotonic() + 300
+        while not callback_result and monotonic() < deadline:
+            callback_server.timeout = min(1, max(0, deadline - monotonic()))
+            callback_server.handle_request()
+        if callback_result.get("error"):
+            console.print("\n❌ Microsoft authorization was cancelled", style="red")
+            return
+        if "ciphertext" not in callback_result:
+            console.print("\n❌ Authorization timed out", style="red")
+            console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
             return
         try:
             credentials = _decrypt_microsoft_handoff(
                 handoff_private_key,
-                handoff_response.json()["ciphertext"],
+                callback_result["ciphertext"],
             )
-        except (KeyError, ValueError):
+        except ValueError:
             console.print("\n❌ Microsoft OAuth handoff was invalid", style="red")
             return
         console.print("✓ Authorization successful!", style="green")
-        break
-    else:
-        console.print("\n❌ Authorization timed out", style="red")
-        console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
-        return
+    finally:
+        callback_server.server_close()
 
     # Save credentials
     console.print("\n💾 Saving credentials...", style="cyan")

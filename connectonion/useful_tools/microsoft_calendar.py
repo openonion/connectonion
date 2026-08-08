@@ -3,7 +3,7 @@ Purpose: Microsoft Calendar integration tool for managing events via Microsoft G
 LLM-Note:
   Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_microsoft_calendar.py]
   Data flow: Agent calls MicrosoftCalendar methods → _get_headers() loads MICROSOFT_ACCESS_TOKEN from env → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (event lists, confirmations, free slots)
-  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can create/update/delete events, create Teams meetings | no local file persistence
+  State/Effects: reads and locally refreshes MICROSOFT_* OAuth tokens | persists rotated tokens to user keys.env and an existing project .env | makes HTTP calls to Microsoft Graph API | can create/update/delete events, create Teams meetings
   Integration: exposes MicrosoftCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_teams_meeting(), get_upcoming_meetings(), find_free_slots(), check_availability() | used as agent tool via Agent(tools=[MicrosoftCalendar()])
   Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
   Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display
@@ -44,6 +44,7 @@ Example:
 
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 import httpx
 from ..backend import backend_url
 
@@ -116,29 +117,37 @@ class MicrosoftCalendar:
 
         if response.status_code != 200:
             raise ValueError(
-                f"Failed to refresh Microsoft token via backend: {response.text}"
+                f"Microsoft session expired and refresh failed ({response.status_code}).\n"
+                "Reconnect with: co auth microsoft"
             )
 
         data = response.json()
         new_access_token = data["access_token"]
         expires_at = data["expires_at"]
+        new_refresh_token = data.get("refresh_token") or refresh_token
 
         os.environ["MICROSOFT_ACCESS_TOKEN"] = new_access_token
         os.environ["MICROSOFT_TOKEN_EXPIRES_AT"] = expires_at
+        os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
 
-        env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
-        if os.path.exists(env_file):
-            with open(env_file, 'r', encoding="utf-8") as f:
-                lines = f.readlines()
+        from ..cli.commands.project_cmd_lib import upsert_env
+        rotated = {
+            "MICROSOFT_ACCESS_TOKEN": new_access_token,
+            "MICROSOFT_TOKEN_EXPIRES_AT": expires_at,
+            "MICROSOFT_REFRESH_TOKEN": new_refresh_token,
+        }
+        keys_env = Path(
+            os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))
+        ) / "keys.env"
+        keys_env.parent.mkdir(parents=True, exist_ok=True)
+        upsert_env(keys_env, rotated)
 
-            with open(env_file, 'w', encoding="utf-8") as f:
-                for line in lines:
-                    if line.startswith("MICROSOFT_ACCESS_TOKEN="):
-                        f.write(f"MICROSOFT_ACCESS_TOKEN={new_access_token}\n")
-                    elif line.startswith("MICROSOFT_TOKEN_EXPIRES_AT="):
-                        f.write(f"MICROSOFT_TOKEN_EXPIRES_AT={expires_at}\n")
-                    else:
-                        f.write(line)
+        local_env = Path(".env")
+        if (
+            local_env.exists()
+            and "MICROSOFT_ACCESS_TOKEN=" in local_env.read_text(encoding="utf-8")
+        ):
+            upsert_env(local_env, rotated)
 
         return new_access_token
 

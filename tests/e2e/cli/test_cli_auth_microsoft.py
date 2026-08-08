@@ -25,6 +25,8 @@ Components under test:
 import tempfile
 import base64
 import json
+import threading
+import requests
 from pathlib import Path
 import pytest
 from unittest.mock import Mock, patch
@@ -162,6 +164,30 @@ OTHER_VAR=keep-this
                 base64.urlsafe_b64encode(b"not-a-sealed-box").decode(),
             )
 
+    def test_loopback_callback_accepts_only_matching_state(self):
+        from connectonion.cli.commands.auth_commands import (
+            _microsoft_callback_server,
+        )
+
+        server, callback_url, expected_state, result = (
+            _microsoft_callback_server()
+        )
+        expected_state["value"] = "expected"
+        try:
+            for state, expected_status in (("wrong", 400), ("expected", 200)):
+                worker = threading.Thread(target=server.handle_request)
+                worker.start()
+                response = requests.get(
+                    callback_url,
+                    params={"state": state, "ciphertext": "sealed"},
+                    timeout=2,
+                )
+                worker.join(timeout=2)
+                assert response.status_code == expected_status
+            assert result == {"ciphertext": "sealed"}
+        finally:
+            server.server_close()
+
 
 class TestAuthMicrosoftFlow:
     """Test the co auth microsoft flow with mocked backend."""
@@ -190,6 +216,14 @@ class TestAuthMicrosoftFlow:
                 'scopes': 'Mail.ReadWrite,Mail.Send,Contacts.ReadWrite,Calendars.Read,Calendars.ReadWrite',
                 'microsoft_email': 'test@outlook.com'
             }
+            callback_result = {}
+            expected_state = {'value': None}
+            fake_server = Mock()
+
+            def handle_request():
+                callback_result['ciphertext'] = fake_server.ciphertext
+
+            fake_server.handle_request.side_effect = handle_request
 
             def get(url, **kwargs):
                 if url.endswith('/microsoft/init'):
@@ -200,19 +234,27 @@ class TestAuthMicrosoftFlow:
                     sealed = SealedBox(public_key).encrypt(
                         json.dumps(credentials).encode()
                     )
-                    handoff = Mock(status_code=200)
-                    handoff.json.return_value = {
-                        'ciphertext': base64.urlsafe_b64encode(sealed).decode()
-                    }
-                    mock_requests._handoff = handoff
+                    fake_server.ciphertext = base64.urlsafe_b64encode(sealed).decode()
+                    assert kwargs['params']['handoff_url'].startswith(
+                        'http://127.0.0.1:'
+                    )
                     return mock_init_response
-                return mock_requests._handoff
+                raise AssertionError(f"Unexpected backend request: {url}")
 
             mock_requests.get.side_effect = get
 
             mock_webbrowser.open.return_value = True
 
-            with patch('time.sleep', return_value=None):
+            callback = (
+                fake_server,
+                'http://127.0.0.1:54321/callback',
+                expected_state,
+                callback_result,
+            )
+            with patch(
+                'connectonion.cli.commands.auth_commands._microsoft_callback_server',
+                return_value=callback,
+            ):
                 from connectonion.cli.main import cli
                 self.runner.invoke(cli, ['auth', 'microsoft'])
 
@@ -236,15 +278,19 @@ class TestAuthMicrosoftFlow:
             mock_response.text = 'Internal Server Error'
             mock_requests.get.return_value = mock_response
 
-            from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['auth', 'microsoft'])
+            callback = (Mock(), 'http://127.0.0.1:54321/callback', {'value': None}, {})
+            with patch(
+                'connectonion.cli.commands.auth_commands._microsoft_callback_server',
+                return_value=callback,
+            ):
+                from connectonion.cli.main import cli
+                result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'Failed to initialize OAuth' in result.output or result.exit_code != 0
 
     @patch('connectonion.cli.commands.auth_commands.webbrowser')
     @patch('connectonion.cli.commands.auth_commands.requests')
-    @patch('time.sleep')
-    def test_auth_microsoft_timeout(self, mock_sleep, mock_requests, mock_webbrowser):
+    def test_auth_microsoft_timeout(self, mock_requests, mock_webbrowser):
         """Test handling of authorization timeout."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
@@ -255,15 +301,19 @@ class TestAuthMicrosoftFlow:
                 'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=state-timeout'
             }
 
-            mock_status_response = Mock()
-            mock_status_response.status_code = 204
-
-            mock_requests.get.side_effect = [
-                mock_init_response,
-                *[mock_status_response] * 60
-            ]
-
-            from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['auth', 'microsoft'])
+            mock_requests.get.return_value = mock_init_response
+            callback = (Mock(), 'http://127.0.0.1:54321/callback', {'value': None}, {})
+            with (
+                patch(
+                    'connectonion.cli.commands.auth_commands._microsoft_callback_server',
+                    return_value=callback,
+                ),
+                patch(
+                    'connectonion.cli.commands.auth_commands.monotonic',
+                    side_effect=[0, 301, 301],
+                ),
+            ):
+                from connectonion.cli.main import cli
+                result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'timed out' in result.output.lower() or result.exit_code != 0

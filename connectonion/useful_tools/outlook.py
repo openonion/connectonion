@@ -92,10 +92,10 @@ class Outlook:
     def _get_access_token(self) -> str:
         """Get Microsoft access token, refreshing once per Outlook instance.
 
-        Microsoft refresh tokens live 90 days and replace themselves on
-        every use — refreshing at the start of each session (and persisting
-        the rotated token) keeps that window sliding forever, so re-auth is
-        only ever needed after a password change or revocation.
+        Microsoft refresh tokens have a 90-day default lifetime in this flow
+        and each refresh can return a replacement. Persist the newest token
+        locally; interactive authorization is still required if Microsoft
+        expires or revokes it.
         """
         if self._access_token:
             return self._access_token
@@ -148,13 +148,12 @@ class Outlook:
         # Microsoft rotates refresh tokens on every use — persist the new one
         # or the connection dies when the original expires at 90 days.
         # (Older backends don't return it; keep the current one then.)
-        new_refresh_token = data.get("refresh_token")
+        new_refresh_token = data.get("refresh_token") or refresh_token
 
         # Update environment variables for this session
         os.environ["MICROSOFT_ACCESS_TOKEN"] = new_access_token
         os.environ["MICROSOFT_TOKEN_EXPIRES_AT"] = expires_at
-        if new_refresh_token:
-            os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
+        os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
 
         # Persist so the rotated tokens survive this process. Both env files
         # matter: load_dotenv reads .env first and does not override, so a
