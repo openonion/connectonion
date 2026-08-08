@@ -96,6 +96,20 @@ def test_versioning_md_names_the_version_being_shipped():
     )
 
 
+def test_uv_lock_names_the_version_being_shipped():
+    """Editable root metadata is still package metadata and must be refreshed."""
+    lockfile = (REPO / "uv.lock").read_text(encoding="utf-8")
+    package = re.search(
+        r'\[\[package\]\]\s*name = "connectonion"\s*version = "([^"]+)"',
+        lockfile,
+    )
+    assert package, "uv.lock has no root connectonion package"
+    assert package.group(1) == _pyproject_version(), (
+        f"uv.lock says {package.group(1)}, pyproject.toml says "
+        f"{_pyproject_version()}; run uv lock after every version bump"
+    )
+
+
 @pytest.mark.skipif(not DOCS_SITE.exists(),
                     reason=f"docs-site is a separate repo; not checked out at {DOCS_SITE}")
 def test_the_docs_site_advertises_the_version_that_exists():
