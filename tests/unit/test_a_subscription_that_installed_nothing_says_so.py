@@ -39,7 +39,12 @@ def synced(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(sub, "_write_subs", lambda subs: None, raising=False)
     monkeypatch.setattr(sub, "_resolve_target", lambda t: (t, "pub"), raising=False)
     monkeypatch.setattr(sub, "_fetch_profile",
-                        lambda address, base: {"alias": "pub"}, raising=False)
+                        lambda address, base: {"profile": {"alias": "pub"}}, raising=False)
+    monkeypatch.setattr(
+        sub, "_verified_bundle",
+        lambda address, envelope, base: ({"alias": "pub"}, {}),
+        raising=False,
+    )
 
     def _run(mirrored, install_results):
         monkeypatch.setattr(sub, "_mirror_bundle",
