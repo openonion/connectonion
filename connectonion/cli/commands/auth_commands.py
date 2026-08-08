@@ -15,7 +15,10 @@ import requests
 import json
 import webbrowser
 import os
+import base64
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+from nacl.public import PrivateKey, SealedBox
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
@@ -334,6 +337,28 @@ def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
     }, strip_prefix="MICROSOFT_")
 
 
+def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict:
+    """Open the one-time callback result that was sealed to this CLI."""
+    try:
+        plaintext = SealedBox(private_key).decrypt(
+            base64.urlsafe_b64decode(ciphertext.encode("ascii"))
+        )
+        credentials = json.loads(plaintext)
+    except Exception as exc:
+        raise ValueError("Microsoft OAuth handoff could not be decrypted") from exc
+
+    required = {
+        "access_token", "refresh_token", "expires_at",
+        "scopes", "microsoft_email",
+    }
+    if not required.issubset(credentials) or not all(
+        isinstance(credentials[name], str) and credentials[name]
+        for name in required
+    ):
+        raise ValueError("Microsoft OAuth handoff is incomplete")
+    return credentials
+
+
 def handle_microsoft_auth():
     """Authenticate with Microsoft OAuth for Outlook/Calendar access."""
 
@@ -348,18 +373,24 @@ def handle_microsoft_auth():
     api_url = f"{backend_url()}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
-    # Clear any existing connection first
-    requests.delete(f"{api_url}/microsoft/revoke", headers=headers)
-
     # Get OAuth URL
     console.print("🔑 Initializing Microsoft OAuth...", style="cyan")
 
-    response = requests.get(f"{api_url}/microsoft/init", headers=headers)
+    handoff_private_key = PrivateKey.generate()
+    response = requests.get(
+        f"{api_url}/microsoft/init",
+        headers=headers,
+        params={"handoff_public_key": bytes(handoff_private_key.public_key).hex()},
+    )
     if response.status_code != 200:
         console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
         return
 
     auth_url = response.json()['auth_url']
+    state = parse_qs(urlparse(auth_url).query).get("state", [None])[0]
+    if not state:
+        console.print("\n❌ OAuth response did not contain a state", style="red")
+        return
 
     # Open browser
     console.print(f"\n🌐 Opening browser for Microsoft authentication...")
@@ -375,24 +406,33 @@ def handle_microsoft_auth():
     for attempt in range(max_attempts):
         time.sleep(5)
 
-        status_response = requests.get(f"{api_url}/microsoft/status", headers=headers)
-        if status_response.status_code == 200:
-            status = status_response.json()
-            if status.get('connected'):
-                console.print("✓ Authorization successful!", style="green")
-                break
+        handoff_response = requests.get(
+            f"{api_url}/microsoft/handoff",
+            headers=headers,
+            params={"state": state},
+        )
+        if handoff_response.status_code == 204:
+            continue
+        if handoff_response.status_code != 200:
+            console.print(
+                f"\n❌ Failed to receive OAuth handoff ({handoff_response.status_code})",
+                style="red",
+            )
+            return
+        try:
+            credentials = _decrypt_microsoft_handoff(
+                handoff_private_key,
+                handoff_response.json()["ciphertext"],
+            )
+        except (KeyError, ValueError):
+            console.print("\n❌ Microsoft OAuth handoff was invalid", style="red")
+            return
+        console.print("✓ Authorization successful!", style="green")
+        break
     else:
         console.print("\n❌ Authorization timed out", style="red")
         console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
         return
-
-    # Get credentials
-    creds_response = requests.get(f"{api_url}/microsoft/credentials", headers=headers)
-    if creds_response.status_code != 200:
-        console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
-        return
-
-    credentials = creds_response.json()
 
     # Save credentials
     console.print("\n💾 Saving credentials...", style="cyan")

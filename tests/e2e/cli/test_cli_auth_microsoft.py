@@ -23,9 +23,13 @@ Components under test:
 """
 
 import tempfile
+import base64
+import json
 from pathlib import Path
 import pytest
 from unittest.mock import Mock, patch
+from nacl.encoding import HexEncoder
+from nacl.public import PublicKey, SealedBox
 
 from .argparse_runner import ArgparseCliRunner
 
@@ -146,6 +150,18 @@ OTHER_VAR=keep-this
             stat = env_file.stat()
             assert oct(stat.st_mode)[-3:] == '600'
 
+    def test_tampered_handoff_cannot_be_saved(self):
+        from nacl.public import PrivateKey
+        from connectonion.cli.commands.auth_commands import (
+            _decrypt_microsoft_handoff,
+        )
+
+        with pytest.raises(ValueError, match="could not be decrypted"):
+            _decrypt_microsoft_handoff(
+                PrivateKey.generate(),
+                base64.urlsafe_b64encode(b"not-a-sealed-box").decode(),
+            )
+
 
 class TestAuthMicrosoftFlow:
     """Test the co auth microsoft flow with mocked backend."""
@@ -161,22 +177,13 @@ class TestAuthMicrosoftFlow:
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
-                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...'
+                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=state-1'
             }
 
-            mock_status_response = Mock()
-            mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {'connected': True}
-
-            mock_creds_response = Mock()
-            mock_creds_response.status_code = 200
-            mock_creds_response.json.return_value = {
+            credentials = {
                 'access_token': 'eyJ0eXAi.test',
                 'refresh_token': '0.ATcA.test',
                 'expires_at': '2025-12-31T23:59:59',
@@ -184,12 +191,24 @@ class TestAuthMicrosoftFlow:
                 'microsoft_email': 'test@outlook.com'
             }
 
-            mock_requests.delete.return_value = mock_revoke_response
-            mock_requests.get.side_effect = [
-                mock_init_response,
-                mock_status_response,
-                mock_creds_response
-            ]
+            def get(url, **kwargs):
+                if url.endswith('/microsoft/init'):
+                    public_key = PublicKey(
+                        kwargs['params']['handoff_public_key'].encode('ascii'),
+                        encoder=HexEncoder,
+                    )
+                    sealed = SealedBox(public_key).encrypt(
+                        json.dumps(credentials).encode()
+                    )
+                    handoff = Mock(status_code=200)
+                    handoff.json.return_value = {
+                        'ciphertext': base64.urlsafe_b64encode(sealed).decode()
+                    }
+                    mock_requests._handoff = handoff
+                    return mock_init_response
+                return mock_requests._handoff
+
+            mock_requests.get.side_effect = get
 
             mock_webbrowser.open.return_value = True
 
@@ -197,7 +216,7 @@ class TestAuthMicrosoftFlow:
                 from connectonion.cli.main import cli
                 self.runner.invoke(cli, ['auth', 'microsoft'])
 
-            mock_requests.delete.assert_called_once()
+            mock_requests.delete.assert_not_called()
             mock_webbrowser.open.assert_called_once()
 
             env_content = Path('.env').read_text()
@@ -211,10 +230,6 @@ class TestAuthMicrosoftFlow:
         """Test handling of OAuth init failure."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
-
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-            mock_requests.delete.return_value = mock_revoke_response
 
             mock_response = Mock()
             mock_response.status_code = 500
@@ -234,19 +249,14 @@ class TestAuthMicrosoftFlow:
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-            mock_requests.delete.return_value = mock_revoke_response
-
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
-                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...'
+                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=state-timeout'
             }
 
             mock_status_response = Mock()
-            mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {'connected': False}
+            mock_status_response.status_code = 204
 
             mock_requests.get.side_effect = [
                 mock_init_response,
