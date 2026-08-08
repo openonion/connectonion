@@ -74,6 +74,7 @@ from copy import deepcopy
 
 from ..core.events import after_user_input, on_complete, before_each_tool, on_agent_ready
 from ..project import project_co_dir, project_root
+from ..skill_requirements import SkillManifestError, parse_skill_requirements
 from ..skills_catalog import (
     DEFAULT_LIBRARY_SKILLS,
     builtin_skills_dir,
@@ -168,10 +169,13 @@ def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
         if path.exists():
             content = path.read_text(encoding="utf-8")
             frontmatter, instructions = _parse_skill_content(content)
+            manifest_name = frontmatter.get('name') or skill_name
+            requirements = parse_skill_requirements(frontmatter, str(manifest_name))
             return {
                 'path': str(path),
                 'frontmatter': frontmatter,
-                'instructions': instructions
+                'instructions': instructions,
+                'requirements': requirements,
             }
 
     return None
@@ -439,6 +443,13 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— name and description were still read')
         return f'SKILL.md frontmatter is not valid YAML{where}: {detail}'
+
+    frontmatter = _read_frontmatter(yaml_text)
+    skill_name = frontmatter.get('name') or skill_md.parent.name
+    try:
+        parse_skill_requirements(frontmatter, str(skill_name))
+    except SkillManifestError as exc:
+        return str(exc)
 
     return None
 

@@ -34,10 +34,12 @@ Usage:
 """
 
 import re
-from pathlib import Path
-from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from ....project import project_co_dir
+from ....skill_requirements import SkillRequirements, parse_skill_requirements
 from ....skills_catalog import default_skill_files
 
 
@@ -47,6 +49,7 @@ class SkillInfo:
     name: str
     description: str
     path: Path
+    requirements: Optional[SkillRequirements] = None
 
     def load_content(self) -> str:
         """Load the full SKILL.md content."""
@@ -203,7 +206,8 @@ def _parse_skill_file(path: Path) -> Optional[SkillInfo]:
     if not description:
         description = f"Skill: {name}"
 
-    return SkillInfo(name=name, description=description, path=path)
+    requirements = parse_skill_requirements(frontmatter, name)
+    return SkillInfo(name=name, description=description, path=path, requirements=requirements)
 
 
 def load_skills(base_path: Optional[Path] = None) -> Dict[str, SkillInfo]:
