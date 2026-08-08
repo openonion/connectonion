@@ -49,16 +49,23 @@ def test_send_email_success(mock_post):
     mock_response.json.return_value = {"message_id": "msg_123"}
     mock_post.return_value = mock_response
 
-    result = send_email("test@example.com", "Test Subject", "Test Message")
+    result = send_email(
+        "test@example.com", "Test Subject", "Test Message",
+        idempotency_key="send-test-123",
+    )
 
     assert result["success"] is True
     assert result["message_id"] == "msg_123"
     assert result["from"] == TEST_ACCOUNT["email"]
+    assert result["request_id"] == "send-test-123"
+    assert result["idempotency_key"] == "send-test-123"
 
     mock_post.assert_called_once()
     call_args = mock_post.call_args
     assert "Authorization" in call_args[1]["headers"]
     assert call_args[1]["headers"]["Authorization"] == f"Bearer {TEST_JWT_TOKEN}"
+    assert call_args[1]["headers"]["X-Request-ID"] == "send-test-123"
+    assert call_args[1]["headers"]["Idempotency-Key"] == "send-test-123"
 
 
 @patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
@@ -109,6 +116,46 @@ def test_send_email_rate_limit(mock_post):
 
     assert result["success"] is False
     assert result["error"] == "Rate limit exceeded"
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch('requests.post')
+def test_send_email_keeps_server_ids_on_a_stable_json_error(mock_post):
+    mock_response = MagicMock()
+    mock_response.status_code = 502
+    mock_response.headers = {"X-Request-ID": "header-id"}
+    mock_response.json.return_value = {
+        "detail": "Retry with the same idempotency key.",
+        "request_id": "server-request",
+        "idempotency_key": "send-original",
+    }
+    mock_post.return_value = mock_response
+
+    result = send_email(
+        "test@example.com", "Test", "Message",
+        idempotency_key="send-original",
+    )
+
+    assert result == {
+        "success": False,
+        "error": "Retry with the same idempotency key.",
+        "request_id": "server-request",
+        "idempotency_key": "send-original",
+    }
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch('requests.post', side_effect=requests.exceptions.Timeout)
+def test_send_email_timeout_returns_the_key_for_a_safe_retry(mock_post):
+    result = send_email(
+        "test@example.com", "Test", "Message",
+        idempotency_key="send-timeout",
+    )
+
+    assert result["success"] is False
+    assert result["request_id"] == "send-timeout"
+    assert result["idempotency_key"] == "send-timeout"
+    assert "same idempotency key" in result["error"]
 
 
 # -------- get_emails tests -------- #

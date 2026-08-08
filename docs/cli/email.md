@@ -66,6 +66,17 @@ Prints the sender, subject, date, and body, then marks the message read.
 co email send bob@example.com "Subject line" "Body text"
 ```
 
+Every send carries a request ID and an idempotency key. If the result is
+uncertain (for example, a timeout after the provider accepted the message),
+the failure prints the key. Reuse it to retry without sending a duplicate:
+
+```bash
+co email send bob@example.com "Subject line" "Body text" \
+  --idempotency-key 4f07d5b4-9d8e-4e58-a889-11bb14cc70ab
+```
+
+The same key must only be reused with the same recipient, subject, and body.
+
 All three arguments are positional and required. HTML is auto-detected: if the
 body contains tags (`<...>`), it's sent as HTML, otherwise as plain text.
 

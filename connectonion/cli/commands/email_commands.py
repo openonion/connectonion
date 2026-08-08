@@ -45,20 +45,26 @@ def _err(response) -> str:
     return response.text.strip() or f"HTTP {response.status_code}"
 
 
-def handle_email_send(to: str, subject: str, message: str):
+def handle_email_send(to: str, subject: str, message: str, idempotency_key: str = None):
     """Send an email from the agent's address."""
     if not _require_auth():
         return
 
     from ...useful_tools.send_email import send_email
-    result = send_email(to, subject, message)
+    result = send_email(to, subject, message, idempotency_key=idempotency_key)
 
     if result.get("success"):
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
         console.print(f"  From:       {result.get('from', '')}")
         console.print(f"  Message ID: {result.get('message_id', '')}\n")
     else:
-        console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}\n")
+        console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}")
+        if result.get("request_id"):
+            console.print(f"  Request ID: {result['request_id']}")
+        if result.get("idempotency_key"):
+            console.print(f"  Safe retry key: {result['idempotency_key']}")
+            console.print("  [dim]Retry the same command with --idempotency-key <key>[/dim]")
+        console.print()
 
 
 def handle_email_inbox(last: int = 10, unread: bool = False):
