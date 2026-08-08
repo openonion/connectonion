@@ -6,10 +6,11 @@ LLM-Note:
   Data flow:
     1. Read ~/.co/agent.json → load alias, bio, version, skills[]
     2. List all skills as metadata; inline body only when publish: true
-    3. Build profile {alias, bio, version, skills:[{name, description, body?}]}
-    4. create_announce_message(..., profile=profile) — signs everything
-    5. WS connect wss://oo.openonion.ai/ws/announce → send → close
-  State/Effects: reads ~/.co/agent.json + ~/.co/skills/<name>/SKILL.md | opens one outbound WS | no local writes
+    3. Allocate a monotonic signed profile revision under ~/.co/profile-publish-state/
+    4. Build profile {alias, bio, version, attestation_version, revision, skills:[{name, description, body?}]}
+    5. create_announce_message(..., profile=profile) — signs everything
+    6. WS connect wss://oo.openonion.ai/ws/announce → send → persist accepted revision
+  State/Effects: reads ~/.co/agent.json + ~/.co/skills/<name>/SKILL.md | writes the accepted publisher revision atomically | opens one outbound WS
   Integration: skills are listed by default; publish: true controls whether the body is public.
 """
 
@@ -22,6 +23,7 @@ from rich.console import Console
 
 from ... import address
 from ...network.announce import create_announce_message
+from ...network.profile_freshness import next_revision, revision_lock, write_state
 
 console = Console()
 
@@ -29,6 +31,10 @@ CO_HOME = Path.home() / ".co"
 AGENT_JSON = CO_HOME / "agent.json"
 SKILLS_DIR = CO_HOME / "skills"
 DEFAULT_RELAY = "wss://oo.openonion.ai"
+
+
+def _revision_path(publisher: str) -> Path:
+    return CO_HOME / "profile-publish-state" / f"{publisher}.json"
 
 
 def _load_profile() -> dict:
@@ -114,31 +120,38 @@ def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
     profile_file = _load_profile()
     addr_data = address.load(CO_HOME)
 
-    skills = _build_listed_skills(profile_file)
-    profile = {
-        "alias":   profile_file.get("alias"),
-        "bio":     profile_file.get("bio", ""),
-        "version": profile_file.get("version", "v0.1.0"),
-        "skills":  skills,
-    }
-    summary = profile_file.get("bio") or f"Agent {profile['alias']}"
+    state_path = _revision_path(addr_data["address"])
+    with revision_lock(state_path):
+        revision = next_revision(state_path)
+        skills = _build_listed_skills(profile_file)
+        profile = {
+            "alias": profile_file.get("alias"),
+            "bio": profile_file.get("bio", ""),
+            "version": profile_file.get("version", "v0.1.0"),
+            "attestation_version": "profile-v2",
+            "revision": revision,
+            "skills": skills,
+        }
+        summary = profile_file.get("bio") or f"Agent {profile['alias']}"
 
-    relay_url = relay or DEFAULT_RELAY
-    message = create_announce_message(
-        address_data=addr_data,
-        summary=summary[:1000],
-        endpoints=[],
-        relay=relay_url,
-        profile=profile,
-    )
+        relay_url = relay or DEFAULT_RELAY
+        message = create_announce_message(
+            address_data=addr_data,
+            summary=summary[:1000],
+            endpoints=[],
+            relay=relay_url,
+            profile=profile,
+        )
 
-    console.print(f"[cyan]Announcing[/cyan] {addr_data['address']} → {relay_url}")
-    console.print(f"  alias:  {profile['alias']}")
-    print_announce_summary(profile['alias'], skills)
+        console.print(f"[cyan]Announcing[/cyan] {addr_data['address']} → {relay_url}")
+        console.print(f"  alias:  {profile['alias']}")
+        console.print(f"  revision: {revision}")
+        print_announce_summary(profile['alias'], skills)
 
-    if dry_run:
-        console.print_json(data=message)
-        return
+        if dry_run:
+            console.print_json(data=message)
+            return
 
-    asyncio.run(_send(message, relay_url))
+        asyncio.run(_send(message, relay_url))
+        write_state(state_path, revision)
     console.print("[green]✓ Announced.[/green]")

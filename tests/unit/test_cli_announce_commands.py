@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from connectonion import address
 from connectonion.cli.commands import announce_commands as announce
 
 
@@ -60,3 +61,52 @@ def test_build_listed_skills_lists_all_and_only_inlines_published_bodies(isolate
         {"name": "private", "description": "Private skill"},
         {"name": "missing", "description": "Missing skill"},
     ]
+
+
+def test_a_successful_publish_signs_and_persists_a_revision(
+    isolated_announce_home, monkeypatch
+):
+    keys = address.generate()
+    sent = []
+
+    async def send(message, relay):
+        sent.append(message)
+
+    monkeypatch.setattr(announce.address, "load", lambda _home: keys)
+    monkeypatch.setattr(announce, "_send", send)
+
+    announce.handle_announce(relay="wss://relay.example")
+
+    revision = sent[0]["profile"]["revision"]
+    assert sent[0]["profile"]["attestation_version"] == "profile-v2"
+    assert isinstance(revision, int) and revision > 0
+    state = json.loads(announce._revision_path(keys["address"]).read_text())
+    assert state == {"revision": revision}
+
+
+def test_a_failed_publish_does_not_advance_the_revision(
+    isolated_announce_home, monkeypatch
+):
+    keys = address.generate()
+
+    async def fail(_message, _relay):
+        raise RuntimeError("relay unavailable")
+
+    monkeypatch.setattr(announce.address, "load", lambda _home: keys)
+    monkeypatch.setattr(announce, "_send", fail)
+
+    with pytest.raises(RuntimeError, match="relay unavailable"):
+        announce.handle_announce(relay="wss://relay.example")
+
+    assert not announce._revision_path(keys["address"]).exists()
+
+
+def test_dry_run_does_not_consume_a_revision(
+    isolated_announce_home, monkeypatch
+):
+    keys = address.generate()
+    monkeypatch.setattr(announce.address, "load", lambda _home: keys)
+
+    announce.handle_announce(relay="wss://relay.example", dry_run=True)
+
+    assert not announce._revision_path(keys["address"]).exists()

@@ -3,7 +3,7 @@ Purpose: `co sub` — record a subscription relationship to a published agent, m
 LLM-Note:
   Dependencies: imports from [json, re, shutil, pathlib, httpx, rich.console, rich.table, .fanout] | imported by [cli/main.py via handle_sub_sync_one/sync_all/list/remove] | tested by [tests/unit/test_sub_commands.py, tests/cli/test_cli_sub.py]
   Data flow:
-    sync_one(target, relay?) → validate/pin 0x publisher address → GET signed profile metadata + every published body → reconstruct the exact profile and verify its Ed25519 profile-v1 signature before filesystem writes → strip remote tools grants → mirror under ~/.co/subs/<alias>/ → record subscription → fan out to coding agents
+    sync_one(target, relay?) → validate/pin 0x publisher address → lock its durable local freshness watermark → GET signed profile metadata + every published body → reconstruct the exact profile and verify its Ed25519 profile-v2 signature + monotonic revision before filesystem writes → advance watermark → strip remote tools grants → mirror under ~/.co/subs/<alias>/ → record subscription → fan out to coding agents
     sync_all(relay?) → walks ~/.co/subscriptions.txt, calls sync_one per entry, tolerates per-publisher failures, prints summary (ok/failed counts)
     list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, skill count
     remove(target) → match by address or alias → fanout.uninstall_all() drops every per-tool install → rmtree ~/.co/subs/<alias>/ → rewrite subscriptions.txt without the line
@@ -37,6 +37,12 @@ from rich.console import Console
 from rich.table import Table
 
 from .fanout import install_all, uninstall_all
+from ...network.profile_freshness import (
+    read_state,
+    revision_lock,
+    validate_revision,
+    write_state,
+)
 
 console = Console()
 
@@ -46,6 +52,10 @@ SUBS_LIST = CO_HOME / "subscriptions.txt"
 DEFAULT_RELAY = "https://oo.openonion.ai"
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 LOCAL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _freshness_path(address: str) -> Path:
+    return CO_HOME / "subscription-state" / f"{address}.json"
 
 
 def _relay_base(relay: Optional[str]) -> str:
@@ -63,7 +73,10 @@ def _read_subs() -> list[tuple[str, str]]:
             continue
         parts = line.split(maxsplit=1)
         if len(parts) == 2:
-            out.append((parts[0], parts[1]))
+            stored_address = parts[0]
+            if ADDRESS_RE.fullmatch(stored_address):
+                stored_address = stored_address.lower()
+            out.append((stored_address, parts[1]))
     return out
 
 
@@ -191,10 +204,16 @@ def _verified_bundle(address: str, envelope: dict, relay: str):
     signature = envelope.get("signature")
     if publisher != address:
         raise ValueError("publisher signature belongs to a different address")
-    if envelope.get("signature_version") != "profile-v1" or not signature:
-        raise ValueError("publisher profile signature required; ask them to re-announce with 1.6.0")
+    if envelope.get("signature_version") != "profile-v2" or not signature:
+        raise ValueError(
+            "publisher profile-v2 signature and revision required; "
+            "ask them to re-announce with 1.6.0"
+        )
 
     profile = json.loads(json.dumps(envelope["profile"]))
+    if profile.get("attestation_version") != "profile-v2":
+        raise ValueError("signed publisher profile-v2 attestation marker required")
+    revision = validate_revision(profile.get("revision"))
     alias = profile.get("alias")
     if not isinstance(alias, str) or not LOCAL_NAME_RE.fullmatch(alias):
         raise ValueError("signed publisher alias is not a safe local directory name")
@@ -215,7 +234,27 @@ def _verified_bundle(address: str, envelope: dict, relay: str):
 
     if not verify_signature(profile, signature, address):
         raise ValueError("publisher profile signature verification failed")
-    return profile, bodies
+    return profile, bodies, revision, signature
+
+
+def _accept_freshness(address: str, revision: int, signature: str) -> None:
+    """Advance before activating content; permit only an exact idempotent retry."""
+    signature = signature[2:] if signature.startswith("0x") else signature
+    signature = signature.lower()
+    path = _freshness_path(address)
+    current = read_state(path)
+    if current:
+        highest = current["revision"]
+        if revision < highest:
+            raise ValueError(
+                f"publisher profile rollback refused: revision {revision} is older "
+                f"than locally accepted revision {highest}"
+            )
+        if revision == highest and current.get("signature") != signature:
+            raise ValueError(
+                f"publisher profile equivocation refused at revision {revision}"
+            )
+    write_state(path, revision, signature)
 
 
 def _mirror_bundle(alias: str, profile: dict, bodies: dict) -> int:
@@ -254,7 +293,7 @@ def _resolve_target(target: str) -> tuple[str, Optional[str]]:
     """Return (address, alias_hint). v1 only accepts 0x addresses; aliases need
     a relay-side resolver that doesn't exist yet."""
     if ADDRESS_RE.match(target):
-        return target, None
+        return target.lower(), None
     # Maybe they typed an alias that's already in subscriptions.txt (refresh case)
     for addr, alias in _read_subs():
         if alias == target:
@@ -281,29 +320,34 @@ def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
     address, alias_hint = _resolve_target(target)
     base = _relay_base(relay)
 
-    console.print(f"[cyan]Fetching profile[/cyan] {address}")
-    envelope = _fetch_profile(address, base)
-    profile, bodies = _verified_bundle(address, envelope, base)
-    alias = profile.get("alias") or alias_hint or address[:10]
+    with revision_lock(_freshness_path(address)):
+        console.print(f"[cyan]Fetching profile[/cyan] {address}")
+        envelope = _fetch_profile(address, base)
+        profile, bodies, revision, signature = _verified_bundle(address, envelope, base)
+        alias = profile.get("alias") or alias_hint or address[:10]
 
-    owner = next(
-        (saved_address for saved_address, saved_alias in _read_subs()
-         if saved_alias == alias and saved_address != address),
-        None,
-    )
-    if owner:
-        raise ValueError(
-            f"publisher alias '{alias}' already belongs to {owner}; "
-            "refusing to overwrite its subscribed skills"
+        owner = next(
+            (saved_address for saved_address, saved_alias in _read_subs()
+             if saved_alias == alias and saved_address != address),
+            None,
         )
+        if owner:
+            raise ValueError(
+                f"publisher alias '{alias}' already belongs to {owner}; "
+                "refusing to overwrite its subscribed skills"
+            )
 
-    n_skills = _mirror_bundle(alias, profile, bodies)
+        # Commit the authenticated watermark before exposing content. If a
+        # later filesystem write is interrupted, the exact same signature is
+        # still accepted on retry; an older or different bundle is not.
+        _accept_freshness(address, revision, signature)
+        n_skills = _mirror_bundle(alias, profile, bodies)
 
-    subs = [(a, al) for a, al in _read_subs() if a != address]
-    subs.append((address, alias))
-    _write_subs(subs)
+        subs = [(a, al) for a, al in _read_subs() if a != address]
+        subs.append((address, alias))
+        _write_subs(subs)
 
-    results = install_all(SUBS_DIR / alias, alias)
+        results = install_all(SUBS_DIR / alias, alias)
     console.print(f"[green]✓ Subscribed to {alias}[/green] ({address})")
     console.print(f"  mirrored {n_skills} skill(s) → {SUBS_DIR / alias}")
 
