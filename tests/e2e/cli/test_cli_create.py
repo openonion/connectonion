@@ -340,7 +340,7 @@ class TestCliCreate:
             config = yaml.safe_load(content)
             assert config["trust"] == "careful"
             assert config["port"] == 8000
-            assert config["relay_url"] == "wss://oo.openonion.ai"
+            assert "relay_url" not in config
             assert "permissions" in config
 
     def test_create_host_yaml_has_permissions_from_template(self):
