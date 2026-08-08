@@ -316,8 +316,11 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
     if abs(now - timestamp) > SIGNATURE_EXPIRY_SECONDS:
         return None, agent_address, "unauthorized: signature expired"
 
-    # Optionally verify 'to' matches agent address
-    if recipient_address and to_address and to_address != recipient_address:
+    # When the caller supplies the host address, the signed payload must name
+    # that exact recipient. Treating a missing ``to`` as acceptable would let
+    # the same otherwise-valid command be replayed against a different host,
+    # whose replay cache is necessarily independent.
+    if recipient_address and to_address != recipient_address:
         return None, agent_address, "unauthorized: wrong recipient"
 
     # Verify signature ALWAYS (no whitelist bypass - that's at policy level)

@@ -44,6 +44,18 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
 
             msg_type = data.get("type")
 
+            # CONNECT establishes the identity and protocol capabilities for
+            # this socket. Letting a second CONNECT overwrite that state makes
+            # it possible to downgrade an authenticated v2 connection to v1
+            # and then inject unsigned commands. Reauthentication belongs on a
+            # fresh transport, with fresh per-connection state.
+            if msg_type == "CONNECT" and conn.get("authenticated"):
+                await send_msg({
+                    "type": "ERROR",
+                    "message": "already authenticated: open a new connection",
+                })
+                continue
+
             # A v2 CONNECT signs the capability that enables this gate. Keep the
             # few transport/authentication frames outside it; every application
             # command, including approval and ask-user responses forwarded below,

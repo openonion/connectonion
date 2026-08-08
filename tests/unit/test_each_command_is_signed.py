@@ -1,6 +1,7 @@
 """Protocol-v2 binds every command to the caller that opened the socket."""
 
 import copy
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -108,6 +109,57 @@ def test_command_is_bound_to_recipient(keys):
     assert "wrong recipient" in error
 
 
+def test_command_without_recipient_is_rejected(keys):
+    recipient = "0x" + "12" * 20
+    frame = RemoteAgent(recipient, keys=keys)._build_command_message(
+        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}}
+    )
+    payload = dict(frame["payload"])
+    payload.pop("to")
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    frame["payload"] = payload
+    frame["signature"] = address.sign(keys, canonical.encode()).hex()
+
+    verified, error = auth.authenticated_command_payload(
+        frame, keys["address"], recipient
+    )
+
+    assert verified is None
+    assert "wrong recipient" in error
+
+
+@pytest.mark.asyncio
+async def test_connect_is_bound_to_the_actual_host_address(keys):
+    from connectonion.network.host.ws_router.connect import handle_connect
+
+    claimed_recipient = "0x" + "12" * 20
+    actual_recipient = "0x" + "34" * 20
+    frame = RemoteAgent(claimed_recipient, keys=keys)._build_connect_message()
+    conn = {"authenticated": False}
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    await handle_connect(
+        frame,
+        send,
+        conn,
+        {
+            "auth": auth.extract_and_authenticate,
+            "agent_metadata": {"address": actual_recipient},
+        },
+        MagicMock(),
+        MagicMock(),
+        "open",
+        None,
+        None,
+    )
+
+    assert conn["authenticated"] is False
+    assert "wrong recipient" in sent[-1]["message"]
+
+
 def test_top_level_type_cannot_relabel_a_signed_command(keys):
     frame = RemoteAgent("0x" + "12" * 20, keys=keys)._build_command_message(
         {"type": "INPUT", "input_id": "i1", "prompt": "hello"}
@@ -120,10 +172,14 @@ def test_top_level_type_cannot_relabel_a_signed_command(keys):
     assert "type mismatch" in error
 
 
-async def _session_with(messages, monkeypatch, *, signed_commands, ran):
+async def _session_with(
+    messages, monkeypatch, *, signed_commands, ran, connect_calls=None
+):
     from connectonion.network.host.ws_router import session
 
     async def fake_connect(data, send, conn, *args):
+        if connect_calls is not None:
+            connect_calls.append(data)
         conn.update(
             authenticated=True,
             agent_address=data["from"],
@@ -162,6 +218,24 @@ async def _session_with(messages, monkeypatch, *, signed_commands, ran):
         enable_ping=False,
     )
     return sent
+
+
+@pytest.mark.asyncio
+async def test_authenticated_socket_rejects_a_second_connect(keys, monkeypatch):
+    first = {"type": "CONNECT", "from": keys["address"]}
+    downgrade = {"type": "CONNECT", "from": "0xattacker"}
+    connect_calls = []
+
+    sent = await _session_with(
+        [first, downgrade],
+        monkeypatch,
+        signed_commands=True,
+        ran=[],
+        connect_calls=connect_calls,
+    )
+
+    assert connect_calls == [first]
+    assert "already authenticated" in sent[-1]["message"]
 
 
 @pytest.mark.asyncio

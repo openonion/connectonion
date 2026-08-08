@@ -28,8 +28,12 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
                         "message": "unauthorized: this CONNECT was already used"})
         return
 
+    metadata = route_handlers.get("agent_metadata") or {}
+    auth_kwargs = {"blacklist": blacklist, "whitelist": whitelist}
+    if metadata.get("address"):
+        auth_kwargs["recipient_address"] = metadata["address"]
     _, agent_address, sig_valid, err = route_handlers["auth"](
-        data, trust, blacklist=blacklist, whitelist=whitelist
+        data, trust, **auth_kwargs
     )
 
     if err and "forbidden" in err.lower():
