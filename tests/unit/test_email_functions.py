@@ -141,7 +141,35 @@ def test_send_email_keeps_server_ids_on_a_stable_json_error(mock_post):
         "error": "Retry with the same idempotency key.",
         "request_id": "server-request",
         "idempotency_key": "send-original",
+        "retryable": True,
     }
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch('requests.post')
+def test_send_email_preserves_a_non_retryable_backend_verdict(mock_post):
+    mock_response = MagicMock()
+    mock_response.status_code = 409
+    mock_response.headers = {"X-Request-ID": "req-old"}
+    mock_response.json.return_value = {
+        "detail": "The safe-retry window expired; the email was not resent.",
+        "error": {
+            "code": "idempotency_window_expired",
+            "message": "The safe-retry window expired; the email was not resent.",
+            "retryable": False,
+        },
+        "request_id": "req-old",
+        "idempotency_key": "send-old",
+    }
+    mock_post.return_value = mock_response
+
+    result = send_email(
+        "test@example.com", "Test", "Message", idempotency_key="send-old"
+    )
+
+    assert result["success"] is False
+    assert result["retryable"] is False
+    assert result["idempotency_key"] == "send-old"
 
 
 @patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
@@ -155,6 +183,7 @@ def test_send_email_timeout_returns_the_key_for_a_safe_retry(mock_post):
     assert result["success"] is False
     assert result["request_id"] == "send-timeout"
     assert result["idempotency_key"] == "send-timeout"
+    assert result["retryable"] is True
     assert "same idempotency key" in result["error"]
 
 
