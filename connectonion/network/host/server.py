@@ -731,14 +731,19 @@ def host(
     Configuration: .co/host.yaml (required) with code param overrides.
     Run 'co init' to generate the config file.
 
-    Each request calls create_agent() to get a fresh Agent instance.
-    This ensures complete isolation between concurrent requests.
+    Passing an Agent instance is the simple path and shares that instance.
+    Passing a factory creates a fresh Agent for each request.
 
-    State Control via Closure:
-        # Isolated state (default, safest) - create inside:
+    State Control:
+        # Simple/default: share one configured agent and expensive tool setup:
+        agent = Agent("assistant", tools=[BrowserTool()])
+        host(agent)
+
+        # Per-request isolation: create everything inside a factory:
         def create_agent():
             browser = BrowserTool()  # Fresh per request
             return Agent("assistant", tools=[browser])
+        host(create_agent)
 
         # Shared state (advanced) - create outside, capture via closure:
         browser = BrowserTool()  # Shared across all requests
@@ -746,9 +751,9 @@ def host(
             return Agent("assistant", tools=[browser])
 
     Args:
-        create_agent: Function that returns a fresh Agent instance.
-                      Called once per request. Define tools inside for isolation,
-                      or outside for shared state.
+        create_agent: Agent instance for shared state, or a function that returns
+                      a fresh Agent per request. A factory isolates state but also
+                      pays the full construction cost on every request.
         port: HTTP port (default: 8000 or from .co/host.yaml)
         trust: Trust level, policy, or Agent (default: from .co/host.yaml or "careful")
             - Level: "open", "careful", "strict"
@@ -781,16 +786,11 @@ def host(
         GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
         GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
-    # Accept agent instance directly: host(agent) → wrap in factory
-    # Warning: shared state across all requests (not isolated per request)
+    # Accept the documented simple path directly: host(agent). A factory remains
+    # available when per-request isolation is worth its construction cost.
     if not callable(create_agent):
         _agent_instance = create_agent
         create_agent = lambda: _agent_instance
-        console = Console()
-        console.print(
-            "[yellow]Warning: host(agent) — pass a factory function instead: "
-            "host(lambda: Agent(...)) for per-request isolation.[/yellow]"
-        )
 
     # Resolve co_dir: explicit > the project's .co, found by walking up.
     # Not `Path.cwd() / '.co'`: an agent started one directory down found no
