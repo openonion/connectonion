@@ -301,7 +301,8 @@ async def serve_loop(
             # Stay in the loop.
             if addr_data:
                 fresh_announce = announce_module.create_announce_message(
-                    addr_data, summary, endpoints=endpoints, relay=relay_url
+                    addr_data, summary, endpoints=endpoints, relay=relay_url,
+                    profile=announce_message.get("profile"),
                 )
                 await send_announce(websocket, fresh_announce)
                 if heartbeat_is_worth_printing():
