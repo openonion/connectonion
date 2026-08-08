@@ -34,6 +34,7 @@ from connectonion.cli.commands import sub_commands as sub
 @pytest.fixture
 def synced(monkeypatch, tmp_path, capsys):
     """Run one sync with the mirroring and fan-out results under test control."""
+    monkeypatch.setattr(sub, "CO_HOME", tmp_path / ".co", raising=False)
     monkeypatch.setattr(sub, "SUBS_DIR", tmp_path / "subs", raising=False)
     monkeypatch.setattr(sub, "_read_subs", lambda: [], raising=False)
     monkeypatch.setattr(sub, "_write_subs", lambda subs: None, raising=False)
@@ -42,7 +43,7 @@ def synced(monkeypatch, tmp_path, capsys):
                         lambda address, base: {"profile": {"alias": "pub"}}, raising=False)
     monkeypatch.setattr(
         sub, "_verified_bundle",
-        lambda address, envelope, base: ({"alias": "pub"}, {}),
+        lambda address, envelope, base: ({"alias": "pub", "revision": 1}, {}, 1, "sig"),
         raising=False,
     )
 

@@ -26,6 +26,8 @@ PROFILE_BODY = {
     "alias": ALIAS,
     "bio": "Test publisher",
     "version": "v0.2.0",
+    "attestation_version": "profile-v2",
+    "revision": 1,
     "skills": [
         {"name": "alpha", "description": "Alpha skill"},
         {"name": "beta", "description": "Beta skill"},
@@ -44,7 +46,7 @@ def _signed_envelope():
         "profile": PROFILE_BODY,
         "publisher": ADDR,
         "signature": address.sign(KEYS, canonical.encode()).hex(),
-        "signature_version": "profile-v1",
+        "signature_version": "profile-v2",
     }
 
 
@@ -159,7 +161,9 @@ def test_remove_by_address_clears_record_and_bundle(isolated_home, fake_relay):
     (isolated_home / ".claude").mkdir()
     sub.handle_sub_sync_one(ADDR)
     bundle = isolated_home / ".co" / "subs" / ALIAS
+    watermark = sub._freshness_path(ADDR)
     assert bundle.exists()
+    assert watermark.exists()
 
     sub.handle_sub_remove(ADDR)
 
@@ -168,6 +172,7 @@ def test_remove_by_address_clears_record_and_bundle(isolated_home, fake_relay):
     remaining = [l for l in (isolated_home / ".co" / "subscriptions.txt").read_text().splitlines()
                  if l and not l.startswith("#")]
     assert remaining == []
+    assert watermark.exists(), "unsubscribe must not erase authenticated history"
 
 
 def test_remove_by_alias_works_too(isolated_home, fake_relay):

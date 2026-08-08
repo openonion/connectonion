@@ -33,7 +33,17 @@ The ANNOUNCE message broadcasts agent presence and connectivity information to t
 | `summary` | string | Yes | Natural language description of agent capabilities |
 | `endpoints` | array | Yes | Direct connection URLs (http and ws) |
 | `relay` | string | No | Fallback relay server URL |
+| `profile` | object | No | Portable public profile; `co announce` includes a signed monotonic `revision` |
+| `profile_signature` | string | No | Ed25519 signature over compact, sorted-key `profile` JSON |
 | `signature` | string | Yes | Ed25519 signature of all fields |
+
+For installable published skills, `co announce` includes a positive 64-bit
+`profile.attestation_version: profile-v2` and `profile.revision`, generated
+from UTC nanoseconds plus its durable local watermark. Both fields are covered
+by the portable signature. The relay returns these exact bytes as `profile-v2`. Subscribers
+persist the highest authenticated revision and reject lower revisions or two
+different signatures at the same revision. The outer `timestamp` only protects
+the live ANNOUNCE ingestion window; it is not a portable freshness proof.
 
 ## Endpoints Format
 
@@ -134,7 +144,7 @@ announce["signature"] = "0x" + signature
 ## Design Rationale
 
 - **No status field**: Being online is implied by sending ANNOUNCE
-- **No sequence number**: Timestamp provides ordering and replay prevention
+- **No outer connection sequence number**: Timestamp protects live ANNOUNCE ingestion; the separately signed profile carries its own durable monotonic revision
 - **Address not pubkey**: Clarifies it's used for routing, not just identity
 - **Summary not capabilities**: Natural language from system prompt is more flexible
 - **Relay as separate field**: Direct endpoints vs fallback relay are conceptually different
