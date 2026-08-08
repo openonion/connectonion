@@ -478,14 +478,20 @@ The hosted IO implementation (`WebSocketIO`) bridges sync agent code to async We
 Agent Thread (sync)              Async forwarder / router
   io.send(event)   ──►  _msgs_from_agent (append-only log) ──► forward_task ──► ws.send()
   io.receive()     ◄──  _msgs_from_client (mailbox)        ◄── send_to_agent (router)
-  io.pop_runtime_inputs() ◄── _runtime_inputs (drain queue) ◄── push_runtime_input (router)
+  pop/finish_runtime_inputs() ◄── _runtime_inputs (drain queue) ◄── push_runtime_input (router)
 ```
 
 | Channel | Direction | Storage | Reader / Writer |
 |---|---|---|---|
 | `_msgs_from_agent` | agent → client | append-only list, cursor-indexed for replay on reconnect | written by `io.send`, read by `forward_task` via `read_msgs_from_agent` |
 | `_msgs_from_client` | client → agent | mailbox, consumed on read (e.g. `ASK_USER_RESPONSE`) | written by `send_to_agent`, read by blocking `io.receive` |
-| `_runtime_inputs` | client → agent | drain-all queue, separate from receive() so ask_user pops don't eat them | written by `push_runtime_input`, drained by `apply_runtime_input` plugin at iteration boundary |
+| `_runtime_inputs` | client → agent | drain-all queue, separate from `receive()`, with an atomic acceptance boundary | written by `push_runtime_input`; drained by the `runtime_input` plugin at iteration start and immediately before a final no-tool response completes |
+
+The runtime-input window is opt-in. The plugin opens it for a turn, and the
+router acknowledges an input only if `push_runtime_input()` accepts it. At a
+final no-tool response, `finish_runtime_inputs()` either drains pending input
+and keeps the turn alive for another LLM call, or seals the empty queue so a
+late sender receives retryable `RUNTIME_INPUT_REJECTED` rather than a false ACK.
 
 ### Cursor-based replay
 
