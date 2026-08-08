@@ -159,6 +159,30 @@ class TestHostRelayConnection:
 
         assert "balance_usd" not in profile
 
+    @pytest.mark.asyncio
+    async def test_balance_refresh_updates_http_and_relay_profile(self):
+        sample = Mock()
+        sample.llm.get_balance.return_value = 0.0005
+        metadata = {"balance_usd": 4.99}
+        profile = {"balance_usd": 4.99}
+
+        await host_module._refresh_published_balance(sample, metadata, profile)
+
+        assert metadata["balance_usd"] == 0.0005
+        assert profile["balance_usd"] == 0.0005
+
+    @pytest.mark.asyncio
+    async def test_balance_refresh_keeps_last_value_on_transient_failure(self):
+        sample = Mock()
+        sample.llm.get_balance.side_effect = RuntimeError("network down")
+        metadata = {"balance_usd": 4.99}
+        profile = {"balance_usd": 4.99}
+
+        await host_module._refresh_published_balance(sample, metadata, profile)
+
+        assert metadata["balance_usd"] == 4.99
+        assert profile["balance_usd"] == 4.99
+
     def test_host_passes_profile_to_relay_lifespan(self, tmp_path, create_mock_agent):
         """Hosted agents publish their profile with the relay ANNOUNCE."""
         mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
