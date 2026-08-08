@@ -292,12 +292,18 @@ def reset():
 
 
 @app.command()
-def doctor():
+def doctor(
+    fix: bool = typer.Option(False, "--fix", help="Offer safe browser/runtime repairs"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Approve every offered repair"),
+):
     """Diagnose installation."""
+    if yes and not fix:
+        console.print("[red]--yes requires --fix.[/red]")
+        raise typer.Exit(2)
     from .commands.doctor_commands import handle_doctor
     # The exit code is the whole point of running this in a script: it used to
     # be 0 even under its own `✗ broken symlink`.
-    if handle_doctor():
+    if handle_doctor(fix=fix, yes=yes):
         raise typer.Exit(1)
 
 
