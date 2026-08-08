@@ -286,6 +286,17 @@ def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
     profile, bodies = _verified_bundle(address, envelope, base)
     alias = profile.get("alias") or alias_hint or address[:10]
 
+    owner = next(
+        (saved_address for saved_address, saved_alias in _read_subs()
+         if saved_alias == alias and saved_address != address),
+        None,
+    )
+    if owner:
+        raise ValueError(
+            f"publisher alias '{alias}' already belongs to {owner}; "
+            "refusing to overwrite its subscribed skills"
+        )
+
     n_skills = _mirror_bundle(alias, profile, bodies)
 
     subs = [(a, al) for a, al in _read_subs() if a != address]

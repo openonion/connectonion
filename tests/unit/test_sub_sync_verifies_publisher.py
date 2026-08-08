@@ -143,3 +143,21 @@ def test_signed_path_traversal_names_are_still_refused(
         sub.handle_sub_sync_one(keys["address"])
 
     assert not (isolated_home / ".ssh").exists()
+
+
+def test_a_signed_alias_cannot_overwrite_another_publishers_bundle(
+    isolated_home, monkeypatch
+):
+    original = address.generate()
+    attacker = address.generate()
+    sub._write_subs([(original["address"], PROFILE["alias"])])
+    existing = isolated_home / ".co/subs/signed-publisher/skills/original/SKILL.md"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("original publisher", encoding="utf-8")
+    _relay(monkeypatch, attacker)
+
+    with pytest.raises(ValueError, match="already belongs"):
+        sub.handle_sub_sync_one(attacker["address"])
+
+    assert existing.read_text(encoding="utf-8") == "original publisher"
+    assert sub._read_subs() == [(original["address"], PROFILE["alias"])]
