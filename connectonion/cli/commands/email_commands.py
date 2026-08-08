@@ -109,7 +109,22 @@ def handle_email_sent(last: int = 10, to: str = None):
         return
 
     from ...useful_tools.get_emails import get_sent
-    emails = get_sent(last=last, to=to)
+    try:
+        emails = get_sent(last=last, to=to)
+    except requests.HTTPError as exc:
+        response = exc.response
+        if response is not None and response.status_code == 404:
+            console.print(
+                "\n[yellow]Sent mail is not available on this backend yet.[/yellow] "
+                "The oo-api Sent endpoint must be deployed before this command can be used.\n"
+            )
+        else:
+            status = response.status_code if response is not None else "unknown"
+            console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
+        return
+    except requests.RequestException:
+        console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
+        return
 
     if not emails:
         scope = f" to {to}" if to else ""
@@ -143,7 +158,22 @@ def handle_email_sent_read(email_id: str):
         return
 
     from ...useful_tools.get_emails import get_sent
-    emails = get_sent(last=100)
+    try:
+        emails = get_sent(last=100)
+    except requests.HTTPError as exc:
+        response = exc.response
+        if response is not None and response.status_code == 404:
+            console.print(
+                "\n[yellow]Sent mail is not available on this backend yet.[/yellow] "
+                "The oo-api Sent endpoint must be deployed before this command can be used.\n"
+            )
+        else:
+            status = response.status_code if response is not None else "unknown"
+            console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
+        return
+    except requests.RequestException:
+        console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
+        return
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
