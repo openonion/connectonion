@@ -206,6 +206,52 @@ def _is_paid_account_required(error) -> bool:
     return isinstance(detail, dict) and detail.get('error') == 'paid_account_required'
 
 
+
+def _usage_from_openai_chat(
+    model: str,
+    response,
+    *,
+    trust_server_cost: bool = False,
+) -> Optional[TokenUsage]:
+    """Build TokenUsage from an OpenAI-shaped chat.completions response.
+
+    Used by complete() and structured_complete() so a structured call cannot
+    silently drop the same usage fields complete() already knows how to read
+    (#730). trust_server_cost=True is for OpenOnion, where the proxy states
+    cost_usd / total_tokens that local arithmetic cannot reconstruct.
+    """
+    if not (hasattr(response, "usage") and response.usage):
+        return None
+
+    input_tokens = response.usage.prompt_tokens
+    output_tokens = response.usage.completion_tokens
+    cached_tokens = 0
+    if hasattr(response.usage, "prompt_tokens_details") and response.usage.prompt_tokens_details:
+        cached_tokens = getattr(response.usage.prompt_tokens_details, "cached_tokens", 0) or 0
+
+    cost = None
+    total_tokens = 0
+    if trust_server_cost:
+        # `is not None` rather than a truth test — a free call reports 0.0,
+        # and falling back there would invent a charge for it.
+        cost = getattr(response.usage, "cost_usd", None)
+        server_total = getattr(response.usage, "total_tokens", 0) or 0
+        # Only when it exceeds the sum. Equal or smaller means the provider is
+        # restating those two fields and there is nothing extra to report.
+        if server_total > input_tokens + output_tokens:
+            total_tokens = server_total
+    if cost is None:
+        cost = calculate_cost(model, input_tokens, output_tokens, cached_tokens)
+
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        cost=cost,
+        total_tokens=total_tokens,
+    )
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM including content and tool calls."""
@@ -217,6 +263,13 @@ class LLMResponse:
 
 class LLM(ABC):
     """Abstract base class for LLM providers."""
+
+    # Most recent call's usage. structured_complete() returns only the parsed
+    # schema instance, so there is nowhere else to put cost/tokens without
+    # changing the public signature. Callers (llm_do, agents, evals) read this
+    # after the call. Per-instance state — wrong under concurrent use of one
+    # LLM (#730 option 2).
+    last_usage: Optional[TokenUsage] = None
 
     def _call_provider(self, send, base_url: str = ""):
         """Run one provider request and translate its failure to a shared type.
@@ -277,6 +330,11 @@ class LLM(ABC):
 
         Returns:
             Instance of output_schema with parsed and validated data
+
+        Note:
+            Token usage/cost for the call is stored on ``self.last_usage``
+            (same shape as ``LLMResponse.usage``). The return type stays the
+            schema instance so callers are not broken (#730).
 
         Raises:
             ValueError: If the LLM fails to generate valid structured output
@@ -366,7 +424,23 @@ class OpenAILLM(LLM):
             if first_content and hasattr(first_content, 'type') and first_content.type == "refusal":
                 raise ValueError(f"Model refused to respond: {first_content.refusal}")
 
-        # Return the parsed Pydantic object
+        # responses.parse() bills like any other call; keep it on last_usage
+        # because the return type is the schema instance (#730).
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            input_tokens = getattr(response.usage, "input_tokens", 0) or 0
+            output_tokens = getattr(response.usage, "output_tokens", 0) or 0
+            cached_tokens = 0
+            details = getattr(response.usage, "input_tokens_details", None)
+            if details is not None:
+                cached_tokens = getattr(details, "cached_tokens", 0) or 0
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cost=calculate_cost(self.model, input_tokens, output_tokens, cached_tokens),
+            )
+        self.last_usage = usage
         return response.output_parsed
 
 
@@ -471,6 +545,21 @@ class AnthropicLLM(LLM):
         # Force the model to use this tool
         response = self._call_provider(
             lambda: self.client.messages.create(**api_kwargs))
+
+        # Same TokenUsage path as complete() — structured used to discard it (#730).
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        cached_tokens = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        cache_write_tokens = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        self.last_usage = TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cache_write_tokens=cache_write_tokens,
+            cost=calculate_cost(
+                self.model, input_tokens, output_tokens, cached_tokens, cache_write_tokens
+            ),
+        )
 
         # Extract structured data from tool call
         for block in response.content:
@@ -686,6 +775,7 @@ class GeminiLLM(LLM):
             response_format=output_schema,
             **kwargs
         ))
+        self.last_usage = _usage_from_openai_chat(self.model, completion)
         return completion.choices[0].message.parsed
 
 
@@ -763,6 +853,7 @@ class GroqLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_usage = _usage_from_openai_chat(self.model, completion)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -836,6 +927,7 @@ class GrokLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_usage = _usage_from_openai_chat(self.model, completion)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -925,6 +1017,7 @@ class OpenRouterLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_usage = _usage_from_openai_chat(self.model, completion)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -1002,6 +1095,7 @@ class MistralLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_usage = _usage_from_openai_chat(self.model, completion)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -1112,42 +1206,10 @@ class OpenOnionLLM(LLM):
                     extra_content=extra
                 ))
 
-        # Extract token usage (OpenAI-compatible format)
-        usage = None
-        if hasattr(response, 'usage') and response.usage:
-            input_tokens = response.usage.prompt_tokens
-            output_tokens = response.usage.completion_tokens
-            cached_tokens = 0
-            if hasattr(response.usage, 'prompt_tokens_details') and response.usage.prompt_tokens_details:
-                cached_tokens = getattr(response.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
-            # The server bills the account and says what it took. Use that,
-            # not the local table: prompt_tokens + completion_tokens is 12 on a
-            # call whose total_tokens is 114, because the reasoning models
-            # charge for tokens the OpenAI-shaped fields never name. Arithmetic
-            # over those two numbers came out 11.6x under what was charged.
-            #
-            # `is not None` rather than a truth test — a free call reports 0.0,
-            # and falling back there would invent a charge for it.
-            cost = getattr(response.usage, 'cost_usd', None)
-            if cost is None:
-                cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
-            # total_tokens for the same reason as cost_usd, and it was the half of
-            # this decision left undone: the cost came from the server while the
-            # token count stayed on the two fields just described as not naming
-            # the reasoning tokens. Measured here: prompt 17 + completion 3
-            # printed as "20 tok · $0.0017" on a call the server billed 243
-            # tokens for — a line 34x off itself.
-            #
-            # Only when it exceeds the sum. Equal or smaller means the provider is
-            # restating those two fields and there is nothing extra to report.
-            server_total = getattr(response.usage, 'total_tokens', 0) or 0
-            usage = TokenUsage(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-                cost=cost,
-                total_tokens=server_total if server_total > input_tokens + output_tokens else 0,
-            )
+        # Extract token usage (OpenAI-compatible format). Shared with
+        # structured_complete so that path cannot discard server cost (#730).
+        usage = _usage_from_openai_chat(self.model, response, trust_server_cost=True)
+        self.last_usage = usage
 
         return LLMResponse(
             content=message.content,
@@ -1202,6 +1264,11 @@ class OpenOnionLLM(LLM):
             response_format=output_schema,
             **kwargs
         ))
+        # completion.usage (incl. cost_usd) was discarded here; keep it on
+        # last_usage so session/eval accounting can see the spend (#730).
+        self.last_usage = _usage_from_openai_chat(
+            self.model, completion, trust_server_cost=True
+        )
         return completion.choices[0].message.parsed
 
     def get_balance(self) -> Optional[float]:
