@@ -99,7 +99,8 @@ class TestGmailGetService:
         "GOOGLE_SCOPES": "gmail.readonly gmail.send",
         "GOOGLE_ACCESS_TOKEN": "test_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh",
-        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+        "OPENONION_API_KEY": "api-key",
     })
     @patch('connectonion.useful_tools.gmail.build')
     def test_get_service_creates_service(self, mock_build):
@@ -118,7 +119,8 @@ class TestGmailGetService:
         "GOOGLE_SCOPES": "gmail.readonly gmail.send",
         "GOOGLE_ACCESS_TOKEN": "test_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh",
-        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+        "OPENONION_API_KEY": "api-key",
     })
     @patch('connectonion.useful_tools.gmail.build')
     def test_get_service_caches_service(self, mock_build):
@@ -140,6 +142,7 @@ class TestGmailGetService:
         "GOOGLE_ACCESS_TOKEN": "stale_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh",
         "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+        "OPENONION_API_KEY": "api-key",
     })
     @patch('connectonion.useful_tools.gmail.build')
     def test_get_service_refreshes_even_when_expiry_looks_fresh(self, mock_build, monkeypatch):
@@ -153,7 +156,7 @@ class TestGmailGetService:
 
         Gmail()._get_service()
 
-        assert calls == ["test_refresh"]
+        assert calls == [None]
         assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
 
     @pytest.mark.real_refresh
@@ -161,6 +164,7 @@ class TestGmailGetService:
         "GOOGLE_SCOPES": "gmail.readonly gmail.send",
         "GOOGLE_ACCESS_TOKEN": "stale_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh",
+        "OPENONION_API_KEY": "api-key",
     }, clear=True)
     @patch('connectonion.useful_tools.gmail.build')
     def test_get_service_refreshes_without_expiry_variable(self, mock_build, monkeypatch):
@@ -181,7 +185,76 @@ class TestGmailGetService:
 
         with pytest.raises(ValueError) as exc_info:
             gmail._get_service()
-        assert "Google OAuth credentials not found" in str(exc_info.value)
+        assert "OPENONION_API_KEY not found" in str(exc_info.value)
+
+    @pytest.mark.real_refresh
+    @patch.dict(os.environ, {
+        "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+        "OPENONION_API_KEY": "api-key",
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+    }, clear=True)
+    @patch('connectonion.useful_tools.gmail.build')
+    def test_google_auth_can_refresh_a_cached_service_after_401(
+        self, mock_build, monkeypatch
+    ):
+        from connectonion.useful_tools.gmail import Gmail
+
+        tokens = iter(["initial", "after-401"])
+        monkeypatch.setattr(
+            Gmail, "_refresh_via_backend", lambda self, _rt: next(tokens)
+        )
+        gmail = Gmail()
+        gmail._get_service()
+        credentials = mock_build.call_args.kwargs["credentials"]
+
+        credentials.refresh(None)
+
+        assert credentials.token == "after-401"
+        assert credentials.expiry.tzinfo is None
+
+    @pytest.mark.real_refresh
+    def test_backend_refresh_uses_server_token_and_persists_rotation(
+        self, monkeypatch, tmp_path
+    ):
+        from connectonion.useful_tools.gmail import Gmail
+
+        monkeypatch.setenv("OPENONION_API_KEY", "api-key")
+        monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "access_token": "fresh-access",
+            "refresh_token": "rotated-refresh",
+            "expires_at": "2026-08-08T12:00:00+00:00",
+        }
+
+        with patch("httpx.post", return_value=response) as post:
+            token = Gmail.__new__(Gmail)._refresh_via_backend("stale-local-token")
+
+        assert token == "fresh-access"
+        assert "json" not in post.call_args.kwargs
+        assert post.call_args.kwargs["timeout"] == 15.0
+        assert os.environ["GOOGLE_REFRESH_TOKEN"] == "rotated-refresh"
+        saved = (tmp_path / "keys.env").read_text()
+        assert "GOOGLE_REFRESH_TOKEN=rotated-refresh" in saved
+
+    @pytest.mark.real_refresh
+    def test_backend_reauth_error_is_actionable_without_leaking_provider_body(
+        self, monkeypatch
+    ):
+        from connectonion.useful_tools.gmail import Gmail
+
+        monkeypatch.setenv("OPENONION_API_KEY", "api-key")
+        response = Mock(status_code=401)
+        response.json.return_value = {
+            "detail": {"error": "reauth_required"},
+            "provider_secret": "must-not-appear",
+        }
+        with patch("httpx.post", return_value=response):
+            with pytest.raises(ValueError) as error:
+                Gmail.__new__(Gmail)._refresh_via_backend(None)
+
+        assert "co auth google" in str(error.value)
+        assert "must-not-appear" not in str(error.value)
 
 
 class TestReadEmails:

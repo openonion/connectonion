@@ -3,7 +3,7 @@ Purpose: Gmail integration tool for reading, sending, and managing emails via Go
 LLM-Note:
   Dependencies: imports from [os, base64, google.oauth2.credentials, googleapiclient.discovery, googleapiclient.errors] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gmail.py]
   Data flow: Agent calls Gmail methods → _get_credentials() loads tokens from env → builds Gmail API service → API calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
-  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails) | no local file persistence
+  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
   Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately (lazy loading)
   Errors: raises ValueError if OAuth not configured | HttpError from Google API propagates | returns error strings for display to user
@@ -53,6 +53,7 @@ Example:
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import base64
 from google.oauth2.credentials import Credentials
@@ -107,37 +108,49 @@ class Gmail:
         if self._service:
             return self._service
 
-        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-
-        if not os.getenv("GOOGLE_ACCESS_TOKEN") or not refresh_token:
+        if not os.getenv("OPENONION_API_KEY"):
             raise ValueError(
-                "Google OAuth credentials not found.\n"
-                "Run: co auth google"
+                "OPENONION_API_KEY not found.\n"
+                "Run: co auth"
             )
 
-        access_token = self._refresh_via_backend(refresh_token)
+        access_token = self._refresh_via_backend(None)
+        expiry = self._token_expiry()
 
-        # Create credentials without client_id/client_secret
-        # Backend handles token refresh, so we don't need auto-refresh
+        # Backend owns client_id/client_secret. google-auth invokes our broker
+        # handler when a cached long-running Gmail service receives a 401.
         creds = Credentials(
             token=access_token,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=None,
-            client_secret=None,
+            refresh_token=None,
             scopes=["https://www.googleapis.com/auth/gmail.readonly",
                    "https://www.googleapis.com/auth/gmail.modify",
-                   "https://www.googleapis.com/auth/gmail.send"]
+                   "https://www.googleapis.com/auth/gmail.send"],
+            expiry=expiry,
+            refresh_handler=self._refresh_handler,
         )
 
         self._service = build('gmail', 'v1', credentials=creds)
         return self._service
 
-    def _refresh_via_backend(self, refresh_token: str) -> str:
-        """Refresh access token via backend API.
+    def _token_expiry(self) -> datetime:
+        """Return google-auth's naive UTC expiry value."""
+        value = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
+        if not value:
+            return datetime.utcnow() + timedelta(minutes=55)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    def _refresh_handler(self, request, scopes=None):
+        """Let google-auth recover a long-running Gmail client after a 401."""
+        return self._refresh_via_backend(None), self._token_expiry()
+
+    def _refresh_via_backend(self, refresh_token: str | None) -> str:
+        """Ask the backend to refresh its stored Google credentials.
 
         Args:
-            refresh_token: The refresh token
+            refresh_token: Ignored; retained for compatibility with copied tools.
 
         Returns:
             New access token
@@ -158,32 +171,42 @@ class Gmail:
         response = httpx.post(
             f"{backend_url}/api/v1/oauth/google/refresh",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"refresh_token": refresh_token}
+            timeout=15.0,
         )
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Failed to refresh token via backend: {response.text}"
-            )
+            try:
+                detail = response.json().get("detail")
+            except (TypeError, ValueError):
+                detail = None
+            if response.status_code == 401 and isinstance(detail, dict) \
+                    and detail.get("error") == "reauth_required":
+                raise ValueError("Google authorization expired. Run: co auth google")
+            raise ValueError("Failed to refresh Google authorization via backend")
 
         data = response.json()
         new_access_token = data["access_token"]
         expires_at = data["expires_at"]
+        new_refresh_token = data.get("refresh_token")
 
         # Update environment variables for this session
         os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
         os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
+        if new_refresh_token:
+            os.environ["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
 
         # Persist to global keys.env so the refreshed token survives this
-        # process. Google refresh tokens don't rotate, so the next process can
-        # always re-derive an access token — only keys.env needs updating.
+        # process. Persist a rotated refresh token if Google issued one.
         from ..cli.commands.project_cmd_lib import upsert_env
         env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
         env_file.parent.mkdir(parents=True, exist_ok=True)
-        upsert_env(env_file, {
+        values = {
             "GOOGLE_ACCESS_TOKEN": new_access_token,
             "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
-        })
+        }
+        if new_refresh_token:
+            values["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
+        upsert_env(env_file, values)
 
         return new_access_token
 
