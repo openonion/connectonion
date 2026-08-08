@@ -3,7 +3,7 @@ Purpose: `co sub` — record a subscription relationship to a published agent, m
 LLM-Note:
   Dependencies: imports from [json, re, shutil, pathlib, httpx, rich.console, rich.table, .fanout] | imported by [cli/main.py via handle_sub_sync_one/sync_all/list/remove] | tested by [tests/unit/test_sub_commands.py, tests/cli/test_cli_sub.py]
   Data flow:
-    sync_one(target, relay?) → _resolve_target() validates 0x address or matches an alias already in subscriptions.txt → _fetch_profile() GET /api/agents/<addr>/profile → _mirror_bundle() writes ~/.co/subs/<alias>/agent.json + for each skill GET /api/agents/<addr>/skills/<name> → unwrap body (handles both JSON {body:...} and raw text/markdown content-types) → write SKILL.md → append `<address> <alias>` to ~/.co/subscriptions.txt (deduped) → fanout.install_all() symlinks/copies into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro
+    sync_one(target, relay?) → validate/pin 0x publisher address → GET signed profile metadata + every published body → reconstruct the exact profile and verify its Ed25519 profile-v1 signature before filesystem writes → strip remote tools grants → mirror under ~/.co/subs/<alias>/ → record subscription → fan out to coding agents
     sync_all(relay?) → walks ~/.co/subscriptions.txt, calls sync_one per entry, tolerates per-publisher failures, prints summary (ok/failed counts)
     list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, skill count
     remove(target) → match by address or alias → fanout.uninstall_all() drops every per-tool install → rmtree ~/.co/subs/<alias>/ → rewrite subscriptions.txt without the line
@@ -20,7 +20,7 @@ Relay endpoints consumed (v1):
   GET /api/agents/{address}/profile       - {profile: {alias, bio, version, skills:[{name, description}, ...]}}
   GET /api/agents/{address}/skills/{name} - JSON {body: "..."} or raw markdown depending on Content-Type
 
-⚠️ v1 trusts the relay — no Ed25519 signature verification (relay strips signer/signature from profile responses).
+Security: profile metadata and every mirrored body must verify against the pinned publisher address before anything is written. Legacy unsigned profiles remain discoverable but are not installable.
 ⚠️ No alias→address resolver on relay — aliases are dangerous (mutable), so first-time subs require 0x address.
 """
 
@@ -45,6 +45,7 @@ SUBS_DIR = CO_HOME / "subs"
 SUBS_LIST = CO_HOME / "subscriptions.txt"
 DEFAULT_RELAY = "https://oo.openonion.ai"
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
+LOCAL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def _relay_base(relay: Optional[str]) -> str:
@@ -81,8 +82,9 @@ def _fetch_profile(address: str, relay: str) -> dict:
     r = httpx.get(f"{relay}/api/agents/{address}/profile", timeout=30)
     r.raise_for_status()
     data = r.json()
-    # Relay wraps in {"profile": {...}} for this endpoint
-    return data.get("profile", data)
+    if not isinstance(data, dict) or not isinstance(data.get("profile"), dict):
+        raise ValueError("relay returned no publisher profile")
+    return data
 
 
 def _fetch_skill(address: str, name: str, relay: str):
@@ -138,10 +140,10 @@ def strip_tool_grants(body: str, name: str) -> str:
     A SKILL.md is not only instructions. Its frontmatter carries a `tools:`
     list, and invoking the skill auto-approves those patterns for the turn --
     measured on a real agent: ['Bash(git status)', 'read_file']. So a skill
-    fetched from the relay arrives asking for auto-approval, from a source
-    nobody verified: this module's own header says v1 trusts the relay, which
-    strips the signer and signature. It is then written verbatim and fanned out
-    into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro (#654).
+    fetched from the relay arrives asking for auto-approval. Publisher
+    verification proves who sent the instructions; it does not turn their
+    requested permission grant into the local operator's decision. The body is
+    fanned out into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
 
     The instructions are what you subscribed to. The grant is not, and the
     operator can add the patterns to their own .co/host.yaml, where the
@@ -151,8 +153,8 @@ def strip_tool_grants(body: str, name: str) -> str:
     is the prompt (#629) -- and one whose frontmatter does not parse is not
     ours to rewrite. Both pass through untouched.
 
-    Verifying the publisher's signature is the real answer (#654 option 3) and
-    needs the relay to stop stripping it.
+    Publisher signature verification and local grant stripping compose: one
+    authenticates the content, the other keeps authority local (#654).
     """
     import yaml
 
@@ -183,17 +185,53 @@ def strip_tool_grants(body: str, name: str) -> str:
     return f"---\n{rendered}\n---\n{note}{parts[2]}"
 
 
-def _mirror_bundle(address: str, alias: str, profile: dict, relay: str) -> int:
-    """Write profile + each skill body under ~/.co/subs/<alias>/. Returns skill count."""
+def _verified_bundle(address: str, envelope: dict, relay: str):
+    """Fetch every body and verify the reconstructed publisher profile."""
+    publisher = envelope.get("publisher")
+    signature = envelope.get("signature")
+    if publisher != address:
+        raise ValueError("publisher signature belongs to a different address")
+    if envelope.get("signature_version") != "profile-v1" or not signature:
+        raise ValueError("publisher profile signature required; ask them to re-announce with 1.6.0")
+
+    profile = json.loads(json.dumps(envelope["profile"]))
+    alias = profile.get("alias")
+    if not isinstance(alias, str) or not LOCAL_NAME_RE.fullmatch(alias):
+        raise ValueError("signed publisher alias is not a safe local directory name")
+
+    bodies = {}
+    for skill in profile.get("skills", []):
+        name = skill.get("name") if isinstance(skill, dict) else None
+        if not isinstance(name, str) or not LOCAL_NAME_RE.fullmatch(name):
+            raise ValueError("signed skill name is not a safe local directory name")
+        body = _fetch_skill(address, name, relay)
+        if body is not None:
+            if not isinstance(body, str):
+                raise ValueError(f"relay returned a non-text body for {name}")
+            skill["body"] = body
+            bodies[name] = body
+
+    from ...network.host.auth import verify_signature
+
+    if not verify_signature(profile, signature, address):
+        raise ValueError("publisher profile signature verification failed")
+    return profile, bodies
+
+
+def _mirror_bundle(alias: str, profile: dict, bodies: dict) -> int:
+    """Write a verified profile and bodies under ~/.co/subs/<alias>/."""
     bundle = SUBS_DIR / alias
     skills_root = bundle / "skills"
     skills_root.mkdir(parents=True, exist_ok=True)
-    (bundle / "agent.json").write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    metadata = json.loads(json.dumps(profile))
+    for skill in metadata.get("skills", []):
+        skill.pop("body", None)
+    (bundle / "agent.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     n = 0
     for skill in profile.get("skills", []):
         name = skill["name"]
-        body = _fetch_skill(address, name, relay)
+        body = bodies.get(name)
         if body is None:
             # Announced but not published. Named, because the profile promised a
             # skill the subscriber will not find, and skipped rather than written
@@ -244,10 +282,22 @@ def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
     base = _relay_base(relay)
 
     console.print(f"[cyan]Fetching profile[/cyan] {address}")
-    profile = _fetch_profile(address, base)
+    envelope = _fetch_profile(address, base)
+    profile, bodies = _verified_bundle(address, envelope, base)
     alias = profile.get("alias") or alias_hint or address[:10]
 
-    n_skills = _mirror_bundle(address, alias, profile, base)
+    owner = next(
+        (saved_address for saved_address, saved_alias in _read_subs()
+         if saved_alias == alias and saved_address != address),
+        None,
+    )
+    if owner:
+        raise ValueError(
+            f"publisher alias '{alias}' already belongs to {owner}; "
+            "refusing to overwrite its subscribed skills"
+        )
+
+    n_skills = _mirror_bundle(alias, profile, bodies)
 
     subs = [(a, al) for a, al in _read_subs() if a != address]
     subs.append((address, alias))

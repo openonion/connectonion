@@ -23,8 +23,9 @@ Measured before writing this:
     broken YAML  + tools:  ->  passed through with `tools: bash` intact,
                                loader keys ['description', 'name'], patterns []
 
-The relay strips the publisher's signature (v1 trusts it), so the content this
-runs on is unverified by design; that is #654 option 3 and needs the relay.
+Publisher verification now happens before this transformation. This test checks
+the second, independent property: authentic instructions still do not import
+the publisher's permission grants into the subscriber's policy (#654).
 """
 
 import pytest
