@@ -69,6 +69,15 @@ def test_only_the_current_pair_is_built_and_attached():
     assert "gh release create" in RELEASE
 
 
+def test_artifact_job_installs_what_its_wheel_acceptance_test_needs():
+    build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
+    install = "python -m pip install --upgrade pip build twine pytest -r requirements.txt"
+    acceptance = "pytest tests/e2e/test_the_wheel_works_when_installed.py"
+
+    assert install in build_job
+    assert build_job.index(install) < build_job.index(acceptance)
+
+
 def test_announcements_cannot_fail_a_package_release():
     assert "Discord/LinkedIn integration" in RELEASE
     assert "discord.com/api/webhooks" not in RELEASE.lower()
