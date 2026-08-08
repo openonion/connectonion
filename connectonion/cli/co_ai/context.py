@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from connectonion.cli.co_ai.skills.loader import load_skills, get_skills_for_prompt
+from connectonion.skill_preflight import format_preflight_report, preflight_skills
 
 
 def load_project_context(base_path: Optional[Path] = None) -> str:
@@ -80,6 +81,16 @@ def load_project_context(base_path: Optional[Path] = None) -> str:
     skills_prompt = get_skills_for_prompt()
     if skills_prompt:
         parts.append(f"# Available Skills\n\n{skills_prompt}")
+
+    # One local-only preflight for the same skill tiers the runtime plugin sees.
+    from connectonion.useful_plugins.skills import _discover_all_skills
+
+    discovered = _discover_all_skills(project_dir=base)
+    preflight = preflight_skills((s.name, s.requirements) for s in discovered)
+    preflight_text = format_preflight_report(preflight)
+    if preflight_text:
+        print(preflight_text)
+        parts.append(f"# Skill Runtime Preflight\n\n{preflight_text}")
 
     # 5. Git status
     git_info = _get_git_info(base)

@@ -33,7 +33,9 @@ Usage:
 """
 
 from typing import Optional
-from connectonion.cli.co_ai.skills.loader import get_skill, load_skills, SKILLS_REGISTRY
+
+from connectonion.cli.co_ai.skills.loader import SKILLS_REGISTRY, get_skill, load_skills
+from connectonion.skill_preflight import format_preflight_report, preflight_skills
 
 
 def skill(name: str, args: Optional[str] = None) -> str:
@@ -67,6 +69,10 @@ def skill(name: str, args: Optional[str] = None) -> str:
             return f"Skill '{name}' not found. Available skills: {', '.join(available)}"
         else:
             return f"Skill '{name}' not found. No skills are currently loaded."
+
+    preflight = preflight_skills([(skill_info.name, skill_info.requirements)])
+    if preflight.missing_required:
+        return format_preflight_report(preflight) + "\nSkill did not start."
 
     # Load the full skill content
     content = skill_info.load_content()

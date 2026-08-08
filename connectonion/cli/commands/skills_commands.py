@@ -212,6 +212,13 @@ def _copy_entry(entry: dict, force: bool, skills_dir: Optional[Path] = None) -> 
     """Copy a single index entry into <skills_dir>/<name>/. Returns True if copied."""
     name = entry["name"]
     src_path = Path(entry["path"])
+    from ...skill_preflight import format_preflight_report, preflight_skills
+    from ...skill_requirements import parse_skill_requirements
+    from ...useful_plugins.skills import _parse_skill_content
+
+    frontmatter, _ = _parse_skill_content(src_path.read_text(encoding="utf-8"))
+    manifest_name = str(frontmatter.get("name") or name)
+    requirements = parse_skill_requirements(frontmatter, manifest_name)
     dest_dir = (skills_dir or SKILLS_DIR) / name
     dest_file = dest_dir / "SKILL.md"
 
@@ -260,6 +267,9 @@ def _copy_entry(entry: dict, force: bool, skills_dir: Optional[Path] = None) -> 
         console.print(f"[yellow]  skipped {Path(path).name} (a secret stays where it is)[/yellow]")
 
     console.print(f"[green]✓ Copied {name} ({entry['source']}) → {dest_dir}[/green]")
+    report = format_preflight_report(preflight_skills([(manifest_name, requirements)]))
+    if report:
+        console.print(report)
     return True
 
 
