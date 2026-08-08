@@ -38,6 +38,17 @@ CREDENTIAL_ENV_VARS = (
     ("MISTRAL_API_KEY", "Mistral"),
 )
 
+OAUTH_CONNECTIONS = (
+    ("Google OAuth", "GOOGLE", "co auth google"),
+    ("Microsoft OAuth", "MICROSOFT", "co auth microsoft"),
+)
+
+_OAUTH_ENV_VARS = {
+    f"{prefix}_{suffix}"
+    for _provider, prefix, _action in OAUTH_CONNECTIONS
+    for suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")
+}
+
 _PLACEHOLDER_VALUES = {
     "changeme",
     "replace-me",
@@ -74,7 +85,7 @@ def _read_credential_file(path: Path) -> dict[str, str]:
         values = dotenv_values(path, interpolate=False)
     except (OSError, UnicodeError):
         return {}
-    supported = {name for name, _provider in CREDENTIAL_ENV_VARS}
+    supported = {name for name, _provider in CREDENTIAL_ENV_VARS} | _OAUTH_ENV_VARS
     return {
         name: str(value)
         for name, value in values.items()
@@ -187,6 +198,76 @@ def _revealed_credential_rows(
                         "value": str(value),
                     }
                 )
+    return rows
+
+
+def _oauth_rows(
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    now: float | None = None,
+) -> list[dict[str, str]]:
+    """Return redacted OAuth connection state using the same source precedence."""
+    import datetime
+    import time
+
+    sources = _credential_sources(project_dir=project_dir, home=home, environ=environ)
+    now = time.time() if now is None else now
+    rows = []
+    for provider, prefix, action in OAUTH_CONNECTIONS:
+        found = []
+        for source, values in sources:
+            access = values.get(f"{prefix}_ACCESS_TOKEN")
+            refresh = values.get(f"{prefix}_REFRESH_TOKEN")
+            if _is_configured(access) or _is_configured(refresh):
+                state = tuple(
+                    str(values.get(f"{prefix}_{suffix}") or "")
+                    for suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")
+                )
+                found.append((source, state, values))
+
+        if not found:
+            rows.append({"provider": provider, "status": "missing", "source": "—", "action": action})
+            continue
+
+        unique_states = {state for _source, state, _values in found}
+        source_names = [source for source, *_rest in found]
+        if len(unique_states) > 1:
+            source = " + ".join(
+                f"{name} (used)" if index == 0 else name
+                for index, name in enumerate(source_names)
+            )
+            rows.append({"provider": provider, "status": "conflict", "source": source,
+                         "action": f"remove or update the shadowed value; then {action}"})
+            continue
+
+        source, state, values = found[0]
+        _access, refresh, _expires, scopes, _email = state
+        expires = values.get(f"{prefix}_TOKEN_EXPIRES_AT")
+        expired = False
+        invalid_expiry = False
+        if _is_configured(expires):
+            try:
+                expired = float(str(expires)) <= now
+            except ValueError:
+                try:
+                    parsed = datetime.datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+                    expired = parsed.timestamp() <= now
+                except ValueError:
+                    invalid_expiry = True
+
+        if not _is_configured(scopes):
+            status = "incomplete (scopes missing)"
+        elif invalid_expiry:
+            status = "invalid expiry"
+        elif expired and not _is_configured(refresh):
+            status = "expired"
+        elif expired:
+            status = "refresh available"
+        else:
+            status = "connected"
+        rows.append({"provider": provider, "status": status, "source": source, "action": action})
     return rows
 
 
