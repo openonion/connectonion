@@ -21,16 +21,17 @@ permissions:
 jobs:
   tests:
     uses: ./.github/workflows/tests.yml
-    secrets: inherit
     permissions:
       contents: read
 
-  release:
+  build:
     needs: tests
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     permissions:
-      contents: write
-      id-token: write
+      contents: read
 
     steps:
       - name: Checkout the exact release commit
@@ -85,12 +86,14 @@ jobs:
               raise SystemExit(f"release {expected} disagrees with version files: {wrong}")
           PY
           tag="v$version"
-          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
-            tagged_commit="$(git rev-list -n 1 "$tag")"
-            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
-              echo "$tag points to $tagged_commit, not this workflow commit $GITHUB_SHA" >&2
-              exit 1
-            fi
+          if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            echo "Release tag $tag does not exist; manual runs may only retry a reviewed tag" >&2
+            exit 1
+          fi
+          tagged_commit="$(git rev-list -n 1 "$tag")"
+          if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+            echo "$tag points to $tagged_commit, not this workflow commit $GITHUB_SHA" >&2
+            exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -121,15 +124,53 @@ jobs:
             dist/connectonion-${{ steps.version.outputs.version }}.tar.gz
           if-no-files-found: error
 
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/connectonion/${{ needs.build.outputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Recover the reviewed artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: connectonion-${{ needs.build.outputs.version }}
+          path: dist
+
       - name: Publish to PyPI with trusted publishing
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist/
           skip-existing: true
 
+  finalize:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout the exact release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Recover the reviewed artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: connectonion-${{ needs.build.outputs.version }}
+          path: dist
+
       - name: Verify the published package in a clean environment
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           for attempt in {1..12}; do
             check="$RUNNER_TEMP/published-check-$attempt"
@@ -146,7 +187,7 @@ jobs:
 
       - name: Recover and verify the exact PyPI artifacts
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           python .github/scripts/verify_published_artifacts.py \
             --version "$VERSION" \
@@ -156,8 +197,8 @@ jobs:
       - name: Create or repair the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.build.outputs.tag }}
         run: |
           # Always attach the exact bytes PyPI serves. On a retry,
           # skip-existing must never let a new local build replace the assets

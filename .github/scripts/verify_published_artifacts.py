@@ -42,16 +42,28 @@ def _archive_contents(path: Path) -> dict[str, tuple[str, bytes]]:
 
     if path.suffix == ".whl":
         with zipfile.ZipFile(path) as archive:
-            return {
-                item.filename: ("file", archive.read(item))
-                for item in archive.infolist()
-                if not item.is_dir()
-            }
+            contents: dict[str, tuple[str, bytes]] = {}
+            seen: set[str] = set()
+            for item in archive.infolist():
+                if item.filename in seen:
+                    raise ArtifactError(
+                        f"duplicate archive member {item.filename!r} in {path}"
+                    )
+                seen.add(item.filename)
+                if not item.is_dir():
+                    contents[item.filename] = ("file", archive.read(item))
+            return contents
 
     if path.name.endswith(".tar.gz"):
         contents: dict[str, tuple[str, bytes]] = {}
         with tarfile.open(path, "r:gz") as archive:
+            seen: set[str] = set()
             for item in archive.getmembers():
+                if item.name in seen:
+                    raise ArtifactError(
+                        f"duplicate archive member {item.name!r} in {path}"
+                    )
+                seen.add(item.name)
                 if item.isfile():
                     extracted = archive.extractfile(item)
                     if extracted is None:

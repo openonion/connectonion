@@ -61,6 +61,33 @@ def test_logical_archive_comparison_rejects_changed_code(tmp_path):
         MODULE.assert_same_archive_contents(local_wheel, remote_wheel)
 
 
+def test_logical_archive_comparison_rejects_duplicate_wheel_paths(tmp_path):
+    local_wheel = tmp_path / "local.whl"
+    remote_wheel = tmp_path / "remote.whl"
+    _wheel(local_wheel, b"reviewed")
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(remote_wheel, "w") as archive:
+            archive.writestr("connectonion/example.py", b"hidden")
+            archive.writestr("connectonion/example.py", b"reviewed")
+
+    with pytest.raises(MODULE.ArtifactError, match="duplicate archive member"):
+        MODULE.assert_same_archive_contents(local_wheel, remote_wheel)
+
+
+def test_logical_archive_comparison_rejects_duplicate_sdist_paths(tmp_path):
+    local_sdist = tmp_path / "local.tar.gz"
+    remote_sdist = tmp_path / "remote.tar.gz"
+    _sdist(local_sdist, b"reviewed")
+    with tarfile.open(remote_sdist, "w:gz") as archive:
+        for content in (b"hidden", b"reviewed"):
+            item = tarfile.TarInfo("connectonion-1.6.0/connectonion/example.py")
+            item.size = len(content)
+            archive.addfile(item, io.BytesIO(content))
+
+    with pytest.raises(MODULE.ArtifactError, match="duplicate archive member"):
+        MODULE.assert_same_archive_contents(local_sdist, remote_sdist)
+
+
 def test_recovery_downloads_exact_verified_pypi_bytes(tmp_path):
     version = "1.6.0"
     local_dir = tmp_path / "dist"

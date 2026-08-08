@@ -22,6 +22,15 @@ def test_tag_and_emergency_manual_release_paths_exist():
     assert '"$tagged_commit" != "$GITHUB_SHA"' in RELEASE
 
 
+def test_manual_release_is_only_a_retry_for_an_existing_reviewed_tag():
+    assert "Release tag $tag does not exist" in RELEASE
+    assert 'git rev-list -n 1 "$tag"' in RELEASE
+
+
+def test_test_job_does_not_inherit_repository_secrets():
+    assert "secrets: inherit" not in RELEASE
+
+
 def test_release_uses_trusted_publishing_and_verifies_pypi():
     assert "id-token: write" in RELEASE
     assert "pypa/gh-action-pypi-publish@" in RELEASE
@@ -29,16 +38,25 @@ def test_release_uses_trusted_publishing_and_verifies_pypi():
     assert "connectonion.__version__ == '$VERSION'" in RELEASE
 
 
-def test_publish_permissions_are_scoped_to_the_release_job():
-    before_jobs, release_job = RELEASE.split("jobs:", 1)[0], RELEASE.split("  release:", 1)[1]
-    tests_job = RELEASE.split("  tests:", 1)[1].split("  release:", 1)[0]
+def test_build_publish_and_finalize_permissions_are_separated():
+    before_jobs = RELEASE.split("jobs:", 1)[0]
+    tests_job = RELEASE.split("  tests:", 1)[1].split("  build:", 1)[0]
+    build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
+    publish_job = RELEASE.split("  publish:", 1)[1].split("  finalize:", 1)[0]
+    finalize_job = RELEASE.split("  finalize:", 1)[1]
 
     assert "contents: read" in before_jobs
     assert "contents: write" not in before_jobs
     assert "id-token: write" not in before_jobs
     assert "contents: read" in tests_job
-    assert "contents: write" in release_job
-    assert "id-token: write" in release_job
+    assert "contents: read" in build_job
+    assert "contents: write" not in build_job
+    assert "id-token: write" not in build_job
+    assert "id-token: write" in publish_job
+    assert "contents: write" not in publish_job
+    assert "environment:" in publish_job
+    assert "contents: write" in finalize_job
+    assert "id-token: write" not in finalize_job
 
 
 def test_only_the_current_pair_is_built_and_attached():
