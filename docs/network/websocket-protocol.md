@@ -302,7 +302,9 @@ command fields, `to`, `timestamp`, and a random `nonce`. The server verifies the
 signer is the caller that opened this connection, verifies the recipient and
 type, then discards the unsigned compatibility copy and dispatches the signed
 payload. INPUT, EXEC, runtime input, approval responses and ask-user responses
-all pass through this gate. PONG and SESSION_STATUS are transport/status frames;
+all pass through this gate. PONG is a transport frame. SESSION_STATUS uses the
+verified CONNECT identity on a live socket, or an independently signed v2 frame
+on a temporary socket, and only reveals a session owned by that identity.
 ONBOARD_SUBMIT and ADMIN frames retain their existing independent signatures.
 
 This decision is made **per caller**, after the signature is verified, so an admin, a
