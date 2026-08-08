@@ -219,11 +219,14 @@ class TestCorsHeaders:
         assert b"OPTIONS" in methods
 
     def test_allows_common_headers(self):
-        """CORS allows authorization and content-type headers."""
+        """CORS allows auth plus the route-bound signature headers."""
         headers_dict = {k: v for k, v in CORS_HEADERS}
         allowed = headers_dict[b"access-control-allow-headers"]
         assert b"authorization" in allowed
         assert b"content-type" in allowed
+        assert b"x-co-from" in allowed
+        assert b"x-co-signature" in allowed
+        assert b"x-co-timestamp" in allowed
 
 
 def signed_scope(method: str, path: str) -> dict:
