@@ -151,7 +151,7 @@ class LLMConnectionError(LLMProviderError):
             f"Try:\n"
             f"   - Check your internet connection\n"
             f"   - Disable proxy/VPN and retry\n"
-            f"   - Run 'curl https://oo.openonion.ai/health' to test\n"
+            f"   - Check the server URL shown above directly\n"
             f"\n"
             f"{'='*70}\n"
         )

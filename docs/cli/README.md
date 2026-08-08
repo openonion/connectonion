@@ -749,6 +749,22 @@ The CLI automatically detects providers:
 4. Interactive prompt
 5. Skip (add later)
 
+### Backend selection
+
+Set `CONNECTONION_BACKEND_URL` to point the entire managed ConnectOnion client
+at staging or a local API. It applies consistently to authentication, `co/*`
+models, deploys and servers, email, OAuth-backed tools, trust checks, image
+uploads, transcription, announce, and subscriptions.
+
+```bash
+export CONNECTONION_BACKEND_URL=http://localhost:8000
+co doctor
+```
+
+`OPENONION_API_URL` and `OPENONION_BASE_URL` remain compatibility aliases, but
+new configurations should use `CONNECTONION_BACKEND_URL`. An explicit URL takes
+precedence over `OPENONION_DEV` and `ENVIRONMENT=development`.
+
 ### Sharing Across Projects
 
 Keys in `~/.co/keys.env` are auto-copied to new projects:

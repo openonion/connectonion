@@ -19,6 +19,7 @@ import requests
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from ...backend import backend_url
 from rich import box
 
 console = Console()
@@ -382,11 +383,17 @@ def handle_doctor():
         connectivity_table.add_column("Status")
 
         # Check backend reachability
-        response = requests.get("https://oo.openonion.ai/health", timeout=5)
-        if response.status_code == 200:
-            connectivity_table.add_row("Backend", "[green]✓[/green] https://oo.openonion.ai")
+        selected_backend = backend_url()
+        try:
+            response = requests.get(f"{selected_backend}/health", timeout=5)
+        except requests.exceptions.RequestException as exc:
+            connectivity_table.add_row("Backend", f"[red]✗[/red] Could not reach {selected_backend}")
+            found.append(f"backend unreachable ({type(exc).__name__})")
         else:
-            connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
+            if response.status_code == 200:
+                connectivity_table.add_row("Backend", f"[green]✓[/green] {selected_backend}")
+            else:
+                connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
 
         # Signed as whoever this project acts as. This worked the same rule
         # out a second time, in the same file -- so the identity the panel
@@ -406,21 +413,24 @@ def handle_doctor():
             message = f"ConnectOnion-Auth-{public_key}-{timestamp}"
             signature = address.sign(addr_data, message.encode()).hex()
 
-            response = requests.post(
-                "https://oo.openonion.ai/api/v1/auth",
-                json={
-                    "public_key": public_key,
-                    "signature": signature,
-                    "message": message
-                },
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
+            try:
+                response = requests.post(
+                    f"{selected_backend}/api/v1/auth",
+                    json={
+                        "public_key": public_key,
+                        "signature": signature,
+                        "message": message
+                    },
+                    timeout=5
+                )
+            except requests.exceptions.RequestException:
+                connectivity_table.add_row("Authentication", "[red]✗[/red] Backend unreachable")
             else:
-                connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
-                found.append(f"authentication failed (status {response.status_code})")
+                if response.status_code == 200:
+                    connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
+                else:
+                    connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
+                    found.append(f"authentication failed (status {response.status_code})")
 
         console.print(Panel(connectivity_table, title="[bold]Connectivity[/bold]", border_style="magenta"))
         console.print()

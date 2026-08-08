@@ -57,6 +57,9 @@ HARDENED = 0x80000000
 SLIP13_PURPOSE = 13
 
 # The account identity — the operator's own key, the one holding the balance.
+# This is a cryptographic domain separator, not a network destination. It must
+# remain stable when CONNECTONION_BACKEND_URL changes or recovery would derive a
+# different key on staging than on production.
 ACCOUNT_URI = "https://oo.openonion.ai"
 
 
