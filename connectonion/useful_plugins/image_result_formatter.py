@@ -25,6 +25,7 @@ import base64
 import requests
 from typing import TYPE_CHECKING
 from ..core.events import after_tools
+from ..backend import backend_url
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -152,7 +153,7 @@ def _upload_to_oo_api(base64_data: str, mime_type: str) -> str:
     Fails loudly on upload error: silently reverting to base64 would hide a
     broken image pipeline while re-inflating the context.
     """
-    base = os.getenv("OPENONION_API_URL", "https://oo.openonion.ai")
+    base = backend_url()
     resp = requests.post(
         f"{base}/api/v1/images",
         headers={"Authorization": f"Bearer {os.environ['OPENONION_API_KEY']}"},

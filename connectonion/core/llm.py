@@ -188,6 +188,7 @@ class ToolCall:
 
 # Import TokenUsage from usage module
 from .usage import TokenUsage, calculate_cost
+from ..backend import backend_url
 from .exceptions import (
     InsufficientCreditsError,
     LLMAuthenticationError,
@@ -1065,11 +1066,8 @@ class OpenOnionLLM(LLM):
         # Strip co/ prefix - it's only for client-side routing
         self.model = model.removeprefix("co/")
 
-        # Determine base URL for OpenAI-compatible endpoint
-        if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            self.base_url = "http://localhost:8000/v1"
-        else:
-            self.base_url = "https://oo.openonion.ai/v1"
+        # All managed services share the same selected backend (#733).
+        self.base_url = f"{backend_url()}/v1"
 
         # Use OpenAI client with OpenOnion endpoint.
         # SDK default connect timeout is 5s with 2 retries; one transient network

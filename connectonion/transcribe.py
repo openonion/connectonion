@@ -35,6 +35,7 @@ import mimetypes
 from pathlib import Path
 from typing import Optional
 import httpx
+from connectonion.backend import backend_url
 
 
 # MIME type mapping for audio formats
@@ -201,8 +202,7 @@ def _transcribe_via_openonion(
 ) -> str:
     """Transcribe using OpenOnion proxy (for co/ models)."""
     # Determine API URL
-    is_dev = os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development"
-    base_url = "http://localhost:8000" if is_dev else "https://oo.openonion.ai"
+    base_url = backend_url()
 
     # Build request
     request_body = {

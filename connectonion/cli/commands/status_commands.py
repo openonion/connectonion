@@ -1,7 +1,7 @@
 """
 Purpose: Display account status, deployments, and credential-source diagnostics without re-authenticating
 LLM-Note:
-  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, address] | imported by [cli/main.py via handle_status()] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [tests/e2e/cli/test_cli_status.py]
+  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
   Data flow: receives reveal=False by default → inspects supported provider variable names in process env/local .env/global ~/.co/keys.env without loading values → displays redacted name/status/source table → if reveal=True, displays full values in a separate warning-marked table → load_api_key() resolves OPENONION_API_KEY → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth → displays account and deployments
   State/Effects: no state modifications | makes network requests to oo.openonion.ai after local diagnostics | reads env vars, .env, ~/.co/keys.env without exporting them | default output contains no secret material; explicit --reveal writes full values to the terminal | does NOT update any files
   Integration: exposes handle_status(reveal=False) for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
@@ -19,12 +19,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from ...backend import backend_url
 
 from .project_cmd_lib import load_api_key
 
 console = Console()
 
-API_BASE = "https://oo.openonion.ai"
 
 CREDENTIAL_ENV_VARS = (
     ("OPENONION_API_KEY", "OpenOnion"),
@@ -260,7 +260,7 @@ def _show_credentials(reveal: bool = False) -> None:
 def _fetch_deployments(api_key: str):
     """Return deployments for the current account from ConnectOnion Cloud."""
     response = requests.get(
-        f"{API_BASE}/api/v1/deployments",
+        f"{backend_url()}/api/v1/deployments",
         headers={"Authorization": f"Bearer {api_key}"},
         timeout=30,
     )
@@ -369,7 +369,7 @@ def handle_status(reveal: bool = False):
 
     # Call auth endpoint to get fresh user data
     response = requests.post(
-        "https://oo.openonion.ai/api/v1/auth",
+        f"{backend_url()}/api/v1/auth",
         json={
             "public_key": public_key,
             "signature": signature,

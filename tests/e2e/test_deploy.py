@@ -34,7 +34,7 @@ import uuid
 import pytest
 import requests
 
-from connectonion.cli.commands.deploy_commands import API_BASE
+from connectonion.backend import backend_url
 
 
 pytestmark = [
@@ -141,7 +141,7 @@ def wait_for_running(api_url: str, deployment_id: str, headers: dict, timeout: i
 
 @pytest.fixture
 def api_url():
-    return os.getenv("DEPLOY_API_URL", API_BASE)
+    return os.getenv("DEPLOY_API_URL", backend_url())
 
 
 @pytest.fixture

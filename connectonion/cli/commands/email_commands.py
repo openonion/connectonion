@@ -14,13 +14,11 @@ import requests
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from ...backend import backend_url
 
 from .project_cmd_lib import load_api_key
 
 console = Console()
-
-BACKEND = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-
 
 def _print_no_auth():
     console.print("\n❌ [bold red]No API key found[/bold red]")
@@ -196,7 +194,7 @@ def handle_email_name(name: str, buy: bool = False):
     headers = {"Authorization": f"Bearer {token}"}
 
     if not buy:
-        r = requests.get(f"{BACKEND}/api/v1/email/check-name", params={"name": name}, headers=headers, timeout=10)
+        r = requests.get(f"{backend_url()}/api/v1/email/check-name", params={"name": name}, headers=headers, timeout=10)
         if not r.ok:
             console.print(f"\n[red]✗ {_err(r)}[/red]\n")
             return
@@ -208,7 +206,7 @@ def handle_email_name(name: str, buy: bool = False):
             console.print(f"\n[yellow]✗ {data['email']} — {data.get('reason', 'unavailable')}[/yellow]\n")
         return
 
-    r = requests.post(f"{BACKEND}/api/v1/email/purchase-name", json={"name": name}, headers=headers, timeout=15)
+    r = requests.post(f"{backend_url()}/api/v1/email/purchase-name", json={"name": name}, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
         return
@@ -231,7 +229,7 @@ def handle_email_upgrade(tier: str, domain: str = None, alias: str = None):
     if alias:
         payload["alias"] = alias
 
-    r = requests.post(f"{BACKEND}/api/v1/email/upgrade", json=payload, headers=headers, timeout=15)
+    r = requests.post(f"{backend_url()}/api/v1/email/upgrade", json=payload, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
         return
