@@ -77,52 +77,49 @@ class TestLoadApiKey:
             key = load_api_key()
             assert key == 'test-key-123'
 
-    def test_load_api_key_from_local_env(self):
+    def test_load_api_key_from_local_env(self, tmp_path, monkeypatch):
         """Test loading API key from local .env file."""
         from connectonion.cli.commands.project_cmd_lib import load_api_key
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
+        monkeypatch.chdir(tmp_path)
 
-            # Create .env with API key
-            Path('.env').write_text('OPENONION_API_KEY=local-key-456\n')
+        # Create .env with API key
+        Path('.env').write_text('OPENONION_API_KEY=local-key-456\n')
 
-            # Clear environment variable
-            with patch.dict(os.environ, {}, clear=True):
-                key = load_api_key()
-                assert key == 'local-key-456'
+        # Clear environment variable
+        with patch.dict(os.environ, {}, clear=True):
+            key = load_api_key()
+            assert key == 'local-key-456'
 
-    def test_load_api_key_from_global_keys_env(self):
+    def test_load_api_key_from_global_keys_env(self, tmp_path, monkeypatch):
         """Test loading API key from global ~/.co/keys.env."""
         from connectonion.cli.commands.project_cmd_lib import load_api_key
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
+        monkeypatch.chdir(tmp_path)
 
-            # Create mock ~/.co/keys.env
-            co_dir = Path(tmpdir) / '.co'
-            co_dir.mkdir()
-            keys_env = co_dir / 'keys.env'
-            keys_env.write_text('OPENONION_API_KEY=global-key-789\n')
+        # Create mock ~/.co/keys.env
+        co_dir = tmp_path / '.co'
+        co_dir.mkdir()
+        keys_env = co_dir / 'keys.env'
+        keys_env.write_text('OPENONION_API_KEY=global-key-789\n')
 
-            # Mock Path.home() to return tmpdir
-            with patch('pathlib.Path.home', return_value=Path(tmpdir)):
-                with patch.dict(os.environ, {}, clear=True):
-                    key = load_api_key()
-                    assert key == 'global-key-789'
+        # Mock Path.home() to return the isolated home.
+        with patch('pathlib.Path.home', return_value=tmp_path):
+            with patch.dict(os.environ, {}, clear=True):
+                key = load_api_key()
+                assert key == 'global-key-789'
 
-    def test_load_api_key_returns_none_when_not_found(self):
+    def test_load_api_key_returns_none_when_not_found(self, tmp_path, monkeypatch):
         """Test that _load_api_key returns None when no key found."""
         from connectonion.cli.commands.project_cmd_lib import load_api_key
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
+        monkeypatch.chdir(tmp_path)
 
-            # Mock Path.home() to return tmpdir (no keys.env)
-            with patch('pathlib.Path.home', return_value=Path(tmpdir)):
-                with patch.dict(os.environ, {}, clear=True):
-                    key = load_api_key()
-                    assert key is None
+        # Mock Path.home() to return the isolated home (no keys.env).
+        with patch('pathlib.Path.home', return_value=tmp_path):
+            with patch.dict(os.environ, {}, clear=True):
+                key = load_api_key()
+                assert key is None
 
 
 class TestSaveGoogleToEnv:
