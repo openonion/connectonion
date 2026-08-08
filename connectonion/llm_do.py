@@ -299,9 +299,15 @@ def llm_do(
     # Get response
     if output:
         # Structured output - use structured_complete()
-        return llm.structured_complete(messages, output, **kwargs)
+        result = llm.structured_complete(messages, output, **kwargs)
+        # structured_complete returns the schema instance; usage lives on the
+        # LLM. Stash it here so callers that only hold the llm_do result can
+        # still reconcile spend (#730).
+        llm_do.last_usage = getattr(llm, "last_usage", None)
+        return result
     else:
         # Plain text - use complete()
         # Pass through kwargs (max_tokens, temperature, etc.)
         response = llm.complete(messages, tools=None, **kwargs)
+        llm_do.last_usage = response.usage or getattr(llm, "last_usage", None)
         return response.content
