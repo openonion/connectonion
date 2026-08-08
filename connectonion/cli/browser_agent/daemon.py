@@ -2,7 +2,7 @@
 Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI requests to it over the platform transport (POSIX Unix socket / Windows named pipe), arbitrating concurrent agents through per-tab ownership.
 LLM-Note:
   Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.agent (resolve_api_key, build_browser_agent), browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: client sends wire-v1 JSON {v,caller,account,tab,line} (or a legacy plain line) → page verbs stay shared; model-backed `do` refuses when the caller's public account address differs from the daemon payer → reply includes process exit code (2 usage, 3 unknown tab, 4 busy, 5 payer mismatch)
+  Data flow: client sends wire-v1 JSON {v,caller,account,tab,line} (or a legacy plain line) → page verbs stay shared; model-backed `do` runs only when both public account addresses are present and equal (legacy/missing/mismatched payer data fails closed) → reply includes process exit code (2 usage, 3 unknown tab, 4 busy, 5 payer mismatch)
   State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds the endpoint at default_sock_path() via `transport` — POSIX: a raw AF_UNIX socket (unchanged); Windows: a native named pipe (multiprocessing.connection) with an HMAC authkey — under a lifetime OS lock (transport.lock_path: fcntl.flock POSIX / msvcrt Windows, released by the OS on any death, so simultaneous cold-starts can't both bind) and records its owner pid in transport.pid_path so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes the listener (POSIX also unlinks the socket) + pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the endpoint) when browser._context_is_alive() goes false or _launch_failed()
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
   Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
@@ -309,6 +309,31 @@ class BrowserDaemon:
                 f"'co browser do \"<instruction>\"' for natural language."
             )
 
+        # `do` spends credits in this long-lived process. Old clients have no
+        # account field, and a broken daemon identity cannot prove whose credits
+        # would be spent, so both cases must fail closed. Do this before claiming
+        # the tab: a rejected billing attempt must not make the page look busy.
+        if verb == "do":
+            try:
+                daemon_account = str(_daemon_account() or "").strip()
+            except Exception:
+                daemon_account = ""
+            caller_account = caller_account.strip()
+            if not caller_account or not daemon_account:
+                return 5, (
+                    "refusing `do`: cannot verify that the caller and browser "
+                    "daemon use the same OpenOnion billing account. Upgrade the "
+                    "client, then run `co status` or `co auth`; page commands "
+                    "remain available."
+                )
+            if caller_account.casefold() != daemon_account.casefold():
+                return 5, (
+                    "refusing `do`: this browser daemon bills "
+                    f"{daemon_account[:10]}…, but this command came from "
+                    f"{caller_account[:10]}…. Page commands remain available. "
+                    "Stop the daemon and retry from this project so the payer matches."
+                )
+
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
         # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
         # never silent interleaving on one page.
@@ -318,14 +343,6 @@ class BrowserDaemon:
         self._stamp_claim(meta, caller, line)
         self.last_command = {"line": line, "at": time.time()}
         if verb == "do":  # explicit natural-language agent — use the PARSED remainder,
-            daemon_account = _daemon_account() or ""
-            if caller_account and daemon_account and caller_account != daemon_account:
-                return 5, (
-                    "refusing `do`: this browser daemon bills "
-                    f"{daemon_account[:10]}…, but this command came from "
-                    f"{caller_account[:10]}…. Page commands remain available. "
-                    "Stop the daemon and retry from this project so the payer matches."
-                )
             command = " ".join(tokens[1:])  # not the still-quoted raw line
             return self._run_nl(command)
         return self._call_verb(verb, tokens[1:])
