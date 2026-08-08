@@ -75,3 +75,11 @@ The same local preflight runs after `co skills copy`, in `co doctor`, and when
 `co ai` starts. Missing required entries stop that skill before its instructions
 or temporary permissions are loaded. Missing optional entries are shown as
 informational setup hints and do not stop the skill.
+
+During deploy, required Python constraints from every project or explicitly
+bundled skill are packaged into `.co/skill-python-requirements.txt` and installed
+before the service starts. A successful installation records `pip freeze --all`
+as the realized state; the request digest is advanced only afterwards, so a
+failed installation is retried by the next deploy. Required executables and
+platform capabilities are not installed automatically and stop deploy with the
+skill's setup hint. Optional dependencies remain informational.

@@ -285,6 +285,10 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     # project's copy with the deployer. Packing the file here as well would put
     # two members under one name and let write order decide which survives.
     ignore_patterns.append(".co/admins.txt")
+    ignore_patterns.extend([
+        ".co/skill-requirements.requested.json",
+        ".co/skill-python-requirements.txt",
+    ])
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
         if _is_git_repo(project_dir):
@@ -313,6 +317,24 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                 arc_prefix,
                 _load_skill_ignore_patterns(skills_path),
             )
+
+        from ...skill_deploy import collect_deploy_skill_requirements
+
+        skill_requirements = collect_deploy_skill_requirements(project_dir, skills_paths)
+        requested = json.dumps(
+            {**skill_requirements.requested_state, "digest": skill_requirements.digest},
+            indent=2,
+        ).encode()
+        info = tarfile.TarInfo(name=".co/skill-requirements.requested.json")
+        info.size = len(requested)
+        info.mode = 0o644
+        tar.addfile(info, io.BytesIO(requested))
+
+        python_requirements = ("\n".join(skill_requirements.python) + "\n").encode()
+        info = tarfile.TarInfo(name=".co/skill-python-requirements.txt")
+        info.size = len(python_requirements)
+        info.mode = 0o644
+        tar.addfile(info, io.BytesIO(python_requirements))
         _add_deployer_as_admin(tar, project_dir)
     return tarball
 
@@ -385,6 +407,15 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         if not sp.is_dir():
             console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
             return False
+
+    from ...skill_deploy import collect_deploy_skill_requirements
+
+    skill_requirements = collect_deploy_skill_requirements(project_dir, skills_paths)
+    if skill_requirements.unsupported:
+        console.print("[red]Cloud deploy cannot realize these required skill dependencies:[/red]")
+        for requirement in skill_requirements.unsupported:
+            console.print(f"  [red]✗[/red] {requirement}")
+        return False
 
     # Load config from host.yaml. The project is checked before credentials are:
     # a broken host.yaml is worth reporting whether or not you happen to be

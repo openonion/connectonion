@@ -765,7 +765,8 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     return True
 
 
-def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool:
+def _install_deps_if_changed(target: str, agent: str, project_dir: Path,
+                             skill_requirements=None) -> bool:
     """pip install when requirements.txt changed, or when this CLI is a new
     version of connectonion than the one that last installed.
 
@@ -783,11 +784,15 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
     from ... import __version__
 
     requirements = project_dir / "requirements.txt"
-    if not requirements.exists():
+    skill_python = tuple(getattr(skill_requirements, "python", ()))
+    if not requirements.exists() and not skill_python:
         return True
 
+    digest_input = requirements.read_bytes() if requirements.exists() else b""
+    if skill_python or getattr(skill_requirements, "skills", ()):
+        digest_input += b"\nskills:" + skill_requirements.digest.encode()
     digest = hashlib.sha256(
-        requirements.read_bytes() + b"\ncli:" + __version__.encode()
+        digest_input + b"\ncli:" + __version__.encode()
     ).hexdigest()
     stamp = f"{SRV}/{agent}/.co/requirements.sha256"
 
@@ -796,8 +801,16 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
         return True
 
     console.print("[dim]  installing dependencies …[/dim]")
-    result = _ssh(
-        target,
+    root_install = (
+        f"{SRV}/{agent}/.venv/bin/pip install -q -U -r requirements.txt\n"
+        if requirements.exists() else ""
+    )
+    skill_install = ""
+    if skill_python:
+        quoted = " ".join(shlex.quote(requirement) for requirement in skill_python)
+        skill_install = f"{SRV}/{agent}/.venv/bin/pip install -q -U {quoted}\n"
+
+    install_command = (
         # From the project directory, because a requirements.txt is allowed to
         # name things relative to itself — a local wheel, `-e .`, a nested
         # `-r requirements-dev.txt`. Run from the login shell's home instead and
@@ -809,7 +822,8 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
         # Measured: a venv on 1.5.4 with `connectonion` unpinned stayed on 1.5.4
         # through `pip install -r`, and moved to 1.5.6 only with -U. Without it
         # the reinstall this function just decided to do would change nothing.
-        f"{SRV}/{agent}/.venv/bin/pip install -q -U -r requirements.txt\n"
+        + root_install
+        + skill_install
         # Then the runtime, by name and version.
         #
         # -U asks the index for "newest", which is a race with our own release:
@@ -820,16 +834,21 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
         # The pin also fixes the reverse skew: an older CLI deploying onto a
         # server that resolves a *newer* connectonion than the one writing the
         # systemd unit and the .co/ layout it will read.
-        f"{SRV}/{agent}/.venv/bin/pip install -q "
+        + f"{SRV}/{agent}/.venv/bin/pip install -q "
         f"{shlex.quote('connectonion==' + __version__)}\n"
+        # This is the realized state, not another copy of what was requested.
+        # It is written only after every install succeeds, so a failed deploy
+        # leaves the old digest in place and the next deploy retries.
+        f"{SRV}/{agent}/.venv/bin/pip freeze --all > "
+        f"{SRV}/{agent}/.co/skill-requirements.realized.txt\n"
         # Last, and only if everything above succeeded — `set -e` is what makes
         # that true. The stamp is the claim "this server is current for this
         # CLI", and a deploy that could not converge must not leave that claim
         # behind: the next deploy would match it, skip the install, and freeze
         # the mismatch for good.
-        f"printf '%s' {shlex.quote(digest)} > {stamp}",
-        timeout=900,
+        f"printf '%s' {shlex.quote(digest)} > {stamp}"
     )
+    result = _ssh(target, install_command, timeout=900)
     if result.returncode != 0:
         console.print("[red]pip install failed.[/red]")
         for line in (result.stderr or result.stdout).strip().splitlines()[-12:]:
@@ -966,6 +985,15 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
         console.print(f"[dim]Set 'entrypoint' in {project_dir / '.co' / 'host.yaml'}[/dim]")
         return False
 
+    from ...skill_deploy import collect_deploy_skill_requirements
+
+    skill_requirements = collect_deploy_skill_requirements(project_dir)
+    if skill_requirements.unsupported:
+        console.print("[red]Required skill dependencies cannot be realized automatically:[/red]")
+        for requirement in skill_requirements.unsupported:
+            console.print(f"  [red]✗[/red] {requirement}")
+        return False
+
     console.print(f"\n[bold]{agent}[/bold] → [cyan]{server}[/cyan] [dim]({target})[/dim]")
     _warn_about_skills_left_behind(project_dir)
 
@@ -995,7 +1023,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
         return False
     if not _sync_env(target, agent, project_dir):
         return False
-    if not _install_deps_if_changed(target, agent, project_dir):
+    if not _install_deps_if_changed(target, agent, project_dir, skill_requirements):
         return False
     # Decided on the server, where the answer lives, and recorded so a redeploy
     # keeps it — the Caddyfile points at this number.
@@ -1044,4 +1072,3 @@ def _deployer_address() -> Optional[str]:
         return None
     data = address.load(co_dir)
     return data.get("address") if data else None
-
