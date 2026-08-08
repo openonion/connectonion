@@ -21,6 +21,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -537,9 +538,72 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
 import json as _json
 
 
-def _env(line, caller="", tab=None):
+def _env(line, caller="", tab=None, account=""):
     """Build the v1 wire envelope the way client.send does."""
-    return _json.dumps({"v": 1, "caller": caller, "tab": tab, "line": line})
+    return _json.dumps({
+        "v": 1, "caller": caller, "account": account, "tab": tab, "line": line
+    })
+
+
+def test_do_refuses_to_bill_a_different_daemon_account(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
+
+    code, payload = daemon.dispatch(
+        _env("do send the form", caller="agent", account="0xcaller-account")
+    )
+
+    assert code == 5
+    assert "refusing `do`" in payload
+    assert "0xdaemon" in payload and "0xcaller" in payload
+    daemon._run_nl.assert_not_called()
+
+
+def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
+
+    ok, _ = daemon.dispatch(
+        _env("go_to example.com", caller="agent", account="0xcaller-account")
+    )
+
+    assert ok is True
+    assert daemon.browser.calls == [("go_to", "example.com")]
+
+
+def test_do_runs_when_caller_and_daemon_accounts_match(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(return_value=(True, "done"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
+
+    result = daemon.dispatch(
+        _env("do send the form", caller="agent", account="0xsame-account")
+    )
+
+    assert result == (True, "done")
+    daemon._run_nl.assert_called_once_with("send the form")
+
+
+def test_client_derives_only_the_public_billing_address(tmp_path, monkeypatch):
+    from connectonion import address
+
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    monkeypatch.setattr(
+        address,
+        "load",
+        lambda path: {"address": "0xpublic", "private_key": "never-sent"},
+    )
+
+    assert c._caller_account() == "0xpublic"
+
+
+def test_client_refuses_do_when_it_cannot_name_the_payer(monkeypatch, capsys):
+    monkeypatch.setattr(c, "_caller_account", lambda: "")
+    monkeypatch.setattr(c, "_connect", Mock(side_effect=AssertionError("no socket")))
+
+    assert c.send("do submit the form") == 5
+    assert "cannot determine" in capsys.readouterr().err
 
 
 def test_tab_open_prints_only_the_name(tmp_path):
