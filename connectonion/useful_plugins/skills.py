@@ -74,7 +74,11 @@ from copy import deepcopy
 
 from ..core.events import after_user_input, on_complete, before_each_tool, on_agent_ready
 from ..project import project_co_dir, project_root
-from ..skill_requirements import SkillManifestError, parse_skill_requirements
+from ..skill_requirements import (
+    SkillManifestError,
+    SkillRequirements,
+    parse_skill_requirements,
+)
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -85,6 +89,8 @@ class SkillInfo:
     name: str
     description: str
     location: str  # project | claude-project | user | claude-user | builtin
+    path: Optional[Path] = None
+    requirements: Optional[SkillRequirements] = None
 
 
 # The only locations a hosted agent publishes to clients: the two that ship inside
@@ -324,8 +330,15 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
 
             frontmatter, _ = _parse_skill_content(content)
             description = frontmatter.get('description', 'No description')
+            try:
+                requirements = parse_skill_requirements(frontmatter, name)
+            except SkillManifestError:
+                requirements = None  # find_skill_problems reports the exact field
 
-            result.append(SkillInfo(name=name, description=description, location=location))
+            result.append(SkillInfo(
+                name=name, description=description, location=location,
+                path=skill_file, requirements=requirements,
+            ))
 
     return result
 
@@ -640,6 +653,13 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     frontmatter = skill['frontmatter']
     instructions = skill['instructions']
 
+    from ..skill_preflight import format_preflight_report, preflight_skills
+
+    preflight = preflight_skills([(skill_name, skill.get('requirements'))])
+    if preflight.missing_required:
+        messages[-1]['content'] = format_preflight_report(preflight) + "\nSkill did not start."
+        return
+
     # Grant skill permissions (with snapshot)
     patterns = _tool_patterns(frontmatter)
     _grant_skill_permissions(agent, skill_name, patterns)
@@ -686,6 +706,12 @@ def skill(agent: 'Agent', name: str) -> str:
 
     frontmatter = skill_data['frontmatter']
     instructions = skill_data['instructions']
+
+    from ..skill_preflight import format_preflight_report, preflight_skills
+
+    preflight = preflight_skills([(name, skill_data.get('requirements'))])
+    if preflight.missing_required:
+        return format_preflight_report(preflight) + "\nSkill did not start."
 
     # Grant skill permissions (with snapshot)
     patterns = _tool_patterns(frontmatter)

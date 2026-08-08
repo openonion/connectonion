@@ -24,6 +24,22 @@ from rich import box
 console = Console()
 
 
+def _add_skill_preflight_rows(skills_table, found: list[str], skills) -> None:
+    """Add local runtime requirement results; optional misses are informational."""
+    from ...skill_preflight import preflight_skills
+
+    preflight = preflight_skills((s.name, s.requirements) for s in skills)
+    for check in preflight.missing_required + preflight.missing_optional:
+        requirement = check.requirement
+        label = f"{check.skill_name}/{requirement.category}/{requirement.name}"
+        setup = f" — {requirement.setup}" if requirement.setup else ""
+        if check.required:
+            skills_table.add_row(label, f"[red]✗[/red] {check.detail}{setup}")
+            found.append(f"skill {label}: {check.detail}{setup}")
+        else:
+            skills_table.add_row(label, f"[yellow]○[/yellow] optional: {check.detail}{setup}")
+
+
 def verdict(problems: list) -> int:
     """The last line, and the exit code, saying what the body already said.
 
@@ -371,6 +387,8 @@ def handle_doctor():
     for location, name, reason in problems:
         skills_table.add_row(f"{location}/{name}", f"[red]✗[/red] {reason}")
         found.append(f"skill {location}/{name}: {reason}")
+
+    _add_skill_preflight_rows(skills_table, found, skills)
 
     console.print(Panel(skills_table, title="[bold]Skills[/bold]", border_style="yellow"))
     console.print()
