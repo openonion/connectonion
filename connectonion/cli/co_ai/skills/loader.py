@@ -21,10 +21,10 @@ Architecture:
 - Fallback: Extracts first paragraph as description if missing
 - Global registry mutated (not reassigned) to preserve references
 
-Search paths:
+Search tiers:
     1. .co/skills/skill-name/SKILL.md (project-level, highest priority)
     2. ~/.co/skills/skill-name/SKILL.md (user-level)
-    3. co_ai/skills/builtin/skill-name/SKILL.md (built-in, lowest priority)
+    3. customer defaults (native builtin plus an explicit useful_skills allowlist)
 
 Usage:
     skills = load_skills()
@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 from ....project import project_co_dir
+from ....skills_catalog import default_skill_files
 
 
 @dataclass
@@ -84,7 +85,7 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
     - .co/skills/skill-name/SKILL.md (directory with SKILL.md)
     - .co/skills/skill-name.md (single file)
     - ~/.co/skills/ (user-level skills)
-    - Built-in skills from co_ai/skills/builtin/
+    - Customer-facing default skills shipped with ConnectOnion
 
     Returns:
         List of SkillInfo objects
@@ -104,11 +105,6 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
     home_skills = Path.home() / ".co" / "skills"
     if home_skills.exists():
         search_paths.append(home_skills)
-
-    # Built-in skills (lowest priority)
-    builtin_skills = Path(__file__).parent / "builtin"
-    if builtin_skills.exists():
-        search_paths.append(builtin_skills)
 
     # search_paths is in priority order, so the FIRST match for a name wins and
     # later tiers are skipped. Dropping the duplicate here, rather than letting a
@@ -137,6 +133,14 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
                 if skill_info and skill_info.name not in seen:
                     seen.add(skill_info.name)
                     skills.append(skill_info)
+
+    # Defaults are lowest priority. Some live in useful_skills so the installed
+    # library and ``co ai`` share one body instead of drifting copies.
+    for skill_file in default_skill_files():
+        skill_info = _read_skill_or_skip(skill_file)
+        if skill_info and skill_info.name not in seen:
+            seen.add(skill_info.name)
+            skills.append(skill_info)
 
     return skills
 

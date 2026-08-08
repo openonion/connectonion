@@ -1,19 +1,6 @@
 ---
 name: ship-feature
 description: Ship a feature end-to-end — update tests, docs, docs-site, then release to PyPI. Use when user says "ship", "ship feature", "release", or asks to publish a new version.
-tools:
-  - read_file
-  - glob
-  - write_file
-  - edit_file
-  - Bash(git *)
-  - Bash(python *)
-  - Bash(pytest *)
-  - Bash(pip *)
-  - Bash(twine *)
-  - Bash(npm *)
-  - Bash(cat *)
-  - Bash(grep *)
 ---
 
 # Ship Feature Skill

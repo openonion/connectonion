@@ -1,18 +1,6 @@
 ---
 name: install-connectonion
 description: Install and fully set up ConnectOnion on Windows, macOS, or Linux so EVERY `co` command works — find Python, pip install, `co init` (scaffolds the project AND authenticates, writing keys.env), confirm the account with `co status`, install a browser for `co browser`, then hand the user a plain-language summary. Use when the user says "install connectonion", "set up connectonion", "get me started with co", or a co command fails because nothing is configured yet.
-tools:
-  - Bash(python *)
-  - Bash(python3 *)
-  - Bash(py *)
-  - Bash(pip *)
-  - Bash(pip3 *)
-  - Bash(co *)
-  - Bash(patchright *)
-  - shell
-  - read_file
-  - write
-  - edit
 ---
 
 # Install ConnectOnion Skill

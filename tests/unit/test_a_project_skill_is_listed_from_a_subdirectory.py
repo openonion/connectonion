@@ -104,10 +104,13 @@ class TestWhatMustNotChange:
 
         assert "elsewhere2" in _names(project_dir=tmp_path / "other2")
 
-    def test_the_builtins_are_still_there(self, project, monkeypatch):
+    def test_the_customer_builtins_are_still_there(self, project, monkeypatch):
         monkeypatch.chdir(project / "sub")
 
-        assert "commit" in _names()
+        names = _names()
+        assert "co-browser" in names
+        assert "co-mail-and-drive" in names
+        assert "commit" not in names
 
     def test_outside_any_project_it_uses_the_cwd(self, tmp_path, monkeypatch):
         loose = tmp_path / ".co" / "skills" / "loose"

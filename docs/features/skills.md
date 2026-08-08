@@ -302,8 +302,16 @@ EOF
 
 ### 3. Built-in Skill (Shipped with ConnectOnion)
 
-Built-in skills are in `connectonion/cli/co_ai/skills/builtin/`: `commit`, `dashboard`
-(edit the agent's [Home page](../network/dashboard.md)), `review-pr`, `ship-feature`.
+The default set is deliberately customer-facing: `install-connectonion`, `co-browser`,
+`co-mail-and-drive`, `topup`, and `dashboard` (edit the agent's
+[Home page](../network/dashboard.md)). The first three keep their one canonical body in
+`connectonion/useful_skills/`; an explicit allowlist loads them as defaults. `topup` and
+`dashboard` live in `connectonion/cli/co_ai/skills/builtin/`.
+
+Contributor workflows (`commit`, `review-pr`, `ship-feature`) remain copyable from
+`useful_skills/` but are not put in every customer's prompt. Their skill frontmatter does
+not auto-approve git, shell, build, or publishing commands; those actions still use the
+normal approval policy.
 
 Users can override by creating same-named skill in project or user level.
 

@@ -1,14 +1,6 @@
 ---
 name: commit
 description: Create git commits with good messages. Use when user says "commit", "create commit", or asks to commit changes.
-tools:
-  - Bash(git status)
-  - Bash(git diff *)
-  - Bash(git log *)
-  - Bash(git add *)
-  - Bash(git commit *)
-  - read_file
-  - glob
 ---
 
 # Git Commit Skill
@@ -34,38 +26,24 @@ Create a well-formatted git commit for staged changes.
 
 4. **Execute commit**:
    - Stage relevant files if needed: `git add <files>`
-   - Commit with HEREDOC format:
-     ```bash
-     git commit -m "$(cat <<'EOF'
-     Your commit message here
-     EOF
-     )"
-     ```
+   - Commit with a normal non-interactive `git commit -m` command
    - Verify with `git status`
+
+The skill supplies procedure, not permission. Git writes and commits must pass
+the agent's normal approval policy.
 
 ## Safety Rules
 
 - Do NOT commit .env or credential files
 - Do NOT use `--amend` unless explicitly asked
 - Do NOT push unless explicitly asked
-- If commit fails, create NEW commit (don't amend)
+- If commit fails, create a NEW commit (don't amend)
 
 ## Example
 
 ```bash
-# Check status and diff
 git status
 git diff --staged
-
-# Commit
-git commit -m "$(cat <<'EOF'
-Fix authentication timeout issue
-
-Increased JWT expiry from 1h to 24h to prevent
-frequent re-authentication during long sessions.
-EOF
-)"
-
-# Verify
+git commit -m "Fix authentication timeout"
 git status
 ```
