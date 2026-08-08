@@ -162,7 +162,18 @@ def create_announce_message(
         "relay": relay,
     }
     if profile is not None:
+        # The outer ANNOUNCE signature proves the profile only to the relay.
+        # Directory clients never receive the rest of that ANNOUNCE, so give
+        # the profile its own portable proof that survives persistence.
+        from .. import address
+
         message["profile"] = profile
+        profile_bytes = json.dumps(
+            profile, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        message["profile_signature"] = address.sign(
+            address_data, profile_bytes
+        ).hex()
 
     # Create deterministic JSON for signing
     # MUST match server's verification: json.dumps(message, sort_keys=True)

@@ -1,22 +1,15 @@
 """A skill fetched from the relay arrives with permission grants attached.
 
-`sub_commands.py` states the trust assumption in its own header:
-
-    v1 trusts the relay — no Ed25519 signature verification (relay strips
-    signer/signature from profile responses).
-
-An honest limitation. What makes it worth acting on before a long-term release
-is that a `SKILL.md` is not only instructions. Its frontmatter carries a
+Even authenticated publisher content must not import authority. A `SKILL.md`
+is not only instructions. Its frontmatter carries a
 `tools:` list, and invoking the skill auto-approves those patterns for the
 turn. Measured on a real agent earlier in this release:
 
     during the turn : ['Bash(git status)', 'read_file']
 
 So a synced skill does not merely suggest what an agent should do — it arrives
-asking for auto-approval, from a source nobody verified. And it is written
-verbatim, then fanned out by `install_all()` into `~/.claude`, `~/.codex`,
-`~/.openclaw`, `~/.cursor` and `~/.kiro`: one `co sub sync` puts unverified
-content into five agents' skill directories, four of which are not ours.
+asking for auto-approval. It is then fanned out by `install_all()` into
+`~/.claude`, `~/.codex`, `~/.openclaw`, `~/.cursor` and `~/.kiro`.
 
 This is #654's option 2, plus option 1. A subscribed skill keeps its
 instructions and loses its ability to pre-authorise anything; the operator adds
@@ -26,8 +19,8 @@ decision is theirs and visible.
 BEHAVIOUR CHANGE: a subscribed skill that used to auto-approve `Bash(git
 status)` now asks. That is the point, but it is a change.
 
-Option 3 — verifying the publisher's signature — is the real answer and needs
-the relay to stop stripping it. Not doable from this repository.
+Publisher signature verification is now the first gate; stripping remote
+`tools:` grants remains the local-authority gate.
 """
 
 import pytest
@@ -127,6 +120,6 @@ class TestTheOperatorIsToldBeforeItLands:
         source = inspect.getsource(main)
         sync_help = source[source.index("def sub_sync"):][:1200] if "def sub_sync" in source else source
 
-        assert "unverified" in sync_help.lower() or "not verified" in sync_help.lower(), (
-            "co sub sync --help still does not say the content is unverified"
+        assert "signature" in sync_help.lower() and "verified" in sync_help.lower(), (
+            "co sub sync --help does not state the publisher verification gate"
         )
