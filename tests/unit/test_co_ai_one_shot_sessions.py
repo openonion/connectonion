@@ -258,6 +258,49 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
     assert agent.tools.todo.state == ["old todo", "next"]
 
 
+def test_failed_resume_preserves_the_last_atomic_snapshot(
+    tmp_path, monkeypatch, capsys
+):
+    session_id = new_session_id()
+    original = {
+        "session_id": session_id,
+        "messages": [{"role": "system", "content": "old"}],
+        "trace": [{"type": "old"}],
+        "turn": 4,
+        "mode": "accept_edits",
+    }
+    save_snapshot(tmp_path, original, {"todolist": ["old todo"]})
+
+    class BrokenResumeAgent(_Agent):
+        def input(self, prompt, session=None):
+            session["turn"] = 99
+            session["messages"].append({"role": "user", "content": prompt})
+            self.tools.todo.state.append("uncommitted todo")
+            raise RuntimeError("follow-up failed")
+
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", tmp_path)
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent",
+        lambda **_: BrokenResumeAgent(),
+    )
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_commands.handle_ai(
+            prompt="next", resume=session_id, json_output=True
+        )
+
+    assert caught.value.exit_code == 1
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope == {
+        "session_id": session_id,
+        "result": None,
+        "error": "follow-up failed",
+    }
+    stored, tools = load_snapshot(tmp_path, session_id)
+    assert stored == original
+    assert tools == {"todolist": ["old todo"]}
+
+
 def test_json_failure_is_structured_and_nonzero(tmp_path, monkeypatch, capsys):
     class BrokenAgent(_Agent):
         def input(self, prompt, session=None):
