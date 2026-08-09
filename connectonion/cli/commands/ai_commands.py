@@ -92,7 +92,16 @@ def _handle_plain_one_shot(agent, prompt: str) -> None:
     print("\n" + result)
 
 
-def _handle_json_one_shot(prompt, model, max_iterations, yolo, yolo_turns, resume):
+def _handle_json_one_shot(
+    prompt,
+    model,
+    max_iterations,
+    yolo,
+    yolo_turns,
+    resume,
+    *,
+    agent_factory=None,
+):
     session_id = resume
     try:
         with redirect_stdout(sys.stderr):
@@ -113,7 +122,8 @@ def _handle_json_one_shot(prompt, model, max_iterations, yolo, yolo_turns, resum
                 session, tools = (
                     load_snapshot(GLOBAL_CO_DIR, resume) if resume else (None, {})
                 )
-                agent = _create_agent(
+                factory = agent_factory or _create_agent
+                agent = factory(
                     model, max_iterations, yolo, yolo_turns, resumable=True
                 )
                 restore_tool_state(agent, tools)
