@@ -406,6 +406,7 @@ async def handle_http(
     start_time: float,
     blacklist: list | None = None,
     whitelist: list | None = None,
+    http=None,
 ):
     """Route HTTP requests to handler functions."""
     method, path = scope["method"], scope["path"]
@@ -415,6 +416,21 @@ async def handle_http(
         await send({"type": "http.response.start", "status": 204, "headers": headers})
         await send({"type": "http.response.body", "body": b""})
         return
+
+    if http is not None:
+        matched = http.match(method, path)
+        if matched:
+            from .http_routes import dispatch_http_route
+
+            route, path_params = matched
+            await dispatch_http_route(
+                route, path_params, scope, receive, send,
+                trust_agent=trust,
+                recipient_address=route_handlers["agent_metadata"]["address"],
+                blacklist=blacklist,
+                whitelist=whitelist,
+            )
+            return
 
     if path.startswith("/admin") or path.startswith("/superadmin"):
         await handle_admin_routes(

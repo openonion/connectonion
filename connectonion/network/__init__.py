@@ -19,7 +19,10 @@ This module contains:
 - trust: Trust verification system (TrustAgent is the single interface)
 """
 
-from .host import host, create_app, SessionStorage, Session
+from .host import (
+    host, create_app, SessionStorage, Session,
+    HTTPRequest, HTTPResponse, HTTPRoute, HTTPRouter,
+)
 from .io import IO, WebSocketIO
 from .connect import connect, RemoteAgent, Response, ExecResult
 from .relay import connect as relay_connect, serve_loop
@@ -38,6 +41,10 @@ __all__ = [
     "RemoteAgent",
     "Response",
     "ExecResult",
+    "HTTPRequest",
+    "HTTPResponse",
+    "HTTPRoute",
+    "HTTPRouter",
     "relay_connect",
     "serve_loop",
     "create_announce_message",

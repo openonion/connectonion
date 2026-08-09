@@ -4,6 +4,8 @@
 
 **Looking to deploy?** See [Deploy Your Agent](deploy.md) for production deployment options.
 
+**Need an `.ics` feed or H5 API?** See [Custom HTTP routes](http-routes.md).
+
 ---
 
 ## Quick Start (60 Seconds)
@@ -91,6 +93,9 @@ def host(
     # File Upload Limits
     max_file_size: int = 10,               # MB per file
     max_files_per_request: int = 10,       # Max files in one request
+
+    # Deterministic HTTP resources (optional)
+    http: HTTPRouter = None,
 ) -> None:
 ```
 

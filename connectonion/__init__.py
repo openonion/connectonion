@@ -88,7 +88,8 @@ _FROM = {
     )},
     **{name: ".network" for name in (
         "connect", "RemoteAgent", "Response", "ExecResult", "host", "create_app",
-        "IO", "relay", "announce",
+        "IO", "relay", "announce", "HTTPRequest", "HTTPResponse", "HTTPRoute",
+        "HTTPRouter",
     )},
 }
 
@@ -197,6 +198,10 @@ __all__ = [
     "IO",
     "relay",
     "announce",
+    "HTTPRequest",
+    "HTTPResponse",
+    "HTTPRoute",
+    "HTTPRouter",
     "address",
     # Event decorators
     "on_agent_ready",

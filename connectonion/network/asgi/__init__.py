@@ -30,6 +30,7 @@ def create_app(
     trust_config: dict | None = None,
     blacklist: list | None = None,
     whitelist: list | None = None,
+    http=None,
     on_startup: Callable[[], Awaitable[None]] | None = None,
     on_shutdown: Callable[[], Awaitable[None]] | None = None,
 ):
@@ -88,6 +89,7 @@ def create_app(
                 start_time=start_time,
                 blacklist=blacklist,
                 whitelist=whitelist,
+                http=http,
             )
         elif scope["type"] == "websocket":
             await handle_websocket(
