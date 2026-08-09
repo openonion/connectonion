@@ -8,7 +8,7 @@ from packaging.version import Version
 
 REPO = Path(__file__).resolve().parents[2]
 
-PATCHED_LOCK_FLOORS = {
+PATCHED_FLOORS = {
     "click": "8.3.3",
     "httplib2": "0.32.0",
     "idna": "3.15",
@@ -32,11 +32,18 @@ def test_security_sensitive_dependency_floors_are_patched(monkeypatch, tmp_path)
         lockfile,
     ))
 
-    assert '"python-dotenv>=1.2.2"' in pyproject
-    assert '"PyNaCl>=1.6.2"' in pyproject
-    assert '{ name = "python-dotenv", specifier = ">=1.2.2" }' in lockfile
-    assert '{ name = "pynacl", specifier = ">=1.6.2" }' in lockfile
-    for package, floor in PATCHED_LOCK_FLOORS.items():
+    for package, floor in PATCHED_FLOORS.items():
+        published_floor = re.search(
+            rf'^\s*"{re.escape(package)}>={re.escape(floor)}",\s*$',
+            pyproject,
+            re.IGNORECASE | re.MULTILINE,
+        )
+        assert published_floor, (
+            f"{package} metadata does not require the patched floor {floor}"
+        )
+        assert (
+            f'{{ name = "{package}", specifier = ">={floor}" }}' in lockfile
+        ), f"{package} floor is missing from uv.lock root metadata"
         assert package in locked, f"{package} is missing from uv.lock"
         assert Version(locked[package]) >= Version(floor), (
             f"{package} {locked[package]} regressed below patched {floor}"
