@@ -11,17 +11,18 @@ co auth microsoft
 ```
 
 What happens:
-1. Clears any existing Microsoft connection (allows switching accounts)
-2. Opens browser to Microsoft OAuth consent screen
+1. Starts a temporary `127.0.0.1` callback with an ephemeral encryption key
+2. Opens Microsoft OAuth in your browser
 3. You authorize Mail + Contacts + Calendar permissions
-4. Credentials saved to `.env` (both local and global `~/.co/keys.env`)
-5. Ready to use Outlook and Microsoft Calendar tools immediately
+4. Microsoft returns an encrypted result directly to the CLI callback
+5. Only after that succeeds, the CLI saves credentials to local `.env` and global `~/.co/keys.env`
+6. Ready to use Outlook and Microsoft Calendar tools immediately
 
 **That's it.** Your agents can now manage Outlook email and contacts and read
 your Microsoft calendar. You can too, from the terminal — see
 [`co outlook`](../cli/outlook.md).
 
-**Switching accounts?** Just run `co auth microsoft` again - it will clear the old connection and let you pick a new Microsoft account.
+**Switching accounts?** Run `co auth microsoft` again and pick the new account. The CLI keeps the current local credentials working while authorization is in progress, then replaces them only after the new encrypted handoff succeeds.
 
 ---
 
@@ -53,7 +54,8 @@ MICROSOFT_EMAIL=your.email@outlook.com
 **Security notes:**
 - Credentials are saved to both local `.env` and `~/.co/keys.env`
 - File permissions set to `0600` (read/write for owner only) on Unix systems
-- Access tokens expire, but refresh tokens allow automatic renewal
+- oo-api stores no Microsoft access token, refresh token, or encrypted credential payload
+- Access tokens refresh through a stateless backend proxy; the CLI saves every rotated token locally
 - You can revoke access anytime via Microsoft Account settings
 
 ---
@@ -255,7 +257,7 @@ To use a different Microsoft account:
 co auth microsoft
 ```
 
-This automatically clears the old connection before starting a new OAuth flow.
+The current local connection is not cleared first. If authorization is cancelled or fails, it keeps working; a successful flow replaces it with the newly selected account.
 
 ### Revoke Access
 
@@ -306,18 +308,21 @@ else:
 
 Behind the scenes, `co auth microsoft`:
 
-1. **Clears existing connection**: Calls `/api/v1/oauth/microsoft/revoke` to remove old credentials
-2. **Initiates OAuth flow**: Calls `/api/v1/oauth/microsoft/init` with your `OPENONION_API_KEY`
-3. **Opens browser**: Launches Microsoft's OAuth consent screen with required scopes
-4. **Polls for completion**: Checks `/api/v1/oauth/microsoft/status` every 5 seconds
-5. **Retrieves credentials**: Gets tokens from `/api/v1/oauth/microsoft/credentials`
-6. **Saves locally**: Writes credentials to `.env` files with secure permissions
+1. **Creates a one-command listener**: Binds an exact `127.0.0.1` callback and generates an ephemeral Curve25519 key
+2. **Initiates OAuth**: Calls `/api/v1/oauth/microsoft/init` with the callback URL and ephemeral public key
+3. **Opens Microsoft**: Launches the consent screen with the required scopes
+4. **Receives one sealed result**: oo-api redirects the encrypted credential payload directly to the local callback; there is no backend polling or credential endpoint
+5. **Decrypts in the CLI**: Only the ephemeral private key held by this command can read the result
+6. **Saves locally after success**: Writes credentials to `.env` and `~/.co/keys.env` with owner-only permissions
 
 The backend handles:
 - OAuth 2.0 authorization code flow
-- Token refresh logic via Microsoft Graph API
-- Secure storage of credentials
-- Association with your OpenOnion account
+- sealing the callback result to the CLI's ephemeral public key
+- stateless token exchange and refresh requests to Microsoft
+
+The backend does **not** store Microsoft tokens or credential payloads. Outlook
+and Microsoft Calendar persist refreshed access tokens and rotated refresh
+tokens back to the CLI's local env files.
 
 ---
 

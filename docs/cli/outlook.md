@@ -38,6 +38,10 @@ This opens the Microsoft OAuth flow and saves `MICROSOFT_*` credentials
 (access token, refresh token, scopes, email) to your project `.env` and
 `~/.co/keys.env`. Tokens auto-refresh.
 
+Microsoft credentials remain CLI-local. oo-api performs the OAuth exchange and
+refresh as a stateless proxy, while Outlook saves rotated tokens back to the
+local env files; the backend does not retain the token pair.
+
 Contact commands require `Contacts.ReadWrite`. If you authenticated before
 contact support was added, run `co auth microsoft` once more to grant the new
 permission. See [Microsoft Integration](../integrations/microsoft.md) for all
