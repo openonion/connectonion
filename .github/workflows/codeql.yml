@@ -2,8 +2,8 @@
 #
 # Deliberately minimal: default query suite, one language, no build step —
 # Python needs no compilation, so there is nothing to configure and nothing to
-# drift. The weekly schedule is what catches a newly published advisory against
-# code that has not changed; push/PR runs catch what we write.
+# drift. The weekly schedule applies updated CodeQL queries to code that has not
+# changed; push/PR runs catch what we write.
 name: CodeQL
 
 on:
