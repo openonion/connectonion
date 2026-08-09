@@ -102,7 +102,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          python -m pip install --upgrade pip build twine pytest -r requirements.txt
+          python -m pip install --upgrade pip build twine ".[dev]"
           rm -rf dist
           python -m build
           wheel="dist/connectonion-${VERSION}-py3-none-any.whl"
