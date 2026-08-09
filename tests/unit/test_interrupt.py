@@ -188,7 +188,11 @@ def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():
 def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
     monkeypatch, tmp_path, provider, tool, module_name, backend_name
 ):
-    """Both real co-ai wrappers must cross the same revocable tool boundary."""
+    """Both wrappers revoke framework state and IO after an interrupt.
+
+    Subprocess/filesystem rollback is deliberately outside this transaction;
+    providers still need their own bounded cleanup and cooperative cancellation.
+    """
     started = threading.Event()
     release = threading.Event()
     finished = threading.Event()

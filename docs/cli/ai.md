@@ -170,6 +170,10 @@ need a prompt also fail closed. A denied action can be described in a
 successful provider result, so always review the diff and test output rather
 than treating `status` alone as proof of completion.
 
+Because Claude's local settings can pre-approve actions, hosted Claude Code
+delegation is operator-only. Shared contacts receive a structured error and the
+local Claude CLI is not started.
+
 Auto mode is narrower than `bypassPermissions`, but it is not universally
 available. It requires an eligible account and model, an Anthropic API
 connection (not Bedrock, Vertex, or Foundry), and any required organization

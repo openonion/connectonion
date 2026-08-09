@@ -77,6 +77,42 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
     assert all(call["permission_mode"] == "default" for call in calls)
 
 
+@pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
+def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
+    backend = pytest.fail
+    monkeypatch.setattr(claude_wrapper, "run_claude_code", backend)
+    agent = SimpleNamespace(
+        current_session={
+            "mode": mode,
+            "requester": {"address": "0xcontact", "level": "contact"},
+        }
+    )
+
+    result = json.loads(
+        claude_code(
+            "change it",
+            cwd=str(tmp_path),
+            session_id="existing-session",
+            agent=agent,
+        )
+    )
+
+    assert result == {
+        "provider": "claude_code",
+        "session_id": "existing-session",
+        "resumed": True,
+        "status": "error",
+        "result": "",
+        "error": (
+            "Claude Code delegation is available only to the operator in a "
+            "hosted session."
+        ),
+        "exit_code": -1,
+        "usage": {},
+        "total_cost_usd": None,
+    }
+
+
 def test_model_cannot_select_claude_permission_mode():
     parameters = inspect.signature(claude_code).parameters
     assert "permission_mode" not in parameters
