@@ -1,0 +1,44 @@
+# Static analysis for the package users install.
+#
+# Deliberately minimal: default query suite, one language, no build step —
+# Python needs no compilation, so there is nothing to configure and nothing to
+# drift. The weekly schedule is what catches a newly published advisory against
+# code that has not changed; push/PR runs catch what we write.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Monday 03:27 UTC — off the hour so it does not queue with everyone else's.
+    - cron: "27 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Required to upload the SARIF result to the Security tab.
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
