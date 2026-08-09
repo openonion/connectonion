@@ -1,11 +1,14 @@
 """Unit tests for interruptible blocking agent steps."""
 
+import importlib
 import threading
 import time
 
 import pytest
 
 from connectonion import Agent, before_each_tool
+from connectonion.cli.co_ai.tools.claude_code import claude_code as co_ai_claude_code
+from connectonion.cli.co_ai.tools.codex import codex as co_ai_codex
 from connectonion.core.interrupt import InterruptibleIO, UserInterrupt, run_interruptible
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.logger import Logger
@@ -162,6 +165,92 @@ def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():
     assert "late_worker_poison" not in new_session
     assert "late_worker_poison" not in old_session
     assert "victim" in agent.tools
+    assert agent.io.receive_all() == [next_reply]
+
+
+@pytest.mark.parametrize(
+    ("provider", "tool", "module_name", "backend_name"),
+    [
+        (
+            "codex",
+            co_ai_codex,
+            "connectonion.cli.co_ai.tools.codex",
+            "run_codex",
+        ),
+        (
+            "claude_code",
+            co_ai_claude_code,
+            "connectonion.cli.co_ai.tools.claude_code",
+            "run_claude_code",
+        ),
+    ],
+)
+def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
+    monkeypatch, tmp_path, provider, tool, module_name, backend_name
+):
+    """Both real co-ai wrappers must cross the same revocable tool boundary."""
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def slow_backend(**kwargs):
+        tool_agent = kwargs["agent"]
+        tool_agent.io.log("provider_progress", provider=provider, phase="started")
+        started.set()
+        release.wait(timeout=2)
+        tool_agent.current_session["provider_session_id"] = "late-session"
+        tool_agent.io.log("provider_progress", provider=provider, phase="late")
+        try:
+            tool_agent.io.receive()
+        except UserInterrupt:
+            pass
+        finally:
+            finished.set()
+        return '{"session_id":"late-session","last_message":"late"}'
+
+    module = importlib.import_module(module_name)
+    monkeypatch.setattr(module, backend_name, slow_backend)
+    agent = Agent(
+        f"{provider}-interrupt",
+        llm=MockLLM(),
+        tools=[tool],
+        log=False,
+        quiet=True,
+    )
+    old_session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
+    agent.current_session = old_session
+    agent.io = WebSocketIO()
+
+    def interrupt():
+        assert started.wait(timeout=1)
+        agent.io.send_to_agent({"type": "INTERRUPT"})
+
+    threading.Thread(target=interrupt, daemon=True).start()
+    trace = execute_single_tool(
+        provider,
+        {"prompt": "inspect", "cwd": str(tmp_path)},
+        f"{provider}-call",
+        agent.tools,
+        agent,
+        Logger(f"{provider}-interrupt", log=False),
+    )
+
+    assert trace["status"] == "interrupted"
+    new_session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
+    agent.current_session = new_session
+    next_reply = {"type": "ask_user_response", "answer": "next turn"}
+    agent.io.send_to_agent(next_reply)
+    release.set()
+
+    assert finished.wait(timeout=1)
+    assert "provider_session_id" not in old_session
+    assert "provider_session_id" not in new_session
+    progress = [
+        message
+        for message in agent.io._msgs_from_agent
+        if message.get("type") == "provider_progress"
+    ]
+    assert [message["phase"] for message in progress] == ["started"]
     assert agent.io.receive_all() == [next_reply]
 
 
