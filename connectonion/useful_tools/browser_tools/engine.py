@@ -94,3 +94,64 @@ def choose(attestation, onion_present):
         )
 
     return ONION, None
+
+
+def _cached_attestation():
+    """The licence this machine already holds, or None. Never raises.
+
+    The import is the point. `onionwright` is not a dependency of
+    connectonion, so on a default install this raises ImportError immediately
+    and we are done -- no token read, no HTTP, no clock check. A free machine
+    reaches the network exactly as often as it did before tiering existed,
+    which is never.
+
+    Reading the *cache* rather than refreshing is also deliberate: a browser
+    command is not the right place to discover that oo-api is slow. The
+    refresh belongs to the licence client's own schedule (it renews at the
+    12-hour half-life of a 24-hour attestation), not to `co browser go_to`.
+    """
+    from onionwright.licence import license as licence_cache  # noqa: F401
+
+    raise NotImplementedError(
+        "reading the cached attestation is wired up with the onionwright "
+        "install path; see openonion/connectonion#511"
+    )
+
+
+def _onion_path():
+    """Where the paid binary is, or None. Never raises."""
+    from onionwright import launcher
+
+    return getattr(launcher, "installed_path", lambda: None)()
+
+
+def resolve(load_attestation=_cached_attestation, onion_path=_onion_path,
+            with_path=False):
+    """Decide the engine against the real machine. Never raises.
+
+    Returns `(engine, note)`, or `(engine, note, path)` when `with_path`.
+
+    Both lookups are injected so the policy above stays testable without a
+    paid install, and both are wrapped: an exception from either means "we
+    could not establish a licence", which `choose()` already treats as free.
+    Every failure mode of asking therefore lands on the branch that works.
+
+    The path is only returned for the paid engine. patchright and system
+    Chrome are already resolved by `installed_browser_path()`, and duplicating
+    that here would give the machine two answers to one question.
+    """
+    try:
+        attestation = load_attestation()
+    except Exception:
+        attestation = None
+
+    try:
+        path = onion_path()
+    except Exception:
+        path = None
+
+    chosen, note = choose(attestation=attestation, onion_present=bool(path))
+
+    if with_path:
+        return chosen, note, (path if chosen == ONION else None)
+    return chosen, note
