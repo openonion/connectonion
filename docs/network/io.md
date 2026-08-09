@@ -512,6 +512,20 @@ risking consumption of a future turn's reply. User event handlers are ordinary
 Python callbacks and should not start unbounded blocking work during stop
 cleanup.
 
+The optional cancellation protocol has three operations:
+
+- `receive_interruptibly(cancel_event)` blocks for one message, but returns an
+  `{"type": "INTERRUPT"}` sentinel without consuming a message once cancelled.
+- `receive_all_interruptibly(cancel_event, msg_type=None)` performs the cancel
+  check and selective mailbox drain atomically; it returns `None` when cancelled.
+- `take_interrupt(on_interrupt=None)` selectively removes one `INTERRUPT` and
+  invokes `on_interrupt` before releasing the same mailbox lock. It returns
+  whether a signal was removed.
+
+These operations must share the mailbox synchronization boundary. A separate
+cancel check followed by an ordinary drain leaves a window where an abandoned
+worker can consume the next turn's response.
+
 This is **abandonment, not thread termination**. Python cannot safely kill
 arbitrary tool code: an interrupted tool may continue running in a daemon
 thread and its external side effects may still finish. ConnectOnion discards

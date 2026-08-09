@@ -232,6 +232,8 @@ def execute_single_tool(
     tool_io = None
     original_session = None
     tool_session = None
+    original_tools = None
+    tool_tools = None
 
     def interrupted_tool_result():
         interruption = "Interrupted by user"
@@ -297,9 +299,11 @@ def execute_single_tool(
                 tool_agent.events = {
                     event: list(handlers) for event, handlers in agent.events.items()
                 }
-                tool_agent.tools = copy.copy(agent.tools)
-                tool_agent.tools._tools = dict(agent.tools._tools)
-                tool_agent.tools._instances = dict(agent.tools._instances)
+                original_tools = agent.tools
+                tool_tools = copy.copy(original_tools)
+                tool_tools._tools = dict(original_tools._tools)
+                tool_tools._instances = dict(original_tools._instances)
+                tool_agent.tools = tool_tools
             elif agent.io:
                 # Legacy custom IO cannot cancel a blocked receive safely.
                 # Preserve graceful boundary stopping instead of abandoning a
@@ -335,6 +339,10 @@ def execute_single_tool(
         if tool_session is not None:
             original_session.clear()
             original_session.update(tool_session)
+            original_tools._tools.clear()
+            original_tools._tools.update(tool_tools._tools)
+            original_tools._instances.clear()
+            original_tools._instances.update(tool_tools._instances)
 
         if not succeeded:
             raise result

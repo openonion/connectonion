@@ -236,9 +236,16 @@ def test_interruptible_io_makes_request_approval_an_interrupted_tool():
 def test_completed_agent_tool_commits_its_session_snapshot():
     def change_mode(agent) -> str:
         agent.current_session["mode"] = "accept_edits"
+        agent.tools.remove("victim")
         return "changed"
 
-    agent = Agent("snapshot-commit", llm=MockLLM(), tools=[change_mode], log=False, quiet=True)
+    def victim() -> str:
+        return "removed on success"
+
+    agent = Agent(
+        "snapshot-commit", llm=MockLLM(), tools=[change_mode, victim],
+        log=False, quiet=True,
+    )
     session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
     agent.current_session = session
     agent.io = WebSocketIO()
@@ -251,6 +258,7 @@ def test_completed_agent_tool_commits_its_session_snapshot():
     assert trace["status"] == "success"
     assert agent.current_session is session
     assert session["mode"] == "accept_edits"
+    assert "victim" not in agent.tools
 
 
 def test_pending_tool_is_cleared_when_gate_interrupts():
