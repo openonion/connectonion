@@ -133,8 +133,8 @@ review the diff yourself. Continue the same Codex session for any fixes.
 The Codex CLI must be installed and authenticated. `co ai` passes an explicit
 working directory and returns a structured result containing the resumable
 session ID. Safe Mode starts Codex read-only and asks when it requests more
-permission. Plan Mode is read-only and denies escalation. Accept Edits permits
-workspace changes but still asks about untrusted commands, while explicit
+permission. Accept Edits permits workspace changes but still asks about
+untrusted commands, while explicit
 YOLO/ULW runs without prompts inside that same sandbox. The policy is reapplied
 when a Codex session is resumed, and `danger-full-access` is never selected by
 the integration.

@@ -16,7 +16,6 @@ library_module = importlib.import_module("connectonion.useful_tools.codex")
 @pytest.mark.parametrize(
     ("mode", "sandbox", "approval"),
     [
-        ("plan", "read-only", "deny"),
         ("safe", "read-only", "manual"),
         ("accept_edits", "workspace-write", "manual"),
         ("ulw", "workspace-write", "deny"),
@@ -110,20 +109,20 @@ def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_p
     monkeypatch.setattr(codex_module, "run_codex", library_module.codex)
 
     safe = SimpleNamespace(current_session={"mode": "safe"})
-    plan = SimpleNamespace(current_session={"mode": "plan"})
+    yolo = SimpleNamespace(current_session={"mode": "ulw"})
     first = codex("inspect", cwd=str(tmp_path), agent=safe)
     resumed = codex(
         "continue",
         cwd=str(tmp_path),
         session_id="thread-1",
-        agent=plan,
+        agent=yolo,
     )
 
     assert '"session_id": "thread-1"' in first
     assert '"resumed": true' in resumed
     assert calls[0][1]["sandbox"] == "read-only"
     assert calls[0][1]["approval_policy"] == "untrusted"
-    assert calls[1][1]["sandbox"] == "read-only"
+    assert calls[1][1]["sandbox"] == "workspace-write"
     assert calls[1][1]["approval_policy"] == "never"
 
 

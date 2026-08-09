@@ -21,7 +21,6 @@ def codex(
     """
     mode = getattr(agent, "current_session", {}).get("mode", "safe")
     sandbox, approval = {
-        "plan": ("read-only", "deny"),
         "safe": ("read-only", "manual"),
         "accept_edits": ("workspace-write", "manual"),
         "ulw": ("workspace-write", "deny"),
