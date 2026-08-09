@@ -741,10 +741,15 @@ def email_upgrade(
     tier: str = typer.Argument(..., help="Tier: plus or pro"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Sending domain (plus/pro)"),
     alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'aaron'"),
+    keep_address: bool = typer.Option(
+        False,
+        "--keep-address",
+        help="Increase quota while preserving an existing @mail.openonion.ai address (plus only)",
+    ),
 ):
     """Upgrade email tier — deducts the monthly price from your credits."""
     from .commands.email_commands import handle_email_upgrade
-    handle_email_upgrade(tier, domain=domain, alias=alias)
+    handle_email_upgrade(tier, domain=domain, alias=alias, keep_address=keep_address)
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
