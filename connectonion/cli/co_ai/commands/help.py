@@ -66,6 +66,7 @@ oo -y "task"                      # Auto-approve file changes
 **Search:** `glob`, `grep`
 **Files:** `read_file`, `edit`, `write`
 **Execute:** `bash`
+**Coding agents:** `claude_code` (resumable Claude Code handoff)
 **Sub-agents:** `task` (explore, plan)
 **Todos:** `add`, `start`, `complete`, `list`
 **Interaction:** `ask_user`, `confirm`

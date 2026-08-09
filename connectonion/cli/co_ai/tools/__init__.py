@@ -57,6 +57,9 @@ from connectonion.cli.co_ai.tools.background import run_background, task_output,
 # ask_user from useful_tools (single source of truth)
 from connectonion.useful_tools import ask_user
 
+# Coding-agent delegation (CLI-specific policy wrapper)
+from connectonion.cli.co_ai.tools.claude_code import claude_code
+
 # Interaction tools (CLI-specific)
 from connectonion.cli.co_ai.tools.load_guide import load_guide
 from connectonion.cli.co_ai.tools.codex import codex
@@ -71,6 +74,7 @@ __all__ = [
     "kill_task",
     # Interaction tools
     "ask_user",
+    "claude_code",
     "load_guide",
     "codex",
     # Utility classes
