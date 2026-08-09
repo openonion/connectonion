@@ -108,10 +108,10 @@ def save_snapshot(
             file.flush()
             os.fsync(file.fileno())
         os.replace(temporary, target)
-        if os.name != "nt":
-            os.chmod(target, 0o600)
+        temporary = None
     finally:
-        Path(temporary).unlink(missing_ok=True)
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
 
 
 def load_snapshot(co_dir: Path, session_id: str) -> tuple[dict, dict]:

@@ -197,6 +197,35 @@ def test_failed_atomic_replace_leaves_the_previous_snapshot(tmp_path, monkeypatc
     assert not list((tmp_path / "ai" / "sessions").glob(f".{session_id}.*"))
 
 
+def test_atomic_replace_is_the_last_fallible_commit_step(tmp_path, monkeypatch):
+    session_id = new_session_id()
+    session = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 1,
+    }
+    real_chmod = os.chmod
+
+    def reject_post_commit_chmod(path, mode):
+        if os.fspath(path).endswith(".json"):
+            raise AssertionError("committed snapshot must not be chmodded")
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.one_shot_sessions.os.chmod",
+        reject_post_commit_chmod,
+    )
+
+    save_snapshot(tmp_path, session)
+
+    stored, _ = load_snapshot(tmp_path, session_id)
+    assert stored == session
+    if os.name != "nt":
+        snapshot = tmp_path / "ai" / "sessions" / f"{session_id}.json"
+        assert oct(snapshot.stat().st_mode & 0o777) == "0o600"
+
+
 def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     tmp_path, monkeypatch, capsys
 ):
