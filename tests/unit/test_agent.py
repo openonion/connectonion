@@ -733,17 +733,16 @@ def test_agent_input_file_path_traversal(tmp_path):
 class TestGracefulInterrupt:
     """A client INTERRUPT stops the loop at the iteration boundary with a closing message."""
 
-    def test_interrupt_stops_after_current_step_with_message(self):
-        """The current step finishes, then poll_interrupt (after_iteration) halts the
-        loop via the existing stop_signal check — no silent cutoff, no extra LLM call."""
+    def test_pending_interrupt_stops_before_next_step_with_message(self):
+        """A queued interrupt prevents the next blocking step from starting."""
         from connectonion.useful_plugins.tool_approval import poll_interrupt
 
         def note(text: str) -> str:
             """Record a note."""
             return "noted"
 
-        # INTERRUPT is queued; poll_interrupt drains it at iteration 1's after_iteration
-        # (after the LLM call + tools), and the loop's existing bottom check stops there.
+        # INTERRUPT is queued before the LLM call, so the hard-stop wrapper
+        # consumes it without starting work.
         class InterruptIO:
             def __init__(self):
                 self.sent = []
@@ -773,7 +772,147 @@ class TestGracefulInterrupt:
         result = agent.input("do work")
 
         assert result == "What would you like me to do?"  # existing stop_signal message
-        assert mock_llm.call_count == 1  # one step ran; stopped before a 2nd LLM call
+        assert mock_llm.call_count == 0
+
+    def test_interrupt_abandons_in_flight_llm_and_next_turn_is_valid(self):
+        """A slow completion is abandoned, traced, and never appended later."""
+        import threading
+        import time
+
+        class InterruptIO:
+            def __init__(self):
+                self.messages = []
+                self.lock = threading.Lock()
+
+            def receive_all(self, msg_type=None):
+                with self.lock:
+                    matched = [m for m in self.messages if m.get('type') == msg_type]
+                    self.messages[:] = [m for m in self.messages if m.get('type') != msg_type]
+                    return matched
+
+            def interrupt(self):
+                with self.lock:
+                    self.messages.append({'type': 'INTERRUPT'})
+
+            def send(self, event):
+                pass
+
+        class SlowFirstLLM:
+            model = "fake/slow"
+
+            def __init__(self):
+                self.calls = 0
+                self.started = threading.Event()
+                self.release = threading.Event()
+                self.finished = threading.Event()
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    self.started.set()
+                    self.release.wait(timeout=2)
+                    self.finished.set()
+                    return LLMResponse(content="late", tool_calls=[], raw_response={}, usage=TokenUsage())
+                return LLMResponse(content="next", tool_calls=[], raw_response={}, usage=TokenUsage())
+
+        io = InterruptIO()
+        llm = SlowFirstLLM()
+        agent = Agent(name="hard-stop", llm=llm, log=False, quiet=True)
+        agent.io = io
+
+        def interrupt_when_started():
+            assert llm.started.wait(timeout=1)
+            io.interrupt()
+
+        threading.Thread(target=interrupt_when_started, daemon=True).start()
+        before = time.monotonic()
+        result = agent.input("first")
+
+        assert result == "What would you like me to do?"
+        assert time.monotonic() - before < 0.5
+        assert [t['status'] for t in agent.current_session['trace'] if t['type'] == 'llm_result'] == ['interrupted']
+        assert not any(m.get('content') == 'late' for m in agent.current_session['messages'])
+
+        llm.release.set()
+        assert llm.finished.wait(timeout=1)
+        assert not any(m.get('content') == 'late' for m in agent.current_session['messages'])
+        assert agent.input("second") == "next"
+
+    def test_interrupt_mid_tool_completes_every_tool_result_slot(self):
+        """An abandoned tool leaves a provider-valid multi-tool message batch."""
+        import threading
+
+        class InterruptIO:
+            def __init__(self):
+                self.messages = []
+                self.lock = threading.Lock()
+
+            def receive_all(self, msg_type=None):
+                with self.lock:
+                    matched = [m for m in self.messages if m.get('type') == msg_type]
+                    self.messages[:] = [m for m in self.messages if m.get('type') != msg_type]
+                    return matched
+
+            def interrupt(self):
+                with self.lock:
+                    self.messages.append({'type': 'INTERRUPT'})
+
+            def send(self, event):
+                pass
+
+        started = threading.Event()
+        release = threading.Event()
+        second_ran = False
+
+        def slow_tool() -> str:
+            started.set()
+            release.wait(timeout=2)
+            return "late"
+
+        def second_tool() -> str:
+            nonlocal second_ran
+            second_ran = True
+            return "should not run"
+
+        llm = MockLLM(responses=[
+            LLMResponse(
+                content="",
+                tool_calls=[
+                    ToolCall(name="slow_tool", arguments={}, id="c1"),
+                    ToolCall(name="second_tool", arguments={}, id="c2"),
+                ],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+        ])
+        io = InterruptIO()
+        agent = Agent(
+            name="tool-stop",
+            llm=llm,
+            tools=[slow_tool, second_tool],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            io.interrupt()
+
+        threading.Thread(target=interrupt_when_started, daemon=True).start()
+        result = agent.input("run both")
+        release.set()
+
+        assert result == "What would you like me to do?"
+        assert second_ran is False
+        tool_messages = [m for m in agent.current_session['messages'] if m['role'] == 'tool']
+        assert [(m['tool_call_id'], m['content']) for m in tool_messages] == [
+            ('c1', 'Interrupted by user'),
+            ('c2', 'Rejected by user'),
+        ]
+        tool_results = [t for t in agent.current_session['trace'] if t['type'] == 'tool_result']
+        assert len(tool_results) == 1
+        assert tool_results[0]['status'] == 'interrupted'
 
     def test_no_interrupt_runs_to_completion(self):
         """Without an INTERRUPT the loop is unaffected and finishes normally."""

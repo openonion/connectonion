@@ -357,6 +357,22 @@ class TestRejection:
 
         assert "Connection closed" in str(exc_info.value)
 
+    def test_interrupt_sets_stop_signal_while_waiting_for_approval(self):
+        from connectonion.core.interrupt import UserInterrupt
+
+        io = FakeIO(responses=[{'type': 'INTERRUPT'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'rm output.txt'},
+            'id': 'call_1',
+        }
+
+        with pytest.raises(UserInterrupt):
+            check_approval(agent)
+
+        assert agent.current_session['stop_signal'] == 'Interrupted by user'
+
 
 class TestRejectSoft:
     """Test reject_soft mode (skip tool, loop continues)."""

@@ -34,6 +34,8 @@ import difflib
 from pathlib import Path
 from typing import Optional, Tuple
 
+from ..core.interrupt import UserInterrupt
+
 
 # Permission modes (like Claude Code's Shift+Tab cycle)
 MODE_NORMAL = "normal"      # Prompt for every edit
@@ -93,10 +95,10 @@ class DiffWriter:
 
         # Check approval based on mode
         if self.mode == MODE_NORMAL:
-            choice = self._ask_approval(io, path, preview, truncated)
+            choice = self._ask_approval(agent, path, preview, truncated)
 
             if choice == "reject":
-                feedback = self._ask_feedback(io, path)
+                feedback = self._ask_feedback(agent, path)
                 return f"User rejected changes to {path}. Feedback: {feedback}"
 
             if choice == "approve_all":
@@ -159,7 +161,7 @@ class DiffWriter:
             "file_exists": file_exists,
         })
 
-    def _ask_approval(self, io, path: str, preview: str, truncated: bool) -> str:
+    def _ask_approval(self, agent, path: str, preview: str, truncated: bool) -> str:
         """Ask user for approval via io channel.
 
         Returns:
@@ -167,6 +169,7 @@ class DiffWriter:
             "approve_all" - Apply and switch to auto mode
             "reject" - Reject and ask for feedback
         """
+        io = agent.io if agent else None
         if not io:
             # No io channel = auto-approve (for non-web usage)
             return "approve"
@@ -176,7 +179,7 @@ class DiffWriter:
             question += " (preview truncated)"
 
         response = self._ask_user(
-            io,
+            agent,
             question,
             options=[
                 "Yes, apply this change",
@@ -201,22 +204,23 @@ class DiffWriter:
 
         return "reject"
 
-    def _ask_feedback(self, io, path: str) -> str:
+    def _ask_feedback(self, agent, path: str) -> str:
         """Ask user for feedback when changes are rejected."""
-        feedback = self._ask_user(io, f"What should the agent do instead for {path}?")
+        feedback = self._ask_user(agent, f"What should the agent do instead for {path}?")
         return feedback or "No feedback provided"
 
-    def _ask_user(self, io, question: str, options: Optional[list] = None) -> str:
+    def _ask_user(self, agent, question: str, options: Optional[list] = None) -> str:
         """Send ask_user event and block until user responds.
 
         Args:
-            io: IO channel (agent.io)
+            agent: Current agent (provides the IO channel and stop signal)
             question: Question to display
             options: List of option strings (buttons in UI)
 
         Returns:
             User's answer string
         """
+        io = agent.io if agent else None
         if not io:
             return ""
 
@@ -229,6 +233,10 @@ class DiffWriter:
 
         # Block waiting for response
         response = io.receive()
+
+        if response.get("type") == "INTERRUPT":
+            agent.current_session["stop_signal"] = "Interrupted by user"
+            raise UserInterrupt()
 
         # Handle connection closed
         if response.get("type") == "io_closed":

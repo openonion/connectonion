@@ -26,6 +26,7 @@ from ..debug.decorators import (
 from ..logger import Logger
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
+from .interrupt import run_interruptible
 
 
 class Agent:
@@ -446,6 +447,11 @@ class Agent:
             # Get LLM response
             response = self._get_llm_decision()
 
+            if response is None:
+                self.current_session.pop('stop_signal', None)
+                self._invoke_events('on_stop_signal')
+                return "What would you like me to do?"
+
             if not response.tool_calls:
                 content = response.content or ""
                 self.current_session['messages'].append({"role": "assistant", "content": content})
@@ -497,8 +503,24 @@ class Agent:
         })
 
         start = time.time()
-        response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
+        messages = list(self.current_session['messages'])
+        response, interrupted = run_interruptible(
+            lambda: self.llm.complete(messages, tools=tool_schemas),
+            self.io,
+        )
         duration = (time.time() - start) * 1000  # milliseconds
+
+        if interrupted:
+            self._record_trace({
+                'type': 'llm_result',
+                'id': llm_id,
+                'model': self.llm.model,
+                'iteration': self.current_session['iteration'],
+                'duration_ms': duration,
+                'status': 'interrupted',
+            })
+            self.current_session['stop_signal'] = 'user_interrupt'
+            return None
 
         # Track token usage
         if response.usage:

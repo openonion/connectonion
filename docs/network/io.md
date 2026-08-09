@@ -78,6 +78,9 @@ class IO:
     def receive(self) -> dict:
         """Receive response from client."""
 
+    def receive_all(self, msg_type: str = None) -> list[dict]:
+        """Take pending matching messages without blocking."""
+
     # ═══════════════════════════════════════════════════════
     # HIGH-LEVEL API (Patterns)
     # ═══════════════════════════════════════════════════════
@@ -492,6 +495,26 @@ router acknowledges an input only if `push_runtime_input()` accepts it. At a
 final no-tool response, `finish_runtime_inputs()` either drains pending input
 and keeps the turn alive for another LLM call, or seals the empty queue so a
 late sender receives retryable `RUNTIME_INPUT_REJECTED` rather than a false ACK.
+
+### Interrupt behavior
+
+An `INTERRUPT` in the client mailbox is different from ordinary input. During
+hosted execution, ConnectOnion checks for it while an LLM completion or tool is
+blocked and returns control to the agent loop within one polling interval
+(200ms by default). Blocking approval, `ask_user`, and DiffWriter waits also
+recognize the frame instead of treating it as an answer.
+
+This is **abandonment, not thread termination**. Python cannot safely kill
+arbitrary tool code: an interrupted tool may continue running in a daemon
+thread and its external side effects may still finish. ConnectOnion discards
+the late return value and does not append it to messages or trace. Tool authors
+should therefore make destructive or externally visible actions idempotent and
+add their own cooperative cancellation when they need stronger guarantees.
+
+The existing `stop_signal` lifecycle remains authoritative. A stopped LLM call
+adds no assistant message. A stopped multi-tool batch receives a result for the
+interrupted call and rejection results for all remaining call IDs, keeping the
+history valid for the next turn.
 
 ### Cursor-based replay
 

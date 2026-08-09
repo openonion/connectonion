@@ -132,6 +132,18 @@ class TestAskUserTool:
 
         assert result == ""
 
+    def test_interrupt_sets_stop_signal_instead_of_becoming_answer(self):
+        from connectonion.core.interrupt import UserInterrupt
+
+        agent = FakeAgent()
+        agent.io = Mock()
+        agent.io.receive.return_value = {"type": "INTERRUPT"}
+
+        with pytest.raises(UserInterrupt):
+            ask_user(agent, "Continue?", options=["Yes", "No"])
+
+        assert agent.current_session["stop_signal"] == "Interrupted by user"
+
     def test_unanswered_question_is_not_treated_as_approval(self):
         """With no io there is nobody to answer — one-shot runs and every
         deployed agent. This used to reply "decide from the request context",
@@ -214,6 +226,27 @@ class TestAskUserInjection:
         # Second call should be the ask_user event
         second_call = agent.io.send.call_args_list[1]
         assert second_call[0][0]["type"] == "ask_user"
+
+    def test_interrupt_consumed_inside_ask_user_records_interrupted_trace(self):
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(ask_user))
+        agent = FakeAgent()
+        agent.io = Mock()
+        agent.io.receive_all.return_value = []
+        agent.io.receive.return_value = {"type": "INTERRUPT"}
+
+        trace = execute_single_tool(
+            tool_name="ask_user",
+            tool_args={"question": "Continue?", "options": ["Yes", "No"]},
+            tool_id="call_interrupt",
+            tools=tools,
+            agent=agent,
+            logger=Logger("test", log=False),
+        )
+
+        assert trace["status"] == "interrupted"
+        assert trace["result"] == "Interrupted by user"
+        assert agent.current_session["stop_signal"] == "Interrupted by user"
 
     def test_agent_not_injected_for_other_tools(self):
         """tool_executor does not inject agent for regular tools."""

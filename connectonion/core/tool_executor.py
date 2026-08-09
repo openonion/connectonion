@@ -22,6 +22,7 @@ from ..debug.xray import (
     clear_xray_context,
     is_xray_enabled
 )
+from .interrupt import UserInterrupt, run_interruptible
 
 
 _async_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -225,6 +226,18 @@ def execute_single_tool(
     # Initialize timing (for error case if before_tool fails)
     tool_start = time.time()
 
+    def interrupted_tool_result():
+        interruption = "Interrupted by user"
+        agent.current_session['stop_signal'] = interruption
+        trace_entry.update({
+            "timing_ms": (time.time() - tool_start) * 1000,
+            "result": interruption,
+            "status": "interrupted",
+        })
+        agent._record_trace(trace_entry)
+        logger.log_tool_result(interruption, trace_entry["timing_ms"])
+        return trace_entry
+
     try:
         # Set pending_tool for before_tool handlers to access
         agent.current_session['pending_tool'] = {
@@ -260,11 +273,16 @@ def execute_single_tool(
         if getattr(tool_func, '_needs_agent', False):
             call_args = {**tool_args, 'agent': agent}
 
-        if inspect.iscoroutinefunction(tool_func):
-            result = _run_async_tool(tool_func(**call_args))
-        else:
-            result = tool_func(**call_args)
+        def invoke_tool():
+            if inspect.iscoroutinefunction(tool_func):
+                return _run_async_tool(tool_func(**call_args))
+            return tool_func(**call_args)
+
+        result, interrupted = run_interruptible(invoke_tool, agent.io)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
+
+        if interrupted:
+            return interrupted_tool_result()
 
         trace_entry["timing_ms"] = tool_duration
         trace_entry["result"] = str(result)
@@ -284,6 +302,9 @@ def execute_single_tool(
             )
 
         # Note: after_tool event will fire in execute_and_record_tools after result message added
+
+    except UserInterrupt:
+        return interrupted_tool_result()
 
     except Exception as e:
         # Calculate timing from initial start (includes before_tool if it succeeded)
