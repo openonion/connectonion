@@ -1,0 +1,41 @@
+name: ConnectOnion PR review
+description: Review a trusted pull request with co ai and update one PR comment
+
+inputs:
+  pr-number:
+    description: Pull request number; defaults to the pull_request event
+    required: false
+  model:
+    description: Model passed to co ai
+    required: false
+    default: co/gemini-3.6-flash
+  python-version:
+    description: Python version used to run ConnectOnion
+    required: false
+    default: "3.12"
+
+outputs:
+  comment-url:
+    description: URL of the created or updated review comment
+    value: ${{ steps.review.outputs.comment-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install ConnectOnion from this action revision
+      shell: bash
+      run: python -m pip install "$GITHUB_ACTION_PATH"
+
+    - name: Review pull request
+      id: review
+      shell: bash
+      env:
+        CO_ACTION_PR_NUMBER: ${{ inputs.pr-number }}
+        CO_ACTION_MODEL: ${{ inputs.model }}
+        GH_TOKEN: ${{ github.token }}
+      run: python -m connectonion.cli.github_action
