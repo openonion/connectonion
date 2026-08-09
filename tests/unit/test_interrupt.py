@@ -1,6 +1,7 @@
 """Unit tests for interruptible blocking agent steps."""
 
 import importlib
+import sys
 import threading
 import time
 
@@ -256,6 +257,78 @@ def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
     ]
     assert [message["phase"] for message in progress] == ["started"]
     assert agent.io.receive_all() == [next_reply]
+
+
+@pytest.mark.parametrize(
+    ("provider", "tool", "library_module"),
+    [
+        ("codex", co_ai_codex, "connectonion.useful_tools.codex"),
+        (
+            "claude_code",
+            co_ai_claude_code,
+            "connectonion.useful_tools.claude_code",
+        ),
+    ],
+)
+def test_interrupt_stops_provider_process_before_late_write(
+    monkeypatch, tmp_path, provider, tool, library_module
+):
+    """Cooperative adapters stop their launch group after the lease is revoked."""
+    script = tmp_path / "slow_provider.py"
+    started = tmp_path / f"{provider}.started"
+    late = tmp_path / f"{provider}.late"
+    script.write_text(
+        "from pathlib import Path\n"
+        "import signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "Path(sys.argv[1]).write_text('started')\n"
+        "time.sleep(0.6)\n"
+        "Path(sys.argv[2]).write_text('late')\n",
+        encoding="utf-8",
+    )
+    library = importlib.import_module(library_module)
+    monkeypatch.setattr(
+        library,
+        "_base_command",
+        lambda: [sys.executable, str(script), str(started), str(late)],
+    )
+    agent = Agent(
+        f"{provider}-process-cancel",
+        llm=MockLLM(),
+        tools=[tool],
+        log=False,
+        quiet=True,
+    )
+    agent.current_session = {
+        "messages": [],
+        "trace": [],
+        "iteration": 1,
+        "mode": "safe",
+    }
+    agent.io = WebSocketIO()
+
+    def interrupt_after_launch():
+        deadline = time.monotonic() + 1
+        while not started.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert started.exists()
+        agent.io.send_to_agent({"type": "INTERRUPT"})
+
+    threading.Thread(target=interrupt_after_launch, daemon=True).start()
+    trace = execute_single_tool(
+        provider,
+        {"prompt": "inspect", "cwd": str(tmp_path)},
+        f"{provider}-process-call",
+        agent.tools,
+        agent,
+        Logger(f"{provider}-process-cancel", log=False),
+    )
+
+    assert trace["status"] == "interrupted"
+    assert trace["result"] == "Interrupted by user"
+    assert started.exists()
+    time.sleep(0.7)
+    assert not late.exists()
 
 
 def test_cancelled_receive_all_cannot_drain_the_next_turn_mailbox():

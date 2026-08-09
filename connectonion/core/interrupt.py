@@ -20,6 +20,10 @@ class InterruptibleIO:
         with self._gate:
             self._cancelled.set()
 
+    def is_cancelled(self) -> bool:
+        """Let cooperative blocking tools stop their own external work."""
+        return self._cancelled.is_set()
+
     def send(self, event) -> None:
         with self._gate:
             if not self._cancelled.is_set():

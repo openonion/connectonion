@@ -98,7 +98,9 @@ def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_p
     calls = []
 
     class FakeServer:
-        def __init__(self, command, cwd=None, on_event=None, on_approval=None):
+        def __init__(
+            self, command, cwd=None, on_event=None, on_approval=None, cancelled=None
+        ):
             self.on_event = on_event
 
         def start(self):
