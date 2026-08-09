@@ -21,6 +21,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -248,9 +249,12 @@ def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
 
     monkeypatch.setattr(d, "resolve_api_key", lambda: "key")
     monkeypatch.setattr(d, "build_browser_agent", lambda browser, key: FakeAgent())
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
 
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, payload = daemon.dispatch('do find the cheapest flight')
+    ok, payload = daemon.dispatch(_env(
+        "do find the cheapest flight", account="0xsame-account"
+    ))
     assert ok is True
     assert payload == "agent says hi"
     assert captured["command"] == "find the cheapest flight"
@@ -537,9 +541,116 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
 import json as _json
 
 
-def _env(line, caller="", tab=None):
+def _env(line, caller="", tab=None, account=""):
     """Build the v1 wire envelope the way client.send does."""
-    return _json.dumps({"v": 1, "caller": caller, "tab": tab, "line": line})
+    return _json.dumps({
+        "v": 1, "caller": caller, "account": account, "tab": tab, "line": line
+    })
+
+
+def test_do_refuses_to_bill_a_different_daemon_account(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
+
+    code, payload = daemon.dispatch(
+        _env("do send the form", caller="agent", account="0xcaller-account")
+    )
+
+    assert code == 5
+    assert "refusing `do`" in payload
+    assert "0xdaemon" in payload and "0xcaller" in payload
+    daemon._run_nl.assert_not_called()
+
+
+def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
+
+    ok, _ = daemon.dispatch(
+        _env("go_to example.com", caller="agent", account="0xcaller-account")
+    )
+
+    assert ok is True
+    assert daemon.browser.calls == [("go_to", "example.com")]
+
+
+def test_do_runs_when_caller_and_daemon_accounts_match(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(return_value=(True, "done"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
+
+    result = daemon.dispatch(
+        _env("do send the form", caller="agent", account="0xsame-account")
+    )
+
+    assert result == (True, "done")
+    daemon._run_nl.assert_called_once_with("send the form")
+
+
+@pytest.mark.parametrize("raw", [
+    "do send the form",
+    _env("do send the form"),
+])
+def test_do_from_legacy_or_accountless_client_fails_closed(
+    tmp_path, monkeypatch, raw
+):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
+
+    code, payload = daemon.dispatch(raw)
+
+    assert code == 5
+    assert "cannot verify" in payload
+    daemon._run_nl.assert_not_called()
+    assert daemon.browser._tab_meta == {}
+
+
+def test_do_fails_closed_when_daemon_account_is_unavailable(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
+    monkeypatch.setattr(d, "_daemon_account", Mock(side_effect=OSError("bad identity")))
+
+    code, payload = daemon.dispatch(
+        _env("do send the form", caller="agent", account="0xcaller-account")
+    )
+
+    assert code == 5
+    assert "cannot verify" in payload
+    daemon._run_nl.assert_not_called()
+    assert daemon.browser._tab_meta == {}
+
+
+def test_do_compares_hex_addresses_case_insensitively(tmp_path, monkeypatch):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = Mock(return_value=(True, "done"))
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xAbCd")
+
+    result = daemon.dispatch(_env("do work", account="0xaBcD"))
+
+    assert result == (True, "done")
+
+
+def test_client_derives_only_the_public_billing_address(tmp_path, monkeypatch):
+    from connectonion import address
+
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    monkeypatch.setattr(
+        address,
+        "load",
+        lambda path: {"address": "0xpublic", "private_key": "never-sent"},
+    )
+
+    assert c._caller_account() == "0xpublic"
+
+
+def test_client_refuses_do_when_it_cannot_name_the_payer(monkeypatch, capsys):
+    monkeypatch.setattr(c, "_caller_account", lambda: "")
+    monkeypatch.setattr(c, "_connect", Mock(side_effect=AssertionError("no socket")))
+
+    assert c.send("do submit the form") == 5
+    assert "cannot determine" in capsys.readouterr().err
 
 
 def test_tab_open_prints_only_the_name(tmp_path):
@@ -742,15 +853,16 @@ def test_targeted_close_of_own_tab_is_allowed_bare_close_is_whole_browser(tmp_pa
     assert "closed" in payload.lower()
 
 
-def test_do_instruction_is_not_quote_mangled(tmp_path):
+def test_do_instruction_is_not_quote_mangled(tmp_path, monkeypatch):
     """Fix: the NL instruction was re-derived from the shlex-joined line, leaking quotes.
     A multi-word instruction must reach the agent as clean text."""
     import shlex as _shlex
     captured = {}
     daemon = make_daemon(str(tmp_path / "s.sock"))
     daemon._run_nl = lambda cmd: captured.setdefault("cmd", cmd) or (True, "ok")
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
     line = _shlex.join(["do", "log in and download my invoices"])   # what client.send builds
-    daemon.dispatch(_env(line, caller="a"))
+    daemon.dispatch(_env(line, caller="a", account="0xsame-account"))
     assert captured["cmd"] == "log in and download my invoices"
 
 

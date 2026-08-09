@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from connectonion import address
 from connectonion.cli.commands import fanout, sub_commands as sub
 
 
@@ -18,7 +19,8 @@ def _plain(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
-ADDR = "0x" + "a" * 64
+KEYS = address.generate()
+ADDR = KEYS["address"]
 ALIAS = "alice"
 PROFILE_BODY = {
     "alias": ALIAS,
@@ -31,6 +33,19 @@ PROFILE_BODY = {
 }
 ALPHA_BODY = "---\nname: alpha\ndescription: Alpha skill\n---\nAlpha content\n"
 BETA_BODY = "---\nname: beta\ndescription: Beta skill\n---\nBeta content\n"
+
+
+def _signed_envelope():
+    full = json.loads(json.dumps(PROFILE_BODY))
+    full["skills"][0]["body"] = ALPHA_BODY
+    full["skills"][1]["body"] = BETA_BODY
+    canonical = json.dumps(full, sort_keys=True, separators=(",", ":"))
+    return {
+        "profile": PROFILE_BODY,
+        "publisher": ADDR,
+        "signature": address.sign(KEYS, canonical.encode()).hex(),
+        "signature_version": "profile-v1",
+    }
 
 
 @pytest.fixture
@@ -51,7 +66,7 @@ def fake_relay(monkeypatch):
 
     def _fake_get(url, timeout=None):
         if url.endswith(f"/agents/{ADDR}/profile"):
-            return _Response(json={"profile": PROFILE_BODY})
+            return _Response(json=_signed_envelope())
         if url.endswith(f"/agents/{ADDR}/skills/alpha"):
             return _Response(json={"name": "alpha", "body": ALPHA_BODY})
         if url.endswith(f"/agents/{ADDR}/skills/beta"):

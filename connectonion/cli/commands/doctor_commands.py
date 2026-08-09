@@ -11,6 +11,7 @@ LLM-Note:
 
 import sys
 import os
+import shlex
 import shutil
 from pathlib import Path
 
@@ -19,9 +20,71 @@ import requests
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from ...backend import backend_url
 from rich import box
 
 console = Console()
+
+
+def _repair_runtime(*, yes: bool) -> None:
+    """Show the complete plan, apply approved mutations, and print outcomes."""
+    import typer
+
+    from .doctor_runtime import repair_runtime, runtime_checks
+
+    checks = runtime_checks()
+    unhealthy = [check for check in checks if check.status not in {"ok", "idle"}]
+    plan = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
+    plan.add_column("Check", style="cyan")
+    plan.add_column("State")
+    plan.add_column("Proposed change")
+    for check in unhealthy:
+        change = shlex.join(check.repair) if check.repair else "no safe automatic repair"
+        plan.add_row(check.label, check.status, change)
+    if not unhealthy:
+        plan.add_row("Runtime", "healthy", "nothing to change")
+    console.print(Panel(plan, title="[bold]Repair plan[/bold]", border_style="yellow"))
+
+    def approve(check):
+        if yes:
+            return True
+        if not sys.stdin.isatty():
+            return False
+        return typer.confirm(f"Apply repair for {check.label}: {shlex.join(check.repair)}?", default=False)
+
+    outcomes = repair_runtime(checks, approve=approve)
+    result = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
+    result.add_column("Check", style="cyan")
+    result.add_column("Outcome")
+    result.add_column("Detail")
+    if outcomes:
+        for outcome in outcomes:
+            style = {"repaired": "green", "still-blocked": "red"}.get(outcome.outcome, "yellow")
+            result.add_row(
+                outcome.label,
+                f"[{style}]{outcome.outcome}[/{style}]",
+                outcome.detail,
+            )
+    else:
+        result.add_row("Runtime", "[green]healthy[/green]", "no repair needed")
+    console.print(Panel(result, title="[bold]Repair results[/bold]", border_style="cyan"))
+    console.print()
+
+
+def _add_skill_preflight_rows(skills_table, found: list[str], skills) -> None:
+    """Add local runtime requirement results; optional misses are informational."""
+    from ...skill_preflight import preflight_skills
+
+    preflight = preflight_skills((s.name, s.requirements) for s in skills)
+    for check in preflight.missing_required + preflight.missing_optional:
+        requirement = check.requirement
+        label = f"{check.skill_name}/{requirement.category}/{requirement.name}"
+        setup = f" — {requirement.setup}" if requirement.setup else ""
+        if check.required:
+            skills_table.add_row(label, f"[red]✗[/red] {check.detail}{setup}")
+            found.append(f"skill {label}: {check.detail}{setup}")
+        else:
+            skills_table.add_row(label, f"[yellow]○[/yellow] optional: {check.detail}{setup}")
 
 
 def verdict(problems: list) -> int:
@@ -171,19 +234,45 @@ def _shown(path: Path) -> str:
         return os.path.relpath(path, Path.cwd())
 
 
-def handle_doctor():
+def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = False):
     """Run comprehensive diagnostics on ConnectOnion installation.
 
     TODO: Replace manual checks with `co ai` powered diagnosis —
     let an LLM agent inspect the environment, interpret errors,
     and suggest fixes conversationally.
     """
+    if json_output:
+        import json
+        import subprocess
+
+        from .doctor_runtime import runtime_json_report
+
+        def quiet_run(command, **kwargs):
+            return subprocess.run(
+                command,
+                **kwargs,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        report, code = runtime_json_report(fix=fix, approved=yes, run=quiet_run)
+        # stdout.write, not Rich: wrapping or styling would make the document
+        # invalid JSON for the CI/support-bundle consumer this mode exists for.
+        sys.stdout.write(json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n")
+        return code
+
+    if fix:
+        _repair_runtime(yes=yes)
+
     # `found`, not `problems`: find_skill_problems() already puts a list of
     # (location, name, reason) tuples in a local called `problems`, and
     # shadowing it made the loop below unpack my strings into three names.
     # The real CLI caught that; the unit tests could not see it.
     found: list[str] = []
     from ... import __version__
+    from .doctor_runtime import runtime_checks
+
+    runtime = {check.id: check for check in runtime_checks()}
 
     console.print("\n[bold cyan]🔍 ConnectOnion Diagnostics[/bold cyan]\n")
 
@@ -196,10 +285,20 @@ def handle_doctor():
     system_table.add_row("Version", f"[green]✓[/green] {__version__}")
 
     # Python
+    python_check = runtime["python"]
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     python_path = sys.executable
-    system_table.add_row("Python", f"[green]✓[/green] {python_version}")
+    python_mark = "[green]✓[/green]" if python_check.status == "ok" else "[red]✗[/red]"
+    system_table.add_row("Python", f"{python_mark} {python_check.detail}")
+    if python_check.status != "ok":
+        found.append(python_check.detail)
     system_table.add_row("Python Path", f"[dim]{python_path}[/dim]")
+
+    platform_check = runtime["platform"]
+    platform_mark = "[green]✓[/green]" if platform_check.status == "ok" else "[red]✗[/red]"
+    system_table.add_row("Operating system", f"{platform_mark} {platform_check.detail}")
+    if platform_check.status != "ok":
+        found.append(platform_check.detail)
 
     # Virtual environment
     in_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
@@ -278,32 +377,55 @@ def handle_doctor():
     else:
         config_table.add_row("Keys", "[yellow]○[/yellow] Not found (run 'co auth' to create)")
 
-    # Check for API key
-    api_key = os.getenv("OPENONION_API_KEY")
-    if api_key:
-        api_key_display = f"{api_key[:20]}..." if len(api_key) > 20 else api_key
-        config_table.add_row("API Key", f"[green]✓[/green] Found in environment")
-        config_table.add_row("Key Preview", f"[dim]{api_key_display}[/dim]")
-    else:
-        # Check .env files
-        from dotenv import load_dotenv
-        local_env = Path(".env")
-        global_env = Path.home() / ".co" / "keys.env"
+    # The same redacted discovery `co status` uses. Doctor used to print the
+    # first 20 characters of OPENONION_API_KEY as a "preview" in normal output;
+    # that is enough credential material to leak into support logs and has no
+    # diagnostic value.
+    from .status_commands import _credential_rows, _oauth_rows
 
-        if local_env.exists():
-            load_dotenv(local_env)
+    credential_actions = {
+        "OPENONION_API_KEY": "co auth",
+        "OPENAI_API_KEY": "set OPENAI_API_KEY in <project>/.env",
+        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in <project>/.env",
+        "GEMINI_API_KEY": "set GEMINI_API_KEY in <project>/.env",
+        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in <project>/.env",
+        "GROQ_API_KEY": "set GROQ_API_KEY in <project>/.env",
+        "XAI_API_KEY": "set XAI_API_KEY in <project>/.env",
+        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
+        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
+    }
+    api_key = None
+    for row in _credential_rows(project_dir=project_co_dir().parent):
+        status = row["status"]
+        action = credential_actions[row["credential"]]
+        if status == "configured":
+            mark, style = "✓", "green"
+        elif status == "conflict":
+            mark, style = "✗", "red"
+            found.append(f"credential {row['credential']} is shadowed — {action}")
+        else:
+            mark, style = "○", "yellow"
+        config_table.add_row(
+            row["provider"],
+            f"[{style}]{mark}[/{style}] {status} · {row['source']} · {action}",
+        )
+        if row["credential"] == "OPENONION_API_KEY" and status == "configured":
+            # Presence gates the probe; the secret itself is never rendered.
+            # Normal CLI startup has already loaded the selected project env.
             api_key = os.getenv("OPENONION_API_KEY")
-            if api_key:
-                config_table.add_row("API Key", f"[green]✓[/green] Found in .env")
-
-        if not api_key and global_env.exists():
-            load_dotenv(global_env)
-            api_key = os.getenv("OPENONION_API_KEY")
-            if api_key:
-                config_table.add_row("API Key", f"[green]✓[/green] Found in ~/.co/keys.env")
-
-        if not api_key:
-            config_table.add_row("API Key", "[yellow]○[/yellow] Not configured (run 'co auth')")
+    for row in _oauth_rows(project_dir=project_co_dir().parent):
+        status = row["status"]
+        if status == "connected":
+            mark, style = "✓", "green"
+        elif status in {"conflict", "expired", "invalid expiry", "incomplete (scopes missing)"}:
+            mark, style = "✗", "red"
+            found.append(f"{row['provider']} is {status} — {row['action']}")
+        else:
+            mark, style = "○", "yellow"
+        config_table.add_row(
+            row["provider"],
+            f"[{style}]{mark}[/{style}] {status} · {row['source']} · {row['action']}",
+        )
 
     console.print(Panel(config_table, title="[bold]Configuration[/bold]", border_style="green"))
     console.print()
@@ -316,6 +438,15 @@ def handle_doctor():
     from ...useful_tools.browser_tools.browser import (
         driver_stealth_status, installed_browser_path,
     )
+    daemon = runtime["browser-daemon"]
+    daemon_mark = "[green]✓[/green]" if daemon.status == "ok" else "[yellow]○[/yellow]"
+    browser_table.add_row("Browser daemon", f"{daemon_mark} {daemon.detail}")
+    os_prerequisites = runtime["os-prerequisites"]
+    prereq_mark = "[green]✓[/green]" if os_prerequisites.status == "ok" else "[yellow]○[/yellow]"
+    if os_prerequisites.status == "blocked":
+        prereq_mark = "[red]✗[/red]"
+        found.append(f"browser OS prerequisites: {os_prerequisites.detail}")
+    browser_table.add_row("OS prerequisites", f"{prereq_mark} {os_prerequisites.detail}")
     status, browser_version, detail = driver_stealth_status()
     # The package being healthy says nothing about there being a browser to
     # launch. A deployed agent reported "Patchright ✓ / Stealth driver ✓ /
@@ -372,6 +503,8 @@ def handle_doctor():
         skills_table.add_row(f"{location}/{name}", f"[red]✗[/red] {reason}")
         found.append(f"skill {location}/{name}: {reason}")
 
+    _add_skill_preflight_rows(skills_table, found, skills)
+
     console.print(Panel(skills_table, title="[bold]Skills[/bold]", border_style="yellow"))
     console.print()
 
@@ -382,11 +515,17 @@ def handle_doctor():
         connectivity_table.add_column("Status")
 
         # Check backend reachability
-        response = requests.get("https://oo.openonion.ai/health", timeout=5)
-        if response.status_code == 200:
-            connectivity_table.add_row("Backend", "[green]✓[/green] https://oo.openonion.ai")
+        selected_backend = backend_url()
+        try:
+            response = requests.get(f"{selected_backend}/health", timeout=5)
+        except requests.exceptions.RequestException as exc:
+            connectivity_table.add_row("Backend", f"[red]✗[/red] Could not reach {selected_backend}")
+            found.append(f"backend unreachable ({type(exc).__name__})")
         else:
-            connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
+            if response.status_code == 200:
+                connectivity_table.add_row("Backend", f"[green]✓[/green] {selected_backend}")
+            else:
+                connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
 
         # Signed as whoever this project acts as. This worked the same rule
         # out a second time, in the same file -- so the identity the panel
@@ -406,21 +545,24 @@ def handle_doctor():
             message = f"ConnectOnion-Auth-{public_key}-{timestamp}"
             signature = address.sign(addr_data, message.encode()).hex()
 
-            response = requests.post(
-                "https://oo.openonion.ai/api/v1/auth",
-                json={
-                    "public_key": public_key,
-                    "signature": signature,
-                    "message": message
-                },
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
+            try:
+                response = requests.post(
+                    f"{selected_backend}/api/v1/auth",
+                    json={
+                        "public_key": public_key,
+                        "signature": signature,
+                        "message": message
+                    },
+                    timeout=5
+                )
+            except requests.exceptions.RequestException:
+                connectivity_table.add_row("Authentication", "[red]✗[/red] Backend unreachable")
             else:
-                connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
-                found.append(f"authentication failed (status {response.status_code})")
+                if response.status_code == 200:
+                    connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
+                else:
+                    connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
+                    found.append(f"authentication failed (status {response.status_code})")
 
         console.print(Panel(connectivity_table, title="[bold]Connectivity[/bold]", border_style="magenta"))
         console.print()

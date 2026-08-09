@@ -3,8 +3,8 @@ Purpose: Host agent as HTTP/WebSocket server with trust-based access control
 LLM-Note:
   Dependencies: imports from [network/asgi/, network/host/ws_router/ (run_ws_session), network/trust/, network/host/session/, network/host/auth.py, network/host/http_router.py, network/announce.py, network/relay.py] | imported by [network/__init__.py as host()] | tested by [tests/e2e/test_host.py]
   Data flow: host(create_agent, port, trust) → _create_route_handlers() wraps all routes → asgi_create_app() creates FastAPI/Starlette app → uvicorn.run() starts server → each request calls create_agent() for fresh instance → executes via input_handler()/ws_input() → returns result + session | trust enforcement via extract_and_authenticate() at request boundary
-  State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server, publishing a display profile (alias/tools/model + project-level skills only — user/builtin skills stay private) with the first ANNOUNCE of each connection | each request gets fresh agent instance (no state bleeding)
-  Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url="wss://oo.openonion.ai") | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
+  State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | refreshes managed-key balance metadata every minute | optionally announces a display profile to the relay (alias/tools/model + project-level skills only — user/builtin skills stay private) | each request gets fresh agent instance (no state bleeding)
+  Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url=UNSET) | omitted relay resolves from host.yaml then the shared backend selector | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
   Performance: factory pattern creates fresh agent per request (thread-safe) | SessionStorage auto-expires old results via TTL | WebSocket supports real-time bidirectional I/O | relay connection runs in background thread
   Errors: trust errors return 401/403 via extract_and_authenticate() | missing sessions return None (404) | raises if port already in use
 Host an agent over HTTP/WebSocket.
@@ -38,6 +38,7 @@ import websockets
 from rich.console import Console
 
 from ... import address
+from ...backend import DEFAULT_BACKEND_WS_URL
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from .ws_router import run_ws_session
@@ -165,7 +166,7 @@ def _extract_agent_metadata(create_agent: Callable,
     # Managed-key (co/*) agents have an OpenOnion account balance; publish it so
     # chat clients can show the agent's balance. Clients can't fetch it themselves
     # — it's gated by the agent's private key — so the agent is the only party that
-    # can report it. This is a one-time startup snapshot; it refreshes on restart.
+    # can report it. The lifespan refresher keeps this startup value current.
     # Agents on their own provider keys have no such balance, so get_balance is
     # absent and the field is simply omitted.
     get_balance = getattr(sample.llm, "get_balance", None)
@@ -177,7 +178,7 @@ def _extract_agent_metadata(create_agent: Callable,
 
 
 def _build_agent_profile(agent_metadata: dict) -> dict:
-    """Build the publishable display profile sent with the first ANNOUNCE of a connection.
+    """Build the publishable display profile sent with relay ANNOUNCEs.
 
     Carries display fields only — alias, tool names, model, and the names+descriptions
     of project-scoped skills. The operator's personal skills and builtin skills are
@@ -192,7 +193,7 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
         profile["model"] = agent_metadata["model"]
-    # Startup balance snapshot for co/* managed-key agents (see _extract_agent_metadata).
+    # Refreshed balance for co/* managed-key agents (see _create_balance_lifespan).
     # Public for now — a later admin/subscriber tier can gate it.
     if agent_metadata.get("balance_usd") is not None:
         profile["balance_usd"] = agent_metadata["balance_usd"]
@@ -569,6 +570,57 @@ def _both(first, second):
     return run_both
 
 
+BALANCE_REFRESH_INTERVAL = 60
+
+
+async def _refresh_published_balance(sample, agent_metadata: dict,
+                                     profile: dict | None = None) -> None:
+    """Refresh the managed-key balance without blocking the ASGI event loop."""
+    get_balance = getattr(getattr(sample, "llm", None), "get_balance", None)
+    if not callable(get_balance):
+        return
+    try:
+        balance = await asyncio.to_thread(get_balance)
+    except Exception:
+        # Display metadata is non-critical. Keep the last known value during a
+        # transient API failure and try again on the next interval.
+        return
+    if balance is None:
+        return
+    agent_metadata["balance_usd"] = balance
+    if profile is not None:
+        profile["balance_usd"] = balance
+
+
+def _create_balance_lifespan(sample, agent_metadata: dict,
+                             profile: dict | None = None):
+    """Refresh /info, authenticated profile, and relay profile once a minute."""
+    if not callable(getattr(getattr(sample, "llm", None), "get_balance", None)):
+        return None, None
+
+    task = None
+
+    async def refresh_loop():
+        while True:
+            await asyncio.sleep(BALANCE_REFRESH_INTERVAL)
+            await _refresh_published_balance(sample, agent_metadata, profile)
+
+    async def on_startup():
+        nonlocal task
+        task = asyncio.create_task(refresh_loop())
+
+    async def on_shutdown():
+        nonlocal task
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    return on_startup, on_shutdown
+
+
 
 class _Unset:
     """Distinguishes "the caller said nothing" from "the caller said None"."""
@@ -603,9 +655,16 @@ def resolve_relay_url(param, config: dict) -> str | None:
     if param is not UNSET:
         return param or None          # explicit, including None for "off"
 
+    from ...backend import backend_ws_url
     from_file = config.get("relay_url", UNSET)
     if from_file is UNSET:
-        return DEFAULT_RELAY_URL      # nothing said anywhere
+        return backend_ws_url()       # nothing said anywhere
+    # Older generated host.yaml files wrote the production relay as if the
+    # operator had chosen it. Treat that one legacy template value as a default
+    # so CONNECTONION_BACKEND_URL can move an existing project as a whole.
+    # A genuinely custom/private relay remains an explicit override.
+    if from_file == DEFAULT_RELAY_URL:
+        return backend_ws_url()
     return from_file or None          # an empty value in the file means off
 
 def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, *, profile: dict | None = None):
@@ -617,8 +676,8 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
         relay_session_runner: async (send_msg, recv_msg) -> None, runs protocol for one relay session
-        profile: publishable display info, sent with the first ANNOUNCE of each
-                 connection; the relay persists it, so heartbeats don't carry it
+        profile: mutable publishable display info, sent initially and with
+                 heartbeat ANNOUNCEs so refreshed fields reach the directory
 
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
@@ -707,7 +766,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
     return on_startup, on_shutdown
 
 
-DEFAULT_RELAY_URL = "wss://oo.openonion.ai"
+DEFAULT_RELAY_URL = DEFAULT_BACKEND_WS_URL
 
 
 def host(
@@ -731,14 +790,19 @@ def host(
     Configuration: .co/host.yaml (required) with code param overrides.
     Run 'co init' to generate the config file.
 
-    Each request calls create_agent() to get a fresh Agent instance.
-    This ensures complete isolation between concurrent requests.
+    Passing an Agent instance is the simple path and shares that instance.
+    Passing a factory creates a fresh Agent for each request.
 
-    State Control via Closure:
-        # Isolated state (default, safest) - create inside:
+    State Control:
+        # Simple/default: share one configured agent and expensive tool setup:
+        agent = Agent("assistant", tools=[BrowserTool()])
+        host(agent)
+
+        # Per-request isolation: create everything inside a factory:
         def create_agent():
             browser = BrowserTool()  # Fresh per request
             return Agent("assistant", tools=[browser])
+        host(create_agent)
 
         # Shared state (advanced) - create outside, capture via closure:
         browser = BrowserTool()  # Shared across all requests
@@ -746,9 +810,9 @@ def host(
             return Agent("assistant", tools=[browser])
 
     Args:
-        create_agent: Function that returns a fresh Agent instance.
-                      Called once per request. Define tools inside for isolation,
-                      or outside for shared state.
+        create_agent: Agent instance for shared state, or a function that returns
+                      a fresh Agent per request. A factory isolates state but also
+                      pays the full construction cost on every request.
         port: HTTP port (default: 8000 or from .co/host.yaml)
         trust: Trust level, policy, or Agent (default: from .co/host.yaml or "careful")
             - Level: "open", "careful", "strict"
@@ -757,7 +821,7 @@ def host(
         result_ttl: How long to keep results in seconds (default: 86400 or from config)
         workers: Number of worker processes (default: 1 or from config)
         reload: Auto-reload on code changes (default: False or from config)
-        relay_url: P2P relay URL (default: wss://oo.openonion.ai)
+        relay_url: P2P relay URL (default: the configured backend)
             - Set to None or "" to disable relay and run local-only
         blacklist: Blocked identities (default: from .co/blacklist.txt)
         whitelist: Allowed identities (default: from .co/whitelist.txt)
@@ -781,16 +845,11 @@ def host(
         GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
         GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
-    # Accept agent instance directly: host(agent) → wrap in factory
-    # Warning: shared state across all requests (not isolated per request)
+    # Accept the documented simple path directly: host(agent). A factory remains
+    # available when per-request isolation is worth its construction cost.
     if not callable(create_agent):
         _agent_instance = create_agent
         create_agent = lambda: _agent_instance
-        console = Console()
-        console.print(
-            "[yellow]Warning: host(agent) — pass a factory function instead: "
-            "host(lambda: Agent(...)) for per-request isolation.[/yellow]"
-        )
 
     # Resolve co_dir: explicit > the project's .co, found by walking up.
     # Not `Path.cwd() / '.co'`: an agent started one directory down found no
@@ -906,6 +965,7 @@ def host(
 
     # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
     on_startup, on_shutdown = None, None
+    relay_profile = _build_agent_profile(agent_metadata)
     if relay_url:
         # Pre-bind run_ws_session's host-wide deps so relay only needs to pass
         # (send_msg, recv_msg). Each call = one client session full lifecycle
@@ -927,8 +987,14 @@ def host(
         )
         on_startup, on_shutdown = _create_relay_lifespan(
             relay_url, addr_data, summary, port, relay_session_runner,
-            profile=_build_agent_profile(agent_metadata),
+            profile=relay_profile,
         )
+
+    balance_startup, balance_shutdown = _create_balance_lifespan(
+        sample, agent_metadata, relay_profile
+    )
+    on_startup = _both(on_startup, balance_startup)
+    on_shutdown = _both(balance_shutdown, on_shutdown)
 
     # The schedule is not conditional on the relay. An agent reachable only on
     # localhost still has recurring work to do, and tying its clock to whether
@@ -1010,6 +1076,9 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
     route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS, load_permission_patterns())
+    balance_startup, balance_shutdown = _create_balance_lifespan(
+        sample, agent_metadata
+    )
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
@@ -1017,4 +1086,6 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         trust=trust_agent,  # Pass resolved TrustAgent, not raw trust
         blacklist=blacklist,
         whitelist=whitelist,
+        on_startup=balance_startup,
+        on_shutdown=balance_shutdown,
     )

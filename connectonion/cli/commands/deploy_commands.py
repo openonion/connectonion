@@ -1,7 +1,7 @@
 """
 Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
-  Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
+  Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls the configured backend /api/v1/deploy
   Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against DEPLOY_NAME_PATTERN (same rule the backend enforces) and _exports_asgi_app() on the entrypoint → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
   Integration: exposes handle_deploy(template, skills, name) for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | --name only valid with --template (otherwise the name comes from host.yaml) | uses Bearer token auth | returns bool success
@@ -24,6 +24,7 @@ import typer
 from pathlib import Path
 from rich.console import Console
 from dotenv import dotenv_values
+from ...backend import backend_url
 
 from .project_cmd_lib import (
     GITIGNORE_CONTENT,
@@ -34,7 +35,6 @@ from .project_cmd_lib import (
 
 console = Console()
 
-API_BASE = "https://oo.openonion.ai"
 DASHBOARD_URL = "https://o.openonion.ai/dashboard"
 
 # Poll until the backend's own build budget is exhausted (rsync 120s + docker
@@ -285,6 +285,10 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     # project's copy with the deployer. Packing the file here as well would put
     # two members under one name and let write order decide which survives.
     ignore_patterns.append(".co/admins.txt")
+    ignore_patterns.extend([
+        ".co/skill-requirements.requested.json",
+        ".co/skill-python-requirements.txt",
+    ])
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
         if _is_git_repo(project_dir):
@@ -313,6 +317,24 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                 arc_prefix,
                 _load_skill_ignore_patterns(skills_path),
             )
+
+        from ...skill_deploy import collect_deploy_skill_requirements
+
+        skill_requirements = collect_deploy_skill_requirements(project_dir, skills_paths)
+        requested = json.dumps(
+            {**skill_requirements.requested_state, "digest": skill_requirements.digest},
+            indent=2,
+        ).encode()
+        info = tarfile.TarInfo(name=".co/skill-requirements.requested.json")
+        info.size = len(requested)
+        info.mode = 0o644
+        tar.addfile(info, io.BytesIO(requested))
+
+        python_requirements = ("\n".join(skill_requirements.python) + "\n").encode()
+        info = tarfile.TarInfo(name=".co/skill-python-requirements.txt")
+        info.size = len(python_requirements)
+        info.mode = 0o644
+        tar.addfile(info, io.BytesIO(python_requirements))
         _add_deployer_as_admin(tar, project_dir)
     return tarball
 
@@ -385,6 +407,15 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         if not sp.is_dir():
             console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
             return False
+
+    from ...skill_deploy import collect_deploy_skill_requirements
+
+    skill_requirements = collect_deploy_skill_requirements(project_dir, skills_paths)
+    if skill_requirements.unsupported:
+        console.print("[red]Cloud deploy cannot realize these required skill dependencies:[/red]")
+        for requirement in skill_requirements.unsupported:
+            console.print(f"  [red]✗[/red] {requirement}")
+        return False
 
     # Load config from host.yaml. The project is checked before credentials are:
     # a broken host.yaml is worth reporting whether or not you happen to be
@@ -479,11 +510,12 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         "secrets": json.dumps(env_vars),
         "entrypoint": entrypoint,
     }
-    console.print(f"Uploading package to {API_BASE}...")
+    api_base = backend_url()
+    console.print(f"Uploading package to {api_base}...")
     with console.status("[cyan]Uploading package...[/cyan]"):
         with open(tarball_path, "rb") as f:
             response = requests.post(
-                f"{API_BASE}/api/v1/deploy",
+                f"{api_base}/api/v1/deploy",
                 files={"package": ("agent.tar.gz", f, "application/gzip")},
                 data=deploy_data,
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -521,7 +553,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     while time.monotonic() < deadline:
         try:
             status_resp = requests.get(
-                f"{API_BASE}/api/v1/deploy/{deployment_id}/status",
+                f"{api_base}/api/v1/deploy/{deployment_id}/status",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=30,  # Increased timeout for slow SSH
             )
@@ -576,7 +608,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     time.sleep(5)  # "running" fires when the container starts; wait for the app to print its banner or crash
     try:
         logs_resp = requests.get(
-            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
+            f"{backend_url()}/api/v1/deploy/{deployment_id}/logs?tail=20",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=10,
         )

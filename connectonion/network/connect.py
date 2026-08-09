@@ -1,10 +1,10 @@
 """
-Purpose: Client SDK for talking to remote ConnectOnion agents over websockets — handles relay/direct endpoint resolution, signed CONNECT/INPUT frames, streaming UI events, and onboard (invite/payment) flows.
+Purpose: Client SDK for talking to remote ConnectOnion agents over websockets — handles relay/direct endpoint resolution, signed CONNECT and per-command frames, streaming UI events, and onboard (invite/payment) flows.
 LLM-Note:
   Dependencies: imports from [asyncio, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), .. address (sign)] | imported by [network/__init__.py (re-exports connect, RemoteAgent, Response), connectonion/__init__.py (top-level re-export)] | tested by [tests/unit/test_connect.py, tests/unit/test_connect.py]
-  Data flow: connect(address, keys, relay_url) → RemoteAgent → .input(prompt) opens ws → CONNECT (signed payload {to, timestamp, optional session}) → CONNECTED {session_id} → INPUT {input_id, prompt, optional images/files} → streams (tool_call, tool_result, thinking, assistant, ask_user, ONBOARD_REQUIRED/SUCCESS) → OUTPUT {result, session} → returns Response(text, done)
+  Data flow: connect(address, keys, relay_url) → RemoteAgent → .input(prompt) opens ws → CONNECT (signed payload {to, timestamp, signed_commands}, optional session) → CONNECTED {session_id} → INPUT (complete command duplicated top-level for v1 compatibility and signed as payload for v2) → streams (tool_call, tool_result, thinking, assistant, ask_user, ONBOARD_REQUIRED/SUCCESS) → OUTPUT {result, session} → returns Response(text, done)
   State/Effects: mutates self._current_session, self._ui_events, self._status; opens outbound websocket connection; performs signed payloads via address.sign(keys, canonical_json) when keys provided; resolve_endpoint() makes httpx GETs to relay /api/agents/{addr} and /info on each candidate to pick localhost/LAN/public WS endpoint (cached after first attempt)
-  Integration: exposes connect(address, keys=None, relay_url="wss://oo.openonion.ai") -> RemoteAgent | RemoteAgent.input/input_async/reset, .status, .current_session, .ui properties | Response dataclass(text, done) | resolve_endpoint(agent_address, relay_url, timeout=3.0) helper
+  Integration: exposes connect(address, keys=None, relay_url=None) -> RemoteAgent | omitted relay resolves from the shared backend selector | RemoteAgent.input/input_async/reset, .status, .current_session, .ui properties | Response dataclass(text, done) | resolve_endpoint(agent_address, relay_url, timeout=3.0) helper
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
   Errors: raises ConnectionError on auth/agent ERROR frames | TimeoutError on ws recv timeout | RuntimeError if .input() called from async context | ValueError when interactive onboard prompt yields no credentials
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
@@ -70,19 +70,19 @@ def _sort_endpoints(endpoints: List[str]) -> List[str]:
     was reached over whichever the relay listed first — and it lists plaintext
     first. The connection then went in the clear to an agent that had offered TLS.
 
-    What travels on it is a signed CONNECT, and #649 measured what a captured one
-    is worth: EXEC carries no signature of its own, so within the five-minute
-    freshness window a replayed CONNECT opens a session on which any whitelisted
-    tool runs with any arguments. Before #643 this never came up — resolution
-    always failed and every client went through the relay over wss://.
+    What travels on it is authenticated protocol traffic. #649 measured the old
+    protocol's impact: a captured CONNECT opened a connection whose unsigned EXEC
+    frames could name any whitelisted tool. CONNECT replay protection and v2
+    per-command signatures now close both halves; TLS still prevents disclosure
+    of prompts, results, and metadata that signatures do not encrypt.
 
     Closeness still decides first. A plaintext loopback connection has no network
     to be observed on, and reaching an agent on this machine is the case direct
     resolution exists for. This only chooses between endpoints that are equally
     close.
 
-    Not the whole of #649: an agent that offers no TLS at all still speaks
-    plaintext across a LAN, and what to do about that is the trade filed there.
+    An agent that offers no TLS still must not carry private protocol traffic
+    across a network in plaintext, regardless of authentication strength.
     """
     def priority(url: str) -> tuple:
         if "localhost" in url or "127.0.0.1" in url:
@@ -254,13 +254,16 @@ class RemoteAgent:
         agent_address: str,
         *,
         keys: Optional[Dict[str, Any]] = None,
-        relay_url: str = "wss://oo.openonion.ai"
+        relay_url: Optional[str] = None,
     ):
         self.address = agent_address
         # None means "I did not choose" -- find the caller's identity, because
         # an unsigned client cannot talk to a default agent. False means "no
         # keys, deliberately", which trust: open accepts and people use in dev.
         self._keys = _this_callers_identity() if keys is None else (keys or None)
+        if relay_url is None:
+            from ..backend import backend_ws_url
+            relay_url = backend_ws_url()
         self._relay_url = relay_url.rstrip("/")
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
@@ -394,10 +397,13 @@ class RemoteAgent:
         await self._try_resolve_endpoint()
 
         exec_id = str(uuid.uuid4())
-        exec_msg = {"type": "EXEC", "exec_id": exec_id, "tool": tool, "args": args}
 
         connection, is_direct = await self._open_best_connection(websockets)
         connect_msg = self._build_connect_message(is_direct)
+        exec_msg = self._build_command_message(
+            {"type": "EXEC", "exec_id": exec_id, "tool": tool, "args": args},
+            is_direct,
+        )
 
         try:
             async with connection as ws:
@@ -704,7 +710,11 @@ class RemoteAgent:
             connect_msg["session"] = self._current_session
 
         if self._keys:
-            payload: Dict[str, Any] = {"to": self.address, "timestamp": connect_msg["timestamp"]}
+            payload: Dict[str, Any] = {
+                "to": self.address,
+                "timestamp": connect_msg["timestamp"],
+                "signed_commands": 1,
+            }
             canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
             signature = addr.sign(self._keys, canonical.encode())
             connect_msg["payload"] = payload
@@ -726,7 +736,6 @@ class RemoteAgent:
             "type": "INPUT",
             "input_id": input_id,
             "prompt": prompt,
-            "timestamp": int(time.time())
         }
 
         # Only include 'to' for relay mode (not needed for direct connection)
@@ -741,18 +750,31 @@ class RemoteAgent:
         if files:
             input_msg["files"] = files
 
-        # Sign if keys provided
-        if self._keys:
-            payload: Dict[str, Any] = {"prompt": prompt, "timestamp": input_msg["timestamp"]}
-            if not is_direct:
-                payload["to"] = self.address
-            canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
-            signature = addr.sign(self._keys, canonical.encode())
-            input_msg["payload"] = payload
-            input_msg["from"] = self._keys["address"]
-            input_msg["signature"] = signature.hex()
+        return self._build_command_message(input_msg, is_direct)
 
-        return input_msg
+    def _build_command_message(
+        self, message: Dict[str, Any], is_direct: bool = False
+    ) -> Dict[str, Any]:
+        """Sign one complete application command for protocol-v2 hosts.
+
+        Fields remain duplicated at the top level so pre-v2 hosts can consume
+        the frame. A v2 host discards those copies and executes this payload.
+        """
+        command = dict(message)
+        command["timestamp"] = int(time.time())
+        command["nonce"] = str(uuid.uuid4())
+        # Recipient stays in the signature even on a direct socket. Only the
+        # relay needs it for routing, but the host needs it to prevent a frame
+        # captured for one agent from being delivered to another.
+        command["to"] = self.address
+
+        frame = dict(command)
+        if self._keys:
+            canonical = json.dumps(command, sort_keys=True, separators=(',', ':'))
+            frame["payload"] = command
+            frame["from"] = self._keys["address"]
+            frame["signature"] = addr.sign(self._keys, canonical.encode()).hex()
+        return frame
 
     def _build_onboard_submit(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
         """Build ONBOARD_SUBMIT message with optional signing."""
@@ -859,7 +881,7 @@ def connect(
     address: str,
     *,
     keys: Optional[Dict[str, Any]] = None,
-    relay_url: str = "wss://oo.openonion.ai"
+    relay_url: Optional[str] = None,
 ) -> RemoteAgent:
     """
     Connect to a remote agent.
@@ -870,7 +892,7 @@ def connect(
               (then this machine's ~/.co). Every trust level above `open`
               refuses an unsigned request, `careful` included. Pass
               keys=False to connect anonymously to a `trust: open` agent.
-        relay_url: Relay server base URL (default: production)
+        relay_url: Relay server base URL (default: the configured backend)
 
     Returns:
         RemoteAgent interface with real-time UI updates

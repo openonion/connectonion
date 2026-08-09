@@ -26,7 +26,7 @@ Discovery:
 Skills are discovered from three locations (priority order):
 1. .co/skills/skill-name/SKILL.md    (project-level, highest priority)
 2. ~/.co/skills/skill-name/SKILL.md  (user-level)
-3. builtin/skill-name/SKILL.md       (built-in, lowest priority)
+3. customer default skill             (bundled, lowest priority)
 
 SKILL.md Format:
 ```yaml
@@ -74,6 +74,17 @@ from copy import deepcopy
 
 from ..core.events import after_user_input, on_complete, before_each_tool, on_agent_ready
 from ..project import project_co_dir, project_root
+from ..skill_requirements import (
+    SkillManifestError,
+    SkillRequirements,
+    parse_skill_requirements,
+)
+from ..skills_catalog import (
+    DEFAULT_LIBRARY_SKILLS,
+    builtin_skills_dir,
+    default_skill_path,
+    useful_skills_dir,
+)
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -84,6 +95,8 @@ class SkillInfo:
     name: str
     description: str
     location: str  # project | claude-project | user | claude-user | builtin
+    path: Optional[Path] = None
+    requirements: Optional[SkillRequirements] = None
 
 
 # The only locations a hosted agent publishes to clients: the two that ship inside
@@ -117,7 +130,7 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
     Priority:
     1. .co/skills/skill-name/SKILL.md (project-level)
     2. ~/.co/skills/skill-name/SKILL.md (user-level)
-    3. builtin skills (bundled with ConnectOnion)
+    3. customer-facing default skills (bundled with ConnectOnion)
 
     Args:
         skill_name: Skill name (e.g., "commit")
@@ -140,9 +153,11 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
     # 4. User-level Claude Code: ~/.claude/skills/skill-name/SKILL.md
     paths.append(home / '.claude' / 'skills' / skill_name / 'SKILL.md')
 
-    # 5. Built-in: connectonion/cli/co_ai/skills/builtin/skill-name/SKILL.md
-    builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
-    paths.append(builtin_base / skill_name / 'SKILL.md')
+    # 5. Customer-facing defaults. Library-backed defaults resolve to their
+    # canonical useful_skills body rather than a copied builtin.
+    default = default_skill_path(skill_name)
+    if default:
+        paths.append(default)
 
     return paths
 
@@ -160,10 +175,13 @@ def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
         if path.exists():
             content = path.read_text(encoding="utf-8")
             frontmatter, instructions = _parse_skill_content(content)
+            manifest_name = frontmatter.get('name') or skill_name
+            requirements = parse_skill_requirements(frontmatter, str(manifest_name))
             return {
                 'path': str(path),
                 'frontmatter': frontmatter,
-                'instructions': instructions
+                'instructions': instructions,
+                'requirements': requirements,
             }
 
     return None
@@ -252,7 +270,7 @@ def _read_frontmatter(yaml_text: str) -> Dict[str, Any]:
 
 def _skill_search_paths(co_dir: Optional[Path] = None,
                         project_dir: Optional[Path] = None) -> List[tuple]:
-    """The five (location, directory) pairs, in priority order.
+    """Skill sources as ``(location, directory, optional allowlist)`` triples.
 
     One definition, so discovery and any diagnosis of it look in the same places —
     a second copy would eventually report on directories the loader no longer reads.
@@ -265,14 +283,13 @@ def _skill_search_paths(co_dir: Optional[Path] = None,
     # skill answered at the root and was invisible in `sub/`.
     base = project_dir or (co_dir.parent if co_dir else project_root())
     co_base = co_dir or (base / '.co')
-    builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
-
     return [
-        ('project', co_base / 'skills'),
-        ('claude-project', base / '.claude' / 'skills'),
-        ('user', Path.home() / '.co' / 'skills'),
-        ('claude-user', Path.home() / '.claude' / 'skills'),
-        ('builtin', builtin_base),
+        ('project', co_base / 'skills', None),
+        ('claude-project', base / '.claude' / 'skills', None),
+        ('user', Path.home() / '.co' / 'skills', None),
+        ('claude-user', Path.home() / '.claude' / 'skills', None),
+        ('builtin', builtin_skills_dir(), None),
+        ('builtin', useful_skills_dir(), frozenset(DEFAULT_LIBRARY_SKILLS)),
     ]
 
 
@@ -289,12 +306,14 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
     seen = set()
     result = []
 
-    for location, skills_dir in _skill_search_paths(co_dir, project_dir):
+    for location, skills_dir, allowed_names in _skill_search_paths(co_dir, project_dir):
         if not skills_dir.exists():
             continue
 
         for skill_dir in skills_dir.iterdir():
             if not skill_dir.is_dir():
+                continue
+            if allowed_names is not None and skill_dir.name not in allowed_names:
                 continue
 
             skill_file = skill_dir / 'SKILL.md'
@@ -320,8 +339,15 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
 
             frontmatter, _ = _parse_skill_content(content)
             description = frontmatter.get('description', 'No description')
+            try:
+                requirements = parse_skill_requirements(frontmatter, name)
+            except SkillManifestError:
+                requirements = None  # find_skill_problems reports the exact field
 
-            result.append(SkillInfo(name=name, description=description, location=location))
+            result.append(SkillInfo(
+                name=name, description=description, location=location,
+                path=skill_file, requirements=requirements,
+            ))
 
     return result
 
@@ -340,12 +366,14 @@ def find_skill_problems(co_dir: Optional[Path] = None,
     """
     problems = []
 
-    for location, skills_dir in _skill_search_paths(co_dir, project_dir):
+    for location, skills_dir, allowed_names in _skill_search_paths(co_dir, project_dir):
         if not skills_dir.exists():
             continue
 
         for entry in skills_dir.iterdir():
             if entry.name.startswith('.'):
+                continue
+            if allowed_names is not None and entry.name not in allowed_names:
                 continue
 
             if entry.is_symlink():
@@ -428,6 +456,13 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— name and description were still read')
         return f'SKILL.md frontmatter is not valid YAML{where}: {detail}'
+
+    frontmatter = _read_frontmatter(yaml_text)
+    skill_name = frontmatter.get('name') or skill_md.parent.name
+    try:
+        parse_skill_requirements(frontmatter, str(skill_name))
+    except SkillManifestError as exc:
+        return str(exc)
 
     return None
 
@@ -629,6 +664,13 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     frontmatter = skill['frontmatter']
     instructions = skill['instructions']
 
+    from ..skill_preflight import format_preflight_report, preflight_skills
+
+    preflight = preflight_skills([(skill_name, skill.get('requirements'))])
+    if preflight.missing_required:
+        messages[-1]['content'] = format_preflight_report(preflight) + "\nSkill did not start."
+        return
+
     # Grant skill permissions (with snapshot)
     patterns = _tool_patterns(frontmatter)
     _grant_skill_permissions(agent, skill_name, patterns)
@@ -675,6 +717,12 @@ def skill(agent: 'Agent', name: str) -> str:
 
     frontmatter = skill_data['frontmatter']
     instructions = skill_data['instructions']
+
+    from ..skill_preflight import format_preflight_report, preflight_skills
+
+    preflight = preflight_skills([(name, skill_data.get('requirements'))])
+    if preflight.missing_required:
+        return format_preflight_report(preflight) + "\nSkill did not start."
 
     # Grant skill permissions (with snapshot)
     patterns = _tool_patterns(frontmatter)

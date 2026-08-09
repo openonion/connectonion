@@ -1,9 +1,9 @@
 """
 Purpose: Display account status, deployments, and credential-source diagnostics without re-authenticating
 LLM-Note:
-  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, address] | imported by [cli/main.py via handle_status()] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [tests/e2e/cli/test_cli_status.py]
+  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
   Data flow: receives reveal=False by default → inspects supported provider variable names in process env/local .env/global ~/.co/keys.env without loading values → displays redacted name/status/source table → if reveal=True, displays full values in a separate warning-marked table → load_api_key() resolves OPENONION_API_KEY → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth → displays account and deployments
-  State/Effects: no state modifications | makes network requests to oo.openonion.ai after local diagnostics | reads env vars, .env, ~/.co/keys.env without exporting them | default output contains no secret material; explicit --reveal writes full values to the terminal | does NOT update any files
+  State/Effects: no state modifications | makes network requests to the configured backend after local diagnostics | reads env vars, .env, ~/.co/keys.env without exporting them | default output contains no secret material; explicit --reveal writes full values to the terminal | does NOT update any files
   Integration: exposes handle_status(reveal=False) for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
   Performance: network call to backend (1-2s) | signature generation is fast (<10ms) | file I/O for .env files
   Errors: credential parse/read failures are treated as no discovered keys | account status fails gracefully if OPENONION_API_KEY or identity keys are missing | backend errors do not expose credential values; only explicit --reveal prints them
@@ -19,12 +19,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from ...backend import backend_url
 
 from .project_cmd_lib import load_api_key
 
 console = Console()
 
-API_BASE = "https://oo.openonion.ai"
 
 CREDENTIAL_ENV_VARS = (
     ("OPENONION_API_KEY", "OpenOnion"),
@@ -37,6 +37,17 @@ CREDENTIAL_ENV_VARS = (
     ("OPENROUTER_API_KEY", "OpenRouter"),
     ("MISTRAL_API_KEY", "Mistral"),
 )
+
+OAUTH_CONNECTIONS = (
+    ("Google OAuth", "GOOGLE", "co auth google"),
+    ("Microsoft OAuth", "MICROSOFT", "co auth microsoft"),
+)
+
+_OAUTH_ENV_VARS = {
+    f"{prefix}_{suffix}"
+    for _provider, prefix, _action in OAUTH_CONNECTIONS
+    for suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")
+}
 
 _PLACEHOLDER_VALUES = {
     "changeme",
@@ -74,7 +85,7 @@ def _read_credential_file(path: Path) -> dict[str, str]:
         values = dotenv_values(path, interpolate=False)
     except (OSError, UnicodeError):
         return {}
-    supported = {name for name, _provider in CREDENTIAL_ENV_VARS}
+    supported = {name for name, _provider in CREDENTIAL_ENV_VARS} | _OAUTH_ENV_VARS
     return {
         name: str(value)
         for name, value in values.items()
@@ -190,6 +201,76 @@ def _revealed_credential_rows(
     return rows
 
 
+def _oauth_rows(
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    now: float | None = None,
+) -> list[dict[str, str]]:
+    """Return redacted OAuth connection state using the same source precedence."""
+    import datetime
+    import time
+
+    sources = _credential_sources(project_dir=project_dir, home=home, environ=environ)
+    now = time.time() if now is None else now
+    rows = []
+    for provider, prefix, action in OAUTH_CONNECTIONS:
+        found = []
+        for source, values in sources:
+            access = values.get(f"{prefix}_ACCESS_TOKEN")
+            refresh = values.get(f"{prefix}_REFRESH_TOKEN")
+            if _is_configured(access) or _is_configured(refresh):
+                state = tuple(
+                    str(values.get(f"{prefix}_{suffix}") or "")
+                    for suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")
+                )
+                found.append((source, state, values))
+
+        if not found:
+            rows.append({"provider": provider, "status": "missing", "source": "—", "action": action})
+            continue
+
+        unique_states = {state for _source, state, _values in found}
+        source_names = [source for source, *_rest in found]
+        if len(unique_states) > 1:
+            source = " + ".join(
+                f"{name} (used)" if index == 0 else name
+                for index, name in enumerate(source_names)
+            )
+            rows.append({"provider": provider, "status": "conflict", "source": source,
+                         "action": f"remove or update the shadowed value; then {action}"})
+            continue
+
+        source, state, values = found[0]
+        _access, refresh, _expires, scopes, _email = state
+        expires = values.get(f"{prefix}_TOKEN_EXPIRES_AT")
+        expired = False
+        invalid_expiry = False
+        if _is_configured(expires):
+            try:
+                expired = float(str(expires)) <= now
+            except ValueError:
+                try:
+                    parsed = datetime.datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+                    expired = parsed.timestamp() <= now
+                except ValueError:
+                    invalid_expiry = True
+
+        if not _is_configured(scopes):
+            status = "incomplete (scopes missing)"
+        elif invalid_expiry:
+            status = "invalid expiry"
+        elif expired and not _is_configured(refresh):
+            status = "expired"
+        elif expired:
+            status = "refresh available"
+        else:
+            status = "connected"
+        rows.append({"provider": provider, "status": status, "source": source, "action": action})
+    return rows
+
+
 def _show_credentials(reveal: bool = False) -> None:
     """Print provider credential availability and optionally full values."""
     status_style = {
@@ -260,7 +341,7 @@ def _show_credentials(reveal: bool = False) -> None:
 def _fetch_deployments(api_key: str):
     """Return deployments for the current account from ConnectOnion Cloud."""
     response = requests.get(
-        f"{API_BASE}/api/v1/deployments",
+        f"{backend_url()}/api/v1/deployments",
         headers={"Authorization": f"Bearer {api_key}"},
         timeout=30,
     )
@@ -369,12 +450,13 @@ def handle_status(reveal: bool = False):
 
     # Call auth endpoint to get fresh user data
     response = requests.post(
-        "https://oo.openonion.ai/api/v1/auth",
+        f"{backend_url()}/api/v1/auth",
         json={
             "public_key": public_key,
             "signature": signature,
             "message": message
-        }
+        },
+        timeout=15,
     )
 
     if response.status_code != 200:

@@ -2,7 +2,7 @@
 Purpose: Retrieve emails from agent's inbox via OpenOnion API with filtering options
 LLM-Note:
   Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls get_emails(last=10, unread=False) → searches for .env file → loads OPENONION_API_KEY → GET to oo.openonion.ai/api/v1/email/received with query params → returns List[Dict] with emails: {id, from, to, subject, body, html_body, date, read} | mark_read(email_id) PUTs to /api/v1/email/s/mark-read
+  Data flow: Agent calls get_emails(last=10, unread=False) → searches for .env file → loads OPENONION_API_KEY → GET to the configured backend /api/v1/email/received with query params → returns List[Dict] with emails: {id, from, to, subject, body, html_body, date, read} | mark_read(email_id) PUTs to /api/v1/email/s/mark-read
   State/Effects: reads .env files | makes HTTP GET/PUT requests | no local caching | mark_read() modifies server-side read status
   Integration: exposes get_emails(last, unread), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?last=N&unread=true, PUT /api/v1/email/s/mark-read
   Performance: one HTTP request per call | no pagination (uses 'last' param) | synchronous blocking | no local cache
@@ -14,6 +14,7 @@ import json
 import requests
 from pathlib import Path
 from typing import List, Dict, Optional, Union
+from ..backend import backend_url
 
 
 def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
@@ -45,8 +46,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
         )
     
     # Fetch emails from backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/received"
+    endpoint = f"{backend_url()}/api/v1/email/received"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -114,14 +114,12 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
             "OPENONION_API_KEY from ~/.co/keys.env to your project."
         )
 
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-
     params = {"limit": last}
     if to:
         params["to"] = to
 
     response = requests.get(
-        f"{backend_url}/api/v1/email/sent",
+        f"{backend_url()}/api/v1/email/sent",
         params=params,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         timeout=10,
@@ -167,8 +165,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
         )
     
     # Mark emails as read via backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/s/mark-read"
+    endpoint = f"{backend_url()}/api/v1/email/s/mark-read"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -215,8 +212,7 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
         )
 
     # Mark emails as unread via backend API
-    backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/v1/email/s/mark-unread"
+    endpoint = f"{backend_url()}/api/v1/email/s/mark-unread"
 
     headers = {
         "Authorization": f"Bearer {token}",

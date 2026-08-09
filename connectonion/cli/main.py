@@ -292,12 +292,19 @@ def reset():
 
 
 @app.command()
-def doctor():
+def doctor(
+    fix: bool = typer.Option(False, "--fix", help="Offer safe browser/runtime repairs"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Approve every offered repair"),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable machine-readable output"),
+):
     """Diagnose installation."""
+    if yes and not fix:
+        console.print("[red]--yes requires --fix.[/red]")
+        raise typer.Exit(2)
     from .commands.doctor_commands import handle_doctor
     # The exit code is the whole point of running this in a script: it used to
     # be 0 even under its own `✗ broken symlink`.
-    if handle_doctor():
+    if handle_doctor(fix=fix, yes=yes, json_output=json_output):
         raise typer.Exit(1)
 
 
@@ -401,7 +408,7 @@ def setup(
 
 @app.command()
 def announce(
-    relay: Optional[str] = typer.Option(None, "--relay", "-r", help="Relay URL (default: wss://oo.openonion.ai)"),
+    relay: Optional[str] = typer.Option(None, "--relay", "-r", help="Relay URL (default: configured backend)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the signed message, don't send"),
 ):
     """Publish ~/.co/agent.json + SKILL.md bodies (publish:true) to the relay."""
@@ -668,10 +675,15 @@ def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
     subject: str = typer.Argument(..., help="Subject line"),
     message: str = typer.Argument(..., help="Body (plain text or HTML)"),
+    idempotency_key: Optional[str] = typer.Option(
+        None,
+        "--idempotency-key",
+        help="Reuse a failed send's key to retry without sending twice",
+    ),
 ):
     """Send an email from the agent's address."""
     from .commands.email_commands import handle_email_send
-    handle_email_send(to, subject, message)
+    handle_email_send(to, subject, message, idempotency_key=idempotency_key)
 
 
 @email_app.command("inbox")
@@ -1080,7 +1092,7 @@ app.add_typer(sub_app, name="sub")
 @sub_app.callback(invoke_without_command=True)
 def sub_callback(
     ctx: typer.Context,
-    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
     """With no subcommand, sync every subscription in ~/.co/subscriptions.txt."""
     if ctx.invoked_subcommand is None:
@@ -1091,13 +1103,14 @@ def sub_callback(
 @sub_app.command("sync")
 def sub_sync(
     target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
-    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
     """Sync one publisher: fetch profile, mirror skills, fan out to coding agents.
 
-    The content is UNVERIFIED — the relay strips the publisher's signature, so
-    nothing here proves who wrote it. Skills land in ~/.co/subs/ and are fanned
-    out to ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
+    The publisher's Ed25519 profile signature is verified before anything is
+    written. Unsigned legacy profiles stay visible in discovery but cannot be
+    installed. Skills land in ~/.co/subs/ and are fanned out to ~/.claude,
+    ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
 
     A subscribed skill's `tools:` grant is removed on sync, so it cannot
     pre-authorise anything (#654). Its instructions are kept.

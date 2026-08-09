@@ -18,11 +18,25 @@ Components under test:
 - Trust list display with full addresses for copying
 """
 
+import pytest
+
 from .argparse_runner import ArgparseCliRunner
 
 
 class TestTrustCommand:
     """Test the trust command for managing trust lists."""
+
+    @pytest.fixture(autouse=True)
+    def _agent_project(self, tmp_path, monkeypatch):
+        """Every trust command runs inside an explicit agent project.
+
+        These tests used to inherit whichever temporary ``.co`` another CLI
+        test happened to leave behind. Once Google auth stopped leaking its
+        deleted cwd, they correctly saw that the repository itself is not an
+        agent and failed for an unrelated reason.
+        """
+        (tmp_path / ".co").mkdir()
+        monkeypatch.chdir(tmp_path)
 
     def setup_method(self):
         """Setup test environment."""

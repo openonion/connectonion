@@ -139,7 +139,7 @@ def create_announce_message(
         address_data: dict from address.load()/generate() with 'address' + 'signing_key'
         summary: agent capability description (max 1000 chars)
         endpoints: direct connection URLs (http://host:port, ws://host:port/ws)
-        relay: relay fallback URL (e.g. "wss://oo.openonion.ai")
+        relay: relay fallback URL (normally derived from the configured backend)
         profile: optional publishable display profile. Shape varies by producer —
                  host() sends {alias, tools, model, skills: [{name, description}]} and
                  never inlines skill bodies; `co announce` sends {alias, bio, version,
@@ -162,7 +162,18 @@ def create_announce_message(
         "relay": relay,
     }
     if profile is not None:
+        # The outer ANNOUNCE signature proves the profile only to the relay.
+        # Directory clients never receive the rest of that ANNOUNCE, so give
+        # the profile its own portable proof that survives persistence.
+        from .. import address
+
         message["profile"] = profile
+        profile_bytes = json.dumps(
+            profile, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        message["profile_signature"] = address.sign(
+            address_data, profile_bytes
+        ).hex()
 
     # Create deterministic JSON for signing
     # MUST match server's verification: json.dumps(message, sort_keys=True)

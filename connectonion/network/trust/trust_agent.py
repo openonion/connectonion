@@ -338,10 +338,9 @@ justify admitting them, it is not enough."""
         if not keys:
             return False
 
-        # Determine API URL
-        base_url = os.environ.get('OPENONION_BASE_URL', 'https://oo.openonion.ai')
-        if os.environ.get('OPENONION_DEV'):
-            base_url = 'http://localhost:8000'
+        # Use the same origin as auth, models, deploys, and every other client.
+        from ...backend import backend_url
+        base_url = backend_url()
 
         # Create signed auth request
         timestamp = int(time.time())

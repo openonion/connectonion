@@ -28,7 +28,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     direct ASGI WebSocket path and the relay-routed path, each providing its
     own send_msg/recv_msg adapters.
     """
-    conn = {"authenticated": False, "agent_address": None, "session_id": None, "session": None}
+    conn = {"authenticated": False, "agent_address": None, "session_id": None,
+            "session": None, "signed_commands": False, "recipient_address": None}
     active_io = None
     forward_task = None
     exec_tasks = set()
@@ -42,6 +43,48 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 break
 
             msg_type = data.get("type")
+
+            # CONNECT establishes the identity and protocol capabilities for
+            # this socket. Letting a second CONNECT overwrite that state makes
+            # it possible to downgrade an authenticated v2 connection to v1
+            # and then inject unsigned commands. Reauthentication belongs on a
+            # fresh transport, with fresh per-connection state.
+            if msg_type == "CONNECT" and conn.get("authenticated"):
+                await send_msg({
+                    "type": "ERROR",
+                    "message": "already authenticated: open a new connection",
+                })
+                continue
+
+            # A v2 CONNECT signs the capability that enables this gate. Keep the
+            # few transport/authentication frames outside it; every application
+            # command, including approval and ask-user responses forwarded below,
+            # must be signed and is replaced with the verified payload before use.
+            exempt = {"CONNECT", "PONG", "SESSION_STATUS", "ONBOARD_SUBMIT"}
+            if (conn.get("authenticated") and conn.get("signed_commands")
+                    and msg_type not in exempt):
+                from ..auth import authenticated_command_payload
+
+                signed_frame = data
+                verified, command_error = authenticated_command_payload(
+                    data, conn["agent_address"], conn.get("recipient_address")
+                )
+                if command_error:
+                    await send_msg({"type": "ERROR", "message": command_error})
+                    continue
+                # ADMIN handlers independently authenticate their frame. Preserve
+                # that envelope while replacing every actionable top-level field
+                # with its verified copy. Other handlers only need the payload.
+                if (msg_type or "").startswith("ADMIN_"):
+                    data = {
+                        **verified,
+                        "payload": verified,
+                        "from": signed_frame.get("from"),
+                        "signature": signed_frame.get("signature"),
+                    }
+                else:
+                    data = verified
+                msg_type = data.get("type")
             if msg_type not in ("CONNECT", "INPUT", "SESSION_STATUS", "PONG"):
                 console.print(f"[dim]← recv: {msg_type}[/dim]")
 
@@ -51,10 +94,27 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     registry.update_ping(conn["session_id"])
 
             elif msg_type == "SESSION_STATUS":
-                # SESSION_STATUS query: lookup by sid, reply with current registry status.
+                # A live connection already has a verified identity. A temporary
+                # status-only socket must independently sign the query as a v2
+                # command. In either case, a caller only sees its own active
+                # session; every other case has the same not_found answer so the
+                # endpoint is not an existence oracle (#766).
+                requester = conn.get("agent_address") if conn.get("authenticated") else None
                 sid = (data.get("session") or {}).get("session_id")
-                active = registry.get(sid) if sid else None
-                status = active.status if active else "not_found"
+                if requester is None:
+                    from ..auth import authenticated_command_payload
+
+                    metadata = route_handlers.get("agent_metadata") or {}
+                    verified, status_error = authenticated_command_payload(
+                        data, data.get("from"), metadata.get("address")
+                    )
+                    if status_error is None:
+                        requester = data.get("from")
+                        sid = verified.get("session_id")
+
+                active = registry.get(sid) if requester and sid else None
+                owner = getattr(active, "owner", None) if active else None
+                status = active.status if active and owner == requester else "not_found"
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
             elif msg_type == "ONBOARD_SUBMIT":
@@ -105,9 +165,20 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         await send_msg({"type": "ERROR", "message": "prompt required"})
                     else:
                         rid = str(uuid.uuid4())
-                        existing.io.push_runtime_input({"type": "RUNTIME_INPUT", "id": rid, "prompt": prompt})
-                        console.print(f"[yellow]↳ RUNTIME_INPUT[/yellow] session={sid[:8]}... prompt={prompt[:50]}...")
-                        await send_msg({"type": "RUNTIME_INPUT_ACK", "session_id": sid, "id": rid})
+                        accepted = existing.io.push_runtime_input({
+                            "type": "RUNTIME_INPUT", "id": rid, "prompt": prompt,
+                        })
+                        if accepted is not False:
+                            console.print(f"[yellow]↳ RUNTIME_INPUT[/yellow] session={sid[:8]}... prompt={prompt[:50]}...")
+                            await send_msg({"type": "RUNTIME_INPUT_ACK", "session_id": sid, "id": rid})
+                        else:
+                            await send_msg({
+                                "type": "ERROR",
+                                "code": "RUNTIME_INPUT_REJECTED",
+                                "message": "running turn is not accepting runtime input; retry after OUTPUT",
+                                "session_id": sid,
+                                "retryable": True,
+                            })
                 else:
                     result = await start_agent(data, send_msg, conn, route_handlers, storage, registry)
                     if result:

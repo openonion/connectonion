@@ -101,6 +101,28 @@ class TestWebSocketIO:
         assert not thread.is_alive()
         assert result_holder[0] == {"approved": True}
 
+    def test_runtime_input_completion_boundary_is_atomic(self):
+        """A message is either accepted for this turn or explicitly rejected."""
+        io = WebSocketIO()
+
+        # Agents without the runtime_input plugin never open the window.
+        assert io.push_runtime_input({'id': 'disabled', 'prompt': 'zero'}) is False
+        io.open_runtime_inputs()
+        assert io.push_runtime_input({'id': 'first', 'prompt': 'one'}) is True
+        assert io.finish_runtime_inputs() == [
+            {'id': 'first', 'prompt': 'one'}
+        ]
+
+        # Pending work kept the turn open. Once an empty final check seals it,
+        # no later caller can receive a false-positive acknowledgement.
+        assert io.push_runtime_input({'id': 'second', 'prompt': 'two'}) is True
+        assert io.finish_runtime_inputs() == [
+            {'id': 'second', 'prompt': 'two'}
+        ]
+        assert io.finish_runtime_inputs() == []
+        assert io.push_runtime_input({'id': 'too-late', 'prompt': 'three'}) is False
+        assert io.pop_runtime_inputs() == []
+
 
 class TestReceiveAll:
     """Test receive_all() non-blocking message retrieval."""

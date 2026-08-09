@@ -1,10 +1,16 @@
 """
-Purpose: AI coding agent CLI command
+Purpose: AI coding agent CLI command with concise provider-failure reporting
 LLM-Note:
   Dependencies: imports from [cli/co_ai/main.py, cli/co_ai/agent.py] | imported by [cli/main.py] | no direct tests
   Data flow: CLI args → start_server() or agent.input() for one-shot
   Integration: exposes handle_ai() | called from main.py as 'co ai' command
+  Errors: known LLM provider failures print one actionable message and exit 1; programmer errors still propagate with their traceback
 """
+
+import typer
+from rich.console import Console
+
+console = Console()
 
 
 def handle_ai(
@@ -38,7 +44,12 @@ def handle_ai(
     )
 
     if prompt:
-        result = agent.input(prompt)
+        from ...core.exceptions import LLMProviderError
+        try:
+            result = agent.input(prompt)
+        except LLMProviderError as exc:
+            console.print(f"\n[red]✗ Model request failed:[/red] {exc}\n")
+            raise typer.Exit(1) from None
         # Print the agent's response for one-shot mode
         print("\n" + result)
     else:

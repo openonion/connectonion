@@ -1,9 +1,9 @@
 """
 Purpose: Authenticate with OpenOnion backend using Ed25519 signature-based authentication to obtain JWT for managed keys
 LLM-Note:
-  Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [no direct test file]
+  Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls the configured backend /api/v1/auth | tested by [no direct test file]
   Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves to ~/.co/keys.env as OPENONION_API_KEY → optionally saves to project .env if save_to_project=True → displays balance and email status → returns success bool
-  State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST request to oo.openonion.ai | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
+  State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST requests to the configured backend | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
   Integration: exposes handle_auth() for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
   Performance: network call to backend (2-5s) | signature generation is fast (<10ms) | file I/O for .env and keys.env | retries on network errors (up to 3 attempts with exponential backoff)
   Errors: fails if ~/.co/keys/ missing (no keypair) | fails if backend unreachable (network error) | fails if signature invalid (backend 401) | fails if timestamp expired (5min window) | prints error messages to console and returns False | backend 500 errors bubble up with error details
@@ -19,12 +19,14 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
+from ...backend import backend_url
 from dotenv import load_dotenv
 
 from ... import address
 from .project_cmd_lib import load_api_key, upsert_env
 
 console = Console()
+OAUTH_REQUEST_TIMEOUT_SECONDS = 15
 
 
 def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False) -> bool:
@@ -52,7 +54,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
     signature = address.sign(addr_data, message.encode()).hex()
 
     # Call the new unified auth endpoint
-    auth_url = "https://oo.openonion.ai/api/v1/auth"
+    auth_url = f"{backend_url()}/api/v1/auth"
 
     try:
         response = requests.post(auth_url, json={
@@ -241,17 +243,32 @@ def handle_google_auth():
         console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
         return
 
-    api_url = "https://oo.openonion.ai/api/v1/oauth"
+    api_url = f"{backend_url()}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
-    # Clear any existing connection first - this ensures we wait for NEW OAuth to complete
-    # (otherwise /google/status returns connected=true immediately from old credentials)
-    requests.delete(f"{api_url}/google/revoke", headers=headers)
+    # Keep the existing refresh token alive while re-authenticating. Deleting it
+    # here breaks deployed agents immediately. Remember the old expiry instead,
+    # then wait until the callback writes a newer credential row.
+    previous_expiry = None
+    previously_connected = False
+    previous_status = requests.get(
+        f"{api_url}/google/status",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
+    if previous_status.status_code == 200:
+        previous = previous_status.json()
+        previously_connected = bool(previous.get("connected"))
+        previous_expiry = previous.get("expires_at")
 
     # Get OAuth URL
     console.print("🔑 Initializing Google OAuth...", style="cyan")
 
-    response = requests.get(f"{api_url}/google/init", headers=headers)
+    response = requests.get(
+        f"{api_url}/google/init",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if response.status_code != 200:
         console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
         return
@@ -272,10 +289,16 @@ def handle_google_auth():
     for attempt in range(max_attempts):
         time.sleep(5)
 
-        status_response = requests.get(f"{api_url}/google/status", headers=headers)
+        status_response = requests.get(
+            f"{api_url}/google/status",
+            headers=headers,
+            timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+        )
         if status_response.status_code == 200:
             status = status_response.json()
-            if status.get('connected'):
+            if status.get('connected') and (
+                not previously_connected or status.get('expires_at') != previous_expiry
+            ):
                 console.print("✓ Authorization successful!", style="green")
                 break
     else:
@@ -284,7 +307,11 @@ def handle_google_auth():
         return
 
     # Get credentials
-    creds_response = requests.get(f"{api_url}/google/credentials", headers=headers)
+    creds_response = requests.get(
+        f"{api_url}/google/credentials",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if creds_response.status_code != 200:
         console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
         return
@@ -335,16 +362,24 @@ def handle_microsoft_auth():
         console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
         return
 
-    api_url = "https://oo.openonion.ai/api/v1/oauth"
+    api_url = f"{backend_url()}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
     # Clear any existing connection first
-    requests.delete(f"{api_url}/microsoft/revoke", headers=headers)
+    requests.delete(
+        f"{api_url}/microsoft/revoke",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
 
     # Get OAuth URL
     console.print("🔑 Initializing Microsoft OAuth...", style="cyan")
 
-    response = requests.get(f"{api_url}/microsoft/init", headers=headers)
+    response = requests.get(
+        f"{api_url}/microsoft/init",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if response.status_code != 200:
         console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
         return
@@ -365,7 +400,11 @@ def handle_microsoft_auth():
     for attempt in range(max_attempts):
         time.sleep(5)
 
-        status_response = requests.get(f"{api_url}/microsoft/status", headers=headers)
+        status_response = requests.get(
+            f"{api_url}/microsoft/status",
+            headers=headers,
+            timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+        )
         if status_response.status_code == 200:
             status = status_response.json()
             if status.get('connected'):
@@ -377,7 +416,11 @@ def handle_microsoft_auth():
         return
 
     # Get credentials
-    creds_response = requests.get(f"{api_url}/microsoft/credentials", headers=headers)
+    creds_response = requests.get(
+        f"{api_url}/microsoft/credentials",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if creds_response.status_code != 200:
         console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
         return
@@ -404,4 +447,3 @@ def handle_microsoft_auth():
     console.print(f"\n📧 You can now use Microsoft tools in your agents:")
     console.print(f"   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
     console.print(f"   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
-

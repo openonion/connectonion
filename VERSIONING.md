@@ -38,7 +38,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.5.13
+## Current Version: 1.5.19
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -62,6 +62,13 @@ patch releases; the minor is the statement that it no longer needs to be.
 - 1.5.8 (**paid onboarding could not succeed, and failed open when it could not run** — the two halves of the same gate; a token that names another account is refreshed rather than reused; the deploy stamp follows what was installed rather than what was asked for; and the pin test asserts the real version instead of one it hardcoded)
 - 1.5.9 (**Home becomes a control panel**: the page says what the agent has been doing, shows its address and trust, and is the starter itself rather than a copy that drifts from it; **an agent keeps its own schedule** in `.co/schedule.yaml`, run by the host every minute; and `<co-table>` is documented for agents that write their own Home)
 - 1.5.10 (**a schedule that will never fire says so** — a hand-written file reaches production, and a dropped entry is otherwise indistinguishable from one that is not due yet; Recent stops saying the same sentence three times. Released as 1.5.10 rather than the 1.6.0 that was prepared: see the rule at the top of this file)
+- 1.5.19 (**OAuth and status calls cannot wait forever on a broken network**: every Google and Microsoft authorization request, including polling and credential retrieval, now has a bounded timeout; `co status` likewise stops waiting after 15 seconds instead of hanging indefinitely. This patch is cut directly from the exercised 1.5.18 release and does not include the unreviewed 1.6.0 candidate.)
+  Published on [PyPI](https://pypi.org/project/connectonion/1.5.19/) and as [GitHub release `v1.5.19`](https://github.com/openonion/connectonion/releases/tag/v1.5.19); both carry the exact artifacts preserved by the release build.
+- 1.5.18 (**the wheel acceptance test installs the wheel it was given**: the build environment already contains ConnectOnion while it runs the artifact test, so pip must force-reinstall the candidate into the child virtualenv instead of treating the outer copy as satisfying it; this carries the same email retry fix through the corrected release gate)
+- 1.5.17 (**the artifact job uses package metadata that actually exists**: 1.5.16 referenced a nonexistent `requirements.txt`; this installs the declared `.[dev]` dependencies and builds the safe-send candidate successfully, then stops before PyPI when the wheel acceptance child environment incorrectly reuses that outer build copy)
+- 1.5.16 (**the email retry candidate passes the full cross-platform suite**: every send uses a traceable request id and tenant-scoped idempotency key so retrying an uncertain response cannot send the same message twice; publication stopped safely before PyPI because the artifact job referenced a `requirements.txt` that this project does not have)
+- 1.5.15 (**the release runner can exercise what it built**: the tag job installs pytest and the package's runtime dependencies before running the wheel acceptance suite; 1.5.14 stopped safely before PyPI when that runner dependency was missing, so this carries the same email retry and security-hardening candidate through the repaired release path)
+- 1.5.14 (**safe retries for email and a security-hardening test release**: every send carries a traceable request id and a tenant-scoped idempotency key through Connect, oo-api and Resend, so retrying an uncertain response does not send a duplicate; provider failures return stable JSON instead of hiding behind an HTML/JSON parsing crash; relay profiles and remote control frames are authenticated more strictly; credentials, deploy control files and generated projects are handled more defensively; dependency security floors are raised; and the release workflow now tests, preserves and verifies the exact artifacts it publishes; its first automated publish attempt stopped before PyPI because the artifact job itself had not installed pytest)
 - 1.5.13 (**the Sent mailbox**: `co email sent` / `co email sent read <#>` and the `get_sent()` tool read back what the agent sent — recipient, status, provider message id, and the body — against oo-api's new /email/sent endpoints, closing the write-only asymmetry (#662) and making "did the server accept it?" answerable before a retry; `co syno login` probes past a candidate that answers 200 with an HTML page instead of dying on it (#736); and the relay imports websockets.exceptions explicitly, which websockets ≥ 14 no longer re-exports — the except that handles a dropped connection had been raising AttributeError at exactly that moment)
 - 1.5.12 (**a backend blip is reported, not raised**: `send_email` and `co init`/`co auth` no longer crash with a JSONDecodeError when the gateway answers 5xx with an HTML page — the tool returns `HTTP <status> (the reply was not JSON)` so the caller sees the real status (#628, reported in production against 1.5.11); model pricing corrections including co/gpt-5 and the model our own agent runs on, and /cost totals now cover what the cost covers; `co browser` provisions a browser when a warm daemon says none is installed, runs headless where there is no display, and `co browser status` stops paying a second per call and says whether a browser actually exists; `co sub sync` survives a real published agent and no longer deletes a directory it did not create; reading an agent's logs no longer needs the key that pays for its models (#670); first run on a HOME that does not exist no longer ends in a traceback; a schedule entry can run a command, not only a prompt)
 - 1.5.11 (**the dashboard stops claiming work succeeded when it does not know that**: `done` no longer covers a turn that failed, a failed entry says why, and an entry running right now says so; a turn that died with its process is not reported as running; a schedule entry does not start a second copy of itself while the first is still going; a relay reconnect no longer leaks a socket in CLOSE-WAIT; and the eval plugin stops billing a hardcoded provider)
@@ -100,9 +107,16 @@ When releasing a new version:
 - [ ] Create git tag: `git tag vX.Y.Z`
 - [ ] Push commits: `git push`
 - [ ] Push tag: `git push origin vX.Y.Z`
+- [ ] Remove artifacts from older releases: `rm -rf dist/`
 - [ ] Build package: `python -m build`
+- [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
-- [ ] Upload to PyPI: `twine upload dist/*`
+- [ ] Upload only the two artifacts just validated: `python -m twine upload dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
+
+Replace `X.Y.Z` with the version being released. Do not upload the whole dist
+directory with a wildcard: build does not remove older artifacts, so that can
+mix a previous release into the current upload. PyPI uploads are not an atomic
+transaction; one file can succeed before a stale or duplicate file fails.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to

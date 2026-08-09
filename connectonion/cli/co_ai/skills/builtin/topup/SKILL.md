@@ -1,14 +1,6 @@
 ---
 name: topup
 description: Check the OpenOnion balance and open the recharge page with the user's own key pre-filled. Reports the balance in plain money, says how long it lasts at $0.10/hour of browser time, and hands over a purchase link that needs no login — the key is already in it. If connectonion is not installed yet, install it first (install-connectonion). Use when the user says "top up", "add credit", "recharge", "check my balance", "how much do I have left", "充值", or a paid action failed because the balance is empty.
-tools:
-  - Bash(python *)
-  - Bash(python3 *)
-  - Bash(py *)
-  - Bash(co *)
-  - Bash(curl *)
-  - shell
-  - read_file
 ---
 
 # Top-up Skill
@@ -51,7 +43,8 @@ user. `/auth/me` returns `balance_usd` directly (credits minus what has been spe
 
 ```bash
 TOKEN=$(python3 -c "from connectonion.cli.commands.project_cmd_lib import load_api_key; print(load_api_key() or '')")
-curl -s https://oo.openonion.ai/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
+BACKEND=$(python3 -c "from connectonion.backend import backend_url; print(backend_url())")
+curl -s "$BACKEND/api/v1/auth/me" -H "Authorization: Bearer $TOKEN"
 ```
 
 Read `balance_usd` from the JSON. (Verified against production: `/auth/me` gives

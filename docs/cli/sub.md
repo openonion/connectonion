@@ -186,14 +186,18 @@ Each re-run re-fetches the profile, re-writes the mirrored bodies, and re-runs t
 
 A lazy-check mode that only pulls bodies when the relay reports a newer version is the planned v2 — it needs a `profile-head` endpoint on the relay first. The CLI surface won't change.
 
-## v1 limitations
+## Verification and remaining limitation
 
-Two known gaps, both upstream of the CLI:
+Before writing, `co sub sync` fetches every public skill body, reconstructs the
+publisher's complete profile, and verifies its Ed25519 `profile-v1` signature
+against the 0x address you pinned. A relay-modified alias, skill list, body, or
+signature is refused. Legacy unsigned profiles remain visible in discovery but
+cannot be installed; their publisher must re-announce with ConnectOnion 1.6.0.
 
-1. **No signature verification.** The relay strips `signer` and `signature` from profile responses, so the client trusts the relay's word on what the publisher published. When the relay exposes the signature, `co sub` will verify locally before writing anything to disk. (Tracked.)
-2. **No lazy version check.** Every `co sub` re-pulls the full profile + every body even if nothing changed. When the relay grows a `profile-head` endpoint, `co sub` will diff versions and only pull what's stale. The CLI surface won't change.
+The remaining v1 limitation is **no lazy version check**. Every `co sub` pulls
+the full profile and every public body even if nothing changed. A future
+`profile-head` endpoint can make that incremental without changing the CLI.
 
-Both can land without changing the CLI surface — only the internals get smarter.
 
 ## Files touched
 

@@ -60,7 +60,8 @@ class TestGetService:
         "GOOGLE_SCOPES": "calendar",
         "GOOGLE_ACCESS_TOKEN": "test_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh",
-        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+        "OPENONION_API_KEY": "api-key",
     })
     @patch('connectonion.useful_tools.google_calendar.build')
     def test_get_service_creates_service(self, mock_build):
@@ -70,6 +71,7 @@ class TestGetService:
         mock_build.return_value = mock_service
 
         calendar = GoogleCalendar()
+        calendar._refresh_via_backend = Mock(return_value="fresh_token")
         service = calendar._get_service()
 
         assert service == mock_service
@@ -79,7 +81,8 @@ class TestGetService:
         "GOOGLE_SCOPES": "calendar",
         "GOOGLE_ACCESS_TOKEN": "test_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh",
-        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+        "OPENONION_API_KEY": "api-key",
     })
     @patch('connectonion.useful_tools.google_calendar.build')
     def test_get_service_caches_service(self, mock_build):
@@ -89,6 +92,7 @@ class TestGetService:
         mock_build.return_value = mock_service
 
         calendar = GoogleCalendar()
+        calendar._refresh_via_backend = Mock(return_value="fresh_token")
         service1 = calendar._get_service()
         service2 = calendar._get_service()
 
@@ -104,7 +108,69 @@ class TestGetService:
 
         with pytest.raises(ValueError) as exc_info:
             calendar._get_service()
-        assert "Google OAuth credentials not found" in str(exc_info.value)
+        assert "OPENONION_API_KEY not found" in str(exc_info.value)
+
+    @patch.dict(os.environ, {
+        "GOOGLE_SCOPES": "calendar",
+        "OPENONION_API_KEY": "api-key",
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+    }, clear=True)
+    @patch('connectonion.useful_tools.google_calendar.build')
+    def test_calendar_can_refresh_a_cached_service_after_401(
+        self, mock_build
+    ):
+        from connectonion.useful_tools.google_calendar import GoogleCalendar
+
+        tokens = iter(["initial", "after-401"])
+        calendar = GoogleCalendar()
+        calendar._refresh_via_backend = Mock(side_effect=lambda _rt: next(tokens))
+        calendar._get_service()
+        credentials = mock_build.call_args.kwargs["credentials"]
+
+        credentials.refresh(None)
+
+        assert credentials.token == "after-401"
+        assert credentials.expiry.tzinfo is None
+
+    def test_calendar_backend_refresh_uses_server_token_and_persists_rotation(
+        self, monkeypatch, tmp_path
+    ):
+        from connectonion.useful_tools.google_calendar import GoogleCalendar
+
+        monkeypatch.setenv("OPENONION_API_KEY", "api-key")
+        monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "access_token": "fresh-access",
+            "refresh_token": "rotated-refresh",
+            "expires_at": "2026-08-08T12:00:00+00:00",
+        }
+
+        with patch("httpx.post", return_value=response) as post:
+            token = GoogleCalendar.__new__(GoogleCalendar)._refresh_via_backend(
+                "stale-local-token"
+            )
+
+        assert token == "fresh-access"
+        assert "json" not in post.call_args.kwargs
+        assert post.call_args.kwargs["timeout"] == 15.0
+        assert os.environ["GOOGLE_REFRESH_TOKEN"] == "rotated-refresh"
+        saved = (tmp_path / "keys.env").read_text()
+        assert "GOOGLE_REFRESH_TOKEN=rotated-refresh" in saved
+
+    def test_calendar_backend_error_does_not_leak_provider_body(self, monkeypatch):
+        from connectonion.useful_tools.google_calendar import GoogleCalendar
+
+        monkeypatch.setenv("OPENONION_API_KEY", "api-key")
+        response = Mock(status_code=502, text="provider-secret-debug-page")
+        response.json.side_effect = ValueError("not json")
+
+        with patch("httpx.post", return_value=response):
+            with pytest.raises(ValueError) as error:
+                GoogleCalendar.__new__(GoogleCalendar)._refresh_via_backend(None)
+
+        assert "provider-secret" not in str(error.value)
+        assert str(error.value) == "Failed to refresh Google authorization via backend"
 
 
 class TestListEvents:

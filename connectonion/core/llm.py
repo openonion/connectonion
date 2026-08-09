@@ -188,6 +188,7 @@ class ToolCall:
 
 # Import TokenUsage from usage module
 from .usage import TokenUsage, calculate_cost
+from ..backend import backend_url
 from .exceptions import (
     InsufficientCreditsError,
     LLMAuthenticationError,
@@ -1065,11 +1066,8 @@ class OpenOnionLLM(LLM):
         # Strip co/ prefix - it's only for client-side routing
         self.model = model.removeprefix("co/")
 
-        # Determine base URL for OpenAI-compatible endpoint
-        if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            self.base_url = "http://localhost:8000/v1"
-        else:
-            self.base_url = "https://oo.openonion.ai/v1"
+        # All managed services share the same selected backend (#733).
+        self.base_url = f"{backend_url()}/v1"
 
         # Use OpenAI client with OpenOnion endpoint.
         # SDK default connect timeout is 5s with 2 retries; one transient network
@@ -1182,6 +1180,12 @@ class OpenOnionLLM(LLM):
                 # 403 can mean other things, and guessing from the status alone
                 # would tell a suspended account to go buy credits.
                 raise PaidModelRequiredError(e) from e
+            elif e.status_code == 401:
+                # Managed-provider credentials live on oo-api, not on the
+                # caller's machine. Still use the shared provider-error family
+                # so library and CLI callers can handle this without depending
+                # on an OpenAI-compatible transport implementation.
+                raise LLMAuthenticationError(e, model=f"co/{self.model}") from e
             logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
             raise
         except (openai.APITimeoutError, openai.APIConnectionError) as e:

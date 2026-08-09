@@ -26,12 +26,12 @@ import websockets
 import websockets.exceptions
 
 
-async def connect(relay_url: str = "wss://oo.openonion.ai"):
+async def connect(relay_url: str | None = None):
     """
     Connect to relay's announce endpoint.
 
     Args:
-        relay_url: Relay server base URL (default: production relay)
+        relay_url: Relay server base URL (default: the configured backend)
 
     Returns:
         WebSocket connection object
@@ -40,6 +40,9 @@ async def connect(relay_url: str = "wss://oo.openonion.ai"):
         >>> ws = await connect()
         >>> # Now use ws for sending/receiving
     """
+    if relay_url is None:
+        from ..backend import backend_ws_url
+        relay_url = backend_ws_url()
     ws_url = f"{relay_url.rstrip('/')}/ws/announce"
     # ping_interval=None: Cloudflare drops WS PING frames; ANNOUNCE heartbeat
     # serves as keep-alive instead. See docs/network/protocol/agent-relay-protocol.md.
@@ -301,7 +304,8 @@ async def serve_loop(
             # Stay in the loop.
             if addr_data:
                 fresh_announce = announce_module.create_announce_message(
-                    addr_data, summary, endpoints=endpoints, relay=relay_url
+                    addr_data, summary, endpoints=endpoints, relay=relay_url,
+                    profile=announce_message.get("profile"),
                 )
                 await send_announce(websocket, fresh_announce)
                 if heartbeat_is_worth_printing():

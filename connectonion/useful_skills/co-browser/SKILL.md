@@ -1,18 +1,6 @@
 ---
 name: co-browser
 description: Drive one persistent, logged-in browser from the shell with `co browser`. Use when the user asks to open a page, log into a site, scrape/extract page content, fill forms, upload files, take screenshots, or automate any browser task — solo or with multiple agents sharing the browser.
-tools:
-  - Bash(co browser *)
-  - Bash(CO_WHO=*)
-  - Bash(export CO_WHO=*)
-  - Bash(timeout *)
-  - Bash(grep *)
-  - Bash(sed *)
-  - Bash(tail *)
-  - Bash(sort *)
-  - Bash(sleep *)
-  - Bash(pkill *)
-  - read_file
 ---
 
 # co browser Skill

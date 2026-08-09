@@ -107,6 +107,25 @@ class TestHostRelayKeyManagement:
 class TestHostRelayConnection:
     """Test relay connection handling in host()."""
 
+    def test_documented_host_agent_path_does_not_warn_against_itself(
+        self, tmp_path, create_mock_agent
+    ):
+        agent = create_mock_agent()
+        mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
+
+        with patch.object(Path, 'cwd', return_value=tmp_path), \
+             patch('connectonion.address.load', return_value=mock_addr), \
+             patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())), \
+             patch.object(host_module, 'create_schedule_lifespan', return_value=(None, None)), \
+             patch('uvicorn.run'), \
+             patch.object(host_module, '_print_host_banner'), \
+             patch.object(host_module.Console, 'print') as console_print:
+            host_module.host(agent, port=8080)
+
+        warnings = "\n".join(str(call) for call in console_print.call_args_list)
+        assert "pass a factory" not in warnings
+        assert "Warning: host(agent)" not in warnings
+
     def test_profile_publishes_project_scoped_skills_only(self):
         """Published profile carries display fields only. Both project-tree skill
         categories are advertised (project = .co/skills, claude-project = .claude/skills);
@@ -158,6 +177,30 @@ class TestHostRelayConnection:
         })
 
         assert "balance_usd" not in profile
+
+    @pytest.mark.asyncio
+    async def test_balance_refresh_updates_http_and_relay_profile(self):
+        sample = Mock()
+        sample.llm.get_balance.return_value = 0.0005
+        metadata = {"balance_usd": 4.99}
+        profile = {"balance_usd": 4.99}
+
+        await host_module._refresh_published_balance(sample, metadata, profile)
+
+        assert metadata["balance_usd"] == 0.0005
+        assert profile["balance_usd"] == 0.0005
+
+    @pytest.mark.asyncio
+    async def test_balance_refresh_keeps_last_value_on_transient_failure(self):
+        sample = Mock()
+        sample.llm.get_balance.side_effect = RuntimeError("network down")
+        metadata = {"balance_usd": 4.99}
+        profile = {"balance_usd": 4.99}
+
+        await host_module._refresh_published_balance(sample, metadata, profile)
+
+        assert metadata["balance_usd"] == 4.99
+        assert profile["balance_usd"] == 4.99
 
     def test_host_passes_profile_to_relay_lifespan(self, tmp_path, create_mock_agent):
         """Hosted agents publish their profile with the relay ANNOUNCE."""

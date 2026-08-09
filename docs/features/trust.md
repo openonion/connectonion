@@ -670,7 +670,9 @@ Host provides these routes:
 
 ### Admin Routes (Requires Admin)
 
-Admin routes use **signed requests** (same as `/input`). The signer's address must be in the admins list.
+Admin routes use **route-bound signed requests**. The signed payload includes
+the actual HTTP `method` and `path`, so a signature made for one admin action
+cannot authorise another. The signer's address must be in the admins list.
 
 **Admins list = self address (default) + ~/.co/admins.txt**
 
@@ -694,10 +696,16 @@ Only the agent's own address (super admin) can manage the admins list.
 | `/superadmin/remove` | POST | Remove an admin |
 
 **Example admin request:**
+
+Build this body with `connectonion.network.host.auth.sign_request_body` so the
+canonical JSON and signature format stay consistent with the server.
+
 ```json
 {
     "payload": {
         "client_id": "0xclient123...",
+        "method": "POST",
+        "path": "/admin/trust/promote",
         "timestamp": 1699999999
     },
     "from": "0xAdminPublicKey",
@@ -710,6 +718,8 @@ Only the agent's own address (super admin) can manage the admins list.
 {
     "payload": {
         "admin_id": "0xnewadmin...",
+        "method": "POST",
+        "path": "/superadmin/add",
         "timestamp": 1699999999
     },
     "from": "0xSelfAddress",

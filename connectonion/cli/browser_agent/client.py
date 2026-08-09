@@ -2,7 +2,7 @@
 Purpose: Thin client for the browser daemon — wraps one command as a JSON envelope, sends it over the platform transport (POSIX Unix socket / Windows named pipe), and maps the reply to stdout/stderr/exit code.
 LLM-Note:
   Dependencies: imports from [socket, os, json, sys, time, pathlib, browser_agent.daemon (default_sock_path, _owner_alive), browser_agent.transport] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: send(line, headless, tab) → _caller() derives identity (CO_WHO, else claude-<CLAUDE_JOB_DIR>, else "") → build wire-v1 envelope json{v:1, caller, tab, line} (structured caller/tab means any character in a name is safe — nothing is spliced into the shlex-parsed command line) → _connect(default_sock_path()) or _spawn_daemon() → POSIX: send, half-close, read reply to EOF over raw AF_UNIX | Windows: send_bytes/recv_bytes one framed message each way over an HMAC-authenticated named pipe (transport.win_connect + load_or_create_authkey) → header "OK" prints payload to stdout & returns 0 | header "ERR"/"ERR <n>" prints payload to stderr & returns the int (1 default, else 2/3/4) → a pre-upgrade daemon's "unknown command: {…" reply is rewritten to a restart hint
+  Data flow: send(line, headless, tab) → derive caller label and public billing address → build wire-v1 JSON {v,caller,account,tab,line} (no API key crosses the transport) → connect/spawn daemon → print reply and mirror its exit code
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
   Performance: one connect + request/response | daemon spawn adds browser launch latency on first call
@@ -128,6 +128,20 @@ def _caller() -> str:
     return who.strip()
 
 
+def _caller_account() -> str:
+    """Public address of the account this invocation expects `do` to bill."""
+    from connectonion import address
+
+    try:
+        data = address.load(Path.cwd() / ".co") or address.load(Path.home() / ".co")
+    except Exception:
+        # Page-only commands and `status` must remain usable while diagnosing a
+        # broken local identity. An empty account keeps compatibility; the
+        # daemon still names its payer in status.
+        return ""
+    return str((data or {}).get("address") or "")
+
+
 # Verbs that never launch Chrome: no point provisioning a browser for them.
 PAGELESS_VERBS = {"status", "tab", "help", "use", "switch", "close", "closetab"}
 
@@ -171,10 +185,23 @@ def send(line: str, headless: bool = False, tab: str = None,
          _provisioned: bool = False) -> int:
     """Send one request; print the reply; return the process exit code.
 
-    Wire v1 is a JSON envelope {caller, tab, line} — caller identity and tab
-    targeting are structured fields, so any character in a name is safe (nothing
-    is spliced into the shlex-parsed command line)."""
-    request = json.dumps({"v": 1, "caller": _caller(), "tab": tab, "line": line})
+    Wire v1 is a JSON envelope {caller, account, tab, line}. `account` is the
+    public address only; an API key never crosses the daemon transport."""
+    account = _caller_account()
+    if line.split()[:1] == ["do"] and not account:
+        print(
+            "cannot determine which OpenOnion account should pay for `do`; "
+            "run `co status` or `co auth` first",
+            file=sys.stderr,
+        )
+        return 5
+    request = json.dumps({
+        "v": 1,
+        "caller": _caller(),
+        "account": account,
+        "tab": tab,
+        "line": line,
+    })
     sock_path = default_sock_path()
     try:
         conn = _connect(sock_path)

@@ -20,6 +20,7 @@ from typing import Dict, Optional
 
 import yaml
 from rich.console import Console
+from ...backend import backend_url
 from rich.table import Table
 
 console = Console()
@@ -309,7 +310,7 @@ def _fetch_billed_servers():
         return None
 
     try:
-        response = requests.get(f"{API_BASE}/api/v1/servers",
+        response = requests.get(f"{backend_url()}/api/v1/servers",
                                 headers={"Authorization": f"Bearer {api_key}"}, timeout=15)
     except requests.RequestException:
         return None
@@ -560,7 +561,7 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
     console.print(f"\n[dim]Destroying {name} …[/dim]")
     try:
         response = requests.delete(
-            f"{API_BASE}/api/v1/servers/{name}",
+            f"{backend_url()}/api/v1/servers/{name}",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=300,
         )
@@ -599,8 +600,6 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
         console.print("[dim]Nothing refunded — the term had already run out.[/dim]\n")
     return True
 
-
-API_BASE = "https://oo.openonion.ai"
 
 # Stricter than DEPLOY_NAME_PATTERN, which allows a leading digit: a server name
 # becomes the machine's own name, and those must start with a letter. Checked
@@ -658,7 +657,7 @@ def _fetch_pricing() -> Optional[dict]:
     import requests
 
     try:
-        response = requests.get(f"{API_BASE}/api/v1/servers/pricing", timeout=15)
+        response = requests.get(f"{backend_url()}/api/v1/servers/pricing", timeout=15)
     except requests.RequestException:
         return None
     return response.json() if response.status_code == 200 else None
@@ -847,7 +846,7 @@ def handle_server_fix_key(name: str) -> bool:
     console.print(f"\n[dim]Reinstalling your key on {name} …[/dim]")
     try:
         response = requests.post(
-            f"{API_BASE}/api/v1/servers/{name}/key",
+            f"{backend_url()}/api/v1/servers/{name}/key",
             headers={"Authorization": f"Bearer {api_key}"},
             json={"ssh_public_key": ssh_public_line},
             timeout=120,
@@ -905,7 +904,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
 
     pricing = _fetch_pricing()
     if not pricing:
-        console.print(f"\n[red]Could not reach {API_BASE} for pricing.[/red]")
+        console.print(f"\n[red]Could not reach {backend_url()} for pricing.[/red]")
         console.print("[dim]Nothing was created or charged.[/dim]\n")
         return False
 
@@ -923,7 +922,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
     console.print(f"\n[dim]Creating {name} … this takes about a minute.[/dim]")
     try:
         response = requests.post(
-            f"{API_BASE}/api/v1/servers",
+            f"{backend_url()}/api/v1/servers",
             headers={"Authorization": f"Bearer {api_key}"},
             json={"name": name, "ssh_public_key": ssh_public_line,
                   "machine_type": machine_type},
@@ -982,7 +981,7 @@ def _fetch_balance(api_key: str) -> Optional[float]:
     import requests
 
     try:
-        response = requests.get(f"{API_BASE}/api/v1/auth/me",
+        response = requests.get(f"{backend_url()}/api/v1/auth/me",
                                 headers={"Authorization": f"Bearer {api_key}"}, timeout=15)
         if response.status_code == 200:
             value = response.json().get("balance_usd")

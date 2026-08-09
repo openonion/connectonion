@@ -27,7 +27,35 @@ A skill whose body is withheld is normal and expected. It should be named and
 skipped, and the other skills in the bundle should still sync.
 """
 
+import json
+
 import pytest
+
+from connectonion import address
+
+
+KEYS = address.generate()
+ADDR = KEYS["address"]
+SHARED_BODY = "---\nname: shared\ndescription: A real one\n---\n\n# Body\n"
+
+
+def _envelope():
+    full = {
+        "alias": "mapper",
+        "skills": [
+            {"name": "withheld", "description": "No description"},
+            {"name": "shared", "description": "A real one", "body": SHARED_BODY},
+        ],
+    }
+    metadata = json.loads(json.dumps(full))
+    metadata["skills"][1].pop("body")
+    canonical = json.dumps(full, sort_keys=True, separators=(",", ":"))
+    return {
+        "profile": metadata,
+        "publisher": ADDR,
+        "signature": address.sign(KEYS, canonical.encode()).hex(),
+        "signature_version": "profile-v1",
+    }
 
 
 class _Response:
@@ -49,17 +77,13 @@ def relay(monkeypatch):
     from connectonion.cli.commands import sub_commands
 
     published = {
-        "shared": {"body": "---\nname: shared\ndescription: A real one\n---\n\n# Body\n"},
+        "shared": {"body": SHARED_BODY},
         "withheld": {"error": "skill body not published"},
     }
 
     def fake_get(url, **kwargs):
         if url.endswith("/profile"):
-            return _Response({"profile": {
-                "alias": "mapper",
-                "skills": [{"name": "withheld", "description": "No description"},
-                           {"name": "shared", "description": "A real one"}],
-            }})
+            return _Response(_envelope())
         name = url.rsplit("/", 1)[-1]
         return _Response(published.get(name, {"error": "not found"}))
 
@@ -82,8 +106,9 @@ class TestAWithheldBodyIsSkippedNotFatal:
     ):
         monkeypatch.setattr(relay, "SUBS_DIR", tmp_path / "subs")
 
-        profile = relay._fetch_profile("0xabc", "https://relay")
-        count = relay._mirror_bundle("0xabc", "mapper", profile, "https://relay")
+        envelope = relay._fetch_profile(ADDR, "https://relay")
+        profile, bodies = relay._verified_bundle(ADDR, envelope, "https://relay")
+        count = relay._mirror_bundle("mapper", profile, bodies)
 
         assert count == 1, "the readable skill did not survive its neighbour"
 
@@ -93,8 +118,9 @@ class TestAWithheldBodyIsSkippedNotFatal:
         """Writing {"error": ...} into a SKILL.md would be worse than skipping."""
         monkeypatch.setattr(relay, "SUBS_DIR", tmp_path / "subs")
 
-        profile = relay._fetch_profile("0xabc", "https://relay")
-        relay._mirror_bundle("0xabc", "mapper", profile, "https://relay")
+        envelope = relay._fetch_profile(ADDR, "https://relay")
+        profile, bodies = relay._verified_bundle(ADDR, envelope, "https://relay")
+        relay._mirror_bundle("mapper", profile, bodies)
 
         written = list((tmp_path / "subs").rglob("SKILL.md"))
         for path in written:
@@ -106,8 +132,9 @@ class TestTheOperatorIsTold:
     def test_the_skipped_skill_is_named(self, relay, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(relay, "SUBS_DIR", tmp_path / "subs")
 
-        profile = relay._fetch_profile("0xabc", "https://relay")
-        relay._mirror_bundle("0xabc", "mapper", profile, "https://relay")
+        envelope = relay._fetch_profile(ADDR, "https://relay")
+        profile, bodies = relay._verified_bundle(ADDR, envelope, "https://relay")
+        relay._mirror_bundle("mapper", profile, bodies)
 
         assert "withheld" in capsys.readouterr().out
 

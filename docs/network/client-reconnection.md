@@ -160,11 +160,15 @@ checkSessionStatus(sessionId)
   │
   └─ no active WS:
        Open temporary WS just for status check
-       Send SESSION_STATUS
+       Send signed SESSION_STATUS (type + session id + recipient + timestamp + nonce)
        Wait for response
        Close temporary WS
        Return status
 ```
+
+The host returns a real status only when the verified caller owns the active
+session. An unsigned, replayed, wrong-recipient, or foreign-owner probe receives
+the same `not_found` result as a missing session.
 
 ---
 

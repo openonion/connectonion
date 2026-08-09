@@ -57,10 +57,11 @@ class TestRemoteAgentInit:
         agent = RemoteAgent("0x123", relay_url="ws://localhost:8000")
         assert agent._relay_url == "ws://localhost:8000"
 
-    def test_init_default_relay_url(self):
-        """Test that __init__ uses default relay URL."""
+    def test_init_default_relay_url(self, monkeypatch):
+        """A direct RemoteAgent also follows the configured backend."""
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "http://127.0.0.1:9000/")
         agent = RemoteAgent("0x123")
-        assert agent._relay_url == "wss://oo.openonion.ai"
+        assert agent._relay_url == "ws://127.0.0.1:9000"
 
     def test_init_with_keys(self):
         """Test that __init__ stores signing keys."""
@@ -116,10 +117,11 @@ class TestConnectFactory:
         agent = connect("0x123abc")
         assert isinstance(agent, RemoteAgent)
 
-    def test_connect_with_default_relay(self):
-        """Test connect() uses default relay URL."""
+    def test_connect_with_default_relay(self, monkeypatch):
+        """The default relay follows the same runtime backend selection."""
+        monkeypatch.setenv("CONNECTONION_BACKEND_URL", "https://staging.example.test/")
         agent = connect("0x123abc")
-        assert agent._relay_url == "wss://oo.openonion.ai"
+        assert agent._relay_url == "wss://staging.example.test"
 
     def test_connect_with_custom_relay(self):
         """Test connect() accepts custom relay URL."""
