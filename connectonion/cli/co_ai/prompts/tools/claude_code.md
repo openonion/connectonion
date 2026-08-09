@@ -24,8 +24,8 @@ bounded subprocess and returns a resumable JSON result.
 
 ## Permission boundary
 
-The current co ai mode determines Claude Code's mode. Plan Mode is read-only.
-Safe Mode uses Claude's normal permission rules. Accept Edits permits in-scope
+The current co ai mode determines Claude Code's mode. Safe Mode uses Claude's
+normal permission rules. Accept Edits permits in-scope
 file edits while retaining Claude's rules for other actions. Explicit YOLO/ULW
 uses Claude Auto mode and its safety classifier. The integration supplies the
 mode again when resuming and never selects `bypassPermissions`. Auto mode is

@@ -19,7 +19,6 @@ claude_library = importlib.import_module("connectonion.useful_tools.claude_code"
 @pytest.mark.parametrize(
     ("mode", "permission_mode"),
     [
-        ("plan", "plan"),
         ("safe", "default"),
         ("accept_edits", "acceptEdits"),
         ("ulw", "auto"),

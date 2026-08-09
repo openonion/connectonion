@@ -156,9 +156,9 @@ Ask Claude Code to implement the parser in /path/to/repo and run the focused
 tests. Review its diff, then continue the same session for any fixes.
 ```
 
-The Claude Code CLI must be installed and authenticated. Plan Mode delegates
-read-only work, Safe Mode retains Claude's normal permission rules, Accept
-Edits allows in-workspace edits, and explicit YOLO/ULW uses Claude Auto mode.
+The Claude Code CLI must be installed and authenticated. Safe Mode retains
+Claude's normal permission rules, Accept Edits allows in-workspace edits, and
+explicit YOLO/ULW uses Claude Auto mode.
 The integration never selects `bypassPermissions`, and the selected mode is
 supplied again when a session resumes.
 
