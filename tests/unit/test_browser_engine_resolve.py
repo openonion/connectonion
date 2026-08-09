@@ -110,3 +110,27 @@ def test_resolve_always_produces_an_engine(attestation, path):
                                onion_path=lambda: path)
 
     assert chosen in (engine.ONION, engine.PATCHRIGHT)
+
+
+def test_the_paid_path_is_not_wired_up_yet():
+    """A deliberate tombstone. Delete it when the wiring lands.
+
+    Both production lookups raise, because connectonion has no licence
+    configuration to give them — so on a machine that has paid, has a cached
+    attestation and has the binary, `resolve()` still answers patchright.
+
+    That is stated as a passing test rather than left in a comment because the
+    defects this whole change exists to fix were both of this shape: code that
+    looked like it was doing the work. `/license/download` computed an
+    attestation and ignored it; `attest()` took a tier and never checked it.
+    An assertion that the gap exists is the only version of "we know" that
+    stops being true on its own when someone closes it.
+    """
+    for lookup in (engine._cached_attestation, engine._onion_path):
+        with pytest.raises(Exception) as raised:
+            lookup()
+        assert "511" in str(raised.value), "say where the open work is tracked"
+
+    # And the consequence, from the outside: the defaults cannot reach ONION.
+    chosen, _ = engine.resolve()
+    assert chosen == engine.PATCHRIGHT

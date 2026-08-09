@@ -96,10 +96,31 @@ def choose(attestation, onion_present):
     return ONION, None
 
 
-def _cached_attestation():
-    """The licence this machine already holds, or None. Never raises.
+# The paid engine is not reachable from here yet, and this names exactly what
+# is missing rather than leaving a stub that reads as finished.
+#
+# `onionwright.licence.license.load(path, server_key)` needs a cache path and
+# the pinned server key; `onionwright.launcher.resolve_binary(token,
+# server_key, pin)` needs an authenticated token and a Chromium revision.
+# connectonion holds none of those three today. Supplying them is the open
+# work in openonion/connectonion#511 — not something to fake here.
+#
+# Until then the defaults below raise, `resolve()` reads that as "no licence"
+# the same way it reads an offline machine, and everyone gets the free engine.
+# That is the right failure direction and the wrong end state, so
+# test_the_paid_path_is_not_wired_up_yet asserts it out loud: when the wiring
+# lands, that test fails and has to be deleted, which is the point of it.
+PAID_WIRING_PENDING = (
+    "onionwright is installed but connectonion has no licence configuration "
+    "yet (cache path, pinned server key, Chromium revision) — see "
+    "openonion/connectonion#511"
+)
 
-    The import is the point. `onionwright` is not a dependency of
+
+def _cached_attestation():
+    """The licence this machine already holds, or None.
+
+    The import is load-bearing. `onionwright` is not a dependency of
     connectonion, so on a default install this raises ImportError immediately
     and we are done -- no token read, no HTTP, no clock check. A free machine
     reaches the network exactly as often as it did before tiering existed,
@@ -110,19 +131,23 @@ def _cached_attestation():
     refresh belongs to the licence client's own schedule (it renews at the
     12-hour half-life of a 24-hour attestation), not to `co browser go_to`.
     """
-    from onionwright.licence import license as licence_cache  # noqa: F401
+    import onionwright.licence  # noqa: F401
 
-    raise NotImplementedError(
-        "reading the cached attestation is wired up with the onionwright "
-        "install path; see openonion/connectonion#511"
-    )
+    raise NotImplementedError(PAID_WIRING_PENDING)
 
 
 def _onion_path():
-    """Where the paid binary is, or None. Never raises."""
-    from onionwright import launcher
+    """Where the paid binary is, or None.
 
-    return getattr(launcher, "installed_path", lambda: None)()
+    Deliberately no `getattr(..., default)` probe. An earlier version guessed
+    at `launcher.installed_path`, which does not exist, and the default made
+    it answer "absent" on every machine including a paid one -- a silent
+    permanent downgrade that the tests could not see because they inject this
+    function. A name that is wrong should fail loudly enough to notice.
+    """
+    import onionwright.launcher  # noqa: F401
+
+    raise NotImplementedError(PAID_WIRING_PENDING)
 
 
 def resolve(load_attestation=_cached_attestation, onion_path=_onion_path,
