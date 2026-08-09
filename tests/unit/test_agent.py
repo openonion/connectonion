@@ -779,6 +779,8 @@ class TestGracefulInterrupt:
         import threading
         import time
 
+        from connectonion import after_iteration
+
         class InterruptIO:
             def __init__(self):
                 self.messages = []
@@ -817,7 +819,19 @@ class TestGracefulInterrupt:
 
         io = InterruptIO()
         llm = SlowFirstLLM()
-        agent = Agent(name="hard-stop", llm=llm, log=False, quiet=True)
+        iterations = []
+
+        @after_iteration
+        def record_iteration(agent):
+            iterations.append(agent.current_session['iteration'])
+
+        agent = Agent(
+            name="hard-stop",
+            llm=llm,
+            on_events=[record_iteration],
+            log=False,
+            quiet=True,
+        )
         agent.io = io
 
         def interrupt_when_started():
@@ -830,6 +844,7 @@ class TestGracefulInterrupt:
 
         assert result == "What would you like me to do?"
         assert time.monotonic() - before < 0.5
+        assert iterations == [1]
         assert [t['status'] for t in agent.current_session['trace'] if t['type'] == 'llm_result'] == ['interrupted']
         assert not any(m.get('content') == 'late' for m in agent.current_session['messages'])
 

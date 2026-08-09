@@ -447,17 +447,13 @@ class Agent:
             # Get LLM response
             response = self._get_llm_decision()
 
-            if response is None:
-                self.current_session.pop('stop_signal', None)
-                self._invoke_events('on_stop_signal')
-                return "What would you like me to do?"
-
-            if not response.tool_calls:
-                content = response.content or ""
-                self.current_session['messages'].append({"role": "assistant", "content": content})
-            else:
-                # Process tool calls
-                self._execute_and_record_tools(response.tool_calls)
+            if response is not None:
+                if not response.tool_calls:
+                    content = response.content or ""
+                    self.current_session['messages'].append({"role": "assistant", "content": content})
+                else:
+                    # Process tool calls
+                    self._execute_and_record_tools(response.tool_calls)
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
@@ -466,6 +462,9 @@ class Agent:
             if self.current_session.pop('stop_signal', None):
                 self._invoke_events('on_stop_signal')
                 return "What would you like me to do?"
+
+            if response is None:
+                raise RuntimeError("LLM returned no response without an interrupt")
 
             if not response.tool_calls:
                 if self.current_session.pop('_continue_iteration', False):
