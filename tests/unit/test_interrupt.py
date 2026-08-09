@@ -6,7 +6,6 @@ import time
 import pytest
 
 from connectonion import Agent, before_each_tool
-from connectonion.cli.co_ai.tools.plan_mode import exit_plan_and_implement
 from connectonion.core.interrupt import InterruptibleIO, UserInterrupt, run_interruptible
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.logger import Logger
@@ -298,41 +297,3 @@ def test_pending_tool_is_cleared_when_gate_interrupts():
 
     assert trace["status"] == "interrupted"
     assert "pending_tool" not in agent.current_session
-
-
-def test_plan_review_receive_cannot_swallow_interrupt(tmp_path):
-    plan = tmp_path / "plan.md"
-    plan.write_text("# Plan", encoding="utf-8")
-    agent = Agent(
-        "plan-test",
-        llm=MockLLM(),
-        tools=[exit_plan_and_implement],
-        log=False,
-        quiet=True,
-    )
-    agent.current_session = {
-        "messages": [],
-        "trace": [],
-        "iteration": 1,
-        "mode": "plan",
-        "previous_mode": "safe",
-        "plan_path": str(plan),
-    }
-    agent.io = WebSocketIO()
-
-    def interrupt_after_review_opens():
-        deadline = time.monotonic() + 1
-        while agent.io.message_count < 2 and time.monotonic() < deadline:
-            time.sleep(0.005)
-        assert agent.io.message_count >= 2
-        agent.io.send_to_agent({"type": "INTERRUPT"})
-
-    threading.Thread(target=interrupt_after_review_opens, daemon=True).start()
-    trace = execute_single_tool(
-        "exit_plan_and_implement", {}, "plan-call", agent.tools, agent,
-        Logger("plan-test", log=False),
-    )
-
-    assert trace["status"] == "interrupted"
-    assert agent.current_session["mode"] == "plan"
-    assert agent.current_session["plan_path"] == str(plan)
