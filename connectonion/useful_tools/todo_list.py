@@ -170,6 +170,28 @@ class TodoList:
         self._todos = []
         return f"Cleared {count} todos"
 
+    def _dump_state(self) -> List[dict]:
+        """Return the JSON-safe state used by co ai session snapshots."""
+        return [
+            {
+                "content": item.content,
+                "status": item.status,
+                "active_form": item.active_form,
+            }
+            for item in self._todos
+        ]
+
+    def _load_state(self, todos: List[dict]) -> None:
+        """Restore state produced by :meth:`_dump_state`."""
+        self._todos = [
+            TodoItem(
+                content=item["content"],
+                status=item["status"],
+                active_form=item["active_form"],
+            )
+            for item in todos
+        ]
+
     def _find(self, content: str) -> Optional[TodoItem]:
         """Find todo by content."""
         for item in self._todos:

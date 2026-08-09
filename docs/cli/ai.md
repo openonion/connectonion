@@ -33,6 +33,28 @@ co ai "Refactor agent.py to use the new event system"
 
 Runs the prompt, prints the result, and exits. No server started.
 
+For scripts and other coding agents, request one stable JSON object:
+
+```bash
+co ai "Fix the failing tests" --json
+# {"session_id":"...","result":"...","error":null}
+
+co ai "Now update the docs" --resume <session-id> --json
+```
+
+Human-oriented progress moves to stderr in JSON mode, so stdout is safe to
+parse. A successful run exits `0`; invalid sessions and execution failures put
+a concise message in `error` and exit non-zero. Resume never silently starts a
+new conversation when the requested session is missing or invalid. Resume must
+run from the same project directory, and concurrent turns for one session fail
+fast instead of overwriting each other.
+
+JSON mode omits `run_background`, `task_output`, and `kill_task` because their
+process handles only exist inside one CLI process and cannot be resumed safely.
+Use foreground shell commands when the next subprocess must retain their result.
+On Windows, snapshot files rely on the current user's profile-directory ACLs;
+POSIX systems additionally enforce `0700` directories and `0600` files.
+
 ## Options
 
 | Option | Short | Default | Description |
@@ -42,6 +64,8 @@ Runs the prompt, prints the result, and exits. No server started.
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
 | `--yolo` | | off | Skip tool approvals and keep working across turns |
 | `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
+| `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
+| `--resume` | | | With `--json`, continue a one-shot session by ID |
 
 ```bash
 co ai --port 9000
@@ -128,6 +152,7 @@ This is loaded every session, so the agent always follows your rules.
 
 - Logs saved to `~/.co/logs/oo.log`
 - Eval sessions saved to `~/.co/evals/`
+- Resumable one-shot sessions saved privately under `~/.co/ai/sessions/`
 - Same address across all `co ai` sessions
 
 ## Examples

@@ -186,6 +186,45 @@ def test_configured_yolo_activates_after_hosted_session_restore():
     assert agent.current_session['ulw_turns_used'] == 1
 
 
+def test_explicit_yolo_rearms_an_exhausted_restored_session():
+    llm = MockLLM(responses=[
+        LLMResponse(
+            content='done',
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+    agent = Agent(
+        name='resumed-yolo',
+        llm=llm,
+        plugins=[yolo],
+        log=False,
+        quiet=True,
+    )
+    enable_yolo(agent, turns=2)
+
+    agent.input(
+        'continue',
+        session={
+            'session_id': 'session-1',
+            'messages': [{'role': 'system', 'content': 'system'}],
+            'trace': [],
+            'turn': 1,
+            'mode': 'ulw',
+            'ulw_turns': 1,
+            'ulw_turns_used': 1,
+            'skip_tool_approval': True,
+        },
+    )
+
+    assert agent.current_session['mode'] == 'ulw'
+    assert agent.current_session['ulw_turns'] == 2
+    assert agent.current_session['ulw_turns_used'] == 2
+    assert agent.current_session['skip_tool_approval'] is True
+    assert llm.call_count == 2
+
+
 # ---------- ulw_keep_working ----------
 
 def test_keep_working_noop_when_mode_is_not_ulw():

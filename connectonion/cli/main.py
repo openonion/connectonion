@@ -355,6 +355,12 @@ def ai(
         min=1,
         help="Autonomous turns before a checkpoint (requires --yolo)",
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit one machine-readable JSON result"
+    ),
+    resume: Optional[str] = typer.Option(
+        None, "--resume", help="Resume a prior one-shot session"
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -365,6 +371,8 @@ def ai(
         max_iterations=max_iterations,
         yolo=yolo,
         yolo_turns=yolo_turns,
+        json_output=json_output,
+        resume=resume,
     )
 
 
