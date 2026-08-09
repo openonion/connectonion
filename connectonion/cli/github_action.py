@@ -16,10 +16,31 @@ from typing import Any, Callable, Iterator
 
 COMMENT_MARKER = "<!-- connectonion-pr-review -->"
 MAX_COMMENT_BYTES = 60_000
+MAX_GITHUB_RESPONSE_BYTES = 5_000_000
+MAX_REVIEW_EVIDENCE_BYTES = 300_000
+MAX_EVIDENCE_PAGES = 20
+MAX_EVIDENCE_ITEMS = 2_000
 
 
 class ActionError(RuntimeError):
     """A review cannot be run or reported safely."""
+
+
+class _EvidenceBudget:
+    """One shared byte budget for every response used as model evidence."""
+
+    def __init__(self, limit: int = MAX_REVIEW_EVIDENCE_BYTES) -> None:
+        self.remaining = limit
+
+    def read(self, response) -> bytes:
+        limit = min(self.remaining, MAX_GITHUB_RESPONSE_BYTES)
+        if limit <= 0:
+            raise ActionError("Pull request evidence exceeds the safe size limit.")
+        data = response.read(limit + 1)
+        if len(data) > limit:
+            raise ActionError("Pull request evidence exceeds the safe size limit.")
+        self.remaining -= len(data)
+        return data
 
 
 def resolve_pr_number(explicit: str | None, event_path: str | None) -> int:
@@ -69,12 +90,16 @@ def _create_review_agent(client: "GitHubClient", pr_number: int, model: str, max
     from ..useful_plugins.skills import skills
 
     evidence: str | None = None
+    evidence_delivered = False
 
     def read_pull_request() -> str:
         """Read the fixed pull request's metadata, discussion, checks, and complete diff."""
-        nonlocal evidence
+        nonlocal evidence, evidence_delivered
         if evidence is None:
             evidence = client.read_pull_request(pr_number)
+        if evidence_delivered:
+            return "Pull request evidence was already provided; use the prior tool result."
+        evidence_delivered = True
         return evidence
 
     return Agent(
@@ -146,7 +171,7 @@ def run_review(
         detail = str(error).strip() if error else "process exited unsuccessfully"
         detail = detail[:500]
         raise ActionError(f"co ai review failed: {detail}")
-    if not isinstance(result, str):
+    if not isinstance(result, str) or not result.strip():
         raise ActionError("co ai returned no review result.")
     session_id = envelope.get("session_id")
     if session_id is not None and not isinstance(session_id, str):
@@ -200,10 +225,23 @@ class GitHubClient:
         )
         return self.open_url(request, timeout=30)
 
-    def _request(self, method: str, path: str, payload: dict | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict | None = None,
+        budget: _EvidenceBudget | None = None,
+    ) -> Any:
         try:
             with self._open(method, path, payload) as response:
-                return json.load(response)
+                data = (
+                    budget.read(response)
+                    if budget is not None
+                    else response.read(MAX_GITHUB_RESPONSE_BYTES + 1)
+                )
+                if budget is None and len(data) > MAX_GITHUB_RESPONSE_BYTES:
+                    raise ActionError("GitHub response exceeds the safe size limit.")
+                return json.loads(data)
         except urllib.error.HTTPError as exc:
             raise ActionError(f"GitHub API request failed with HTTP {exc.code}.") from None
         except urllib.error.URLError as exc:
@@ -213,47 +251,68 @@ class GitHubClient:
         except (OSError, TimeoutError) as exc:
             raise ActionError("GitHub API response could not be read.") from exc
 
-    def _request_text(self, path: str, accept: str) -> str:
+    def _request_text(
+        self, path: str, accept: str, budget: _EvidenceBudget
+    ) -> str:
         try:
             with self._open("GET", path, accept=accept) as response:
-                return response.read().decode("utf-8")
+                return budget.read(response).decode("utf-8")
         except urllib.error.HTTPError as exc:
             raise ActionError(f"GitHub API request failed with HTTP {exc.code}.") from None
         except (urllib.error.URLError, OSError, TimeoutError, UnicodeDecodeError) as exc:
             raise ActionError("GitHub API response could not be read.") from exc
 
-    def _list_all(self, path: str) -> list[dict]:
+    def _list_all(self, path: str, budget: _EvidenceBudget) -> list[dict]:
         items = []
         page = 1
         while True:
             separator = "&" if "?" in path else "?"
-            batch = self._request("GET", f"{path}{separator}per_page=100&page={page}")
+            batch = self._request(
+                "GET",
+                f"{path}{separator}per_page=100&page={page}",
+                budget=budget,
+            )
             if not isinstance(batch, list):
                 raise ActionError("GitHub returned an invalid paginated response.")
             items.extend(item for item in batch if isinstance(item, dict))
+            if len(items) > MAX_EVIDENCE_ITEMS:
+                raise ActionError("Pull request evidence has too many items.")
             if len(batch) < 100:
                 return items
+            if page >= MAX_EVIDENCE_PAGES:
+                raise ActionError("Pull request evidence has too many pages.")
             page += 1
 
-    def _object_list_all(self, path: str, key: str) -> list[dict]:
+    def _object_list_all(
+        self, path: str, key: str, budget: _EvidenceBudget
+    ) -> list[dict]:
         """Read every page from an endpoint whose list is nested in an object."""
         items = []
         page = 1
         while True:
             separator = "&" if "?" in path else "?"
-            response = self._request("GET", f"{path}{separator}per_page=100&page={page}")
+            response = self._request(
+                "GET",
+                f"{path}{separator}per_page=100&page={page}",
+                budget=budget,
+            )
             if not isinstance(response, dict) or not isinstance(response.get(key), list):
                 raise ActionError("GitHub returned an invalid paginated response.")
             batch = response[key]
             items.extend(item for item in batch if isinstance(item, dict))
+            if len(items) > MAX_EVIDENCE_ITEMS:
+                raise ActionError("Pull request evidence has too many items.")
             if len(batch) < 100:
                 return items
+            if page >= MAX_EVIDENCE_PAGES:
+                raise ActionError("Pull request evidence has too many pages.")
             page += 1
 
     def read_pull_request(self, pr_number: int) -> str:
         """Return review evidence using GET-only endpoints and no model-controlled URL."""
         base = f"/repos/{self.repository}"
-        pull = self._request("GET", f"{base}/pulls/{pr_number}")
+        budget = _EvidenceBudget()
+        pull = self._request("GET", f"{base}/pulls/{pr_number}", budget=budget)
         if not isinstance(pull, dict):
             raise ActionError("GitHub returned an invalid pull request.")
         head = pull.get("head") or {}
@@ -261,13 +320,19 @@ class GitHubClient:
         if not isinstance(head_sha, str):
             raise ActionError("GitHub returned a pull request without a head SHA.")
 
-        comments = self._list_all(f"{base}/issues/{pr_number}/comments")
-        reviews = self._list_all(f"{base}/pulls/{pr_number}/reviews")
-        review_comments = self._list_all(f"{base}/pulls/{pr_number}/comments")
-        checks = self._object_list_all(f"{base}/commits/{head_sha}/check-runs", "check_runs")
-        statuses = self._list_all(f"{base}/commits/{head_sha}/statuses")
+        comments = self._list_all(f"{base}/issues/{pr_number}/comments", budget)
+        reviews = self._list_all(f"{base}/pulls/{pr_number}/reviews", budget)
+        review_comments = self._list_all(
+            f"{base}/pulls/{pr_number}/comments", budget
+        )
+        checks = self._object_list_all(
+            f"{base}/commits/{head_sha}/check-runs", "check_runs", budget
+        )
+        statuses = self._list_all(f"{base}/commits/{head_sha}/statuses", budget)
         diff = self._request_text(
-            f"{base}/pulls/{pr_number}", "application/vnd.github.v3.diff"
+            f"{base}/pulls/{pr_number}",
+            "application/vnd.github.v3.diff",
+            budget,
         )
 
         def ref_summary(value):
@@ -311,6 +376,8 @@ class GitHubClient:
         marked_comment = None
         page = 1
         while True:
+            if page > MAX_EVIDENCE_PAGES:
+                raise ActionError("Pull request comments have too many pages.")
             comments = self._request(
                 "GET",
                 f"/repos/{self.repository}/issues/{pr_number}/comments?per_page=100&page={page}",

@@ -55,8 +55,7 @@ jobs:
       - uses: openonion/connectonion@RELEASE_COMMIT_SHA
         with:
           pr-number: ${{ inputs.pr_number }}
-        env:
-          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
+          openonion-api-key: ${{ secrets.OPENONION_API_KEY }}
 ```
 
 Pin the action to the full commit SHA for the ConnectOnion release you audited.
@@ -72,6 +71,10 @@ discussion (including inline review comments), checks, commit statuses, and
 diff. Comment creation happens afterward in ordinary Python code; the model
 cannot choose its endpoint or HTTP method.
 
+Evidence is fetched once, delivered to the model once, and limited to a shared
+300 KB response budget with bounded pages and items. Oversized reviews fail
+without publishing a partial or misleading comment.
+
 The review reads GitHub data and existing check results. It does not check out
 or execute pull-request code. This is intentional: a model credential and an
 untrusted branch must not share an unrestricted runner. GitHub's own API limits
@@ -83,8 +86,10 @@ request branch. That event has access to base-repository secrets. Ordinary fork
 `GITHUB_TOKEN`. This Action's restricted reader avoids needing a secret-bearing
 checkout of the fork.
 
-Credentials are inherited as environment variables. The action never places a
-model key in its command line, outputs, or PR comment.
+The model credential is a required action input and is mapped to the provider
+environment only for the final review subprocess. Python/uv setup and the
+frozen dependency sync do not receive it. The action never places the key in
+its command line, outputs, or PR comment.
 
 Keep the per-PR `concurrency` group shown above. GitHub's issue-comment API has
 no atomic upsert operation; serializing reruns prevents two first runs from

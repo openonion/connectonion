@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+import connectonion.cli.github_action as action_module
 from connectonion.cli.github_action import (
     COMMENT_MARKER,
     ActionError,
@@ -101,7 +102,9 @@ def test_review_resolves_the_canonical_skill_with_one_read_only_tool():
         assert agent.tools.names() == ["read_pull_request"]
         reader = agent.tools.get("read_pull_request")
         assert reader() == "evidence for 12"
-        assert reader() == "evidence for 12"
+        assert reader() == (
+            "Pull request evidence was already provided; use the prior tool result."
+        )
         agent.current_session = {
             "messages": [{"role": "user", "content": prompt}],
             "trace": [],
@@ -128,6 +131,7 @@ def test_review_resolves_the_canonical_skill_with_one_read_only_tool():
         ("progress, not json", 0, "JSON result envelope"),
         ('{"session_id":null,"result":null,"error":"provider down"}', 1, "provider down"),
         ('{"session_id":null,"result":null,"error":null}', 0, "no review result"),
+        ('{"session_id":null,"result":"   ","error":null}', 0, "no review result"),
     ],
 )
 def test_review_fails_closed(stdout, returncode, message):
@@ -292,3 +296,60 @@ def test_comment_search_paginates_before_creating():
 
     assert len(pages) == 2
     assert "page=2" in pages[1]
+
+
+def test_evidence_response_fails_closed_above_the_byte_limit(monkeypatch):
+    monkeypatch.setattr(action_module, "MAX_GITHUB_RESPONSE_BYTES", 16)
+    client = GitHubClient(
+        "token",
+        "owner/repo",
+        open_url=lambda *_args, **_kwargs: Response(b"x" * 17),
+    )
+
+    with pytest.raises(ActionError, match="safe size limit"):
+        client.read_pull_request(8)
+
+
+def test_evidence_responses_share_one_total_byte_budget():
+    client = GitHubClient(
+        "token",
+        "owner/repo",
+        open_url=lambda *_args, **_kwargs: Response(b"[]"),
+    )
+    budget = action_module._EvidenceBudget(limit=3)
+
+    assert client._request("GET", "/one", budget=budget) == []
+    with pytest.raises(ActionError, match="safe size limit"):
+        client._request("GET", "/two", budget=budget)
+
+
+def test_evidence_pagination_fails_closed_at_the_page_limit(monkeypatch):
+    monkeypatch.setattr(action_module, "MAX_EVIDENCE_PAGES", 2)
+    batch = [{"id": number} for number in range(100)]
+    client = GitHubClient(
+        "token",
+        "owner/repo",
+        open_url=lambda *_args, **_kwargs: Response(json.dumps(batch).encode()),
+    )
+
+    with pytest.raises(ActionError, match="too many pages"):
+        client._list_all("/items", action_module._EvidenceBudget())
+
+
+def test_marker_search_fails_closed_instead_of_creating_after_page_cap(monkeypatch):
+    monkeypatch.setattr(action_module, "MAX_EVIDENCE_PAGES", 2)
+    requests = []
+    comments = [
+        {"id": number, "body": "human", "user": {"login": "person"}}
+        for number in range(100)
+    ]
+
+    def open_url(request, timeout):
+        requests.append(request)
+        return Response(json.dumps(comments).encode())
+
+    client = GitHubClient("token", "owner/repo", open_url=open_url)
+
+    with pytest.raises(ActionError, match="comments have too many pages"):
+        client.upsert_review_comment(8, "review")
+    assert [request.method for request in requests] == ["GET", "GET"]

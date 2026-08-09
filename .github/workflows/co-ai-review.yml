@@ -42,5 +42,4 @@ jobs:
         with:
           pr-number: ${{ inputs.pr_number }}
           model: ${{ inputs.model }}
-        env:
-          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
+          openonion-api-key: ${{ secrets.OPENONION_API_KEY }}
