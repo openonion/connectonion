@@ -31,6 +31,7 @@ from ... import address
 from .project_cmd_lib import load_api_key, upsert_env
 
 console = Console()
+OAUTH_REQUEST_TIMEOUT_SECONDS = 15
 
 
 def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False) -> bool:
@@ -255,7 +256,11 @@ def handle_google_auth():
     # then wait until the callback writes a newer credential row.
     previous_expiry = None
     previously_connected = False
-    previous_status = requests.get(f"{api_url}/google/status", headers=headers)
+    previous_status = requests.get(
+        f"{api_url}/google/status",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if previous_status.status_code == 200:
         previous = previous_status.json()
         previously_connected = bool(previous.get("connected"))
@@ -264,7 +269,11 @@ def handle_google_auth():
     # Get OAuth URL
     console.print("🔑 Initializing Google OAuth...", style="cyan")
 
-    response = requests.get(f"{api_url}/google/init", headers=headers)
+    response = requests.get(
+        f"{api_url}/google/init",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if response.status_code != 200:
         console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
         return
@@ -285,7 +294,11 @@ def handle_google_auth():
     for attempt in range(max_attempts):
         time.sleep(5)
 
-        status_response = requests.get(f"{api_url}/google/status", headers=headers)
+        status_response = requests.get(
+            f"{api_url}/google/status",
+            headers=headers,
+            timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+        )
         if status_response.status_code == 200:
             status = status_response.json()
             if status.get('connected') and (
@@ -299,7 +312,11 @@ def handle_google_auth():
         return
 
     # Get credentials
-    creds_response = requests.get(f"{api_url}/google/credentials", headers=headers)
+    creds_response = requests.get(
+        f"{api_url}/google/credentials",
+        headers=headers,
+        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
+    )
     if creds_response.status_code != 200:
         console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
         return
@@ -436,6 +453,7 @@ def handle_microsoft_auth():
                 "handoff_public_key": bytes(handoff_private_key.public_key).hex(),
                 "handoff_url": callback_url,
             },
+            timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
         )
         if response.status_code != 200:
             console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")

@@ -455,7 +455,8 @@ def handle_status(reveal: bool = False):
             "public_key": public_key,
             "signature": signature,
             "message": message
-        }
+        },
+        timeout=15,
     )
 
     if response.status_code != 200:
