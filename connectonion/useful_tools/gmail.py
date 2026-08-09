@@ -374,13 +374,20 @@ class Gmail:
     def _extract_body(self, payload) -> str:
         """Extract body from email payload, preferring text/plain, falling back to stripped HTML."""
         import re
-        from html import unescape
+        from bs4 import BeautifulSoup
 
         def strip_html(html: str) -> str:
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r'<[^>]+>', '', html)
-            text = unescape(text)
+            # Parse the HTML rather than filtering tags with regular expressions.
+            # A regex filter is evaded by ordinary syntax variants such as
+            # ``<script >`` or ``<SCRIPT>`` (CodeQL py/bad-tag-filter), and this
+            # path handles untrusted email HTML. Mirror WebFetch.strip_tags(),
+            # the repository's established parser-based conversion.
+            soup = BeautifulSoup(html, 'html.parser')
+            for tag in soup(['script', 'style']):
+                tag.decompose()
+            # get_text decodes HTML entities and the separator keeps text from
+            # adjacent elements human-readable instead of being run together.
+            text = soup.get_text(separator=' ')
             return re.sub(r'\s+', ' ', text).strip()
 
         # Single part email

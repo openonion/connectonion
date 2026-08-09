@@ -1229,3 +1229,65 @@ class TestGmailIntegration:
         assert 'get_labels' in agent.tools
         assert 'get_all_contacts' in agent.tools
         assert 'update_contact' in agent.tools
+
+
+class TestExtractBodyHtml:
+    """Tests for _extract_body HTML-to-text conversion (issue #789).
+
+    The HTML fallback must parse the markup rather than filtering tags with
+    regular expressions, so ordinary syntax variants such as a spaced or
+    attributed <script> tag cannot smuggle script/style content into the text
+    handed to the agent (CodeQL py/bad-tag-filter)."""
+
+    @pytest.fixture
+    def gmail(self):
+        with patch.dict(os.environ, {
+            "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+            "GOOGLE_ACCESS_TOKEN": "test_token",
+            "GOOGLE_REFRESH_TOKEN": "test_refresh"
+        }):
+            from connectonion.useful_tools.gmail import Gmail
+            return Gmail()
+
+    @staticmethod
+    def _html_payload(html: str) -> dict:
+        import base64
+        return {
+            'mimeType': 'text/html',
+            'body': {'data': base64.urlsafe_b64encode(html.encode()).decode()},
+        }
+
+    @pytest.mark.parametrize("html", [
+        "<script>alert(1)</script><p>Visible</p>",           # plain
+        "<script >alert(1)</script ><p>Visible</p>",         # spaced tag
+        "<script type='text/javascript'>alert(1)</script><p>Visible</p>",  # attributed
+        "<SCRIPT>alert(1)</SCRIPT><p>Visible</p>",           # mixed case
+        "<style>.a{color:red}</style><p>Visible</p>",        # style
+        "<STYLE >.a{color:red}</STYLE><p>Visible</p>",       # spaced, mixed-case style
+    ])
+    def test_script_and_style_excluded_for_tag_variants(self, gmail, html):
+        result = gmail._extract_body(self._html_payload(html))
+        assert "Visible" in result
+        assert "alert" not in result
+        assert "color:red" not in result
+
+    def test_html_entities_are_decoded(self, gmail):
+        result = gmail._extract_body(self._html_payload("<p>Tom &amp; Jerry &lt;3</p>"))
+        assert result == "Tom & Jerry <3"
+
+    def test_adjacent_elements_are_separated(self, gmail):
+        result = gmail._extract_body(self._html_payload("<p>Hello</p><p>World</p>"))
+        assert "Hello" in result and "World" in result
+        assert "HelloWorld" not in result
+
+    def test_multipart_still_prefers_plain_text(self, gmail):
+        import base64
+        payload = {
+            'parts': [
+                {'mimeType': 'text/plain',
+                 'body': {'data': base64.urlsafe_b64encode(b'Plain wins').decode()}},
+                {'mimeType': 'text/html',
+                 'body': {'data': base64.urlsafe_b64encode(b'<script>x</script><p>HTML</p>').decode()}},
+            ]
+        }
+        assert gmail._extract_body(payload) == 'Plain wins'
