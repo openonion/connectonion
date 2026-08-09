@@ -117,7 +117,7 @@ def test_worker_exception_is_reraised_on_caller_thread():
         run_interruptible(fail, MailboxIO(), poll_seconds=0.01)
 
 
-def test_abandoned_agent_tool_cannot_mutate_agent_state_or_reach_next_mailbox():
+def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():
     started = threading.Event()
     release = threading.Event()
     finished = threading.Event()

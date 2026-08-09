@@ -288,8 +288,10 @@ def execute_single_tool(
                 for method in ('receive_interruptibly', 'receive_all_interruptibly', 'take_interrupt')
             ):
                 # Bind the worker to this turn's session and a revocable IO
-                # lease. Session and registry mutations are committed only when
-                # the invocation finishes; a late worker only owns snapshots.
+                # lease. Session and registry-membership mutations are committed
+                # only when the invocation finishes. Stateful tool instances and
+                # other objects captured by arbitrary Python remain shared and
+                # require cooperative cancellation for transactional semantics.
                 tool_io = InterruptibleIO(agent.io)
                 tool_agent = copy.copy(agent)
                 original_session = agent.current_session

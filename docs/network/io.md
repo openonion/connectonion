@@ -528,11 +528,13 @@ worker can consume the next turn's response.
 
 This is **abandonment, not thread termination**. Python cannot safely kill
 arbitrary tool code: an interrupted tool may continue running in a daemon
-thread and its external side effects may still finish. ConnectOnion discards
-the per-invocation session and tool-registry snapshots along with the late
-return value, and does not append it to messages or trace. Tool authors should
-therefore make destructive or externally visible actions idempotent and add
-their own cooperative cancellation when they need stronger guarantees.
+thread and its side effects may still finish. ConnectOnion discards the
+per-invocation session and tool-registry membership snapshots along with the
+late return value, and does not append it to messages or trace. Registered
+stateful tool instances remain shared so their bound methods stay valid; their
+mutations are not rolled back. Tool authors should therefore make destructive
+or stateful actions idempotent and add their own cooperative cancellation when
+they need stronger guarantees.
 
 The existing `stop_signal` lifecycle remains authoritative. A stopped LLM call
 adds no assistant message. A stopped multi-tool batch receives a result for the
