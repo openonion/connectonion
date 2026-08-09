@@ -149,19 +149,23 @@ $ co email name aaron --buy
 
 ### `co email upgrade <tier>` — Raise your sending quota
 
-The paid tiers (`plus`, `pro`) send from **your own domain** and lift the
-monthly quota, billed from your credits. A sending domain is **required**:
+The paid tiers (`plus`, `pro`) lift the monthly quota and are billed from your
+credits. An existing `@mail.openonion.ai` mailbox can keep its exact address;
+otherwise select the domain and alias offered by the tier:
 
 ```bash
-co email upgrade plus --domain mail.acme.com                  # plus, on your domain
+co email upgrade plus --keep-address                          # keep the current hosted address
+co email upgrade plus --domain steadmail.com --alias support  # plus, new hosted address
 co email upgrade pro  --domain mail.acme.com --alias support  # pro + a mailbox alias
 ```
 
 **Options**
-- `--domain, -d` — sending domain (**required** for plus/pro)
+- `--keep-address` — preserve the current `@mail.openonion.ai` address (plus only)
+- `--domain, -d` — sending domain (required unless `--keep-address` is used)
 - `--alias, -a` — mailbox alias, e.g. `support` → `support@mail.acme.com`
 
-Leave out the domain and the upgrade is rejected before anything is charged:
+Leave out both the domain and `--keep-address` and the upgrade is rejected
+before anything is charged:
 
 ```bash
 $ co email upgrade plus

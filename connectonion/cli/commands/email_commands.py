@@ -251,7 +251,12 @@ def handle_email_name(name: str, buy: bool = False):
     console.print(f"  Your address: [cyan]{data['email']}[/cyan]\n")
 
 
-def handle_email_upgrade(tier: str, domain: str = None, alias: str = None):
+def handle_email_upgrade(
+    tier: str,
+    domain: str = None,
+    alias: str = None,
+    keep_address: bool = False,
+):
     """Upgrade email tier (plus/pro), deducting the monthly price from credits."""
     token = load_api_key()
     if not token:
@@ -264,6 +269,8 @@ def handle_email_upgrade(tier: str, domain: str = None, alias: str = None):
         payload["domain"] = domain
     if alias:
         payload["alias"] = alias
+    if keep_address:
+        payload["keep_address"] = True
 
     r = requests.post(f"{backend_url()}/api/v1/email/upgrade", json=payload, headers=headers, timeout=15)
     if not r.ok:
