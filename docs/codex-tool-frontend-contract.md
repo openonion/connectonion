@@ -1,6 +1,6 @@
 # Codex tool ↔ frontend integration contract
 
-**TL;DR — the frontend (oo-chat) and the connectonion-ts SDK need NO changes.**
+**TL;DR — the frontend (oo-chat) and `@connectonion/react` need NO changes.**
 The backend `codex` tool converts Codex's steps into the events the SDK already
 renders. This note records the research behind that and the exact contract.
 
@@ -28,7 +28,8 @@ per-action approval.
 
 ## The frontend contract (why no frontend change is needed)
 
-The connectonion-ts SDK (`src/connect/chat-item-mapper.ts`) maps a **fixed set of
+The connection layer bundled in `@connectonion/react`
+(`connectonion-react/src/connect/chat-item-mapper.ts`) maps a **fixed set of
 server io events** to the `ChatItem`s oo-chat renders. The codex tool emits only
 events already in that vocabulary:
 

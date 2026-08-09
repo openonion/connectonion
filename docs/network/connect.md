@@ -396,8 +396,8 @@ Note: Relay /ws/input does not forward streaming events. Use direct host /ws for
 |------|---------|
 | `connectonion/network/connect.py` | Python client - RemoteAgent class |
 | `connectonion/network/relay.py` | Agent-side relay connection |
-| `connectonion-ts/src/connect.ts` | TypeScript client - same API |
-| `connectonion-ts/src/react/index.ts` | useAgentForHuman React hook |
+| `connectonion-react/src/connect/` | Browser TypeScript connection and protocol implementation |
+| `connectonion-react/src/use-agent-for-human.ts` | useAgentForHuman React hook |
 | `oo-api/relay/routes.py` | Relay server endpoints |
 
 ---
@@ -537,11 +537,11 @@ println(agent.ui)        // All events for rendering
 
 The [`@connectonion/react`](https://www.npmjs.com/package/@connectonion/react) package
 (repo: [openonion/connectonion-react](https://github.com/openonion/connectonion-react))
-exports a React hook with state management and localStorage persistence. It takes
-`connectonion` as a peer dependency:
+exports the React hooks and the browser connection layer with state management and
+localStorage persistence. React is its only peer dependency:
 
 ```bash
-npm install @connectonion/react connectonion
+npm install @connectonion/react
 ```
 
 > These hooks used to ship inside the SDK at `connectonion/react`. That subpath was removed
@@ -658,7 +658,7 @@ respondToPlanReview("Skip step 2")
 
 ## oo-chat: Open-Source Reference Client
 
-[oo-chat](https://github.com/openonion/oo-chat) is an open-source Next.js chat client built on the TypeScript SDK. It's a complete working example.
+[oo-chat](https://github.com/openonion/oo-chat) is an open-source Next.js chat client built on `@connectonion/react`. It's a complete working example.
 
 ### Architecture
 
@@ -935,7 +935,7 @@ const { ui, input, respond, respondToApproval } = useAgentForHuman("0x...", { se
 
 **One event type = one UI component.** Render `ui` array, handle interactive events with `respond()` / `respondToApproval()` / `respondToPlanReview()`.
 
-**Reference implementation:** [oo-chat](https://github.com/openonion/oo-chat) — open-source Next.js chat client built on the TypeScript SDK.
+**Reference implementation:** [oo-chat](https://github.com/openonion/oo-chat) — open-source Next.js chat client built on `@connectonion/react`.
 
 ---
 

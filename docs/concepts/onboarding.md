@@ -222,24 +222,26 @@ Flexible schema - add any fields you want:
 ### From Browser (TypeScript)
 
 ```typescript
-import { AgentClient } from 'connectonion-ts';
+import { connect } from '@connectonion/react/connect';
 
-const client = new AgentClient({
-    agentUrl: 'https://translator.example.com'
+const agent = connect('translator', {
+    directUrl: 'https://translator.example.com'
 });
 
-// Check status
-const status = await client.getStatus();
-console.log(status.status); // "stranger"
+// connect() emits an onboard_required ChatItem when the trust gate blocks access.
+await agent.connect();
+const gate = agent.ui.find(item => item.type === 'onboard_required');
 
-// Onboard
-await client.onboard('invite_code', {
-    invite_code: 'BETA123'
-});
+if (gate?.type === 'onboard_required') {
+    agent.send(agent.signOnboard({ inviteCode: 'BETA123' }));
+}
 
-// Now use the agent
-const result = await client.ask('translate hello');
+const result = await agent.input('translate hello');
 ```
+
+React applications install only `@connectonion/react`. Its low-level connection API is
+available from `@connectonion/react/connect`; the old `connectonion-ts` package name is not
+a published client package.
 
 ### From Python
 
