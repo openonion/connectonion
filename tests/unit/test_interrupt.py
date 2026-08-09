@@ -7,7 +7,7 @@ import pytest
 
 from connectonion import Agent, before_each_tool
 from connectonion.cli.co_ai.tools.plan_mode import exit_plan_and_implement
-from connectonion.core.interrupt import UserInterrupt, run_interruptible
+from connectonion.core.interrupt import InterruptibleIO, UserInterrupt, run_interruptible
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.logger import Logger
 from connectonion.network.io.websocket import WebSocketIO
@@ -205,6 +205,19 @@ def test_cancelled_receive_all_cannot_drain_the_next_turn_mailbox():
 
     assert finished.wait(timeout=1)
     assert agent.io.receive_all() == [next_reply]
+
+
+def test_receive_all_interrupt_preserves_unrelated_mailbox_frames():
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    reply = {"type": "ask_user_response", "answer": "keep me"}
+    io.send_to_agent(reply)
+    io.send_to_agent({"type": "INTERRUPT"})
+
+    with pytest.raises(UserInterrupt):
+        lease.receive_all()
+
+    assert io.receive_all() == [reply]
 
 
 def test_interruptible_io_makes_request_approval_an_interrupted_tool():

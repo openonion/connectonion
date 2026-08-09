@@ -86,6 +86,17 @@ class WebSocketIO(IO):
             if cancel_event.is_set():
                 return None
             if msg_type is None:
+                interrupts = [
+                    message for message in self._msgs_from_client
+                    if message.get("type") == "INTERRUPT"
+                ]
+                if interrupts:
+                    # Signal cancellation without consuming unrelated frames.
+                    self._msgs_from_client[:] = [
+                        message for message in self._msgs_from_client
+                        if message.get("type") != "INTERRUPT"
+                    ]
+                    return interrupts
                 messages = self._msgs_from_client[:]
                 self._msgs_from_client.clear()
                 return messages
