@@ -202,10 +202,10 @@ class TestFrontendEventVocabulary:
 
 
 class TestApproval:
-    def test_auto_approves_without_asking(self):
-        agent = _Agent(_IO(approve=False))     # io says no, but auto ignores io
+    def test_auto_denies_unexpected_callback_without_asking(self):
+        agent = _Agent(_IO(approve=True))
         _run(prompt="fix", approval="auto", agent=agent)
-        assert FakeServer.last.approval_decision is True
+        assert FakeServer.last.approval_decision is False
         assert agent.io.asked == []
 
     def test_manual_approved_renders_card_and_allows(self):
@@ -244,12 +244,26 @@ class TestApproval:
         assert FakeServer.last.approval_decision is True
         assert agent.io.asked
 
-    def test_auto_refuses_permission_profile_escalation(self):
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "item/permissions/requestApproval",
+            "item/fileChange/requestApproval",
+            "item/commandExecution/requestApproval",
+            "applyPatchApproval",
+            "execCommandApproval",
+        ],
+    )
+    def test_auto_refuses_every_unexpected_escalation_callback(self, method):
         agent = _Agent(_IO(approve=True))
 
         allowed = codex_module._approval_allowed(
-            "item/permissions/requestApproval",
-            {"permissions": {"network": {"enabled": True}}},
+            method,
+            {
+                "permissions": {"network": {"enabled": True}},
+                "grantRoot": "/outside-workspace",
+                "additionalPermissions": {"network": True},
+            },
             "auto",
             agent,
         )

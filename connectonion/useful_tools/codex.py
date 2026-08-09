@@ -69,8 +69,8 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
         model: Codex model override (e.g., "gpt-5-codex"); empty uses the default
         timeout: Seconds before timeout (default: 600)
         approval: "manual" asks the operator when Codex requests permission;
-            "auto" runs commands without prompts inside the selected sandbox
-            but refuses permission-profile escalation; "deny" refuses every
+            "auto" runs without prompts inside the selected sandbox and fails
+            closed on unexpected approval callbacks; "deny" also refuses every
             unexpected permission request. With no frontend, or in a hosted
             session whose requester is not an admin, manual fails closed. The
             policy is reapplied on resume.
@@ -196,11 +196,11 @@ def _forward_ui(agent, event):
 def _approval_allowed(method, params, approval, agent):
     """Whether one server approval request may proceed."""
     if approval == "auto":
-        # A permissions request can expand the selected sandbox (for example,
-        # by granting network or an additional filesystem root). ``auto`` is
-        # intentionally automatic *inside* the sandbox, not permission to
-        # redefine it.
-        return method != "item/permissions/requestApproval"
+        # ``approvalPolicy=never`` already permits work inside the selected
+        # sandbox without callbacks. Any callback here is therefore an
+        # unexpected request to expand that boundary (including legacy command
+        # or file requests), so fail closed.
+        return False
     if approval == "deny":
         return False
     requester = (
