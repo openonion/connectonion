@@ -409,6 +409,17 @@ class Agent:
 
         # Note: trace_entry already added to session in execute_single_tool
 
+        if trace_entry["status"] == "interrupted":
+            self.current_session.pop('stop_signal', None)
+            self._invoke_events('on_stop_signal')
+            return {
+                "name": trace_entry["name"],
+                "args": trace_entry.get("args", {}),
+                "result": trace_entry["result"],
+                "status": trace_entry["status"],
+                "timing_ms": trace_entry.get("timing_ms")
+            }
+
         # Fire events (same as execute_and_record_tools)
         # on_error fires first for errors/not_found
         if trace_entry["status"] in ("error", "not_found"):
@@ -450,6 +461,13 @@ class Agent:
             if response is not None:
                 if not response.tool_calls:
                     content = response.content or ""
+                    self.current_session['_final_response_ready'] = True
+                    # A completion that won the worker polling race is the
+                    # terminal answer. Consume a simultaneous Stop here so the
+                    # boundary backstop cannot replace the returned answer
+                    # after it has already been appended to history.
+                    if self.io and hasattr(self.io, 'receive_all'):
+                        self.io.receive_all('INTERRUPT')
                     self.current_session['messages'].append({"role": "assistant", "content": content})
                 else:
                     # Process tool calls
@@ -457,6 +475,13 @@ class Agent:
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
+
+            if response is not None and not response.tool_calls:
+                # Ignore Stop frames that raced a completed terminal answer,
+                # including frames received while after_iteration ran.
+                if self.io and hasattr(self.io, 'receive_all'):
+                    self.io.receive_all('INTERRUPT')
+                self.current_session.pop('_final_response_ready', None)
 
             # Check if plugin set stop_signal (stop loop, wait for user input)
             if self.current_session.pop('stop_signal', None):

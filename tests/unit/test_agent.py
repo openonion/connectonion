@@ -857,6 +857,8 @@ class TestGracefulInterrupt:
         """An abandoned tool leaves a provider-valid multi-tool message batch."""
         import threading
 
+        from connectonion import after_tools
+
         class InterruptIO:
             def __init__(self):
                 self.messages = []
@@ -878,6 +880,12 @@ class TestGracefulInterrupt:
         started = threading.Event()
         release = threading.Event()
         second_ran = False
+        after_tools_ran = False
+
+        @after_tools
+        def slow_reflection(agent):
+            nonlocal after_tools_ran
+            after_tools_ran = True
 
         def slow_tool() -> str:
             started.set()
@@ -894,7 +902,12 @@ class TestGracefulInterrupt:
                 content="",
                 tool_calls=[
                     ToolCall(name="slow_tool", arguments={}, id="c1"),
-                    ToolCall(name="second_tool", arguments={}, id="c2"),
+                    ToolCall(
+                        name="second_tool",
+                        arguments={},
+                        id="c2",
+                        extra_content={"thought_signature": "sig"},
+                    ),
                 ],
                 raw_response={},
                 usage=TokenUsage(),
@@ -905,6 +918,7 @@ class TestGracefulInterrupt:
             name="tool-stop",
             llm=llm,
             tools=[slow_tool, second_tool],
+            on_events=[slow_reflection],
             log=False,
             quiet=True,
         )
@@ -920,6 +934,13 @@ class TestGracefulInterrupt:
 
         assert result == "What would you like me to do?"
         assert second_ran is False
+        assert after_tools_ran is False
+        assistant_call = [
+            m for m in agent.current_session['messages'] if m['role'] == 'assistant'
+        ][-1]
+        assert assistant_call['tool_calls'][1]['extra_content'] == {
+            'thought_signature': 'sig'
+        }
         tool_messages = [m for m in agent.current_session['messages'] if m['role'] == 'tool']
         assert [(m['tool_call_id'], m['content']) for m in tool_messages] == [
             ('c1', 'Interrupted by user'),
@@ -928,6 +949,169 @@ class TestGracefulInterrupt:
         tool_results = [t for t in agent.current_session['trace'] if t['type'] == 'tool_result']
         assert len(tool_results) == 1
         assert tool_results[0]['status'] == 'interrupted'
+
+    def test_completed_final_response_wins_boundary_interrupt(self):
+        """The outward result and appended history agree in the completion race."""
+        import threading
+
+        from connectonion.useful_plugins.tool_approval import poll_interrupt
+
+        class RaceIO:
+            def __init__(self):
+                self.messages = []
+                self.lock = threading.Lock()
+
+            def receive_all(self, msg_type=None):
+                with self.lock:
+                    matched = [m for m in self.messages if m.get('type') == msg_type]
+                    self.messages[:] = [m for m in self.messages if m.get('type') != msg_type]
+                    return matched
+
+            def send(self, event):
+                pass
+
+            def interrupt(self):
+                with self.lock:
+                    self.messages.append({'type': 'INTERRUPT'})
+
+        started = threading.Event()
+        release = threading.Event()
+
+        class ControlledLLM:
+            model = "fake/race"
+
+            def complete(self, messages, tools=None):
+                started.set()
+                release.wait(timeout=1)
+                return LLMResponse(
+                    content="completed answer",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+
+        io = RaceIO()
+        agent = Agent(
+            "completion-race",
+            llm=ControlledLLM(),
+            on_events=[poll_interrupt],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        def complete_with_interrupt():
+            assert started.wait(timeout=1)
+            io.interrupt()
+            release.set()
+
+        threading.Thread(target=complete_with_interrupt, daemon=True).start()
+
+        assert agent.input("finish") == "completed answer"
+        assert agent.current_session['messages'][-1] == {
+            'role': 'assistant',
+            'content': 'completed answer',
+        }
+        assert 'stop_signal' not in agent.current_session
+
+    def test_completed_final_response_wins_interrupt_from_after_iteration(self):
+        """An interrupt arriving inside after_iteration cannot replace the answer."""
+        from connectonion import after_iteration
+        from connectonion.useful_plugins.tool_approval import poll_interrupt
+
+        class QueueIO:
+            def __init__(self):
+                self.messages = []
+
+            def receive_all(self, msg_type=None):
+                matched = [m for m in self.messages if m.get('type') == msg_type]
+                self.messages[:] = [m for m in self.messages if m.get('type') != msg_type]
+                return matched
+
+            def send(self, event):
+                pass
+
+        @after_iteration
+        def interrupt_after_completion(agent):
+            agent.io.messages.append({'type': 'INTERRUPT'})
+
+        mock_llm = Mock()
+        mock_llm.model = "fake/after-iteration-race"
+        mock_llm.complete.return_value = LLMResponse(
+            content="completed answer",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+
+        io = QueueIO()
+        agent = Agent(
+            "after-iteration-race",
+            llm=mock_llm,
+            on_events=[interrupt_after_completion, poll_interrupt],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        assert agent.input("finish") == "completed answer"
+        assert agent.current_session['messages'][-1] == {
+            'role': 'assistant',
+            'content': 'completed answer',
+        }
+        assert io.messages == []
+        assert 'stop_signal' not in agent.current_session
+        assert '_final_response_ready' not in agent.current_session
+
+    def test_execute_tool_consumes_interrupt_before_next_input(self):
+        import threading
+
+        from connectonion import on_stop_signal
+        from connectonion.network.io.websocket import WebSocketIO
+
+        started = threading.Event()
+        release = threading.Event()
+        stops = []
+
+        def slow_tool() -> str:
+            started.set()
+            release.wait(timeout=2)
+            return "late"
+
+        @on_stop_signal
+        def record_stop(agent):
+            stops.append(agent.current_session['iteration'])
+
+        llm = MockLLM(responses=[
+            LLMResponse(
+                content="normal next turn",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+        ])
+        agent = Agent(
+            "manual-stop",
+            llm=llm,
+            tools=[slow_tool],
+            on_events=[record_stop],
+            log=False,
+            quiet=True,
+        )
+        agent.io = WebSocketIO()
+
+        def interrupt():
+            assert started.wait(timeout=1)
+            agent.io.send_to_agent({'type': 'INTERRUPT'})
+
+        threading.Thread(target=interrupt, daemon=True).start()
+        trace = agent.execute_tool("slow_tool")
+        release.set()
+
+        assert trace['status'] == 'interrupted'
+        assert stops == [1]
+        assert 'stop_signal' not in agent.current_session
+        assert agent.input("continue") == "normal next turn"
 
     def test_no_interrupt_runs_to_completion(self):
         """Without an INTERRUPT the loop is unaffected and finishes normally."""

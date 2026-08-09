@@ -504,6 +504,13 @@ blocked and returns control to the agent loop within one polling interval
 (200ms by default). Blocking approval, `ask_user`, and DiffWriter waits also
 recognize the frame instead of treating it as an answer.
 
+The sub-second guarantee applies to ConnectOnion's hosted `WebSocketIO` and
+framework lifecycle hooks. A custom IO adapter that injects itself into tools
+must provide cancellable receive semantics; otherwise agent-injected tools fall
+back to the safe iteration-boundary stop rather than risking consumption of a
+future turn's reply. User event handlers are ordinary Python callbacks and
+should not start unbounded blocking work during stop cleanup.
+
 This is **abandonment, not thread termination**. Python cannot safely kill
 arbitrary tool code: an interrupted tool may continue running in a daemon
 thread and its external side effects may still finish. ConnectOnion discards

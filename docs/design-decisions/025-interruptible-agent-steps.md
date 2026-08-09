@@ -11,6 +11,12 @@ disposable daemon thread. The agent thread polls the selective IO mailbox for
 `INTERRUPT` every 200ms. When a signal arrives, the agent abandons the worker's
 result and exits through the existing `stop_signal` lifecycle.
 
+Agent-injected tools receive a shallow per-invocation Agent view: its session is
+pinned to the interrupted turn and its IO is a revocable receiver lease. The
+lease stops late sends and returns an interrupt without consuming a future
+mailbox response. Custom IO adapters without cancellable receive support keep
+graceful boundary stopping for agent-injected tools.
+
 Blocking approval and question gates recognize the same signal explicitly.
 Completed work wins a same-window race: after each timed join, worker completion
 is checked before the mailbox is drained.

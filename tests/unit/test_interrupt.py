@@ -5,7 +5,13 @@ import time
 
 import pytest
 
-from connectonion.core.interrupt import run_interruptible
+from connectonion import Agent, before_each_tool
+from connectonion.cli.co_ai.tools.plan_mode import exit_plan_and_implement
+from connectonion.core.interrupt import UserInterrupt, run_interruptible
+from connectonion.core.tool_executor import execute_single_tool
+from connectonion.logger import Logger
+from connectonion.network.io.websocket import WebSocketIO
+from tests.utils.mock_helpers import MockLLM
 
 
 class MailboxIO:
@@ -109,3 +115,135 @@ def test_worker_exception_is_reraised_on_caller_thread():
 
     with pytest.raises(ValueError, match="boom"):
         run_interruptible(fail, MailboxIO(), poll_seconds=0.01)
+
+
+def test_abandoned_agent_tool_cannot_reach_next_session_or_mailbox():
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def late_tool(agent) -> str:
+        started.set()
+        release.wait(timeout=2)
+        agent.current_session["late_worker_poison"] = True
+        try:
+            agent.io.receive()
+        finally:
+            finished.set()
+        return "late"
+
+    agent = Agent("lease-test", llm=MockLLM(), tools=[late_tool], log=False, quiet=True)
+    old_session = {"messages": [], "trace": [], "iteration": 1}
+    agent.current_session = old_session
+    agent.io = WebSocketIO()
+
+    def interrupt():
+        assert started.wait(timeout=1)
+        agent.io.send_to_agent({"type": "INTERRUPT"})
+
+    threading.Thread(target=interrupt, daemon=True).start()
+    trace = execute_single_tool(
+        "late_tool", {}, "late-call", agent.tools, agent, Logger("lease-test", log=False)
+    )
+    assert trace["status"] == "interrupted"
+
+    new_session = {"messages": [], "trace": [], "iteration": 1}
+    agent.current_session = new_session
+    next_reply = {"type": "ask_user_response", "answer": "next turn"}
+    agent.io.send_to_agent(next_reply)
+    release.set()
+
+    assert finished.wait(timeout=1)
+    assert "late_worker_poison" not in new_session
+    assert old_session["late_worker_poison"] is True
+    assert agent.io.receive_all() == [next_reply]
+
+
+def test_interruptible_io_makes_request_approval_an_interrupted_tool():
+    entered = threading.Event()
+
+    def approval_tool(agent) -> str:
+        entered.set()
+        approved = agent.io.request_approval("publish", {"target": "prod"})
+        return "approved" if approved else "denied"
+
+    agent = Agent("approval-test", llm=MockLLM(), tools=[approval_tool], log=False, quiet=True)
+    agent.current_session = {"messages": [], "trace": [], "iteration": 1}
+    agent.io = WebSocketIO()
+
+    def interrupt():
+        assert entered.wait(timeout=1)
+        agent.io.send_to_agent({"type": "INTERRUPT"})
+
+    threading.Thread(target=interrupt, daemon=True).start()
+    trace = execute_single_tool(
+        "approval_tool", {}, "approval-call", agent.tools, agent,
+        Logger("approval-test", log=False),
+    )
+
+    assert trace["status"] == "interrupted"
+    assert trace["result"] == "Interrupted by user"
+
+
+def test_pending_tool_is_cleared_when_gate_interrupts():
+    @before_each_tool
+    def interrupt_gate(agent):
+        raise UserInterrupt()
+
+    def work() -> str:
+        return "unreachable"
+
+    agent = Agent(
+        "gate-test",
+        llm=MockLLM(),
+        tools=[work],
+        on_events=[interrupt_gate],
+        log=False,
+        quiet=True,
+    )
+    agent.current_session = {"messages": [], "trace": [], "iteration": 1}
+
+    trace = execute_single_tool(
+        "work", {}, "gate-call", agent.tools, agent, Logger("gate-test", log=False)
+    )
+
+    assert trace["status"] == "interrupted"
+    assert "pending_tool" not in agent.current_session
+
+
+def test_plan_review_receive_cannot_swallow_interrupt(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan", encoding="utf-8")
+    agent = Agent(
+        "plan-test",
+        llm=MockLLM(),
+        tools=[exit_plan_and_implement],
+        log=False,
+        quiet=True,
+    )
+    agent.current_session = {
+        "messages": [],
+        "trace": [],
+        "iteration": 1,
+        "mode": "plan",
+        "previous_mode": "safe",
+        "plan_path": str(plan),
+    }
+    agent.io = WebSocketIO()
+
+    def interrupt_after_review_opens():
+        deadline = time.monotonic() + 1
+        while agent.io.message_count < 2 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert agent.io.message_count >= 2
+        agent.io.send_to_agent({"type": "INTERRUPT"})
+
+    threading.Thread(target=interrupt_after_review_opens, daemon=True).start()
+    trace = execute_single_tool(
+        "exit_plan_and_implement", {}, "plan-call", agent.tools, agent,
+        Logger("plan-test", log=False),
+    )
+
+    assert trace["status"] == "interrupted"
+    assert agent.current_session["mode"] == "plan"
+    assert agent.current_session["plan_path"] == str(plan)

@@ -71,6 +71,15 @@ class WebSocketIO(IO):
                 self._client_condition.wait()
             return self._msgs_from_client.pop(0)
 
+    def receive_interruptibly(self, cancel_event) -> Dict[str, Any]:
+        """Receive one message without letting a cancelled caller steal later input."""
+        with self._client_condition:
+            while not self._msgs_from_client and not cancel_event.is_set():
+                self._client_condition.wait(timeout=0.05)
+            if cancel_event.is_set():
+                return {"type": "INTERRUPT"}
+            return self._msgs_from_client.pop(0)
+
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
         with self._client_condition:

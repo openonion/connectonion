@@ -903,6 +903,12 @@ def poll_interrupt(agent: 'Agent') -> None:
     if not agent.io:
         return
 
+    # The terminal response has already completed and been appended. Let that
+    # response win a same-boundary Stop rather than returning a different
+    # outward result from the one stored in message history.
+    if agent.current_session.get('_final_response_ready'):
+        return
+
     if agent.io.receive_all('INTERRUPT'):
         agent.current_session['stop_signal'] = 'user_interrupt'
 

@@ -12,6 +12,7 @@ LLM-Note:
 import time
 import json
 import asyncio
+import copy
 import inspect
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -22,7 +23,7 @@ from ..debug.xray import (
     clear_xray_context,
     is_xray_enabled
 )
-from .interrupt import UserInterrupt, run_interruptible
+from .interrupt import InterruptibleIO, UserInterrupt, run_interruptible
 
 
 _async_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -139,10 +140,13 @@ def execute_and_record_tools(
         # WARNING: Do NOT add messages here - it breaks Anthropic's message ordering
         agent._invoke_events('after_each_tool')
 
-    # after_tools fires ONCE after ALL tools in the batch complete
-    # This is the safe place to add messages (e.g., reflection) because all
-    # tool_results have been added and message ordering is correct for all LLMs
-    agent._invoke_events('after_tools')
+    # An interrupt exits through on_stop_signal. Do not run after_tools hooks:
+    # built-in reflection can make another blocking LLM call, defeating Stop.
+    if not agent.current_session.get('stop_signal'):
+        # after_tools fires ONCE after ALL tools in the batch complete
+        # This is the safe place to add messages (e.g., reflection) because all
+        # tool_results have been added and message ordering is correct for all LLMs
+        agent._invoke_events('after_tools')
 
 
 def execute_single_tool(
@@ -225,6 +229,7 @@ def execute_single_tool(
 
     # Initialize timing (for error case if before_tool fails)
     tool_start = time.time()
+    tool_io = None
 
     def interrupted_tool_result():
         interruption = "Interrupted by user"
@@ -247,11 +252,12 @@ def execute_single_tool(
             'description': getattr(tool_func, 'description', '')
         }
 
-        # Invoke before_each_tool events
-        agent._invoke_events('before_each_tool')
-
-        # Clear pending_tool after event (it's only valid during before_tool)
-        agent.current_session.pop('pending_tool', None)
+        # Invoke before_each_tool events. A rejection or interrupt is control
+        # flow, but pending_tool is transient in every outcome.
+        try:
+            agent._invoke_events('before_each_tool')
+        finally:
+            agent.current_session.pop('pending_tool', None)
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()
@@ -270,15 +276,34 @@ def execute_single_tool(
         # `agent` is plumbing, not something the model asked for, and it does not
         # belong in the record of what was called.
         call_args = tool_args
+        poll_io = agent.io
         if getattr(tool_func, '_needs_agent', False):
-            call_args = {**tool_args, 'agent': agent}
+            tool_agent = agent
+            if agent.io and hasattr(type(agent.io), 'receive_interruptibly'):
+                # Bind the worker to this turn's session and a revocable IO
+                # lease. A late worker cannot follow Agent.current_session into
+                # the next turn or consume that turn's mailbox responses.
+                tool_io = InterruptibleIO(agent.io)
+                tool_agent = copy.copy(agent)
+                tool_agent.current_session = agent.current_session
+                tool_agent.io = tool_io
+            elif agent.io:
+                # Legacy custom IO cannot cancel a blocked receive safely.
+                # Preserve graceful boundary stopping instead of abandoning a
+                # worker that could steal a future response.
+                poll_io = None
+            call_args = {**tool_args, 'agent': tool_agent}
 
         def invoke_tool():
             if inspect.iscoroutinefunction(tool_func):
                 return _run_async_tool(tool_func(**call_args))
             return tool_func(**call_args)
 
-        result, interrupted = run_interruptible(invoke_tool, agent.io)
+        result, interrupted = run_interruptible(
+            invoke_tool,
+            poll_io,
+            on_interrupt=tool_io.cancel if tool_io else None,
+        )
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
         if interrupted:
@@ -332,6 +357,8 @@ def execute_single_tool(
         # Note: on_error event will fire in execute_and_record_tools after result message added
 
     finally:
+        if tool_io:
+            tool_io.cancel()
         # No `tool_args.pop('agent')` here any more: nothing was ever put in.
         # Clear xray context after tool execution
         clear_xray_context()
