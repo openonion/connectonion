@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 TESTS = (ROOT / ".github/workflows/tests.yml").read_text()
+WHEEL_ACCEPTANCE = (ROOT / "tests/e2e/test_the_wheel_works_when_installed.py").read_text()
 
 
 def test_release_reuses_the_full_test_workflow():
@@ -77,6 +78,10 @@ def test_artifact_job_installs_what_its_wheel_acceptance_test_needs():
     assert install in build_job
     assert "requirements.txt" not in build_job
     assert build_job.index(install) < build_job.index(acceptance)
+
+
+def test_wheel_acceptance_reinstalls_over_the_build_environment_copy():
+    assert '"--force-reinstall"' in WHEEL_ACCEPTANCE
 
 
 def test_announcements_cannot_fail_a_package_release():
