@@ -1,6 +1,6 @@
 # Client-Side WebSocket Reconnection
 
-How the TypeScript SDK and React hooks manage WebSocket connections, session persistence, and reconnection after page refresh.
+How `@connectonion/react` manages WebSocket connections, session persistence, and reconnection after page refresh.
 
 > Server-side counterpart: [session-reconnect.md](session-reconnect.md)
 
@@ -30,7 +30,7 @@ Three layers handle client-side connection:
 
 ## RemoteAgent: WebSocket Lifecycle
 
-File: `connectonion-ts/src/connect/remote-agent.ts`
+File: `connectonion-react/src/connect/remote-agent.ts`
 
 ### State
 
@@ -174,7 +174,7 @@ the same `not_found` result as a missing session.
 
 ## React Hook: useAgentForHuman
 
-File: `connectonion-ts/src/react/use-agent-for-human.ts`
+File: `connectonion-react/src/use-agent-for-human.ts`
 
 ### Session persistence
 
@@ -311,7 +311,7 @@ After processing completes, polls `checkSessionStatus()` every 10s to detect if 
 
 ## Auth & Signing
 
-File: `connectonion-ts/src/connect/auth.ts`
+File: `connectonion-react/src/connect/auth.ts`
 
 Every CONNECT message is signed with Ed25519:
 
@@ -332,7 +332,7 @@ signPayload(keys, payload)
 
 ## ChatItem Mapper
 
-File: `connectonion-ts/src/connect/chat-item-mapper.ts`
+File: `connectonion-react/src/connect/chat-item-mapper.ts`
 
 Converts server events into `ChatItem[]` for React rendering:
 
@@ -478,9 +478,9 @@ T+16   User clicks "Approve"
 
 | File | Role |
 |---|---|
-| `connectonion-ts/src/connect/remote-agent.ts` | WebSocket lifecycle, CONNECT/INPUT, reconnect() |
-| `connectonion-ts/src/react/use-agent-for-human.ts` | React hook, Zustand persistence, session merge |
-| `connectonion-ts/src/connect/types.ts` | ConnectionState, SessionState, ApprovalMode |
-| `connectonion-ts/src/connect/auth.ts` | Ed25519 signing for CONNECT messages |
-| `connectonion-ts/src/connect/chat-item-mapper.ts` | Server events → ChatItem[] for UI rendering |
+| `connectonion-react/src/connect/remote-agent.ts` | WebSocket lifecycle, CONNECT/INPUT, reconnect() |
+| `connectonion-react/src/use-agent-for-human.ts` | React hook, Zustand persistence, session merge |
+| `connectonion-react/src/connect/types.ts` | ConnectionState, SessionState, ApprovalMode |
+| `connectonion-react/src/connect/auth.ts` | Ed25519 signing for CONNECT messages |
+| `connectonion-react/src/connect/chat-item-mapper.ts` | Server events → ChatItem[] for UI rendering |
 | `oo-chat/components/chat/use-agent-sdk.ts` | oo-chat wrapper, respondToApproval() |

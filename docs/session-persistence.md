@@ -92,9 +92,10 @@ This is **NOT** for conversation state. It's only for:
 - Clear session only on explicit reset
 - Save to localStorage for browser refresh recovery
 
-### TypeScript SDK Changes
+### React SDK Changes
 
-**File:** `connectonion-ts/src/connect.ts`
+**Files:** `connectonion-react/src/store.ts` and
+`connectonion-react/src/use-agent-for-human.ts`
 
 #### 1. Session Persistence Methods
 

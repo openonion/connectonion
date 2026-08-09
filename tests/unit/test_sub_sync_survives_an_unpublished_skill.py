@@ -42,6 +42,8 @@ SHARED_BODY = "---\nname: shared\ndescription: A real one\n---\n\n# Body\n"
 def _envelope():
     full = {
         "alias": "mapper",
+        "attestation_version": "profile-v2",
+        "revision": 1,
         "skills": [
             {"name": "withheld", "description": "No description"},
             {"name": "shared", "description": "A real one", "body": SHARED_BODY},
@@ -54,7 +56,7 @@ def _envelope():
         "profile": metadata,
         "publisher": ADDR,
         "signature": address.sign(KEYS, canonical.encode()).hex(),
-        "signature_version": "profile-v1",
+        "signature_version": "profile-v2",
     }
 
 
@@ -107,7 +109,9 @@ class TestAWithheldBodyIsSkippedNotFatal:
         monkeypatch.setattr(relay, "SUBS_DIR", tmp_path / "subs")
 
         envelope = relay._fetch_profile(ADDR, "https://relay")
-        profile, bodies = relay._verified_bundle(ADDR, envelope, "https://relay")
+        profile, bodies, _revision, _signature = relay._verified_bundle(
+            ADDR, envelope, "https://relay"
+        )
         count = relay._mirror_bundle("mapper", profile, bodies)
 
         assert count == 1, "the readable skill did not survive its neighbour"
@@ -119,7 +123,9 @@ class TestAWithheldBodyIsSkippedNotFatal:
         monkeypatch.setattr(relay, "SUBS_DIR", tmp_path / "subs")
 
         envelope = relay._fetch_profile(ADDR, "https://relay")
-        profile, bodies = relay._verified_bundle(ADDR, envelope, "https://relay")
+        profile, bodies, _revision, _signature = relay._verified_bundle(
+            ADDR, envelope, "https://relay"
+        )
         relay._mirror_bundle("mapper", profile, bodies)
 
         written = list((tmp_path / "subs").rglob("SKILL.md"))
@@ -133,7 +139,9 @@ class TestTheOperatorIsTold:
         monkeypatch.setattr(relay, "SUBS_DIR", tmp_path / "subs")
 
         envelope = relay._fetch_profile(ADDR, "https://relay")
-        profile, bodies = relay._verified_bundle(ADDR, envelope, "https://relay")
+        profile, bodies, _revision, _signature = relay._verified_bundle(
+            ADDR, envelope, "https://relay"
+        )
         relay._mirror_bundle("mapper", profile, bodies)
 
         assert "withheld" in capsys.readouterr().out

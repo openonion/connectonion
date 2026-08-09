@@ -580,8 +580,10 @@ trust:
     - blocked
 
   onboard:
-    invite_code: [OpenOnion, BETA2024]
-    payment: 10
+    # Keep admission credentials outside committed configuration. Unset values
+    # disable that onboarding method instead of falling back to a shared default.
+    invite_code: [$CO_INVITE_CODE]
+    payment: $CO_PAYMENT
 
   default: ask  # Use LLM for unknown users
 

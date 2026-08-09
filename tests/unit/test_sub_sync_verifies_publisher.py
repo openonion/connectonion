@@ -34,8 +34,14 @@ class _Response:
         return self.payload
 
 
-def _relay(monkeypatch, keys, *, body=None, include_signature=True, profile=None):
-    profile = profile or PROFILE
+def _relay(
+    monkeypatch, keys, *, body=None, include_signature=True, profile=None,
+    revision=1, signature_version="profile-v2",
+):
+    profile = json.loads(json.dumps(profile or PROFILE))
+    if revision is not None:
+        profile["attestation_version"] = "profile-v2"
+        profile["revision"] = revision
     announce = create_announce_message(keys, "publisher", profile=profile)
     metadata = {
         **profile,
@@ -47,7 +53,7 @@ def _relay(monkeypatch, keys, *, body=None, include_signature=True, profile=None
     envelope = {
         "profile": metadata,
         "publisher": keys["address"],
-        "signature_version": "profile-v1",
+        "signature_version": signature_version,
     }
     if include_signature:
         envelope["signature"] = announce["profile_signature"]
@@ -57,7 +63,7 @@ def _relay(monkeypatch, keys, *, body=None, include_signature=True, profile=None
             return _Response(envelope)
         return _Response({
             "name": "safe-skill",
-            "body": PROFILE["skills"][0]["body"] if body is None else body,
+            "body": profile["skills"][0]["body"] if body is None else body,
         })
 
     monkeypatch.setattr(sub.httpx, "get", get)
@@ -76,13 +82,18 @@ def isolated_home(tmp_path, monkeypatch):
 
 def test_announce_carries_a_verifiable_profile_signature():
     keys = address.generate()
+    profile = {
+        **PROFILE,
+        "attestation_version": "profile-v2",
+        "revision": 1,
+    }
 
-    message = create_announce_message(keys, "publisher", profile=PROFILE)
+    message = create_announce_message(keys, "publisher", profile=profile)
 
     assert message["profile_signature"]
     from connectonion.network.host.auth import verify_signature
 
-    assert verify_signature(PROFILE, message["profile_signature"], keys["address"])
+    assert verify_signature(profile, message["profile_signature"], keys["address"])
 
 
 def test_a_signed_bundle_is_written(isolated_home, monkeypatch):
@@ -116,6 +127,106 @@ def test_an_unsigned_legacy_profile_is_not_installed(isolated_home, monkeypatch)
         sub.handle_sub_sync_one(keys["address"])
 
     assert list((isolated_home / ".co").rglob("SKILL.md")) == []
+
+
+def test_a_profile_v1_bundle_is_not_installed(isolated_home, monkeypatch):
+    keys = address.generate()
+    _relay(monkeypatch, keys, revision=None, signature_version="profile-v1")
+
+    with pytest.raises(ValueError, match="profile-v2"):
+        sub.handle_sub_sync_one(keys["address"])
+
+    assert list((isolated_home / ".co").rglob("SKILL.md")) == []
+
+
+def test_the_relay_cannot_relabel_a_v1_signature_as_v2(
+    isolated_home, monkeypatch
+):
+    keys = address.generate()
+    _relay(monkeypatch, keys, revision=None, signature_version="profile-v2")
+
+    with pytest.raises(ValueError, match="attestation marker"):
+        sub.handle_sub_sync_one(keys["address"])
+
+    assert list((isolated_home / ".co").rglob("SKILL.md")) == []
+
+
+def test_an_older_signed_bundle_cannot_replace_a_newer_one(
+    isolated_home, monkeypatch
+):
+    keys = address.generate()
+    fixed = json.loads(json.dumps(PROFILE))
+    fixed["skills"][0]["body"] = "Security fix."
+    _relay(monkeypatch, keys, profile=fixed, revision=20)
+    sub.handle_sub_sync_one(keys["address"])
+
+    mirrored = isolated_home / ".co/subs/signed-publisher/skills/safe-skill/SKILL.md"
+    assert mirrored.read_text(encoding="utf-8") == "Security fix."
+
+    old = json.loads(json.dumps(PROFILE))
+    old["skills"][0]["body"] = "Old vulnerable instructions."
+    _relay(monkeypatch, keys, profile=old, revision=10)
+
+    with pytest.raises(ValueError, match="rollback refused"):
+        sub.handle_sub_sync_one(keys["address"])
+
+    assert mirrored.read_text(encoding="utf-8") == "Security fix."
+
+
+def test_the_same_revision_and_signature_is_an_idempotent_retry(
+    isolated_home, monkeypatch
+):
+    keys = address.generate()
+    _relay(monkeypatch, keys, revision=20)
+
+    sub.handle_sub_sync_one(keys["address"])
+    sub.handle_sub_sync_one(keys["address"])
+
+    state = json.loads(sub._freshness_path(keys["address"]).read_text())
+    assert state["revision"] == 20
+
+
+def test_two_different_profiles_at_one_revision_are_refused(
+    isolated_home, monkeypatch
+):
+    keys = address.generate()
+    _relay(monkeypatch, keys, revision=20)
+    sub.handle_sub_sync_one(keys["address"])
+
+    changed = {**PROFILE, "bio": "different signed content"}
+    _relay(monkeypatch, keys, profile=changed, revision=20)
+
+    with pytest.raises(ValueError, match="equivocation refused"):
+        sub.handle_sub_sync_one(keys["address"])
+
+
+def test_corrupt_freshness_state_fails_closed(isolated_home, monkeypatch):
+    keys = address.generate()
+    state = sub._freshness_path(keys["address"])
+    state.parent.mkdir(parents=True)
+    state.write_text("not json", encoding="utf-8")
+    _relay(monkeypatch, keys, revision=20)
+
+    with pytest.raises(ValueError, match="state is unreadable"):
+        sub.handle_sub_sync_one(keys["address"])
+
+    assert list((isolated_home / ".co").rglob("SKILL.md")) == []
+
+
+def test_address_case_cannot_create_a_second_freshness_history(
+    isolated_home, monkeypatch
+):
+    keys = address.generate()
+    mixed_case = "0x" + keys["address"][2:].upper()
+    _relay(monkeypatch, keys, revision=20)
+
+    sub.handle_sub_sync_one(mixed_case)
+
+    assert sub._read_subs()[0][0] == keys["address"]
+    assert sub._freshness_path(keys["address"]).exists()
+    assert [path.name for path in sub._freshness_path(keys["address"]).parent.iterdir()] == [
+        f"{keys['address']}.json"
+    ]
 
 
 @pytest.mark.parametrize(

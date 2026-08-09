@@ -1112,10 +1112,10 @@ def sub_sync(
 ):
     """Sync one publisher: fetch profile, mirror skills, fan out to coding agents.
 
-    The publisher's Ed25519 profile signature is verified before anything is
-    written. Unsigned legacy profiles stay visible in discovery but cannot be
-    installed. Skills land in ~/.co/subs/ and are fanned out to ~/.claude,
-    ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
+    The publisher's Ed25519 profile-v2 signature and monotonic revision are
+    verified before anything is written. Unsigned, profile-v1, rolled-back, or
+    equivocating profiles stay uninstalled. Skills land in ~/.co/subs/ and are
+    fanned out to ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
 
     A subscribed skill's `tools:` grant is removed on sync, so it cannot
     pre-authorise anything (#654). Its instructions are kept.

@@ -116,7 +116,7 @@ co auth google
 co auth microsoft
 ```
 
-These commands connect Gmail/Calendar or Microsoft integrations. They require OpenOnion auth first because the OAuth tokens are stored through the authenticated account flow.
+These commands connect Gmail/Calendar or Microsoft integrations. They require OpenOnion auth first to authenticate the provider flow. Microsoft credentials are returned directly to the CLI and saved only in local env files; oo-api does not persist them.
 
 ## Supported Models
 

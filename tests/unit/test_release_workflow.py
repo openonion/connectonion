@@ -14,6 +14,15 @@ def test_release_reuses_the_full_test_workflow():
     assert "needs: tests" in RELEASE
 
 
+def test_ci_audits_the_exact_dependency_lock():
+    assert "uv==0.6.16" in TESTS
+    assert "pip-audit==2.10.1" in TESTS
+    assert "uv lock --check" in TESTS
+    assert "uv export --quiet --frozen --no-dev --no-emit-project" in TESTS
+    assert "python -m pip_audit" in TESTS
+    assert "--disable-pip --strict --progress-spinner off" in TESTS
+
+
 def test_tag_and_emergency_manual_release_paths_exist():
     assert 'tags:\n      - "v*"' in RELEASE
     assert "workflow_dispatch:" in RELEASE

@@ -43,6 +43,48 @@ def test_input_signature_covers_every_field(keys):
     assert auth.verify_signature(frame["payload"], frame["signature"], frame["from"])
 
 
+def test_host_accepts_javascript_unicode_canonical_json(keys):
+    """JSON.stringify keeps Unicode literal; Python clients historically escape it."""
+    payload = {
+        "nonce": "unicode-vector",
+        "prompt": "你好，世界",
+        "timestamp": 1_800_000_000,
+        "to": "0x" + "12" * 20,
+        "type": "INPUT",
+    }
+    javascript_canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    signature = address.sign(keys, javascript_canonical.encode()).hex()
+
+    assert auth.verify_signature(payload, signature, keys["address"])
+
+
+def test_host_keeps_accepting_python_escaped_unicode_signatures(keys):
+    payload = {"prompt": "你好", "timestamp": 1_800_000_000}
+    python_canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    signature = address.sign(keys, python_canonical.encode()).hex()
+
+    assert auth.verify_signature(payload, signature, keys["address"])
+
+
+def test_host_accepts_legacy_ts_nested_object_order(keys):
+    payload = {
+        "args": {"z": 1, "nested": {"y": "后", "a": "先"}, "a": 2},
+        "nonce": "legacy-ts-vector",
+        "timestamp": 1_800_000_000,
+        "to": "0x" + "12" * 20,
+        "type": "EXEC",
+    }
+    top_level_sorted = {key: payload[key] for key in sorted(payload)}
+    legacy_ts_canonical = json.dumps(
+        top_level_sorted, separators=(",", ":"), ensure_ascii=False
+    )
+    signature = address.sign(keys, legacy_ts_canonical.encode()).hex()
+
+    assert auth.verify_signature(payload, signature, keys["address"])
+
+
 def test_v1_host_can_read_a_v2_input(keys):
     from connectonion.network.host.ws_router.agent_io import verified_prompt
 

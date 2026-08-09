@@ -28,6 +28,7 @@ The model is a flat relationship record:
 
 ```
 ~/.co/subscriptions.txt           ← "who do I follow"        (the relationship)
+~/.co/subscription-state/<address>.json ← highest authenticated revision (rollback guard)
 ~/.co/subs/<alias>/agent.json     ← "what do I have"         (mirrored profile)
 ~/.co/subs/<alias>/skills/<name>/ ← "their actual skills"    (mirrored bodies)
 ~/.<tool>/...                     ← "where my agent sees them" (fan-out)
@@ -186,23 +187,50 @@ Each re-run re-fetches the profile, re-writes the mirrored bodies, and re-runs t
 
 A lazy-check mode that only pulls bodies when the relay reports a newer version is the planned v2 — it needs a `profile-head` endpoint on the relay first. The CLI surface won't change.
 
-## Verification and remaining limitation
+## Authenticity and rollback protection
 
 Before writing, `co sub sync` fetches every public skill body, reconstructs the
-publisher's complete profile, and verifies its Ed25519 `profile-v1` signature
-against the 0x address you pinned. A relay-modified alias, skill list, body, or
-signature is refused. Legacy unsigned profiles remain visible in discovery but
-cannot be installed; their publisher must re-announce with ConnectOnion 1.6.0.
+publisher's complete profile, and verifies its Ed25519 `profile-v2` signature
+against the canonical lowercase 0x address you pinned. The signed profile
+contains `attestation_version: profile-v2` and a positive 64-bit `revision`.
+The version marker is itself signed, so a relay cannot relabel a v1 proof as
+v2. The subscriber stores the highest
+accepted revision outside the mirrored bundle:
 
-The remaining v1 limitation is **no lazy version check**. Every `co sub` pulls
-the full profile and every public body even if nothing changed. A future
-`profile-head` endpoint can make that incremental without changing the CLI.
+- a lower revision is a rollback and is refused;
+- the same revision with a different signature is equivocation and is refused;
+- the same revision and signature is an idempotent retry;
+- a higher valid revision advances the watermark before the content is exposed.
+
+A relay-modified alias, skill list, body, revision, or signature is refused.
+Unsigned and `profile-v1` profiles remain visible in discovery but cannot be
+installed; their publisher must re-announce with ConnectOnion 1.6.0.
+
+The first install is trust-on-first-valid-revision: with no local watermark,
+the subscriber can only authenticate what it receives, not know whether the
+relay withheld a newer historical publish. Preserve
+`~/.co/subscription-state/` in backups. Losing it loses rollback memory; restore
+it or verify the current revision out of band before syncing again. `co sub
+remove` deliberately retains the watermark so unsubscribe/resubscribe cannot
+be used to erase history.
+
+A publisher who intentionally wants old content publishes that content again
+at a new, higher revision. A key rotation creates a new 0x address and therefore
+a new history; subscribers must explicitly subscribe to it. Publishers using
+the same key on multiple devices must keep clocks synchronized and carry the
+latest `~/.co/profile-publish-state/<address>.json`; the backend refuses a
+device whose revision does not advance the stored authenticated revision.
+
+Every `co sub` still pulls the full profile and every public body even when
+nothing changed. A future `profile-head` endpoint can make that incremental
+without changing the rollback rule or CLI.
 
 
 ## Files touched
 
 ```
 ~/.co/subscriptions.txt              ← appended/rewritten on add/remove
+~/.co/subscription-state/<address>.json ← retained monotonic rollback watermark
 ~/.co/subs/<alias>/agent.json        ← mirrored publisher profile
 ~/.co/subs/<alias>/skills/<name>/SKILL.md  ← mirrored skill body
 ~/.claude/plugins/<alias>/           ← symlink (whole bundle)
