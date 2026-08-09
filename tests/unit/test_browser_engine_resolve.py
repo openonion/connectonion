@@ -125,11 +125,19 @@ def test_the_paid_path_is_not_wired_up_yet():
     attestation and ignored it; `attest()` took a tier and never checked it.
     An assertion that the gap exists is the only version of "we know" that
     stops being true on its own when someone closes it.
+
+    Deliberately does not assert *which* exception. There are two, and which
+    one you get depends on the machine rather than on the code: without the
+    package it is ImportError, with it installed (a dev checkout, an editable
+    install) it is NotImplementedError. An earlier version asserted the
+    message contained the issue number, which is only true of the second — so
+    it passed on my machine and failed on all four Python versions in CI. The
+    property is "neither lookup can produce a paid engine", and that holds
+    either way.
     """
     for lookup in (engine._cached_attestation, engine._onion_path):
-        with pytest.raises(Exception) as raised:
+        with pytest.raises(Exception):
             lookup()
-        assert "511" in str(raised.value), "say where the open work is tracked"
 
     # And the consequence, from the outside: the defaults cannot reach ONION.
     chosen, _ = engine.resolve()
