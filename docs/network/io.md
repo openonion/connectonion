@@ -506,17 +506,19 @@ recognize the frame instead of treating it as an answer.
 
 The sub-second guarantee applies to ConnectOnion's hosted `WebSocketIO` and
 framework lifecycle hooks. A custom IO adapter that injects itself into tools
-must provide cancellable receive semantics; otherwise agent-injected tools fall
-back to the safe iteration-boundary stop rather than risking consumption of a
-future turn's reply. User event handlers are ordinary Python callbacks and
-should not start unbounded blocking work during stop cleanup.
+must provide the cancellable receive/interrupt protocol; otherwise
+agent-injected tools fall back to the safe iteration-boundary stop rather than
+risking consumption of a future turn's reply. User event handlers are ordinary
+Python callbacks and should not start unbounded blocking work during stop
+cleanup.
 
 This is **abandonment, not thread termination**. Python cannot safely kill
 arbitrary tool code: an interrupted tool may continue running in a daemon
 thread and its external side effects may still finish. ConnectOnion discards
-the late return value and does not append it to messages or trace. Tool authors
-should therefore make destructive or externally visible actions idempotent and
-add their own cooperative cancellation when they need stronger guarantees.
+the per-invocation session and tool-registry snapshots along with the late
+return value, and does not append it to messages or trace. Tool authors should
+therefore make destructive or externally visible actions idempotent and add
+their own cooperative cancellation when they need stronger guarantees.
 
 The existing `stop_signal` lifecycle remains authoritative. A stopped LLM call
 adds no assistant message. A stopped multi-tool batch receives a result for the

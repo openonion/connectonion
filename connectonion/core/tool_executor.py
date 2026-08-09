@@ -230,6 +230,8 @@ def execute_single_tool(
     # Initialize timing (for error case if before_tool fails)
     tool_start = time.time()
     tool_io = None
+    original_session = None
+    tool_session = None
 
     def interrupted_tool_result():
         interruption = "Interrupted by user"
@@ -279,14 +281,25 @@ def execute_single_tool(
         poll_io = agent.io
         if getattr(tool_func, '_needs_agent', False):
             tool_agent = agent
-            if agent.io and hasattr(type(agent.io), 'receive_interruptibly'):
+            if agent.io and all(
+                hasattr(type(agent.io), method)
+                for method in ('receive_interruptibly', 'receive_all_interruptibly', 'take_interrupt')
+            ):
                 # Bind the worker to this turn's session and a revocable IO
-                # lease. A late worker cannot follow Agent.current_session into
-                # the next turn or consume that turn's mailbox responses.
+                # lease. Session and registry mutations are committed only when
+                # the invocation finishes; a late worker only owns snapshots.
                 tool_io = InterruptibleIO(agent.io)
                 tool_agent = copy.copy(agent)
-                tool_agent.current_session = agent.current_session
+                original_session = agent.current_session
+                tool_session = copy.deepcopy(original_session)
+                tool_agent.current_session = tool_session
                 tool_agent.io = tool_io
+                tool_agent.events = {
+                    event: list(handlers) for event, handlers in agent.events.items()
+                }
+                tool_agent.tools = copy.copy(agent.tools)
+                tool_agent.tools._tools = dict(agent.tools._tools)
+                tool_agent.tools._instances = dict(agent.tools._instances)
             elif agent.io:
                 # Legacy custom IO cannot cancel a blocked receive safely.
                 # Preserve graceful boundary stopping instead of abandoning a
@@ -299,8 +312,14 @@ def execute_single_tool(
                 return _run_async_tool(tool_func(**call_args))
             return tool_func(**call_args)
 
-        result, interrupted = run_interruptible(
-            invoke_tool,
+        def capture_tool_outcome():
+            try:
+                return True, invoke_tool()
+            except BaseException as error:
+                return False, error
+
+        outcome, interrupted = run_interruptible(
+            capture_tool_outcome,
             poll_io,
             on_interrupt=tool_io.cancel if tool_io else None,
         )
@@ -308,6 +327,17 @@ def execute_single_tool(
 
         if interrupted:
             return interrupted_tool_result()
+
+        succeeded, result = outcome
+        if not succeeded and isinstance(result, UserInterrupt):
+            raise result
+
+        if tool_session is not None:
+            original_session.clear()
+            original_session.update(tool_session)
+
+        if not succeeded:
+            raise result
 
         trace_entry["timing_ms"] = tool_duration
         trace_entry["result"] = str(result)

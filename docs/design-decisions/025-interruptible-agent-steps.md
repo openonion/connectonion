@@ -11,11 +11,13 @@ disposable daemon thread. The agent thread polls the selective IO mailbox for
 `INTERRUPT` every 200ms. When a signal arrives, the agent abandons the worker's
 result and exits through the existing `stop_signal` lifecycle.
 
-Agent-injected tools receive a shallow per-invocation Agent view: its session is
-pinned to the interrupted turn and its IO is a revocable receiver lease. The
-lease stops late sends and returns an interrupt without consuming a future
-mailbox response. Custom IO adapters without cancellable receive support keep
-graceful boundary stopping for agent-injected tools.
+Agent-injected tools receive a per-invocation Agent view with session and tool
+registry snapshots plus a revocable IO lease. Snapshot changes are committed
+only after the worker finishes; an abandoned worker cannot mutate later agent
+state. The lease exposes only the documented tool-facing IO operations, stops
+late sends, and cannot consume a future mailbox response. Custom IO adapters
+without cancellable receive support keep graceful boundary stopping for
+agent-injected tools.
 
 Blocking approval and question gates recognize the same signal explicitly.
 Completed work wins a same-window race: after each timed join, worker completion
@@ -43,11 +45,12 @@ Stop latency is bounded by the polling interval plus scheduling overhead, not
 by the duration of the provider or tool call. Local agents without hosted IO
 keep the direct call path and pay no thread overhead.
 
-The abandoned worker may continue consuming provider tokens or completing tool
-side effects. Agent-injected tools can retain an agent reference, so the
-guarantee is deliberately narrow: ConnectOnion does not commit a late return
-value to messages or trace. Tools requiring stronger semantics must implement
-cooperative cancellation or isolate killable work in a subprocess.
+The abandoned worker may continue consuming provider tokens or completing
+external tool side effects. ConnectOnion does not commit its session or tool
+registry snapshot, late return value, messages, or trace. Arbitrary Python can
+still mutate globals or objects captured outside the injected Agent view; tools
+requiring stronger semantics must implement cooperative cancellation or isolate
+killable work in a subprocess.
 
 ## Rejected alternatives
 

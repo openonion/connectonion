@@ -12,28 +12,29 @@ class InterruptibleIO:
     """Revocable IO view held by one agent-injected tool invocation."""
 
     def __init__(self, io: Any):
-        self._io = io
+        self.__io = io
         self._cancelled = threading.Event()
+        self._gate = threading.Lock()
 
     def cancel(self) -> None:
-        self._cancelled.set()
+        with self._gate:
+            self._cancelled.set()
 
     def send(self, event) -> None:
-        if not self._cancelled.is_set():
-            self._io.send(event)
+        with self._gate:
+            if not self._cancelled.is_set():
+                self.__io.send(event)
 
     def receive(self):
-        response = self._io.receive_interruptibly(self._cancelled)
+        response = self.__io.receive_interruptibly(self._cancelled)
         if response.get("type") == "INTERRUPT":
             raise UserInterrupt()
         return response
 
     def receive_all(self, msg_type=None):
-        if self._cancelled.is_set():
-            if msg_type in (None, "INTERRUPT"):
-                raise UserInterrupt()
-            return []
-        messages = self._io.receive_all(msg_type)
+        messages = self.__io.receive_all_interruptibly(self._cancelled, msg_type)
+        if messages is None:
+            raise UserInterrupt()
         if any(message.get("type") == "INTERRUPT" for message in messages):
             raise UserInterrupt()
         return messages
@@ -48,16 +49,21 @@ class InterruptibleIO:
     def send_image(self, image_data: str) -> None:
         self.send({"type": "agent_image", "image": image_data})
 
-    def __getattr__(self, name):
-        return getattr(self._io, name)
 
-
-def _take_interrupt(io: Any) -> bool:
+def _take_interrupt(io: Any, on_interrupt: Optional[Callable[[], None]] = None) -> bool:
     """Drain a pending interrupt from an IO implementation honoring the API."""
+    # Look on the class so dynamic test doubles do not fabricate support for
+    # the optional atomic protocol via __getattr__.
+    take_interrupt = getattr(type(io), "take_interrupt", None)
+    if take_interrupt:
+        return take_interrupt(io, on_interrupt)
     messages = io.receive_all("INTERRUPT")
     # IO.receive_all() is specified to return a list. Treat an unconfigured
     # test double or incompatible duck type as no signal instead of as truthy.
-    return bool(messages) if isinstance(messages, list) else False
+    interrupted = bool(messages) if isinstance(messages, list) else False
+    if interrupted and on_interrupt:
+        on_interrupt()
+    return interrupted
 
 
 def run_interruptible(
@@ -76,9 +82,7 @@ def run_interruptible(
     if io is None or not hasattr(io, "receive_all"):
         return fn(), False
 
-    if _take_interrupt(io):
-        if on_interrupt:
-            on_interrupt()
+    if _take_interrupt(io, on_interrupt):
         return None, True
 
     box = {}
@@ -102,9 +106,7 @@ def run_interruptible(
         # for the next step or the existing iteration-boundary backstop.
         if not worker.is_alive():
             break
-        if _take_interrupt(io):
-            if on_interrupt:
-                on_interrupt()
+        if _take_interrupt(io, on_interrupt):
             return None, True
 
     if "error" in box:

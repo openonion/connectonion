@@ -1063,6 +1063,50 @@ class TestGracefulInterrupt:
         assert 'stop_signal' not in agent.current_session
         assert '_final_response_ready' not in agent.current_session
 
+    def test_runtime_input_continuation_does_not_swallow_interrupt(self):
+        from connectonion.network.io.websocket import WebSocketIO
+        from connectonion.useful_plugins import runtime_input
+        from connectonion.useful_plugins.tool_approval import poll_interrupt
+
+        io = WebSocketIO()
+
+        class RuntimeInputRaceLLM:
+            model = "fake/runtime-input-race"
+
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    assert io.push_runtime_input({'prompt': 'follow-up'}) is True
+                    io.send_to_agent({'type': 'INTERRUPT'})
+                    content = "first answer"
+                else:
+                    content = "SECOND CALL RAN"
+                return LLMResponse(
+                    content=content,
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+
+        llm = RuntimeInputRaceLLM()
+        agent = Agent(
+            "runtime-input-stop",
+            llm=llm,
+            plugins=[runtime_input],
+            on_events=[poll_interrupt],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        assert agent.input("start") == "What would you like me to do?"
+        assert llm.calls == 1
+        assert io.receive_all('INTERRUPT') == []
+        assert 'stop_signal' not in agent.current_session
+
     def test_execute_tool_consumes_interrupt_before_next_input(self):
         import threading
 

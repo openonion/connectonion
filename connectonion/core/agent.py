@@ -461,13 +461,6 @@ class Agent:
             if response is not None:
                 if not response.tool_calls:
                     content = response.content or ""
-                    self.current_session['_final_response_ready'] = True
-                    # A completion that won the worker polling race is the
-                    # terminal answer. Consume a simultaneous Stop here so the
-                    # boundary backstop cannot replace the returned answer
-                    # after it has already been appended to history.
-                    if self.io and hasattr(self.io, 'receive_all'):
-                        self.io.receive_all('INTERRUPT')
                     self.current_session['messages'].append({"role": "assistant", "content": content})
                 else:
                     # Process tool calls
@@ -476,12 +469,14 @@ class Agent:
             # Fire after_iteration
             self._invoke_events('after_iteration')
 
-            if response is not None and not response.tool_calls:
+            continuing = self.current_session.get('_continue_iteration', False)
+            if response is not None and not response.tool_calls and not continuing:
                 # Ignore Stop frames that raced a completed terminal answer,
                 # including frames received while after_iteration ran.
                 if self.io and hasattr(self.io, 'receive_all'):
                     self.io.receive_all('INTERRUPT')
-                self.current_session.pop('_final_response_ready', None)
+                if self.current_session.get('stop_signal') == 'user_interrupt':
+                    self.current_session.pop('stop_signal', None)
 
             # Check if plugin set stop_signal (stop loop, wait for user input)
             if self.current_session.pop('stop_signal', None):

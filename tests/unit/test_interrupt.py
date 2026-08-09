@@ -117,7 +117,7 @@ def test_worker_exception_is_reraised_on_caller_thread():
         run_interruptible(fail, MailboxIO(), poll_seconds=0.01)
 
 
-def test_abandoned_agent_tool_cannot_reach_next_session_or_mailbox():
+def test_abandoned_agent_tool_cannot_mutate_agent_state_or_reach_next_mailbox():
     started = threading.Event()
     release = threading.Event()
     finished = threading.Event()
@@ -126,13 +126,19 @@ def test_abandoned_agent_tool_cannot_reach_next_session_or_mailbox():
         started.set()
         release.wait(timeout=2)
         agent.current_session["late_worker_poison"] = True
+        agent.tools.remove("victim")
         try:
             agent.io.receive()
         finally:
             finished.set()
         return "late"
 
-    agent = Agent("lease-test", llm=MockLLM(), tools=[late_tool], log=False, quiet=True)
+    def victim() -> str:
+        return "still registered"
+
+    agent = Agent(
+        "lease-test", llm=MockLLM(), tools=[late_tool, victim], log=False, quiet=True
+    )
     old_session = {"messages": [], "trace": [], "iteration": 1}
     agent.current_session = old_session
     agent.io = WebSocketIO()
@@ -155,7 +161,49 @@ def test_abandoned_agent_tool_cannot_reach_next_session_or_mailbox():
 
     assert finished.wait(timeout=1)
     assert "late_worker_poison" not in new_session
-    assert old_session["late_worker_poison"] is True
+    assert "late_worker_poison" not in old_session
+    assert "victim" in agent.tools
+    assert agent.io.receive_all() == [next_reply]
+
+
+def test_cancelled_receive_all_cannot_drain_the_next_turn_mailbox():
+    entered_receive_all = threading.Event()
+    release_receive_all = threading.Event()
+    finished = threading.Event()
+
+    class PausedWebSocketIO(WebSocketIO):
+        def receive_all_interruptibly(self, cancel_event, msg_type=None):
+            entered_receive_all.set()
+            release_receive_all.wait(timeout=2)
+            return super().receive_all_interruptibly(cancel_event, msg_type)
+
+    def polling_tool(agent) -> str:
+        try:
+            agent.io.receive_all("ask_user_response")
+        finally:
+            finished.set()
+        return "late"
+
+    agent = Agent("atomic-lease", llm=MockLLM(), tools=[polling_tool], log=False, quiet=True)
+    agent.current_session = {"messages": [], "trace": [], "iteration": 1}
+    agent.io = PausedWebSocketIO()
+
+    def interrupt():
+        assert entered_receive_all.wait(timeout=1)
+        agent.io.send_to_agent({"type": "INTERRUPT"})
+
+    threading.Thread(target=interrupt, daemon=True).start()
+    trace = execute_single_tool(
+        "polling_tool", {}, "poll-call", agent.tools, agent,
+        Logger("atomic-lease", log=False),
+    )
+    assert trace["status"] == "interrupted"
+
+    next_reply = {"type": "ask_user_response", "answer": "next turn secret"}
+    agent.io.send_to_agent(next_reply)
+    release_receive_all.set()
+
+    assert finished.wait(timeout=1)
     assert agent.io.receive_all() == [next_reply]
 
 
@@ -183,6 +231,26 @@ def test_interruptible_io_makes_request_approval_an_interrupted_tool():
 
     assert trace["status"] == "interrupted"
     assert trace["result"] == "Interrupted by user"
+
+
+def test_completed_agent_tool_commits_its_session_snapshot():
+    def change_mode(agent) -> str:
+        agent.current_session["mode"] = "accept_edits"
+        return "changed"
+
+    agent = Agent("snapshot-commit", llm=MockLLM(), tools=[change_mode], log=False, quiet=True)
+    session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
+    agent.current_session = session
+    agent.io = WebSocketIO()
+
+    trace = execute_single_tool(
+        "change_mode", {}, "change-call", agent.tools, agent,
+        Logger("snapshot-commit", log=False),
+    )
+
+    assert trace["status"] == "success"
+    assert agent.current_session is session
+    assert session["mode"] == "accept_edits"
 
 
 def test_pending_tool_is_cleared_when_gate_interrupts():
