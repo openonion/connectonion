@@ -45,17 +45,37 @@ def verify_signature(payload: dict, signature: str, public_key: str) -> bool:
     sig_hex = signature[2:] if signature.startswith("0x") else signature
     key_hex = public_key[2:] if public_key.startswith("0x") else public_key
 
-    # Canonicalize payload (deterministic JSON)
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
     try:
         verify_key = VerifyKey(bytes.fromhex(key_hex))
-        verify_key.verify(canonical.encode(), bytes.fromhex(sig_hex))
-        return True
-    except (BadSignatureError, ValueError):
-        # BadSignatureError: invalid signature
-        # ValueError: invalid hex encoding
+        signature_bytes = bytes.fromhex(sig_hex)
+    except ValueError:
+        # Invalid public key or signature hex.
         return False
+
+    # Python historically escaped non-ASCII characters while JavaScript's
+    # JSON.stringify emits their UTF-8 representation. Both byte strings are
+    # deterministic encodings of the same JSON value, so accept either during
+    # verification. Keeping the escaped form first preserves every signature
+    # made by existing Python clients while allowing TS/browser clients to sign
+    # prompts such as Chinese text.
+    escaped = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    utf8 = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    # connectonion-ts <= the 1.6 candidate sorted only the envelope's top-level
+    # keys. Preserve the nested insertion order received on the wire as a
+    # migration path; new TS releases recursively sort to match Python.
+    top_level_sorted = {key: payload[key] for key in sorted(payload)}
+    legacy_ts = json.dumps(
+        top_level_sorted, separators=(",", ":"), ensure_ascii=False
+    )
+    for canonical in dict.fromkeys((escaped, utf8, legacy_ts)):
+        try:
+            verify_key.verify(canonical.encode(), signature_bytes)
+            return True
+        except BadSignatureError:
+            continue
+    return False
 
 
 def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=None, recipient_address=None):
