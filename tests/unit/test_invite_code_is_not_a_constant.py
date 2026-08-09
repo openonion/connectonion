@@ -35,6 +35,14 @@ class TestTheShippedPolicies:
             literals = [c for c in codes if not str(c).startswith("$")]
             assert not literals, f"{path.name} ships {literals}"
 
+    def test_docs_do_not_teach_the_retired_shared_code(self):
+        """Copyable docs must not recreate the public-password vulnerability."""
+        import pathlib
+
+        for path in pathlib.Path("docs").rglob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            assert "invite_code: [OpenOnion" not in text, str(path)
+
 
 class TestReadingTheCodeFromTheEnvironment:
     def test_a_placeholder_resolves_from_the_environment(self, monkeypatch):
