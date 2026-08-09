@@ -643,6 +643,7 @@ class TestEmailContent:
         gmail, _ = gmail_with_mock
         html = (
             '<p>Hello&nbsp;<strong>world</strong></p>'
+            '<p>co<strong>de</strong>!</p>'
             '<ScRiPt data-example="true" >steal()</ScRiPt>'
             '<style >p { display: none }</style>'
             '<p>Next line</p>'
@@ -654,7 +655,7 @@ class TestEmailContent:
             'body': {'data': encoded_html},
         })
 
-        assert result == "Hello world Next line"
+        assert result == "Hello world code! Next line"
 
     def test_get_email_attachments(self, gmail_with_mock):
         """Test get_email_attachments lists attachments."""
