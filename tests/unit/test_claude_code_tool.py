@@ -3,6 +3,7 @@
 import importlib
 import json
 import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -238,6 +239,24 @@ def test_resume_rejects_a_different_returned_session_id(tmp_path):
     assert "different session ID" in result["error"]
 
 
+def test_failed_resume_cannot_replace_the_requested_session_id(tmp_path):
+    completed = _completed(
+        {
+            "result": "authentication failed",
+            "session_id": "session-new",
+            "is_error": True,
+        },
+        returncode=1,
+    )
+
+    result, _ = _run(tmp_path, completed=completed, session_id="session-old")
+
+    assert result["status"] == "error"
+    assert result["session_id"] == "session-old"
+    assert "different session ID" in result["error"]
+    assert "authentication failed" in result["error"]
+
+
 @pytest.mark.parametrize("provider_session", [7, {"id": "s"}, ["s"]])
 def test_invalid_provider_session_id_never_leaks_into_the_envelope(
     tmp_path, provider_session
@@ -363,6 +382,18 @@ def test_process_runner_never_waits_unboundedly_after_timeout(tmp_path):
     process.stdout.close.assert_called_once()
     process.stderr.close.assert_called_once()
     process.wait.assert_called_once_with(timeout=1)
+
+
+@pytest.mark.skipif(
+    claude_module.os.name == "nt", reason="POSIX process-group regression"
+)
+def test_real_posix_timeout_remains_a_timeout(tmp_path):
+    with pytest.raises(subprocess.TimeoutExpired):
+        claude_module._run_process(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            cwd=str(tmp_path),
+            timeout=1,
+        )
 
 
 def test_tool_is_exported_from_both_public_namespaces():

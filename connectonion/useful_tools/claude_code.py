@@ -153,20 +153,25 @@ def claude_code(
     valid_provider_session = (
         isinstance(provider_session, str) and bool(provider_session.strip())
     )
-    returned_session = provider_session if valid_provider_session else session_id
+    returned_session = (
+        session_id
+        if session_id
+        else provider_session if valid_provider_session else ""
+    )
     result = payload.get("result", "")
     result = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
     failed = completed.returncode != 0 or bool(payload.get("is_error"))
     error = _provider_error(payload, completed.stderr, completed.returncode) if failed else ""
-    if not failed and not valid_provider_session:
+    if session_id and valid_provider_session and provider_session != session_id:
+        mismatch = (
+            f"Claude Code resumed {session_id!r} but returned a different session "
+            f"ID {provider_session!r}."
+        )
+        failed = True
+        error = f"{mismatch} Provider error: {error}" if error else mismatch
+    elif not failed and not valid_provider_session:
         failed = True
         error = "Claude Code completed without a resumable session ID."
-    elif not failed and session_id and returned_session != session_id:
-        failed = True
-        error = (
-            f"Claude Code resumed {session_id!r} but returned a different session "
-            f"ID {returned_session!r}."
-        )
     return _envelope(
         returned_session,
         resumed=bool(session_id),
@@ -207,7 +212,7 @@ def _is_unsafe_windows_batch(command: str, *, windows: bool | None = None) -> bo
 
 
 def _run_process(argv: list[str], *, cwd: str, timeout: int):
-    """Run one headless process and terminate its process tree on timeout."""
+    """Run headlessly and best-effort terminate its launch group on timeout."""
     platform_options = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
         if os.name == "nt"
@@ -274,20 +279,32 @@ def _terminate_process_tree(process) -> None:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         return
+    except OSError:
+        try:
+            process.terminate()
+        except OSError:
+            pass
+        return
 
     # The group leader can exit while grandchildren continue to own stdout or
     # stderr. Observe the process group itself, then force-kill whatever remains.
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline:
+        process.poll()
         try:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
             return
+        except OSError:
+            break
         time.sleep(0.05)
     try:
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    except OSError:
+        try:
+            process.kill()
+        except OSError:
+            pass
 
 
 def _provider_error(payload: dict, stderr: str, exit_code: int) -> str:

@@ -76,8 +76,11 @@ wrapper, set `CLAUDE_CODE_CMD` to a quoted command string.
 On Windows, the adapter rejects `.cmd` and `.bat` launchers because Windows may
 reparse their arguments through `cmd.exe`, which is unsafe for arbitrary prompt
 text. Use Claude Code's native executable, or point `CLAUDE_CODE_CMD` at a
-native `node.exe` followed by the CLI script path. Timed-out runs terminate the
-launched process tree rather than leaving tool subprocesses running.
+native `node.exe` followed by the CLI script path. Timed-out runs make a
+best-effort attempt to terminate the launched Windows process tree or POSIX
+process group. A descendant that deliberately detaches into another process
+group is outside that guarantee; the adapter's own timeout return remains
+bounded.
 
 Unit tests mock the subprocess and do not need Claude Code. Real CLI checks are
 opt-in:
