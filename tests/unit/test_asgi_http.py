@@ -227,6 +227,8 @@ class TestCorsHeaders:
         assert b"x-co-from" in allowed
         assert b"x-co-signature" in allowed
         assert b"x-co-timestamp" in allowed
+        assert b"x-co-to" in allowed
+        assert b"x-co-request-id" in allowed
 
 
 def signed_scope(method: str, path: str) -> dict:

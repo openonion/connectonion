@@ -2,6 +2,11 @@
 
 *March 2026*
 
+> **Scope note (August 2026):** `HTTPRouter` now handles publisher-defined HTTP
+> resources with explicit methods, paths, response types, and audience groups.
+> This proposal remains the separate RPC/remote-tool abstraction. See
+> [Custom HTTP routes](../network/http-routes.md).
+
 Hosted agents expose one interface: `INPUT → LLM → tools → OUTPUT`. Every request goes through the LLM. This document proposes `@expose` — a decorator that makes agent functions directly callable over HTTP and WebSocket, bypassing the LLM.
 
 ---

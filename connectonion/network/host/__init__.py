@@ -39,6 +39,7 @@ from .server import (
     host,
     create_app,
 )
+from .http_routes import HTTPRequest, HTTPResponse, HTTPRoute, HTTPRouter
 
 __all__ = [
     # Main entry point
@@ -67,4 +68,8 @@ __all__ = [
     "admin_sessions_handler",
     # Helpers
     "create_app",
+    "HTTPRequest",
+    "HTTPResponse",
+    "HTTPRoute",
+    "HTTPRouter",
 ]

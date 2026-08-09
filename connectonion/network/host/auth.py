@@ -18,10 +18,10 @@ Trust evaluation (via TrustAgent.should_allow()):
 import hashlib
 import json
 import time
+import uuid
 from typing import Dict
 
-from ..trust import TrustAgent, TRUST_LEVELS
-
+from ..trust import TRUST_LEVELS, TrustAgent
 
 # Signature expiry window (5 minutes)
 SIGNATURE_EXPIRY_SECONDS = 300
@@ -38,8 +38,8 @@ def verify_signature(payload: dict, signature: str, public_key: str) -> bool:
     Returns:
         True if signature is valid, False otherwise
     """
-    from nacl.signing import VerifyKey
     from nacl.exceptions import BadSignatureError
+    from nacl.signing import VerifyKey
 
     # Remove 0x prefix if present
     sig_hex = signature[2:] if signature.startswith("0x") else signature
@@ -186,11 +186,88 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
 FROM_HEADER = "x-co-from"
 SIGNATURE_HEADER = "x-co-signature"
 TIMESTAMP_HEADER = "x-co-timestamp"
+TO_HEADER = "x-co-to"
+REQUEST_ID_HEADER = "x-co-request-id"
 
 
 def _canonical(payload: dict) -> bytes:
     """The bytes that get signed. Same shape as connect.py's."""
     return json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()
+
+
+def canonical_query(query: str | bytes = "") -> str:
+    """Stable query-string form used by both HTTP signer and host."""
+    from urllib.parse import parse_qsl, urlencode
+
+    if isinstance(query, bytes):
+        query = query.decode()
+    return urlencode(sorted(parse_qsl(query, keep_blank_values=True)))
+
+
+def sign_http_request(
+    keys: dict,
+    method: str,
+    path: str,
+    *,
+    recipient_address: str,
+    query: str | bytes = "",
+    body: bytes | str = b"",
+    timestamp=None,
+    request_id: str | None = None,
+) -> dict:
+    """Sign an ordinary publisher HTTP request and return its X-Co headers.
+
+    ``body`` must be the exact bytes sent on the wire.  The signature binds the
+    method, route, canonical query, body digest, timestamp, one-use request id,
+    and recipient without wrapping application JSON in a protocol envelope.
+    """
+    from ... import address as _address
+
+    if isinstance(body, str):
+        body = body.encode()
+    request_id = request_id or uuid.uuid4().hex
+    payload = {
+        "method": method.upper(),
+        "path": path,
+        "query": canonical_query(query),
+        "body_sha256": hashlib.sha256(body).hexdigest(),
+        "timestamp": int(timestamp if timestamp is not None else time.time()),
+        "request_id": request_id,
+        "to": recipient_address,
+    }
+    return {
+        FROM_HEADER: keys["address"],
+        SIGNATURE_HEADER: _address.sign(keys, _canonical(payload)).hex(),
+        TIMESTAMP_HEADER: str(payload["timestamp"]),
+        TO_HEADER: recipient_address,
+        REQUEST_ID_HEADER: request_id,
+    }
+
+
+def request_from_http_headers(
+    headers: dict,
+    method: str,
+    path: str,
+    *,
+    query: str | bytes = "",
+    body: bytes = b"",
+) -> dict:
+    """Rebuild the signed publisher-request payload from actual wire data."""
+    lowered = {str(key).lower(): value for key, value in (headers or {}).items()}
+    timestamp = lowered.get(TIMESTAMP_HEADER)
+    return {
+        "payload": {
+            "method": method.upper(),
+            "path": path,
+            "query": canonical_query(query),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "timestamp": int(timestamp) if timestamp is not None else None,
+            "request_id": lowered.get(REQUEST_ID_HEADER),
+            "to": lowered.get(TO_HEADER),
+        },
+        "from": lowered.get(FROM_HEADER),
+        "signature": lowered.get(SIGNATURE_HEADER),
+    }
 
 
 def sign_request(keys: dict, method: str, path: str, timestamp=None) -> dict:

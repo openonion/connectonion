@@ -783,6 +783,7 @@ def host(
     co_dir: Path = None,
     summary: str = None,
     examples: list = None,
+    http=None,
 ):
     """
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
@@ -828,6 +829,7 @@ def host(
         co_dir: Path to .co directory for agent identity (default: ~/.co/)
         summary: Agent description (default: from config or agent.system_prompt)
         examples: Example prompts (default: from config or auto-generated)
+        http: Optional HTTPRouter with publisher-defined resource routes
 
     Direct execution (WS EXEC):
         Clients can run a tool directly, bypassing the LLM, via
@@ -845,6 +847,11 @@ def host(
         GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
         GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
+    if http is not None:
+        from .http_routes import HTTPRouter
+        if not isinstance(http, HTTPRouter):
+            raise TypeError("http must be an HTTPRouter")
+
     # Accept the documented simple path directly: host(agent). A factory remains
     # available when per-request isolation is worth its construction cost.
     if not callable(create_agent):
@@ -1016,6 +1023,7 @@ def host(
         whitelist=whitelist,
         on_startup=on_startup,
         on_shutdown=on_shutdown,
+        http=http,
     )
 
     # Display host startup banner (agent info shown separately by Agent class)
@@ -1032,7 +1040,7 @@ def host(
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
-def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None):
+def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None, http=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
     Each request calls create_agent() to get a fresh Agent instance.
@@ -1047,6 +1055,10 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         # uvicorn myagent:app --workers 4
     """
     from .auth import get_agent_address
+    from .http_routes import HTTPRouter
+
+    if http is not None and not isinstance(http, HTTPRouter):
+        raise TypeError("http must be an HTTPRouter")
 
     if storage is None:
         storage = SessionStorage()
@@ -1088,4 +1100,5 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         whitelist=whitelist,
         on_startup=balance_startup,
         on_shutdown=balance_shutdown,
+        http=http,
     )

@@ -53,7 +53,7 @@ CORS_HEADERS = [
     [b"access-control-allow-methods", b"GET, POST, OPTIONS"],
     [
         b"access-control-allow-headers",
-        b"authorization, content-type, x-co-from, x-co-signature, x-co-timestamp",
+        b"authorization, content-type, x-co-from, x-co-signature, x-co-timestamp, x-co-to, x-co-request-id",
     ],
 ]
 
