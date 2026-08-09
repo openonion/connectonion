@@ -84,7 +84,8 @@ def installed(tmp_path_factory):
     python = bin_dir / ("python.exe" if os.name == "nt" else "python")
 
     install = subprocess.run(
-        [str(python), "-m", "pip", "install", "--quiet", "--no-deps", str(wheel)],
+        [str(python), "-m", "pip", "install", "--quiet", "--no-deps",
+         "--force-reinstall", str(wheel)],
         capture_output=True, text=True, timeout=900,
     )
     assert install.returncode == 0, install.stderr[-500:]
