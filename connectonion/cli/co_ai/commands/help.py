@@ -71,6 +71,7 @@ oo -y "task"                      # Auto-approve file changes
 **Interaction:** `ask_user`, `confirm`
 **Skills:** `skill` (auto-invoked when relevant)
 **Background:** `run_background`, `task_output`, `kill_task`
+**Delegation:** `codex` (explicit cwd, resumable session)
 
 ## Skills
 

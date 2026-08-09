@@ -41,6 +41,7 @@ from .tools import (
     ask_user,
     run_background, task_output, kill_task,
     load_guide,
+    codex,
 )
 from .skills import skill
 from .plugins import system_reminder
@@ -114,6 +115,10 @@ def create_agent(
         *([run_background, task_output, kill_task] if background_tools else []),
         load_guide,
         ask_user,
+        # Codex owns approval for its concrete inner actions. The co ai wrapper
+        # derives that policy from the current mode instead of exposing it to
+        # the planner model as another set of permission switches.
+        codex,
     ]
 
     base_prompt = assemble_prompt(
