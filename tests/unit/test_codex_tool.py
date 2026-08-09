@@ -24,11 +24,14 @@ class FakeServer:
     """Stand-in CodexAppServer that simulates one turn via callbacks."""
     last = None
 
-    def __init__(self, command, cwd=None, on_event=None, on_approval=None):
+    def __init__(
+        self, command, cwd=None, on_event=None, on_approval=None, cancelled=None
+    ):
         self.command = command
         self.cwd = cwd
         self.on_event = on_event
         self.on_approval = on_approval
+        self.cancelled = cancelled
         self.calls = []
         self.approval_decision = None
         FakeServer.last = self
@@ -399,7 +402,7 @@ class TestResumeProtocol:
             client.run_turn("thread-1", "continue", timeout=10)
 
         assert request.call_args.kwargs["timeout"] == 10
-        done.wait.assert_called_once_with(6)
+        done.wait.assert_called_once_with(0.1)
 
     def test_close_reaps_the_process_tree_and_closes_every_pipe(self):
         client = codex_module.CodexAppServer(["codex", "app-server"])
@@ -427,6 +430,44 @@ class TestResumeProtocol:
             (42, 0),
             (42, codex_module.signal.SIGKILL),
         ]
+
+    def test_posix_process_tree_falls_back_when_group_signal_is_denied(self):
+        process = MagicMock(pid=42)
+        with patch.object(codex_module.os, "name", "posix"), patch.object(
+            codex_module.os, "killpg", side_effect=PermissionError
+        ):
+            codex_module._terminate_process_tree(process)
+
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=1)
+
+    @pytest.mark.parametrize("outcome", [0, 1, "timeout"])
+    def test_windows_process_tree_cleanup_handles_taskkill_outcomes(self, outcome):
+        process = MagicMock(pid=42)
+        with patch.object(codex_module.os, "name", "nt"), patch.object(
+            codex_module.subprocess, "run"
+        ) as taskkill:
+            if outcome == "timeout":
+                taskkill.side_effect = subprocess.TimeoutExpired("taskkill", 5)
+            else:
+                taskkill.return_value.returncode = outcome
+
+            codex_module._terminate_process_tree(process)
+
+        taskkill.assert_called_once()
+        assert taskkill.call_args.args[0] == [
+            "taskkill",
+            "/F",
+            "/T",
+            "/PID",
+            "42",
+        ]
+        assert taskkill.call_args.kwargs["timeout"] == 5
+        assert taskkill.call_args.kwargs["shell"] is False
+        if outcome == 0:
+            process.kill.assert_not_called()
+        else:
+            process.kill.assert_called_once()
 
     def test_reader_eof_immediately_fails_pending_requests_with_stderr(self):
         client = codex_module.CodexAppServer(["codex", "app-server"])

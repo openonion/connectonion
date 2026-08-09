@@ -5,7 +5,7 @@ import json
 import subprocess
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -369,19 +369,53 @@ def test_process_runner_never_waits_unboundedly_after_timeout(tmp_path):
     ]
     process.stdout = MagicMock()
     process.stderr = MagicMock()
-    with patch.object(claude_module.subprocess, "Popen", return_value=process), patch.object(
-        claude_module, "_terminate_process_tree"
-    ) as terminate:
+    with patch.object(
+        claude_module.subprocess, "Popen", return_value=process
+    ), patch.object(claude_module, "_terminate_process_tree") as terminate, patch.object(
+        claude_module.time, "monotonic", side_effect=[0, 0, 2]
+    ):
         with pytest.raises(subprocess.TimeoutExpired):
             claude_module._run_process(
                 ["claude", "--", "x"], cwd=str(tmp_path), timeout=1
             )
 
-    assert process.communicate.call_args_list[1].kwargs == {"timeout": 3}
+    assert process.communicate.call_args_list == [
+        call(timeout=0.1),
+        call(timeout=3),
+    ]
     terminate.assert_called_once_with(process)
     process.stdout.close.assert_called_once()
     process.stderr.close.assert_called_once()
     process.wait.assert_called_once_with(timeout=1)
+
+
+@pytest.mark.parametrize("outcome", [0, 1, "timeout"])
+def test_windows_process_tree_cleanup_handles_taskkill_outcomes(outcome):
+    process = MagicMock(pid=42)
+    with patch.object(claude_module.os, "name", "nt"), patch.object(
+        claude_module.subprocess, "run"
+    ) as taskkill:
+        if outcome == "timeout":
+            taskkill.side_effect = subprocess.TimeoutExpired("taskkill", 5)
+        else:
+            taskkill.return_value.returncode = outcome
+
+        claude_module._terminate_process_tree(process)
+
+    taskkill.assert_called_once()
+    assert taskkill.call_args.args[0] == [
+        "taskkill",
+        "/F",
+        "/T",
+        "/PID",
+        "42",
+    ]
+    assert taskkill.call_args.kwargs["timeout"] == 5
+    assert taskkill.call_args.kwargs["shell"] is False
+    if outcome == 0:
+        process.kill.assert_not_called()
+    else:
+        process.kill.assert_called_once()
 
 
 @pytest.mark.skipif(
