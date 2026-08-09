@@ -137,7 +137,9 @@ permission. Accept Edits permits workspace changes but still asks about
 untrusted commands, while explicit
 YOLO/ULW runs without prompts inside that same sandbox. The policy is reapplied
 when a Codex session is resumed, and `danger-full-access` is never selected by
-the integration.
+the integration. In a hosted session, only the operator can approve Codex's
+nested permission requests; shared contacts are always confined to read-only
+Codex runs with permission requests denied.
 
 **Skills**
 - Load and run user-defined skills from `~/.claude/skills/`

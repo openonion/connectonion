@@ -74,6 +74,26 @@ def test_unknown_or_missing_mode_fails_closed_to_manual_read_only(monkeypatch):
     assert all(call["approval"] == "manual" for call in calls)
 
 
+@pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
+def test_hosted_contact_is_confined_to_read_only_without_prompts(monkeypatch, mode):
+    seen = {}
+    monkeypatch.setattr(
+        codex_module,
+        "run_codex",
+        lambda **kwargs: seen.update(kwargs) or "result",
+    )
+    agent = SimpleNamespace(
+        current_session={
+            "mode": mode,
+            "requester": {"address": "0xcontact", "level": "contact"},
+        }
+    )
+
+    assert codex("inspect", cwd="/repo", agent=agent) == "result"
+    assert seen["sandbox"] == "read-only"
+    assert seen["approval"] == "deny"
+
+
 def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_path):
     calls = []
 

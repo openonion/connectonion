@@ -19,12 +19,18 @@ def codex(
     mode owns Codex's sandbox and approval policy; they are intentionally not
     model-selectable arguments.
     """
-    mode = getattr(agent, "current_session", {}).get("mode", "safe")
+    session = getattr(agent, "current_session", {})
+    mode = session.get("mode", "safe")
     sandbox, approval = {
         "safe": ("read-only", "manual"),
         "accept_edits": ("workspace-write", "manual"),
         "ulw": ("workspace-write", "deny"),
     }.get(mode, ("read-only", "manual"))
+    requester = session.get("requester")
+    if requester and requester.get("level") != "admin":
+        # Contacts may use Codex for inspection, but cannot select a mode that
+        # writes or answer an operator-owned nested approval prompt.
+        sandbox, approval = "read-only", "deny"
     working_directory = str(Path(cwd).expanduser().resolve())
     return run_codex(
         prompt=prompt,

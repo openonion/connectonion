@@ -93,8 +93,9 @@ class _IO:
 
 
 class _Agent:
-    def __init__(self, io):
+    def __init__(self, io, current_session=None):
         self.io = io
+        self.current_session = current_session or {}
 
 
 def _run(**kwargs):
@@ -220,6 +221,41 @@ class TestApproval:
         agent = _Agent(_IO(approve=False))
         _run(prompt="fix", approval="manual", agent=agent)
         assert FakeServer.last.approval_decision is False
+
+    def test_hosted_contact_cannot_answer_manual_approval(self):
+        agent = _Agent(
+            _IO(approve=True),
+            {"requester": {"address": "0xcontact", "level": "contact"}},
+        )
+
+        _run(prompt="fix", approval="manual", agent=agent)
+
+        assert FakeServer.last.approval_decision is False
+        assert agent.io.asked == []
+
+    def test_hosted_admin_can_answer_manual_approval(self):
+        agent = _Agent(
+            _IO(approve=True),
+            {"requester": {"address": "0xadmin", "level": "admin"}},
+        )
+
+        _run(prompt="fix", approval="manual", agent=agent)
+
+        assert FakeServer.last.approval_decision is True
+        assert agent.io.asked
+
+    def test_auto_refuses_permission_profile_escalation(self):
+        agent = _Agent(_IO(approve=True))
+
+        allowed = codex_module._approval_allowed(
+            "item/permissions/requestApproval",
+            {"permissions": {"network": {"enabled": True}}},
+            "auto",
+            agent,
+        )
+
+        assert allowed is False
+        assert agent.io.asked == []
 
     def test_manual_without_io_denies(self):
         assert (

@@ -68,10 +68,12 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
         sandbox: "read-only", "workspace-write" (default), or "danger-full-access"
         model: Codex model override (e.g., "gpt-5-codex"); empty uses the default
         timeout: Seconds before timeout (default: 600)
-        approval: "manual" asks the human when Codex requests permission;
-            "auto" runs without prompts inside the selected sandbox; "deny"
-            also refuses any unexpected permission request. With no frontend,
-            manual fails closed. The policy is reapplied on resume.
+        approval: "manual" asks the operator when Codex requests permission;
+            "auto" runs commands without prompts inside the selected sandbox
+            but refuses permission-profile escalation; "deny" refuses every
+            unexpected permission request. With no frontend, or in a hosted
+            session whose requester is not an admin, manual fails closed. The
+            policy is reapplied on resume.
 
     Returns:
         JSON string with provider, session_id, resumed, last_message,
@@ -194,8 +196,21 @@ def _forward_ui(agent, event):
 def _approval_allowed(method, params, approval, agent):
     """Whether one server approval request may proceed."""
     if approval == "auto":
-        return True
+        # A permissions request can expand the selected sandbox (for example,
+        # by granting network or an additional filesystem root). ``auto`` is
+        # intentionally automatic *inside* the sandbox, not permission to
+        # redefine it.
+        return method != "item/permissions/requestApproval"
     if approval == "deny":
+        return False
+    requester = (
+        getattr(agent, "current_session", {}).get("requester")
+        if agent is not None
+        else None
+    )
+    # Hosted approval dialogs belong to the operator. A local run has no
+    # requester record and keeps the existing interactive behaviour.
+    if requester and requester.get("level") != "admin":
         return False
     io = getattr(agent, "io", None) if agent is not None else None
     if io is None:
