@@ -38,7 +38,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.5.19
+## Current Version: 1.5.20
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -62,6 +62,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 - 1.5.8 (**paid onboarding could not succeed, and failed open when it could not run** — the two halves of the same gate; a token that names another account is refreshed rather than reused; the deploy stamp follows what was installed rather than what was asked for; and the pin test asserts the real version instead of one it hardcoded)
 - 1.5.9 (**Home becomes a control panel**: the page says what the agent has been doing, shows its address and trust, and is the starter itself rather than a copy that drifts from it; **an agent keeps its own schedule** in `.co/schedule.yaml`, run by the host every minute; and `<co-table>` is documented for agents that write their own Home)
 - 1.5.10 (**a schedule that will never fire says so** — a hand-written file reaches production, and a dropped entry is otherwise indistinguishable from one that is not due yet; Recent stops saying the same sentence three times. Released as 1.5.10 rather than the 1.6.0 that was prepared: see the rule at the top of this file)
+- 1.5.20 (**paid quota without an address change**: `co email upgrade plus --keep-address` raises an existing `@mail.openonion.ai` mailbox to the Plus monthly quota while preserving the exact sender address, so a mailbox that has reached the free limit does not have to abandon the address its users already know.)
 - 1.5.19 (**OAuth and status calls cannot wait forever on a broken network**: every Google and Microsoft authorization request, including polling and credential retrieval, now has a bounded timeout; `co status` likewise stops waiting after 15 seconds instead of hanging indefinitely. This patch is cut directly from the exercised 1.5.18 release and does not include the unreviewed 1.6.0 candidate.)
   Published on [PyPI](https://pypi.org/project/connectonion/1.5.19/) and as [GitHub release `v1.5.19`](https://github.com/openonion/connectonion/releases/tag/v1.5.19); both carry the exact artifacts preserved by the release build.
 - 1.5.18 (**the wheel acceptance test installs the wheel it was given**: the build environment already contains ConnectOnion while it runs the artifact test, so pip must force-reinstall the candidate into the child virtualenv instead of treating the outer copy as satisfying it; this carries the same email retry fix through the corrected release gate)
