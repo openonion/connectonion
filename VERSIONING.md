@@ -38,9 +38,10 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.6.0
+## Current Version: 1.7.0
 
 ### Version History
+- 1.7.0 (**`co ai` becomes a resumable coding orchestrator**: progressive TodoList replaces Plan mode; one-shot JSON sessions resume safely across processes; Codex and Claude Code delegation preserve provider-owned permission boundaries; bounded interruption abandons framework-owned steps promptly, attempts to stop provider process trees, and discards late state; the optional GitHub Action reviews fixed, read-only pull-request evidence without checking out untrusted code; official Claude Code plugin guidance follows the single deployable `co-ai` template.)
 - 1.6.0 (**safer remote agents and a cleaner credential boundary**: host identity and temporary session-status probes are signed consistently; relay profile updates reject stale or conflicting state; Microsoft OAuth credentials and refresh-token rotation stay on the CLI machine instead of being stored by the backend; project invite credentials are private and no shared default invite code is documented; email sending has traceable, tenant-scoped idempotency and resilient provider-error handling; paid mailbox upgrades can preserve the existing address and are charged atomically; portable skills, dependency floors, cross-platform tests, and exact-artifact release verification are hardened for a stable release.)
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
 - 0.0.2 → 0.0.9 (Early production releases)
