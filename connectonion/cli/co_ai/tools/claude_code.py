@@ -18,7 +18,6 @@ def claude_code(
     """
     session = getattr(agent, "current_session", {}) or {}
     permission_mode = {
-        "plan": "plan",
         "safe": "default",
         "accept_edits": "acceptEdits",
         "ulw": "auto",
