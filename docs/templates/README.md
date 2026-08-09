@@ -45,6 +45,20 @@ agent = create_agent(role="coding")
 host(agent)
 ```
 
+## Build it with Claude Code
+
+This workflow requires plugin **1.2.0 or later**. Existing installations should
+[update the plugin first](../claude-code-plugin.md#install-or-update).
+
+Install the official ConnectOnion Claude Code plugin, open the generated
+project, and run `/connectonion:aaron-build-my-agent` to specialize it. The
+skill reads `.co/docs/`, keeps the generated `agent.py` small, and puts the
+procedure in `.co/skills/`. Then run `/connectonion:aaron-review-my-code .` to
+review the result.
+
+See [Claude Code plugin](../claude-code-plugin.md) for installation and the
+build and review commands.
+
 ## Specialising it
 
 **Skills** are the procedures your agent follows. Drop one in
