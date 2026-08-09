@@ -60,7 +60,7 @@ class TestNoReleaseIsSkipped:
         tags = subprocess.run(['git', 'tag', '-l', 'v*'], cwd=REPO,
                               capture_output=True, text=True).stdout.split()
         if not tags:
-            # actions/checkout@v4 does not fetch tags unless asked, so on CI
+            # actions/checkout@v5 does not fetch tags unless asked, so on CI
             # this has nothing to compare against — and passing on an empty set
             # is how a check ends up reporting nothing in exactly the
             # environment it was written to guard. Say so instead; -rs in
@@ -102,7 +102,7 @@ class TestOneHistoryNotTwo:
 
 class TestACheckThatCannotRunSaysSo:
     """The tag comparison is the one that found the six missing entries, and
-    it is the one that cannot run on CI: `actions/checkout@v4` does not fetch
+    it is the one that cannot run on CI: `actions/checkout@v5` does not fetch
     tags unless asked, so `git tag -l` comes back empty there.
 
     Passing on an empty set is how a check ends up reporting nothing in exactly
