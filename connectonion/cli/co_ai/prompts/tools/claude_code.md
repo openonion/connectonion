@@ -18,6 +18,8 @@ separate coding agent is better suited to implement or investigate it.
   co ai UI. Accept Edits can edit in-scope files; other actions that need a
   prompt fail closed. Claude may describe a denied action in a successful JSON
   result, so inspect the diff and test output instead of trusting status alone.
+- In a hosted session, Claude Code delegation is operator-only. Shared contacts
+  receive a structured refusal and the local CLI is not started.
 
 Do not wrap `claude_code()` in `run_background()`. The adapter already owns a
 bounded subprocess and returns a resumable JSON result.

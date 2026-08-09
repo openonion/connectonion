@@ -1,5 +1,7 @@
 """Expose Claude Code to co ai without exposing its permission policy."""
 
+import json
+
 from connectonion.useful_tools import claude_code as run_claude_code
 
 
@@ -15,8 +17,27 @@ def claude_code(
 
     Pass the returned ``session_id`` back on a later call. The current co ai
     mode owns Claude Code's permission mode; it is not model-selectable.
+    Hosted non-admin requesters cannot start the local coding subprocess.
     """
     session = getattr(agent, "current_session", {}) or {}
+    requester = session.get("requester")
+    if requester and requester.get("level") != "admin":
+        return json.dumps(
+            {
+                "provider": "claude_code",
+                "session_id": session_id,
+                "resumed": bool(session_id),
+                "status": "error",
+                "result": "",
+                "error": (
+                    "Claude Code delegation is available only to the operator "
+                    "in a hosted session."
+                ),
+                "exit_code": -1,
+                "usage": {},
+                "total_cost_usd": None,
+            }
+        )
     permission_mode = {
         "safe": "default",
         "accept_edits": "acceptEdits",
