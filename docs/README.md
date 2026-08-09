@@ -119,7 +119,7 @@ my-project/
 **co-ai (Default)** - the same agent `co ai` runs, wrapped in `host()`:
 - `bash`, `read_file`, `edit`, `glob`, `grep`, `write` - files and shell
 - browser via the `co browser` CLI, plus a Dockerfile that ships Chrome under Xvfb
-- planning, todos, sub-agents, skills
+- todos, sub-agents, skills
 - `agent.py` is ~5 lines; you specialise it with skills in `.co/skills/`
 
 **custom** - an LLM writes `agent.py` from your `--description`.

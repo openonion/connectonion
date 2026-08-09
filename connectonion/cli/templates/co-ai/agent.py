@@ -1,7 +1,7 @@
 """Your ConnectOnion agent — the same agent as `co ai`, wrapped in host().
 
 This is the whole agent. You don't add tools here to make it useful; it already
-has files, shell, browser, planning, todos, and sub-agents. What makes it
+has files, shell, browser, todos, and sub-agents. What makes it
 *yours* is what sits next to it:
 
     .co/skills/<name>/SKILL.md   the procedures it should follow

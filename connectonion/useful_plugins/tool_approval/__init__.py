@@ -28,7 +28,6 @@ Tool Classification:
 
 Mode System:
 - "safe" (default): Dangerous tools need approval
-- "plan": Read-only only, exit_plan_and_implement uses its own io.send/receive
 - "accept_edits": File edits auto-approved, other dangerous tools need approval
 - "ulw": Handled by ulw plugin - bypasses all approvals
 
@@ -112,7 +111,7 @@ Architecture - Unified Permission System Lifecycle:
     │ 3. TOOL EXECUTION (@before_each_tool)                                   │
     │    check_approval()                                                     │
     │    ├─ Check skip flags (no_io, skip_tool_approval)                      │
-    │    ├─ Check mode (safe/plan/accept_edits)                               │
+    │    ├─ Check mode (safe/accept_edits)                                    │
     │    ├─ Iterate permissions dict:                                         │
     │    │  ├─ matches_permission_pattern(tool_name, args, key)               │
     │    │  │  - For 'bash': matches tool name                                │

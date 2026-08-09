@@ -3,7 +3,7 @@ Purpose: Orchestrate WebSocket-based tool approval with mode system and permissi
 LLM-Note:
   Dependencies: imports from [../../core/events.py (before_each_tool, before_iteration, after_user_input), ./constants.py (VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS), ./bash_parser.py (extract_commands_from_bash, check_bash_chain_permitted), ../skills.py (matches_permission_pattern), pathlib.Path, typing.TYPE_CHECKING] | imported by [tool_approval/__init__.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_tool_approval.py, tests/unit/test_shell_approval.py]
   Data flow: after_user_input → load_config_permissions() loads .co/host.yaml permissions into session['permissions'] | before_iteration → poll_mode_changes() checks for mode_change messages | before_each_tool → check_approval() validates tool against mode+permissions → if dangerous: agent.io.send(approval_needed) → agent.io.receive() blocks for client response → if approved: return (execute tool) | if rejected: raise ValueError (LLM sees rejection message)
-  State/Effects: modifies session['permissions'] (permission cache), session['approval']['approved_tools'] (session-scoped approvals), session['mode'] (safe/plan/accept_edits) | reads .co/host.yaml file | writes to agent.logger for approval logs | sends WebSocket messages via agent.io | blocks execution waiting for user approval
+  State/Effects: modifies session['permissions'] (permission cache), session['approval']['approved_tools'] (session-scoped approvals), session['mode'] (safe/accept_edits) | reads .co/host.yaml file | writes to agent.logger for approval logs | sends WebSocket messages via agent.io | blocks execution waiting for user approval
   Integration: exposes check_approval (before_each_tool hook), load_config_permissions (after_user_input hook), poll_mode_changes (before_iteration hook), handle_mode_change(agent, mode), get_current_mode(agent) | uses agent.io.send/receive for client communication | integrates with skills plugin for permission pattern matching | integrates with ulw plugin for ulw mode handling
   Performance: yaml file loaded once per session (cached) | permission checks are O(n) where n=number of permission patterns | WebSocket receive() blocks until user responds (can be seconds/minutes)
   Errors: ValueError raised when tool rejected → LLM sees error message with feedback | raises ValueError if connection closed during approval | bubbles up bashlex.ParsingError from bash_parser
@@ -31,12 +31,6 @@ Mode System (session['mode']):
         - Safe tools: auto-approved (read, glob, grep)
         - Dangerous tools: need approval (bash, write, delete)
         - Used for: normal coding assistance
-
-    plan:
-        - Read-only tools: auto-approved
-        - Dangerous tools: BLOCKED
-        - exit_plan_and_implement: handles its own io.send/receive (not in DANGEROUS_TOOLS)
-        - Used for: planning phase before execution
 
     accept_edits:
         - File edit tools: auto-approved (write, edit, multi_edit)
@@ -325,10 +319,12 @@ def _get_mode(agent: 'Agent') -> str:
 
     Modes:
         'safe': Dangerous tools need approval (default)
-        'plan': Read-only tools only, exit_plan_and_implement needs approval
         'accept_edits': No approvals, agent runs freely
     """
-    return agent.current_session.get('mode', DEFAULT_MODE)
+    mode = agent.current_session.get('mode', DEFAULT_MODE)
+    if mode in VALID_MODES or mode == 'ulw':
+        return mode
+    return DEFAULT_MODE
 
 
 def _set_mode(agent: 'Agent', mode: str) -> None:
@@ -413,7 +409,6 @@ def check_approval(agent: 'Agent') -> None:
 
     Mode behavior:
         'safe': Dangerous tools need approval
-        'plan': Only read-only tools allowed, exit_plan_and_implement needs approval
         'accept_edits': File edit tools auto-approved, other dangerous tools need approval
 
     Other plugins can set session['skip_tool_approval'] = True to bypass all checks.
@@ -529,21 +524,6 @@ def check_approval(agent: 'Agent') -> None:
                 agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
             return
         # Other dangerous tools fall through to approval logic
-
-    # =================================================================
-    # MODE: plan - Read-only tools only, exit_plan_and_implement needs approval
-    # =================================================================
-    if mode == 'plan':
-        # Block dangerous tools in plan mode (exit_plan_and_implement handles its own io.send/receive)
-        if tool_name in DANGEROUS_TOOLS:
-            raise ValueError(
-                f"Tool '{tool_name}' is blocked in Plan Mode. "
-                "Use read-only tools to explore, write your plan with write_plan(), "
-                "then call exit_plan_and_implement() when ready for approval."
-            )
-        # Safe tools are allowed
-        else:
-            return
 
     # =================================================================
     # MODE: safe - Dangerous tools need approval
@@ -887,14 +867,17 @@ def poll_mode_changes(agent: 'Agent') -> None:
     """Poll for mode_change signals at iteration start.
 
     Checks if client sent mode_change while agent was working.
-    Handles all modes: safe, plan, accept_edits, ulw.
+    Handles safe, accept_edits, ulw, and legacy plan requests.
     """
+    if agent.current_session.get('mode') == 'plan':
+        handle_mode_change(agent, 'plan')
+
     if not agent.io:
         return
 
     for msg in agent.io.receive_all('mode_change'):
         new_mode = msg.get('mode')
-        if new_mode in VALID_MODES:
+        if new_mode in VALID_MODES or new_mode == 'plan':
             handle_mode_change(agent, new_mode)
         elif new_mode == 'ulw':
             from ..ulw import handle_ulw_mode_change
@@ -926,26 +909,36 @@ def handle_mode_change(agent: 'Agent', mode: str) -> None:
     """Handle mode change request from frontend.
 
     Called when frontend sends { type: 'mode_change', mode: '...' }
-    Only handles modes known to this plugin (safe, plan, accept_edits).
+    Handles safe and accept_edits. Legacy plan requests fall back to safe so
+    old frontends cannot leave the backend in a read-only state with no exit.
     Other modes (e.g., ulw) should be handled by their respective plugins.
 
     Args:
         agent: Agent instance
-        mode: New mode ('safe', 'plan', 'accept_edits')
+        mode: New mode ('safe', 'accept_edits', or legacy 'plan')
     """
+    requested_mode = mode
+    if mode == 'plan':
+        mode = DEFAULT_MODE
+
     if mode not in VALID_MODES:
         # Unknown mode - might be handled by another plugin (e.g., ulw)
         return
 
     old_mode = _get_mode(agent)
     if old_mode == mode:
-        return  # No change
+        if requested_mode == 'plan':
+            _set_mode(agent, mode)
+        return
 
     # Clear skip_tool_approval when switching to a mode we handle
     agent.current_session.pop('skip_tool_approval', None)
 
     _set_mode(agent, mode)
-    _log(agent, f"[cyan]Mode changed: {old_mode} → {mode}[/cyan]")
+    if requested_mode == 'plan':
+        _log(agent, f"[cyan]Legacy plan mode is unavailable; changed: {old_mode} → {mode}[/cyan]")
+    else:
+        _log(agent, f"[cyan]Mode changed: {old_mode} → {mode}[/cyan]")
 
 
 def get_current_mode(agent: 'Agent') -> str:

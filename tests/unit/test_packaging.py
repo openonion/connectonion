@@ -34,9 +34,8 @@ def test_no_dangling_symlinks_in_the_package():
 
 
 def test_prompts_do_not_teach_a_template_that_no_longer_exists():
-    """The agent reads these, not just the humans. `tools/enter_plan_mode.md` is
-    always in the system prompt and told the agent to scaffold with
-    `--template browser/coder/web-research`; every one of those now exits 1.
+    """The agent reads these, not just the humans. A prompt told the agent to
+    scaffold with `--template browser/coder/web-research`; each command exits 1.
 
     Docs were updated when the templates were retired and the prompts were not,
     which is a quieter failure: the agent confidently runs a dead command.
@@ -58,6 +57,30 @@ def test_prompts_do_not_teach_a_template_that_no_longer_exists():
         "prompts instruct the agent to use a retired template; these commands "
         f"exit 1: {offenders}"
     )
+
+
+def test_co_ai_prompts_use_todos_instead_of_plan_mode():
+    prompts = PACKAGE / "cli" / "co_ai" / "prompts"
+
+    assert not (prompts / "tools" / "enter_plan_mode.md").exists()
+    assert not (prompts / "system-reminders" / "plan_mode.md").exists()
+
+    offenders = []
+    for relative in ["main.md", "workflow.md", "system-reminders/agent.md"]:
+        text = (prompts / relative).read_text(encoding="utf-8").lower()
+        for legacy in ["enter_plan_mode", "exit_plan_and_implement", "write_plan"]:
+            if legacy in text:
+                offenders.append(f"{relative}: {legacy}")
+
+    assert not offenders, f"co ai still teaches its removed plan tools: {offenders}"
+
+    example_prompts = PACKAGE / "useful_prompts" / "coding_agent" / "prompts"
+    assert not (example_prompts / "tools" / "plan_mode.md").exists()
+
+    default_permissions = (PACKAGE / "network" / "host" / "host.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "enter_plan_mode" not in default_permissions
 
 
 def test_guide_index_does_not_advertise_the_retired_templates():

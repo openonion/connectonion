@@ -101,6 +101,9 @@ class FakeAgent:
 class TestToolClassification:
     """Test tool classification - DANGEROUS tools need approval."""
 
+    def test_main_approval_modes_stay_small(self):
+        assert VALID_MODES == {'safe', 'accept_edits'}
+
     def test_dangerous_tools_defined(self):
         """DANGEROUS_TOOLS should contain write/execute tools."""
         assert 'bash' in DANGEROUS_TOOLS
@@ -664,15 +667,42 @@ class TestPollModeChanges:
 
         assert agent.current_session['mode'] == 'safe'
 
-    def test_poll_mode_changes_handles_plan_mode(self):
-        """poll_mode_changes should handle mode_change to plan."""
+    def test_poll_mode_changes_normalizes_legacy_plan_mode_to_safe(self):
+        """Old frontends cannot enter a plan state with no exit tools."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'accept_edits'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+        assert io.sent == [
+            {'type': 'mode_changed', 'mode': 'safe', 'triggered_by': 'agent'}
+        ]
+
+    def test_legacy_plan_request_confirms_safe_when_already_safe(self):
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = 'safe'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'plan'
+        assert agent.current_session['mode'] == 'safe'
+        assert io.sent == [
+            {'type': 'mode_changed', 'mode': 'safe', 'triggered_by': 'agent'}
+        ]
+
+    def test_persisted_plan_session_is_normalized_without_a_new_signal(self):
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'plan'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+        assert io.sent == [
+            {'type': 'mode_changed', 'mode': 'safe', 'triggered_by': 'agent'}
+        ]
 
     def test_poll_mode_changes_handles_accept_edits_mode(self):
         """poll_mode_changes should handle mode_change to accept_edits."""
@@ -700,15 +730,15 @@ class TestPollModeChanges:
         """poll_mode_changes should process multiple mode_change signals."""
         io = FakeIO(pending_signals=[
             {'type': 'mode_change', 'mode': 'plan'},
-            {'type': 'mode_change', 'mode': 'safe'},
+            {'type': 'mode_change', 'mode': 'accept_edits'},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'accept_edits'
+        agent.current_session['mode'] = 'safe'
 
         poll_mode_changes(agent)
 
-        # Last mode wins
-        assert agent.current_session['mode'] == 'safe'
+        # Last mode wins, after the legacy request briefly confirms safe.
+        assert agent.current_session['mode'] == 'accept_edits'
 
     def test_poll_mode_changes_ignores_other_message_types(self):
         """poll_mode_changes should only process mode_change messages."""
@@ -721,7 +751,7 @@ class TestPollModeChanges:
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'plan'
+        assert agent.current_session['mode'] == 'safe'
         # Other signal should still be in pending
         assert len(io.pending_signals) == 1
         assert io.pending_signals[0]['type'] == 'other_signal'

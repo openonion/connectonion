@@ -9,9 +9,8 @@ LLM-Note:
   Errors: none (constants cannot fail)
 
 Constants Overview:
-    VALID_MODES = {'safe', 'plan', 'accept_edits'}
+    VALID_MODES = {'safe', 'accept_edits'}
         - safe: dangerous tools need approval (default)
-        - plan: read-only only, exit_plan_and_implement needs approval
         - accept_edits: file edits auto-approved
 
     DANGEROUS_TOOLS: bash, write, edit, send_email, delete, etc.
@@ -28,20 +27,18 @@ Tool Classification:
 # =============================================================================
 # MODE SYSTEM
 # =============================================================================
-# Three modes control approval behavior:
+# Two modes control approval behavior:
 #   - 'safe' (default): Dangerous tools need approval
-#   - 'plan': Read-only tools only, exit_plan_and_implement shows plan for approval
 #   - 'accept_edits': File edit tools auto-approved, other dangerous tools need approval
 #
 # Other modes (handled by separate plugins via skip_tool_approval flag):
 #   - 'ulw': Handled by ulw plugin - sets skip_tool_approval=True
 #
-# Mode can be changed by:
-#   - User: via WebSocket { type: 'mode_change', mode: '...' }
-#   - Agent: via enter_plan_mode() tool (safe/accept_edits → plan)
+# Mode can be changed by the user via WebSocket
+# { type: 'mode_change', mode: '...' }.
 # =============================================================================
 
-VALID_MODES = {'safe', 'plan', 'accept_edits'}
+VALID_MODES = {'safe', 'accept_edits'}
 DEFAULT_MODE = 'safe'
 
 

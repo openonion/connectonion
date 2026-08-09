@@ -42,6 +42,10 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # 40 tool schemas stay out of the request.
     assert agent.tools.get_instance("browserautomation") is None
     assert "bash" in agent.tools._tools
+    assert "todolist" in agent.tools._instances
+    assert "enter_plan_mode" not in agent.tools._tools
+    assert "exit_plan_and_implement" not in agent.tools._tools
+    assert "write_plan" not in agent.tools._tools
     assert agent.co_dir == Path(".co")
     # bind_browser_session existed only because hosted co ai ran every panel's
     # turns on one in-process BrowserAutomation. The `co browser` daemon owns

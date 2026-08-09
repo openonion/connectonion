@@ -16,7 +16,7 @@ apart as the SDK moved, and four of the six never called `host()`, so
 `co create` followed by `co deploy` dead-stopped.
 
 Starting from a different skeleton is the wrong axis to vary. The agent is the
-same in every case: files, shell, browser, planning, todos, sub-agents. What
+same in every case: files, shell, browser, todos, sub-agents. What
 differs between a coding assistant and a LinkedIn poster is *what it knows how
 to do* — and that is a skill, not a scaffold.
 

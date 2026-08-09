@@ -61,7 +61,7 @@ Based on Claude Code patterns, system reminders fall into five categories:
 | Category | Purpose | Example |
 |----------|---------|---------|
 | **Workflow Nudges** | Gentle best practice suggestions | "Consider running tests" |
-| **State Notifications** | Inform about state changes | "You exited plan mode" |
+| **State Notifications** | Inform about state changes | "A file changed externally" |
 | **External Events** | React to external changes | "File was modified by linter" |
 | **Next Steps** | Guide what to do next | "Verify your implementation" |
 | **Context Injection** | Provide relevant info | "This file contains secrets" |
@@ -160,20 +160,6 @@ Code was modified. Consider:
 - Running relevant tests
 - Checking for linter errors
 This is a gentle reminder - ignore if not applicable.
-</system-reminder>
-```
-
-### State Notification: Plan Mode Exited
-
-```markdown
----
-name: plan-mode-exited
-triggers:
-  - tool: exit_plan_and_implement
----
-
-<system-reminder>
-You have exited plan mode. You can now make edits and run tools.
 </system-reminder>
 ```
 
