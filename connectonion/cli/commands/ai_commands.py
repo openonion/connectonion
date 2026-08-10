@@ -142,7 +142,8 @@ def _handle_json_one_shot(
                         GLOBAL_CO_DIR, agent.current_session, capture_tool_state(agent)
                     )
     except Exception as exc:
-        _print_envelope(resume, None, str(exc))
+        error_session_id = resume if persist_session else None
+        _print_envelope(error_session_id, None, str(exc))
         raise typer.Exit(1) from None
     _print_envelope(session_id, result, None)
 
