@@ -429,6 +429,7 @@ async def handle_http(
                 recipient_address=route_handlers["agent_metadata"]["address"],
                 blacklist=blacklist,
                 whitelist=whitelist,
+                replay_check=route_handlers.get("replay"),
             )
             return
 

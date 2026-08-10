@@ -215,7 +215,8 @@ def test_top_level_type_cannot_relabel_a_signed_command(keys):
 
 
 async def _session_with(
-    messages, monkeypatch, *, signed_commands, ran, connect_calls=None
+    messages, monkeypatch, *, signed_commands, ran, connect_calls=None,
+    replay_check=None,
 ):
     from connectonion.network.host.ws_router import session
 
@@ -250,16 +251,39 @@ async def _session_with(
     async def send(message):
         sent.append(message)
 
+    route_handlers = {}
+    if replay_check is not None:
+        route_handlers["replay"] = replay_check
     await session.run_ws_session(
         send,
         recv,
-        route_handlers={},
+        route_handlers=route_handlers,
         storage=MagicMock(),
         registry=MagicMock(),
         trust="open",
         enable_ping=False,
     )
     return sent
+
+
+@pytest.mark.asyncio
+async def test_v2_session_uses_the_injected_replay_guard(keys, monkeypatch):
+    agent = RemoteAgent("0x" + "12" * 20, keys=keys)
+    connect = {"type": "CONNECT", "from": keys["address"]}
+    signed = agent._build_command_message(
+        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}}
+    )
+    claimed = []
+    ran = []
+
+    sent = await _session_with(
+        [connect, signed], monkeypatch, signed_commands=True, ran=ran,
+        replay_check=lambda frame: claimed.append(frame) or True,
+    )
+
+    assert claimed == [signed]
+    assert ran == []
+    assert "already used" in sent[-1]["message"]
 
 
 @pytest.mark.asyncio

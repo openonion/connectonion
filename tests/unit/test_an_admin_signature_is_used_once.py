@@ -67,7 +67,7 @@ def call(monkeypatch):
 
     monkeypatch.delenv("OPENONION_API_KEY", raising=False)
 
-    async def run(path, signature, *, method="GET"):
+    async def run(path, signature, *, method="GET", replay_check=None):
         sent = {}
 
         async def send_json(body, status=200):
@@ -96,6 +96,8 @@ def call(monkeypatch):
             "admin_sessions": lambda: {"sessions": []},
             "admin_trust_level": lambda client_id: {"level": "contact"},
         }
+        if replay_check is not None:
+            handlers["replay"] = replay_check
 
         await http_admin.handle_admin_routes(
             method, path, {"headers": headers}, None, handlers,
@@ -108,6 +110,17 @@ def call(monkeypatch):
 
 @pytest.mark.asyncio
 class TestASignatureWorksOnce:
+
+    async def test_admin_route_uses_the_injected_replay_guard(self, call):
+        claimed = []
+
+        sent = await call(
+            "/admin/logs", "sig-one",
+            replay_check=lambda data: claimed.append(data) or True,
+        )
+
+        assert [item["signature"] for item in claimed] == ["sig-one"]
+        assert sent["status"] == 401
 
     async def test_the_first_use_is_allowed(self, call):
         sent = await call("/admin/logs", "sig-one")
@@ -157,8 +170,8 @@ class TestAFreshSignatureStillWorks:
 
 
 @pytest.mark.asyncio
-class TestTheBearerPathIsUnaffected:
-    """It carries no signature to replay; its weakness is #670, not this."""
+class TestTheDedicatedBearerPathIsUnaffected:
+    """A distinct admin bearer carries no signature to replay."""
 
     async def test_a_bearer_call_does_not_consume_a_signature(
         self, call, monkeypatch
@@ -166,6 +179,7 @@ class TestTheBearerPathIsUnaffected:
         from connectonion.network.trust import http_admin
 
         monkeypatch.setenv("OPENONION_API_KEY", "billing-key")
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "admin-key")
 
         sent = {}
 
@@ -180,7 +194,7 @@ class TestTheBearerPathIsUnaffected:
 
         await http_admin.handle_admin_routes(
             "GET", "/admin/logs",
-            {"headers": [(b"authorization", b"Bearer billing-key")]},
+            {"headers": [(b"authorization", b"Bearer admin-key")]},
             None,
             {"admin_logs": lambda: {"content": "log body"}},
             send_json=send_json, send_text=send_text, read_body=read_body,

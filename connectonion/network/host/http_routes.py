@@ -64,14 +64,35 @@ def _reserved(path: str) -> bool:
                for prefix in _RESERVED_PREFIXES)
 
 
+def _shadows_reserved(path: str) -> bool:
+    """Whether a publisher pattern can claim a framework-owned path."""
+    if _reserved(path):
+        return True
+    pattern, _, _ = _pattern(path)
+    if any(pattern.fullmatch(reserved) for reserved in _RESERVED_PATHS):
+        return True
+
+    route_segments = path.split("/")[1:]
+    for prefix in _RESERVED_PREFIXES:
+        prefix_segments = prefix.split("/")[1:]
+        if len(route_segments) < len(prefix_segments):
+            continue
+        if all(
+            _pattern("/" + route_segment)[0].fullmatch("/" + reserved_segment)
+            for route_segment, reserved_segment in zip(route_segments, prefix_segments)
+        ):
+            return True
+    return False
+
+
 def _pattern(path: str):
     names = []
     pieces = []
-    static_segments = 0
+    specificity = []
     for segment in path.split("/")[1:]:
         matches = list(_PARAMETER.finditer(segment))
+        specificity.append(len(_PARAMETER.sub("", segment)))
         if not matches:
-            static_segments += 1
             pieces.append(re.escape(segment))
             continue
         cursor = 0
@@ -83,7 +104,11 @@ def _pattern(path: str):
             cursor = match.end()
         segment_pattern.append(re.escape(segment[cursor:]))
         pieces.append("".join(segment_pattern))
-    return re.compile("^/" + "/".join(pieces) + "$"), names, static_segments
+    return (
+        re.compile("^/" + "/".join(pieces) + "$"),
+        names,
+        tuple(specificity),
+    )
 
 
 def _shape(path: str) -> str:
@@ -144,7 +169,7 @@ class HTTPRoute:
     handler: Callable
     pattern: Any = field(repr=False)
     parameter_names: tuple[str, ...] = ()
-    static_segments: int = 0
+    specificity: tuple[int, ...] = ()
 
     async def invoke(self, request: HTTPRequest, params: dict[str, str]):
         signature = inspect.signature(self.handler)
@@ -183,7 +208,7 @@ class HTTPRouter:
     def _decorator(self, method: str, audience: str, relative_path: str):
         parameter_names = _validate_relative_path(relative_path)
         full_path = AUDIENCE_PREFIXES[audience] + relative_path
-        if _reserved(full_path):
+        if _shadows_reserved(full_path):
             raise ValueError(f"HTTP path {full_path!r} is reserved by Connectonion")
 
         def register(handler: Callable):
@@ -232,26 +257,35 @@ class HTTPRouter:
                     f"its route: {', '.join(unsupported)}"
                 )
 
-            pattern, names, static_segments = _pattern(full_path)
+            pattern, names, specificity = _pattern(full_path)
             self._routes.append(HTTPRoute(
                 method, relative_path, full_path, audience, handler, pattern,
-                tuple(names), static_segments,
+                tuple(names), specificity,
             ))
             return handler
 
         return register
 
     def match(self, method: str, path: str):
-        candidates = sorted(
-            (route for route in self._routes if route.method == method.upper()),
-            key=lambda route: route.static_segments,
-            reverse=True,
-        )
-        for route in candidates:
+        matches = []
+        for route in self._routes:
+            if route.method != method.upper():
+                continue
             match = route.pattern.fullmatch(path)
             if match:
-                return route, dict(zip(route.parameter_names, match.groups()))
-        return None
+                matches.append(
+                    (route, dict(zip(route.parameter_names, match.groups())))
+                )
+        if not matches:
+            return None
+
+        best = max(route.specificity for route, _ in matches)
+        winners = [(route, params) for route, params in matches
+                   if route.specificity == best]
+        if len(winners) != 1:
+            routes = ", ".join(route.path for route, _ in winners)
+            raise ValueError(f"ambiguous HTTP routes for {method.upper()} {path}: {routes}")
+        return winners[0]
 
 
 def _scope_headers(scope) -> dict[str, str]:
@@ -315,6 +349,7 @@ async def dispatch_http_route(
     recipient_address: str,
     blacklist=None,
     whitelist=None,
+    replay_check=None,
 ):
     """Authenticate, invoke, and serialize one already-matched route."""
     body = await read_body(receive)
@@ -327,6 +362,7 @@ async def dispatch_http_route(
             request_from_http_headers,
             signature_already_used,
         )
+        from .replay import ReplayProtectionError
 
         try:
             data = request_from_http_headers(
@@ -358,7 +394,16 @@ async def dispatch_http_route(
                 media_type="application/json",
             ))
             return
-        if signature_already_used(data):
+        check_replay = replay_check or signature_already_used
+        try:
+            already_used = check_replay(data)
+        except ReplayProtectionError:
+            await _send(send, HTTPResponse(
+                json.dumps({"error": "misconfigured: replay protection unavailable"}),
+                status=503, media_type="application/json",
+            ))
+            return
+        if already_used:
             await _send(send, HTTPResponse(
                 json.dumps({"error": "unauthorized: signature already used"}),
                 status=401, media_type="application/json",

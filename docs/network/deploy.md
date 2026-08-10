@@ -130,6 +130,7 @@ Variables from your `.env` file are securely passed to your agent container:
 ```bash
 # .env
 OPENONION_API_KEY=eyJ...    # Required for co/ models
+CONNECTONION_ADMIN_TOKEN=... # Optional: distinct 256-bit random token for admin monitoring
 OPENAI_API_KEY=sk-xxx       # Third-party API keys
 DATABASE_URL=postgres://...
 BROWSER_PROXY=http://user:pass@host:port  # Optional browser proxy
@@ -230,7 +231,7 @@ Your deployed agent exposes these endpoints:
 | `/info` | GET | Agent metadata (name, tools, trust, examples) |
 | `/health` | GET | Health check |
 | `/docs` | GET | Interactive API docs |
-| `/admin/logs` | GET | Activity logs (requires API key) |
+| `/admin/logs` | GET | Activity logs (signed admin or dedicated admin token) |
 
 ### Frontend (oo-chat)
 

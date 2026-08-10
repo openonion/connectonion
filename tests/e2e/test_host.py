@@ -978,7 +978,7 @@ class TestCORS:
 
 
 class TestAdminEndpoints:
-    """Test admin endpoints requiring API key authentication."""
+    """Test admin endpoints requiring dedicated admin authentication."""
 
     @pytest.fixture
     def create_mock_agent(self):
@@ -1039,8 +1039,8 @@ class TestAdminEndpoints:
         assert b"unauthorized" in response.body
 
     def test_admin_logs_with_wrong_key(self, app, monkeypatch):
-        """GET /admin/logs with wrong API key should return 401."""
-        monkeypatch.setenv("OPENONION_API_KEY", "correct-key")
+        """GET /admin/logs with wrong admin token should return 401."""
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "correct-key")
 
         response = self._make_request(
             app, "GET", "/admin/logs",
@@ -1048,9 +1048,21 @@ class TestAdminEndpoints:
         )
         assert response.status_code == 401
 
+    def test_admin_logs_rejects_the_billing_key(self, app, monkeypatch):
+        """OPENONION_API_KEY must never authorize an admin endpoint."""
+        monkeypatch.setenv("OPENONION_API_KEY", "billing-key")
+        monkeypatch.delenv("CONNECTONION_ADMIN_TOKEN", raising=False)
+
+        response = self._make_request(
+            app, "GET", "/admin/logs",
+            headers=[[b"authorization", b"Bearer billing-key"]]
+        )
+
+        assert response.status_code == 401
+
     def test_admin_logs_with_correct_key(self, app, monkeypatch, tmp_path):
-        """GET /admin/logs with correct API key should return 200."""
-        monkeypatch.setenv("OPENONION_API_KEY", "test-api-key")
+        """GET /admin/logs with correct admin token should return 200."""
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "test-admin-token")
 
         # Create a log file
         log_dir = tmp_path / ".co" / "logs"
@@ -1065,7 +1077,7 @@ class TestAdminEndpoints:
         try:
             response = self._make_request(
                 app, "GET", "/admin/logs",
-                headers=[[b"authorization", b"Bearer test-api-key"]]
+                headers=[[b"authorization", b"Bearer test-admin-token"]]
             )
             # Should return 200 or 404 (if no logs) - not 401
             assert response.status_code in [200, 404]
@@ -1073,8 +1085,8 @@ class TestAdminEndpoints:
             os.chdir(original_cwd)
 
     def test_admin_sessions_with_correct_key(self, app, monkeypatch, tmp_path):
-        """GET /admin/sessions with correct API key should return 200."""
-        monkeypatch.setenv("OPENONION_API_KEY", "test-api-key")
+        """GET /admin/sessions with correct admin token should return 200."""
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "test-admin-token")
 
         # Change to tmp_path
         import os
@@ -1084,7 +1096,7 @@ class TestAdminEndpoints:
         try:
             response = self._make_request(
                 app, "GET", "/admin/sessions",
-                headers=[[b"authorization", b"Bearer test-api-key"]]
+                headers=[[b"authorization", b"Bearer test-admin-token"]]
             )
             assert response.status_code == 200
             data = json.loads(response.body)
@@ -1094,10 +1106,10 @@ class TestAdminEndpoints:
 
     def test_admin_unknown_endpoint_returns_404(self, app, monkeypatch):
         """GET /admin/unknown should return 404."""
-        monkeypatch.setenv("OPENONION_API_KEY", "test-api-key")
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "test-admin-token")
 
         response = self._make_request(
             app, "GET", "/admin/unknown",
-            headers=[[b"authorization", b"Bearer test-api-key"]]
+            headers=[[b"authorization", b"Bearer test-admin-token"]]
         )
         assert response.status_code == 404

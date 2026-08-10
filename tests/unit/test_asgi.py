@@ -236,6 +236,7 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("hello", "0xtest", True, None),
+            "connect_auth": lambda *args, **kwargs: ("hello", "0xtest", True, None),
             "ws_input": mock_ws_input,
             "trust_agent": Mock(config={}),
         }
@@ -276,6 +277,7 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("test", "0x", True, None),
+            "connect_auth": lambda *args, **kwargs: ("test", "0x", True, None),
             "ws_input": lambda storage, p, c, session=None, images=None, files=None, requester_address=None: {"result": "Expected result", "session_id": "abc-123", "duration_ms": 50, "session": {}, "status": "done"},
             "trust_agent": Mock(config={}),
         }

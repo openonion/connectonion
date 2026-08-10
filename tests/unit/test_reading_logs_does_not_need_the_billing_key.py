@@ -1,4 +1,4 @@
-"""Reading an agent's logs requires the key that pays for its models (#670).
+"""Reading an agent's logs must not accept the key that pays for models (#670).
 
     if path in ["/admin/logs", "/admin/sessions"]:
         expected = os.environ.get("OPENONION_API_KEY", "")
@@ -18,9 +18,8 @@ So this adds that path to the two legacy routes rather than inventing anything:
 an admin can read logs by signing, and nobody has to be handed the billing key
 to do it.
 
-The Bearer path stays. Removing it would break the curl in the shipped
-docs.html and anything already using it, and 1.6.0 is a long-term release —
-this widens what works, and a later major can drop the key.
+Bearer automation uses a separate per-deployment admin token. The billing key
+is explicitly rejected even if it is copied into that setting.
 """
 
 import pytest
@@ -44,6 +43,7 @@ def call(monkeypatch):
     from connectonion.network.trust import http_admin
 
     monkeypatch.setenv("OPENONION_API_KEY", "the-billing-key")
+    monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "the-admin-token")
 
     async def run(path, *, headers=None, bearer=None):
         sent = {}
@@ -137,11 +137,15 @@ class TestSigningIsNotEnoughOnItsOwn:
 
 
 @pytest.mark.asyncio
-class TestTheBearerPathStillWorks:
-    """1.6.0 is long-term; the curl in the shipped docs.html must keep working."""
+class TestTheDedicatedBearerPath:
 
-    async def test_the_billing_key_still_reads_logs(self, call):
+    async def test_the_billing_key_cannot_read_logs(self, call):
         _, sent = await call("/admin/logs", bearer="the-billing-key")
+
+        assert sent["status"] == 401
+
+    async def test_a_distinct_admin_token_reads_logs(self, call):
+        _, sent = await call("/admin/logs", bearer="the-admin-token")
 
         assert sent["status"] == 200
         assert "line one" in sent["body"]
@@ -152,6 +156,15 @@ class TestTheBearerPathStillWorks:
         assert sent["status"] == 401
 
     async def test_sessions_too(self, call):
-        _, sent = await call("/admin/sessions", bearer="the-billing-key")
+        _, sent = await call("/admin/sessions", bearer="the-admin-token")
 
         assert sent["status"] == 200
+
+    async def test_reusing_the_billing_key_as_admin_token_fails_closed(
+        self, call, monkeypatch
+    ):
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "the-billing-key")
+
+        _, sent = await call("/admin/logs", bearer="the-billing-key")
+
+        assert sent["status"] == 401

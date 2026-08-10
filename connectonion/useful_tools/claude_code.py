@@ -25,17 +25,69 @@ def claude_code(
     prompt: str,
     session_id: str = "",
     cwd: str = "",
+    model: str = "",
+    timeout: int = 600,
+    agent=None,
+) -> str:
+    """Run Claude Code in manual mode and return one stable JSON envelope.
+
+    The permission policy is deliberately absent from this Agent-facing
+    signature. Use ``ClaudeCode(permission_mode=...)`` when an operator needs
+    to bind a different mode before registering the tool.
+    """
+    return _run_claude_code(
+        prompt=prompt,
+        session_id=session_id,
+        cwd=cwd,
+        permission_mode="default",
+        model=model,
+        timeout=timeout,
+        agent=agent,
+    )
+
+
+class ClaudeCode:
+    """Claude Code tool with an operator-owned permission policy."""
+
+    def __init__(self, permission_mode: str = "default") -> None:
+        if permission_mode not in PERMISSION_MODES:
+            choices = ", ".join(PERMISSION_MODES)
+            raise ValueError(
+                f"Invalid permission mode {permission_mode!r}. Use one of: {choices}."
+            )
+        self._permission_mode = permission_mode
+
+    def claude_code(
+        self,
+        prompt: str,
+        session_id: str = "",
+        cwd: str = "",
+        model: str = "",
+        timeout: int = 600,
+        agent=None,
+    ) -> str:
+        """Run or resume Claude Code with the operator-bound permission mode."""
+        return _run_claude_code(
+            prompt=prompt,
+            session_id=session_id,
+            cwd=cwd,
+            permission_mode=self._permission_mode,
+            model=model,
+            timeout=timeout,
+            agent=agent,
+        )
+
+
+def _run_claude_code(
+    prompt: str,
+    session_id: str = "",
+    cwd: str = "",
     permission_mode: str = "default",
     model: str = "",
     timeout: int = 600,
     agent=None,
 ) -> str:
-    """Run or resume Claude Code and return one stable JSON envelope.
-
-    ``default`` is ConnectOnion's stable name for Claude Code's current
-    ``manual`` CLI mode. ``bypassPermissions`` is available only when the
-    caller explicitly requests it.
-    """
+    """Private runner shared by safe, configured, and co-ai entry points."""
     if not isinstance(session_id, str):
         return _envelope("", error="Session ID must be a string.")
     if not isinstance(prompt, str) or not prompt.strip():

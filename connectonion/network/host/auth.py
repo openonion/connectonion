@@ -17,14 +17,17 @@ Trust evaluation (via TrustAgent.should_allow()):
 
 import hashlib
 import json
+import math
 import time
 import uuid
 from typing import Dict
 
 from ..trust import TRUST_LEVELS, TrustAgent
-
-# Signature expiry window (5 minutes)
-SIGNATURE_EXPIRY_SECONDS = 300
+from .replay import (
+    SIGNATURE_EXPIRY_SECONDS,
+    ReplayProtectionError,
+    signature_digest,
+)
 
 
 def verify_signature(payload: dict, signature: str, public_key: str) -> bool:
@@ -127,6 +130,12 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
     )
     if error:
         return prompt, agent_address, False, error
+
+    return _authorize_authenticated(data, prompt, agent_address, trust, whitelist)
+
+
+def _authorize_authenticated(data, prompt, agent_address, trust, whitelist=None):
+    """Apply trust policy after cryptographic authentication has succeeded."""
 
     # Parameter whitelist bypasses trust POLICY (not signature verification)
     if whitelist and agent_address in whitelist:
@@ -346,7 +355,7 @@ def request_from_headers(headers: dict, method: str, path: str) -> dict:
 # commands include type, recipient and a random nonce in their signed payload;
 # v1 remains accepted so an upgraded host does not strand an older client.
 
-_seen_signatures: Dict[str, float] = {}
+_seen_signatures: Dict[bytes, float] = {}
 
 
 def signature_already_used(data: dict) -> bool:
@@ -359,20 +368,69 @@ def signature_already_used(data: dict) -> bool:
     signature = data.get("signature")
     if not signature:
         return False          # refused by the signature check itself
+    signature = signature_digest(signature)
 
     now = time.time()
-    for old in [sig for sig, seen in _seen_signatures.items()
-                if now - seen > SIGNATURE_EXPIRY_SECONDS]:
+    timestamp = (data.get("payload") or {}).get("timestamp")
+    if (isinstance(timestamp, (int, float)) and not isinstance(timestamp, bool)
+            and math.isfinite(timestamp)):
+        expires_at = timestamp + SIGNATURE_EXPIRY_SECONDS
+    else:
+        expires_at = now + (2 * SIGNATURE_EXPIRY_SECONDS)
+    for old in [sig for sig, expiry in _seen_signatures.items()
+                if expiry < now]:
         del _seen_signatures[old]
 
     if signature in _seen_signatures:
         return True
-    _seen_signatures[signature] = now
+    _seen_signatures[signature] = expires_at
     return False
 
 
+def authenticate_connect(
+    data: dict,
+    trust,
+    *,
+    blacklist=None,
+    whitelist=None,
+    recipient_address=None,
+    replay_check=signature_already_used,
+):
+    """Authenticate CONNECT in security order: signature, claim, then policy."""
+    if "payload" not in data or "signature" not in data:
+        return None, None, False, "unauthorized: signed request required"
+
+    prompt, agent_address, error = _authenticate_signed(
+        data, blacklist=blacklist, recipient_address=recipient_address
+    )
+    if error:
+        return prompt, agent_address, False, error
+
+    try:
+        already_used = replay_check(data)
+    except ReplayProtectionError:
+        return (
+            None,
+            agent_address,
+            True,
+            "misconfigured: replay protection unavailable",
+        )
+    if already_used:
+        return (
+            None,
+            agent_address,
+            True,
+            "unauthorized: this CONNECT was already used",
+        )
+
+    return _authorize_authenticated(data, prompt, agent_address, trust, whitelist)
+
+
 def authenticated_command_payload(
-    data: dict, expected_address: str, expected_recipient: str = None
+    data: dict,
+    expected_address: str,
+    expected_recipient: str = None,
+    replay_check=signature_already_used,
 ):
     """Return a verified command payload bound to the connected caller.
 
@@ -380,6 +438,7 @@ def authenticated_command_payload(
     every command with its type and a random nonce, so possession or injection
     into that socket is not enough to invent a different command.
     """
+    replay_check = replay_check or signature_already_used
     payload = data.get("payload")
     if not isinstance(payload, dict):
         return None, "unauthorized: signed command required"
@@ -396,7 +455,11 @@ def authenticated_command_payload(
     nonce = payload.get("nonce")
     if not isinstance(nonce, str) or not nonce:
         return None, "unauthorized: signed command nonce required"
-    if signature_already_used(data):
+    try:
+        already_used = replay_check(data)
+    except ReplayProtectionError:
+        return None, "misconfigured: replay protection unavailable"
+    if already_used:
         return None, "unauthorized: signed command already used"
     return payload, None
 
@@ -430,6 +493,8 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
         return None, agent_address, "unauthorized: timestamp required in payload"
     if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
         return None, agent_address, "unauthorized: timestamp must be numeric"
+    if not math.isfinite(timestamp):
+        return None, agent_address, "unauthorized: timestamp must be finite"
 
     # Check timestamp expiry (5 minute window)
     now = time.time()
