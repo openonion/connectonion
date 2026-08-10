@@ -179,6 +179,13 @@ def test_outer_approval_does_not_duplicate_claude_permissions():
     agent = SimpleNamespace(
         current_session={
             "mode": "safe",
+            "permissions": {
+                "claude_code": {
+                    "allowed": True,
+                    "source": "safe",
+                    "reason": "managed delegation owns inner approval",
+                }
+            },
             "pending_tool": {
                 "id": "call-1",
                 "name": "claude_code",

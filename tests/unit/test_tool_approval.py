@@ -1,15 +1,15 @@
 """Unit tests for connectonion/useful_plugins/tool_approval.py
 
 Tests cover:
-- Safe tools skip approval
+- Explicitly permitted safe tools skip approval
 - Dangerous tools require approval
+- Unclassified tools require approval when live IO is present
 - Session-level approval memory
 - reject_soft: skip tool, loop continues, system reminder to call ask_user with options
 - reject_hard: skip tool + remaining batch, loop stops
 - batch_remaining: approval_needed includes upcoming tools
 - No IO = skip (not web mode)
-"""
-"""
+
 LLM-Note: Tests for tool approval
 
 What it tests:
@@ -19,29 +19,27 @@ Components under test:
 - Module: tool_approval
 """
 
-
-import pytest
 from unittest.mock import Mock
 
+import pytest
+
 from connectonion.useful_plugins.tool_approval import (
-    check_approval,
-    poll_mode_changes,
-    poll_interrupt,
-    handle_mode_change,
-    tool_approval,
     VALID_MODES,
-)
-from connectonion.useful_plugins.tool_approval.constants import (
-    DANGEROUS_TOOLS,
-    COMMAND_TOOLS,
+    check_approval,
+    poll_interrupt,
+    poll_mode_changes,
+    tool_approval,
 )
 from connectonion.useful_plugins.tool_approval.approval import (
+    _get_approval_key,
+    _get_batch_remaining,
+    _init_approval_state,
     _is_approved_for_session,
     _save_session_approval,
-    _init_approval_state,
-    _get_batch_remaining,
-    _get_approval_key,
-    _resolve_display_name,
+)
+from connectonion.useful_plugins.tool_approval.constants import (
+    COMMAND_TOOLS,
+    DANGEROUS_TOOLS,
 )
 
 
@@ -98,6 +96,13 @@ class FakeAgent:
         }
 
 
+@pytest.fixture(autouse=True)
+def _isolate_project_lookup(tmp_path, monkeypatch):
+    """Keep permission tests independent from any parent project config."""
+
+    monkeypatch.chdir(tmp_path)
+
+
 class TestToolClassification:
     """Test tool classification - DANGEROUS tools need approval."""
 
@@ -138,9 +143,16 @@ class TestSafeTools:
 
     @pytest.mark.parametrize("tool_name", ['read', 'read_file', 'glob', 'grep', 'search', 'task'])
     def test_safe_tools_skip_approval(self, tool_name):
-        """Safe tools should not trigger approval request."""
+        """Template-style safe permissions should not trigger approval."""
         io = FakeIO()
         agent = FakeAgent(io=io)
+        agent.current_session['permissions'] = {
+            tool_name: {
+                'allowed': True,
+                'source': 'safe',
+                'reason': 'read-only operation',
+            }
+        }
         agent.current_session['pending_tool'] = {
             'name': tool_name,
             'arguments': {}
@@ -297,11 +309,18 @@ class TestCheckpoint:
         # Should not raise
         check_approval(agent)
 
-    def test_no_checkpoint_for_safe_tools(self):
-        """checkpoint() not called for safe tools."""
+    def test_no_checkpoint_for_explicitly_permitted_tools(self):
+        """checkpoint() is not called for explicitly permitted tools."""
         storage = FakeStorage()
         io = FakeIO()
         agent = FakeAgent(io=io, storage=storage)
+        agent.current_session['permissions'] = {
+            'read': {
+                'allowed': True,
+                'source': 'safe',
+                'reason': 'read-only operation',
+            }
+        }
         agent.current_session['pending_tool'] = {
             'name': 'read',
             'arguments': {},
@@ -613,19 +632,110 @@ class TestApprovalKey:
 class TestUnknownTools:
     """Test unknown tools behavior."""
 
-    def test_unknown_tool_skips_approval(self):
-        """Unknown tools (not in SAFE or DANGEROUS) should skip approval."""
-        io = FakeIO()
+    @pytest.mark.parametrize("mode", ['safe', 'accept_edits'])
+    def test_unknown_tool_requests_approval(self, mode):
+        """Live unclassified tools require explicit approval in both modes."""
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
         agent = FakeAgent(io=io)
+        agent.current_session['mode'] = mode
         agent.current_session['pending_tool'] = {
             'name': 'my_custom_tool',
-            'arguments': {}
+            'arguments': {'value': 'example'},
         }
 
         check_approval(agent)
 
-        # No approval request sent
-        assert len(io.sent) == 0
+        assert len(io.sent) == 1
+        assert io.sent[0]['type'] == 'approval_needed'
+        assert io.sent[0]['tool'] == 'my_custom_tool'
+        assert io.sent[0]['arguments'] == {'value': 'example'}
+        assert io.sent[0]['description'] == ''
+
+    def test_explicit_permission_allows_an_unknown_tool(self):
+        """The allowlist stays extensible for custom and plugin tools."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['permissions'] = {
+            'my_custom_tool': {
+                'allowed': True,
+                'source': 'config',
+                'reason': 'operator configured',
+            }
+        }
+        agent.current_session['pending_tool'] = {
+            'name': 'my_custom_tool',
+            'arguments': {},
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+
+    def test_unknown_tool_without_io_remains_noninteractive(self):
+        """Local library use has no approval channel and keeps existing behavior."""
+        agent = FakeAgent(io=None)
+        agent.current_session['pending_tool'] = {
+            'name': 'my_custom_tool',
+            'arguments': {},
+        }
+
+        check_approval(agent)
+
+    def test_unknown_tool_in_ulw_uses_explicit_bypass(self):
+        """ULW remains an explicit authority decision made by another plugin."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'ulw'
+        agent.current_session['pending_tool'] = {
+            'name': 'my_custom_tool',
+            'arguments': {},
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+
+    def test_accept_edits_still_allows_named_file_edits(self):
+        """The fail-closed fallback must not redefine accept_edits."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'accept_edits'
+        agent.current_session['pending_tool'] = {
+            'name': 'edit',
+            'arguments': {'file_path': 'README.md'},
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+
+    @pytest.mark.parametrize(
+        ('mode', 'tool_name', 'arguments'),
+        [
+            ('ulw', 'third_party_tool', {}),
+            ('accept_edits', 'write', {'file_path': 'owned.txt', 'content': 'no'}),
+        ],
+    )
+    def test_stale_elevated_mode_does_not_bypass_remote_owner_gate(
+        self, mode, tool_name, arguments
+    ):
+        """The approval hook defends even if before_iteration was skipped."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = mode
+        agent.current_session['requester'] = {
+            'address': '0x' + 'e' * 64,
+            'level': 'contact',
+        }
+        agent.current_session['pending_tool'] = {
+            'name': tool_name,
+            'arguments': arguments,
+        }
+
+        with pytest.raises(ValueError, match="operator's approval"):
+            check_approval(agent)
+
+        assert io.sent == []
 
 
 class TestSessionState:
@@ -741,6 +851,55 @@ class TestPollModeChanges:
         assert agent.current_session['mode'] == 'ulw'
         assert agent.current_session['ulw_turns'] == 50
         assert agent.current_session['skip_tool_approval'] is True
+
+    def test_remote_contact_cannot_use_ulw_to_run_an_unknown_tool(self):
+        """A live caller cannot turn a mode frame into dynamic-tool authority."""
+        io = FakeIO(pending_signals=[
+            {'type': 'mode_change', 'mode': 'ulw', 'turns': 50},
+        ])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+        agent.current_session['requester'] = {
+            'address': '0x' + 'e' * 64,
+            'level': 'contact',
+        }
+
+        poll_mode_changes(agent)
+        agent.current_session['pending_tool'] = {
+            'name': 'third_party_tool',
+            'arguments': {},
+        }
+
+        with pytest.raises(ValueError, match="operator's approval"):
+            check_approval(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+        assert 'skip_tool_approval' not in agent.current_session
+        assert not any(msg.get('type') == 'approval_needed' for msg in io.sent)
+
+    def test_remote_contact_cannot_use_accept_edits_to_write(self):
+        """The named edit bypass belongs to the operator, not the socket."""
+        io = FakeIO(pending_signals=[
+            {'type': 'mode_change', 'mode': 'accept_edits'},
+        ])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+        agent.current_session['requester'] = {
+            'address': '0x' + 'e' * 64,
+            'level': 'contact',
+        }
+
+        poll_mode_changes(agent)
+        agent.current_session['pending_tool'] = {
+            'name': 'write',
+            'arguments': {'file_path': 'owned.txt', 'content': 'no'},
+        }
+
+        with pytest.raises(ValueError, match="operator's approval"):
+            check_approval(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+        assert not any(msg.get('type') == 'approval_needed' for msg in io.sent)
 
     def test_poll_mode_changes_handles_multiple_signals(self):
         """poll_mode_changes should process multiple mode_change signals."""

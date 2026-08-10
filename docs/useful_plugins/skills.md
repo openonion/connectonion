@@ -129,9 +129,9 @@ The `tool_approval` plugin checks `permission_scope` first:
 
 ```
 1. Skill's allowed_tools → Auto-approve if match
-2. SAFE_TOOLS → Auto-approve
-3. Session memory → Auto-approve if previously approved
-4. DANGEROUS_TOOLS → Ask user
+2. Template/config permissions → Auto-approve if match
+3. Session memory and explicit mode permissions → Auto-approve if match
+4. Ask for every remaining live-IO tool
 ```
 
 ## Security Model
