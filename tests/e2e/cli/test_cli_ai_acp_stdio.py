@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import sys
-import textwrap
 from asyncio.subprocess import PIPE, Process
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -15,70 +14,14 @@ from typing import Any
 import acp as acp_package
 import pytest
 
-_FAKE_ACP_SERVER = textwrap.dedent(
-    """
-    import asyncio
-    import time
-
-    from connectonion.cli.co_ai.acp_server import serve_acp
-    from connectonion.cli.commands import ai_commands
-
-
-    class FakeAgent:
-        system_prompt = "system"
-
-        def __init__(self):
-            self.io = None
-            self.current_session = {"trace": [], "turn": 0}
-
-        def finish(self, reason):
-            event = {
-                "type": "turn_result",
-                "turn": self.current_session["turn"],
-                "reason": reason,
-                "usage": None,
-            }
-            self.current_session["trace"].append(event)
-            self.io.send(event)
-
-        def input(self, prompt, session=None):
-            if session is not None:
-                self.current_session = dict(session)
-                self.current_session["messages"] = list(session["messages"])
-                self.current_session["trace"] = list(session["trace"])
-            print(f"fake agent received: {prompt}", flush=True)
-            self.current_session["turn"] += 1
-            if prompt == "large":
-                result = "x" * 5_000_000
-                self.finish("natural")
-                return result
-            if prompt != "block":
-                result = f"answer: {prompt}"
-                self.finish("natural")
-                return result
-            while not self.io.receive_all("INTERRUPT"):
-                time.sleep(0.01)
-            self.finish("interrupted")
-            return "late cancelled answer"
-
-
-    ai_commands._create_agent = lambda **kwargs: FakeAgent()
-    asyncio.run(
-        serve_acp(
-            model="test",
-            max_iterations=2,
-            yolo=False,
-            yolo_turns=2,
-        )
-    )
-    """
-)
-
 
 @asynccontextmanager
 async def _server(state_root: Path):
-    child_env = dict(os.environ)
+    child_env = acp_package.default_environment()
     child_env["HOME"] = str(state_root)
+    child_env["USERPROFILE"] = str(state_root)
+    child_env["APPDATA"] = str(state_root / "AppData" / "Roaming")
+    child_env["LOCALAPPDATA"] = str(state_root / "AppData" / "Local")
     repo_root = Path(__file__).resolve().parents[3]
     acp_site_packages = Path(acp_package.__file__).resolve().parents[1]
     child_env["PYTHONPATH"] = os.pathsep.join(
@@ -86,8 +29,7 @@ async def _server(state_root: Path):
     )
     process = await asyncio.create_subprocess_exec(
         sys.executable,
-        "-c",
-        _FAKE_ACP_SERVER,
+        str(Path(__file__).with_name("acp_test_agent.py")),
         stdin=PIPE,
         stdout=PIPE,
         stderr=PIPE,
@@ -263,6 +205,31 @@ async def test_acp_subprocess_preserves_a_large_response(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_acp_subprocess_does_not_inherit_unapproved_environment(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("ACP_TEST_SECRET", "must-not-cross-process-boundary")
+
+    async with _server(tmp_path / "home") as process:
+        session_id = await _initialize_and_create_session(process, tmp_path)
+        response, notifications = await _request(
+            process,
+            3,
+            "session/prompt",
+            {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "environment"}],
+            },
+        )
+
+        assert response["result"]["stopReason"] == "end_turn"
+        assert notifications[0]["params"]["update"]["content"]["text"] == (
+            "secret inherited: False"
+        )
+
+
+@pytest.mark.asyncio
 async def test_acp_subprocess_lease_blocks_a_second_process_until_close(tmp_path):
     state_root = tmp_path / "home"
     async with _server(state_root) as owner, _server(state_root) as contender:
@@ -293,6 +260,7 @@ async def test_acp_subprocess_lease_blocks_a_second_process_until_close(tmp_path
         )
         assert resumed["result"]["modes"]["currentModeId"] == "safe"
         assert notifications == []
+
 
 @pytest.mark.asyncio
 async def test_acp_subprocess_eof_releases_lease_for_later_resume(tmp_path):
