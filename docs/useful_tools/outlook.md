@@ -106,7 +106,9 @@ If Microsoft was connected before contacts were enabled, run
 - `cc`: Optional CC recipients
 - `bcc`: Optional BCC recipients
 - `attachments`: Optional list of local file paths (images, screenshots,
-  PDFs, etc. — Graph sendMail limit is ~3MB total)
+  PDFs, etc.). Agent-facing `Outlook()` instances can attach only resolved
+  files inside the current project. The ~3MB total limit is enforced before
+  file contents are read.
 - `send_at`: Optional UTC ISO time (e.g. `"2026-07-06T15:30:00Z"`) —
   Exchange holds delivery until then (deferred send, works with just the
   `Mail.Send` scope)

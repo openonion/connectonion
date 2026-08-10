@@ -99,6 +99,7 @@ class TestOutlookGuard:
 
         from connectonion.useful_tools.outlook import Outlook
         assert isinstance(result, Outlook)
+        assert result._allow_external_attachments is True
 
     def test_contacts_scope_missing_exits_with_reconnect_hint(self, capsys):
         with patch.dict(os.environ, CONNECTED_ENV, clear=False):
