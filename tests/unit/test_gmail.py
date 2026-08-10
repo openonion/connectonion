@@ -637,6 +637,26 @@ class TestEmailContent:
 
         assert "Plain text version" in result
 
+    def test_extract_html_body_uses_parser_and_omits_non_text_content(self, gmail_with_mock):
+        """HTML variants cannot bypass the plain-text conversion boundary."""
+        import base64
+        gmail, _ = gmail_with_mock
+        html = (
+            '<p>Hello&nbsp;<strong>world</strong></p>'
+            '<p>co<strong>de</strong>!</p>'
+            '<ScRiPt data-example="true" >steal()</ScRiPt>'
+            '<style >p { display: none }</style>'
+            '<p>Next line</p>'
+        )
+        encoded_html = base64.urlsafe_b64encode(html.encode()).decode()
+
+        result = gmail._extract_body({
+            'mimeType': 'text/html',
+            'body': {'data': encoded_html},
+        })
+
+        assert result == "Hello world code! Next line"
+
     def test_get_email_attachments(self, gmail_with_mock):
         """Test get_email_attachments lists attachments."""
         gmail, mock_service = gmail_with_mock
