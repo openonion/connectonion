@@ -144,6 +144,13 @@ def _migrate_store(path, ready, start, results):
         results.put(f"{type(exc).__name__}: {exc}")
 
 
+def _hold_ledger_lock(path, ready, hold_seconds):
+    with sqlite3.connect(path) as database:
+        database.execute("BEGIN EXCLUSIVE")
+        ready.put(True)
+        time.sleep(hold_seconds)
+
+
 def test_two_os_workers_cannot_claim_the_same_signature(tmp_path):
     context = multiprocessing.get_context("spawn")
     ready = context.Queue()
@@ -317,6 +324,27 @@ def test_locked_ledger_fails_closed(tmp_path):
         blocker.execute("BEGIN EXCLUSIVE")
         with pytest.raises(ReplayProtectionError, match="storage is unavailable"):
             store.already_used({"signature": "captured"})
+
+
+def test_claim_waits_for_a_short_lived_worker_lock(tmp_path):
+    path = tmp_path / "replay.sqlite3"
+    store = SignatureReplayStore(path)
+    context = multiprocessing.get_context("spawn")
+    ready = context.Queue()
+    blocker = context.Process(
+        target=_hold_ledger_lock, args=(path, ready, 0.5)
+    )
+
+    blocker.start()
+    try:
+        assert ready.get(timeout=10) is True
+        assert store.already_used({"signature": "captured"}) is False
+    finally:
+        blocker.join(timeout=10)
+        if blocker.is_alive():
+            blocker.terminate()
+
+    assert blocker.exitcode == 0
 
 
 def test_signed_command_translates_replay_storage_failure_to_misconfigured(
