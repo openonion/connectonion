@@ -98,23 +98,6 @@ def choose(attestation, onion_present):
 
 # The paid engine is not reachable from here yet, and this names exactly what
 # is missing rather than leaving a stub that reads as finished.
-#
-# `onionwright.licence.license.load(path, server_key)` needs a cache path and
-# the pinned server key; `onionwright.launcher.resolve_binary(token,
-# server_key, pin)` needs an authenticated token and a Chromium revision.
-# connectonion holds none of those three today. Supplying them is the open
-# work in openonion/connectonion#511 — not something to fake here.
-#
-# Until then the defaults below raise, `resolve()` reads that as "no licence"
-# the same way it reads an offline machine, and everyone gets the free engine.
-# That is the right failure direction and the wrong end state, so
-# test_the_paid_path_is_not_wired_up_yet asserts it out loud: when the wiring
-# lands, that test fails and has to be deleted, which is the point of it.
-PAID_WIRING_PENDING = (
-    "onionwright is installed but connectonion has no licence configuration "
-    "yet (cache path, pinned server key, Chromium revision) — see "
-    "openonion/connectonion#511"
-)
 
 
 def _cached_attestation():
@@ -130,10 +113,23 @@ def _cached_attestation():
     command is not the right place to discover that oo-api is slow. The
     refresh belongs to the licence client's own schedule (it renews at the
     12-hour half-life of a 24-hour attestation), not to `co browser go_to`.
-    """
-    import onionwright.licence  # noqa: F401
 
-    raise NotImplementedError(PAID_WIRING_PENDING)
+    The cached payload is read but its signature is not checked here, and that
+    is a deliberate scope choice rather than an omission. Verifying needs the
+    server key, which `onionwright.launcher.server_public_key()` fetches over
+    the network -- exactly what this function promises not to do. Nothing is
+    lost by trusting it: the only thing a forged local file buys is an attempt
+    to launch the paid binary, which compiles the server's public key into
+    itself (browser patches/core/0005) and refuses a licence it cannot verify.
+    The gate is the engine and the download, not this hint.
+    """
+    import json
+
+    from onionwright.launcher import HOME
+
+    path = HOME / "attestation.json"
+    payload = json.loads(path.read_text())["payload"]
+    return json.loads(bytes.fromhex(payload).decode())
 
 
 def _onion_path():
@@ -144,10 +140,17 @@ def _onion_path():
     it answer "absent" on every machine including a paid one -- a silent
     permanent downgrade that the tests could not see because they inject this
     function. A name that is wrong should fail loudly enough to notice.
-    """
-    import onionwright.launcher  # noqa: F401
 
-    raise NotImplementedError(PAID_WIRING_PENDING)
+    `resolve_binary()` is what puts the executable here, under
+    `~/.onionwright/chrome/<revision>/`. This only reports what that already
+    did: a browser command must not start a 180 MB download, so a machine that
+    has paid but not yet fetched the binary is a machine that runs patchright
+    and says so.
+    """
+    from onionwright.launcher import HOME
+
+    executables = sorted((HOME / "chrome").glob("*/chrome"))
+    return executables[-1] if executables else None
 
 
 def resolve(load_attestation=_cached_attestation, onion_path=_onion_path,

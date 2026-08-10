@@ -112,33 +112,79 @@ def test_resolve_always_produces_an_engine(attestation, path):
     assert chosen in (engine.ONION, engine.PATCHRIGHT)
 
 
-def test_the_paid_path_is_not_wired_up_yet():
-    """A deliberate tombstone. Delete it when the wiring lands.
+def test_a_machine_without_onionwright_still_browses():
+    """The free install, which is most installs.
 
-    Both production lookups raise, because connectonion has no licence
-    configuration to give them — so on a machine that has paid, has a cached
-    attestation and has the binary, `resolve()` still answers patchright.
-
-    That is stated as a passing test rather than left in a comment because the
-    defects this whole change exists to fix were both of this shape: code that
-    looked like it was doing the work. `/license/download` computed an
-    attestation and ignored it; `attest()` took a tier and never checked it.
-    An assertion that the gap exists is the only version of "we know" that
-    stops being true on its own when someone closes it.
-
-    Deliberately does not assert *which* exception. There are two, and which
-    one you get depends on the machine rather than on the code: without the
-    package it is ImportError, with it installed (a dev checkout, an editable
-    install) it is NotImplementedError. An earlier version asserted the
-    message contained the issue number, which is only true of the second — so
-    it passed on my machine and failed on all four Python versions in CI. The
-    property is "neither lookup can produce a paid engine", and that holds
-    either way.
+    `onionwright` is not a dependency, so both production lookups raise
+    ImportError before touching the disk or the network. `resolve()` reads
+    that the same way it reads an offline machine, and the answer is a working
+    browser. Asserted through the real defaults rather than injected doubles,
+    because the property being protected is that the *defaults* are safe.
     """
-    for lookup in (engine._cached_attestation, engine._onion_path):
-        with pytest.raises(Exception):
-            lookup()
-
-    # And the consequence, from the outside: the defaults cannot reach ONION.
     chosen, _ = engine.resolve()
+
     assert chosen == engine.PATCHRIGHT
+
+
+def test_the_paid_lookups_read_what_onionwright_actually_wrote(tmp_path, monkeypatch):
+    """The wiring, against the real on-disk layout.
+
+    `resolve_binary()` extracts to `~/.onionwright/chrome/<revision>/chrome`
+    and `ensure_licensed()` caches `~/.onionwright/attestation.json` holding a
+    hex-encoded payload. Both readers are pointed at a fake HOME with exactly
+    that shape — the same shape verified on a real paid Linux box, where the
+    binary refuses to start without the licence and runs with it.
+    """
+    import json
+    import sys
+    import types
+
+    launcher = types.ModuleType("onionwright.launcher")
+    launcher.HOME = tmp_path
+    package = types.ModuleType("onionwright")
+    package.launcher = launcher
+    monkeypatch.setitem(sys.modules, "onionwright", package)
+    monkeypatch.setitem(sys.modules, "onionwright.launcher", launcher)
+
+    payload = {"tier": "pro", "active": True, "max_concurrent": 1}
+    (tmp_path / "attestation.json").write_text(json.dumps({
+        "payload": json.dumps(payload).encode().hex(),
+        "signature": "00" * 64,
+    }))
+    executable = tmp_path / "chrome" / "150.0.7871.187" / "chrome"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+
+    assert engine._cached_attestation() == payload
+    assert engine._onion_path() == executable
+
+    chosen, note, path = engine.resolve(with_path=True)
+    assert (chosen, note, path) == (engine.ONION, None, executable)
+
+
+def test_paid_without_the_binary_downloaded_falls_back(tmp_path, monkeypatch):
+    """Paid, licensed, but `resolve_binary()` has not run yet.
+
+    A browser command must not start a 180 MB download, so this is patchright
+    plus a line saying why — not a stall and not a failure.
+    """
+    import json
+    import sys
+    import types
+
+    launcher = types.ModuleType("onionwright.launcher")
+    launcher.HOME = tmp_path
+    package = types.ModuleType("onionwright")
+    package.launcher = launcher
+    monkeypatch.setitem(sys.modules, "onionwright", package)
+    monkeypatch.setitem(sys.modules, "onionwright.launcher", launcher)
+
+    (tmp_path / "attestation.json").write_text(json.dumps({
+        "payload": json.dumps({"tier": "pro", "active": True}).encode().hex(),
+        "signature": "00" * 64,
+    }))
+
+    chosen, note = engine.resolve()
+
+    assert chosen == engine.PATCHRIGHT
+    assert note is not None
