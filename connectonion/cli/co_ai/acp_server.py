@@ -72,6 +72,7 @@ from .one_shot_sessions import (
 )
 
 AgentFactory = Callable[..., Any]
+MCPConnector = Callable[..., Awaitable[Any]]
 PermissionRequester = Callable[
     [str, ToolCallUpdate, list[PermissionOption]],
     Awaitable[RequestPermissionResponse],
@@ -560,6 +561,13 @@ class _ACPEventBridge(_FailClosedACPInput):
 
 
 @dataclass
+class _SessionOwnership:
+    lease: SessionLease
+    session: dict[str, Any] | None
+    tools: dict[str, Any]
+
+
+@dataclass
 class _SessionRuntime:
     session_id: str
     cwd: Path
@@ -569,6 +577,7 @@ class _SessionRuntime:
     last_good_session: dict[str, Any]
     last_good_tools: dict[str, Any]
     session_for_next_prompt: dict[str, Any] | None
+    mcp_pool: Any | None = None
     prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     prompt_active: threading.Event = field(default_factory=threading.Event)
     closing: threading.Event = field(default_factory=threading.Event)
@@ -588,6 +597,8 @@ class ConnectOnionACPAgent:
         yolo_turns: int,
         agent_factory: AgentFactory | None = None,
         session_co_dir: Path | None = None,
+        allow_mcp: bool = False,
+        mcp_connector: MCPConnector | None = None,
     ) -> None:
         self._model = model
         self._max_iterations = max_iterations
@@ -595,6 +606,8 @@ class ConnectOnionACPAgent:
         self._yolo_turns = yolo_turns
         self._agent_factory = agent_factory
         self._session_co_dir = Path(session_co_dir or GLOBAL_CO_DIR)
+        self._allow_mcp = allow_mcp
+        self._mcp_connector = mcp_connector
         self._client: Client | None = None
         self._sessions: dict[str, _SessionRuntime] = {}
         # cwd and redirect_stdout are process-global.  ACP request handlers stay
@@ -640,7 +653,7 @@ class ConnectOnionACPAgent:
         mcp_servers: list[Any] | None = None,
         **_kwargs: Any,
     ) -> NewSessionResponse:
-        self._reject_unsupported_session_inputs(additional_directories, mcp_servers)
+        self._validate_session_inputs(additional_directories, mcp_servers)
         project_dir = self._validate_cwd(cwd)
         session_id = new_session_id()
         acp_input = _ACPEventBridge(
@@ -649,12 +662,12 @@ class ConnectOnionACPAgent:
             self._request_permission,
         )
         try:
-            runtime = await self._construct_runtime(
-                self._open_session_runtime,
+            runtime = await self._construct_session_runtime(
                 project_dir,
                 acp_input,
                 session_id,
                 False,
+                mcp_servers or [],
             )
         except Exception:
             logger.exception("Failed to create co ai ACP session")
@@ -678,7 +691,7 @@ class ConnectOnionACPAgent:
     ) -> ResumeSessionResponse:
         """Resume one persisted session without replaying its transcript."""
 
-        self._reject_unsupported_session_inputs(additional_directories, mcp_servers)
+        self._validate_session_inputs(additional_directories, mcp_servers)
         project_dir = self._validate_cwd(cwd)
         if session_id in self._sessions:
             raise RequestError(
@@ -692,12 +705,12 @@ class ConnectOnionACPAgent:
             self._request_permission,
         )
         try:
-            runtime = await self._construct_runtime(
-                self._open_session_runtime,
+            runtime = await self._construct_session_runtime(
                 project_dir,
                 acp_input,
                 session_id,
                 True,
+                mcp_servers or [],
             )
         except SessionSnapshotError as exc:
             raise RequestError(
@@ -982,6 +995,105 @@ class ConnectOnionACPAgent:
                 construction.result().session_lease.close()
             raise
 
+    async def _construct_session_runtime(
+        self,
+        project_dir: Path,
+        acp_input: _ACPEventBridge,
+        session_id: str,
+        resume: bool,
+        mcp_servers: list[Any],
+    ) -> _SessionRuntime:
+        """Own and validate the session before launching external processes."""
+
+        ownership = await self._acquire_session_ownership(
+            project_dir,
+            session_id,
+            resume,
+        )
+        mcp_pool = None
+        try:
+            mcp_pool = await self._connect_mcp_servers(mcp_servers, project_dir)
+            runtime = await self._construct_runtime(
+                self._open_session_runtime,
+                project_dir,
+                acp_input,
+                session_id,
+                list(mcp_pool.tools) if mcp_pool is not None else [],
+                ownership,
+            )
+        except BaseException:
+            try:
+                if mcp_pool is not None:
+                    await mcp_pool.close()
+            finally:
+                ownership.lease.close()
+            raise
+        runtime.mcp_pool = mcp_pool
+        return runtime
+
+    async def _acquire_session_ownership(
+        self,
+        project_dir: Path,
+        session_id: str,
+        resume: bool,
+    ) -> _SessionOwnership:
+        """Acquire a lease and load resume state with cancellation-safe cleanup."""
+
+        acquisition = asyncio.create_task(
+            asyncio.to_thread(
+                self._load_owned_session,
+                project_dir,
+                session_id,
+                resume,
+            )
+        )
+        try:
+            return await asyncio.shield(acquisition)
+        except asyncio.CancelledError:
+            await self._settle_owned_task(acquisition)
+            if self._task_succeeded(acquisition):
+                acquisition.result().lease.close()
+            raise
+
+    def _load_owned_session(
+        self,
+        project_dir: Path,
+        session_id: str,
+        resume: bool,
+    ) -> _SessionOwnership:
+        lease = acquire_session_lease(self._session_co_dir, session_id)
+        try:
+            if resume:
+                session, tools = load_snapshot(
+                    self._session_co_dir,
+                    session_id,
+                    cwd=project_dir,
+                )
+            else:
+                session, tools = None, {}
+            return _SessionOwnership(lease, session, tools)
+        except BaseException:
+            lease.close()
+            raise
+
+    async def _connect_mcp_servers(
+        self,
+        mcp_servers: list[Any],
+        project_dir: Path,
+    ) -> Any | None:
+        if not mcp_servers:
+            return None
+        connector = self._mcp_connector
+        if connector is None:
+            from .acp_mcp import connect_mcp_servers
+
+            connector = connect_mcp_servers
+        return await connector(
+            mcp_servers,
+            cwd=project_dir,
+            loop=asyncio.get_running_loop(),
+        )
+
     def _ensure_close_task(self, runtime: _SessionRuntime) -> asyncio.Task[None]:
         runtime.closing.set()
         runtime.acp_input.interrupt()
@@ -993,7 +1105,11 @@ class ConnectOnionACPAgent:
         async with runtime.prompt_lock:
             if self._sessions.get(runtime.session_id) is runtime:
                 self._sessions.pop(runtime.session_id)
-            runtime.session_lease.close()
+            try:
+                if runtime.mcp_pool is not None:
+                    await runtime.mcp_pool.close()
+            finally:
+                runtime.session_lease.close()
 
     def _build_agent(
         self,
@@ -1024,22 +1140,19 @@ class ConnectOnionACPAgent:
         project_dir: Path,
         acp_input: _ACPEventBridge,
         session_id: str,
-        resume: bool,
+        extra_tools: list[Any],
+        ownership: _SessionOwnership,
     ) -> _SessionRuntime:
-        """Acquire ownership, validate state, then construct one runtime."""
+        """Construct one runtime after ownership and external tools are ready."""
 
-        lease = acquire_session_lease(self._session_co_dir, session_id)
+        lease = ownership.lease
         try:
-            if resume:
-                session, tools = load_snapshot(
-                    self._session_co_dir,
-                    session_id,
-                    cwd=project_dir,
-                )
-            else:
-                session, tools = None, {}
-
+            session = ownership.session
+            tools = ownership.tools
+            is_new = session is None
             agent = self._build_agent(project_dir, acp_input)
+            for tool in extra_tools:
+                agent.add_tool(tool)
             if session is None:
                 session = self._fresh_persistent_session(agent, session_id)
             else:
@@ -1053,7 +1166,7 @@ class ConnectOnionACPAgent:
                 agent._yolo_needs_activation = False
             restore_tool_state(agent, tools)
             normalized_tools = capture_tool_state(agent)
-            if not resume:
+            if is_new:
                 save_snapshot(
                     self._session_co_dir,
                     session,
@@ -1077,20 +1190,24 @@ class ConnectOnionACPAgent:
     def _commit_runtime(self, runtime: _SessionRuntime) -> None:
         """Prepare every checkpoint before the final atomic commit point."""
 
-        session = copy.deepcopy(runtime.agent.current_session)
-        if not isinstance(session, dict):
+        live_session = copy.deepcopy(runtime.agent.current_session)
+        if not isinstance(live_session, dict):
             raise SessionSnapshotError("Agent did not produce a session snapshot.")
-        session["session_id"] = runtime.session_id
-        session = self._normalized_session_mode(session)
+        live_session["session_id"] = runtime.session_id
+        live_session = self._normalized_session_mode(live_session)
+        persistent_session = self._without_ephemeral_mcp_grants(
+            runtime,
+            live_session,
+        )
         tools = capture_tool_state(runtime.agent)
-        last_good_session = copy.deepcopy(session)
+        last_good_session = copy.deepcopy(persistent_session)
         last_good_tools = copy.deepcopy(tools)
         # Assignment and checkpoint preparation happen before disk commit. If
         # any of them fails, prompt rollback can still rely on the old file.
-        runtime.agent.current_session = session
+        runtime.agent.current_session = live_session
         save_snapshot(
             self._session_co_dir,
-            session,
+            persistent_session,
             tools,
             cwd=runtime.cwd,
         )
@@ -1099,6 +1216,39 @@ class ConnectOnionACPAgent:
         # the already-prepared in-memory checkpoint.
         runtime.last_good_session = last_good_session
         runtime.last_good_tools = last_good_tools
+
+    @staticmethod
+    def _without_ephemeral_mcp_grants(
+        runtime: _SessionRuntime,
+        session: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Keep MCP approvals live only while this exact process pool exists."""
+
+        if runtime.mcp_pool is None:
+            return session
+        persistent = copy.deepcopy(session)
+        permissions = persistent.get("permissions")
+        if not isinstance(permissions, dict):
+            return persistent
+        ephemeral_names = {
+            tool.name
+            for tool in runtime.mcp_pool.tools
+            if isinstance(getattr(tool, "name", None), str)
+        }
+        persistent_permissions = {
+            name: permission
+            for name, permission in permissions.items()
+            if not (
+                name in ephemeral_names
+                and isinstance(permission, dict)
+                and permission.get("source") == "user"
+            )
+        }
+        if persistent_permissions:
+            persistent["permissions"] = persistent_permissions
+        else:
+            persistent.pop("permissions", None)
+        return persistent
 
     @staticmethod
     def _restore_runtime(runtime: _SessionRuntime) -> None:
@@ -1124,10 +1274,7 @@ class ConnectOnionACPAgent:
             # Never keep serving a runtime whose in-memory state may have
             # diverged from its last atomic snapshot. The worker is settled
             # before this method runs, so a clean process may resume safely.
-            runtime.closing.set()
-            if self._sessions.get(runtime.session_id) is runtime:
-                self._sessions.pop(runtime.session_id)
-            runtime.session_lease.close()
+            await self._quarantine_runtime(runtime)
         runtime.active_operation = None
 
     def _fresh_persistent_session(
@@ -1235,8 +1382,8 @@ class ConnectOnionACPAgent:
         if hasattr(runtime.agent, "_yolo_needs_activation"):
             runtime.agent._yolo_needs_activation = False
 
-    @staticmethod
-    def _reject_unsupported_session_inputs(
+    def _validate_session_inputs(
+        self,
         additional_directories: list[str] | None,
         mcp_servers: list[Any] | None,
     ) -> None:
@@ -1244,10 +1391,19 @@ class ConnectOnionACPAgent:
             raise RequestError.invalid_params(
                 {"details": "co ai ACP does not support additionalDirectories yet"}
             )
-        if mcp_servers:
+        if mcp_servers and not self._allow_mcp:
             raise RequestError.invalid_params(
-                {"details": "co ai ACP does not support mcpServers yet"}
+                {"details": "mcpServers require co ai --acp --acp-mcp"}
             )
+        if mcp_servers:
+            from .acp_mcp import MCPConfigError, validate_stdio_servers
+
+            try:
+                validate_stdio_servers(mcp_servers)
+            except MCPConfigError as exc:
+                raise RequestError.invalid_params(
+                    {"details": str(exc)}
+                ) from None
 
     def _run_prompt_generation(
         self,
@@ -1326,7 +1482,7 @@ class ConnectOnionACPAgent:
                 update=update,
             )
         except asyncio.CancelledError:
-            self._quarantine_mode_desync(runtime)
+            await self._quarantine_runtime(runtime)
             raise
         except Exception:
             # The disk commit is already authoritative. Rolling memory back
@@ -1339,15 +1495,20 @@ class ConnectOnionACPAgent:
                 runtime.session_id,
                 exc_info=True,
             )
-            self._quarantine_mode_desync(runtime)
+            await self._quarantine_runtime(runtime)
 
-    def _quarantine_mode_desync(self, runtime: _SessionRuntime) -> None:
-        """Retire a runtime whose client missed a committed policy change."""
+    async def _quarantine_runtime(self, runtime: _SessionRuntime) -> None:
+        """Retire a divergent runtime and all resources before releasing it."""
 
         runtime.closing.set()
+        runtime.acp_input.interrupt()
         if self._sessions.get(runtime.session_id) is runtime:
             self._sessions.pop(runtime.session_id)
-        runtime.session_lease.close()
+        try:
+            if runtime.mcp_pool is not None:
+                await runtime.mcp_pool.close()
+        finally:
+            runtime.session_lease.close()
 
     @staticmethod
     async def _settle_owned_task(task: asyncio.Task[Any]) -> bool:
@@ -1476,6 +1637,7 @@ async def serve_acp(
     max_iterations: int,
     yolo: bool,
     yolo_turns: int,
+    allow_mcp: bool = False,
 ) -> None:
     """Serve ``co ai`` as an ACP v1 Agent until the client closes stdin."""
 
@@ -1485,6 +1647,7 @@ async def serve_acp(
         max_iterations=max_iterations,
         yolo=yolo,
         yolo_turns=yolo_turns,
+        allow_mcp=allow_mcp,
     )
     try:
         # ACP Python 0.12 gates the schema-v1.19 resume/close routes behind

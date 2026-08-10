@@ -364,6 +364,11 @@ def ai(
     acp: bool = typer.Option(
         False, "--acp", help="Serve co ai as an ACP v1 agent over stdio"
     ),
+    acp_mcp: bool = typer.Option(
+        False,
+        "--acp-mcp",
+        help="Allow ACP clients to launch session-scoped stdio MCP servers",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -377,6 +382,7 @@ def ai(
         json_output=json_output,
         resume=resume,
         acp=acp,
+        acp_mcp=acp_mcp,
     )
 
 

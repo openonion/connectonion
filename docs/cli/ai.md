@@ -68,8 +68,37 @@ on stderr.
 
 Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
 session reuse its conversation and tool state. The working directory supplied
-by the client must be an existing absolute directory. MCP servers and
-additional workspace roots are not accepted yet.
+by the client must be an existing absolute directory. Additional workspace
+roots are not accepted yet.
+
+ACP stdio MCP servers are disabled by default because their configuration can
+launch local processes. An operator can grant that launch authority explicitly:
+
+```bash
+co ai --acp --acp-mcp
+```
+
+With that flag, `session/new` and `session/resume` may provide up to eight
+stdio MCP servers with absolute executable paths. HTTP, SSE, and ACP-transport
+MCP servers are rejected. Each server runs in the session cwd with the MCP
+SDK's safe environment baseline plus only the environment entries explicitly
+provided for that server; the complete parent environment is not copied.
+
+MCP commands, arguments, environment values, and discovered tools are not
+persisted. A resumed session must provide its complete MCP list again. Closing
+the session, client EOF, or partial startup failure reaps every owned process.
+Discovery is bounded to 128 tools and 32 pages, schemas and results are bounded
+to 64 KiB, tool-call arguments are bounded to 64 KiB, and calls have a
+60-second read timeout.
+
+Remote tool names and annotations are not trusted as permissions. MCP tools
+receive collision-resistant `mcp__...` names and pass through the ordinary
+ConnectOnion approval hook. Safe and Accept Edits modes ask the ACP operator
+before executing them; explicit ULW remains the only approval bypass.
+"Allow for this session" lasts only for the current open MCP process pool.
+Client-granted MCP approvals are not persisted, so resume asks again even when
+the client supplies the same server and tool names. Explicit operator rules in
+`.co/host.yaml` remain durable configuration.
 
 ACP session updates preserve the Agent's event order: thinking, tool starts,
 tool results, and the terminal assistant response are emitted through one FIFO
@@ -82,10 +111,9 @@ into a later prompt.
 
 ConnectOnion currently receives one complete response from the model provider,
 so the terminal assistant message is one ACP chunk rather than a live token
-stream. Richer cancellation of external side effects and client-mediated
-approvals remain follow-up work. Until the approval bridge is available, Safe
-mode fails closed when a sensitive tool requires approval; `--yolo` remains an
-explicit operator choice at process launch.
+stream. Client-mediated approval is generation-scoped and fails closed on
+cancelled, unknown, or disconnected outcomes. `--yolo` remains an explicit
+operator choice at process launch.
 
 ## Options
 
@@ -99,6 +127,7 @@ explicit operator choice at process launch.
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
 | `--acp` | | off | Serve stable ACP v1 over stdin/stdout |
+| `--acp-mcp` | | off | With `--acp`, allow session-scoped stdio MCP launches |
 
 ```bash
 co ai --port 9000
@@ -106,6 +135,7 @@ co ai --model co/gemini-3.6-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
 co ai --acp
+co ai --acp --acp-mcp
 ```
 
 ## YOLO mode

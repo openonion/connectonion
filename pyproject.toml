@@ -40,6 +40,8 @@ classifiers = [
 dependencies = [
     # ACP is pre-1.0, so bound the minor API used by cli/co_ai/acp_server.py.
     "agent-client-protocol>=0.12.0,<0.13.0",
+    # MCP v2 is stable; bound the next major used by cli/co_ai/acp_mcp.py.
+    "mcp>=2.0.0,<3",
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "pydantic>=2.0.0",
