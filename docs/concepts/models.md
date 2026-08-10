@@ -369,6 +369,9 @@ export OPENROUTER_API_KEY="sk-or-..."
 export OPENROUTER_HTTP_REFERER="https://your-app.example"
 export OPENROUTER_X_TITLE="Your App Name"
 
+# OrcaRouter (use orcarouter/ model prefix)
+export ORCAROUTER_API_KEY="sk-orca-..."
+
 # xAI Grok (use grok/ model prefix)
 export XAI_API_KEY="xai-..."
 
@@ -385,6 +388,7 @@ agent = Agent("assistant", model="gemini-2.5-pro")
 agent = Agent("assistant", model="claude-opus-4.1")
 agent = Agent("assistant", model="groq/llama-3.3-70b-versatile")
 agent = Agent("assistant", model="openrouter/openai/gpt-4o-mini")
+agent = Agent("assistant", model="orcarouter/openai/gpt-4o-mini")
 agent = Agent("assistant", model="grok/grok-4")
 agent = Agent("assistant", model="mistral/mistral-large-latest")
 ```
@@ -396,6 +400,11 @@ agent = Agent("assistant", model="mistral/mistral-large-latest")
 - Set `OPENROUTER_API_KEY`.
 - Optional (recommended): set `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` for request attribution headers.
 - OpenRouter is treated as an OpenAI-compatible provider in ConnectOnion.
+
+**OrcaRouter (`orcarouter/...`)**
+- Prefix model names with `orcarouter/` (for example: `orcarouter/openai/gpt-4o-mini`).
+- Set `ORCAROUTER_API_KEY`.
+- OrcaRouter is treated as an OpenAI-compatible provider in ConnectOnion.
 
 **xAI Grok (`grok/...`)**
 - Prefix model names with `grok/` (for example: `grok/grok-4`).

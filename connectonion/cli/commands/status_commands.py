@@ -35,6 +35,7 @@ CREDENTIAL_ENV_VARS = (
     ("GROQ_API_KEY", "Groq"),
     ("XAI_API_KEY", "xAI"),
     ("OPENROUTER_API_KEY", "OpenRouter"),
+    ("ORCAROUTER_API_KEY", "OrcaRouter"),
     ("MISTRAL_API_KEY", "Mistral"),
 )
 

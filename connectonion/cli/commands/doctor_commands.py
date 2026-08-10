@@ -392,6 +392,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         "GROQ_API_KEY": "set GROQ_API_KEY in <project>/.env",
         "XAI_API_KEY": "set XAI_API_KEY in <project>/.env",
         "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
+        "ORCAROUTER_API_KEY": "set ORCAROUTER_API_KEY in <project>/.env",
         "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
     }
     api_key = None

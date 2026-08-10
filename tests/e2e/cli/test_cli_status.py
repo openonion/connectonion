@@ -119,6 +119,7 @@ class TestCredentialStatus:
             "GROQ_API_KEY=your-api-key-here\n"
             "XAI_API_KEY=\n"
             "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}\n"
+            "ORCAROUTER_API_KEY=${ORCAROUTER_API_KEY}\n"
         )
 
         rows = _credential_rows(
@@ -127,7 +128,7 @@ class TestCredentialStatus:
             environ={},
         )
 
-        for credential in ("GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY"):
+        for credential in ("GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY", "ORCAROUTER_API_KEY"):
             assert self._row(rows, credential)["status"] == "missing"
 
     @patch('connectonion.address.load')

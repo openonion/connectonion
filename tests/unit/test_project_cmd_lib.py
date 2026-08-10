@@ -2,7 +2,34 @@
 
 import sys
 
-from connectonion.cli.commands.project_cmd_lib import upsert_env
+import pytest
+
+from connectonion.cli.commands.project_cmd_lib import (
+    detect_api_provider,
+    upsert_env,
+)
+
+
+class TestDetectApiProvider:
+    """detect_api_provider maps key prefixes to providers, most-specific first."""
+
+    @pytest.mark.parametrize(
+        ("key", "provider"),
+        [
+            ("sk-ant-test", "anthropic"),
+            ("sk-proj-test", "openai"),
+            ("sk-or-v1-test", "openrouter"),
+            # sk-orca- must not be claimed by the shorter sk- OpenAI prefix.
+            ("sk-orca-test", "orcarouter"),
+            ("sk-regular-openai", "openai"),
+            ("AIza-test", "google"),
+            ("gsk_test", "groq"),
+            ("xai-test", "grok"),
+            ("totally-unknown", "openai"),
+        ],
+    )
+    def test_detects_by_prefix(self, key, provider):
+        assert detect_api_provider(key)[0] == provider
 
 
 class TestUpsertEnv:

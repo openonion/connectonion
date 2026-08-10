@@ -270,6 +270,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # GROQ_API_KEY=
 # XAI_API_KEY=
 # OPENROUTER_API_KEY=
+# ORCAROUTER_API_KEY=
 
 # Optional: Override default model
 # MODEL=co/gemini-3.6-flash

@@ -152,6 +152,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                         detected_keys["grok"] = env_value.strip()
                     elif env_key_name == "OPENROUTER_API_KEY" and env_value.strip():
                         detected_keys["openrouter"] = env_value.strip()
+                    elif env_key_name == "ORCAROUTER_API_KEY" and env_value.strip():
+                        detected_keys["orcarouter"] = env_value.strip()
                     elif env_key_name == "OPENONION_API_KEY" and env_value.strip():
                         detected_keys["openonion"] = env_value.strip()
 
@@ -398,6 +400,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                 "# GEMINI_API_KEY=",
                 "# XAI_API_KEY=",
                 "# OPENROUTER_API_KEY=",
+                "# ORCAROUTER_API_KEY=",
             ])
 
         env_content = "\n".join(env_lines) + "\n"

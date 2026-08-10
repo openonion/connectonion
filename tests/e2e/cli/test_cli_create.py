@@ -172,6 +172,18 @@ class TestCliCreate:
                 if result.exit_code == 0:
                     assert os.path.exists('openrouter-agent')
 
+    def test_api_key_detection_orcarouter(self):
+        """Test that OrcaRouter API key is detected from environment."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            with patch.dict(os.environ, {'ORCAROUTER_API_KEY': 'sk-orca-test-key'}):
+                result = self.runner.invoke(cli, ['create', 'orcarouter-agent'],
+                                            input='co-ai\n')
+
+                if result.exit_code == 0:
+                    assert os.path.exists('orcarouter-agent')
+
     def test_create_existing_directory_fails(self):
         """Test that create fails if directory already exists."""
         with self.runner.isolated_filesystem():

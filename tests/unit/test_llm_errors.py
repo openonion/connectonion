@@ -38,6 +38,7 @@ from connectonion.core.llm import (
     GroqLLM,
     GrokLLM,
     OpenRouterLLM,
+    OrcaRouterLLM,
     OpenOnionLLM,
     LLMResponse,
     ToolCall
@@ -106,6 +107,15 @@ class TestMissingAPIKeys:
 
             assert "OpenRouter API key required" in str(exc_info.value)
             assert "OPENROUTER_API_KEY" in str(exc_info.value)
+
+    def test_orcarouter_missing_api_key_env(self):
+        """Test OrcaRouter raises ValueError when API key missing from environment."""
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError) as exc_info:
+                OrcaRouterLLM(model="orcarouter/openai/gpt-4o-mini")
+
+            assert "OrcaRouter API key required" in str(exc_info.value)
+            assert "ORCAROUTER_API_KEY" in str(exc_info.value)
 
     def test_grok_missing_api_key_env(self):
         """Test Grok raises ValueError when API key missing from environment."""
@@ -348,6 +358,17 @@ class TestOpenAICompatibleProviders:
                 assert kwargs["default_headers"]["HTTP-Referer"] == "https://example.com"
                 assert kwargs["default_headers"]["X-Title"] == "My App"
 
+    def test_orcarouter_points_at_the_orcarouter_endpoint(self):
+        """OrcaRouter should target its own OpenAI-compatible endpoint."""
+        with patch.dict(os.environ, {"ORCAROUTER_API_KEY": "test-key"}):
+            with patch("openai.OpenAI") as mock_openai:
+                llm = OrcaRouterLLM(model="orcarouter/openai/gpt-4o-mini")
+
+                _, kwargs = mock_openai.call_args
+                assert kwargs["base_url"] == "https://api.orcarouter.ai/v1"
+                assert kwargs["api_key"] == "test-key"
+                assert llm.model == "openai/gpt-4o-mini"
+
     def test_groq_structured_complete_json_mode(self):
         """Groq structured output should use JSON mode and validate with Pydantic."""
         with patch.dict(os.environ, {"GROQ_API_KEY": "test-key"}):
@@ -414,6 +435,28 @@ class TestOpenAICompatibleProviders:
             called = llm.client.chat.completions.create.call_args.kwargs
             assert called["response_format"] == {"type": "json_object"}
 
+    def test_orcarouter_structured_complete_json_mode(self):
+        """OrcaRouter structured output should use JSON mode and validate with Pydantic."""
+        with patch.dict(os.environ, {"ORCAROUTER_API_KEY": "test-key"}):
+            llm = OrcaRouterLLM(model="orcarouter/openai/gpt-4o-mini")
+
+            mock_message = Mock()
+            mock_message.content = '{"value": 8, "message": "routed"}'
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=mock_message)]
+            llm.client.chat.completions.create = Mock(return_value=mock_response)
+
+            result = llm.structured_complete(
+                [{"role": "user", "content": "Return test payload"}],
+                StructuredOutputSchema
+            )
+
+            assert result.value == 8
+            assert result.message == "routed"
+            llm.client.chat.completions.create.assert_called_once()
+            called = llm.client.chat.completions.create.call_args.kwargs
+            assert called["response_format"] == {"type": "json_object"}
+
 
 class TestModelInference:
     """Test model provider inference from model names."""
@@ -430,6 +473,12 @@ class TestModelInference:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
             llm = create_llm("openrouter/openai/o4-mini")
             assert isinstance(llm, OpenRouterLLM)
+
+    def test_infer_orcarouter_from_prefix(self):
+        """Test that orcarouter/* models are routed to OrcaRouterLLM."""
+        with patch.dict(os.environ, {"ORCAROUTER_API_KEY": "test-key"}):
+            llm = create_llm("orcarouter/openai/gpt-4o-mini")
+            assert isinstance(llm, OrcaRouterLLM)
 
     def test_infer_grok_from_prefix(self):
         """Test that grok/* models are routed to GrokLLM."""

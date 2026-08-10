@@ -42,14 +42,16 @@ def _make_fail(llm, exc):
 
 
 OPENAI_LIKE = ["o4-mini", "groq/llama-3.3-70b-versatile", "grok/grok-4",
-               "openrouter/meta-llama/llama-3-8b", "mistral/mistral-small"]
+               "openrouter/meta-llama/llama-3-8b", "orcarouter/openai/gpt-4o-mini",
+               "mistral/mistral-small"]
 
 
 class TestAuthFailsTheSameWayEverywhere:
     @pytest.mark.parametrize("model", OPENAI_LIKE)
     def test_openai_compatible_providers(self, model, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "k")
-        for var in ("GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY", "MISTRAL_API_KEY"):
+        for var in ("GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY",
+                    "ORCAROUTER_API_KEY", "MISTRAL_API_KEY"):
             monkeypatch.setenv(var, "k")
         llm = create_llm(model, api_key="k")
         _make_fail(llm, _openai_error(openai.AuthenticationError, 401))

@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [os, re, sys, time, shutil, rich.console, rich.prompt, rich.progress, rich.table, rich.panel, datetime, pathlib, __version__, address] | imported by [cli/commands/init.py, cli/commands/create.py] | calls LLM APIs for custom template generation | tested indirectly via test_cli_init.py and test_cli_create.py
   Data flow: provides utility functions called by init.py and create.py → validate_project_name() checks regex patterns → check_environment_for_api_keys() scans env vars for OpenAI/Anthropic/Google/Groq/Grok/OpenRouter keys → detect_api_provider() inspects key format to identify provider → api_key_setup_menu() displays interactive menu for key selection → generate_custom_template_with_name() calls LLM API with custom prompt to generate agent.py code → show_progress() displays Rich spinner → LoadingAnimation context manager for long operations → get_special_directory_warning() warns about home/root dirs
   State/Effects: no persistent state | reads from environment variables | writes to stdout via rich.Console | calls LLM APIs (OpenAI/Anthropic/Google) when generating custom templates | creates Rich UI elements (tables, panels, progress bars, prompts) | writes no files except create_host_yaml() (.co/host.yaml)
-  Integration: exposes 16+ utility functions and 1 class (LoadingAnimation) | used by init.py and create.py for shared logic | validate_project_name() enforces naming conventions for the project/directory name (starts with letter, no spaces, max 50 chars) | normalize_deploy_name()/DEPLOY_NAME_PATTERN cover the separate, stricter rule for the deploy name written into host.yaml (a DNS label and Docker tag: lowercase, digits, hyphens), applied by create_host_yaml() and re-checked by deploy_commands.py | check_environment_for_api_keys() scans OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY | detect_api_provider() identifies provider by key prefix (sk- for OpenAI, sk-ant- for Anthropic, AIzaSy for Google, gsk- for Groq, xai- for Grok, sk-or- for OpenRouter) | generate_custom_template_with_name() uses LLM to create agent.py from natural language description
+  Integration: exposes 16+ utility functions and 1 class (LoadingAnimation) | used by init.py and create.py for shared logic | validate_project_name() enforces naming conventions for the project/directory name (starts with letter, no spaces, max 50 chars) | normalize_deploy_name()/DEPLOY_NAME_PATTERN cover the separate, stricter rule for the deploy name written into host.yaml (a DNS label and Docker tag: lowercase, digits, hyphens), applied by create_host_yaml() and re-checked by deploy_commands.py | check_environment_for_api_keys() scans OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY, ORCAROUTER_API_KEY | detect_api_provider() identifies provider by key prefix (sk- for OpenAI, sk-ant- for Anthropic, AIzaSy for Google, gsk- for Groq, xai- for Grok, sk-or- for OpenRouter, sk-orca- for OrcaRouter) | generate_custom_template_with_name() uses LLM to create agent.py from natural language description
   Performance: environment scanning is O(n) env vars | regex validation is fast (<1ms) | LLM API calls for custom templates (5-15s) | Rich UI rendering is lightweight | LoadingAnimation runs in main thread (non-blocking spinner)
   Errors: validate_project_name() returns (False, error_msg) for invalid names | detect_api_provider() returns ("unknown", "unknown") for unrecognized keys | generate_custom_template_with_name() may fail if LLM API unreachable | api_key_setup_menu() catches KeyboardInterrupt and returns ("", "", None) | no try-except blocks (follows fail-fast principle)
 """
@@ -563,6 +563,7 @@ def check_environment_for_api_keys() -> Optional[Tuple[str, str]]:
         ('GROQ_API_KEY', 'groq'),
         ('XAI_API_KEY', 'grok'),
         ('OPENROUTER_API_KEY', 'openrouter'),
+        ('ORCAROUTER_API_KEY', 'orcarouter'),
     ]
 
     for env_var, provider in checks:
@@ -586,7 +587,19 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     # OpenAI formats
     if api_key.startswith('sk-proj-'):
         return 'openai', 'project'
-    elif api_key.startswith('sk-'):
+
+    # OpenRouter. Checked before the generic `sk-` OpenAI prefix so its
+    # `sk-or-` keys are not claimed as plain OpenAI user keys.
+    if api_key.startswith('sk-or-'):
+        return 'openrouter', 'openrouter'
+
+    # OrcaRouter. Checked after the disjoint `sk-or-` OpenRouter prefix and
+    # before the generic `sk-` OpenAI prefix so `sk-orca-` keys are not
+    # claimed as plain OpenAI user keys.
+    if api_key.startswith('sk-orca-'):
+        return 'orcarouter', 'orcarouter'
+
+    if api_key.startswith('sk-'):
         return 'openai', 'user'
 
     # Google (Gemini)
@@ -600,10 +613,6 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     # xAI Grok
     if api_key.startswith('xai-'):
         return 'grok', 'xai'
-
-    # OpenRouter
-    if api_key.startswith('sk-or-'):
-        return 'openrouter', 'openrouter'
 
     # Default to OpenAI if unsure
     return 'openai', 'unknown'
@@ -643,6 +652,10 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         'openrouter': {
             'var': 'OPENROUTER_API_KEY',
             'model': 'openrouter/openai/o4-mini'
+        },
+        'orcarouter': {
+            'var': 'ORCAROUTER_API_KEY',
+            'model': 'orcarouter/openai/gpt-4o'
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
@@ -925,6 +938,7 @@ PROVIDER_TO_ENV = {
     "groq": "GROQ_API_KEY",
     "grok": "XAI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "orcarouter": "ORCAROUTER_API_KEY",
     "openonion": "OPENONION_API_KEY",
 }
 

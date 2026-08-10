@@ -1,17 +1,17 @@
 """
-Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, Groq, Grok, Mistral, OpenRouter, and OpenOnion
+Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, Groq, Grok, Mistral, OpenRouter, OrcaRouter, and OpenOnion
 LLM-Note:
   Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, yaml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/unit/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/unit/test_exceptions.py, tests/unit/test_uniform_provider_errors.py]
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
-  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads OPENONION_API_KEY from env / .env / ~/.co/keys.env | makes HTTP requests to LLM APIs | no caching or persistence
-  Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
+  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, ORCAROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads OPENONION_API_KEY from env / .env / ~/.co/keys.env | makes HTTP requests to LLM APIs | no caching or persistence
+  Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OrcaRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
   Performance: openai/anthropic are imported inside the functions that use them, so importing this module does not pay for either SDK | stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
   Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | OpenOnionLLM transforms 402 errors to InsufficientCreditsError with formatted message and typed attributes | Pydantic ValidationError for invalid structured output
 
 Unified LLM provider abstraction layer for ConnectOnion framework.
 
 This module provides a consistent interface for interacting with multiple LLM providers
-(OpenAI, Anthropic, Google Gemini, Groq, Grok, Mistral, OpenRouter, and ConnectOnion managed keys)
+(OpenAI, Anthropic, Google Gemini, Groq, Grok, Mistral, OpenRouter, OrcaRouter, and ConnectOnion managed keys)
 through a common API.
 
 Architecture Overview
@@ -31,6 +31,7 @@ The module follows a factory pattern with provider-specific implementations:
    - GrokLLM: xAI Grok via OpenAI-compatible endpoint
    - MistralLLM: Mistral AI via OpenAI-compatible endpoint
    - OpenRouterLLM: OpenRouter via OpenAI-compatible endpoint
+   - OrcaRouterLLM: OrcaRouter via OpenAI-compatible endpoint
    - OpenOnionLLM: Managed keys using OpenAI-compatible proxy endpoint
 
 3. **Factory Function (create_llm)**:
@@ -108,6 +109,7 @@ Required (pick one):
   - OPENROUTER_API_KEY: For openrouter/ prefixed models
   - OPENROUTER_HTTP_REFERER: Optional attribution header for OpenRouter
   - OPENROUTER_X_TITLE: Optional app title header for OpenRouter
+  - ORCAROUTER_API_KEY: For orcarouter/ prefixed models
   - XAI_API_KEY: For grok/ prefixed models (xAI)
   - MISTRAL_API_KEY: For mistral/ prefixed models
 
@@ -930,6 +932,83 @@ class OpenRouterLLM(LLM):
         return output_schema.model_validate_json(content)
 
 
+class OrcaRouterLLM(LLM):
+    """OrcaRouter LLM implementation using OpenAI-compatible endpoint."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "orcarouter/openai/gpt-4o", **kwargs):
+        import openai
+        self.api_key = api_key or os.getenv("ORCAROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("OrcaRouter API key required. Set ORCAROUTER_API_KEY environment variable or pass api_key parameter.")
+
+        self.model = model.removeprefix("orcarouter/")
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            base_url="https://api.orcarouter.ai/v1"
+        )
+
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Complete a conversation using OrcaRouter's OpenAI-compatible endpoint."""
+        api_kwargs = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
+
+        if tools:
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
+        message = response.choices[0].message
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
+
+        usage = None
+        if hasattr(response, 'usage') and response.usage:
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = calculate_cost(self.model, input_tokens, output_tokens)
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=cost,
+            )
+
+        return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using JSON-mode + schema validation.
+
+        Uses chat.completions with JSON response format for compatibility with
+        OpenAI-like providers that may not support beta parse endpoints.
+        """
+        schema_json = json.dumps(output_schema.model_json_schema(), indent=2)
+        schema_instruction = (
+            "Return ONLY valid JSON (no markdown) that matches this JSON Schema:\n"
+            f"{schema_json}"
+        )
+
+        structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
+
+        completion = self._call_provider(lambda: self.client.chat.completions.create(
+            model=self.model,
+            messages=structured_messages,
+            response_format={"type": "json_object"},
+            **kwargs,
+        ))
+        content = completion.choices[0].message.content or "{}"
+        return output_schema.model_validate_json(content)
+
+
 class MistralLLM(LLM):
     """Mistral AI LLM implementation using OpenAI-compatible endpoint."""
 
@@ -1280,6 +1359,8 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
         return GroqLLM(api_key=api_key, model=model, **kwargs)
     if model.startswith("openrouter/"):
         return OpenRouterLLM(api_key=api_key, model=model, **kwargs)
+    if model.startswith("orcarouter/"):
+        return OrcaRouterLLM(api_key=api_key, model=model, **kwargs)
     if model.startswith("grok/"):
         return GrokLLM(api_key=api_key, model=model, **kwargs)
     if model.startswith("mistral/"):

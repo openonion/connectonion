@@ -829,7 +829,7 @@ from connectonion.useful_tools.browser_tools import BrowserAutomation
 - `co deploy` for one-command deployment
 
 **Recently Completed:**
-- Multiple LLM providers (OpenAI, Anthropic, Gemini, Groq, Grok, OpenRouter)
+- Multiple LLM providers (OpenAI, Anthropic, Gemini, Groq, Grok, OpenRouter, OrcaRouter)
 - Managed API keys (`co/` prefix)
 - Plugin system
 - Google OAuth integration
