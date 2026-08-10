@@ -164,7 +164,12 @@ class Agent:
         import uuid
         return str(uuid.uuid4())
 
-    def _record_trace(self, entry: dict) -> None:
+    def _record_trace(
+        self,
+        entry: dict,
+        *,
+        wire_extras: Optional[dict] = None,
+    ) -> None:
         """Record trace entry and stream to io if connected.
 
         This is the single place where trace entries are recorded.
@@ -180,8 +185,14 @@ class Agent:
         self.current_session['trace'].append(entry)
 
         if self.io:
+            # Wire-only fields belong on a separate top-level object. The
+            # canonical entry is already in trace and is what session_sync
+            # persists. Sharing one object and deleting fields after send would
+            # race asynchronous transports.
+            # Canonical correlation and status fields always win collisions.
+            wire_entry = {**wire_extras, **entry} if wire_extras else entry
             # Send entry first (without session to avoid circular ref)
-            self.io.send(entry)
+            self.io.send(wire_entry)
             # Then send session sync separately
             self.io.send({
                 'type': 'session_sync',

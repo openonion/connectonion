@@ -32,7 +32,7 @@ class FakeAgent:
         self._trace_id += 1
         return self._trace_id
 
-    def _record_trace(self, entry):
+    def _record_trace(self, entry, *, wire_extras=None):
         """Record trace entry (simplified for testing)."""
         import time
         if 'id' not in entry:
@@ -41,7 +41,8 @@ class FakeAgent:
             entry['ts'] = time.time()
         self.current_session['trace'].append(entry)
         if self.io:
-            self.io.send(entry)
+            wire_entry = {**wire_extras, **entry} if wire_extras else entry
+            self.io.send(wire_entry)
 
     def _invoke_events(self, event_type: str):
         pass

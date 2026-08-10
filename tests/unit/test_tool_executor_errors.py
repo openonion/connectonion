@@ -42,6 +42,7 @@ from connectonion.logger import Logger
 def create_mock_agent():
     """Create a mock agent with all required methods for tool execution."""
     mock_agent = Mock()
+    mock_agent.io = None
     mock_agent.current_session = {
         'messages': [],
         'trace': [],

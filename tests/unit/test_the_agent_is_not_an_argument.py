@@ -32,6 +32,7 @@ from connectonion.core.tool_executor import execute_single_tool
 class FakeLogger:
     def print(self, *a, **k): pass
     def log_tool_call(self, *a, **k): pass
+    def log_tool_result(self, *a, **k): pass
 
 
 class RecordingAgent:
