@@ -1357,6 +1357,8 @@ class TestGmailSendAttachments:
         assert "c@example.com" in mime and "b@example.com" in mime
 
     def test_an_agent_can_attach_a_file_inside_its_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
         project = tmp_path / "project"
         project.mkdir()
         (project / ".co").mkdir()
@@ -1368,9 +1370,13 @@ class TestGmailSendAttachments:
             from connectonion.useful_tools.gmail import Gmail
             gmail = Gmail()
 
-        assert gmail._attachment_paths([str(attachment)]) == [attachment.resolve()]
+        with ExitStack() as stack:
+            opened = gmail._open_attachments([str(attachment)], stack)
+            assert [path for path, _ in opened] == [attachment.resolve()]
 
     def test_an_agent_cannot_attach_a_file_outside_its_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
         project = tmp_path / "project"
         project.mkdir()
         (project / ".co").mkdir()
@@ -1382,10 +1388,13 @@ class TestGmailSendAttachments:
             from connectonion.useful_tools.gmail import Gmail
             gmail = Gmail()
 
-        with pytest.raises(PermissionError, match="outside the project"):
-            gmail._attachment_paths([str(outside)])
+        with ExitStack() as stack:
+            with pytest.raises(PermissionError, match="outside the project"):
+                gmail._open_attachments([str(outside)], stack)
 
     def test_a_symlink_cannot_escape_the_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
         project = tmp_path / "project"
         project.mkdir()
         (project / ".co").mkdir()
@@ -1399,8 +1408,49 @@ class TestGmailSendAttachments:
             from connectonion.useful_tools.gmail import Gmail
             gmail = Gmail()
 
-        with pytest.raises(PermissionError, match="outside the project"):
-            gmail._attachment_paths([str(link)])
+        with ExitStack() as stack:
+            with pytest.raises(PermissionError, match="outside the project"):
+                gmail._open_attachments([str(link)], stack)
+
+    def test_a_checked_file_is_not_reopened_after_a_symlink_swap(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        local = project / "report.txt"
+        local.write_bytes(b"safe report")
+        outside = tmp_path / "secret.txt"
+        outside.write_bytes(b"secret")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            opened = gmail._open_attachments([str(local)], stack)
+            local.unlink()
+            local.symlink_to(outside)
+            message = gmail._multipart_with("body", opened)
+
+        assert message.get_payload()[1].get_payload(decode=True) == b"safe report"
+
+    def test_growth_after_fstat_is_caught_during_the_read(self, tmp_path):
+        from contextlib import ExitStack
+
+        local = tmp_path / "growing.bin"
+        local.write_bytes(b"x")
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools import gmail as gmail_module
+            gmail = gmail_module.Gmail(allow_external_attachments=True)
+
+        with patch.object(gmail_module, "GMAIL_ATTACHMENT_LIMIT", 4):
+            with ExitStack() as stack:
+                opened = gmail._open_attachments([str(local)], stack)
+                local.write_bytes(b"12345")
+                with pytest.raises(ValueError, match="25MB"):
+                    gmail._multipart_with("body", opened)
 
     def test_the_core_rejects_oversize_before_touching_the_api(self, tmp_path):
         huge = tmp_path / "huge.bin"

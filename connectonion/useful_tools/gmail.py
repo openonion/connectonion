@@ -505,9 +505,11 @@ class Gmail:
 
         return "\n".join(output)
 
-    def _attachment_paths(self, attachments: list) -> list[Path]:
-        """Validate every attachment before any contents are read."""
-        paths = []
+    def _open_attachments(self, attachments: list, stack) -> list[tuple[Path, object]]:
+        """Open and validate attachments, retaining the checked file objects."""
+        import stat
+
+        opened = []
         total = 0
         for given in attachments:
             path = Path(given).expanduser()
@@ -523,13 +525,26 @@ class Gmail:
                         f"Attachment is outside the project: {given}"
                     ) from None
 
-            total += resolved.stat().st_size
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor_number = os.open(resolved, flags)
+            except OSError as exc:
+                raise PermissionError(f"Attachment changed while opening: {given}") from exc
+            handle = stack.enter_context(os.fdopen(descriptor_number, "rb"))
+            descriptor = os.fstat(handle.fileno())
+            current_path = os.stat(resolved, follow_symlinks=False)
+            if not stat.S_ISREG(descriptor.st_mode) or not os.path.samestat(
+                descriptor, current_path
+            ):
+                raise PermissionError(f"Attachment changed while opening: {given}")
+
+            total += descriptor.st_size
             if total > GMAIL_ATTACHMENT_LIMIT:
                 raise ValueError("Attachments exceed Gmail's 25MB send limit.")
-            paths.append(resolved)
-        return paths
+            opened.append((resolved, handle))
+        return opened
 
-    def _multipart_with(self, body: str, attachments: list[Path]):
+    def _multipart_with(self, body: str, attachments: list[tuple[Path, object]]):
         """A message carrying the body and each file, named as the sender named it.
 
         The filename is what the recipient sees and what their client uses to
@@ -547,11 +562,17 @@ class Gmail:
         message = MIMEMultipart()
         message.attach(MIMEText(body))
 
-        for path in attachments:
+        remaining = GMAIL_ATTACHMENT_LIMIT
+        for path, handle in attachments:
             guessed, _ = mimetypes.guess_type(path.name)
             main, _, sub = (guessed or "application/octet-stream").partition("/")
             part = MIMEBase(main, sub or "octet-stream")
-            part.set_payload(path.read_bytes())
+            handle.seek(0)
+            payload = handle.read(remaining + 1)
+            if len(payload) > remaining:
+                raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+            remaining -= len(payload)
+            part.set_payload(payload)
             encoders.encode_base64(part)
             part.add_header("Content-Disposition", "attachment",
                             filename=path.name)
@@ -577,6 +598,7 @@ class Gmail:
         Raises:
             FileNotFoundError: naming the attachment that does not exist
         """
+        from contextlib import ExitStack
         from email.mime.text import MIMEText
 
         # A plain MIMEText unless there is something to attach. Sending every
@@ -584,7 +606,9 @@ class Gmail:
         # caller produces for no reason -- and some mail clients render a
         # single-part multipart differently from a plain one.
         if attachments:
-            message = self._multipart_with(body, self._attachment_paths(attachments))
+            with ExitStack() as stack:
+                opened = self._open_attachments(attachments, stack)
+                message = self._multipart_with(body, opened)
         else:
             message = MIMEText(body)
         message['To'] = to
