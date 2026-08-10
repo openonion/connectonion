@@ -23,16 +23,34 @@ _FAKE_ACP_SERVER = textwrap.dedent(
 
 
     class FakeAgent:
-        io = None
+        def __init__(self):
+            self.io = None
+            self.current_session = {"trace": [], "turn": 0}
+
+        def finish(self, reason):
+            event = {
+                "type": "turn_result",
+                "turn": self.current_session["turn"],
+                "reason": reason,
+                "usage": None,
+            }
+            self.current_session["trace"].append(event)
+            self.io.send(event)
 
         def input(self, prompt):
             print(f"fake agent received: {prompt}", flush=True)
+            self.current_session["turn"] += 1
             if prompt == "large":
-                return "x" * 5_000_000
+                result = "x" * 5_000_000
+                self.finish("natural")
+                return result
             if prompt != "block":
-                return f"answer: {prompt}"
+                result = f"answer: {prompt}"
+                self.finish("natural")
+                return result
             while not self.io.receive_all("INTERRUPT"):
                 time.sleep(0.01)
+            self.finish("interrupted")
             return "late cancelled answer"
 
 

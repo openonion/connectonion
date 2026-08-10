@@ -71,13 +71,21 @@ session reuse its conversation and tool state. The working directory supplied
 by the client must be an existing absolute directory. MCP servers and
 additional workspace roots are not accepted yet.
 
-This first ACP slice streams the terminal assistant response and cooperatively
-stops an active turn on `session/cancel` or client EOF. Structured thinking,
-tool calls, results, usage, richer cancellation of external actions, and
-client-mediated approvals are tracked in the follow-up ACP issues. Until the
-approval bridge is available, Safe mode fails closed when a sensitive tool
-requires approval; `--yolo` remains an explicit operator choice at process
-launch.
+ACP session updates preserve the Agent's event order: thinking, tool starts,
+tool results, and the terminal assistant response are emitted through one FIFO
+consumer per session. Tool arguments and supported JSON-native results remain
+structured in ACP `rawInput`/`rawOutput`; every result also carries text content
+for compatibility. Turn usage and stop reasons come from the Agent's structured
+terminal record, not display text. `session/cancel` and client EOF cooperatively
+stop the active turn, and late events from that retired turn are not forwarded
+into a later prompt.
+
+ConnectOnion currently receives one complete response from the model provider,
+so the terminal assistant message is one ACP chunk rather than a live token
+stream. Richer cancellation of external side effects and client-mediated
+approvals remain follow-up work. Until the approval bridge is available, Safe
+mode fails closed when a sensitive tool requires approval; `--yolo` remains an
+explicit operator choice at process launch.
 
 ## Options
 
