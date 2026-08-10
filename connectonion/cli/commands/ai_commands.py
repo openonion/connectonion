@@ -101,8 +101,9 @@ def _handle_json_one_shot(
     resume,
     *,
     agent_factory=None,
+    persist_session=True,
 ):
-    session_id = resume
+    session_id = resume if persist_session else None
     try:
         with redirect_stdout(sys.stderr):
             from ..co_ai.agent import GLOBAL_CO_DIR
@@ -115,6 +116,8 @@ def _handle_json_one_shot(
                 session_lock,
             )
 
+            if resume and not persist_session:
+                raise ValueError("A transient one-shot run cannot resume a session.")
             lock = session_lock(GLOBAL_CO_DIR, resume) if resume else nullcontext()
             with lock:
                 # Loading validates the project cwd before agent construction reads
@@ -128,13 +131,16 @@ def _handle_json_one_shot(
                 )
                 restore_tool_state(agent, tools)
                 if session is None:
-                    session_id = new_session_id()
-                    session = _fresh_session(agent, session_id)
+                    runtime_session_id = new_session_id()
+                    session = _fresh_session(agent, runtime_session_id)
+                    if persist_session:
+                        session_id = runtime_session_id
                 result = agent.input(prompt, session=session)
-                agent.current_session["session_id"] = session_id
-                save_snapshot(
-                    GLOBAL_CO_DIR, agent.current_session, capture_tool_state(agent)
-                )
+                if persist_session:
+                    agent.current_session["session_id"] = session_id
+                    save_snapshot(
+                        GLOBAL_CO_DIR, agent.current_session, capture_tool_state(agent)
+                    )
     except Exception as exc:
         _print_envelope(resume, None, str(exc))
         raise typer.Exit(1) from None

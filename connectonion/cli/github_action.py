@@ -136,6 +136,7 @@ def _invoke_json_review(prompt: str, model: str, agent_factory: Callable) -> tup
                 1,
                 None,
                 agent_factory=agent_factory,
+                persist_session=False,
             )
     except typer.Exit as exc:
         exit_code = exc.exit_code
