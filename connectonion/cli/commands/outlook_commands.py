@@ -22,9 +22,6 @@ console = Console()
 
 INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
 
-ATTACHMENT_LIMIT = 3_000_000  # Graph sendMail rejects larger payloads
-
-
 def _outlook(required_scope: str = "Mail"):
     """Load Microsoft credentials and require the Graph scope this command needs."""
     from dotenv import load_dotenv
@@ -48,7 +45,7 @@ def _outlook(required_scope: str = "Mail"):
         raise typer.Exit(1)
 
     from ...useful_tools.outlook import Outlook
-    return Outlook()
+    return Outlook(allow_external_attachments=True)
 
 
 def _when(iso: str) -> str:
@@ -117,12 +114,14 @@ def _parse_send_at(at: str) -> str:
 
 def _check_attachments(attachments: list):
     """Precheck attachment paths before base64-encoding megabytes. Exits 1 on bad input."""
+    from ...useful_tools.outlook import OUTLOOK_ATTACHMENT_LIMIT
+
     paths = [Path(p).expanduser() for p in attachments]
     for given, path in zip(attachments, paths):
         if not path.is_file():
             console.print(f"\n❌ [bold red]Attachment not found:[/bold red] {given}\n")
             raise typer.Exit(1)
-    if sum(p.stat().st_size for p in paths) > ATTACHMENT_LIMIT:
+    if sum(p.stat().st_size for p in paths) > OUTLOOK_ATTACHMENT_LIMIT:
         console.print("\n❌ [bold red]Attachments exceed Outlook's 3MB send limit.[/bold red]\n")
         raise typer.Exit(1)
 

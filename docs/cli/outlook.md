@@ -138,7 +138,9 @@ co outlook send bob@example.com "Report" "See attached." \
     --attach report.pdf --attach screenshot.png
 ```
 
-> Graph's `sendMail` limit is ~3MB total across attachments.
+> Graph's `sendMail` limit is ~3MB total across attachments. A human invoking
+> the CLI may explicitly name a file outside the project; agent-facing
+> `Outlook()` tools remain limited to project files.
 
 **Scheduling** — Exchange holds delivery until the time you give (deferred
 send), so it works with just the `Mail.Send` scope and no extra setup:
