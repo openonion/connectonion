@@ -1467,6 +1467,29 @@ class TestGmailSendAttachments:
                 with pytest.raises(PermissionError, match="outside the project"):
                     gmail._open_attachments([str(local)], stack)
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX FIFO semantics")
+    def test_a_fifo_swap_cannot_block_the_attachment_open(self, tmp_path):
+        from contextlib import ExitStack
+
+        local = tmp_path / "report.txt"
+        local.write_bytes(b"safe")
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail(allow_external_attachments=True)
+
+        original_open = os.open
+
+        def swap_for_fifo_then_open(path, flags):
+            local.unlink()
+            os.mkfifo(local)
+            assert flags & os.O_NONBLOCK
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_for_fifo_then_open):
+            with ExitStack() as stack:
+                with pytest.raises(PermissionError, match="not a regular file"):
+                    gmail._open_attachments([str(local)], stack)
+
     def test_a_safe_symlink_keeps_the_sender_selected_filename(self, tmp_path, monkeypatch):
         from contextlib import ExitStack
 

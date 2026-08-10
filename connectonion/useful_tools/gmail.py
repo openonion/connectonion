@@ -561,6 +561,11 @@ class Gmail:
                     ) from None
 
             flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            if os.name != "nt":
+                # A checked path can still be replaced by a FIFO before open().
+                # Do not let an untrusted attachment block the agent indefinitely;
+                # fstat() below remains the authoritative regular-file check.
+                flags |= getattr(os, "O_NONBLOCK", 0)
             try:
                 descriptor_number = os.open(resolved, flags)
             except OSError as exc:
