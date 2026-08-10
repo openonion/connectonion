@@ -8,7 +8,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 PERMISSION_MODES = (
     "default",
@@ -103,10 +103,12 @@ def claude_code(
     argv.extend(["--", prompt])
 
     try:
+        cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
         completed = _run_process(
             argv,
             cwd=str(working_directory),
             timeout=timeout,
+            cancelled=cancelled if callable(cancelled) else None,
         )
     except FileNotFoundError:
         return _envelope(
@@ -121,6 +123,8 @@ def claude_code(
             status="timeout",
             error=f"Claude Code timed out after {timeout}s.",
         )
+    except _ProviderCancelled:
+        return _envelope(session_id, error="Claude Code was interrupted.")
     except OSError as exc:
         return _envelope(session_id, error=f"Claude Code could not start: {exc}")
     except ValueError as exc:
@@ -211,7 +215,17 @@ def _is_unsafe_windows_batch(command: str, *, windows: bool | None = None) -> bo
     return windows and Path(command).suffix.lower() in (".cmd", ".bat")
 
 
-def _run_process(argv: list[str], *, cwd: str, timeout: int):
+class _ProviderCancelled(Exception):
+    """The enclosing agent revoked this provider invocation."""
+
+
+def _run_process(
+    argv: list[str],
+    *,
+    cwd: str,
+    timeout: int,
+    cancelled: Callable[[], bool] | None = None,
+):
     """Run headlessly and best-effort terminate its launch group on timeout."""
     platform_options = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
@@ -230,29 +244,64 @@ def _run_process(argv: list[str], *, cwd: str, timeout: int):
         shell=False,
         **platform_options,
     )
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _terminate_process_tree(process)
+    deadline = time.monotonic() + timeout
+    while True:
+        if cancelled is not None and cancelled():
+            _stop_and_drain(process, force=True)
+            raise _ProviderCancelled() from None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stdout, stderr = _stop_and_drain(process)
+            raise subprocess.TimeoutExpired(
+                argv, timeout, output=stdout, stderr=stderr
+            ) from None
         try:
-            stdout, stderr = process.communicate(timeout=3)
+            stdout, stderr = process.communicate(timeout=min(0.1, remaining))
+            return subprocess.CompletedProcess(
+                argv, process.returncode, stdout, stderr
+            )
         except subprocess.TimeoutExpired:
-            # A detached descendant can keep inherited pipes open even after the
-            # process tree has been signalled. Never let that defeat our public
-            # timeout contract.
-            for stream in (process.stdout, process.stderr):
-                if stream is not None:
-                    stream.close()
-            try:
-                process.kill()
-                process.wait(timeout=1)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-            stdout, stderr = "", ""
-        raise subprocess.TimeoutExpired(
-            argv, timeout, output=stdout, stderr=stderr
-        ) from None
-    return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+            continue
+
+
+def _stop_and_drain(process, *, force: bool = False) -> tuple[str, str]:
+    """Stop a launch group and never let inherited pipes defeat cancellation."""
+    if force:
+        _kill_process_tree(process)
+    else:
+        _terminate_process_tree(process)
+    try:
+        return process.communicate(timeout=3)
+    except subprocess.TimeoutExpired:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+        try:
+            process.kill()
+            process.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return "", ""
+
+
+def _kill_process_tree(process) -> None:
+    """Immediately stop a revoked provider; no post-interrupt grace window."""
+    if os.name == "nt":
+        _terminate_process_tree(process)
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except OSError:
+        try:
+            process.kill()
+        except OSError:
+            return
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _terminate_process_tree(process) -> None:

@@ -105,9 +105,16 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
     def on_approval(method, params):
         return _approval_allowed(method, params, approval, agent)
 
-    client = CodexAppServer(command=command, cwd=cwd or ".",
-                            on_event=on_event, on_approval=on_approval)
+    cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
+    client = CodexAppServer(
+        command=command,
+        cwd=cwd or ".",
+        on_event=on_event,
+        on_approval=on_approval,
+        cancelled=cancelled if callable(cancelled) else None,
+    )
     deadline = time.monotonic() + timeout
+    force_close = False
     try:
         client.start()
         client.initialize(timeout=_remaining(deadline))
@@ -135,10 +142,16 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
             cwd=cwd,
             timeout=_remaining(deadline),
         )
+    except _ProviderCancelled as e:
+        force_close = True
+        return _envelope(session_id, error=f"codex app-server: {e}")
     except Exception as e:
         return _envelope(session_id, error=f"codex app-server: {e}")
     finally:
-        client.close()
+        if force_close:
+            client.close(force=True)
+        else:
+            client.close()
 
     turn = turn or {}
     status = turn.get("status", "")
@@ -320,7 +333,19 @@ def _terminate_process_tree(process):
 
     try:
         os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
     except OSError:
+        try:
+            process.terminate()
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except OSError:
+                pass
+        except OSError:
+            pass
         return
     try:
         process.wait(timeout=2)
@@ -340,14 +365,46 @@ def _terminate_process_tree(process):
         pass
 
 
+def _kill_process_tree(process):
+    """Immediately stop a revoked provider; no post-interrupt grace window."""
+    if os.name == "nt":
+        _terminate_process_tree(process)
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except OSError:
+        try:
+            process.kill()
+        except OSError:
+            return
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+class _ProviderCancelled(Exception):
+    """The enclosing agent revoked this provider invocation."""
+
+
 class CodexAppServer:
     """Minimal client for `codex app-server`: JSON-RPC 2.0 over stdio."""
 
-    def __init__(self, command, cwd=None, on_event=None, on_approval=None):
+    def __init__(
+        self,
+        command,
+        cwd=None,
+        on_event=None,
+        on_approval=None,
+        cancelled=None,
+    ):
         self.command = command
         self.cwd = cwd
         self.on_event = on_event or (lambda e: None)
         self.on_approval = on_approval or (lambda method, params: False)
+        self.cancelled = cancelled or (lambda: False)
         self.proc = None
         self._next_id = 0
         self._pending = {}
@@ -380,10 +437,13 @@ class CodexAppServer:
         self._stderr_thread.start()
         threading.Thread(target=self._read_loop, daemon=True).start()
 
-    def close(self):
+    def close(self, force=False):
         if not self.proc:
             return
-        _terminate_process_tree(self.proc)
+        if force:
+            _kill_process_tree(self.proc)
+        else:
+            _terminate_process_tree(self.proc)
         for stream in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
             if stream is not None:
                 try:
@@ -457,8 +517,7 @@ class CodexAppServer:
             "threadId": thread_id, "cwd": cwd or self.cwd or ".",
             "input": [{"type": "text", "text": prompt}],
         }, timeout=_remaining(deadline))
-        if not self._turn_done.wait(_remaining(deadline)):
-            raise TimeoutError(f"turn timed out after {timeout}s")
+        self._wait_for(self._turn_done, deadline, "turn", timeout)
         return self._turn_result
 
     # ── JSON-RPC plumbing ────────────────────────────────────────
@@ -478,13 +537,28 @@ class CodexAppServer:
                 self._pending.pop(req_id, None)
                 error = self._exit_error
             raise RuntimeError(error or f"{method} could not be sent: {exc}") from exc
-        if not slot["event"].wait(timeout):
+        try:
+            self._wait_for(
+                slot["event"], time.monotonic() + timeout, method, timeout
+            )
+        except (TimeoutError, _ProviderCancelled):
             with self._lock:
                 self._pending.pop(req_id, None)
-            raise TimeoutError(f"{method} timed out after {timeout}s")
+            raise
         if slot["error"] is not None:
             raise RuntimeError(f"{method} failed: {slot['error']}")
         return slot["result"]
+
+    def _wait_for(self, event, deadline, operation, timeout):
+        """Wait within one budget while honoring the worker's revoked lease."""
+        while True:
+            if self.cancelled():
+                raise _ProviderCancelled(f"{operation} interrupted")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"{operation} timed out after {timeout}s")
+            if event.wait(min(0.1, remaining)):
+                return
 
     def _notify(self, method, params):
         self._send({"method": method, "params": params})

@@ -34,18 +34,7 @@ Debug:
 
 from pathlib import Path
 
-from .context import load_project_context
-from .prompts.assembler import assemble_prompt
-from .tools import (
-    FileTools,
-    ask_user,
-    run_background, task_output, kill_task,
-    load_guide,
-    codex,
-)
-from .skills import skill
-from .plugins import system_reminder
-from connectonion import Agent, bash, TodoList
+from connectonion import Agent, TodoList, bash
 from connectonion.useful_plugins import (
     auto_compact,
     enable_yolo,
@@ -59,6 +48,20 @@ from connectonion.useful_plugins import (
 )
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
+from .context import load_project_context
+from .plugins import system_reminder
+from .prompts.assembler import assemble_prompt
+from .skills import skill
+from .tools import (
+    FileTools,
+    ask_user,
+    claude_code,
+    codex,
+    kill_task,
+    load_guide,
+    run_background,
+    task_output,
+)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 # Global .co directory for co ai (consistent logs/evals location)
@@ -119,6 +122,7 @@ def create_agent(
         # derives that policy from the current mode instead of exposing it to
         # the planner model as another set of permission switches.
         codex,
+        claude_code,
     ]
 
     base_prompt = assemble_prompt(
