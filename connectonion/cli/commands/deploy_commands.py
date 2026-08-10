@@ -184,14 +184,36 @@ def _add_directory_to_tarball(
     arc_prefix: Path,
     ignore_patterns: list[str],
 ) -> None:
-    for path in sorted(source.rglob("*")):
-        if not path.is_file():
-            continue
+    for path in _deployable_directory_files(source, ignore_patterns):
         source_rel = path.relative_to(source)
-        if _is_ignored_for_deploy(source_rel, ignore_patterns):
-            continue
         rel = arc_prefix / source_rel
         tar.add(path, arcname=str(rel), recursive=False)
+
+
+def _deployable_directory_files(
+    source: Path, ignore_patterns: list[str]
+) -> list[Path]:
+    """Files the directory packer will really add, in stable order."""
+    return [
+        path
+        for path in sorted(source.rglob("*"))
+        if path.is_file()
+        and not _is_ignored_for_deploy(path.relative_to(source), ignore_patterns)
+    ]
+
+
+def _project_files_for_deploy(
+    project_dir: Path, ignore_patterns: list[str]
+) -> list[Path]:
+    """Project source files under the exact git/non-git packaging rules."""
+    if _is_git_repo(project_dir):
+        return [
+            project_dir / rel
+            for rel in sorted(_iter_git_tracked_files(project_dir))
+            if (project_dir / rel).is_file()
+            and not _is_ignored_for_deploy(rel, ignore_patterns)
+        ]
+    return _deployable_directory_files(project_dir, ignore_patterns)
 
 
 def _add_deployer_as_admin(tar: tarfile.TarFile, project_dir: Path) -> None:
@@ -256,9 +278,18 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
     A warning, not a failure: leaving a personal skill behind is often exactly what
     the operator wants. The cost is only that it happens silently.
     """
-    from ...useful_plugins.skills import skills_that_will_not_travel, find_skill_problems
+    from ...useful_plugins.skills import skills_that_will_not_travel
 
-    bundled = {path.name for path in skills_paths}
+    bundled = set()
+    for path in skills_paths:
+        if (path / "SKILL.md").exists():
+            bundled.add(path.name)
+        else:
+            bundled.update(
+                child.name
+                for child in path.iterdir()
+                if child.is_dir() and (child / "SKILL.md").exists()
+            )
     staying = [s for s in skills_that_will_not_travel(project_dir=project_dir)
                if s.name not in bundled]
 
@@ -270,8 +301,68 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
         )
         console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
 
-    for location, name, reason in find_skill_problems(project_dir=project_dir):
-        console.print(f"  [red]✗[/red] {location}/{name} — {reason}")
+    ignored = _load_deploy_ignore_patterns(project_dir)
+    payload_entries = {
+        path.absolute() for path in _project_files_for_deploy(project_dir, ignored)
+    }
+    for path in skills_paths:
+        payload_entries.update(
+            source.absolute()
+            for source in _deployable_directory_files(
+                path, _load_skill_ignore_patterns(path)
+            )
+        )
+    _print_deploy_skill_problems(
+        project_dir,
+        console,
+        payload_entries=payload_entries,
+    )
+
+
+def _print_deploy_skill_problems(
+    project_dir: Path,
+    output: Console,
+    *,
+    payload_entries: set[Path] | None = None,
+    payload_roots: tuple[Path, ...] = (),
+) -> None:
+    """Show a real repair path; only payload problems look like deploy failures."""
+    from rich.markup import escape
+    from ...useful_plugins.skills import find_skill_problem_details
+
+    entries = payload_entries or set()
+
+    def is_in_payload(path: Path) -> bool:
+        # Cloud entries are files, while a skill problem names its directory.
+        # Explicit --skills paths are resolved before they reach this function,
+        # while diagnosis deliberately preserves the repairable symlink path.
+        candidates = {path, path.resolve(strict=False)}
+        for candidate in candidates:
+            for entry in entries:
+                try:
+                    entry.relative_to(candidate)
+                    return True
+                except ValueError:
+                    pass
+            for root in payload_roots:
+                try:
+                    candidate.relative_to(root)
+                    return True
+                except ValueError:
+                    pass
+        return False
+
+    for problem in find_skill_problem_details(project_dir=project_dir):
+        affects_payload = is_in_payload(problem.path)
+        color, marker = ("red", "✗") if affects_payload else ("yellow", "!")
+        target = f" → {escape(str(problem.target))}" if problem.target is not None else ""
+        scope = "affects this deploy" if affects_payload else "not in deploy payload"
+        output.print(
+            f"  [{color}]{marker}[/{color}] {escape(str(problem.path))} — "
+            f"{escape(problem.reason)}{target} "
+            f"[dim]({escape(problem.location)}; {scope})[/dim]",
+            soft_wrap=True,
+        )
 
 
 def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
@@ -291,21 +382,8 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     ])
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
-        if _is_git_repo(project_dir):
-            for rel in sorted(_iter_git_tracked_files(project_dir)):
-                if _is_ignored_for_deploy(rel, ignore_patterns):
-                    continue
-                path = project_dir / rel
-                if path.is_file():
-                    tar.add(path, arcname=str(rel), recursive=False)
-        else:
-            for path in sorted(project_dir.rglob("*")):
-                if not path.is_file():
-                    continue
-                rel = path.relative_to(project_dir)
-                if _is_ignored_for_deploy(rel, ignore_patterns):
-                    continue
-                tar.add(path, arcname=str(rel), recursive=False)
+        for path in _project_files_for_deploy(project_dir, ignore_patterns):
+            tar.add(path, arcname=str(path.relative_to(project_dir)), recursive=False)
         for skills_path in skills_paths:
             # A path is either one skill (has SKILL.md) or a directory of skills.
             arc_prefix = Path(".co") / "skills"
