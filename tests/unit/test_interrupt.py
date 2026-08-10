@@ -182,7 +182,7 @@ def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():
             "claude_code",
             co_ai_claude_code,
             "connectonion.cli.co_ai.tools.claude_code",
-            "run_claude_code",
+            "_run_claude_code",
         ),
     ],
 )

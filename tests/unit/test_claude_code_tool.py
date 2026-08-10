@@ -9,8 +9,9 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from connectonion import claude_code as root_claude_code
+from connectonion import Agent, ClaudeCode, claude_code as root_claude_code
 from connectonion.cli.commands.copy_commands import TOOLS
+from connectonion.useful_tools import ClaudeCode as UsefulClaudeCode
 from connectonion.useful_tools import claude_code
 
 claude_module = importlib.import_module("connectonion.useful_tools.claude_code")
@@ -32,10 +33,16 @@ def _run(tmp_path, completed=None, prompt="fix it", **kwargs):
             "total_cost_usd": 0.01,
         }
     )
+    permission_mode = kwargs.pop("permission_mode", None)
+    tool = (
+        ClaudeCode(permission_mode).claude_code
+        if permission_mode is not None
+        else claude_code
+    )
     with patch.object(claude_module, "_base_command", return_value=["claude"]), patch.object(
         claude_module, "_run_process", return_value=completed
     ) as run:
-        result = json.loads(claude_code(prompt, cwd=str(tmp_path), **kwargs))
+        result = json.loads(tool(prompt, cwd=str(tmp_path), **kwargs))
     return result, run
 
 
@@ -104,15 +111,28 @@ def test_documented_permission_modes_are_forwarded_only_when_explicit(
     assert argv[argv.index("--permission-mode") + 1] == mode
 
 
-def test_invalid_permission_mode_never_launches(tmp_path):
+def test_invalid_permission_mode_fails_before_a_provider_can_launch():
     with patch.object(claude_module, "_run_process") as run:
-        result = json.loads(
-            claude_code("fix", cwd=str(tmp_path), permission_mode="yolo")
-        )
+        with pytest.raises(ValueError, match="Invalid permission mode"):
+            ClaudeCode("yolo")
 
-    assert result["status"] == "error"
-    assert "Invalid permission mode" in result["error"]
     run.assert_not_called()
+
+
+@pytest.mark.parametrize("tool", [claude_code, ClaudeCode("bypassPermissions")])
+def test_agent_schema_never_exposes_provider_permission_policy(tmp_path, tool):
+    agent = Agent(
+        "schema",
+        llm=MagicMock(),
+        tools=[tool],
+        quiet=True,
+        log=False,
+        co_dir=tmp_path / ".co",
+    )
+
+    schemas = [registered.to_function_schema() for registered in agent.tools]
+    assert [schema["name"] for schema in schemas] == ["claude_code"]
+    assert "permission_mode" not in schemas[0]["parameters"]["properties"]
 
 
 @pytest.mark.parametrize("timeout", [0, -1, True, 1.5])
@@ -432,6 +452,7 @@ def test_real_posix_timeout_remains_a_timeout(tmp_path):
 
 def test_tool_is_exported_from_both_public_namespaces():
     assert root_claude_code is claude_code
+    assert ClaudeCode is UsefulClaudeCode
 
 
 def test_tool_is_registered_as_copyable():
