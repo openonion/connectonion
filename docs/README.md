@@ -12,6 +12,8 @@
 ├── connectonion.md        # Framework architecture deep dive
 ├── examples.md            # Code examples and patterns
 ├── principles.md          # Design philosophy
+├── claude-code-plugin.md  # Official Claude Code build and review workflow
+├── vibe-coding-guide.md   # Coding-assistant workflow and prompts
 ├── cli/                   # CLI commands documentation
 ├── concepts/              # Core concepts (agents, tools, trust)
 ├── debug/                 # Debugging and @xray documentation

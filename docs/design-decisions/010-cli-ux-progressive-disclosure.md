@@ -2,6 +2,16 @@
 
 *Date: 2025-09-04*
 
+## Status
+
+Partially superseded by the single-template design in
+[Templates](../templates/README.md) (implemented in
+[#294](https://github.com/openonion/connectonion/pull/294)). The progressive
+disclosure principles remain current, but the template questionnaire and
+template-preview examples below are historical. `co create` now defaults to
+one deployable `co-ai` template, with `custom` as the explicit AI-generated
+alternative.
+
 ## The Problem with Traditional CLI Tools
 
 Most framework CLIs suffer from what we call "initialization fatigue" - they bombard users with questions that don't matter yet:

@@ -1,97 +1,78 @@
-# Vibe Coding Guide: Build Agents with Cursor AI
+# Vibe coding with ConnectOnion
 
-> **Quick Start**: Drag our docs into Cursor → Ask AI → Get your agent
+Start from a working ConnectOnion project, give your coding assistant the
+framework context that ships with it, and describe the behavior you want.
 
-## Two Ways to Get Started
+## Claude Code
 
-### Method 1: Drag & Drop
-1. **Open Cursor AI editor**
-2. **Drag our documentation** into Cursor:
-   - From website: Go to [docs.connectonion.com](https://docs.connectonion.com) → Drag any page
-   - From local: After `co init`, drag `.co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md`
-3. **Ask Cursor**: "Help me create an agent using these docs"
+The official ConnectOnion plugin is the shortest path:
 
-### Method 2: Copy All
-1. **Visit** [docs.connectonion.com](https://docs.connectonion.com)
-2. **Click** "Copy All Docs" (purple button in sidebar)
-3. **Paste** into Cursor chat
-4. **Ask Cursor**: "Help me create an agent using these docs"
+The build workflow requires plugin **1.2.0 or later**. Existing installations
+should [update the plugin first](claude-code-plugin.md#install-or-update).
 
-## Example: What Cursor Generates
-
-When you ask Cursor: **"Using ConnectOnion docs, create a calculator agent"**
-
-Cursor generates:
-
-```python
-from connectonion import Agent
-
-def add(a: float, b: float) -> float:
-    """Add two numbers."""
-    return a + b
-
-def multiply(a: float, b: float) -> float:
-    """Multiply two numbers."""
-    return a * b
-
-# Create agent
-calculator = Agent(
-    "calculator",
-    tools=[add, multiply],
-    instructions="You are a helpful calculator"
-)
-
-# Use it
-result = calculator.input("What is 5 plus 3?")
-print(result)  # Output: "5 plus 3 equals 8"
+```text
+/plugin marketplace add openonion/connectonion-claude-plugin
+/plugin install connectonion@connectonion-marketplace
 ```
 
-## The Magic
+Create and open an agent:
 
-The agent automatically:
-- ✅ Understands "plus" means use `add()`
-- ✅ Picks the right tool
-- ✅ Returns natural language
-
-## What to Ask Cursor
-
-**Basic:**
-```
-"Using ConnectOnion docs, create a calculator agent"
+```bash
+co create my-agent
+cd my-agent
+claude
 ```
 
-**Advanced:**
-```
-"Add more math functions to this agent"
-```
+Then run `/connectonion:aaron-build-my-agent`, or ask Claude Code to read
+`.co/docs/README.md` before making a specific change:
 
-**Custom:**
-```
-"Create an agent that [your specific need]"
+```text
+Read .co/docs/README.md and the relevant design decisions. Add a skill that
+summarizes new support emails, with tests, and keep agent.py unchanged.
 ```
 
-## Why It Works
+See [Claude Code plugin](claude-code-plugin.md) for review commands and the
+division between plugin skills and project documentation.
 
-Cursor + Our Docs = Complete Understanding:
-- How to create agents
-- How to add tools  
-- Best practices
-- Natural language processing
+## Cursor and other coding assistants
 
-## Quick Start
+The same project context works without the plugin:
 
-1. **Install**: `pip install connectonion`
-2. **Initialize**: `co init`
-3. **Open in Cursor**
-4. **Drag our docs** into Cursor
-5. **Ask**: "Create an agent"
-6. **Run**: `python agent.py`
+1. Run `co create my-agent` or `co init` in an existing project.
+2. Add `.co/docs/README.md` and the relevant linked pages to the assistant's
+   context.
+3. Describe one behavior change and ask for tests with it.
+4. Review the diff and run the project's checks before accepting it.
 
-## Get Our Docs
+If the editor cannot read hidden directories, attach the relevant `.co/docs/`
+files explicitly. You can also use the documentation website's **Copy All
+Docs** action.
 
-- **Website**: [docs.connectonion.com](https://docs.connectonion.com) → Copy All Docs
-- **Local**: `.co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md` (after `co init`)
+## Prompt examples
 
----
+Start with the outcome and name the constraints that matter:
 
-*Drag, drop, ask. Your agent is ready!* 🎉
+```text
+Read .co/docs/README.md. Add a weather skill to this agent. Keep agent.py
+small, put the procedure in .co/skills/weather/SKILL.md, and add an offline
+test for skill discovery.
+```
+
+```text
+Review this ConnectOnion agent against the design decisions in
+.co/docs/design-decisions/. Report correctness problems before style issues;
+do not edit files yet.
+```
+
+```text
+Add a stateful browser tool following the installed ConnectOnion docs. Explain
+why state is required, make the smallest change, and run the relevant tests.
+```
+
+## Why this works
+
+ConnectOnion keeps the generated agent deliberately small. The stable project
+shape comes from `co create`; skills hold specialized procedures; `.co/docs/`
+grounds coding assistants in the framework version the project actually uses.
+That separation lets the assistant change behavior without inventing another
+template or copying framework internals into the project.

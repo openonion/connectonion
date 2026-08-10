@@ -4,7 +4,12 @@
 2024-09-12
 
 ## Status
-Implemented
+Superseded by the single-template design in [Templates](../templates/README.md)
+(implemented in [#294](https://github.com/openonion/connectonion/pull/294)).
+
+This document records the historical six-template flow. It is not the current
+`co create` contract: `co create` now defaults to one deployable `co-ai`
+template, with `custom` as the explicit AI-generated alternative.
 
 ## Context
 The original `co create` command flow asked users for the project name first, then template selection, then AI configuration. This created a poor user experience where users had to name something before they knew what they were building.
