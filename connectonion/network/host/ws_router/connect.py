@@ -20,10 +20,18 @@ console = Console()
 async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
     """Handle CONNECT message: auth, session merge, send CONNECTED. Returns (io, task) for reattach or None."""
     from ..auth import signature_already_used
+    from ..replay import ReplayProtectionError
 
     # One signature opens one connection (#649). Checked before the trust gate
     # so a replay is refused whatever level the original caller had.
-    if signature_already_used(data):
+    replay_check = route_handlers.get("replay", signature_already_used)
+    try:
+        already_used = replay_check(data)
+    except ReplayProtectionError:
+        await send_msg({"type": "ERROR",
+                        "message": "misconfigured: replay protection unavailable"})
+        return
+    if already_used:
         await send_msg({"type": "ERROR",
                         "message": "unauthorized: this CONNECT was already used"})
         return

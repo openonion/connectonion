@@ -296,6 +296,8 @@ onboarding to offer, so a stranger gets `ERROR` from the policy rather than an
 **A signature is single-use.** Replaying a captured CONNECT is refused with
 `ERROR unauthorized: this CONNECT was already used`. A v2 client also signs every
 application command; replaying one is refused with `signed command already used`.
+The one-use ledger is shared across ASGI workers and survives a worker restart;
+it stores only short-lived signature digests in `.co/replay.sqlite3`.
 
 **A v2 command signs what the server executes.** Its payload contains `type`, all
 command fields, `to`, `timestamp`, and a random `nonce`. The server verifies the

@@ -315,6 +315,7 @@ async def dispatch_http_route(
     recipient_address: str,
     blacklist=None,
     whitelist=None,
+    replay_check=None,
 ):
     """Authenticate, invoke, and serialize one already-matched route."""
     body = await read_body(receive)
@@ -327,6 +328,7 @@ async def dispatch_http_route(
             request_from_http_headers,
             signature_already_used,
         )
+        from .replay import ReplayProtectionError
 
         try:
             data = request_from_http_headers(
@@ -358,7 +360,16 @@ async def dispatch_http_route(
                 media_type="application/json",
             ))
             return
-        if signature_already_used(data):
+        check_replay = replay_check or signature_already_used
+        try:
+            already_used = check_replay(data)
+        except ReplayProtectionError:
+            await _send(send, HTTPResponse(
+                json.dumps({"error": "misconfigured: replay protection unavailable"}),
+                status=503, media_type="application/json",
+            ))
+            return
+        if already_used:
             await _send(send, HTTPResponse(
                 json.dumps({"error": "unauthorized: signature already used"}),
                 status=401, media_type="application/json",

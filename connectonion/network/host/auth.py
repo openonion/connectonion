@@ -22,9 +22,11 @@ import uuid
 from typing import Dict
 
 from ..trust import TRUST_LEVELS, TrustAgent
-
-# Signature expiry window (5 minutes)
-SIGNATURE_EXPIRY_SECONDS = 300
+from .replay import (
+    SIGNATURE_EXPIRY_SECONDS,
+    ReplayProtectionError,
+    signature_digest,
+)
 
 
 def verify_signature(payload: dict, signature: str, public_key: str) -> bool:
@@ -359,6 +361,7 @@ def signature_already_used(data: dict) -> bool:
     signature = data.get("signature")
     if not signature:
         return False          # refused by the signature check itself
+    signature = signature_digest(signature)
 
     now = time.time()
     for old in [sig for sig, seen in _seen_signatures.items()
@@ -372,7 +375,10 @@ def signature_already_used(data: dict) -> bool:
 
 
 def authenticated_command_payload(
-    data: dict, expected_address: str, expected_recipient: str = None
+    data: dict,
+    expected_address: str,
+    expected_recipient: str = None,
+    replay_check=signature_already_used,
 ):
     """Return a verified command payload bound to the connected caller.
 
@@ -380,6 +386,7 @@ def authenticated_command_payload(
     every command with its type and a random nonce, so possession or injection
     into that socket is not enough to invent a different command.
     """
+    replay_check = replay_check or signature_already_used
     payload = data.get("payload")
     if not isinstance(payload, dict):
         return None, "unauthorized: signed command required"
@@ -396,7 +403,11 @@ def authenticated_command_payload(
     nonce = payload.get("nonce")
     if not isinstance(nonce, str) or not nonce:
         return None, "unauthorized: signed command nonce required"
-    if signature_already_used(data):
+    try:
+        already_used = replay_check(data)
+    except ReplayProtectionError:
+        return None, "misconfigured: replay protection unavailable"
+    if already_used:
         return None, "unauthorized: signed command already used"
     return payload, None
 
