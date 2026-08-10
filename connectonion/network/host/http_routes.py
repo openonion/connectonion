@@ -64,6 +64,27 @@ def _reserved(path: str) -> bool:
                for prefix in _RESERVED_PREFIXES)
 
 
+def _shadows_reserved(path: str) -> bool:
+    """Whether a publisher pattern can claim a framework-owned path."""
+    if _reserved(path):
+        return True
+    pattern, _, _ = _pattern(path)
+    if any(pattern.fullmatch(reserved) for reserved in _RESERVED_PATHS):
+        return True
+
+    route_segments = path.split("/")[1:]
+    for prefix in _RESERVED_PREFIXES:
+        prefix_segments = prefix.split("/")[1:]
+        if len(route_segments) < len(prefix_segments):
+            continue
+        if all(
+            _pattern("/" + route_segment)[0].fullmatch("/" + reserved_segment)
+            for route_segment, reserved_segment in zip(route_segments, prefix_segments)
+        ):
+            return True
+    return False
+
+
 def _pattern(path: str):
     names = []
     pieces = []
@@ -187,7 +208,7 @@ class HTTPRouter:
     def _decorator(self, method: str, audience: str, relative_path: str):
         parameter_names = _validate_relative_path(relative_path)
         full_path = AUDIENCE_PREFIXES[audience] + relative_path
-        if _reserved(full_path):
+        if _shadows_reserved(full_path):
             raise ValueError(f"HTTP path {full_path!r} is reserved by Connectonion")
 
         def register(handler: Callable):

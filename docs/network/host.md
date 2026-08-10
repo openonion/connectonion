@@ -463,13 +463,16 @@ Interactive UI to test your agent in the browser.
 http://localhost:8000/docs
 ```
 
-### GET /admin/logs (Requires API Key)
+### GET /admin/logs (Admin authentication)
 
-Fetch agent activity logs (plain text). Requires `OPENONION_API_KEY` authentication.
+Fetch agent activity logs (plain text). Prefer a signed identity listed in
+`.co/admins.txt`. Non-interactive monitoring may use a distinct,
+per-deployment `CONNECTONION_ADMIN_TOKEN`:
 
 ```bash
+export CONNECTONION_ADMIN_TOKEN="$(openssl rand -hex 32)"
 curl http://localhost:8000/admin/logs \
-  -H "Authorization: Bearer YOUR_OPENONION_API_KEY"
+  -H "Authorization: Bearer $CONNECTONION_ADMIN_TOKEN"
 ```
 
 **Response:**
@@ -479,13 +482,14 @@ curl http://localhost:8000/admin/logs \
 2024-01-15 10:23:46 [translator] Result: Hola
 ```
 
-### GET /admin/sessions (Requires API Key)
+### GET /admin/sessions (Admin authentication)
 
-Fetch eval sessions from `.co/evals` as JSON array. Requires `OPENONION_API_KEY` authentication.
+Fetch eval sessions from `.co/evals` as JSON array. It uses the same signed
+admin or dedicated admin-token authentication as `/admin/logs`.
 
 ```bash
 curl http://localhost:8000/admin/sessions \
-  -H "Authorization: Bearer YOUR_OPENONION_API_KEY"
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 **Response:**
@@ -507,7 +511,10 @@ curl http://localhost:8000/admin/sessions \
 }
 ```
 
-**Note:** These endpoints require setting `OPENONION_API_KEY` as an environment variable when running your agent. The same key must be used to authenticate requests.
+**Important:** `OPENONION_API_KEY` is only a managed-model billing credential
+and is never an admin password. If bearer automation is needed, generate a
+separate random `CONNECTONION_ADMIN_TOKEN`; configuring it to the billing key
+fails closed. Signed admin requests need no bearer token.
 
 ---
 
@@ -838,8 +845,8 @@ your-project/
 │   ├── GET  /health         ← Health check                    │
 │   ├── GET  /info           ← Agent info                      │
 │   ├── GET  /docs           ← Interactive UI                  │
-│   ├── GET  /admin/logs     ← Activity logs (API key auth)    │
-│   ├── GET  /admin/sessions ← Session logs (API key auth)     │
+│   ├── GET  /admin/logs     ← Activity logs (admin auth)      │
+│   ├── GET  /admin/sessions ← Session logs (admin auth)       │
 │   └── WS   /ws             ← Real-time WebSocket             │
 │                                                              │
 │   P2P Relay Connection                                       │

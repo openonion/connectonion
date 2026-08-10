@@ -859,8 +859,8 @@ def host(
         GET  /health         - Health check
         GET  /info           - Agent info (includes summary, examples)
         WS   /ws             - WebSocket
-        GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
-        GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
+        GET  /admin/logs     - Activity log (signed admin or admin token)
+        GET  /admin/sessions - Activity sessions (signed admin or admin token)
     """
     if http is not None:
         from .http_routes import HTTPRouter

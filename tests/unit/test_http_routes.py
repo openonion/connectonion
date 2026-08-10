@@ -59,6 +59,26 @@ def test_framework_routes_cannot_be_shadowed():
         http.admin.get("/logs")(lambda: None)
 
 
+@pytest.mark.parametrize("path", ["/{resource}", "/{resource}/{item}"])
+def test_parameter_routes_cannot_shadow_reserved_admin_paths(path):
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+    with pytest.raises(ValueError, match="reserved by Connectonion"):
+        http.admin.get(path)(lambda **kwargs: kwargs)
+
+
+def test_parameter_routes_remain_available_outside_reserved_namespaces():
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+    http.admin.get("/reports/{item}")(lambda item: item)
+
+    route, params = http.match("GET", "/admin/reports/q3")
+    assert route.relative_path == "/reports/{item}"
+    assert params == {"item": "q3"}
+
+
 def test_static_route_wins_over_a_parameter_route():
     from connectonion import HTTPRouter
 

@@ -170,8 +170,8 @@ class TestAFreshSignatureStillWorks:
 
 
 @pytest.mark.asyncio
-class TestTheBearerPathIsUnaffected:
-    """It carries no signature to replay; its weakness is #670, not this."""
+class TestTheDedicatedBearerPathIsUnaffected:
+    """A distinct admin bearer carries no signature to replay."""
 
     async def test_a_bearer_call_does_not_consume_a_signature(
         self, call, monkeypatch
@@ -179,6 +179,7 @@ class TestTheBearerPathIsUnaffected:
         from connectonion.network.trust import http_admin
 
         monkeypatch.setenv("OPENONION_API_KEY", "billing-key")
+        monkeypatch.setenv("CONNECTONION_ADMIN_TOKEN", "admin-key")
 
         sent = {}
 
@@ -193,7 +194,7 @@ class TestTheBearerPathIsUnaffected:
 
         await http_admin.handle_admin_routes(
             "GET", "/admin/logs",
-            {"headers": [(b"authorization", b"Bearer billing-key")]},
+            {"headers": [(b"authorization", b"Bearer admin-key")]},
             None,
             {"admin_logs": lambda: {"content": "log body"}},
             send_json=send_json, send_text=send_text, read_body=read_body,
