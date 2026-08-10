@@ -1143,6 +1143,16 @@ def outlook_read(
     handle_outlook_read(email_id, mark_read=mark_read)
 
 
+@outlook_app.command("download")
+def outlook_download(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
+):
+    """Save an email's attachments to disk."""
+    from .commands.outlook_commands import handle_outlook_download
+    handle_outlook_download(email_id, out_dir)
+
+
 @outlook_app.command("reply")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),

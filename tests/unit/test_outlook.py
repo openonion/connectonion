@@ -872,3 +872,57 @@ class TestOutlookContacts:
             outlook = Outlook()
             with pytest.raises(ValueError, match="Contacts.ReadWrite"):
                 outlook.list_contacts()
+
+
+class TestDownloadAttachments:
+    """Saving attachments to disk, including the sender-controlled filename."""
+
+    def _outlook(self, monkeypatch, tmp_path, attachments):
+        from connectonion.useful_tools import outlook as outlook_module
+
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.ReadWrite Mail.Send")
+        monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN", "token")
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "refresh")
+        monkeypatch.setattr(outlook_module, "project_root", lambda: tmp_path)
+
+        instance = outlook_module.Outlook()
+        monkeypatch.setattr(instance, "_request", lambda *a, **k: {"value": attachments})
+        return instance
+
+    def test_saves_file_attachment_bytes(self, monkeypatch, tmp_path):
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover.jpg", "contentBytes": base64.b64encode(b"pixels").decode()},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert (tmp_path / "out" / "cover.jpg").read_bytes() == b"pixels"
+        assert saved == [str(tmp_path / "out" / "cover.jpg")]
+
+    def test_sender_cannot_escape_the_directory_with_a_relative_name(self, monkeypatch, tmp_path):
+        """A sender names the attachment '../../owned.txt'; it must stay put."""
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "../../owned.txt", "contentBytes": base64.b64encode(b"x").decode()},
+        ])
+
+        outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert (tmp_path / "out" / "owned.txt").exists()
+        assert not (tmp_path.parent / "owned.txt").exists()
+
+    def test_refuses_a_destination_outside_the_project(self, monkeypatch, tmp_path):
+        outlook = self._outlook(monkeypatch, tmp_path, [])
+
+        with pytest.raises(PermissionError):
+            outlook.download_attachments("msg-id", tmp_path.parent / "elsewhere")
+
+    def test_skips_attachments_without_bytes(self, monkeypatch, tmp_path):
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "linked.docx", "@odata.type": "#microsoft.graph.referenceAttachment"},
+        ])
+
+        assert outlook.download_attachments("msg-id", tmp_path / "out") == []

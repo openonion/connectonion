@@ -483,6 +483,42 @@ class Outlook:
 
         return "\n".join(output)
 
+    def download_attachments(self, email_id: str, out_dir: str = ".") -> list:
+        """Save an email's file attachments to disk.
+
+        Args:
+            email_id: Outlook message ID
+            out_dir: Directory to write the files into
+
+        Returns:
+            List of saved file paths
+        """
+        import base64
+
+        destination = Path(out_dir).expanduser().resolve()
+        if not self._allow_external_attachments:
+            try:
+                destination.relative_to(self._attachment_root)
+            except ValueError:
+                raise PermissionError(f"Download directory is outside the project: {out_dir}") from None
+        destination.mkdir(parents=True, exist_ok=True)
+
+        attachments = self._request("GET", f"/me/messages/{email_id}/attachments").get("value", [])
+
+        saved = []
+        for attachment in attachments:
+            content = attachment.get("contentBytes")
+            if not content:
+                # itemAttachment and referenceAttachment carry no bytes to write.
+                continue
+            # The name is sender-controlled: keep the last path segment only, so
+            # "../../.ssh/authorized_keys" cannot escape the chosen directory.
+            name = os.path.basename(str(attachment.get("name", "")).replace("\\", "/")) or "attachment"
+            path = destination / name
+            path.write_bytes(base64.b64decode(content))
+            saved.append(str(path))
+        return saved
+
     # === Sending ===
 
     def _file_attachment(self, file_path: str) -> dict:
