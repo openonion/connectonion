@@ -14,24 +14,29 @@ dependency, and provider-specific parsing stays outside the ConnectOnion Agent
 loop. It accepts both the documented single result object and Claude Code
 versions that wrap the result as the final item of a JSON event array.
 
+The default `claude_code` function tool always starts Claude Code in its manual
+permission mode. Permission policy is deliberately not a tool argument, so the
+model cannot weaken it through a prompt or tool call.
+
 ## Direct use
 
 ```python
 import json
 
-from connectonion import claude_code
+from connectonion import ClaudeCode
 
-first = json.loads(claude_code(
+claude = ClaudeCode(permission_mode="plan")
+
+first = json.loads(claude.claude_code(
     "Find the failing test",
     cwd="./my-project",
-    permission_mode="plan",
 ))
 
-second = json.loads(claude_code(
+editor = ClaudeCode(permission_mode="acceptEdits")
+second = json.loads(editor.claude_code(
     "Now implement the fix",
     session_id=first["session_id"],
     cwd="./my-project",
-    permission_mode="acceptEdits",
 ))
 ```
 
@@ -57,12 +62,25 @@ output, and non-zero exits use the same envelope with `status` set to `error` or
 
 ## Permissions
 
-`permission_mode="default"` is the safe default and maps to Claude Code's
-current `manual` CLI spelling. Supported explicit modes are `manual`,
-`acceptEdits`, `plan`, `auto`, `dontAsk`, and `bypassPermissions`.
+The public `claude_code(...)` function always maps to Claude Code's current
+`manual` CLI mode. For an advanced mode, the operator binds policy before the
+tool reaches the Agent:
 
-`bypassPermissions` is never selected automatically. It disables Claude Code's
-permission protection and should only be used in an isolated environment.
+```python
+from connectonion import Agent, ClaudeCode
+
+claude = ClaudeCode(permission_mode="acceptEdits")
+agent = Agent("lead", tools=[claude])
+```
+
+The generated `claude_code` schema still contains only task, session, working
+directory, model, and timeout fields. Supported constructor modes are
+`default`, `manual`, `acceptEdits`, `plan`, `auto`, `dontAsk`, and
+`bypassPermissions`.
+
+`bypassPermissions` disables Claude Code's permission protection. Bind it only
+in operator-written code running inside an isolated environment; a model can
+never select it through the tool schema.
 
 The tool does not use Claude Code's `--bare` mode by default. This preserves the
 user's normal Claude Code authentication and project instructions such as

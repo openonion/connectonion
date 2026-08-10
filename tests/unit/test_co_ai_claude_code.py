@@ -33,7 +33,7 @@ def test_co_ai_mode_owns_claude_permission_mode(
         seen.update(kwargs)
         return '{"provider":"claude_code","session_id":"s"}'
 
-    monkeypatch.setattr(claude_wrapper, "run_claude_code", fake_claude_code)
+    monkeypatch.setattr(claude_wrapper, "_run_claude_code", fake_claude_code)
     agent = SimpleNamespace(current_session={"mode": mode})
 
     result = claude_code(
@@ -61,7 +61,7 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(
         claude_wrapper,
-        "run_claude_code",
+        "_run_claude_code",
         lambda **kwargs: calls.append(kwargs) or "result",
     )
 
@@ -80,7 +80,7 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
 @pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
 def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
     backend = pytest.fail
-    monkeypatch.setattr(claude_wrapper, "run_claude_code", backend)
+    monkeypatch.setattr(claude_wrapper, "_run_claude_code", backend)
     agent = SimpleNamespace(
         current_session={
             "mode": mode,

@@ -72,6 +72,44 @@ def test_static_route_wins_over_a_parameter_route():
     assert params == {}
 
 
+@pytest.mark.parametrize("generic_first", [True, False])
+def test_route_specificity_is_left_to_right_not_registration_order(generic_first):
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+
+    def generic(kind):
+        return kind
+
+    def users(item):
+        return item
+
+    routes = [
+        ("/{kind}/new", generic),
+        ("/users/{item}", users),
+    ]
+    if not generic_first:
+        routes.reverse()
+    for path, handler in routes:
+        http.public.get(path)(handler)
+
+    route, params = http.match("GET", "/public/users/new")
+
+    assert route.handler is users
+    assert params == {"item": "new"}
+
+
+def test_equally_specific_overlapping_routes_fail_before_invocation():
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+    http.public.post("/files/a{tail}")(lambda tail: tail)
+    http.public.post("/files/{head}z")(lambda head: head)
+
+    with pytest.raises(ValueError, match="ambiguous HTTP routes"):
+        http.match("POST", "/public/files/az")
+
+
 def test_method_mismatch_is_not_a_route_match():
     from connectonion import HTTPRouter
 
