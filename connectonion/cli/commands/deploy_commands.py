@@ -256,7 +256,7 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
     A warning, not a failure: leaving a personal skill behind is often exactly what
     the operator wants. The cost is only that it happens silently.
     """
-    from ...useful_plugins.skills import skills_that_will_not_travel, find_skill_problems
+    from ...useful_plugins.skills import skills_that_will_not_travel
 
     bundled = {path.name for path in skills_paths}
     staying = [s for s in skills_that_will_not_travel(project_dir=project_dir)
@@ -270,8 +270,26 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
         )
         console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
 
-    for location, name, reason in find_skill_problems(project_dir=project_dir):
-        console.print(f"  [red]✗[/red] {location}/{name} — {reason}")
+    _print_deploy_skill_problems(project_dir, console)
+
+
+def _print_deploy_skill_problems(project_dir: Path, output: Console) -> None:
+    """Show a real repair path; only payload problems look like deploy failures."""
+    from ...useful_plugins.skills import (
+        TRAVELS_ON_DEPLOY,
+        find_skill_problem_details,
+    )
+
+    for problem in find_skill_problem_details(project_dir=project_dir):
+        affects_payload = problem.location in TRAVELS_ON_DEPLOY
+        color, marker = ("red", "✗") if affects_payload else ("yellow", "!")
+        target = f" → {problem.target}" if problem.target is not None else ""
+        scope = "ships with deploy" if affects_payload else "stays on this machine"
+        output.print(
+            f"  [{color}]{marker}[/{color}] {problem.path} — {problem.reason}"
+            f"{target} [dim]({problem.location}; {scope})[/dim]",
+            soft_wrap=True,
+        )
 
 
 def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:

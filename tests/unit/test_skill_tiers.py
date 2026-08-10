@@ -1,6 +1,8 @@
 """Tier visibility: which skills travel, and which links are broken."""
+from io import StringIO
 import pytest
 from pathlib import Path
+from rich.console import Console
 
 # useful_plugins/__init__ rebinds the name `skills` to the plugin LIST, so
 # `import ...skills as sk` hands back a list. Reach the module through sys.modules.
@@ -51,6 +53,41 @@ class TestBrokenLinks:
         problems = sk.find_skill_problems(project_dir=project)
 
         assert ("project", "ghost", "broken symlink") in problems
+
+    def test_a_dangling_symlink_reports_its_real_path_and_target(self, tree):
+        project, _ = tree
+        link = project / ".co" / "skills" / "ghost"
+        target = project / "missing" / "skill"
+        link.symlink_to(target)
+
+        problem = next(
+            p for p in sk.find_skill_problem_details(project_dir=project)
+            if p.name == "ghost"
+        )
+
+        assert problem.path == link
+        assert problem.target == target
+
+    def test_deploy_marks_only_a_broken_skill_that_travels_as_failure(self, tree):
+        from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
+
+        project, home = tree
+        project_link = project / ".co" / "skills" / "project-ghost"
+        project_link.symlink_to(project / "missing-project-skill")
+        user_link = home / ".co" / "skills" / "user-ghost"
+        user_link.symlink_to(home / "missing-user-skill")
+        stream = StringIO()
+
+        _print_deploy_skill_problems(
+            project, Console(file=stream, color_system=None, width=300)
+        )
+
+        output = stream.getvalue()
+        assert f"✗ {project_link} — broken symlink → {project / 'missing-project-skill'}" in output
+        assert "(project; ships with deploy)" in output
+        assert f"! {user_link} — broken symlink → {home / 'missing-user-skill'}" in output
+        assert "(user; stays on this machine)" in output
+        assert "user/user-ghost" not in output
 
     def test_a_symlink_to_its_own_ancestor_is_reported(self, tree):
         project, _ = tree

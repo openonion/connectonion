@@ -99,6 +99,17 @@ class SkillInfo:
     requirements: Optional[SkillRequirements] = None
 
 
+@dataclass(frozen=True)
+class SkillProblem:
+    """A broken skill entry with enough context to repair it."""
+
+    location: str
+    name: str
+    reason: str
+    path: Path
+    target: Optional[Path] = None
+
+
 # The only locations a hosted agent publishes to clients: the two that ship inside
 # the project tree. user (~/.co/skills) and claude-user are the operator's personal
 # toolboxes and builtin is framework noise — none may leak into the public directory.
@@ -352,9 +363,9 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
     return result
 
 
-def find_skill_problems(co_dir: Optional[Path] = None,
-                        project_dir: Optional[Path] = None) -> List[tuple]:
-    """Entries that look like skills but can never load. Returns (location, name, reason).
+def find_skill_problem_details(co_dir: Optional[Path] = None,
+                               project_dir: Optional[Path] = None) -> List[SkillProblem]:
+    """Entries that look like skills but can never load, with repairable paths.
 
     Discovery is deliberately forgiving — it skips anything without a readable
     SKILL.md and says nothing. That is right for loading and wrong for diagnosing:
@@ -379,16 +390,30 @@ def find_skill_problems(co_dir: Optional[Path] = None,
             if entry.is_symlink():
                 # exists() follows the link, so False here means the target is gone.
                 if not entry.exists():
-                    problems.append((location, entry.name, 'broken symlink'))
+                    try:
+                        target = entry.readlink()
+                    except OSError:
+                        target = None  # The entry changed again while diagnosing it.
+                    if target is not None and not target.is_absolute():
+                        target = (entry.parent / target).absolute()
+                    problems.append(SkillProblem(
+                        location, entry.name, 'broken symlink', entry.absolute(), target
+                    ))
                     continue
 
                 resolved = entry.resolve()
                 if resolved == skills_dir.resolve() or resolved in skills_dir.resolve().parents:
-                    problems.append((location, entry.name, 'symlink points at its own ancestor'))
+                    problems.append(SkillProblem(
+                        location, entry.name, 'symlink points at its own ancestor',
+                        entry.absolute(), resolved,
+                    ))
                     continue
 
                 if entry.is_dir() and not (entry / 'SKILL.md').exists():
-                    problems.append((location, entry.name, 'linked directory has no SKILL.md'))
+                    problems.append(SkillProblem(
+                        location, entry.name, 'linked directory has no SKILL.md',
+                        entry.absolute(), resolved,
+                    ))
                     continue
 
             # A plain directory without a SKILL.md is not a broken skill — people
@@ -400,9 +425,20 @@ def find_skill_problems(co_dir: Optional[Path] = None,
             if entry.is_dir() and (entry / 'SKILL.md').exists():
                 reason = _why_the_skill_cannot_be_read(entry / 'SKILL.md')
                 if reason:
-                    problems.append((location, entry.name, reason))
+                    problems.append(SkillProblem(
+                        location, entry.name, reason, entry.absolute()
+                    ))
 
     return problems
+
+
+def find_skill_problems(co_dir: Optional[Path] = None,
+                        project_dir: Optional[Path] = None) -> List[tuple]:
+    """Compatibility view of skill problems as (location, name, reason)."""
+    return [
+        (problem.location, problem.name, problem.reason)
+        for problem in find_skill_problem_details(co_dir, project_dir)
+    ]
 
 
 def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:

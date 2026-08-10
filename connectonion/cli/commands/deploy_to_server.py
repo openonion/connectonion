@@ -132,7 +132,7 @@ def _warn_about_skills_left_behind(project_dir: Path) -> None:
     symlinks into a separate repo — are simply absent there. The agent then behaves
     differently for a reason nothing in its output explains.
     """
-    from ...useful_plugins.skills import skills_that_will_not_travel, find_skill_problems
+    from ...useful_plugins.skills import skills_that_will_not_travel
 
     staying = skills_that_will_not_travel(project_dir=project_dir)
     if staying:
@@ -143,8 +143,8 @@ def _warn_about_skills_left_behind(project_dir: Path) -> None:
         )
         console.print("    [dim]co skills copy <name> --to-project   to ship one[/dim]")
 
-    for location, name, reason in find_skill_problems(project_dir=project_dir):
-        console.print(f"  [red]✗[/red] {location}/{name} — {reason}")
+    from .deploy_commands import _print_deploy_skill_problems
+    _print_deploy_skill_problems(project_dir, console)
 
 
 def _read_provision(target: str, agent: str) -> dict:
