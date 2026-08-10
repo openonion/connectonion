@@ -26,6 +26,28 @@ def test_ai_forwards_yolo_options():
         max_iterations=100,
         yolo=True,
         yolo_turns=4,
+        json_output=False,
+        resume=None,
+    )
+
+
+def test_ai_forwards_json_and_resume_options():
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(
+            app,
+            ["ai", "task", "--json", "--resume", "session-id"],
+        )
+
+    assert result.exit_code == 0
+    handler.assert_called_once_with(
+        prompt="task",
+        port=8000,
+        model="co/gemini-3.6-flash",
+        max_iterations=100,
+        yolo=False,
+        yolo_turns=100,
+        json_output=True,
+        resume="session-id",
     )
 
 

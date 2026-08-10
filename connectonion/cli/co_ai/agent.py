@@ -94,6 +94,7 @@ def create_agent(
     co_dir: Path = Path(".co"),
     yolo_turns: int | None = None,
     role: str | None = "coding",
+    background_tools: bool = True,
 ) -> Agent:
     """Build the co-ai agent.
 
@@ -110,9 +111,7 @@ def create_agent(
         # task is now provided by subagents plugin (no need to import from .tools)
         todo,
         skill,
-        run_background,
-        task_output,
-        kill_task,
+        *([run_background, task_output, kill_task] if background_tools else []),
         load_guide,
         ask_user,
     ]

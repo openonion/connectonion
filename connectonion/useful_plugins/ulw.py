@@ -100,17 +100,23 @@ def enable_yolo(agent: 'Agent', turns: int = None) -> None:
         raise ValueError("YOLO turns must be a positive integer")
 
     agent._yolo_turns = turns
+    agent._yolo_needs_activation = True
     if agent.current_session is not None:
         handle_yolo_mode_change(agent, turns)
+        agent._yolo_needs_activation = False
 
 
 @after_user_input
 def activate_configured_yolo(agent: 'Agent') -> None:
     """Enter configured YOLO mode before the first LLM or tool call."""
     turns = getattr(agent, '_yolo_turns', None)
-    if turns is None or agent.current_session.get('mode') == 'ulw':
+    needs_activation = getattr(agent, '_yolo_needs_activation', False)
+    if turns is None or (
+        not needs_activation and agent.current_session.get('mode') == 'ulw'
+    ):
         return
     handle_yolo_mode_change(agent, turns)
+    agent._yolo_needs_activation = False
 
 
 def _exit_ulw_mode(agent: 'Agent', new_mode: str = 'safe') -> None:
