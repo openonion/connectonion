@@ -15,7 +15,10 @@ from pathlib import Path
 
 
 SIGNATURE_EXPIRY_SECONDS = 300
-SQLITE_BUSY_TIMEOUT_SECONDS = 0.25
+# A healthy transaction is tiny, but another OS worker can be descheduled while
+# holding the write lock. Stay bounded and fail closed after ordinary runner
+# scheduling jitter has had time to clear (#804).
+SQLITE_BUSY_TIMEOUT_SECONDS = 2.0
 
 
 class ReplayProtectionError(RuntimeError):
