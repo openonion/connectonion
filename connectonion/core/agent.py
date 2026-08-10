@@ -9,29 +9,28 @@ LLM-Note:
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry
 """
 
-import os
-import sys
-import time
 import base64
-from typing import List, Optional, Dict, Any, Callable, Union
+import os
+import time
+from contextlib import suppress
 from pathlib import Path
-from .llm import LLM, create_llm, TokenUsage
-from .usage import get_context_limit
-from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
-from .tool_registry import ToolRegistry
-from ..prompts import load_system_prompt
-from ..debug.decorators import (
-    _is_replay_enabled  # Only need this for replay check
-)
+from typing import Any, Callable, Dict, List, Optional, Union
+from uuid import uuid4
+
 from ..logger import Logger
-from .tool_executor import execute_and_record_tools, execute_single_tool
+from ..prompts import load_system_prompt
 from .events import EventHandler
 from .interrupt import run_interruptible
+from .llm import LLM, TokenUsage, create_llm
+from .tool_executor import execute_and_record_tools, execute_single_tool
+from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
+from .tool_registry import ToolRegistry
+from .usage import get_context_limit, turn_usage_from_trace
 
 
 class Agent:
     """Agent that can use tools to complete tasks."""
-    
+
     def __init__(
         self,
         name: str,
@@ -241,11 +240,12 @@ class Agent:
         Returns:
             The agent's response after processing the input
         """
-        start_time = time.time()
         if self.logger.console:
             self.logger.console.print_task(prompt)
 
         # Session restoration: if session passed, restore it (stateless API continuation)
+        start_logger_session = False
+        logger_session_id = None
         if session is not None:
             # Everything the caller passed, not four chosen keys. Plugins keep
             # their state here — ULW's mode and turn budget, the approval gate's
@@ -262,8 +262,8 @@ class Agent:
             self.current_session['messages'] = list(session.get('messages', []))
             self.current_session['trace'] = list(session.get('trace', []))
             self.current_session['turn'] = session.get('turn', 0)
-            # Start YAML session logging with session_id for thread safety
-            self.logger.start_session(self.system_prompt, session_id=session.get('session_id'))
+            start_logger_session = True
+            logger_session_id = session.get('session_id')
         elif self.current_session is None:
             # Initialize new session
             self.current_session = {
@@ -271,95 +271,128 @@ class Agent:
                 'trace': [],
                 'turn': 0  # Track conversation turns
             }
-            # Start YAML session logging
-            self.logger.start_session(self.system_prompt)
+            start_logger_session = True
 
-        # Save uploaded files to .co/uploads/ and build file path references
-        saved_files = []
-        if files:
-            uploads_dir = self.logger.co_dir / "uploads"
-            uploads_dir.mkdir(parents=True, exist_ok=True)
-            for f in files:
-                safe_name = Path(f["name"]).name
-                # Add timestamp prefix to avoid collisions
-                prefix = str(int(time.time()))
-                file_path = uploads_dir / f"{prefix}_{safe_name}"
-                # Decode base64 data URL and write to disk
-                data_url = f["data"]
-                if "," in data_url:
-                    raw_data = base64.b64decode(data_url.split(",", 1)[1])
-                else:
-                    raw_data = base64.b64decode(data_url)
-                file_path.write_bytes(raw_data)
-                saved_files.append(str(file_path.resolve()))
-
-        if saved_files and self.logger.console:
-            names = [Path(p).name for p in saved_files]
-            self.logger.console.print(f"  [dim]↑ {len(saved_files)} file(s): {', '.join(names)}[/dim]")
-
-        # The upload notice is context ABOUT the turn, not part of what the user
-        # typed. It used to be concatenated onto `prompt`, which is the string
-        # that becomes the user message, the stored user_prompt AND the
-        # user_input trace — so the raw tags showed up in the chat bubble, in
-        # xray, and in the transcript. Carried as its own internal message below.
-        upload_notice = None
-        if saved_files:
-            file_list = "\n".join(f"- {p}" for p in saved_files)
-            upload_notice = (
-                f"The user uploaded the following files:\n{file_list}\n"
-                f"Use your read_file tool or other available tools to read the file "
-                f"contents before responding. Do not assume or guess the contents."
-            )
-
-        # Add user message to conversation (multimodal if images provided)
-        if images:
-            content = [{"type": "text", "text": prompt}]
-            for img in images:
-                content.append({"type": "image_url", "image_url": {"url": img}})
-            self.current_session['messages'].append({"role": "user", "content": content})
-        else:
-            self.current_session['messages'].append({"role": "user", "content": prompt})
-
-        if upload_notice:
-            from ..useful_plugins.system_reminder import reminder_message
-            self.current_session['messages'].append(reminder_message(upload_notice))
-
-        # Track this turn
+        # Session shape is the turn boundary: from here, preprocessing, model
+        # work, hooks, and their failures all receive one terminal outcome.
         self.current_session['turn'] += 1
         self.current_session['user_prompt'] = prompt  # Store user prompt for xray/debugging
         turn_start = time.time()
+        turn_trace_start = len(self.current_session['trace'])
 
-        # Record trace entry (also streams to io if connected)
-        self._record_trace({
-            'type': 'user_input',
-            'content': prompt,
-            'turn': self.current_session['turn'],
-            'ts': turn_start,
-        })
+        try:
+            if start_logger_session:
+                self.logger.start_session(
+                    self.system_prompt,
+                    session_id=logger_session_id,
+                )
 
-        if saved_files:
+            # Add user message to conversation (multimodal if images provided)
+            if images:
+                content = [{"type": "text", "text": prompt}]
+                for img in images:
+                    content.append({"type": "image_url", "image_url": {"url": img}})
+                self.current_session['messages'].append({"role": "user", "content": content})
+            else:
+                self.current_session['messages'].append({"role": "user", "content": prompt})
+
+            # Record only after messages contains this turn. The following
+            # session_sync must never expose a trace ahead of its source state.
             self._record_trace({
-                'type': 'files_received',
-                'files': [{'name': Path(p).name, 'path': p} for p in saved_files],
+                'type': 'user_input',
+                'content': prompt,
                 'turn': self.current_session['turn'],
-                'ts': time.time(),
+                'ts': turn_start,
             })
 
-        # Invoke after_user_input events
-        self._invoke_events('after_user_input')
+            # Save uploaded files to .co/uploads/ and build file path references.
+            saved_files = []
+            if files:
+                uploads_dir = self.logger.co_dir / "uploads"
+                uploads_dir.mkdir(parents=True, exist_ok=True)
+                pending_files = []
+                for f in files:
+                    safe_name = Path(f["name"]).name
+                    file_path = uploads_dir / f"{uuid4().hex}_{safe_name}"
+                    data_url = f["data"]
+                    if "," in data_url:
+                        raw_data = base64.b64decode(data_url.split(",", 1)[1])
+                    else:
+                        raw_data = base64.b64decode(data_url)
+                    pending_files.append((file_path, raw_data))
 
-        # Process
-        self.current_session['iteration'] = 0  # Reset iteration for this turn
-        result = self._run_iteration_loop(
-            max_iterations or self.max_iterations
-        )
+                written_files = []
+                try:
+                    for file_path, raw_data in pending_files:
+                        file_path.write_bytes(raw_data)
+                        written_files.append(file_path)
+                except BaseException:
+                    # write_bytes can create a partial file before raising.
+                    # UUID paths are owned by this turn, so clean every target,
+                    # not only calls that returned successfully.
+                    for file_path, _raw_data in pending_files:
+                        with suppress(Exception):
+                            file_path.unlink(missing_ok=True)
+                    raise
+                saved_files = [str(path.resolve()) for path in written_files]
+
+            if saved_files:
+                self._record_trace({
+                    'type': 'files_received',
+                    'files': [{'name': Path(p).name, 'path': p} for p in saved_files],
+                    'turn': self.current_session['turn'],
+                    'ts': time.time(),
+                })
+                if self.logger.console:
+                    names = [Path(path).name for path in saved_files]
+                    self.logger.console.print(
+                        f"  [dim]↑ {len(saved_files)} file(s): {', '.join(names)}[/dim]"
+                    )
+                # File paths are internal context, not part of the user's text.
+                from ..useful_plugins.system_reminder import reminder_message
+
+                file_list = "\n".join(f"- {path}" for path in saved_files)
+                upload_notice = (
+                    f"The user uploaded the following files:\n{file_list}\n"
+                    "Use your read_file tool or other available tools to read the file "
+                    "contents before responding. Do not assume or guess the contents."
+                )
+                self.current_session['messages'].append(
+                    reminder_message(upload_notice)
+                )
+
+            # Invoke after_user_input events
+            self._invoke_events('after_user_input')
+
+            # Process
+            self.current_session['iteration'] = 0  # Reset iteration for this turn
+            result, reason = self._run_iteration_loop(
+                max_iterations or self.max_iterations
+            )
+
+            self.current_session['result'] = result
+
+            self._invoke_events('on_complete')
+            # A broken adapter must not turn completed work into a retryable
+            # failure merely because best-effort stale-signal cleanup failed.
+            with suppress(Exception):
+                self._drain_completed_turn_interrupt(reason)
+        except BaseException as error:
+            # Outcome streaming must not replace the exception that ended the
+            # turn. _record_trace appends before sending, so a failing adapter
+            # still leaves the local terminal entry available.
+            with suppress(Exception):
+                self._record_turn_result(
+                    reason='error',
+                    trace_start=turn_trace_start,
+                    error_type=type(error).__name__,
+                )
+            raise
+
+        self._record_turn_result(reason=reason, trace_start=turn_trace_start)
 
         # Calculate duration
         duration = time.time() - turn_start
-
-        self.current_session['result'] = result
-
-        self._invoke_events('on_complete')
 
         # Log turn to YAML eval (after on_complete so handlers can modify state)
         self.logger.log_turn(prompt, result, duration * 1000, self.current_session, self.llm.model)
@@ -370,6 +403,45 @@ class Agent:
             self.logger.console.print_completion(duration, self.current_session, eval_path)
 
         return result
+
+    def _drain_completed_turn_interrupt(self, reason: str) -> None:
+        """Discard a Stop that lost its race with already completed work."""
+        if reason not in ('natural', 'max_iterations'):
+            return
+        if self.io and hasattr(self.io, 'receive_all'):
+            self.io.receive_all('INTERRUPT')
+        if self.current_session.get('stop_signal') == 'user_interrupt':
+            self.current_session.pop('stop_signal', None)
+
+    def _record_turn_result(
+        self,
+        *,
+        reason: str,
+        trace_start: int,
+        error_type: str | None = None,
+    ) -> None:
+        """Write one structured terminal event without changing input()'s API."""
+        entry = {
+            'type': 'turn_result',
+            'turn': self.current_session['turn'],
+            'reason': reason,
+            'usage': turn_usage_from_trace(
+                self.current_session['trace'][trace_start:]
+            ),
+        }
+        if error_type is not None:
+            entry['error_type'] = error_type
+        trace = self.current_session['trace']
+        trace_length = len(trace)
+        try:
+            self._record_trace(entry)
+        except Exception:
+            # Once the local terminal entry exists, the Agent turn is complete.
+            # Reporting a failed turn because only its terminal IO frame failed
+            # would invite callers to retry already-committed side effects.
+            if len(trace) == trace_length + 1 and trace[-1] is entry:
+                return
+            raise
 
     def reset_conversation(self):
         """Reset the conversation session. Start fresh."""
@@ -447,8 +519,8 @@ class Agent:
             {"role": "user", "content": prompt}
         ]
 
-    def _run_iteration_loop(self, max_iterations: int) -> str:
-        """Run the main LLM/tool iteration loop until complete or max iterations."""
+    def _run_iteration_loop(self, max_iterations: int) -> tuple[str, str]:
+        """Return the existing response string and its private terminal reason."""
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
@@ -479,9 +551,15 @@ class Agent:
                     self.current_session.pop('stop_signal', None)
 
             # Check if plugin set stop_signal (stop loop, wait for user input)
-            if self.current_session.pop('stop_signal', None):
+            stop_signal = self.current_session.pop('stop_signal', None)
+            if stop_signal:
                 self._invoke_events('on_stop_signal')
-                return "What would you like me to do?"
+                reason = (
+                    'interrupted'
+                    if stop_signal in ('user_interrupt', 'Interrupted by user')
+                    else 'stopped'
+                )
+                return "What would you like me to do?", reason
 
             if response is None:
                 raise RuntimeError("LLM returned no response without an interrupt")
@@ -492,10 +570,13 @@ class Agent:
                     # needs even when the original request used its full budget.
                     max_iterations += 1
                     continue
-                return content
+                return content, 'natural'
 
         # Hit max iterations
-        return f"Task incomplete: Maximum iterations ({max_iterations}) reached."
+        return (
+            f"Task incomplete: Maximum iterations ({max_iterations}) reached.",
+            'max_iterations',
+        )
 
     def _get_llm_decision(self):
         """Get the next action/decision from the LLM."""

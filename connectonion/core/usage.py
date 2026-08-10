@@ -352,3 +352,51 @@ def totals_from_trace(trace: list) -> tuple:
     return (sum(u.get('total_tokens') or u['input_tokens'] + u['output_tokens']
                 for u in usages),
             sum(u['cost'] for u in usages))
+
+
+def turn_usage_from_trace(trace: list) -> dict | None:
+    """Aggregate measured usage entries from one already-sliced Agent turn.
+
+    Callers choose the turn boundary. Keeping that choice out of this helper
+    prevents restored or concurrent session history from being counted by
+    accident. Missing usage stays missing instead of becoming a misleading
+    all-zero measurement.
+    """
+    usages = [
+        entry.get('usage')
+        for entry in trace
+        if isinstance(entry, dict) and entry.get('type') == 'llm_result'
+    ]
+    usages = [usage for usage in usages if isinstance(usage, dict) and usage]
+    if not usages:
+        return None
+
+    totals = {
+        'input_tokens': 0,
+        'output_tokens': 0,
+        'cached_tokens': 0,
+        'cache_write_tokens': 0,
+        'total_tokens': 0,
+        'cost': 0.0,
+    }
+    for usage in usages:
+        input_tokens = _usage_int(usage, 'input_tokens')
+        output_tokens = _usage_int(usage, 'output_tokens')
+        explicit_total = _usage_int(usage, 'total_tokens')
+        totals['input_tokens'] += input_tokens
+        totals['output_tokens'] += output_tokens
+        totals['cached_tokens'] += _usage_int(usage, 'cached_tokens')
+        totals['cache_write_tokens'] += _usage_int(usage, 'cache_write_tokens')
+        totals['total_tokens'] += explicit_total or input_tokens + output_tokens
+
+        cost = usage.get('cost', 0.0)
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
+            totals['cost'] += float(cost)
+    return totals
+
+
+def _usage_int(usage: dict, field: str) -> int:
+    value = usage.get(field, 0)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return 0
