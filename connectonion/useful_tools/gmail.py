@@ -66,6 +66,40 @@ from ..project import project_root
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
 
+def _path_of_open_file(handle) -> Path:
+    """The OS-reported final path for an already-open file handle."""
+    import sys
+
+    descriptor = handle.fileno()
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetFinalPathNameByHandleW(
+            ctypes.c_void_p(msvcrt.get_osfhandle(descriptor)), buffer, len(buffer), 0
+        )
+        if not length or length >= len(buffer):
+            raise OSError("Windows could not resolve the open attachment handle")
+        path = buffer.value
+        if path.startswith("\\\\?\\UNC\\"):
+            path = "\\\\" + path[8:]
+        elif path.startswith("\\\\?\\"):
+            path = path[4:]
+        return Path(path)
+
+    if sys.platform == "darwin":
+        import fcntl
+
+        raw = fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024))
+        return Path(raw.split(bytes(1), 1)[0].decode())
+
+    proc_path = Path(f"/proc/self/fd/{descriptor}")
+    if proc_path.exists():
+        return Path(os.readlink(proc_path))
+    raise OSError("This platform cannot resolve an open attachment handle")
+
+
 class Gmail:
     """Gmail tool for reading and managing emails."""
 
@@ -505,7 +539,7 @@ class Gmail:
 
         return "\n".join(output)
 
-    def _open_attachments(self, attachments: list, stack) -> list[tuple[Path, object]]:
+    def _open_attachments(self, attachments: list, stack) -> list[tuple[str, object]]:
         """Open and validate attachments, retaining the checked file objects."""
         import stat
 
@@ -513,6 +547,7 @@ class Gmail:
         total = 0
         for given in attachments:
             path = Path(given).expanduser()
+            display_name = path.name
             if not path.is_file():
                 raise FileNotFoundError(f"Attachment not found: {given}")
 
@@ -532,19 +567,23 @@ class Gmail:
                 raise PermissionError(f"Attachment changed while opening: {given}") from exc
             handle = stack.enter_context(os.fdopen(descriptor_number, "rb"))
             descriptor = os.fstat(handle.fileno())
-            current_path = os.stat(resolved, follow_symlinks=False)
-            if not stat.S_ISREG(descriptor.st_mode) or not os.path.samestat(
-                descriptor, current_path
-            ):
-                raise PermissionError(f"Attachment changed while opening: {given}")
+            if not stat.S_ISREG(descriptor.st_mode):
+                raise PermissionError(f"Attachment is not a regular file: {given}")
+            if not self._allow_external_attachments:
+                try:
+                    _path_of_open_file(handle).relative_to(self._attachment_root)
+                except (ValueError, OSError):
+                    raise PermissionError(
+                        f"Attachment is outside the project: {given}"
+                    ) from None
 
             total += descriptor.st_size
             if total > GMAIL_ATTACHMENT_LIMIT:
                 raise ValueError("Attachments exceed Gmail's 25MB send limit.")
-            opened.append((resolved, handle))
+            opened.append((display_name, handle))
         return opened
 
-    def _multipart_with(self, body: str, attachments: list[tuple[Path, object]]):
+    def _multipart_with(self, body: str, attachments: list[tuple[str, object]]):
         """A message carrying the body and each file, named as the sender named it.
 
         The filename is what the recipient sees and what their client uses to
@@ -563,8 +602,8 @@ class Gmail:
         message.attach(MIMEText(body))
 
         remaining = GMAIL_ATTACHMENT_LIMIT
-        for path, handle in attachments:
-            guessed, _ = mimetypes.guess_type(path.name)
+        for display_name, handle in attachments:
+            guessed, _ = mimetypes.guess_type(display_name)
             main, _, sub = (guessed or "application/octet-stream").partition("/")
             part = MIMEBase(main, sub or "octet-stream")
             handle.seek(0)
@@ -575,7 +614,7 @@ class Gmail:
             part.set_payload(payload)
             encoders.encode_base64(part)
             part.add_header("Content-Disposition", "attachment",
-                            filename=path.name)
+                            filename=display_name)
             message.attach(part)
 
         return message

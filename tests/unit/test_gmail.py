@@ -1372,7 +1372,7 @@ class TestGmailSendAttachments:
 
         with ExitStack() as stack:
             opened = gmail._open_attachments([str(attachment)], stack)
-            assert [path for path, _ in opened] == [attachment.resolve()]
+            assert [name for name, _ in opened] == ["report.txt"]
 
     def test_an_agent_cannot_attach_a_file_outside_its_project(self, tmp_path, monkeypatch):
         from contextlib import ExitStack
@@ -1435,6 +1435,61 @@ class TestGmailSendAttachments:
             message = gmail._multipart_with("body", opened)
 
         assert message.get_payload()[1].get_payload(decode=True) == b"safe report"
+
+    def test_a_parent_directory_swap_cannot_escape_the_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        slot = project / "slot"
+        slot.mkdir()
+        local = slot / "report.txt"
+        local.write_bytes(b"safe")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "report.txt").write_bytes(b"SECRET")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        original_open = os.open
+
+        def swap_parent_then_open(path, flags):
+            slot.rename(project / "old-slot")
+            slot.symlink_to(outside, target_is_directory=True)
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_parent_then_open):
+            with ExitStack() as stack:
+                with pytest.raises(PermissionError, match="outside the project"):
+                    gmail._open_attachments([str(local)], stack)
+
+    def test_a_safe_symlink_keeps_the_sender_selected_filename(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        target = project / "artifact-123"
+        target.write_bytes(b"pdf")
+        link = project / "invoice.pdf"
+        link.symlink_to(target)
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            opened = gmail._open_attachments([str(link)], stack)
+            message = gmail._multipart_with("body", opened)
+
+        part = message.get_payload()[1]
+        assert part.get_filename() == "invoice.pdf"
+        assert part.get_content_type() == "application/pdf"
 
     def test_growth_after_fstat_is_caught_during_the_read(self, tmp_path):
         from contextlib import ExitStack
