@@ -3,11 +3,11 @@
 Purpose: Authenticate and dispatch /admin/* and /superadmin/* HTTP requests for the hosted agent's trust controls (promote/demote/block/unblock, level lookup, super-admin add/remove, and legacy admin logs/sessions).
 LLM-Note:
   Dependencies: imports from [hmac, json, os, network/host/auth.py] | imported by [network/host/http_router.py (handle_admin_routes called for paths starting with /admin or /superadmin)] | tested by [tests/unit/test_admin_signatures_are_route_bound.py, tests/unit/test_an_admin_signature_is_used_once.py, tests/unit/test_reading_logs_does_not_need_the_billing_key.py]
-  Data flow: receives ASGI scope/receive + parsed method/path from http_router → /admin/logs and /admin/sessions accept EITHER Bearer OPENONION_API_KEY (hmac.compare_digest) or a signed admin request; /admin/trust/* and /superadmin/* require a signature over payload + actual method/path. GETs use the shared X-Co-From/X-Co-Signature/X-Co-Timestamp scheme; legacy X-From headers remain read-only for 1.6 compatibility → calls into route_handlers callbacks (admin_logs, admin_sessions, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove) → responds via send_json/send_text
-  State/Effects: invokes route_handlers (which mutate trust agent state, file logs, sessions) | reads OPENONION_API_KEY from env for legacy auth | logs nothing directly
+  Data flow: receives ASGI scope/receive + parsed method/path from http_router → /admin/logs and /admin/sessions accept EITHER a distinct per-deployment CONNECTONION_ADMIN_TOKEN bearer or a signed admin request; /admin/trust/* and /superadmin/* require a signature over payload + actual method/path. GETs use the shared X-Co-From/X-Co-Signature/X-Co-Timestamp scheme; legacy X-From headers remain read-only for 1.6 compatibility → calls into route_handlers callbacks (admin_logs, admin_sessions, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove) → responds via send_json/send_text
+  State/Effects: invokes route_handlers (which mutate trust agent state, file logs, sessions) | reads CONNECTONION_ADMIN_TOKEN and OPENONION_API_KEY only to prevent credential reuse | logs nothing directly
   Integration: exposes async handle_admin_routes(method, path, scope, receive, route_handlers, *, send_json, send_text, read_body) -> bool (always True after this function — it owns the response for /admin/* and /superadmin/*) | route_handlers dict must include "trust_agent", "auth", and the admin_* callbacks
   Errors: returns 401 unauthorized on bad/unbound bearer/signature or a route_handlers with no verifier wired, 403 forbidden when not admin/superadmin, 400 on missing client_id/admin_id or invalid signature timestamp/JSON, 404 catch-all for unknown admin paths — never raises
-  Security: ⚠️ bearer comparison uses hmac.compare_digest to avoid timing leaks | signature verification delegated to route_handlers["auth"] | the bearer key is the model billing credential, which is why signing is now an alternative (#670)
+  Security: bearer comparison uses hmac.compare_digest to avoid timing leaks | the admin token fails closed when absent or equal to the model billing key | signature verification delegated to route_handlers["auth"] (#670)
 """
 
 import hmac
@@ -125,22 +125,29 @@ async def _admin_signature(method, path, scope, receive, route_handlers, *, read
 async def handle_admin_routes(method, path, scope, receive, route_handlers, *, send_json, send_text, read_body):
     """Handle /admin/* and /superadmin/* HTTP routes. Returns True if handled, False otherwise."""
 
-    # Legacy admin endpoints: Bearer OPENONION_API_KEY, or a signed admin request.
+    # Read-only admin endpoints: signed admin identity, or a dedicated bearer.
     #
-    # The Bearer key is what pays for co/* models — `co auth` obtains it, `co
-    # create` writes it into the project's .env, and every model call sends it to
-    # oo.openonion.ai. So letting someone read an agent's activity meant handing
-    # over the credential that spends its money (#670).
+    # OPENONION_API_KEY pays for co/* models and travels through CI, .env files,
+    # deploys and model calls. It must never authorize logs or sessions (#670).
     #
     # The signed path below is the one /admin/trust/* and /superadmin/* already
     # use, reused rather than reinvented: sign the request, be on admins.txt.
-    # Bearer stays because 1.6.0 is long-term and the curl in the shipped
-    # docs.html uses it; this widens what works, and a later major can drop it.
+    # Non-interactive monitoring can retain the Bearer transport shape with a
+    # separate per-deployment CONNECTONION_ADMIN_TOKEN. Explicitly reject reuse
+    # of the billing key so a renamed environment variable cannot preserve the
+    # original blast radius by accident.
     if path in ["/admin/logs", "/admin/sessions"]:
         headers_dict = dict(scope.get("headers", []))
         auth = headers_dict.get(b"authorization", b"").decode()
-        expected = os.environ.get("OPENONION_API_KEY", "")
-        by_key = bool(expected) and auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], expected)
+        admin_token = os.environ.get("CONNECTONION_ADMIN_TOKEN", "")
+        billing_key = os.environ.get("OPENONION_API_KEY", "")
+        distinct = not billing_key or not hmac.compare_digest(admin_token, billing_key)
+        by_key = (
+            bool(admin_token)
+            and distinct
+            and auth.startswith("Bearer ")
+            and hmac.compare_digest(auth[7:], admin_token)
+        )
 
         if not by_key:
             signed, status, error, _ = await _admin_signature(
