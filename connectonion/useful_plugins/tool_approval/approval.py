@@ -193,13 +193,13 @@ File Relationships:
                                     → raise ValueError or return
 """
 
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
-from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
+from ...core.events import after_iteration, after_user_input, before_each_tool, before_iteration
 from ...project import project_co_dir
-from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
+from .bash_parser import check_bash_chain_permitted
+from .constants import DANGEROUS_TOOLS, DEFAULT_MODE, FILE_EDIT_TOOLS, VALID_MODES
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
@@ -454,7 +454,7 @@ def check_approval(agent: 'Agent') -> None:
                 # Check if ALL commands in chain are permitted
                 permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions)
                 if permitted:
-                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    if getattr(getattr(agent, 'logger', None), 'console', None):
                         agent.logger.console.log_permission_granted('bash', tool_args, source, reason)
                     return
 
@@ -483,7 +483,7 @@ def check_approval(agent: 'Agent') -> None:
                     # Pattern matched (and params matched if 'when' field exists)
                     reason = perm.get('reason', 'unknown')
                     source = perm.get('source', 'config')
-                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    if getattr(getattr(agent, 'logger', None), 'console', None):
                         agent.logger.console.log_permission_granted(tool_name, tool_args, source, reason)
                     return
 
@@ -494,7 +494,7 @@ def check_approval(agent: 'Agent') -> None:
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
-        if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+        if getattr(getattr(agent, 'logger', None), 'console', None):
             agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'ulw mode')
         return
 
@@ -520,7 +520,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     if mode == 'accept_edits':
         if tool_name in FILE_EDIT_TOOLS:
-            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+            if getattr(getattr(agent, 'logger', None), 'console', None):
                 agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
             return
         # Other dangerous tools fall through to approval logic
@@ -568,6 +568,7 @@ def check_approval(agent: 'Agent') -> None:
     # Send approval request to client
     approval_msg = {
         'type': 'approval_needed',
+        'tool_call_id': tool_id,
         'tool': approval_key,
         'arguments': tool_args,
         'description': tool_args.get('description', ''),
