@@ -2,7 +2,7 @@
 
 import json
 
-from connectonion.useful_tools import claude_code as run_claude_code
+from connectonion.useful_tools.claude_code import _run_claude_code
 
 
 def claude_code(
@@ -43,7 +43,7 @@ def claude_code(
         "accept_edits": "acceptEdits",
         "ulw": "auto",
     }.get(session.get("mode"), "default")
-    return run_claude_code(
+    return _run_claude_code(
         prompt=prompt,
         session_id=session_id,
         cwd=cwd,
