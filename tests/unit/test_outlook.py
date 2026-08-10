@@ -485,6 +485,25 @@ class TestOutlookSendOperations:
             with pytest.raises(PermissionError, match="outside the project"):
                 outlook.send("r@example.com", "S", "B", attachments=[str(local)])
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX FIFO semantics")
+    def test_fifo_replacement_cannot_block_the_attachment_open(self, tmp_path):
+        local = tmp_path / "report.txt"
+        local.write_text("safe")
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.Read Mail.Send"}):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook(allow_external_attachments=True)
+        original_open = os.open
+
+        def swap_for_fifo_then_open(path, flags):
+            local.unlink()
+            os.mkfifo(local)
+            assert flags & os.O_NONBLOCK
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_for_fifo_then_open):
+            with pytest.raises(PermissionError, match="not a regular file"):
+                outlook.send("r@example.com", "S", "B", attachments=[str(local)])
+
     def test_growth_after_fstat_is_rejected_before_graph(self, tmp_path):
         local = tmp_path / "growing.bin"
         local.write_bytes(b"x")

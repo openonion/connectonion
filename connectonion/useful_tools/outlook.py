@@ -488,6 +488,10 @@ class Outlook:
                     raise PermissionError(f"Attachment is outside the project: {given}") from None
 
             flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            if os.name != "nt":
+                # Prevent a path swapped to a FIFO from blocking before fstat()
+                # can enforce the regular-file boundary below.
+                flags |= getattr(os, "O_NONBLOCK", 0)
             try:
                 descriptor_number = os.open(resolved, flags)
             except OSError as exc:
