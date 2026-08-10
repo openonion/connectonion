@@ -844,7 +844,13 @@ class RemoteAgent:
                 if ui_event.get("type") == "tool_call" and (
                     ui_event.get("tool_id") or ui_event.get("id")
                 ) == key:
-                    ui_event["status"] = "done" if event.get("status") == "success" else "error"
+                    status = event.get("status")
+                    if status in {"success", "done", "completed"}:
+                        ui_event["status"] = "done"
+                    else:
+                        # Results are terminal. Unknown values must not be
+                        # presented as successful during a rolling upgrade.
+                        ui_event["status"] = "error"
                     ui_event["result"] = event.get("result")
                     break
 

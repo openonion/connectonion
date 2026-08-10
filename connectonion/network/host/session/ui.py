@@ -71,13 +71,12 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
         name = entry.get('name')
         if not name:
             return None
-        raw = entry.get('status', 'done')
-        if raw in ('error', 'not_found'):
-            ui_status = 'error'
-        elif raw == 'running':
-            ui_status = 'running'
-        else:
-            ui_status = 'done'
+        raw = entry.get('status')
+        # A tool_result is terminal. Only known success values render as done;
+        # missing, start-only, and unknown statuses fail closed as errors.
+        ui_status = (
+            'done' if raw in ('success', 'done', 'completed') else 'error'
+        )
         return {
             'id': entry.get('tool_id') or f"tool-{idx}",
             'type': 'tool_call',

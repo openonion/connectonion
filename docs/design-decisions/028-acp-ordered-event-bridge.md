@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-10
-**Related:** [012 Tool Execution Separation](012-tool-execution-separation.md), [014 Hook System](014-hook-system-design.md), [017 Session Logging and Eval Format](017-session-logging-and-eval-format.md), [025 Interruptible Agent Steps](025-interruptible-agent-steps.md), [026 Structured Turn Outcomes](026-structured-turn-outcomes.md), [027 Wire-only Structured Tool Output](027-wire-only-structured-tool-output.md)
+**Related:** [012 Tool Execution Separation](012-tool-execution-separation.md), [014 Hook System](014-hook-system-design.md), [017 Session Logging and Eval Format](017-session-logging-and-eval-format.md), [025 Interruptible Agent Steps](025-interruptible-agent-steps.md), [026 Structured Turn Outcomes](026-structured-turn-outcomes.md), [027 Wire-only Structured Tool Output](027-wire-only-structured-tool-output.md), [034 ACP-aligned Wire Tool Statuses](034-acp-aligned-wire-tool-statuses.md)
 
 ## Decision
 
@@ -45,7 +45,7 @@ completed outcome.
 ## Mapping boundary
 
 - `tool_call` becomes `ToolCallStart` with the existing tool-call ID, required
-  title, in-progress status, and structured input.
+  title, normalized pending/in-progress status, and structured input.
 - `tool_result` becomes `ToolCallProgress` with ACP content objects, completed
   or failed status, and structured output when the SDK can represent it.
 - `thinking` becomes `AgentThoughtChunk`.

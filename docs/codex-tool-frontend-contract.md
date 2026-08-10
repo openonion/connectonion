@@ -1,8 +1,9 @@
 # Codex tool ↔ frontend integration contract
 
-**TL;DR — the frontend (oo-chat) and `@connectonion/react` need NO changes.**
-The backend `codex` tool converts Codex's steps into the events the SDK already
-renders. This note records the research behind that and the exact contract.
+**TL;DR — oo-chat needs no component changes.** The backend `codex` tool
+converts Codex's steps into the events the SDK already renders. The SDK accepts
+both historical and ACP-aligned lifecycle statuses during rolling upgrades.
+This note records the research behind that and the exact contract.
 
 ## How the `codex` tool drives Codex
 
@@ -35,8 +36,8 @@ events already in that vocabulary:
 
 | Codex app-server event | tool emits `agent.io.log(...)` | SDK renders |
 |---|---|---|
-| `item/started` (commandExecution, fileChange, mcpToolCall, webSearch) | `tool_call` `{tool_id, name, args}` | running tool card |
-| `item/completed` (same item) | `tool_result` `{tool_id, status: done\|error}` | card completes / errors |
+| `item/started` (commandExecution, fileChange, mcpToolCall, webSearch) | `tool_call` `{tool_id, name, args, status: in_progress}` | running tool card |
+| `item/completed` (same item) | `tool_result` `{tool_id, status: completed\|failed}` | card completes / errors |
 | `item/completed` (agentMessage) | — (returned as the tool result `last_message`) | agent's own reply |
 | `item/*/requestApproval` (server → client) | `agent.io.request_approval(...)` → `approval_needed` | approval card, answer flows back |
 
@@ -44,6 +45,9 @@ Key points:
 
 - **Stable `tool_id`**: `tool_call` and its `tool_result` share the item id so the
   SDK correlates them (`chat-item-mapper.ts` finds the tool_call by id).
+- **ACP-aligned live status**: provider events use `in_progress`, `completed`,
+  and `failed`. The SDK also accepts the historical success/failure values;
+  canonical session traces keep their existing statuses.
 - **No custom event type.** An earlier draft emitted `io.log("codex_event", …)`,
   which matched nothing in the mapper and would not render — that was the bug to
   fix. The fix is emitting the native `tool_call` / `tool_result` vocabulary.
