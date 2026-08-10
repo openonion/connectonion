@@ -124,7 +124,7 @@ def _isolate_project_lookup(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_official_sdk_validates_lifecycle_mode_prompt_and_resume(tmp_path):
+async def test_official_sdk_validates_lifecycle_content_mode_and_resume(tmp_path):
     async def scenario() -> None:
         client = _ConformanceClient()
         async with _sdk_agent(client, tmp_path) as (agent, process):
@@ -146,7 +146,15 @@ async def test_official_sdk_validates_lifecycle_mode_prompt_and_resume(tmp_path)
             await agent.set_session_mode(created.session_id, "accept_edits")
             prompted = await agent.prompt(
                 created.session_id,
-                [acp.text_block("hello")],
+                [
+                    acp.text_block("hello"),
+                    acp.resource_link_block(
+                        "api.md",
+                        "file:///workspace/docs/api.md",
+                        title="API guide",
+                        mime_type="text/markdown",
+                    ),
+                ],
             )
             assert prompted.stop_reason == "end_turn"
             assert [
@@ -154,7 +162,11 @@ async def test_official_sdk_validates_lifecycle_mode_prompt_and_resume(tmp_path)
                 for session_id, update in client.updates
                 if session_id == created.session_id
                 and isinstance(update, AgentMessageChunk)
-            ] == ["answer: hello"]
+            ] == [
+                "answer: hello\n\n"
+                "Referenced resource: API guide "
+                "(file:///workspace/docs/api.md)"
+            ]
 
             await agent.close_session(created.session_id)
             resumed = await agent.resume_session(
