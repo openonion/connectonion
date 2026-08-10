@@ -255,7 +255,7 @@ def load_reminder(
     
     Args:
         prompts_dir: Path to prompts directory
-        reminder_name: Name of the reminder (e.g., "plan_mode")
+        reminder_name: Name of the reminder (e.g., "security")
         context: Optional PromptContext for variable interpolation
         extra_vars: Additional variables to inject
         

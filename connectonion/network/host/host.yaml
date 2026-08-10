@@ -84,13 +84,6 @@ permissions:
     expires:
       type: never
 
-  "enter_plan_mode":
-    allowed: true
-    source: safe
-    reason: planning mode
-    expires:
-      type: never
-
   "task_output":
     allowed: true
     source: safe

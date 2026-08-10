@@ -327,8 +327,8 @@ co ai
 **Workflow:**
 1. `co ai` starts assistant
 2. Describe what you want to build
-3. AI suggests approach (plan mode)
-4. Approve, then AI writes code
+3. AI creates a todo list when the work is complex
+4. AI writes the code and keeps progress current
 5. Test and iterate
 
 ---
@@ -876,12 +876,12 @@ Try-except can hide errors - let programs crash unless you need resource cleanup
 ```markdown
 # ❌ BAD: Dictating approach
 **CRITICAL WORKFLOW:**
-1. ALWAYS enter plan mode first
+1. ALWAYS write a plan first
 2. MUST load all guides
 3. REQUIRED: Get approval before ANY code
 
 # ✅ GOOD: Suggesting workflow
-Note: For complex tasks, plan mode helps design before implementation.
+Note: For complex tasks, a todo list keeps the steps and progress visible.
 
 Relevant guides (load as needed): best-practices, tools, events.
 
@@ -968,7 +968,7 @@ Approach B handles edge cases better but adds complexity.
 **CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:**
 1. YOU MUST call load_guide("best-practices") FIRST
 2. YOU MUST NEVER write code before loading guides
-3. ALWAYS enter plan mode for ANY agent creation
+3. ALWAYS write a plan for ANY agent creation
 4. REQUIRED: Load ALL relevant guides before proceeding
 </system-reminder>
 
@@ -1005,7 +1005,7 @@ System prompt (loaded always):
 System prompt: Core philosophy and basics
 
 System reminders (trigger when relevant):
-- plan_mode.md → triggers on enter_plan_mode tool
+- agent.md → triggers when build intent is detected
 - simplicity.md → triggers on edit/write tools
 - security.md → triggers on bash tool
 ```
@@ -1020,15 +1020,13 @@ System reminders (trigger when relevant):
 
 ```markdown
 ---
-name: plan-mode
-triggers:
-  - tool: enter_plan_mode
+name: build
+intent: build
 ---
 
 <system-reminder>
-Note: If unclear about ConnectOnion concepts, load relevant guides first.
-Start with `load_guide("best-practices")` for core principles,
-then load other guides as needed (tools, events, llm_do, etc).
+For complex work, create a todo list with concrete, verifiable steps.
+For a simple agent, scaffold with `co create` and edit it directly.
 </system-reminder>
 ```
 

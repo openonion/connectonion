@@ -11,7 +11,7 @@ Key components:
 Documentation sections:
 - Built-in commands (/init, /review-pr, /cost, /compact, /tasks, /help, clear, exit)
 - Usage examples (one-shot mode, interactive mode, options like -m and -y)
-- Agent tools (search, files, execute, sub-agents, plan mode, interaction, skills, background)
+- Agent tools (search, files, execute, sub-agents, todos, interaction, skills, background)
 - Skills system (auto-discovery, built-in skills, custom skills in .co/skills/)
 - Configuration (context loading priority: .co/OO.md > CLAUDE.md > README.md)
 - Tips (autocomplete, cost checking, compaction, background task monitoring)
@@ -67,7 +67,7 @@ oo -y "task"                      # Auto-approve file changes
 **Files:** `read_file`, `edit`, `write`
 **Execute:** `bash`
 **Sub-agents:** `task` (explore, plan)
-**Plan Mode:** `enter_plan_mode`, `exit_plan_and_implement`
+**Todos:** `add`, `start`, `complete`, `list`
 **Interaction:** `ask_user`, `confirm`
 **Skills:** `skill` (auto-invoked when relevant)
 **Background:** `run_background`, `task_output`, `kill_task`

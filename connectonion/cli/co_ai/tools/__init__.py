@@ -5,13 +5,11 @@ This package provides a comprehensive toolkit for AI agents to interact with cod
 - File operations (read, edit, write)
 - Search capabilities (glob, grep)
 - Task spawning and background process management
-- Planning mode for complex implementations
 - User interaction and documentation loading
 
 Key exports:
 - File tools: FileTools (read_file, edit, multi_edit, write, glob, grep)
 - Task tools: task, run_background, task_output, kill_task
-- Planning tools: enter_plan_mode, exit_plan_and_implement, write_plan
 - Interaction tools: ask_user, load_guide
 - Utilities: TodoList
 
@@ -35,11 +33,6 @@ Task Tools:
     - task_output: Get background task output
     - kill_task: Stop background task
 
-Planning Tools:
-    - enter_plan_mode: Switch to planning mode
-    - exit_plan_and_implement: Exit planning mode
-    - write_plan: Write plan content
-
 Interaction Tools:
     - ask_user: Ask user a question via io
     - load_guide: Load documentation/guide
@@ -60,9 +53,6 @@ from connectonion.useful_tools import TodoList
 from connectonion.cli.co_ai.tools.task import task
 from connectonion.cli.co_ai.tools.background import run_background, task_output, kill_task
 
-# Planning tools (CLI-specific)
-from connectonion.cli.co_ai.tools.plan_mode import enter_plan_mode, exit_plan_and_implement, write_plan
-
 # ask_user from useful_tools (single source of truth)
 from connectonion.useful_tools import ask_user
 
@@ -77,10 +67,6 @@ __all__ = [
     "run_background",
     "task_output",
     "kill_task",
-    # Planning tools
-    "enter_plan_mode",
-    "exit_plan_and_implement",
-    "write_plan",
     # Interaction tools
     "ask_user",
     "load_guide",

@@ -685,71 +685,7 @@ Create a well-formatted git commit.
 
 See [Skills](skills.md) for complete documentation.
 
-## 4. Plan Mode - Auto-Edit During Planning
-
-When `agent.is_planning = True`, the `edit` tool is auto-approved.
-
-### Why This Exists
-
-Planning involves iterative code exploration and documentation:
-
-```python
-agent.is_planning = True
-agent.input("Plan how to add user authentication")
-
-# Agent explores codebase
-# → read_file("auth.py") - auto-approved ✓
-# → edit("PLAN.md", ...) - auto-approved ✓  (add auth flow diagram)
-# → read_file("models.py") - auto-approved ✓
-# → edit("PLAN.md", ...) - auto-approved ✓  (add database schema)
-# → read_file("routes.py") - auto-approved ✓
-# → edit("PLAN.md", ...) - auto-approved ✓  (add route changes)
-```
-
-Without auto-edit, user would need to approve every plan update - disruptive to planning flow.
-
-### Implementation
-
-```python
-@before_each_tool
-def check_approval(agent):
-    tool_name = agent.current_session['pending_tool_call']['name']
-
-    # Auto-approve edit during planning
-    if tool_name == 'edit' and agent.is_planning:
-        return  # Auto-approve
-
-    # ... rest of approval logic
-```
-
-### Safety
-
-- **Only during planning** - `is_planning` must be explicitly set
-- **Only edit tool** - Other dangerous tools (bash, write) still require approval
-- **User controls planning mode** - Agent can't set `is_planning = True` itself
-
-### Example
-
-```python
-from connectonion import Agent
-from connectonion.useful_plugins import tool_approval
-
-agent = Agent("planner", tools=[read_file, edit, bash], plugins=[tool_approval])
-
-# Planning phase - auto-edit
-agent.is_planning = True
-agent.input("Create implementation plan for feature X")
-# → edit("PLAN.md", ...) auto-approved ✓
-# → bash still requires approval ✗
-
-# Implementation phase - require approval
-agent.is_planning = False
-agent.input("Implement the plan")
-# → edit requires approval ✗
-# → bash requires approval ✗
-```
-
-## 5. Session Memory - Remember User Decisions
+## 4. Session Memory - Remember User Decisions
 
 When user approves a tool, remember the decision for the session.
 
@@ -823,7 +759,7 @@ def check_approval(agent):
     # ... ask user for approval
 ```
 
-## 6. Tool Approval - Ask User for Dangerous Operations
+## 5. Tool Approval - Ask User for Dangerous Operations
 
 Web-based approval UI for dangerous tools.
 
@@ -881,20 +817,16 @@ def check_approval(agent):
     if tool_name in SAFE_TOOLS:
         return  # Auto-approve
 
-    # 3. Check plan mode auto-edit
-    if tool_name == 'edit' and agent.is_planning:
-        return  # Auto-approve
-
-    # 4. Check session memory
+    # 3. Check session memory
     approved_tools = agent.current_session.get('approval', {}).get('approved_tools', {})
     if tool_name in approved_tools and approved_tools[tool_name] == 'session':
         return  # Auto-approve
 
-    # 5. Check if denied
+    # 4. Check if denied
     if tool_name in approved_tools and approved_tools[tool_name] == 'deny':
         raise ToolDenied(f"{tool_name} was denied")
 
-    # 6. Ask user for dangerous tools
+    # 5. Ask user for dangerous tools
     if tool_name in DANGEROUS_TOOLS:
         response = agent.io.send({
             'type': 'approval_needed',
@@ -993,18 +925,7 @@ agent.input("Find all tests")
 # → git commands need approval again
 
 # ────────────────────────────────────────────────────────
-# Scenario 3: Plan mode (auto-edit during planning)
-# ────────────────────────────────────────────────────────
-agent.is_planning = True
-agent.input("Plan feature implementation")
-# → read_file - SAFE_TOOLS ✓
-# → edit("PLAN.md", ...) - plan mode ✓
-# → bash - REQUIRES APPROVAL ✗
-
-agent.is_planning = False
-
-# ────────────────────────────────────────────────────────
-# Scenario 4: Session memory (remember user decisions)
+# Scenario 3: Session memory (remember user decisions)
 # ────────────────────────────────────────────────────────
 agent.input("Run tests")
 # → bash("pytest") - REQUIRES APPROVAL
@@ -1094,22 +1015,7 @@ agent.input("Create a commit")
 # → All git commands auto-approved for this turn
 ```
 
-### 2. Enable Plan Mode for Planning
-
-```python
-# ❌ BAD: Manual approval for every plan update
-agent.input("Plan the implementation")
-# → edit("PLAN.md", "# Step 1") - approval needed
-# → edit("PLAN.md", "# Step 2") - approval needed
-# → edit("PLAN.md", "# Step 3") - approval needed
-
-# ✅ GOOD: Enable plan mode
-agent.is_planning = True
-agent.input("Plan the implementation")
-# → All edit calls auto-approved
-```
-
-### 3. Approve for Session in Development
+### 2. Approve for Session in Development
 
 ```python
 # ❌ BAD: Approve "once" for development workflow
@@ -1133,7 +1039,7 @@ agent.input("Run formatter")
 # → Auto-approved ✓
 ```
 
-### 4. Use Specific Patterns in Skills
+### 3. Use Specific Patterns in Skills
 
 ```yaml
 # ❌ BAD: Too permissive
@@ -1147,7 +1053,7 @@ tools:
   - Bash(git commit *)
 ```
 
-### 5. Deny Dangerous Operations
+### 4. Deny Dangerous Operations
 
 ```python
 # Destructive operation
@@ -1172,15 +1078,6 @@ agent.input("Delete all migration files")
 ```
 
 This prevents accidental permission escalation.
-
-### Plan Mode Is Explicit
-
-```python
-# Agent CANNOT set is_planning itself
-agent.is_planning = True  # Must be set by user/framework
-```
-
-Only the calling code can enable plan mode - agent can't escalate permissions.
 
 ### Session Memory Is Scoped
 

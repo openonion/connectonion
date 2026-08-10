@@ -1,34 +1,11 @@
-"""A stray `.co/` one directory down quietly replaces the project's own.
+"""Project readers must not mistake a nested directory for the project's `.co/`.
 
 #660 and #661 made the rule: the directory that owns `.co/` is the project, and
 everything walks up to find it. The walk-up stops at the *nearest* `.co/`. That
-makes any code which creates a `.co/` wherever it happens to be standing far more
-dangerous than it was before those two fixes — it does not merely leave a stray
-directory, it plants a decoy that every later lookup finds first.
-
-`plan_mode.get_plan_file_path` does exactly that:
-
-    co_dir = Path.cwd() / ".co"
-    co_dir.mkdir(exist_ok=True)
-
-Measured on a project whose `.co/host.yaml` says `trust: strict` and whose
-`.co/blocklist.txt` holds an address, running `co ai` from a subdirectory:
-
-    BEFORE plan mode: trust=strict  blocked=True
-    plan mode created: True
-    AFTER  plan mode: trust=None    blocked=False
-
-Both flips are fail-open, and both persist: the decoy stays on disk, so every
-later run from that subdirectory reads it. A project configured whitelist-only
-admits contacts and accepts an invite code, and an address the operator blocked
-is no longer blocked — because someone once opened plan mode in a subdirectory.
-
-Logger had the same shape and #661 fixed it. This is the remaining creator, and
-the same round found four readers still resolving against the bare cwd:
+means readers must consistently resolve from the project root. This regression
+suite covers the four readers previously found resolving against the bare cwd:
 project skills, project subagents, the co_ai skill loader, and the permission
-whitelist the approval plugin reads out of the same `host.yaml` that #661 taught
-`host()` to walk up for — so today one half of that file is found from a
-subdirectory and the other half is not.
+whitelist the approval plugin reads from `host.yaml`.
 """
 
 from pathlib import Path
@@ -65,62 +42,6 @@ def project(tmp_path, monkeypatch):
     from connectonion.network.trust import tools
     monkeypatch.setattr(tools, "_mentioned", set(), raising=False)
     return tmp_path / "project"
-
-
-class TestPlanModePlantsNoDecoy:
-    """The creator. This is the one that makes the others permanent."""
-
-    def test_no_co_directory_appears_in_the_subdirectory(self, project, monkeypatch):
-        from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path
-
-        monkeypatch.chdir(project / "sub")
-        get_plan_file_path("s1")
-
-        assert not (project / "sub" / ".co").exists(), "plan mode planted a decoy .co/"
-
-    def test_the_plan_goes_to_the_projects_own_co(self, project, monkeypatch):
-        from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path
-
-        monkeypatch.chdir(project / "sub")
-
-        assert get_plan_file_path("s1").parent == project / ".co"
-
-    def test_trust_survives_it(self, project, monkeypatch):
-        """The consequence that matters: strict must not become the default."""
-        from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path
-        from connectonion.network.host.config import load_host_config
-
-        monkeypatch.chdir(project / "sub")
-        get_plan_file_path("s1")
-
-        assert load_host_config(None).get("trust") == "strict"
-
-    def test_a_blocked_address_stays_blocked(self, project, monkeypatch):
-        from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path
-        from connectonion.network.trust.tools import is_blocked
-
-        monkeypatch.chdir(project / "sub")
-        get_plan_file_path("s1")
-
-        assert is_blocked(BLOCKED), "opening plan mode un-blocked a blocked address"
-
-    def test_outside_any_project_it_still_works(self, tmp_path, monkeypatch):
-        """No project above us — plan mode must still have somewhere to write."""
-        from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path
-
-        monkeypatch.chdir(tmp_path)
-        path = get_plan_file_path("s1")
-
-        assert path.parent == tmp_path / ".co"
-        assert path.parent.is_dir(), "it must still create one where there is no project"
-
-    def test_the_session_id_still_scopes_the_file(self, project, monkeypatch):
-        from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path
-
-        monkeypatch.chdir(project / "sub")
-
-        assert get_plan_file_path("abc").name == "PLAN_abc.md"
-        assert get_plan_file_path(None).name != "PLAN_abc.md"
 
 
 class TestTheReadersWalkUpToo:

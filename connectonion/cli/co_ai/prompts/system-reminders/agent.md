@@ -4,7 +4,7 @@ intent: build
 ---
 
 <system-reminder>
-Agent creation detected. Use the workflow: enter plan mode → design spec → get approval → `co create` → edit agent.py
+Agent creation detected. Use the workflow: clarify real design choices → use todos for complex work → `co create` → edit agent.py → verify it
 
 ConnectOnion agents are Python files that give tools to the AI rather than hardcoded logic. The agent decides its own strategy. After scaffolding with `co create`, the structure looks like:
 
@@ -19,5 +19,5 @@ agent = Agent("cleaner", tools=[list_files, get_hash, delete])
 agent.input("Remove duplicate files")
 ```
 
-Start with `enter_plan_mode()` to design the spec before creating files.
+For a simple agent, scaffold and edit directly. For work with three or more meaningful steps, create a todo list first and keep it current. Always scaffold with `co create`; do not create the project structure manually.
 </system-reminder>

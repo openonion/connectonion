@@ -86,7 +86,7 @@ The agent has a full suite of tools for coding tasks:
 - Run bash commands (with approval flow for destructive operations)
 
 **Planning**
-- Enter plan mode, write plans, exit and implement
+- Track complex work with a visible todo list; handle simple work directly
 
 **Task management**
 - Create and track todos, run background tasks, get task output

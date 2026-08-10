@@ -609,7 +609,7 @@ const agent = useAgentForHuman(address, { sessionId })
 agent.ui: ChatItem[]           // All events for rendering
 agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
 agent.isProcessing: boolean    // true while agent working
-agent.mode: ApprovalMode       // 'safe' | 'plan' | 'accept_edits' | 'ulw'
+agent.mode: ApprovalMode       // 'safe' | 'accept_edits' | 'ulw'
 agent.error: Error | null
 agent.sessionId: string
 
@@ -785,7 +785,7 @@ const agent = useAgentForHuman(address, { sessionId })
 agent.ui: ChatItem[]           // All events for rendering
 agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
 agent.isProcessing: boolean
-agent.mode: ApprovalMode       // 'safe' | 'plan' | 'accept_edits' | 'ulw'
+agent.mode: ApprovalMode       // 'safe' | 'accept_edits' | 'ulw'
 
 // Actions
 agent.input(prompt)            // Send message

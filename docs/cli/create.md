@@ -141,7 +141,7 @@ All projects use the global identity (address + email) from `~/.co`. Run `co sta
 ### Available Templates
 
 1. **co-ai** (default) - the same agent as `co ai`, hosted. Files, shell,
-   browser, planning, todos, sub-agents. Specialise it with skills in
+   browser, todos, sub-agents. Specialise it with skills in
    `.co/skills/` rather than by picking a different starting point.
 2. **custom** - an LLM writes `agent.py` from your `--description`.
 

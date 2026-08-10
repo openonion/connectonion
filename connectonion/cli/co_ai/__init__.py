@@ -2,7 +2,7 @@
 LLM-Note: co-ai package - AI coding agent CLI tool built with ConnectOnion.
 
 This package implements the `co ai` command that starts an intelligent
-coding assistant with file operations, planning, and background task execution.
+coding assistant with file operations, todo tracking, and background task execution.
 
 Main export:
 - create_agent(): Factory function for agent with full tool suite
@@ -13,7 +13,7 @@ Package structure:
 - context.py: Project context loading (CLAUDE.md, git status, etc.)
 - sessions.py: SQLite session persistence
 - commands/: CLI commands (init, cost, export, sessions, etc.)
-- tools/: Agent tools (edit, read, glob, grep, task, plan_mode, etc.)
+- tools/: Agent tools (edit, read, glob, grep, task, todos, etc.)
 - prompts/: System prompt templates
 - skills/: User-defined skills system
 - plugins/: Agent plugins (system_reminder)

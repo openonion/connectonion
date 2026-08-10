@@ -170,8 +170,6 @@ IN_A_SUBDIRECTORY_OF_A_PROJECT = [
      "from connectonion.useful_plugins.skills import _load_skill; _load_skill('x')"),
     ("a trust check",
      "from connectonion.network.trust.tools import get_level; get_level('0x'+'a'*64)"),
-    ("plan mode",
-     "from connectonion.cli.co_ai.tools.plan_mode import get_plan_file_path; get_plan_file_path('s')"),
     ("the permission whitelist",
      "from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns;"
      " load_permission_patterns(None)"),
@@ -193,6 +191,6 @@ class TestNothingPlantsADecoy:
         repo = str(Path(__file__).resolve().parents[2])
         env["PYTHONPATH"] = repo + os.pathsep + env.get("PYTHONPATH", "")
         subprocess.run([sys.executable, "-c", probe], cwd=here, env=env,
-                       capture_output=True, text=True, timeout=180)
+                       capture_output=True, text=True, timeout=180, check=True)
 
         assert not (here / ".co").exists(), f"{what} planted a .co/ in {here}"
