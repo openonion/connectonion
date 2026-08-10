@@ -57,7 +57,8 @@ def test_gmail_send_routes_arguments():
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "bob@example.com", "Hi", "Body", cc="carol@example.com", bcc=None
+        "bob@example.com", "Hi", "Body",
+        cc="carol@example.com", bcc=None, attachments=None,
     )
 
 
@@ -92,7 +93,10 @@ def test_gmail_send_routes_bcc():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("bob@example.com", "Hi", "-", cc=None, bcc="dan@example.com")
+    handler.assert_called_once_with(
+        "bob@example.com", "Hi", "-",
+        cc=None, bcc="dan@example.com", attachments=None,
+    )
 
 
 def test_gmail_sent_routes_limit():
