@@ -79,15 +79,84 @@ class TestBrokenLinks:
         stream = StringIO()
 
         _print_deploy_skill_problems(
-            project, Console(file=stream, color_system=None, width=300)
+            project,
+            Console(file=stream, color_system=None, width=300),
+            payload_roots=(project,),
         )
 
         output = stream.getvalue()
         assert f"✗ {project_link} — broken symlink → {project / 'missing-project-skill'}" in output
-        assert "(project; ships with deploy)" in output
+        assert "(project; affects this deploy)" in output
         assert f"! {user_link} — broken symlink → {home / 'missing-user-skill'}" in output
-        assert "(user; stays on this machine)" in output
+        assert "(user; not in deploy payload)" in output
         assert "user/user-ghost" not in output
+
+    def test_an_explicitly_bundled_user_skill_affects_the_deploy(self, tree):
+        from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
+
+        project, home = tree
+        link = home / ".co" / "skills" / "ghost"
+        link.symlink_to(home / "missing")
+        stream = StringIO()
+
+        _print_deploy_skill_problems(
+            project,
+            Console(file=stream, color_system=None, width=300),
+            payload_roots=(home / ".co" / "skills",),
+        )
+
+        assert f"✗ {link}" in stream.getvalue()
+        assert "(user; affects this deploy)" in stream.getvalue()
+
+    def test_a_bundled_skill_directory_is_not_reported_as_staying(self, tree, monkeypatch):
+        from connectonion.cli.commands import deploy_commands
+
+        project, home = tree
+        stream = StringIO()
+        monkeypatch.setattr(
+            deploy_commands,
+            "console",
+            Console(file=stream, color_system=None, width=300),
+        )
+
+        deploy_commands._warn_about_skills_left_behind(
+            project, [home / ".co" / "skills"]
+        )
+
+        assert "stays" not in stream.getvalue()
+
+    def test_an_untracked_project_problem_is_not_called_payload(self, tree):
+        from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
+
+        project, _ = tree
+        link = project / ".co" / "skills" / "untracked"
+        link.symlink_to(project / "missing")
+        stream = StringIO()
+
+        _print_deploy_skill_problems(
+            project,
+            Console(file=stream, color_system=None, width=300),
+            payload_entries=set(),
+        )
+
+        assert f"! {link}" in stream.getvalue()
+        assert "not in deploy payload" in stream.getvalue()
+
+    def test_rich_markup_in_a_path_is_printed_literally(self, tree):
+        from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
+
+        project, home = tree
+        link = home / ".co" / "skills" / "[red]ghost"
+        link.symlink_to(home / "[blue]missing")
+        stream = StringIO()
+
+        _print_deploy_skill_problems(
+            project, Console(file=stream, color_system=None, width=300)
+        )
+
+        output = stream.getvalue()
+        assert str(link) in output
+        assert str(home / "[blue]missing") in output
 
     def test_a_symlink_to_its_own_ancestor_is_reported(self, tree):
         project, _ = tree

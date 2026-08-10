@@ -258,7 +258,16 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
     """
     from ...useful_plugins.skills import skills_that_will_not_travel
 
-    bundled = {path.name for path in skills_paths}
+    bundled = set()
+    for path in skills_paths:
+        if (path / "SKILL.md").exists():
+            bundled.add(path.name)
+        else:
+            bundled.update(
+                child.name
+                for child in path.iterdir()
+                if child.is_dir() and (child / "SKILL.md").exists()
+            )
     staying = [s for s in skills_that_will_not_travel(project_dir=project_dir)
                if s.name not in bundled]
 
@@ -270,24 +279,58 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
         )
         console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
 
-    _print_deploy_skill_problems(project_dir, console)
-
-
-def _print_deploy_skill_problems(project_dir: Path, output: Console) -> None:
-    """Show a real repair path; only payload problems look like deploy failures."""
-    from ...useful_plugins.skills import (
-        TRAVELS_ON_DEPLOY,
-        find_skill_problem_details,
+    if _is_git_repo(project_dir):
+        ignored = _load_deploy_ignore_patterns(project_dir)
+        payload_entries = {
+            (project_dir / rel).absolute()
+            for rel in _iter_git_tracked_files(project_dir)
+            if not _is_ignored_for_deploy(rel, ignored)
+        }
+        project_roots = ()
+    else:
+        payload_entries = set()
+        project_roots = (project_dir.absolute(),)
+    _print_deploy_skill_problems(
+        project_dir,
+        console,
+        payload_entries=payload_entries,
+        payload_roots=project_roots + tuple(path.absolute() for path in skills_paths),
     )
 
+
+def _print_deploy_skill_problems(
+    project_dir: Path,
+    output: Console,
+    *,
+    payload_entries: set[Path] | None = None,
+    payload_roots: tuple[Path, ...] = (),
+) -> None:
+    """Show a real repair path; only payload problems look like deploy failures."""
+    from rich.markup import escape
+    from ...useful_plugins.skills import find_skill_problem_details
+
+    entries = payload_entries or set()
+
+    def is_in_payload(path: Path) -> bool:
+        if path in entries:
+            return True
+        for root in payload_roots:
+            try:
+                path.relative_to(root)
+                return True
+            except ValueError:
+                pass
+        return False
+
     for problem in find_skill_problem_details(project_dir=project_dir):
-        affects_payload = problem.location in TRAVELS_ON_DEPLOY
+        affects_payload = is_in_payload(problem.path)
         color, marker = ("red", "✗") if affects_payload else ("yellow", "!")
-        target = f" → {problem.target}" if problem.target is not None else ""
-        scope = "ships with deploy" if affects_payload else "stays on this machine"
+        target = f" → {escape(str(problem.target))}" if problem.target is not None else ""
+        scope = "affects this deploy" if affects_payload else "not in deploy payload"
         output.print(
-            f"  [{color}]{marker}[/{color}] {problem.path} — {problem.reason}"
-            f"{target} [dim]({problem.location}; {scope})[/dim]",
+            f"  [{color}]{marker}[/{color}] {escape(str(problem.path))} — "
+            f"{escape(problem.reason)}{target} "
+            f"[dim]({escape(problem.location)}; {scope})[/dim]",
             soft_wrap=True,
         )
 

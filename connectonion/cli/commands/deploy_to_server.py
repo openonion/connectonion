@@ -144,7 +144,9 @@ def _warn_about_skills_left_behind(project_dir: Path) -> None:
         console.print("    [dim]co skills copy <name> --to-project   to ship one[/dim]")
 
     from .deploy_commands import _print_deploy_skill_problems
-    _print_deploy_skill_problems(project_dir, console)
+    _print_deploy_skill_problems(
+        project_dir, console, payload_roots=(project_dir.absolute(),)
+    )
 
 
 def _read_provision(target: str, agent: str) -> dict:
