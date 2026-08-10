@@ -318,3 +318,89 @@ def test_missing_url_tells_the_user_to_log_in(monkeypatch):
     monkeypatch.delenv("SYNOLOGY_URL")
     with pytest.raises(ValueError, match="co syno login"):
         Synology()
+
+
+def _upload_client(replies):
+    """A client whose post() returns each reply in turn."""
+    client = MagicMock()
+    client.post.side_effect = [MagicMock(json=lambda b=b: b) for b in replies]
+    client.__enter__ = lambda self: client
+    client.__exit__ = lambda *a: None
+    return client
+
+
+def test_upload_sends_the_sid_in_the_query_not_the_form(tmp_path):
+    """#794: every path failed with 'SID not found' (DSM 119).
+
+    `_call()` and `download()` both put `_sid` in the query string; upload put
+    it in the multipart body, and SYNO.FileStation.Upload does not read it
+    there. One inconsistency, one command broken.
+    """
+    from connectonion.useful_tools.synology import Synology
+
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    client = _upload_client([{"success": True}])
+
+    with patch.object(Synology, "_client", return_value=client):
+        nas().upload(str(local), "/home/Social Media Content")
+
+    kwargs = client.post.call_args.kwargs
+    assert kwargs.get("params", {}).get("_sid"), "the sid has to travel in the query"
+    assert "_sid" not in kwargs.get("data", {}), "and not in the form body"
+
+
+def test_upload_retries_once_after_a_stale_session(tmp_path):
+    """119 is already in STALE_SESSION, but only `_request()` acts on it and
+    upload does not go through `_request()`. So the one command that could not
+    recover from a dead session was the one that hit it."""
+    from connectonion.useful_tools.synology import Synology
+
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    client = _upload_client([
+        {"success": False, "error": {"code": 119}},
+        {"success": True},
+    ])
+    logins = []
+
+    with patch.object(Synology, "_client", return_value=client):
+        with patch.object(Synology, "_login", side_effect=lambda: logins.append(1)):
+            result = nas().upload(str(local), "/home/docs")
+
+    assert len(logins) == 1, "a stale session should re-login exactly once"
+    assert client.post.call_count == 2
+    assert "clip.mp4" in result
+
+
+def test_upload_does_not_retry_a_real_failure(tmp_path):
+    """Only the stale-session codes get a second attempt. Retrying a genuine
+    refusal doubles the wait before the user sees the reason."""
+    from connectonion.useful_tools.synology import Synology
+
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    client = _upload_client([{"success": False, "error": {"code": 1805}}])
+
+    with patch.object(Synology, "_client", return_value=client):
+        with pytest.raises(ValueError):
+            nas().upload(str(local), "/home/docs")
+
+    assert client.post.call_count == 1
+
+
+def test_upload_still_puts_the_binary_part_last(tmp_path):
+    """The RFC 1867 constraint the original test protects — moving the sid
+    must not disturb it."""
+    from connectonion.useful_tools.synology import Synology
+
+    local = tmp_path / "note.txt"
+    local.write_text("hello")
+    client = _upload_client([{"success": True}])
+
+    with patch.object(Synology, "_client", return_value=client):
+        nas().upload(str(local), "/home/docs", overwrite=True)
+
+    kwargs = client.post.call_args.kwargs
+    assert "file" in kwargs["files"]
+    assert kwargs["data"]["overwrite"] == "true"
