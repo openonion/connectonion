@@ -291,7 +291,7 @@ async def test_acp_subprocess_lease_blocks_a_second_process_until_close(tmp_path
             "session/resume",
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
-        assert resumed["result"] == {}
+        assert resumed["result"]["modes"]["currentModeId"] == "safe"
         assert notifications == []
 
 @pytest.mark.asyncio
@@ -310,7 +310,7 @@ async def test_acp_subprocess_eof_releases_lease_for_later_resume(tmp_path):
             "session/resume",
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
-        assert resumed["result"] == {}
+        assert resumed["result"]["modes"]["currentModeId"] == "safe"
         assert notifications == []
 
         response, notifications = await _request(
@@ -326,3 +326,51 @@ async def test_acp_subprocess_eof_releases_lease_for_later_resume(tmp_path):
         assert notifications[0]["params"]["update"]["content"]["text"] == (
             "answer: continued"
         )
+
+
+@pytest.mark.asyncio
+async def test_acp_subprocess_sets_and_resumes_the_official_mode_state(tmp_path):
+    state_root = tmp_path / "home"
+    async with _server(state_root) as first:
+        await _initialize(first)
+        created, notifications = await _request(
+            first,
+            2,
+            "session/new",
+            {"cwd": str(tmp_path), "mcpServers": []},
+        )
+        session_id = created["result"]["sessionId"]
+        modes = created["result"]["modes"]
+        assert modes["currentModeId"] == "safe"
+        assert [mode["id"] for mode in modes["availableModes"]] == [
+            "safe",
+            "accept_edits",
+        ]
+        assert notifications == []
+
+        changed, notifications = await _request(
+            first,
+            3,
+            "session/set_mode",
+            {"sessionId": session_id, "modeId": "accept_edits"},
+        )
+        assert changed["result"] == {}
+        assert notifications == []
+        closed, _ = await _request(
+            first,
+            4,
+            "session/close",
+            {"sessionId": session_id},
+        )
+        assert closed["result"] == {}
+
+    async with _server(state_root) as second:
+        await _initialize(second)
+        resumed, notifications = await _request(
+            second,
+            2,
+            "session/resume",
+            {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
+        )
+        assert resumed["result"]["modes"]["currentModeId"] == "accept_edits"
+        assert notifications == []

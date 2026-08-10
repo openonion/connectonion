@@ -14,6 +14,7 @@ from acp import RequestError, text_block
 from acp.schema import (
     AgentMessageChunk,
     AgentThoughtChunk,
+    CurrentModeUpdate,
     ToolCallProgress,
     ToolCallStart,
 )
@@ -123,6 +124,25 @@ def test_thought_and_assistant_messages_keep_their_message_ids():
     assert assistant.message_id == "2359f04e-8e17-49d9-a634-ec14d2ecf754"
     assert thought.content.text == "checking"
     assert assistant.content.text == "done"
+
+
+def test_mode_change_maps_to_the_exact_current_mode_update():
+    update = map_agent_event({
+        "type": "mode_changed",
+        "mode": "accept_edits",
+        "triggered_by": "agent",
+    }).updates[0]
+
+    assert isinstance(update, CurrentModeUpdate)
+    assert dumped(update) == {
+        "currentModeId": "accept_edits",
+        "sessionUpdate": "current_mode_update",
+    }
+
+
+def test_unknown_internal_mode_fails_closed():
+    with pytest.raises(ValueError, match="Unsupported Agent mode"):
+        map_agent_event({"type": "mode_changed", "mode": "future"})
 
 
 @pytest.mark.parametrize(
