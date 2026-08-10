@@ -408,7 +408,7 @@ class TestOutlookSendOperations:
             "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
-            outlook = Outlook()
+            outlook = Outlook(allow_external_attachments=True)
             result = outlook.send(
                 to="recipient@example.com",
                 subject="Test Subject",
@@ -425,6 +425,105 @@ class TestOutlookSendOperations:
             assert attachment["name"] == "screenshot.png"
             assert attachment["contentType"] == "image/png"
             assert attachment["contentBytes"]
+
+    def test_agent_attachment_must_stay_inside_the_project(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        outside = tmp_path / "secret.txt"
+        outside.write_text("secret")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.Read Mail.Send"}):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+
+        with pytest.raises(PermissionError, match="outside the project"):
+            outlook.send("r@example.com", "S", "B", attachments=[str(outside)])
+
+    def test_core_rejects_oversize_before_the_graph_call(self, tmp_path):
+        huge = tmp_path / "huge.bin"
+        huge.write_bytes(b"")
+        os.truncate(huge, 3_000_001)
+
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.Read Mail.Send"}):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook(allow_external_attachments=True)
+        outlook._request = MagicMock()
+
+        with pytest.raises(ValueError, match="3MB"):
+            outlook.send("r@example.com", "S", "B", attachments=[str(huge)])
+
+        outlook._request.assert_not_called()
+
+    def test_parent_directory_replacement_cannot_change_the_opened_file(
+        self, tmp_path, monkeypatch
+    ):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        slot = project / "slot"
+        slot.mkdir()
+        local = slot / "report.txt"
+        local.write_text("safe")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "report.txt").write_text("SECRET")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.Read Mail.Send"}):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+        original_open = os.open
+
+        def swap_parent_then_open(path, flags):
+            slot.rename(project / "old-slot")
+            slot.symlink_to(outside, target_is_directory=True)
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_parent_then_open):
+            with pytest.raises(PermissionError, match="outside the project"):
+                outlook.send("r@example.com", "S", "B", attachments=[str(local)])
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX FIFO semantics")
+    def test_fifo_replacement_cannot_block_the_attachment_open(self, tmp_path):
+        local = tmp_path / "report.txt"
+        local.write_text("safe")
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.Read Mail.Send"}):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook(allow_external_attachments=True)
+        original_open = os.open
+
+        def swap_for_fifo_then_open(path, flags):
+            local.unlink()
+            os.mkfifo(local)
+            assert flags & os.O_NONBLOCK
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_for_fifo_then_open):
+            with pytest.raises(PermissionError, match="not a regular file"):
+                outlook.send("r@example.com", "S", "B", attachments=[str(local)])
+
+    def test_growth_after_fstat_is_rejected_before_graph(self, tmp_path):
+        local = tmp_path / "growing.bin"
+        local.write_bytes(b"x")
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.Read Mail.Send"}):
+            from connectonion.useful_tools import outlook as outlook_module
+            outlook = outlook_module.Outlook(allow_external_attachments=True)
+        outlook._request = MagicMock()
+        original_open = outlook._open_attachments
+
+        def open_then_grow(attachments, stack):
+            opened = original_open(attachments, stack)
+            local.write_bytes(b"12345")
+            return opened
+
+        with patch.object(outlook_module, "OUTLOOK_ATTACHMENT_LIMIT", 4):
+            with patch.object(outlook, "_open_attachments", side_effect=open_then_grow):
+                with pytest.raises(ValueError, match="3MB"):
+                    outlook.send("r@example.com", "S", "B", attachments=[str(local)])
+
+        outlook._request.assert_not_called()
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_send_email_scheduled(self, mock_httpx):

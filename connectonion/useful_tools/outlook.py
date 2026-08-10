@@ -50,6 +50,11 @@ from pathlib import Path
 
 import httpx
 from ..backend import backend_url
+from ..project import project_root
+from ._attachment_files import path_of_open_file
+
+
+OUTLOOK_ATTACHMENT_LIMIT = 3_000_000
 
 
 class Outlook:
@@ -57,7 +62,7 @@ class Outlook:
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
-    def __init__(self):
+    def __init__(self, allow_external_attachments: bool = False):
         """Initialize Outlook tool.
 
         Validates that Microsoft OAuth is configured.
@@ -78,6 +83,8 @@ class Outlook:
             )
 
         self._access_token = None
+        self._attachment_root = project_root().resolve()
+        self._allow_external_attachments = allow_external_attachments
 
     def _require_scope(self, required_scope: str) -> None:
         """Raise a re-consent hint when an operation's OAuth scope is absent."""
@@ -463,24 +470,61 @@ class Outlook:
 
     # === Sending ===
 
-    def _file_attachment(self, file_path: str) -> dict:
-        """Read a local file into a Graph fileAttachment object (base64 contentBytes)."""
+    def _open_attachments(self, attachments: list, stack) -> list[tuple[str, object]]:
+        """Open and validate every attachment before any contents are read."""
+        import stat
+
+        opened = []
+        total = 0
+        for given in attachments:
+            path = Path(given).expanduser()
+            if not path.is_file():
+                raise ValueError(f"Attachment not found: {given}")
+            resolved = path.resolve()
+            if not self._allow_external_attachments:
+                try:
+                    resolved.relative_to(self._attachment_root)
+                except ValueError:
+                    raise PermissionError(f"Attachment is outside the project: {given}") from None
+
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            if os.name != "nt":
+                # Prevent a path swapped to a FIFO from blocking before fstat()
+                # can enforce the regular-file boundary below.
+                flags |= getattr(os, "O_NONBLOCK", 0)
+            try:
+                descriptor_number = os.open(resolved, flags)
+            except OSError as exc:
+                raise PermissionError(f"Attachment changed while opening: {given}") from exc
+            handle = stack.enter_context(os.fdopen(descriptor_number, "rb"))
+            descriptor = os.fstat(handle.fileno())
+            if not stat.S_ISREG(descriptor.st_mode):
+                raise PermissionError(f"Attachment is not a regular file: {given}")
+            if not self._allow_external_attachments:
+                try:
+                    path_of_open_file(handle).relative_to(self._attachment_root)
+                except (ValueError, OSError):
+                    raise PermissionError(f"Attachment is outside the project: {given}") from None
+
+            total += descriptor.st_size
+            if total > OUTLOOK_ATTACHMENT_LIMIT:
+                raise ValueError("Attachments exceed Outlook's 3MB send limit.")
+            opened.append((path.name, handle))
+        return opened
+
+    @staticmethod
+    def _file_attachment(filename: str, content: bytes) -> dict:
+        """Build a Graph fileAttachment from already-authorized bytes."""
         import base64
         import mimetypes
 
-        path = os.path.expanduser(file_path)
-        if not os.path.isfile(path):
-            raise ValueError(f"Attachment not found: {file_path}")
-
-        content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
-        with open(path, "rb") as f:
-            content = base64.b64encode(f.read()).decode()
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
         return {
             "@odata.type": "#microsoft.graph.fileAttachment",
-            "name": os.path.basename(path),
+            "name": filename,
             "contentType": content_type,
-            "contentBytes": content,
+            "contentBytes": base64.b64encode(content).decode(),
         }
 
     def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
@@ -526,9 +570,19 @@ class Outlook:
             ]
 
         if attachments:
-            message["attachments"] = [
-                self._file_attachment(path) for path in attachments
-            ]
+            from contextlib import ExitStack
+
+            with ExitStack() as stack:
+                opened = self._open_attachments(attachments, stack)
+                remaining = OUTLOOK_ATTACHMENT_LIMIT
+                encoded = []
+                for filename, handle in opened:
+                    payload = handle.read(remaining + 1)
+                    if len(payload) > remaining:
+                        raise ValueError("Attachments exceed Outlook's 3MB send limit.")
+                    remaining -= len(payload)
+                    encoded.append(self._file_attachment(filename, payload))
+            message["attachments"] = encoded
 
         suffix = ""
         if attachments:
