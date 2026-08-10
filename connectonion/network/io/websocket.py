@@ -71,6 +71,53 @@ class WebSocketIO(IO):
                 self._client_condition.wait()
             return self._msgs_from_client.pop(0)
 
+    def receive_interruptibly(self, cancel_event) -> Dict[str, Any]:
+        """Receive one message without letting a cancelled caller steal later input."""
+        with self._client_condition:
+            while not self._msgs_from_client and not cancel_event.is_set():
+                self._client_condition.wait(timeout=0.05)
+            if cancel_event.is_set():
+                return {"type": "INTERRUPT"}
+            return self._msgs_from_client.pop(0)
+
+    def receive_all_interruptibly(self, cancel_event, msg_type: str = None):
+        """Atomically refuse mailbox access after an invocation is cancelled."""
+        with self._client_condition:
+            if cancel_event.is_set():
+                return None
+            if msg_type is None:
+                interrupts = [
+                    message for message in self._msgs_from_client
+                    if message.get("type") == "INTERRUPT"
+                ]
+                if interrupts:
+                    # Signal cancellation without consuming unrelated frames.
+                    self._msgs_from_client[:] = [
+                        message for message in self._msgs_from_client
+                        if message.get("type") != "INTERRUPT"
+                    ]
+                    return interrupts
+                messages = self._msgs_from_client[:]
+                self._msgs_from_client.clear()
+                return messages
+            matched = [m for m in self._msgs_from_client if m.get("type") == msg_type]
+            self._msgs_from_client[:] = [
+                m for m in self._msgs_from_client if m.get("type") != msg_type
+            ]
+            return matched
+
+    def take_interrupt(self, on_interrupt=None) -> bool:
+        """Drain one interrupt and revoke its worker lease under the same lock."""
+        with self._client_condition:
+            for index, message in enumerate(self._msgs_from_client):
+                if message.get("type") == "INTERRUPT":
+                    self._msgs_from_client.pop(index)
+                    if on_interrupt:
+                        on_interrupt()
+                    self._client_condition.notify_all()
+                    return True
+            return False
+
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
         with self._client_condition:

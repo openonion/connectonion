@@ -13,7 +13,7 @@ Components under test:
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -223,6 +223,31 @@ class TestDiffWriterApproval:
             assert not Path(test_file).exists()
             assert "rejected" in result
             assert "snake_case" in result
+
+    def test_interrupt_does_not_write_or_open_feedback_prompt(self, tmp_path):
+        from connectonion.core.interrupt import UserInterrupt
+
+        class InterruptIO:
+            def __init__(self):
+                self.sent = []
+
+            def send(self, event):
+                self.sent.append(event)
+
+            def receive(self):
+                return {"type": "INTERRUPT"}
+
+        agent = Mock()
+        agent.io = InterruptIO()
+        agent.current_session = {}
+        path = tmp_path / "stopped.txt"
+
+        with pytest.raises(UserInterrupt):
+            DiffWriter(mode=MODE_NORMAL).write(agent, str(path), "content")
+
+        assert agent.current_session["stop_signal"] == "Interrupted by user"
+        assert not path.exists()
+        assert [event["type"] for event in agent.io.sent].count("ask_user") == 1
 
 
 class TestDiffWriterEncoding:

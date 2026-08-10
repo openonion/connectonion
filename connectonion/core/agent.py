@@ -26,6 +26,7 @@ from ..debug.decorators import (
 from ..logger import Logger
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
+from .interrupt import run_interruptible
 
 
 class Agent:
@@ -408,6 +409,17 @@ class Agent:
 
         # Note: trace_entry already added to session in execute_single_tool
 
+        if trace_entry["status"] == "interrupted":
+            self.current_session.pop('stop_signal', None)
+            self._invoke_events('on_stop_signal')
+            return {
+                "name": trace_entry["name"],
+                "args": trace_entry.get("args", {}),
+                "result": trace_entry["result"],
+                "status": trace_entry["status"],
+                "timing_ms": trace_entry.get("timing_ms")
+            }
+
         # Fire events (same as execute_and_record_tools)
         # on_error fires first for errors/not_found
         if trace_entry["status"] in ("error", "not_found"):
@@ -446,20 +458,33 @@ class Agent:
             # Get LLM response
             response = self._get_llm_decision()
 
-            if not response.tool_calls:
-                content = response.content or ""
-                self.current_session['messages'].append({"role": "assistant", "content": content})
-            else:
-                # Process tool calls
-                self._execute_and_record_tools(response.tool_calls)
+            if response is not None:
+                if not response.tool_calls:
+                    content = response.content or ""
+                    self.current_session['messages'].append({"role": "assistant", "content": content})
+                else:
+                    # Process tool calls
+                    self._execute_and_record_tools(response.tool_calls)
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
+
+            continuing = self.current_session.get('_continue_iteration', False)
+            if response is not None and not response.tool_calls and not continuing:
+                # Ignore Stop frames that raced a completed terminal answer,
+                # including frames received while after_iteration ran.
+                if self.io and hasattr(self.io, 'receive_all'):
+                    self.io.receive_all('INTERRUPT')
+                if self.current_session.get('stop_signal') == 'user_interrupt':
+                    self.current_session.pop('stop_signal', None)
 
             # Check if plugin set stop_signal (stop loop, wait for user input)
             if self.current_session.pop('stop_signal', None):
                 self._invoke_events('on_stop_signal')
                 return "What would you like me to do?"
+
+            if response is None:
+                raise RuntimeError("LLM returned no response without an interrupt")
 
             if not response.tool_calls:
                 if self.current_session.pop('_continue_iteration', False):
@@ -497,8 +522,24 @@ class Agent:
         })
 
         start = time.time()
-        response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
+        messages = list(self.current_session['messages'])
+        response, interrupted = run_interruptible(
+            lambda: self.llm.complete(messages, tools=tool_schemas),
+            self.io,
+        )
         duration = (time.time() - start) * 1000  # milliseconds
+
+        if interrupted:
+            self._record_trace({
+                'type': 'llm_result',
+                'id': llm_id,
+                'model': self.llm.model,
+                'iteration': self.current_session['iteration'],
+                'duration_ms': duration,
+                'status': 'interrupted',
+            })
+            self.current_session['stop_signal'] = 'user_interrupt'
+            return None
 
         # Track token usage
         if response.usage:

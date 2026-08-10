@@ -1,0 +1,66 @@
+# Design Decision: Interrupt Blocking Agent Steps by Abandonment
+
+**Status:** Accepted
+**Date:** 2026-08-10
+**Related:** [012 Tool Execution Separation](012-tool-execution-separation.md), [018 Event API Naming](018-event-api-naming.md), [019 Agent Lifecycle](019-agent-lifecycle-design.md)
+
+## Decision
+
+Hosted agents run each blocking LLM completion and tool invocation on a
+disposable daemon thread. The agent thread polls the selective IO mailbox for
+`INTERRUPT` every 200ms. When a signal arrives, the agent abandons the worker's
+result and exits through the existing `stop_signal` lifecycle.
+
+Agent-injected tools receive a per-invocation Agent view with session and tool
+registry-membership snapshots plus a revocable IO lease. Snapshot changes are
+committed only after the worker finishes; an abandoned worker cannot commit
+late session fields, add or remove registered tools, send late events, or
+consume a future mailbox response. Registered stateful tool instances remain
+shared so their bound method identity stays stable; their mutations are tool
+side effects, not part of this transaction. Custom IO adapters without
+cancellable receive support keep graceful boundary stopping for agent-injected
+tools.
+
+Blocking approval and question gates recognize the same signal explicitly.
+Completed work wins a same-window race: after each timed join, worker completion
+is checked before the mailbox is drained.
+
+## Why
+
+The original graceful stop from #188 checked only at iteration boundaries. A
+slow provider request or tool could therefore make the Stop button appear
+unresponsive for seconds or minutes. There is no safe general-purpose way to
+terminate arbitrary Python code, and provider streaming would change every LLM
+implementation without solving non-cooperative tools.
+
+Abandonment keeps one provider-independent mechanism at the two blocking call
+sites. It also preserves the established lifecycle and message rules:
+
+- interrupted LLM output is never appended;
+- an interrupted tool batch still receives one result per tool-call ID;
+- `on_stop_signal`, persistence, and the normal output contract remain intact;
+- non-INTERRUPT mailbox messages are not consumed.
+
+## Consequences
+
+Stop latency is bounded by the polling interval plus scheduling overhead, not
+by the duration of the provider or tool call. Local agents without hosted IO
+keep the direct call path and pay no thread overhead.
+
+The abandoned worker may continue consuming provider tokens or completing tool
+side effects. ConnectOnion does not commit its session or tool-registry
+membership snapshot, late return value, messages, or trace. Arbitrary Python
+can still mutate globals, registered stateful tool instances, or other captured
+objects; tools requiring stronger semantics must implement cooperative
+cancellation or isolate killable work in a subprocess.
+
+## Rejected alternatives
+
+- **Asynchronous exception injection or process signals:** unsafe around locks
+  and ineffective for many blocking socket calls.
+- **Streaming every provider in this change:** a much larger compatibility
+  surface and still no answer for arbitrary tools.
+- **A second “force stop” stage:** both clicks would have identical abandonment
+  semantics, so the extra state would mislead users.
+- **Draining the whole mailbox:** would steal approvals, mode changes, and
+  runtime messages unrelated to stopping.

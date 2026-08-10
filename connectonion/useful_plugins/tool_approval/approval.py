@@ -584,6 +584,12 @@ def check_approval(agent: 'Agent') -> None:
     # Wait for client response (BLOCKS)
     response = agent.io.receive()
 
+    if response.get('type') == 'INTERRUPT':
+        agent.current_session['stop_signal'] = 'Interrupted by user'
+        _log(agent, f"[yellow]⚠ {tool_name} - interrupted by user[/yellow]")
+        from ...core.interrupt import UserInterrupt
+        raise UserInterrupt()
+
     # Handle connection closed
     if response.get('type') == 'io_closed':
         _log(agent, f"[red]✗ {tool_name} - connection closed[/red]")

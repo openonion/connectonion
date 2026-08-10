@@ -70,7 +70,7 @@ agent = Agent(
 | `before_tools`     | Before ALL tools in round      | Once per round     | Prepare shared context for all tools                   |
 | `before_each_tool` | Before tool execution          | Per tool call      | Validate args, approval checks (no message changes!)   |
 | `after_each_tool`  | After each tool completes      | Per tool call      | Log performance, side effects (no message changes!)    |
-| `after_tools`      | After ALL tools in round       | Once per round     | Add reflection, **ONLY place safe to modify messages** |
+| `after_tools`      | After ALL tools finish normally | Once per round    | Add reflection, **ONLY place safe to modify messages** |
 | `on_error`         | When tool fails                | Per tool error     | Custom error handling, retries                         |
 | `after_iteration`  | End of iteration (after tools) | Once per iteration | Checkpoints, stop loop via `stop_loop_result`          |
 | `on_stop_signal`   | When stop_signal is set        | Once per stop      | Cleanup interrupted ops, save checkpoints, rollback    |
@@ -255,6 +255,8 @@ agent = Agent("assistant", tools=[search], on_events=[after_user_input(add_times
 ### Add Reflection After Tools
 
 Use `llm_do` to make the agent reflect on tool results and plan next steps. **Important:** Use `after_tools` when adding messages to ensure compatibility with all LLM providers:
+
+`after_tools` runs only when the full tool batch finishes normally. If the user interrupts a tool, the batch exits through `on_stop_signal` instead, so handlers should not rely on `after_tools` for interruption cleanup.
 
 ```python
 from connectonion import Agent, after_tools, llm_do

@@ -208,7 +208,8 @@ def after_tools(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]
     """
     Mark function(s) as after_tools event handlers.
 
-    Fires ONCE after ALL tools in a batch complete.
+    Fires ONCE after ALL tools in a batch complete. An interrupted batch exits
+    through on_stop_signal instead, so cleanup cannot start new blocking work.
 
     What is a "tools batch"?
     When the LLM responds, it can request multiple tools at once. For example:
