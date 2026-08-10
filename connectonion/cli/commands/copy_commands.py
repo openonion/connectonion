@@ -19,6 +19,7 @@ console = Console()
 TOOLS = {
     "ask_user": "ask_user.py",
     "bash": "bash.py",
+    "claude_code": "claude_code.py",
     "diff_writer": "diff_writer.py",
     "get_emails": "get_emails.py",
     "gmail": "gmail.py",

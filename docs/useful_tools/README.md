@@ -8,6 +8,7 @@ Pre-built tools for common agent tasks.
 |------|---------|--------|
 | [bash](bash.md) | Execute bash commands (Unix/Mac) | `from connectonion import bash` |
 | [Shell](shell.md) | Execute shell commands (cross-platform) | `from connectonion import Shell` |
+| [Claude Code](claude_code.md) | Run or resume Claude Code with explicit permissions | `from connectonion import claude_code` |
 | [FileTools](file_tools.md) | Read/edit files with safety tracking | `from connectonion.useful_tools import FileTools` |
 | [read_file](read_file.md) | Read any file: text, images, PDF, PPTX, DOCX, audio, video | `co copy read_file` |
 | [BrowserAutomation](browser_tools.md) | Natural language browser automation | `from connectonion.useful_tools.browser_tools import BrowserAutomation` |

@@ -21,6 +21,7 @@ from .web_fetch import WebFetch
 from .shell import Shell
 from .bash import bash
 from .codex import codex
+from .claude_code import claude_code
 from .diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
 from ..tui import pick
 from .terminal import yes_no, autocomplete
@@ -57,6 +58,7 @@ __all__ = [
     "Shell",
     "bash",
     "codex",
+    "claude_code",
     "DiffWriter",
     "MODE_NORMAL",
     "MODE_AUTO",
