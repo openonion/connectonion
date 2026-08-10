@@ -495,8 +495,46 @@ class Gmail:
 
         return "\n".join(output)
 
-    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None) -> str:
-        """Send email via Gmail API.
+    def _multipart_with(self, body: str, attachments: list):
+        """A message carrying the body and each file, named as the sender named it.
+
+        The filename is what the recipient sees and what their client uses to
+        decide how to open it, so it is taken from the path rather than
+        invented. The type is guessed the same way -- a wrong guess degrades to
+        a download prompt, while omitting it makes some clients show the file
+        inline as gibberish.
+        """
+        import mimetypes
+        from email import encoders
+        from email.mime.base import MIMEBase
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from pathlib import Path
+
+        message = MIMEMultipart()
+        message.attach(MIMEText(body))
+
+        for given in attachments:
+            path = Path(given).expanduser()
+            if not path.is_file():
+                # Named, because the caller passed a list and a bare "not
+                # found" leaves them diffing it against the filesystem.
+                raise FileNotFoundError(f"Attachment not found: {given}")
+
+            guessed, _ = mimetypes.guess_type(path.name)
+            main, _, sub = (guessed or "application/octet-stream").partition("/")
+            part = MIMEBase(main, sub or "octet-stream")
+            part.set_payload(path.read_bytes())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment",
+                            filename=path.name)
+            message.attach(part)
+
+        return message
+
+    def send(self, to: str, subject: str, body: str, cc: str = None,
+             bcc: str = None, attachments: list = None) -> str:
+        """Send email via Gmail API, optionally with files attached.
 
         Args:
             to: Recipient email address
@@ -504,16 +542,26 @@ class Gmail:
             body: Email body (plain text)
             cc: Optional CC recipients (comma-separated)
             bcc: Optional BCC recipients (comma-separated)
+            attachments: Optional list of file paths to attach
 
         Returns:
             Confirmation message with sent message ID
+
+        Raises:
+            FileNotFoundError: naming the attachment that does not exist
         """
         from email.mime.text import MIMEText
 
         service = self._get_service()
 
-        # Create message
-        message = MIMEText(body)
+        # A plain MIMEText unless there is something to attach. Sending every
+        # mail as multipart would work, but it changes the bytes every existing
+        # caller produces for no reason -- and some mail clients render a
+        # single-part multipart differently from a plain one.
+        if attachments:
+            message = self._multipart_with(body, attachments)
+        else:
+            message = MIMEText(body)
         message['To'] = to
         message['Subject'] = subject
 

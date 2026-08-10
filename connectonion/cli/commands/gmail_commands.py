@@ -23,6 +23,11 @@ console = Console()
 INBOX_CACHE = Path.home() / ".co" / "gmail_last_inbox.json"
 
 
+# Gmail accepts 25MB on send; Graph stops at 3MB, which is why this number is
+# not shared with outlook_commands.py.
+ATTACHMENT_LIMIT = 25_000_000
+
+
 def _gmail():
     """Load GOOGLE_* credentials from .env files and return a Gmail instance. Exits 1 with a hint if not connected."""
     from dotenv import load_dotenv
@@ -166,13 +171,36 @@ def handle_gmail_reply(email_id: str, message: str):
     console.print(f"\n[green]✓ Replied[/green] to email {email_id}\n")
 
 
-def handle_gmail_send(to: str, subject: str, message: str, cc: str = None, bcc: str = None):
+def _check_attachments(attachments: list):
+    """Precheck paths before base64-encoding megabytes. Exits 1 on bad input.
+
+    Mirrors the Outlook precheck deliberately, including doing it here rather
+    than in the tool: a missing file should cost a message, not a traceback
+    after the encode. The limit differs because the services do -- Gmail takes
+    25MB where Graph stops at 3MB -- so borrowing Outlook's number would refuse
+    mail Gmail would have accepted.
+    """
+    paths = [Path(p).expanduser() for p in attachments]
+    for given, path in zip(attachments, paths):
+        if not path.is_file():
+            console.print(f"\n❌ [bold red]Attachment not found:[/bold red] {given}\n")
+            raise typer.Exit(1)
+    if sum(p.stat().st_size for p in paths) > ATTACHMENT_LIMIT:
+        console.print("\n❌ [bold red]Attachments exceed Gmail's 25MB send limit.[/bold red]\n")
+        raise typer.Exit(1)
+
+
+def handle_gmail_send(to: str, subject: str, message: str, cc: str = None,
+                      bcc: str = None, attachments: list = None):
     """Send an email from the connected Gmail account. A message of '-' reads the body from stdin."""
     if message == "-":
         message = sys.stdin.read()
 
+    if attachments:
+        _check_attachments(attachments)
+
     gmail = _gmail()
-    gmail.send(to, subject, message, cc=cc, bcc=bcc)
+    gmail.send(to, subject, message, cc=cc, bcc=bcc, attachments=attachments)
 
     console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
     console.print(f"  From: {os.getenv('GOOGLE_EMAIL', '')}")

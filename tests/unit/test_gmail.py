@@ -1249,3 +1249,109 @@ class TestGmailIntegration:
         assert 'get_labels' in agent.tools
         assert 'get_all_contacts' in agent.tools
         assert 'update_contact' in agent.tools
+
+
+class TestGmailSendAttachments:
+    """Sending a file, which `co outlook` could do and `co gmail` could not (#800).
+
+    Every assertion here reads the raw MIME that would go to the API rather
+    than trusting the call happened. The Gmail API takes one opaque base64
+    blob, so "we called send" proves nothing about whether the file is in it.
+    """
+
+
+    @pytest.fixture
+    def gmail_with_mock(self):
+        """Same shape as the one in TestEmailContent -- fixtures there are
+        class-scoped, so this class needs its own."""
+        with patch.dict(os.environ, {
+            "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+            "GOOGLE_ACCESS_TOKEN": "test_token",
+            "GOOGLE_REFRESH_TOKEN": "test_refresh"
+        }):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+            mock_service = Mock()
+            gmail._get_service = Mock(return_value=mock_service)
+            return gmail, mock_service
+
+    @staticmethod
+    def _sent_mime(mock_service):
+        """The message the API was actually handed, decoded back to MIME."""
+        import base64
+        body = mock_service.users().messages().send.call_args.kwargs["body"]
+        return base64.urlsafe_b64decode(body["raw"]).decode("utf-8", "replace")
+
+    def test_a_file_is_attached_with_its_name(self, gmail_with_mock, tmp_path):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a1'}
+        doc = tmp_path / "invoice.pdf"
+        doc.write_bytes(b"%PDF-1.4 pretend")
+
+        gmail.send(to="r@example.com", subject="S", body="B",
+                   attachments=[str(doc)])
+
+        mime = self._sent_mime(mock_service)
+        assert "invoice.pdf" in mime, "the filename has to survive to the recipient"
+        assert "multipart" in mime.lower()
+
+    def test_the_body_survives_alongside_the_attachment(self, gmail_with_mock, tmp_path):
+        """A multipart rewrite is exactly where a body goes missing."""
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a2'}
+        doc = tmp_path / "note.txt"
+        doc.write_text("data")
+
+        gmail.send(to="r@example.com", subject="S", body="the body text",
+                   attachments=[str(doc)])
+
+        assert "the body text" in self._sent_mime(mock_service)
+
+    def test_several_files_all_arrive(self, gmail_with_mock, tmp_path):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a3'}
+        one, two = tmp_path / "one.txt", tmp_path / "two.csv"
+        one.write_text("1")
+        two.write_text("2")
+
+        gmail.send(to="r@example.com", subject="S", body="B",
+                   attachments=[str(one), str(two)])
+
+        mime = self._sent_mime(mock_service)
+        assert "one.txt" in mime and "two.csv" in mime
+
+    def test_no_attachments_is_unchanged(self, gmail_with_mock):
+        """The path every existing caller takes. Adding attachments must not
+        turn an ordinary mail into a multipart one."""
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a4'}
+
+        gmail.send(to="r@example.com", subject="S", body="plain body")
+
+        mime = self._sent_mime(mock_service)
+        assert "plain body" in mime
+        assert "multipart" not in mime.lower()
+
+    def test_a_missing_file_says_which_one(self, gmail_with_mock):
+        """Named, because the caller passed a list and needs to know which
+        entry was wrong."""
+        gmail, _ = gmail_with_mock
+
+        with pytest.raises(Exception) as raised:
+            gmail.send(to="r@example.com", subject="S", body="B",
+                       attachments=["/nonexistent/quarterly.xlsx"])
+
+        assert "quarterly.xlsx" in str(raised.value)
+
+    def test_cc_and_bcc_still_work_with_an_attachment(self, gmail_with_mock, tmp_path):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a5'}
+        doc = tmp_path / "f.txt"
+        doc.write_text("x")
+
+        gmail.send(to="r@example.com", subject="S", body="B",
+                   cc="c@example.com", bcc="b@example.com",
+                   attachments=[str(doc)])
+
+        mime = self._sent_mime(mock_service)
+        assert "c@example.com" in mime and "b@example.com" in mime

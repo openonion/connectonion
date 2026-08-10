@@ -403,7 +403,8 @@ class TestHandleGmailSendAndSearch:
             with patch.object(gmail_commands, "_gmail", return_value=gmail):
                 handle_gmail_send("bob@example.com", "Hi", "hello")
 
-        gmail.send.assert_called_once_with("bob@example.com", "Hi", "hello", cc=None, bcc=None)
+        gmail.send.assert_called_once_with("bob@example.com", "Hi", "hello",
+                                           cc=None, bcc=None, attachments=None)
         output = plain(capsys.readouterr().out)
         assert "bob@example.com" in output
         assert "Sent" in output
@@ -415,7 +416,9 @@ class TestHandleGmailSendAndSearch:
             handle_gmail_send("bob@example.com", "Hi", "hello",
                               cc="carol@example.com", bcc="dan@example.com")
 
-        assert gmail.send.call_args.kwargs == {"cc": "carol@example.com", "bcc": "dan@example.com"}
+        assert gmail.send.call_args.kwargs == {"cc": "carol@example.com",
+                                               "bcc": "dan@example.com",
+                                               "attachments": None}
 
     def test_send_reads_stdin_body(self, monkeypatch, capsys):
         monkeypatch.setattr(sys, "stdin", io.StringIO("piped body"))
@@ -492,3 +495,44 @@ class TestHandleGmailSent:
             handle_gmail_sent(last=5)
 
         assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {"1": "msg-a"}
+
+
+class TestGmailSendAttachmentChecks:
+    """The precheck, which exists so a bad path costs a message rather than a
+    traceback after megabytes have been base64-encoded."""
+
+    def test_a_missing_file_is_refused_before_the_api_is_touched(self, capsys):
+        gmail = MagicMock()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with pytest.raises(typer.Exit):
+                handle_gmail_send("bob@example.com", "Hi", "hello",
+                                  attachments=["/nope/missing.pdf"])
+
+        assert "missing.pdf" in capsys.readouterr().out
+        gmail.send.assert_not_called(), "nothing should reach Gmail after a bad path"
+
+    def test_oversize_is_refused_against_gmails_limit_not_outlooks(self, tmp_path, capsys):
+        """Borrowing Outlook's 3MB would refuse mail Gmail accepts. This file
+        is over Graph's limit and well under Gmail's."""
+        big = tmp_path / "deck.pdf"
+        big.write_bytes(b"x" * 5_000_000)
+        gmail = MagicMock()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_send("bob@example.com", "Hi", "hello", attachments=[str(big)])
+
+        gmail.send.assert_called_once()
+        assert "exceed" not in capsys.readouterr().out
+
+    def test_over_gmails_own_limit_is_refused(self, tmp_path, capsys):
+        huge = tmp_path / "video.mov"
+        huge.write_bytes(b"x" * 26_000_000)
+        gmail = MagicMock()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with pytest.raises(typer.Exit):
+                handle_gmail_send("bob@example.com", "Hi", "hello", attachments=[str(huge)])
+
+        assert "25MB" in capsys.readouterr().out
+        gmail.send.assert_not_called()
