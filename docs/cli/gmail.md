@@ -81,10 +81,14 @@ reads the body from stdin.
 co gmail send alice@example.com "Report" "See notes below."
 co gmail send alice@example.com "Report" - < body.txt
 co gmail send a@x.com,b@y.com "Update" "Shipping today" --cc lead@x.com
+co gmail send alice@example.com "Report" "Attached" -a report.pdf -a chart.csv
 ```
 
 Recipients are comma-separated. `--cc` and `--bcc` take the same form. A
-message of `-` reads the body from stdin.
+message of `-` reads the body from stdin. Repeat `-a`/`--attach` to attach
+several files; their combined size must be at most 25 MB. Because the human
+operator explicitly chooses these paths, the CLI may attach a file outside the
+current project. Agent-facing `Gmail()` tools remain limited to project files.
 
 ### `co gmail sent` — Recently sent
 

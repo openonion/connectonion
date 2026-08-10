@@ -60,17 +60,25 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from ..backend import backend_url
+from ..project import project_root
+
+
+GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
 
 class Gmail:
     """Gmail tool for reading and managing emails."""
 
-    def __init__(self, emails_csv: str = "data/emails.csv", contacts_csv: str = "data/contacts.csv"):
+    def __init__(self, emails_csv: str = "data/emails.csv", contacts_csv: str = "data/contacts.csv",
+                 allow_external_attachments: bool = False):
         """Initialize Gmail tool.
 
         Args:
             emails_csv: Path to CSV file for email caching (default: "data/emails.csv")
             contacts_csv: Path to CSV file for contact caching (default: "data/contacts.csv")
+            allow_external_attachments: Let trusted operator code attach files
+                outside the project. Agent-facing instances should keep the
+                secure default.
 
         Validates that gmail.readonly scope is authorized.
         Raises ValueError if scope is missing.
@@ -94,6 +102,8 @@ class Gmail:
         self._service = None
         self.emails_csv = emails_csv
         self.contacts_csv = contacts_csv
+        self._attachment_root = project_root().resolve()
+        self._allow_external_attachments = allow_external_attachments
 
     def _get_service(self):
         """Get Gmail API service, refreshing the access token once per instance.
@@ -495,7 +505,31 @@ class Gmail:
 
         return "\n".join(output)
 
-    def _multipart_with(self, body: str, attachments: list):
+    def _attachment_paths(self, attachments: list) -> list[Path]:
+        """Validate every attachment before any contents are read."""
+        paths = []
+        total = 0
+        for given in attachments:
+            path = Path(given).expanduser()
+            if not path.is_file():
+                raise FileNotFoundError(f"Attachment not found: {given}")
+
+            resolved = path.resolve()
+            if not self._allow_external_attachments:
+                try:
+                    resolved.relative_to(self._attachment_root)
+                except ValueError:
+                    raise PermissionError(
+                        f"Attachment is outside the project: {given}"
+                    ) from None
+
+            total += resolved.stat().st_size
+            if total > GMAIL_ATTACHMENT_LIMIT:
+                raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+            paths.append(resolved)
+        return paths
+
+    def _multipart_with(self, body: str, attachments: list[Path]):
         """A message carrying the body and each file, named as the sender named it.
 
         The filename is what the recipient sees and what their client uses to
@@ -509,18 +543,11 @@ class Gmail:
         from email.mime.base import MIMEBase
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
-        from pathlib import Path
 
         message = MIMEMultipart()
         message.attach(MIMEText(body))
 
-        for given in attachments:
-            path = Path(given).expanduser()
-            if not path.is_file():
-                # Named, because the caller passed a list and a bare "not
-                # found" leaves them diffing it against the filesystem.
-                raise FileNotFoundError(f"Attachment not found: {given}")
-
+        for path in attachments:
             guessed, _ = mimetypes.guess_type(path.name)
             main, _, sub = (guessed or "application/octet-stream").partition("/")
             part = MIMEBase(main, sub or "octet-stream")
@@ -552,14 +579,12 @@ class Gmail:
         """
         from email.mime.text import MIMEText
 
-        service = self._get_service()
-
         # A plain MIMEText unless there is something to attach. Sending every
         # mail as multipart would work, but it changes the bytes every existing
         # caller produces for no reason -- and some mail clients render a
         # single-part multipart differently from a plain one.
         if attachments:
-            message = self._multipart_with(body, attachments)
+            message = self._multipart_with(body, self._attachment_paths(attachments))
         else:
             message = MIMEText(body)
         message['To'] = to
@@ -574,6 +599,7 @@ class Gmail:
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
 
         # Send via Gmail API
+        service = self._get_service()
         sent_message = service.users().messages().send(
             userId='me',
             body={'raw': raw_message}

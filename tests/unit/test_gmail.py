@@ -1270,7 +1270,7 @@ class TestGmailSendAttachments:
             "GOOGLE_REFRESH_TOKEN": "test_refresh"
         }):
             from connectonion.useful_tools.gmail import Gmail
-            gmail = Gmail()
+            gmail = Gmail(allow_external_attachments=True)
             mock_service = Mock()
             gmail._get_service = Mock(return_value=mock_service)
             return gmail, mock_service
@@ -1355,3 +1355,64 @@ class TestGmailSendAttachments:
 
         mime = self._sent_mime(mock_service)
         assert "c@example.com" in mime and "b@example.com" in mime
+
+    def test_an_agent_can_attach_a_file_inside_its_project(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        attachment = project / "report.txt"
+        attachment.write_text("safe")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        assert gmail._attachment_paths([str(attachment)]) == [attachment.resolve()]
+
+    def test_an_agent_cannot_attach_a_file_outside_its_project(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        outside = tmp_path / "secret.txt"
+        outside.write_text("secret")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with pytest.raises(PermissionError, match="outside the project"):
+            gmail._attachment_paths([str(outside)])
+
+    def test_a_symlink_cannot_escape_the_project(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        outside = tmp_path / "secret.txt"
+        outside.write_text("secret")
+        link = project / "looks-local.txt"
+        link.symlink_to(outside)
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with pytest.raises(PermissionError, match="outside the project"):
+            gmail._attachment_paths([str(link)])
+
+    def test_the_core_rejects_oversize_before_touching_the_api(self, tmp_path):
+        huge = tmp_path / "huge.bin"
+        huge.write_bytes(b"")
+        os.truncate(huge, 25_000_001)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail(allow_external_attachments=True)
+        gmail._get_service = Mock()
+
+        with pytest.raises(ValueError, match="25MB"):
+            gmail.send("r@example.com", "S", "B", attachments=[str(huge)])
+
+        gmail._get_service.assert_not_called()

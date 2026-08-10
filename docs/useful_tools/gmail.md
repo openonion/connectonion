@@ -83,6 +83,11 @@ Your agent can now read and manage Gmail.
 
 ### Actions
 
+**`send(to, subject, body, cc=None, bcc=None, attachments=None)`**
+- Send plain-text mail, optionally attaching a list of files
+- Agent-facing `Gmail()` instances can attach only files inside the current project; resolved symlinks cannot escape it
+- Attachments have a 25 MB combined limit, enforced before file contents are read
+
 **`mark_read(email_id)`**
 - Mark email as read
 

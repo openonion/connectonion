@@ -23,11 +23,6 @@ console = Console()
 INBOX_CACHE = Path.home() / ".co" / "gmail_last_inbox.json"
 
 
-# Gmail accepts 25MB on send; Graph stops at 3MB, which is why this number is
-# not shared with outlook_commands.py.
-ATTACHMENT_LIMIT = 25_000_000
-
-
 def _gmail():
     """Load GOOGLE_* credentials from .env files and return a Gmail instance. Exits 1 with a hint if not connected."""
     from dotenv import load_dotenv
@@ -52,7 +47,9 @@ def _gmail():
         raise typer.Exit(1)
 
     from ...useful_tools.gmail import Gmail
-    return Gmail()
+    # A person invoking the CLI explicitly names every path. Agent tool
+    # instances keep Gmail's project-only default instead.
+    return Gmail(allow_external_attachments=True)
 
 
 def _when(date: str) -> str:
@@ -180,12 +177,14 @@ def _check_attachments(attachments: list):
     25MB where Graph stops at 3MB -- so borrowing Outlook's number would refuse
     mail Gmail would have accepted.
     """
+    from ...useful_tools.gmail import GMAIL_ATTACHMENT_LIMIT
+
     paths = [Path(p).expanduser() for p in attachments]
     for given, path in zip(attachments, paths):
         if not path.is_file():
             console.print(f"\n❌ [bold red]Attachment not found:[/bold red] {given}\n")
             raise typer.Exit(1)
-    if sum(p.stat().st_size for p in paths) > ATTACHMENT_LIMIT:
+    if sum(p.stat().st_size for p in paths) > GMAIL_ATTACHMENT_LIMIT:
         console.print("\n❌ [bold red]Attachments exceed Gmail's 25MB send limit.[/bold red]\n")
         raise typer.Exit(1)
 
