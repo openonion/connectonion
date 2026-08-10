@@ -373,15 +373,22 @@ class Gmail:
 
     def _extract_body(self, payload) -> str:
         """Extract body from email payload, preferring text/plain, falling back to stripped HTML."""
-        import re
-        from html import unescape
+        from bs4 import BeautifulSoup
 
         def strip_html(html: str) -> str:
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r'<[^>]+>', '', html)
-            text = unescape(text)
-            return re.sub(r'\s+', ' ', text).strip()
+            soup = BeautifulSoup(html, 'html.parser')
+            for tag in soup(['script', 'style']):
+                tag.decompose()
+            block_tags = (
+                'address', 'article', 'aside', 'blockquote', 'br', 'caption', 'dd', 'details',
+                'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav',
+                'ol', 'p', 'pre', 'section', 'summary', 'table', 'tbody', 'td', 'tfoot',
+                'th', 'thead', 'tr', 'ul',
+            )
+            for tag in soup(block_tags):
+                tag.insert_after(' ')
+            return ' '.join(soup.get_text().split())
 
         # Single part email
         if 'body' in payload and payload['body'].get('data'):
