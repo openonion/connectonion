@@ -312,14 +312,23 @@ def _print_deploy_skill_problems(
     entries = payload_entries or set()
 
     def is_in_payload(path: Path) -> bool:
-        if path in entries:
-            return True
-        for root in payload_roots:
-            try:
-                path.relative_to(root)
-                return True
-            except ValueError:
-                pass
+        # Cloud entries are files, while a skill problem names its directory.
+        # Explicit --skills paths are resolved before they reach this function,
+        # while diagnosis deliberately preserves the repairable symlink path.
+        candidates = {path, path.resolve(strict=False)}
+        for candidate in candidates:
+            for entry in entries:
+                try:
+                    entry.relative_to(candidate)
+                    return True
+                except ValueError:
+                    pass
+            for root in payload_roots:
+                try:
+                    candidate.relative_to(root)
+                    return True
+                except ValueError:
+                    pass
         return False
 
     for problem in find_skill_problem_details(project_dir=project_dir):

@@ -95,14 +95,17 @@ class TestBrokenLinks:
         from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
 
         project, home = tree
+        target = home / "source" / "ghost"
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_text("---\ndescription: [broken\n---\n")
         link = home / ".co" / "skills" / "ghost"
-        link.symlink_to(home / "missing")
+        link.symlink_to(target)
         stream = StringIO()
 
         _print_deploy_skill_problems(
             project,
             Console(file=stream, color_system=None, width=300),
-            payload_roots=(home / ".co" / "skills",),
+            payload_roots=(link.resolve(),),
         )
 
         assert f"✗ {link}" in stream.getvalue()
@@ -141,6 +144,25 @@ class TestBrokenLinks:
 
         assert f"! {link}" in stream.getvalue()
         assert "not in deploy payload" in stream.getvalue()
+
+    def test_a_tracked_file_below_a_problem_directory_is_payload(self, tree):
+        from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
+
+        project, _ = tree
+        skill = project / ".co" / "skills" / "bad-yaml"
+        skill.mkdir()
+        manifest = skill / "SKILL.md"
+        manifest.write_text("---\ndescription: [broken\n---\n")
+        stream = StringIO()
+
+        _print_deploy_skill_problems(
+            project,
+            Console(file=stream, color_system=None, width=300),
+            payload_entries={manifest.absolute()},
+        )
+
+        assert f"✗ {skill}" in stream.getvalue()
+        assert "affects this deploy" in stream.getvalue()
 
     def test_rich_markup_in_a_path_is_printed_literally(self, tree):
         from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
