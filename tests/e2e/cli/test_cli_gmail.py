@@ -57,7 +57,22 @@ def test_gmail_send_routes_arguments():
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "bob@example.com", "Hi", "Body", cc="carol@example.com", bcc=None
+        "bob@example.com", "Hi", "Body",
+        cc="carol@example.com", bcc=None, attachments=None,
+    )
+
+
+def test_gmail_send_routes_repeated_attachments():
+    with patch("connectonion.cli.commands.gmail_commands.handle_gmail_send") as handler:
+        result = runner.invoke(app, [
+            "gmail", "send", "bob@example.com", "Hi", "Body",
+            "-a", "one.pdf", "--attach", "two.csv",
+        ])
+
+    assert result.exit_code == 0
+    handler.assert_called_once_with(
+        "bob@example.com", "Hi", "Body",
+        cc=None, bcc=None, attachments=["one.pdf", "two.csv"],
     )
 
 
@@ -92,7 +107,10 @@ def test_gmail_send_routes_bcc():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("bob@example.com", "Hi", "-", cc=None, bcc="dan@example.com")
+    handler.assert_called_once_with(
+        "bob@example.com", "Hi", "-",
+        cc=None, bcc="dan@example.com", attachments=None,
+    )
 
 
 def test_gmail_sent_routes_limit():

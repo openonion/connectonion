@@ -811,10 +811,12 @@ def gmail_send(
     message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
     cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
     bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+    attach: list[str] = typer.Option(None, "--attach", "-a",
+                                     help="File to attach (repeat for several)"),
 ):
     """Send an email from your Gmail account."""
     from .commands.gmail_commands import handle_gmail_send
-    handle_gmail_send(to, subject, message, cc=cc, bcc=bcc)
+    handle_gmail_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach)
 
 
 @gmail_app.command("sent")

@@ -60,17 +60,59 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from ..backend import backend_url
+from ..project import project_root
+
+
+GMAIL_ATTACHMENT_LIMIT = 25_000_000
+
+
+def _path_of_open_file(handle) -> Path:
+    """The OS-reported final path for an already-open file handle."""
+    import sys
+
+    descriptor = handle.fileno()
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetFinalPathNameByHandleW(
+            ctypes.c_void_p(msvcrt.get_osfhandle(descriptor)), buffer, len(buffer), 0
+        )
+        if not length or length >= len(buffer):
+            raise OSError("Windows could not resolve the open attachment handle")
+        path = buffer.value
+        if path.startswith("\\\\?\\UNC\\"):
+            path = "\\\\" + path[8:]
+        elif path.startswith("\\\\?\\"):
+            path = path[4:]
+        return Path(path)
+
+    if sys.platform == "darwin":
+        import fcntl
+
+        raw = fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024))
+        return Path(raw.split(bytes(1), 1)[0].decode())
+
+    proc_path = Path(f"/proc/self/fd/{descriptor}")
+    if proc_path.exists():
+        return Path(os.readlink(proc_path))
+    raise OSError("This platform cannot resolve an open attachment handle")
 
 
 class Gmail:
     """Gmail tool for reading and managing emails."""
 
-    def __init__(self, emails_csv: str = "data/emails.csv", contacts_csv: str = "data/contacts.csv"):
+    def __init__(self, emails_csv: str = "data/emails.csv", contacts_csv: str = "data/contacts.csv",
+                 allow_external_attachments: bool = False):
         """Initialize Gmail tool.
 
         Args:
             emails_csv: Path to CSV file for email caching (default: "data/emails.csv")
             contacts_csv: Path to CSV file for contact caching (default: "data/contacts.csv")
+            allow_external_attachments: Let trusted operator code attach files
+                outside the project. Agent-facing instances should keep the
+                secure default.
 
         Validates that gmail.readonly scope is authorized.
         Raises ValueError if scope is missing.
@@ -94,6 +136,8 @@ class Gmail:
         self._service = None
         self.emails_csv = emails_csv
         self.contacts_csv = contacts_csv
+        self._attachment_root = project_root().resolve()
+        self._allow_external_attachments = allow_external_attachments
 
     def _get_service(self):
         """Get Gmail API service, refreshing the access token once per instance.
@@ -495,8 +539,94 @@ class Gmail:
 
         return "\n".join(output)
 
-    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None) -> str:
-        """Send email via Gmail API.
+    def _open_attachments(self, attachments: list, stack) -> list[tuple[str, object]]:
+        """Open and validate attachments, retaining the checked file objects."""
+        import stat
+
+        opened = []
+        total = 0
+        for given in attachments:
+            path = Path(given).expanduser()
+            display_name = path.name
+            if not path.is_file():
+                raise FileNotFoundError(f"Attachment not found: {given}")
+
+            resolved = path.resolve()
+            if not self._allow_external_attachments:
+                try:
+                    resolved.relative_to(self._attachment_root)
+                except ValueError:
+                    raise PermissionError(
+                        f"Attachment is outside the project: {given}"
+                    ) from None
+
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            if os.name != "nt":
+                # A checked path can still be replaced by a FIFO before open().
+                # Do not let an untrusted attachment block the agent indefinitely;
+                # fstat() below remains the authoritative regular-file check.
+                flags |= getattr(os, "O_NONBLOCK", 0)
+            try:
+                descriptor_number = os.open(resolved, flags)
+            except OSError as exc:
+                raise PermissionError(f"Attachment changed while opening: {given}") from exc
+            handle = stack.enter_context(os.fdopen(descriptor_number, "rb"))
+            descriptor = os.fstat(handle.fileno())
+            if not stat.S_ISREG(descriptor.st_mode):
+                raise PermissionError(f"Attachment is not a regular file: {given}")
+            if not self._allow_external_attachments:
+                try:
+                    _path_of_open_file(handle).relative_to(self._attachment_root)
+                except (ValueError, OSError):
+                    raise PermissionError(
+                        f"Attachment is outside the project: {given}"
+                    ) from None
+
+            total += descriptor.st_size
+            if total > GMAIL_ATTACHMENT_LIMIT:
+                raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+            opened.append((display_name, handle))
+        return opened
+
+    def _multipart_with(self, body: str, attachments: list[tuple[str, object]]):
+        """A message carrying the body and each file, named as the sender named it.
+
+        The filename is what the recipient sees and what their client uses to
+        decide how to open it, so it is taken from the path rather than
+        invented. The type is guessed the same way -- a wrong guess degrades to
+        a download prompt, while omitting it makes some clients show the file
+        inline as gibberish.
+        """
+        import mimetypes
+        from email import encoders
+        from email.mime.base import MIMEBase
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        message = MIMEMultipart()
+        message.attach(MIMEText(body))
+
+        remaining = GMAIL_ATTACHMENT_LIMIT
+        for display_name, handle in attachments:
+            guessed, _ = mimetypes.guess_type(display_name)
+            main, _, sub = (guessed or "application/octet-stream").partition("/")
+            part = MIMEBase(main, sub or "octet-stream")
+            handle.seek(0)
+            payload = handle.read(remaining + 1)
+            if len(payload) > remaining:
+                raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+            remaining -= len(payload)
+            part.set_payload(payload)
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment",
+                            filename=display_name)
+            message.attach(part)
+
+        return message
+
+    def send(self, to: str, subject: str, body: str, cc: str = None,
+             bcc: str = None, attachments: list = None) -> str:
+        """Send email via Gmail API, optionally with files attached.
 
         Args:
             to: Recipient email address
@@ -504,16 +634,27 @@ class Gmail:
             body: Email body (plain text)
             cc: Optional CC recipients (comma-separated)
             bcc: Optional BCC recipients (comma-separated)
+            attachments: Optional list of file paths to attach
 
         Returns:
             Confirmation message with sent message ID
+
+        Raises:
+            FileNotFoundError: naming the attachment that does not exist
         """
+        from contextlib import ExitStack
         from email.mime.text import MIMEText
 
-        service = self._get_service()
-
-        # Create message
-        message = MIMEText(body)
+        # A plain MIMEText unless there is something to attach. Sending every
+        # mail as multipart would work, but it changes the bytes every existing
+        # caller produces for no reason -- and some mail clients render a
+        # single-part multipart differently from a plain one.
+        if attachments:
+            with ExitStack() as stack:
+                opened = self._open_attachments(attachments, stack)
+                message = self._multipart_with(body, opened)
+        else:
+            message = MIMEText(body)
         message['To'] = to
         message['Subject'] = subject
 
@@ -526,6 +667,7 @@ class Gmail:
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
 
         # Send via Gmail API
+        service = self._get_service()
         sent_message = service.users().messages().send(
             userId='me',
             body={'raw': raw_message}

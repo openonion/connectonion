@@ -1249,3 +1249,298 @@ class TestGmailIntegration:
         assert 'get_labels' in agent.tools
         assert 'get_all_contacts' in agent.tools
         assert 'update_contact' in agent.tools
+
+
+class TestGmailSendAttachments:
+    """Sending a file, which `co outlook` could do and `co gmail` could not (#800).
+
+    Every assertion here reads the raw MIME that would go to the API rather
+    than trusting the call happened. The Gmail API takes one opaque base64
+    blob, so "we called send" proves nothing about whether the file is in it.
+    """
+
+
+    @pytest.fixture
+    def gmail_with_mock(self):
+        """Same shape as the one in TestEmailContent -- fixtures there are
+        class-scoped, so this class needs its own."""
+        with patch.dict(os.environ, {
+            "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+            "GOOGLE_ACCESS_TOKEN": "test_token",
+            "GOOGLE_REFRESH_TOKEN": "test_refresh"
+        }):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail(allow_external_attachments=True)
+            mock_service = Mock()
+            gmail._get_service = Mock(return_value=mock_service)
+            return gmail, mock_service
+
+    @staticmethod
+    def _sent_mime(mock_service):
+        """The message the API was actually handed, decoded back to MIME."""
+        import base64
+        body = mock_service.users().messages().send.call_args.kwargs["body"]
+        return base64.urlsafe_b64decode(body["raw"]).decode("utf-8", "replace")
+
+    def test_a_file_is_attached_with_its_name(self, gmail_with_mock, tmp_path):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a1'}
+        doc = tmp_path / "invoice.pdf"
+        doc.write_bytes(b"%PDF-1.4 pretend")
+
+        gmail.send(to="r@example.com", subject="S", body="B",
+                   attachments=[str(doc)])
+
+        mime = self._sent_mime(mock_service)
+        assert "invoice.pdf" in mime, "the filename has to survive to the recipient"
+        assert "multipart" in mime.lower()
+
+    def test_the_body_survives_alongside_the_attachment(self, gmail_with_mock, tmp_path):
+        """A multipart rewrite is exactly where a body goes missing."""
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a2'}
+        doc = tmp_path / "note.txt"
+        doc.write_text("data")
+
+        gmail.send(to="r@example.com", subject="S", body="the body text",
+                   attachments=[str(doc)])
+
+        assert "the body text" in self._sent_mime(mock_service)
+
+    def test_several_files_all_arrive(self, gmail_with_mock, tmp_path):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a3'}
+        one, two = tmp_path / "one.txt", tmp_path / "two.csv"
+        one.write_text("1")
+        two.write_text("2")
+
+        gmail.send(to="r@example.com", subject="S", body="B",
+                   attachments=[str(one), str(two)])
+
+        mime = self._sent_mime(mock_service)
+        assert "one.txt" in mime and "two.csv" in mime
+
+    def test_no_attachments_is_unchanged(self, gmail_with_mock):
+        """The path every existing caller takes. Adding attachments must not
+        turn an ordinary mail into a multipart one."""
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a4'}
+
+        gmail.send(to="r@example.com", subject="S", body="plain body")
+
+        mime = self._sent_mime(mock_service)
+        assert "plain body" in mime
+        assert "multipart" not in mime.lower()
+
+    def test_a_missing_file_says_which_one(self, gmail_with_mock):
+        """Named, because the caller passed a list and needs to know which
+        entry was wrong."""
+        gmail, _ = gmail_with_mock
+
+        with pytest.raises(Exception) as raised:
+            gmail.send(to="r@example.com", subject="S", body="B",
+                       attachments=["/nonexistent/quarterly.xlsx"])
+
+        assert "quarterly.xlsx" in str(raised.value)
+
+    def test_cc_and_bcc_still_work_with_an_attachment(self, gmail_with_mock, tmp_path):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().send().execute.return_value = {'id': 'a5'}
+        doc = tmp_path / "f.txt"
+        doc.write_text("x")
+
+        gmail.send(to="r@example.com", subject="S", body="B",
+                   cc="c@example.com", bcc="b@example.com",
+                   attachments=[str(doc)])
+
+        mime = self._sent_mime(mock_service)
+        assert "c@example.com" in mime and "b@example.com" in mime
+
+    def test_an_agent_can_attach_a_file_inside_its_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        attachment = project / "report.txt"
+        attachment.write_text("safe")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            opened = gmail._open_attachments([str(attachment)], stack)
+            assert [name for name, _ in opened] == ["report.txt"]
+
+    def test_an_agent_cannot_attach_a_file_outside_its_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        outside = tmp_path / "secret.txt"
+        outside.write_text("secret")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            with pytest.raises(PermissionError, match="outside the project"):
+                gmail._open_attachments([str(outside)], stack)
+
+    def test_a_symlink_cannot_escape_the_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        outside = tmp_path / "secret.txt"
+        outside.write_text("secret")
+        link = project / "looks-local.txt"
+        link.symlink_to(outside)
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            with pytest.raises(PermissionError, match="outside the project"):
+                gmail._open_attachments([str(link)], stack)
+
+    def test_a_checked_file_is_not_reopened_after_a_symlink_swap(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        local = project / "report.txt"
+        local.write_bytes(b"safe report")
+        outside = tmp_path / "secret.txt"
+        outside.write_bytes(b"secret")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            opened = gmail._open_attachments([str(local)], stack)
+            local.unlink()
+            local.symlink_to(outside)
+            message = gmail._multipart_with("body", opened)
+
+        assert message.get_payload()[1].get_payload(decode=True) == b"safe report"
+
+    def test_a_parent_directory_swap_cannot_escape_the_project(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        slot = project / "slot"
+        slot.mkdir()
+        local = slot / "report.txt"
+        local.write_bytes(b"safe")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "report.txt").write_bytes(b"SECRET")
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        original_open = os.open
+
+        def swap_parent_then_open(path, flags):
+            slot.rename(project / "old-slot")
+            slot.symlink_to(outside, target_is_directory=True)
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_parent_then_open):
+            with ExitStack() as stack:
+                with pytest.raises(PermissionError, match="outside the project"):
+                    gmail._open_attachments([str(local)], stack)
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX FIFO semantics")
+    def test_a_fifo_swap_cannot_block_the_attachment_open(self, tmp_path):
+        from contextlib import ExitStack
+
+        local = tmp_path / "report.txt"
+        local.write_bytes(b"safe")
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail(allow_external_attachments=True)
+
+        original_open = os.open
+
+        def swap_for_fifo_then_open(path, flags):
+            local.unlink()
+            os.mkfifo(local)
+            assert flags & os.O_NONBLOCK
+            return original_open(path, flags)
+
+        with patch.object(os, "open", side_effect=swap_for_fifo_then_open):
+            with ExitStack() as stack:
+                with pytest.raises(PermissionError, match="not a regular file"):
+                    gmail._open_attachments([str(local)], stack)
+
+    def test_a_safe_symlink_keeps_the_sender_selected_filename(self, tmp_path, monkeypatch):
+        from contextlib import ExitStack
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        target = project / "artifact-123"
+        target.write_bytes(b"pdf")
+        link = project / "invoice.pdf"
+        link.symlink_to(target)
+        monkeypatch.chdir(project)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+
+        with ExitStack() as stack:
+            opened = gmail._open_attachments([str(link)], stack)
+            message = gmail._multipart_with("body", opened)
+
+        part = message.get_payload()[1]
+        assert part.get_filename() == "invoice.pdf"
+        assert part.get_content_type() == "application/pdf"
+
+    def test_growth_after_fstat_is_caught_during_the_read(self, tmp_path):
+        from contextlib import ExitStack
+
+        local = tmp_path / "growing.bin"
+        local.write_bytes(b"x")
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools import gmail as gmail_module
+            gmail = gmail_module.Gmail(allow_external_attachments=True)
+
+        with patch.object(gmail_module, "GMAIL_ATTACHMENT_LIMIT", 4):
+            with ExitStack() as stack:
+                opened = gmail._open_attachments([str(local)], stack)
+                local.write_bytes(b"12345")
+                with pytest.raises(ValueError, match="25MB"):
+                    gmail._multipart_with("body", opened)
+
+    def test_the_core_rejects_oversize_before_touching_the_api(self, tmp_path):
+        huge = tmp_path / "huge.bin"
+        huge.write_bytes(b"")
+        os.truncate(huge, 25_000_001)
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail(allow_external_attachments=True)
+        gmail._get_service = Mock()
+
+        with pytest.raises(ValueError, match="25MB"):
+            gmail.send("r@example.com", "S", "B", attachments=[str(huge)])
+
+        gmail._get_service.assert_not_called()
