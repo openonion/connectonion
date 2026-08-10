@@ -332,19 +332,31 @@ def test_claim_waits_for_a_short_lived_worker_lock(tmp_path):
     context = multiprocessing.get_context("spawn")
     ready = context.Queue()
     blocker = context.Process(
-        target=_hold_ledger_lock, args=(path, ready, 0.5)
+        target=_hold_ledger_lock, args=(path, ready, 1.0)
     )
 
     blocker.start()
     try:
         assert ready.get(timeout=10) is True
+        started = time.monotonic()
         assert store.already_used({"signature": "captured"}) is False
+        assert time.monotonic() - started >= 0.4
     finally:
         blocker.join(timeout=10)
         if blocker.is_alive():
             blocker.terminate()
+            blocker.join(timeout=10)
 
     assert blocker.exitcode == 0
+
+
+def test_connection_has_the_bounded_two_second_busy_timeout(tmp_path):
+    store = SignatureReplayStore(tmp_path / "replay.sqlite3")
+
+    with store._connect() as database:
+        busy_timeout_ms = database.execute("PRAGMA busy_timeout").fetchone()[0]
+
+    assert busy_timeout_ms == 2_000
 
 
 def test_signed_command_translates_replay_storage_failure_to_misconfigured(
