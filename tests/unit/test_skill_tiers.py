@@ -164,6 +164,26 @@ class TestBrokenLinks:
         assert f"✗ {skill}" in stream.getvalue()
         assert "affects this deploy" in stream.getvalue()
 
+    def test_an_ignored_non_git_skill_is_not_payload(self, tree, monkeypatch):
+        from connectonion.cli.commands import deploy_commands
+
+        project, _ = tree
+        skill = project / ".co" / "skills" / "ignored-bad"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("---\ndescription: [broken\n---\n")
+        (project / ".gitignore").write_text(".co/skills/ignored-bad/\n")
+        stream = StringIO()
+        monkeypatch.setattr(
+            deploy_commands,
+            "console",
+            Console(file=stream, color_system=None, width=300),
+        )
+
+        deploy_commands._warn_about_skills_left_behind(project, [])
+
+        assert f"! {skill}" in stream.getvalue()
+        assert "not in deploy payload" in stream.getvalue()
+
     def test_rich_markup_in_a_path_is_printed_literally(self, tree):
         from connectonion.cli.commands.deploy_commands import _print_deploy_skill_problems
 

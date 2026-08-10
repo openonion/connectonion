@@ -184,14 +184,36 @@ def _add_directory_to_tarball(
     arc_prefix: Path,
     ignore_patterns: list[str],
 ) -> None:
-    for path in sorted(source.rglob("*")):
-        if not path.is_file():
-            continue
+    for path in _deployable_directory_files(source, ignore_patterns):
         source_rel = path.relative_to(source)
-        if _is_ignored_for_deploy(source_rel, ignore_patterns):
-            continue
         rel = arc_prefix / source_rel
         tar.add(path, arcname=str(rel), recursive=False)
+
+
+def _deployable_directory_files(
+    source: Path, ignore_patterns: list[str]
+) -> list[Path]:
+    """Files the directory packer will really add, in stable order."""
+    return [
+        path
+        for path in sorted(source.rglob("*"))
+        if path.is_file()
+        and not _is_ignored_for_deploy(path.relative_to(source), ignore_patterns)
+    ]
+
+
+def _project_files_for_deploy(
+    project_dir: Path, ignore_patterns: list[str]
+) -> list[Path]:
+    """Project source files under the exact git/non-git packaging rules."""
+    if _is_git_repo(project_dir):
+        return [
+            project_dir / rel
+            for rel in sorted(_iter_git_tracked_files(project_dir))
+            if (project_dir / rel).is_file()
+            and not _is_ignored_for_deploy(rel, ignore_patterns)
+        ]
+    return _deployable_directory_files(project_dir, ignore_patterns)
 
 
 def _add_deployer_as_admin(tar: tarfile.TarFile, project_dir: Path) -> None:
@@ -279,22 +301,21 @@ def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) 
         )
         console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
 
-    if _is_git_repo(project_dir):
-        ignored = _load_deploy_ignore_patterns(project_dir)
-        payload_entries = {
-            (project_dir / rel).absolute()
-            for rel in _iter_git_tracked_files(project_dir)
-            if not _is_ignored_for_deploy(rel, ignored)
-        }
-        project_roots = ()
-    else:
-        payload_entries = set()
-        project_roots = (project_dir.absolute(),)
+    ignored = _load_deploy_ignore_patterns(project_dir)
+    payload_entries = {
+        path.absolute() for path in _project_files_for_deploy(project_dir, ignored)
+    }
+    for path in skills_paths:
+        payload_entries.update(
+            source.absolute()
+            for source in _deployable_directory_files(
+                path, _load_skill_ignore_patterns(path)
+            )
+        )
     _print_deploy_skill_problems(
         project_dir,
         console,
         payload_entries=payload_entries,
-        payload_roots=project_roots + tuple(path.absolute() for path in skills_paths),
     )
 
 
@@ -361,21 +382,8 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     ])
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
-        if _is_git_repo(project_dir):
-            for rel in sorted(_iter_git_tracked_files(project_dir)):
-                if _is_ignored_for_deploy(rel, ignore_patterns):
-                    continue
-                path = project_dir / rel
-                if path.is_file():
-                    tar.add(path, arcname=str(rel), recursive=False)
-        else:
-            for path in sorted(project_dir.rglob("*")):
-                if not path.is_file():
-                    continue
-                rel = path.relative_to(project_dir)
-                if _is_ignored_for_deploy(rel, ignore_patterns):
-                    continue
-                tar.add(path, arcname=str(rel), recursive=False)
+        for path in _project_files_for_deploy(project_dir, ignore_patterns):
+            tar.add(path, arcname=str(path.relative_to(project_dir)), recursive=False)
         for skills_path in skills_paths:
             # A path is either one skill (has SKILL.md) or a directory of skills.
             arc_prefix = Path(".co") / "skills"
