@@ -17,6 +17,7 @@ Trust evaluation (via TrustAgent.should_allow()):
 
 import hashlib
 import json
+import math
 import time
 import uuid
 from typing import Dict
@@ -348,7 +349,7 @@ def request_from_headers(headers: dict, method: str, path: str) -> dict:
 # commands include type, recipient and a random nonce in their signed payload;
 # v1 remains accepted so an upgraded host does not strand an older client.
 
-_seen_signatures: Dict[str, float] = {}
+_seen_signatures: Dict[bytes, float] = {}
 
 
 def signature_already_used(data: dict) -> bool:
@@ -364,13 +365,19 @@ def signature_already_used(data: dict) -> bool:
     signature = signature_digest(signature)
 
     now = time.time()
-    for old in [sig for sig, seen in _seen_signatures.items()
-                if now - seen > SIGNATURE_EXPIRY_SECONDS]:
+    timestamp = (data.get("payload") or {}).get("timestamp")
+    if (isinstance(timestamp, (int, float)) and not isinstance(timestamp, bool)
+            and math.isfinite(timestamp)):
+        expires_at = timestamp + SIGNATURE_EXPIRY_SECONDS
+    else:
+        expires_at = now + (2 * SIGNATURE_EXPIRY_SECONDS)
+    for old in [sig for sig, expiry in _seen_signatures.items()
+                if expiry < now]:
         del _seen_signatures[old]
 
     if signature in _seen_signatures:
         return True
-    _seen_signatures[signature] = now
+    _seen_signatures[signature] = expires_at
     return False
 
 
@@ -441,6 +448,8 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
         return None, agent_address, "unauthorized: timestamp required in payload"
     if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
         return None, agent_address, "unauthorized: timestamp must be numeric"
+    if not math.isfinite(timestamp):
+        return None, agent_address, "unauthorized: timestamp must be finite"
 
     # Check timestamp expiry (5 minute window)
     now = time.time()

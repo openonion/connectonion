@@ -22,20 +22,6 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
     from ..auth import signature_already_used
     from ..replay import ReplayProtectionError
 
-    # One signature opens one connection (#649). Checked before the trust gate
-    # so a replay is refused whatever level the original caller had.
-    replay_check = route_handlers.get("replay", signature_already_used)
-    try:
-        already_used = replay_check(data)
-    except ReplayProtectionError:
-        await send_msg({"type": "ERROR",
-                        "message": "misconfigured: replay protection unavailable"})
-        return
-    if already_used:
-        await send_msg({"type": "ERROR",
-                        "message": "unauthorized: this CONNECT was already used"})
-        return
-
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist, "whitelist": whitelist}
     if metadata.get("address"):
@@ -43,6 +29,22 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
     _, agent_address, sig_valid, err = route_handlers["auth"](
         data, trust, **auth_kwargs
     )
+
+    # Invalid frames must not be able to fill or lock the shared ledger. A
+    # cryptographically valid signature is claimed before the trust result is
+    # applied, so forbidden/onboarding attempts remain one-use too (#649).
+    if sig_valid:
+        replay_check = route_handlers.get("replay", signature_already_used)
+        try:
+            already_used = replay_check(data)
+        except ReplayProtectionError:
+            await send_msg({"type": "ERROR",
+                            "message": "misconfigured: replay protection unavailable"})
+            return
+        if already_used:
+            await send_msg({"type": "ERROR",
+                            "message": "unauthorized: this CONNECT was already used"})
+            return
 
     if err and "forbidden" in err.lower():
         trust_agent = route_handlers["trust_agent"]

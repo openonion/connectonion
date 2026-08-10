@@ -241,6 +241,12 @@ def test_admin_route_checks_admin_and_binds_query_and_body(tmp_path, monkeypatch
         "force": True,
     }
 
+    replay = request(
+        app, "POST", "/admin/refresh?scope=all", body=body, headers=headers,
+    )
+    assert replay.status_code == 401
+    assert "already used" in replay.json()["error"]
+
     reordered_headers = sign_http_request(
         caller, "POST", "/admin/refresh", query="scope=all&b=2&a=1", body=body,
         recipient_address=recipient,

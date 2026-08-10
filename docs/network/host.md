@@ -1250,6 +1250,8 @@ gunicorn myagent:app -w 4 -k uvicorn.workers.UvicornWorker
 All workers for one project share `.co/replay.sqlite3`, so a captured CONNECT,
 v2 command, admin request, or protected HTTP request cannot be accepted once by
 each process. The ledger contains only short-lived signature digests.
+Digests are retained until the signed timestamp leaves the freshness window;
+an unavailable or locked ledger fails closed rather than accepting a replay.
 
 ### Docker
 
