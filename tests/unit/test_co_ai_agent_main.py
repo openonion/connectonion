@@ -35,6 +35,16 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # FileTools is registered as a tool class
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
     assert "ask_user" in agent.tools._tools
+    assert "codex" in agent.tools._tools
+    codex_schema = agent.tools.get("codex").to_function_schema()["parameters"]
+    assert set(codex_schema["properties"]) == {
+        "prompt",
+        "session_id",
+        "cwd",
+        "model",
+        "timeout",
+    }
+    assert codex_schema["required"] == ["prompt", "cwd"]
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
     # The browser is driven through the `co browser` CLI, so no in-process
@@ -114,6 +124,7 @@ def test_the_real_prompt_differs_with_and_without_a_role(tmp_path, monkeypatch):
     plain = agent_mod.create_agent(model="fake", max_iterations=1, role=None).system_prompt
 
     assert len(coding) > len(plain)
+    assert "# Tool: Codex delegation" in coding
     assert "you are a coding agent" not in plain.lower()
     # Behaviour that every agent needs survives dropping the role.
     for prompt in (coding, plain):

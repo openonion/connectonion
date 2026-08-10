@@ -6,6 +6,7 @@ This package provides a comprehensive toolkit for AI agents to interact with cod
 - Search capabilities (glob, grep)
 - Task spawning and background process management
 - User interaction and documentation loading
+- Codex delegation with mode-owned permissions
 
 Key exports:
 - File tools: FileTools (read_file, edit, multi_edit, write, glob, grep)
@@ -58,6 +59,7 @@ from connectonion.useful_tools import ask_user
 
 # Interaction tools (CLI-specific)
 from connectonion.cli.co_ai.tools.load_guide import load_guide
+from connectonion.cli.co_ai.tools.codex import codex
 
 __all__ = [
     # File tools (Claude Code-style)
@@ -70,6 +72,7 @@ __all__ = [
     # Interaction tools
     "ask_user",
     "load_guide",
+    "codex",
     # Utility classes
     "TodoList",
 ]

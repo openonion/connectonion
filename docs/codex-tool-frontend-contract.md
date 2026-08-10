@@ -18,13 +18,13 @@ Why app-server:
 | dependency | `codex` CLI | `codex` **+ codex-acp Node binary** | `codex` CLI only |
 | whose code is the adapter | — | Zed Industries (Rust/Node) | **ours (Python)** |
 | session + resume | parse JSONL / `resume` | `session/load` | `thread/start` + `thread/resume` |
-| per-action approval | ❌ none (sandbox only) | ✅ | ✅ `item/*/requestApproval` |
+| interactive approval callbacks | ❌ none (sandbox only) | ✅ | ✅ `item/*/requestApproval` |
 | official / stable | yes | third-party wrapper | **yes (OpenAI, powers every surface)** |
 | create session w/o auth | n/a | ❌ needs auth | ✅ (auth only for the model turn) |
 
 app-server wins on every axis for a Python framework: one dependency, official
 protocol, our own client, and it still gives session/resume, live streaming, and
-per-action approval.
+interactive approval requests when the selected Codex policy requires them.
 
 ## The frontend contract (why no frontend change is needed)
 
@@ -47,10 +47,13 @@ Key points:
 - **No custom event type.** An earlier draft emitted `io.log("codex_event", …)`,
   which matched nothing in the mapper and would not render — that was the bug to
   fix. The fix is emitting the native `tool_call` / `tool_result` vocabulary.
-- **Approval is already wired.** `agent.io.request_approval` sends `approval_needed`
+- **Approval is already wired.** When Codex requests permission,
+  `agent.io.request_approval` sends `approval_needed`
   and blocks for the user's answer over the same channel oo-chat already uses for
-  every other tool's approval, so Codex's per-action prompts render as normal
-  approval cards with zero new code.
+  every other tool's approval, so Codex's permission prompts render as normal
+  approval cards with zero new code. The response is encoded per method: current
+  command/file requests use `accept`/`decline`, permissions requests grant only
+  the requested profile, and legacy methods retain their legacy decision shape.
 
 ## What the frontend team should know
 
