@@ -401,18 +401,33 @@ class Synology:
             # Always explicit: DSM returns error 1805 rather than a default when
             # the destination exists and this is missing.
             "overwrite": "true" if overwrite else "false",
-            "_sid": self.sid,
         }
 
-        with self._client() as client:
-            with open(local, "rb") as handle:
-                reply = client.post(
-                    f"/webapi/{self._path_for('SYNO.FileStation.Upload')}",
-                    data=fields,
-                    files={"file": (local.name, handle, "application/octet-stream")},
-                )
+        def attempt() -> dict:
+            """One upload, reopening the file because the last one consumed it."""
+            with self._client() as client:
+                with open(local, "rb") as handle:
+                    reply = client.post(
+                        f"/webapi/{self._path_for('SYNO.FileStation.Upload')}",
+                        # The sid goes in the query, like _call() and download()
+                        # already do. SYNO.FileStation.Upload does not read it
+                        # from the multipart body, which is why every upload
+                        # failed with "SID not found" while ls and get worked.
+                        params={"_sid": self.sid},
+                        data=fields,
+                        files={"file": (local.name, handle, "application/octet-stream")},
+                    )
+            return reply.json()
 
-        body = reply.json()
+        body = attempt()
+
+        if not body.get("success") and body.get("error", {}).get("code") in STALE_SESSION:
+            # The same recovery _request() gives every other call. Upload posts
+            # multipart and cannot go through _request(), so it went without —
+            # leaving the one command that could not survive a dead session.
+            self._login()
+            body = attempt()
+
         if not body.get("success"):
             code = body.get("error", {}).get("code", 0)
             raise ValueError(f"Synology upload failed: {ERRORS.get(code, f'error {code}')}")
