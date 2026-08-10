@@ -83,6 +83,7 @@ class TestHandleWebSocketOnboardRequired:
         )
         handlers = {
             "auth": lambda data, trust, **kw: (None, "0xuser", True, "forbidden: strangers"),
+            "connect_auth": lambda data, trust, **kw: (None, "0xuser", True, "forbidden: strangers"),
             "ws_input": Mock(),
             "trust_agent": trust_agent,
         }
@@ -127,6 +128,7 @@ class TestHandleWebSocketOnboardRequired:
         trust_agent = SimpleNamespace(config={})
         handlers = {
             "auth": lambda data, trust, **kw: (None, "0xuser", True, "forbidden: strangers"),
+            "connect_auth": lambda data, trust, **kw: (None, "0xuser", True, "forbidden: strangers"),
             "ws_input": Mock(),
             "trust_agent": trust_agent,
         }
@@ -510,7 +512,10 @@ class TestOnboardCompletesConnect:
 
         await handle_websocket(
             scope, receive, send,
-            route_handlers={"auth": auth, "ws_input": ws_input, "trust_agent": trust_agent},
+            route_handlers={
+                "auth": auth, "connect_auth": auth,
+                "ws_input": ws_input, "trust_agent": trust_agent,
+            },
             storage=storage,
             registry=ActiveSessionRegistry(),
             trust="careful",
@@ -571,7 +576,10 @@ class TestOnboardCompletesConnect:
 
         await handle_websocket(
             scope, receive, send,
-            route_handlers={"auth": auth, "ws_input": ws_input, "trust_agent": trust_agent},
+            route_handlers={
+                "auth": auth, "connect_auth": auth,
+                "ws_input": ws_input, "trust_agent": trust_agent,
+            },
             storage=storage,
             registry=ActiveSessionRegistry(),
             trust="careful",
@@ -629,7 +637,10 @@ class TestOnboardCompletesConnect:
 
         await handle_websocket(
             scope, receive, send,
-            route_handlers={"auth": auth, "ws_input": ws_input, "trust_agent": trust_agent},
+            route_handlers={
+                "auth": auth, "connect_auth": auth,
+                "ws_input": ws_input, "trust_agent": trust_agent,
+            },
             storage=storage,
             registry=ActiveSessionRegistry(),
             trust="careful",

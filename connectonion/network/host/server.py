@@ -45,7 +45,8 @@ from .ws_router import run_ws_session
 from .schedule import create_schedule_lifespan
 from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
-from .auth import extract_and_authenticate
+from .auth import authenticate_connect, extract_and_authenticate
+from .replay import SignatureReplayStore
 from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
 from .http_router import (
@@ -213,7 +214,15 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     return profile
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict, exec_permissions: dict | None = None):
+def _create_route_handlers(
+    create_agent: Callable,
+    agent_metadata: dict,
+    result_ttl: int,
+    trust_agent,
+    config: dict,
+    exec_permissions: dict | None = None,
+    replay_check=None,
+):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -227,9 +236,13 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         exec_permissions: The .co/host.yaml permission whitelist that gates WS
                           EXEC (direct tool execution). Same list the LLM
                           approval flow uses; empty dict → nothing runs directly.
+        replay_check: Atomic one-use signature guard for this hosted project.
     """
     agent_name = agent_metadata["name"]
     exec_permissions = exec_permissions or {}
+    if replay_check is None:
+        from .auth import signature_already_used
+        replay_check = signature_already_used
 
     def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
         validate_files(files, config)
@@ -275,6 +288,8 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         "health": handle_health,
         "info": handle_info,
         "auth": extract_and_authenticate,
+        "connect_auth": partial(authenticate_connect, replay_check=replay_check),
+        "replay": replay_check,
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,
         "admin_logs": handle_admin_logs,
@@ -965,7 +980,11 @@ def host(
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
     exec_permissions = load_permission_patterns(co_dir)
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config, exec_permissions)
+    replay_store = SignatureReplayStore(co_dir / "replay.sqlite3")
+    route_handlers = _create_route_handlers(
+        create_agent, agent_metadata, result_ttl, trust_agent, config,
+        exec_permissions, replay_store.already_used,
+    )
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -1087,7 +1106,14 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS, load_permission_patterns())
+    storage_path = getattr(storage, "path", None)
+    replay_dir = Path(storage_path).parent if storage_path else project_co_dir()
+    replay_store = SignatureReplayStore(replay_dir / "replay.sqlite3")
+    route_handlers = _create_route_handlers(
+        create_agent, agent_metadata, result_ttl, trust_agent,
+        DEFAULT_FILE_LIMITS, load_permission_patterns(),
+        replay_store.already_used,
+    )
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
     )

@@ -19,22 +19,23 @@ console = Console()
 
 async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
     """Handle CONNECT message: auth, session merge, send CONNECTED. Returns (io, task) for reattach or None."""
-    from ..auth import signature_already_used
-
-    # One signature opens one connection (#649). Checked before the trust gate
-    # so a replay is refused whatever level the original caller had.
-    if signature_already_used(data):
-        await send_msg({"type": "ERROR",
-                        "message": "unauthorized: this CONNECT was already used"})
-        return
+    from ..auth import authenticate_connect, signature_already_used
 
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist, "whitelist": whitelist}
     if metadata.get("address"):
         auth_kwargs["recipient_address"] = metadata["address"]
-    _, agent_address, sig_valid, err = route_handlers["auth"](
-        data, trust, **auth_kwargs
-    )
+    connect_auth = route_handlers.get("connect_auth")
+    if connect_auth is None:
+        _, agent_address, sig_valid, err = authenticate_connect(
+            data, trust,
+            replay_check=route_handlers.get("replay", signature_already_used),
+            **auth_kwargs,
+        )
+    else:
+        _, agent_address, sig_valid, err = connect_auth(
+            data, trust, **auth_kwargs
+        )
 
     if err and "forbidden" in err.lower():
         trust_agent = route_handlers["trust_agent"]

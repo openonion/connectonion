@@ -106,8 +106,14 @@ async def _admin_signature(method, path, scope, receive, route_handlers, *, read
     # the replay in #649, called here rather than reimplemented.
     #
     from ..host.auth import signature_already_used
+    from ..host.replay import ReplayProtectionError
 
-    if signature_already_used(data):
+    replay_check = route_handlers.get("replay", signature_already_used)
+    try:
+        already_used = replay_check(data)
+    except ReplayProtectionError:
+        return False, 503, "misconfigured: replay protection unavailable", data
+    if already_used:
         return False, 401, "unauthorized: signature already used", data
 
     trust_agent = route_handlers.get("trust_agent")
