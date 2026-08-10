@@ -1,0 +1,50 @@
+name: ConnectOnion PR review
+description: Review a pull request from trusted action code and update one PR comment
+
+inputs:
+  pr-number:
+    description: Pull request number; defaults to the pull_request event
+    required: false
+  model:
+    description: Model passed to co ai
+    required: false
+    default: co/gemini-3.6-flash
+  python-version:
+    description: Python version used to run ConnectOnion
+    required: false
+    default: "3.12"
+  openonion-api-key:
+    description: Model credential used only by the review subprocess
+    required: true
+
+outputs:
+  comment-url:
+    description: URL of the created or updated review comment
+    value: ${{ steps.review.outputs.comment-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        version: "0.12.3"
+
+    - name: Sync the frozen action environment
+      shell: bash
+      run: uv sync --project "$GITHUB_ACTION_PATH" --frozen --no-dev
+
+    - name: Review pull request
+      id: review
+      shell: bash
+      env:
+        CO_ACTION_PR_NUMBER: ${{ inputs.pr-number }}
+        CO_ACTION_MODEL: ${{ inputs.model }}
+        GH_TOKEN: ${{ github.token }}
+        OPENONION_API_KEY: ${{ inputs.openonion-api-key }}
+      run: uv run --project "$GITHUB_ACTION_PATH" --frozen --no-dev --no-sync python -m connectonion.cli.github_action
