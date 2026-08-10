@@ -131,6 +131,12 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
     if error:
         return prompt, agent_address, False, error
 
+    return _authorize_authenticated(data, prompt, agent_address, trust, whitelist)
+
+
+def _authorize_authenticated(data, prompt, agent_address, trust, whitelist=None):
+    """Apply trust policy after cryptographic authentication has succeeded."""
+
     # Parameter whitelist bypasses trust POLICY (not signature verification)
     if whitelist and agent_address in whitelist:
         return prompt, agent_address, True, None
@@ -379,6 +385,45 @@ def signature_already_used(data: dict) -> bool:
         return True
     _seen_signatures[signature] = expires_at
     return False
+
+
+def authenticate_connect(
+    data: dict,
+    trust,
+    *,
+    blacklist=None,
+    whitelist=None,
+    recipient_address=None,
+    replay_check=signature_already_used,
+):
+    """Authenticate CONNECT in security order: signature, claim, then policy."""
+    if "payload" not in data or "signature" not in data:
+        return None, None, False, "unauthorized: signed request required"
+
+    prompt, agent_address, error = _authenticate_signed(
+        data, blacklist=blacklist, recipient_address=recipient_address
+    )
+    if error:
+        return prompt, agent_address, False, error
+
+    try:
+        already_used = replay_check(data)
+    except ReplayProtectionError:
+        return (
+            None,
+            agent_address,
+            True,
+            "misconfigured: replay protection unavailable",
+        )
+    if already_used:
+        return (
+            None,
+            agent_address,
+            True,
+            "unauthorized: this CONNECT was already used",
+        )
+
+    return _authorize_authenticated(data, prompt, agent_address, trust, whitelist)
 
 
 def authenticated_command_payload(

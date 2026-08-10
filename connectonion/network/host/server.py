@@ -45,7 +45,7 @@ from .ws_router import run_ws_session
 from .schedule import create_schedule_lifespan
 from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
-from .auth import extract_and_authenticate
+from .auth import authenticate_connect, extract_and_authenticate
 from .replay import SignatureReplayStore
 from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
@@ -288,6 +288,7 @@ def _create_route_handlers(
         "health": handle_health,
         "info": handle_info,
         "auth": extract_and_authenticate,
+        "connect_auth": partial(authenticate_connect, replay_check=replay_check),
         "replay": replay_check,
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,

@@ -3,6 +3,8 @@
 import multiprocessing
 import os
 import sqlite3
+import time
+from functools import partial
 from queue import Empty
 from unittest.mock import MagicMock
 
@@ -19,7 +21,12 @@ from connectonion.network.host.replay import (
 async def test_connect_claims_only_after_signature_verification():
     from connectonion.network.host.ws_router.connect import handle_connect
 
-    frame = {"type": "CONNECT", "signature": "invalid", "payload": {}}
+    frame = {
+        "type": "CONNECT",
+        "from": "caller",
+        "signature": "invalid",
+        "payload": {"to": "host", "timestamp": time.time()},
+    }
     claimed = []
     sent = []
 
@@ -29,9 +36,6 @@ async def test_connect_claims_only_after_signature_verification():
     await handle_connect(
         frame, send, {"authenticated": False},
         {
-            "auth": lambda *_args, **_kwargs: (
-                None, "caller", False, "unauthorized: invalid signature"
-            ),
             "agent_metadata": {"address": "host"},
             "replay": lambda value: claimed.append(value) or False,
         },
@@ -43,10 +47,16 @@ async def test_connect_claims_only_after_signature_verification():
 
 
 @pytest.mark.asyncio
-async def test_connect_uses_injected_guard_after_valid_signature():
+async def test_connect_uses_injected_guard_after_valid_signature(monkeypatch):
     from connectonion.network.host.ws_router.connect import handle_connect
 
-    frame = {"type": "CONNECT", "signature": "valid", "payload": {}}
+    monkeypatch.setattr(auth, "verify_signature", lambda *_: True)
+    frame = {
+        "type": "CONNECT",
+        "from": "caller",
+        "signature": "valid",
+        "payload": {"to": "host", "timestamp": time.time()},
+    }
     claimed = []
     sent = []
 
@@ -56,9 +66,11 @@ async def test_connect_uses_injected_guard_after_valid_signature():
     await handle_connect(
         frame, send, {"authenticated": False},
         {
-            "auth": lambda *_args, **_kwargs: (None, "caller", True, None),
+            "connect_auth": partial(
+                auth.authenticate_connect,
+                replay_check=lambda value: claimed.append(value) or True,
+            ),
             "agent_metadata": {"address": "host"},
-            "replay": lambda value: claimed.append(value) or True,
         },
         MagicMock(), MagicMock(), "open", None, None,
     )
@@ -67,11 +79,69 @@ async def test_connect_uses_injected_guard_after_valid_signature():
     assert "already used" in sent[-1]["message"]
 
 
+def test_connect_replay_is_rejected_before_trust_policy(monkeypatch):
+    monkeypatch.setattr(auth, "verify_signature", lambda *_: True)
+    trust = MagicMock(spec=auth.TrustAgent)
+    frame = {
+        "from": "caller",
+        "signature": "captured",
+        "payload": {"timestamp": time.time()},
+    }
+
+    _, _, valid, error = auth.authenticate_connect(
+        frame, trust, replay_check=lambda _data: True
+    )
+
+    assert valid is True
+    assert error == "unauthorized: this CONNECT was already used"
+    trust.should_allow.assert_not_called()
+
+
+def test_connect_orders_signature_then_claim_then_trust(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        auth, "verify_signature", lambda *_: events.append("signature") or True
+    )
+    trust = auth.TrustAgent("open")
+    original_should_allow = trust.should_allow
+
+    def should_allow(*args, **kwargs):
+        events.append("trust")
+        return original_should_allow(*args, **kwargs)
+
+    monkeypatch.setattr(trust, "should_allow", should_allow)
+    frame = {
+        "from": "caller",
+        "signature": "fresh",
+        "payload": {"timestamp": time.time()},
+    }
+
+    _, _, valid, error = auth.authenticate_connect(
+        frame,
+        trust,
+        replay_check=lambda _data: events.append("claim") or False,
+    )
+
+    assert valid is True
+    assert error is None
+    assert events == ["signature", "claim", "trust"]
+
+
 def _claim_signature(path, ready, start, results):
     store = SignatureReplayStore(path)
     ready.put(True)
     start.wait(10)
     results.put(store.already_used({"signature": "same-captured-signature"}))
+
+
+def _migrate_store(path, ready, start, results):
+    ready.put(True)
+    start.wait(10)
+    try:
+        SignatureReplayStore(path)
+        results.put(None)
+    except Exception as exc:
+        results.put(f"{type(exc).__name__}: {exc}")
 
 
 def test_two_os_workers_cannot_claim_the_same_signature(tmp_path):
@@ -95,6 +165,42 @@ def test_two_os_workers_cannot_claim_the_same_signature(tmp_path):
         assert outcomes == [False, True]
     except Empty:
         pytest.fail("replay workers did not finish")
+    finally:
+        start.set()
+        for worker in workers:
+            worker.join(timeout=10)
+            if worker.is_alive():
+                worker.terminate()
+
+    assert all(worker.exitcode == 0 for worker in workers)
+
+
+def test_workers_serialize_old_schema_migration(tmp_path):
+    path = tmp_path / "replay.sqlite3"
+    with sqlite3.connect(path) as database:
+        database.execute(
+            "CREATE TABLE used_signatures ("
+            "digest BLOB PRIMARY KEY, seen_at REAL NOT NULL"
+            ") WITHOUT ROWID"
+        )
+
+    context = multiprocessing.get_context("spawn")
+    ready = context.Queue()
+    results = context.Queue()
+    start = context.Event()
+    workers = [
+        context.Process(target=_migrate_store, args=(path, ready, start, results))
+        for _ in range(8)
+    ]
+    for worker in workers:
+        worker.start()
+    try:
+        for _ in workers:
+            assert ready.get(timeout=15) is True
+        start.set()
+        assert [results.get(timeout=15) for _ in workers] == [None] * len(workers)
+    except Empty:
+        pytest.fail("schema migration workers did not finish")
     finally:
         start.set()
         for worker in workers:

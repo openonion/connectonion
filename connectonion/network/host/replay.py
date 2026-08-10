@@ -47,6 +47,8 @@ class SignatureReplayStore:
                 os.chmod(self.path, 0o600)
             with closing(self._connect()) as database:
                 with database:
+                    # Serialize schema inspection and migration across workers.
+                    database.execute("BEGIN IMMEDIATE")
                     database.execute(
                         "CREATE TABLE IF NOT EXISTS used_signatures ("
                         "digest BLOB PRIMARY KEY, seen_at REAL NOT NULL"

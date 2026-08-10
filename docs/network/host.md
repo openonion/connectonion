@@ -1252,6 +1252,8 @@ v2 command, admin request, or protected HTTP request cannot be accepted once by
 each process. The ledger contains only short-lived signature digests.
 Digests are retained until the signed timestamp leaves the freshness window;
 an unavailable or locked ledger fails closed rather than accepting a replay.
+For CONNECT, the claim happens after Ed25519 verification but before trust
+policy evaluation, so replay rejection cannot repeat policy work or mutations.
 
 ### Docker
 
