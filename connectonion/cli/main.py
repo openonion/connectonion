@@ -361,6 +361,9 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
+    acp: bool = typer.Option(
+        False, "--acp", help="Serve co ai as an ACP v1 agent over stdio"
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -373,6 +376,7 @@ def ai(
         yolo_turns=yolo_turns,
         json_output=json_output,
         resume=resume,
+        acp=acp,
     )
 
 
