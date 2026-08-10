@@ -18,7 +18,9 @@ def clean_replay_cache():
     auth._seen_signatures.clear()
 
 
-async def _run(messages, *, owner, monkeypatch=None, connect_as=None):
+async def _run(
+    messages, *, owner, monkeypatch=None, connect_as=None, replay_check=None
+):
     from connectonion.network.host.ws_router import session
 
     if connect_as is not None:
@@ -42,10 +44,13 @@ async def _run(messages, *, owner, monkeypatch=None, connect_as=None):
     registry.get.side_effect = lambda sid: (
         SimpleNamespace(status="running", owner=owner) if sid == "s1" else None
     )
+    route_handlers = {"agent_metadata": {"address": "0x" + "12" * 20}}
+    if replay_check is not None:
+        route_handlers["replay"] = replay_check
     await session.run_ws_session(
         send,
         recv,
-        route_handlers={"agent_metadata": {"address": "0x" + "12" * 20}},
+        route_handlers=route_handlers,
         storage=MagicMock(),
         registry=registry,
         trust="open",
@@ -125,6 +130,21 @@ async def test_temporary_probe_replay_fails_closed():
     )
 
     assert [reply["status"] for reply in replies] == ["running", "not_found"]
+
+
+@pytest.mark.asyncio
+async def test_temporary_probe_uses_the_injected_replay_guard():
+    keys = address.generate()
+    frame = _signed_status(keys, "0x" + "12" * 20)
+    claimed = []
+
+    replies = await _run(
+        [frame], owner=keys["address"],
+        replay_check=lambda value: claimed.append(value) or True,
+    )
+
+    assert claimed == [frame]
+    assert replies[-1]["status"] == "not_found"
 
 
 @pytest.mark.asyncio

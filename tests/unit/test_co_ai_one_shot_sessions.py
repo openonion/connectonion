@@ -354,6 +354,26 @@ def test_json_failure_is_structured_and_nonzero(tmp_path, monkeypatch, capsys):
     assert "before failure" in captured.err
 
 
+def test_transient_one_shot_rejects_resume_without_echoing_the_session_id(capsys):
+    with pytest.raises(typer.Exit) as caught:
+        ai_commands._handle_json_one_shot(
+            "task",
+            "co/test",
+            4,
+            True,
+            1,
+            new_session_id(),
+            persist_session=False,
+        )
+
+    assert caught.value.exit_code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "session_id": None,
+        "result": None,
+        "error": "A transient one-shot run cannot resume a session.",
+    }
+
+
 def test_missing_resume_is_an_error_not_a_new_conversation(tmp_path, monkeypatch, capsys):
     missing = new_session_id()
     monkeypatch.setattr("connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", tmp_path)

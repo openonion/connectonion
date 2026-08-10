@@ -62,11 +62,12 @@ def test_json_review_uses_the_333_agent_factory_seam(tmp_path, monkeypatch):
 
     assert exit_code == 0
     assert json.loads(stdout) == {
-        "session_id": json.loads(stdout)["session_id"],
+        "session_id": None,
         "result": "review result",
         "error": None,
     }
     assert calls == [(("co/test", 4, True, 1), {"resumable": True})]
+    assert not (tmp_path / "ai" / "sessions").exists()
 
 
 def test_pr_number_prefers_input_and_falls_back_to_event(tmp_path):
@@ -181,6 +182,13 @@ def test_comment_is_bounded_without_splitting_utf8():
     assert body.startswith(COMMENT_MARKER)
     assert len(body.encode("utf-8")) <= 60_000
     assert "Review truncated" in body
+
+
+def test_transient_review_comment_does_not_advertise_a_session():
+    body = render_comment("Looks good", None)
+
+    assert "Looks good" in body
+    assert "ConnectOnion session" not in body
 
 
 def test_model_reader_uses_only_fixed_get_requests_for_one_pr():

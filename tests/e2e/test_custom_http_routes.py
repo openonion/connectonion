@@ -180,6 +180,33 @@ def test_contacts_route_requires_a_signed_contact_and_rejects_replay(tmp_path, m
     assert "already used" in replay.json()["error"]
 
 
+def test_separate_app_instances_share_the_project_replay_ledger(
+    tmp_path, monkeypatch
+):
+    from connectonion import HTTPRouter
+    from connectonion.network.host.auth import get_agent_address, sign_http_request
+
+    caller = address.generate()
+    recipient = get_agent_address(agent_factory())
+    trust = FixedTrust(levels={caller["address"]: "contact"})
+    http = HTTPRouter()
+    http.contacts.get("/profile")(lambda: {"ok": True})
+    first_worker = make_app(tmp_path, monkeypatch, http, trust=trust)
+    second_worker = make_app(tmp_path, monkeypatch, http, trust=trust)
+    headers = sign_http_request(
+        caller, "GET", "/contacts/profile", recipient_address=recipient,
+    )
+
+    assert request(
+        first_worker, "GET", "/contacts/profile", headers=headers
+    ).status_code == 200
+    replay = request(
+        second_worker, "GET", "/contacts/profile", headers=headers
+    )
+    assert replay.status_code == 401
+    assert "already used" in replay.json()["error"]
+
+
 def test_admin_route_checks_admin_and_binds_query_and_body(tmp_path, monkeypatch):
     from connectonion import HTTPRouter
     from connectonion.network.host.auth import get_agent_address, sign_http_request
@@ -213,6 +240,12 @@ def test_admin_route_checks_admin_and_binds_query_and_body(tmp_path, monkeypatch
         "scope": "all",
         "force": True,
     }
+
+    replay = request(
+        app, "POST", "/admin/refresh?scope=all", body=body, headers=headers,
+    )
+    assert replay.status_code == 401
+    assert "already used" in replay.json()["error"]
 
     reordered_headers = sign_http_request(
         caller, "POST", "/admin/refresh", query="scope=all&b=2&a=1", body=body,
