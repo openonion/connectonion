@@ -59,6 +59,26 @@ def test_framework_routes_cannot_be_shadowed():
         http.admin.get("/logs")(lambda: None)
 
 
+@pytest.mark.parametrize("path", ["/{resource}", "/{resource}/{item}"])
+def test_parameter_routes_cannot_shadow_reserved_admin_paths(path):
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+    with pytest.raises(ValueError, match="reserved by Connectonion"):
+        http.admin.get(path)(lambda **kwargs: kwargs)
+
+
+def test_parameter_routes_remain_available_outside_reserved_namespaces():
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+    http.admin.get("/reports/{item}")(lambda item: item)
+
+    route, params = http.match("GET", "/admin/reports/q3")
+    assert route.relative_path == "/reports/{item}"
+    assert params == {"item": "q3"}
+
+
 def test_static_route_wins_over_a_parameter_route():
     from connectonion import HTTPRouter
 
@@ -70,6 +90,44 @@ def test_static_route_wins_over_a_parameter_route():
 
     assert route.relative_path == "/people/me"
     assert params == {}
+
+
+@pytest.mark.parametrize("generic_first", [True, False])
+def test_route_specificity_is_left_to_right_not_registration_order(generic_first):
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+
+    def generic(kind):
+        return kind
+
+    def users(item):
+        return item
+
+    routes = [
+        ("/{kind}/new", generic),
+        ("/users/{item}", users),
+    ]
+    if not generic_first:
+        routes.reverse()
+    for path, handler in routes:
+        http.public.get(path)(handler)
+
+    route, params = http.match("GET", "/public/users/new")
+
+    assert route.handler is users
+    assert params == {"item": "new"}
+
+
+def test_equally_specific_overlapping_routes_fail_before_invocation():
+    from connectonion import HTTPRouter
+
+    http = HTTPRouter()
+    http.public.post("/files/a{tail}")(lambda tail: tail)
+    http.public.post("/files/{head}z")(lambda head: head)
+
+    with pytest.raises(ValueError, match="ambiguous HTTP routes"):
+        http.match("POST", "/public/files/az")
 
 
 def test_method_mismatch_is_not_a_route_match():

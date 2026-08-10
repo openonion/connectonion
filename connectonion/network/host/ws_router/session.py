@@ -67,7 +67,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
 
                 signed_frame = data
                 verified, command_error = authenticated_command_payload(
-                    data, conn["agent_address"], conn.get("recipient_address")
+                    data, conn["agent_address"], conn.get("recipient_address"),
+                    route_handlers.get("replay"),
                 )
                 if command_error:
                     await send_msg({"type": "ERROR", "message": command_error})
@@ -106,8 +107,12 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
 
                     metadata = route_handlers.get("agent_metadata") or {}
                     verified, status_error = authenticated_command_payload(
-                        data, data.get("from"), metadata.get("address")
+                        data, data.get("from"), metadata.get("address"),
+                        route_handlers.get("replay"),
                     )
+                    if (status_error or "").startswith("misconfigured:"):
+                        await send_msg({"type": "ERROR", "message": status_error})
+                        continue
                     if status_error is None:
                         requester = data.get("from")
                         sid = verified.get("session_id")

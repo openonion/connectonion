@@ -680,8 +680,8 @@ class TestAdminEndpoints:
 
         assert sent[0]["status"] == 401
 
-    async def test_admin_logs_with_valid_key(self):
-        """Admin logs endpoint with valid key succeeds."""
+    async def test_admin_logs_with_valid_admin_token(self):
+        """Admin logs endpoint with a dedicated admin token succeeds."""
         scope = {
             "method": "GET",
             "path": "/admin/logs",
@@ -697,7 +697,10 @@ class TestAdminEndpoints:
 
         handlers = {"admin_logs": lambda: {"content": "log content here"}}
 
-        with patch.dict(os.environ, {"OPENONION_API_KEY": "secret123"}):
+        with patch.dict(os.environ, {
+            "CONNECTONION_ADMIN_TOKEN": "secret123",
+            "OPENONION_API_KEY": "billing-key",
+        }):
             await handle_http(
                 scope, receive, send,
                 route_handlers=handlers,
@@ -709,8 +712,8 @@ class TestAdminEndpoints:
         assert sent[0]["status"] == 200
         assert sent[1]["body"] == b"log content here"
 
-    async def test_admin_sessions_with_valid_key(self):
-        """Admin sessions endpoint with valid key succeeds."""
+    async def test_admin_sessions_with_valid_admin_token(self):
+        """Admin sessions endpoint with a dedicated admin token succeeds."""
         scope = {
             "method": "GET",
             "path": "/admin/sessions",
@@ -726,7 +729,10 @@ class TestAdminEndpoints:
 
         handlers = {"admin_sessions": lambda: {"sessions": []}}
 
-        with patch.dict(os.environ, {"OPENONION_API_KEY": "mykey"}):
+        with patch.dict(os.environ, {
+            "CONNECTONION_ADMIN_TOKEN": "mykey",
+            "OPENONION_API_KEY": "billing-key",
+        }):
             await handle_http(
                 scope, receive, send,
                 route_handlers=handlers,

@@ -296,6 +296,13 @@ onboarding to offer, so a stranger gets `ERROR` from the policy rather than an
 **A signature is single-use.** Replaying a captured CONNECT is refused with
 `ERROR unauthorized: this CONNECT was already used`. A v2 client also signs every
 application command; replaying one is refused with `signed command already used`.
+The one-use ledger is shared across ASGI workers and survives a worker restart;
+it stores only short-lived signature digests in `.co/replay.sqlite3`.
+Each digest remains until its signed timestamp is cryptographically expired;
+an unavailable or locked ledger fails closed.
+CONNECT processing verifies Ed25519 first, atomically claims the digest second,
+and only then evaluates trust or onboarding policy. A replay therefore cannot
+repeat an LLM policy call or a policy side effect.
 
 **A v2 command signs what the server executes.** Its payload contains `type`, all
 command fields, `to`, `timestamp`, and a random `nonce`. The server verifies the

@@ -123,7 +123,11 @@ response = httpx.post(
 ```
 
 Pass the exact bytes sent on the wire to `sign_http_request`; changing the body
-or query after signing is refused. A signature is one-use and cannot be replayed.
+or query after signing is refused. A signature is one-use and cannot be replayed,
+including when the ASGI app runs in multiple OS workers. The host keeps only a
+short-lived digest in the project's `.co/replay.sqlite3`; raw signatures and
+request bodies are not stored there. Each digest remains until the signed
+timestamp is outside the accepted freshness window.
 
 Never put an admin private key in browser JavaScript. An H5 admin application
 needs a trusted backend or a future short-lived capability flow. Calendar apps

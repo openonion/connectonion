@@ -337,7 +337,11 @@ class TestCreateRouteHandlers:
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
         handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent, config={})
 
-        required = ["input", "session", "sessions", "health", "info", "auth", "ws_input", "admin_logs", "admin_sessions", "trust_agent"]
+        required = [
+            "input", "session", "sessions", "health", "info", "auth",
+            "connect_auth", "replay", "ws_input", "admin_logs",
+            "admin_sessions", "trust_agent",
+        ]
         for key in required:
             assert key in handlers, f"Missing handler: {key}"
 
