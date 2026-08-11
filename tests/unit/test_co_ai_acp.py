@@ -69,10 +69,23 @@ class _FakeAgent:
     def __init__(self) -> None:
         self.io: Any = None
         self.prompts: list[str] = []
+        self.current_session: dict[str, Any] = {"trace": [], "turn": 0}
+
+    def _finish(self, reason: str, usage: dict[str, Any] | None = None) -> None:
+        event = {
+            "type": "turn_result",
+            "turn": self.current_session["turn"],
+            "reason": reason,
+            "usage": usage,
+        }
+        self.current_session["trace"].append(event)
+        self.io.send(event)
 
     def input(self, prompt: str) -> str:
         print("deliberate fake-agent stdout noise")
         self.prompts.append(prompt)
+        self.current_session["turn"] += 1
+        self._finish("natural")
         return f"answer {len(self.prompts)}: {prompt}"
 
 
@@ -82,9 +95,11 @@ class _BlockingFakeAgent(_FakeAgent):
         self.started = threading.Event()
 
     def input(self, prompt: str) -> str:
+        self.current_session["turn"] += 1
         self.started.set()
         while not self.io.receive_all("INTERRUPT"):
             time.sleep(0.01)
+        self._finish("interrupted")
         return f"cancelled: {prompt}"
 
 
@@ -182,6 +197,7 @@ async def test_acp_cancel_stops_an_active_prompt(tmp_path):
         yolo_turns=2,
         agent_factory=lambda **_kwargs: fake_agent,
     )
+    acp_agent.on_connect(_RecordingClient())
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
         acp_agent.prompt(session.session_id, [text_block("wait")])
@@ -221,6 +237,8 @@ def test_acp_approval_input_denies_sensitive_tools_unless_mode_is_explicit_ulw()
 async def test_acp_errors_do_not_echo_agent_exception_details(tmp_path):
     class _FailingAgent(_FakeAgent):
         def input(self, prompt: str) -> str:
+            self.current_session["turn"] += 1
+            self._finish("error")
             raise RuntimeError(f"secret-marker in {prompt}")
 
     acp_agent = ConnectOnionACPAgent(
