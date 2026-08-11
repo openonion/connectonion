@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from acp import text_block, tool_content
+from acp import text_block
 from acp.schema import (
     AgentMessageChunk,
     AgentThoughtChunk,
@@ -15,6 +15,8 @@ from acp.schema import (
     ToolCallStart,
     Usage,
 )
+
+from ...core.acp_wire import map_tool_event
 
 ACPUpdate = (
     AgentMessageChunk
@@ -53,10 +55,10 @@ def map_agent_event(event: Mapping[str, Any]) -> ACPEventMapping:
     """Map one immutable internal event to exact ACP 0.12 models."""
 
     event_type = event.get("type")
-    if event_type == "tool_call":
-        return ACPEventMapping(updates=(_tool_start(event),))
-    if event_type == "tool_result":
-        return ACPEventMapping(updates=(_tool_progress(event),))
+    if event_type in {"tool_call", "tool_result"}:
+        update = map_tool_event(event)
+        assert update is not None
+        return ACPEventMapping(updates=(update,))
     if event_type == "thinking":
         return ACPEventMapping(updates=(_thought(event),))
     if event_type == "assistant":
@@ -66,37 +68,6 @@ def map_agent_event(event: Mapping[str, Any]) -> ACPEventMapping:
     if event_type == "turn_result":
         return ACPEventMapping(terminal=_terminal(event))
     return ACPEventMapping()
-
-
-def _tool_start(event: Mapping[str, Any]) -> ToolCallStart:
-    return ToolCallStart(
-        session_update="tool_call",
-        tool_call_id=_required_string(event, "tool_id"),
-        title=_required_string(event, "name"),
-        status="in_progress",
-        raw_input=event.get("args"),
-    )
-
-
-def _tool_progress(event: Mapping[str, Any]) -> ToolCallProgress:
-    status = event.get("status")
-    if status == "success":
-        acp_status = "completed"
-    elif status in {"error", "not_found", "interrupted"}:
-        acp_status = "failed"
-    else:
-        raise ValueError(f"Unsupported tool result status: {status!r}")
-
-    kwargs: dict[str, Any] = {
-        "session_update": "tool_call_update",
-        "tool_call_id": _required_string(event, "tool_id"),
-        "status": acp_status,
-        "content": [tool_content(text_block(_required_string(event, "result")))],
-    }
-    raw_output = event.get("raw_output")
-    if raw_output is not None:
-        kwargs["raw_output"] = raw_output
-    return ToolCallProgress(**kwargs)
 
 
 def _thought(event: Mapping[str, Any]) -> AgentThoughtChunk:

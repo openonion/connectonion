@@ -1,8 +1,8 @@
 """
 Purpose: Abstract IO interface for bidirectional agent-client communication in hosted agents
 LLM-Note:
-  Dependencies: imports from [abc.ABC, typing] | imported by [network/io/websocket.py, network/__init__.py, agent.py] | tested by [tests/unit/test_io.py]
-  Data flow: agent.io.send(event) → client receives event → agent.io.receive() → blocks until client responds | high-level: io.log(type, **data) for one-way notifications | io.request_approval(tool, args) sends approval_needed → waits for client response → returns True/False
+  Dependencies: imports from [abc.ABC, typing, core/wire_events.py] | imported by [network/io/websocket.py, network/__init__.py, agent.py] | tested by [tests/unit/test_io.py, tests/unit/test_wire_events.py]
+  Data flow: agent.io.send(event) → client receives event → agent.io.receive() → blocks until client responds | high-level: io.log(type, **data) normalizes tool lifecycle status then sends one-way notifications | io.request_approval(tool, args) sends approval_needed → waits for client response → returns True/False
   State/Effects: no state (abstract base class) | implementations handle message queuing/transport
   Integration: exposes IO abstract class with send(event), receive() → dict primitives | convenience methods: log(type, **data), request_approval(tool, args) → bool | agent.io injected by host() for hosted execution | used in event handlers (@after_llm, @before_each_tool)
   Performance: abstract (implementation-specific) | WebSocketIO uses queue.Queue for thread-safe communication
@@ -12,6 +12,8 @@ IO interface for agent-client communication during hosted execution.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict
+
+from ...core.wire_events import normalize_wire_event
 
 
 class IO(ABC):
@@ -88,7 +90,7 @@ class IO(ABC):
             io.log("thinking")
             io.log("tool_call", name="search", arguments={"q": "python"})
         """
-        self.send({"type": event_type, **data})
+        self.send(normalize_wire_event({"type": event_type, **data}))
 
     def request_approval(self, tool: str, arguments: Dict[str, Any]) -> bool:
         """Two-way: request permission, wait for response.

@@ -233,6 +233,37 @@ class TestUIEventTransformation:
 
         assert agent.ui[0]["status"] == "error"
 
+    @pytest.mark.parametrize("status", ["failed", "not_found", "interrupted"])
+    def test_handle_acp_failure_statuses_as_errors(self, status):
+        agent = RemoteAgent("0x123")
+        agent._handle_stream_event(
+            {"type": "tool_call", "tool_id": "tc1", "name": "search"}
+        )
+
+        agent._handle_stream_event({
+            "type": "tool_result",
+            "tool_id": "tc1",
+            "result": "failed",
+            "status": status,
+        })
+
+        assert agent.ui[0]["status"] == "error"
+
+    def test_handle_unknown_tool_result_status_as_error(self):
+        agent = RemoteAgent("0x123")
+        agent._handle_stream_event(
+            {"type": "tool_call", "tool_id": "tc1", "name": "search"}
+        )
+
+        agent._handle_stream_event({
+            "type": "tool_result",
+            "tool_id": "tc1",
+            "result": "unknown",
+            "status": "mystery",
+        })
+
+        assert agent.ui[0]["status"] == "error"
+
     def test_handle_thinking_event(self):
         """Test thinking event adds thinking indicator."""
         agent = RemoteAgent("0x123")

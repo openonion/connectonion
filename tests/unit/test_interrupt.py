@@ -385,6 +385,20 @@ def test_receive_all_interrupt_preserves_unrelated_mailbox_frames():
     assert io.receive_all() == [reply]
 
 
+def test_interruptible_io_log_uses_wire_status_normalization():
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+
+    lease.log("tool_call", tool_id="call-1", status="running")
+    lease.log("tool_result", tool_id="call-1", status="success")
+
+    assert [
+        message["status"] for message in io._msgs_from_agent
+    ] == ["in_progress", "completed"]
+    with pytest.raises(ValueError, match="tool event status"):
+        lease.log("tool_result", tool_id="call-2", status="mystery")
+
+
 def test_interruptible_io_makes_request_approval_an_interrupted_tool():
     entered = threading.Event()
 

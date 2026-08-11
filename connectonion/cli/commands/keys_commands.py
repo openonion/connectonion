@@ -1,9 +1,9 @@
 """
 Purpose: Display and manage agent keys, credentials, and OAuth connections with masked/revealed output
 LLM-Note:
-  Dependencies: imports from [os, pathlib, rich.console, rich.panel, rich.table, dotenv.load_dotenv, address] | imported by [cli/main.py via handle_keys()] | tested by [tests/e2e/cli/test_cli_keys.py]
-  Data flow: receives reveal flag (bool) → _find_co_dir() searches for .co/keys/ (local first, then ~/.co) → address.load() reads Ed25519 keypair → _load_env_vars() loads from local .env and global ~/.co/keys.env → _mask() obscures secrets unless --reveal → displays Identity table (address, short ID, email, source, key file) → displays Secrets table (recovery phrase, API key) → displays OAuth table (Google/Microsoft email and tokens if connected) → displays Env Files table (global and local paths with ✓/✗ status)
-  State/Effects: no state modifications | reads from .co/keys/agent.key, recovery.txt, .env, ~/.co/keys.env | writes to stdout via rich.Console | does NOT modify any files
+  Dependencies: imports from [os, pathlib, rich.console, rich.panel, rich.table, credentials, project, status_commands, address] | imported by [cli/main.py via handle_keys()] | tested by [tests/e2e/cli/test_cli_keys.py]
+  Data flow: receives reveal flag (bool) → _find_co_dir() resolves project/global identity → _load_env_vars() inspects process/project-root/global sources without loading them → compares an inspectable OpenOnion account claim with that identity → masks secrets unless --reveal → displays Identity, Secrets, OAuth, and Env Files tables
+  State/Effects: no state modifications | reads from .co/keys/agent.key, recovery.txt, project-root .env, ~/.co/keys.env | writes to stdout via rich.Console | does not mutate os.environ or credential files
   Integration: exposes handle_keys() for CLI | similar to status command but focuses on credentials | relies on address module for keypair loading | uses Rich for formatted panel output | checks env vars in priority order: OPENONION_API_KEY, GOOGLE_EMAIL/tokens, MICROSOFT_EMAIL/tokens | recovery phrase shown if recovery.txt exists
   Performance: file I/O for key loading and env vars (<50ms) | Rich table rendering is fast | no network calls
   Errors: prints message if no .co directory found (run 'co init' or 'co create') | prints message if keys fail to load | gracefully handles missing recovery.txt (shows "missing" message) | gracefully handles missing OAuth tokens (not shown in table) | gracefully handles missing env files (shows red ✗)
@@ -14,7 +14,10 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from dotenv import load_dotenv
+
+from ...credentials import account_in_token, api_key_account_mismatch
+from ...project import project_root
+from .status_commands import _selected_credential_values, _short_account
 
 console = Console()
 
@@ -50,35 +53,33 @@ def _find_co_dir() -> Path:
     return None
 
 
-def _load_env_vars() -> dict:
-    """Load all relevant env vars from .env files."""
-    # Load global first, then local (local overrides)
-    global_env = Path.home() / ".co" / "keys.env"
-    if global_env.exists():
-        load_dotenv(global_env, override=False)
+def _load_env_vars(
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: dict[str, str] | None = None,
+) -> dict[str, str | None]:
+    """Select credentials without mutating the process environment."""
 
-    local_env = Path(".env")
-    if local_env.exists():
-        load_dotenv(local_env, override=True)
-
-    return {
-        "OPENONION_API_KEY": os.getenv("OPENONION_API_KEY"),
-        "AGENT_ADDRESS": os.getenv("AGENT_ADDRESS"),
-        "AGENT_EMAIL": os.getenv("AGENT_EMAIL"),
-        "GOOGLE_EMAIL": os.getenv("GOOGLE_EMAIL"),
-        "GOOGLE_ACCESS_TOKEN": os.getenv("GOOGLE_ACCESS_TOKEN"),
-        "GOOGLE_REFRESH_TOKEN": os.getenv("GOOGLE_REFRESH_TOKEN"),
-        "MICROSOFT_EMAIL": os.getenv("MICROSOFT_EMAIL"),
-        "MICROSOFT_ACCESS_TOKEN": os.getenv("MICROSOFT_ACCESS_TOKEN"),
-        "MICROSOFT_REFRESH_TOKEN": os.getenv("MICROSOFT_REFRESH_TOKEN"),
-    }
+    names = (
+        "OPENONION_API_KEY",
+        "GOOGLE_EMAIL",
+        "GOOGLE_ACCESS_TOKEN",
+        "GOOGLE_REFRESH_TOKEN",
+        "MICROSOFT_EMAIL",
+        "MICROSOFT_ACCESS_TOKEN",
+        "MICROSOFT_REFRESH_TOKEN",
+    )
+    return _selected_credential_values(
+        names,
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
+    )
 
 
 def _mask(value: str, show: int = 8, secret: bool = False) -> str:
     """Mask a value, showing a prefix — or nothing at all when `secret`.
-
-    A prefix is useful for an API key: `eyJhbGci` is the constant base64 of a
-    JWT header, carries nothing, and is how you tell two configured keys apart.
 
     It is not useful for the recovery phrase, which was masked the same way and
     so printed its first two words under a panel that ends "Secrets are masked."
@@ -182,7 +183,30 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     # API key
     api_key = env_vars.get("OPENONION_API_KEY")
     if api_key:
-        sec_table.add_row("API Key", api_key if reveal else _mask(api_key))
+        sec_table.add_row(
+            "API Key",
+            api_key if reveal else _mask(api_key, secret=True),
+        )
+        claim = account_in_token(api_key)
+        mismatch = api_key_account_mismatch(api_key, addr_data)
+        if mismatch is not None:
+            claimed, expected = mismatch
+            sec_table.add_row(
+                "Account",
+                "[red]✗[/red] token account "
+                f"{_short_account(claimed)} does not match identity "
+                f"{_short_account(expected)} — run 'co auth'",
+            )
+        elif claim:
+            sec_table.add_row(
+                "Account",
+                f"[green]✓[/green] matches {_short_account(claim)}",
+            )
+        else:
+            sec_table.add_row(
+                "Account",
+                "[yellow]○[/yellow] not inspectable locally; server verifies it",
+            )
     else:
         sec_table.add_row("API Key", "[dim]not set — run 'co auth'[/dim]")
 
@@ -225,7 +249,7 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     files_table.add_column("value")
 
     global_env = Path.home() / ".co" / "keys.env"
-    local_env = Path(".env")
+    local_env = project_root() / ".env"
 
     files_table.add_row("Global", f"{'[green]✓[/green]' if global_env.exists() else '[red]✗[/red]'} {_short_path(global_env)}")
     files_table.add_row("Local", f"{'[green]✓[/green]' if local_env.exists() else '[red]✗[/red]'} {_short_path(local_env)}")
@@ -324,4 +348,3 @@ def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
     else:
         console.print("[dim]Each line goes in ~/.ssh/authorized_keys on that server only.[/dim]")
         console.print("[dim]Use [bold]--write[/bold] to cache the private halves under ~/.co/ssh/.[/dim]\n")
-

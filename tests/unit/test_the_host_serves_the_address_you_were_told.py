@@ -156,7 +156,8 @@ class TestHostActuallyUsesIt:
         monkeypatch.setattr(server_module, "_print_host_banner",
                             lambda **kw: seen.update(kw))
 
-        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash"),
+        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash",
+                                 api_key="test-key"),
                            relay_url=None)
 
         assert seen.get("address") == machine_keys["address"], (

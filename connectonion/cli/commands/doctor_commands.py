@@ -1,8 +1,8 @@
 """
 Purpose: Diagnose ConnectOnion installation and configuration issues
 LLM-Note:
-  Dependencies: imports from [sys, os, shutil, pathlib, requests, rich.console, rich.panel, rich.table, __version__] | imported by [cli/main.py via handle_doctor()] | checks local files and backend connectivity
-  Data flow: receives no args → checks system info → checks config files → checks API key → tests backend connectivity → displays results with ✓/✗ indicators
+  Dependencies: imports from [sys, os, shutil, pathlib, requests, rich.console, rich.panel, rich.table, credentials, project, __version__] | imported by [cli/main.py via handle_doctor()] | checks local files and backend connectivity
+  Data flow: receives no args → checks system/config files → inspects credential sources without loading or rewriting them → compares an inspectable OpenOnion token account with the canonical project identity → tests backend connectivity → displays results with ✓/✗ indicators
   State/Effects: no state modifications | reads from filesystem | makes HTTP request | writes to stdout via rich.Console
   Integration: exposes handle_doctor() for CLI | helps users self-diagnose setup issues
   Performance: fast local checks (<100ms) | network check to backend (1-2s)
@@ -15,7 +15,8 @@ import shlex
 import shutil
 from pathlib import Path
 
-from ...project import project_co_dir
+from ...credentials import account_in_token, api_key_account_mismatch
+from ...project import project_co_dir, project_identity
 import requests
 from rich.console import Console
 from rich.panel import Panel
@@ -381,7 +382,13 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     # first 20 characters of OPENONION_API_KEY as a "preview" in normal output;
     # that is enough credential material to leak into support logs and has no
     # diagnostic value.
-    from .status_commands import _credential_rows, _oauth_rows
+    from .status_commands import (
+        _credential_rows,
+        _is_configured,
+        _oauth_rows,
+        _selected_credential_values,
+        _short_account,
+    )
 
     credential_actions = {
         "OPENONION_API_KEY": "co auth",
@@ -394,26 +401,52 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
         "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
     }
-    api_key = None
-    for row in _credential_rows(project_dir=project_co_dir().parent):
+    project_dir = project_co_dir().parent
+    selected_api_key = _selected_credential_values(
+        ("OPENONION_API_KEY",),
+        project_dir=project_dir,
+    )["OPENONION_API_KEY"]
+    # Preserve the existing connectivity gate: a discovered-but-not-loaded key
+    # is useful to diagnose, but does not make the current process configured.
+    api_key = os.getenv("OPENONION_API_KEY")
+    if not _is_configured(api_key):
+        api_key = None
+    addr_data = project_identity()
+    for row in _credential_rows(project_dir=project_dir):
         status = row["status"]
+        source = row["source"]
         action = credential_actions[row["credential"]]
+        is_conflict = status == "conflict"
+        is_mismatch = False
+        if row["credential"] == "OPENONION_API_KEY" and selected_api_key:
+            # Inspect only. Diagnostics must never call the CLI resolver that
+            # can re-authenticate and rewrite the credential being diagnosed.
+            mismatch = api_key_account_mismatch(selected_api_key, addr_data)
+            claim = account_in_token(selected_api_key)
+            if mismatch is not None:
+                _claimed, expected = mismatch
+                is_mismatch = True
+                status = f"{status} · account mismatch" if is_conflict else "account mismatch"
+                source = f"{source} · project account {_short_account(expected)}"
+            elif claim is None:
+                status = f"{status} · account not inspectable locally"
+            elif not addr_data or not addr_data.get("address"):
+                status = f"{status} · project identity unavailable"
         if status == "configured":
             mark, style = "✓", "green"
-        elif status == "conflict":
+        elif is_conflict or is_mismatch:
             mark, style = "✗", "red"
-            found.append(f"credential {row['credential']} is shadowed — {action}")
+            if is_conflict:
+                found.append(f"credential {row['credential']} is shadowed — {action}")
+            if is_mismatch:
+                found.append(f"credential {row['credential']} has an account mismatch — {action}")
         else:
             mark, style = "○", "yellow"
         config_table.add_row(
             row["provider"],
-            f"[{style}]{mark}[/{style}] {status} · {row['source']} · {action}",
+            f"[{style}]{mark}[/{style}] {status} · {source} · {action}",
         )
-        if row["credential"] == "OPENONION_API_KEY" and status == "configured":
-            # Presence gates the probe; the secret itself is never rendered.
-            # Normal CLI startup has already loaded the selected project env.
-            api_key = os.getenv("OPENONION_API_KEY")
-    for row in _oauth_rows(project_dir=project_co_dir().parent):
+    for row in _oauth_rows(project_dir=project_dir):
         status = row["status"]
         if status == "connected":
             mark, style = "✓", "green"
@@ -532,9 +565,6 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         # names above and the identity it authenticates as here were decided
         # independently, and doctor could report on an account that is not the
         # one in question.
-        from ...project import project_identity
-
-        addr_data = project_identity()
         if addr_data:
             from ... import address
             import time

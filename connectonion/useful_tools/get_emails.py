@@ -1,20 +1,18 @@
 """
 Purpose: Retrieve emails from agent's inbox via OpenOnion API with filtering options
 LLM-Note:
-  Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls get_emails(last=10, unread=False) → searches for .env file → loads OPENONION_API_KEY → GET to the configured backend /api/v1/email/received with query params → returns List[Dict] with emails: {id, from, to, subject, body, html_body, date, read} | mark_read(email_id) PUTs to /api/v1/email/s/mark-read
-  State/Effects: reads .env files | makes HTTP GET/PUT requests | no local caching | mark_read() modifies server-side read status
+  Dependencies: imports from [requests, typing, backend, credentials] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/unit/test_credentials.py, tests/test_real_email.py]
+  Data flow: Agent calls a mailbox function → require_ambient_api_key() checks the already-loaded environment token against the canonical project identity → request to the configured backend → normalized result
+  State/Effects: reads the ambient token and local identity keys | makes HTTP GET/POST requests | no local caching | mark_read()/mark_unread() modify server-side read status
   Integration: exposes get_emails(last, unread), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?last=N&unread=true, PUT /api/v1/email/s/mark-read
   Performance: one HTTP request per call | no pagination (uses 'last' param) | synchronous blocking | no local cache
-  Errors: returns empty list [] on failure | HTTP errors caught and wrapped in error dict | missing auth returns error | let-it-crash pattern for API failures
+  Errors: missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
 """
 
-import os
-import json
 import requests
-from pathlib import Path
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Union
 from ..backend import backend_url
+from ..credentials import require_ambient_api_key
 
 
 def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
@@ -33,17 +31,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
             - timestamp: ISO format timestamp
             - read: Boolean read status
     """
-    # Get authentication token from environment
-    # Emails are hosted by OpenOnion and require OPENONION_API_KEY for authentication
-    token = os.getenv("OPENONION_API_KEY")
-
-    if not token:
-        raise ValueError(
-            "OPENONION_API_KEY not found in .env file. "
-            "Agent emails are hosted by OpenOnion and require authentication. "
-            "Check your .env file for OPENONION_API_KEY, or run 'co init' to copy "
-            "OPENONION_API_KEY from ~/.co/keys.env to your project."
-        )
+    token = require_ambient_api_key()
     
     # Fetch emails from backend API
     endpoint = f"{backend_url()}/api/v1/email/received"
@@ -104,15 +92,7 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
             - message_id: Provider message ID
             - timestamp: ISO format send time
     """
-    token = os.getenv("OPENONION_API_KEY")
-
-    if not token:
-        raise ValueError(
-            "OPENONION_API_KEY not found in .env file. "
-            "Agent emails are hosted by OpenOnion and require authentication. "
-            "Check your .env file for OPENONION_API_KEY, or run 'co init' to copy "
-            "OPENONION_API_KEY from ~/.co/keys.env to your project."
-        )
+    token = require_ambient_api_key()
 
     params = {"limit": last}
     if to:
@@ -154,15 +134,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     if not email_ids:
         raise ValueError("No email IDs provided to mark as read")
 
-    # Get authentication token from environment
-    token = os.getenv("OPENONION_API_KEY")
-
-    if not token:
-        raise ValueError(
-            "OPENONION_API_KEY not found in .env file. "
-            "Check your .env file for OPENONION_API_KEY, or run 'co init' to copy "
-            "OPENONION_API_KEY from ~/.co/keys.env to your project."
-        )
+    token = require_ambient_api_key()
     
     # Mark emails as read via backend API
     endpoint = f"{backend_url()}/api/v1/email/s/mark-read"
@@ -201,15 +173,7 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
     if not email_ids:
         raise ValueError("No email IDs provided to mark as unread")
 
-    # Get authentication token from environment
-    token = os.getenv("OPENONION_API_KEY")
-
-    if not token:
-        raise ValueError(
-            "OPENONION_API_KEY not found in .env file. "
-            "Check your .env file for OPENONION_API_KEY, or run 'co init' to copy "
-            "OPENONION_API_KEY from ~/.co/keys.env to your project."
-        )
+    token = require_ambient_api_key()
 
     # Mark emails as unread via backend API
     endpoint = f"{backend_url()}/api/v1/email/s/mark-unread"

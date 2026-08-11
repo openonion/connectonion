@@ -28,6 +28,7 @@ def handle_ai(
     json_output: bool = False,
     resume: str = None,
     acp: bool = False,
+    acp_mcp: bool = False,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -41,6 +42,7 @@ def handle_ai(
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
         acp: Serve the coding agent over ACP v1 on stdio
+        acp_mcp: Allow ACP clients to launch session-scoped stdio MCP servers
 
     Examples:
         co ai                                    # Start web server
@@ -48,6 +50,10 @@ def handle_ai(
     """
     if acp and (prompt or json_output or resume):
         console.print("[red]--acp cannot be combined with a prompt, --json, or --resume[/red]")
+        raise typer.Exit(2)
+
+    if acp_mcp and not acp:
+        console.print("[red]--acp-mcp requires --acp[/red]")
         raise typer.Exit(2)
 
     if not prompt and (json_output or resume):
@@ -77,6 +83,7 @@ def handle_ai(
                 max_iterations=max_iterations,
                 yolo=yolo,
                 yolo_turns=yolo_turns,
+                allow_mcp=acp_mcp,
             )
         )
         return

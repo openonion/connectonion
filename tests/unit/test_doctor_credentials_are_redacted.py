@@ -1,8 +1,20 @@
 """Credential diagnostics must be useful without becoming a secret leak."""
 
+import base64
+import json
+import os
 from types import SimpleNamespace
 
+import pytest
+
 from connectonion.cli.commands.status_commands import _oauth_rows
+
+
+def _token_for(address: str) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"public_key": address}).encode()
+    ).decode().rstrip("=")
+    return f"header.{payload}.signature"
 
 
 def _oauth(rows, provider):
@@ -125,3 +137,106 @@ def test_doctor_never_renders_an_api_key_preview(tmp_path, monkeypatch, capsys):
     assert "Key Preview" not in output
     assert secret not in output
     assert secret[:20] not in output
+
+
+def test_doctor_reports_account_mismatch_without_mutating_credentials(
+    tmp_path, monkeypatch, capsys
+):
+    from connectonion import address
+    from connectonion.cli.commands import doctor_commands
+    from connectonion.useful_tools.browser_tools import browser as browser_module
+
+    expected = "0x" + "1" * 64
+    foreign = "0x" + "2" * 64
+    token = _token_for(foreign)
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    (project / ".co").mkdir(parents=True)
+    home.mkdir()
+    monkeypatch.chdir(project)
+    monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: home))
+    monkeypatch.setenv("OPENONION_API_KEY", token)
+    monkeypatch.setenv("COLUMNS", "300")
+    monkeypatch.setattr(
+        doctor_commands,
+        "project_identity",
+        lambda: {"address": expected},
+    )
+    monkeypatch.setattr(address, "sign", lambda *_args, **_kwargs: b"signature")
+    monkeypatch.setattr(
+        browser_module,
+        "driver_stealth_status",
+        lambda: ("missing", None, "patchright not installed"),
+    )
+    monkeypatch.setattr(
+        doctor_commands.requests,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200),
+    )
+    monkeypatch.setattr(
+        doctor_commands.requests,
+        "post",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200),
+    )
+
+    before = dict(os.environ)
+    code = doctor_commands.handle_doctor()
+    output = capsys.readouterr().out
+
+    assert code == 1
+    assert "account mismatch" in output
+    assert foreign[:16] in output
+    assert expected[:16] in output
+    assert token not in output
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize("identity_source", ["project", "global"])
+def test_doctor_compares_discovered_token_with_canonical_identity(
+    identity_source, tmp_path, monkeypatch, capsys
+):
+    from connectonion import address
+    from connectonion.cli.commands import doctor_commands
+    from connectonion.useful_tools.browser_tools import browser as browser_module
+
+    project = tmp_path / "project"
+    deep = project / "one" / "two" / "three"
+    home = tmp_path / "home"
+    (project / ".co").mkdir(parents=True)
+    (home / ".co").mkdir(parents=True)
+    deep.mkdir(parents=True)
+
+    identity = address.generate()
+    identity_dir = project / ".co" if identity_source == "project" else home / ".co"
+    address.save(identity, identity_dir)
+    foreign = "0x" + "2" * 64
+    token = _token_for(foreign)
+    credential_file = (
+        project / ".env"
+        if identity_source == "project"
+        else home / ".co" / "keys.env"
+    )
+    credential_file.write_text(f"OPENONION_API_KEY={token}\n")
+
+    monkeypatch.chdir(deep)
+    monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: home))
+    monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+    monkeypatch.setenv("COLUMNS", "300")
+    monkeypatch.setattr(
+        browser_module,
+        "driver_stealth_status",
+        lambda: ("missing", None, "patchright not installed"),
+    )
+
+    before_env = dict(os.environ)
+    before_file = credential_file.read_bytes()
+    code = doctor_commands.handle_doctor()
+    output = capsys.readouterr().out
+
+    assert code == 1
+    assert "account mismatch" in output
+    assert foreign[:16] in output
+    assert identity["address"][:16] in output
+    assert token not in output
+    assert dict(os.environ) == before_env
+    assert credential_file.read_bytes() == before_file

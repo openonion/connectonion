@@ -80,7 +80,21 @@ def test_successful_tool_result_keeps_text_and_structured_output():
     }
 
 
-@pytest.mark.parametrize("status", ["error", "not_found", "interrupted"])
+@pytest.mark.parametrize("status", ["success", "done", "completed"])
+def test_rolling_upgrade_success_statuses_map_to_completed(status):
+    mapped = map_agent_event({
+        "type": "tool_result",
+        "tool_id": "call-1",
+        "status": status,
+        "result": "ok",
+    })
+
+    assert mapped.updates[0].status == "completed"
+
+
+@pytest.mark.parametrize(
+    "status", ["error", "failed", "not_found", "interrupted"]
+)
 def test_unsuccessful_tool_statuses_map_to_failed(status):
     mapped = map_agent_event({
         "type": "tool_result",

@@ -2,7 +2,7 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  Data flow: Agent calls Outlook methods → _get_access_token() validates the ambient OpenOnion account and refreshes locally owned Microsoft tokens via oo-api → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh rewrites ~/.co/keys.env
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
@@ -50,6 +50,7 @@ from pathlib import Path
 
 import httpx
 from ..backend import backend_url
+from ..credentials import require_ambient_api_key
 from ..project import project_root
 from ._attachment_files import path_of_open_file
 
@@ -129,13 +130,7 @@ class Outlook:
             New access token
         """
         selected_backend = backend_url()
-        api_key = os.getenv("OPENONION_API_KEY")
-
-        if not api_key:
-            raise ValueError(
-                "OPENONION_API_KEY not found.\n"
-                "This is needed to refresh tokens via backend."
-            )
+        api_key = require_ambient_api_key()
 
         response = httpx.post(
             f"{selected_backend}/api/v1/oauth/microsoft/refresh",
@@ -453,7 +448,29 @@ class Outlook:
             import re
             from html import unescape
             body_content = re.sub(r'<style[^>]*>.*?</style>', '', body_content, flags=re.DOTALL | re.IGNORECASE)
-            body_content = re.sub(r'<[^>]+>', '', body_content)
+            # Keep the address before the tags go. Stripping <a href="..."> as
+            # markup leaves the words and loses the link, and a URL carrying a
+            # per-recipient token is not one the reader can reconstruct.
+            def anchor_as_text(match) -> str:
+                url = match.group(1)
+                text = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+                # Clients often use the URL as its own link text; printing it
+                # twice reads as two different links.
+                if not text or unescape(text) == unescape(url):
+                    return url
+                return f"{text} <{url}>"
+
+            body_content = re.sub(
+                r'<a\b[^>]*\bhref=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+                anchor_as_text,
+                body_content,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            # Everything that is markup, but not the `<scheme://…>` the step
+            # above just wrote — `<[^>]+>` cannot tell those apart and ate the
+            # very addresses it was meant to preserve.
+            body_content = re.sub(r'<(?![a-zA-Z][a-zA-Z0-9+.-]*://)[^>]+>', '',
+                                  body_content)
             body_content = unescape(body_content)
             body_content = re.sub(r'\s+', ' ', body_content).strip()
 
