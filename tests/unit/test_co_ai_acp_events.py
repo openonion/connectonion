@@ -196,6 +196,8 @@ class _Client:
 
 
 class _ScriptedAgent:
+    system_prompt = "system"
+
     def __init__(self, script: Callable[["_ScriptedAgent", str], str]) -> None:
         self.io: Any = None
         self.current_session: dict[str, Any] = {"trace": [], "turn": 0}
@@ -206,9 +208,21 @@ class _ScriptedAgent:
             self.current_session["trace"].append(event)
         self.io.send(event)
 
-    def input(self, prompt: str) -> str:
+    def input(
+        self,
+        prompt: str,
+        session: dict[str, Any] | None = None,
+    ) -> str:
+        if session is not None:
+            self.current_session = deepcopy(session)
         self.current_session["turn"] += 1
         return self._script(self, prompt)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_acp_session_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(acp_server, "GLOBAL_CO_DIR", tmp_path / "acp-state")
+    monkeypatch.chdir(tmp_path)
 
 
 def _server(agent: _ScriptedAgent) -> ConnectOnionACPAgent:

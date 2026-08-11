@@ -33,9 +33,13 @@ from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
     ClientCapabilities,
+    CloseSessionResponse,
     Implementation,
     ResourceContentBlock,
+    ResumeSessionResponse,
     SessionCapabilities,
+    SessionCloseCapabilities,
+    SessionResumeCapabilities,
     TextContentBlock,
 )
 
@@ -47,6 +51,17 @@ from .acp_events import (
     map_agent_event,
 )
 from .acp_transport import open_stdio_transport
+from .agent import GLOBAL_CO_DIR
+from .one_shot_sessions import (
+    SessionLease,
+    SessionSnapshotError,
+    acquire_session_lease,
+    capture_tool_state,
+    load_snapshot,
+    new_session_id,
+    restore_tool_state,
+    save_snapshot,
+)
 
 AgentFactory = Callable[..., Any]
 ACP_EVENT_BUFFER_SIZE = 64
@@ -369,11 +384,19 @@ class _ACPEventBridge(_FailClosedACPInput):
 
 @dataclass
 class _SessionRuntime:
+    session_id: str
     cwd: Path
     agent: Any
     acp_input: _ACPEventBridge
+    session_lease: SessionLease
+    last_good_session: dict[str, Any]
+    last_good_tools: dict[str, Any]
+    session_for_next_prompt: dict[str, Any] | None
     prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     prompt_active: threading.Event = field(default_factory=threading.Event)
+    closing: threading.Event = field(default_factory=threading.Event)
+    active_operation: asyncio.Task[Any] | None = None
+    close_task: asyncio.Task[None] | None = None
 
 
 class ConnectOnionACPAgent:
@@ -387,12 +410,14 @@ class ConnectOnionACPAgent:
         yolo: bool,
         yolo_turns: int,
         agent_factory: AgentFactory | None = None,
+        session_co_dir: Path | None = None,
     ) -> None:
         self._model = model
         self._max_iterations = max_iterations
         self._yolo = yolo
         self._yolo_turns = yolo_turns
         self._agent_factory = agent_factory
+        self._session_co_dir = Path(session_co_dir or GLOBAL_CO_DIR)
         self._client: Client | None = None
         self._sessions: dict[str, _SessionRuntime] = {}
         # cwd and redirect_stdout are process-global.  ACP request handlers stay
@@ -418,7 +443,10 @@ class ConnectOnionACPAgent:
             protocol_version=selected_version,
             agent_capabilities=AgentCapabilities(
                 load_session=False,
-                session_capabilities=SessionCapabilities(),
+                session_capabilities=SessionCapabilities(
+                    resume=SessionResumeCapabilities(),
+                    close=SessionCloseCapabilities(),
+                ),
             ),
             agent_info=Implementation(
                 name="connectonion",
@@ -435,22 +463,17 @@ class ConnectOnionACPAgent:
         mcp_servers: list[Any] | None = None,
         **_kwargs: Any,
     ) -> NewSessionResponse:
-        if additional_directories:
-            raise RequestError.invalid_params(
-                {"details": "co ai ACP does not support additionalDirectories yet"}
-            )
-        if mcp_servers:
-            raise RequestError.invalid_params(
-                {"details": "co ai ACP does not support mcpServers yet"}
-            )
-
+        self._reject_unsupported_session_inputs(additional_directories, mcp_servers)
         project_dir = self._validate_cwd(cwd)
         acp_input = _ACPEventBridge(asyncio.get_running_loop())
+        session_id = new_session_id()
         try:
-            agent = await asyncio.to_thread(
-                self._build_agent,
+            runtime = await self._construct_runtime(
+                self._open_session_runtime,
                 project_dir,
                 acp_input,
+                session_id,
+                False,
             )
         except Exception:
             logger.exception("Failed to create co ai ACP session")
@@ -458,13 +481,74 @@ class ConnectOnionACPAgent:
                 -32603,
                 "Unable to create the coding agent session",
             ) from None
-        session_id = uuid4().hex
-        self._sessions[session_id] = _SessionRuntime(
-            cwd=project_dir,
-            agent=agent,
-            acp_input=acp_input,
-        )
+        self._sessions[session_id] = runtime
         return NewSessionResponse(session_id=session_id)
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[Any] | None = None,
+        **_kwargs: Any,
+    ) -> ResumeSessionResponse:
+        """Resume one persisted session without replaying its transcript."""
+
+        self._reject_unsupported_session_inputs(additional_directories, mcp_servers)
+        project_dir = self._validate_cwd(cwd)
+        if session_id in self._sessions:
+            raise RequestError(
+                -32000,
+                "Session is already open",
+                {"sessionId": session_id},
+            )
+        acp_input = _ACPEventBridge(asyncio.get_running_loop())
+        try:
+            runtime = await self._construct_runtime(
+                self._open_session_runtime,
+                project_dir,
+                acp_input,
+                session_id,
+                True,
+            )
+        except SessionSnapshotError as exc:
+            raise RequestError(
+                -32002,
+                "Unable to resume session",
+                {"details": str(exc)},
+            ) from None
+        except Exception:
+            logger.exception("Failed to resume co ai ACP session")
+            raise RequestError(
+                -32603,
+                "Unable to resume the coding agent session",
+            ) from None
+        self._sessions[session_id] = runtime
+        return ResumeSessionResponse()
+
+    async def close_session(
+        self,
+        session_id: str,
+        **_kwargs: Any,
+    ) -> CloseSessionResponse:
+        """Close one live runtime and release its exclusive disk lease."""
+
+        runtime = self._sessions.get(session_id)
+        if runtime is None:
+            raise RequestError(
+                -32002,
+                "Session not found",
+                {"sessionId": session_id},
+            )
+        close_task = self._ensure_close_task(runtime)
+        try:
+            await asyncio.shield(close_task)
+        except asyncio.CancelledError:
+            # Closing is an ownership boundary. Repeated caller cancellation
+            # must not release the request while its runtime can still mutate.
+            await self._settle_owned_task(close_task)
+            raise
+        return CloseSessionResponse()
 
     async def prompt(
         self,
@@ -488,6 +572,15 @@ class ConnectOnionACPAgent:
 
         prompt_text = self._prompt_text(prompt)
         async with runtime.prompt_lock:
+            if (
+                runtime.closing.is_set()
+                or self._sessions.get(session_id) is not runtime
+            ):
+                raise RequestError(
+                    -32002,
+                    "Session not found",
+                    {"sessionId": session_id},
+                )
             if self._client is None:
                 raise RequestError.internal_error(
                     {"details": "ACP client connection is not available"}
@@ -503,26 +596,58 @@ class ConnectOnionACPAgent:
                     prompt_text,
                 )
             )
+            operation: asyncio.Task[Any] | None = worker
+            commit: asyncio.Task[Any] | None = None
+            runtime.active_operation = worker
             try:
                 terminal, finished = await self._consume_generation(
                     runtime.acp_input,
                     generation,
                     session_id,
                 )
-                await worker
+                await asyncio.shield(worker)
+                runtime.active_operation = None
+                operation = None
                 if finished.error is not None:
                     raise finished.error
                 if terminal is None or terminal.stop_reason is None:
                     raise RuntimeError("Agent turn ended without an ACP stop reason")
+                if terminal.stop_reason in {"end_turn", "max_turn_requests"}:
+                    commit = asyncio.create_task(
+                        asyncio.to_thread(self._commit_runtime, runtime)
+                    )
+                    operation = commit
+                    runtime.active_operation = commit
+                    await asyncio.shield(commit)
+                else:
+                    operation = asyncio.create_task(
+                        asyncio.to_thread(self._restore_runtime, runtime)
+                    )
+                    runtime.active_operation = operation
+                    await asyncio.shield(operation)
+                runtime.active_operation = None
+                operation = None
             except asyncio.CancelledError:
                 runtime.acp_input.interrupt()
                 runtime.acp_input.retire_turn(generation)
-                await self._settle_failed_worker(worker)
+                if operation is not None:
+                    await self._settle_owned_task(operation)
+                # Atomic replacement is the commit point. If it completed,
+                # _commit_runtime also advanced the detached checkpoint and a
+                # cancelled waiter must not split disk from memory by rolling
+                # the successful transaction back. Before that point, restore
+                # the previous checkpoint.
+                if commit is None or not self._task_succeeded(commit):
+                    await self._restore_after_failure(runtime)
+                runtime.active_operation = None
                 raise
             except Exception:
                 runtime.acp_input.interrupt()
                 runtime.acp_input.retire_turn(generation)
-                await self._settle_failed_worker(worker)
+                if operation is not None:
+                    await self._settle_owned_task(operation)
+                await self._restore_after_failure(runtime)
+                runtime.active_operation = None
                 logger.exception("co ai ACP prompt failed for session %s", session_id)
                 raise RequestError(
                     -32603,
@@ -547,6 +672,45 @@ class ConnectOnionACPAgent:
             if runtime.prompt_active.is_set():
                 runtime.acp_input.interrupt()
 
+    async def close_all(self) -> None:
+        """Settle every prompt before releasing persistent session leases."""
+
+        runtimes = list(self._sessions.values())
+        close_tasks = [self._ensure_close_task(runtime) for runtime in runtimes]
+        # EOF cleanup is deliberately cancellation-resistant: the event loop
+        # must not disappear while a runtime-owned worker or writer is alive.
+        for close_task in close_tasks:
+            await self._settle_owned_task(close_task)
+
+    async def _construct_runtime(
+        self,
+        constructor: Callable[..., _SessionRuntime],
+        *args: Any,
+    ) -> _SessionRuntime:
+        """Finish threaded construction even if its ACP request is cancelled."""
+
+        construction = asyncio.create_task(asyncio.to_thread(constructor, *args))
+        try:
+            return await asyncio.shield(construction)
+        except asyncio.CancelledError:
+            await self._settle_owned_task(construction)
+            if self._task_succeeded(construction):
+                construction.result().session_lease.close()
+            raise
+
+    def _ensure_close_task(self, runtime: _SessionRuntime) -> asyncio.Task[None]:
+        runtime.closing.set()
+        runtime.acp_input.interrupt()
+        if runtime.close_task is None:
+            runtime.close_task = asyncio.create_task(self._finish_close(runtime))
+        return runtime.close_task
+
+    async def _finish_close(self, runtime: _SessionRuntime) -> None:
+        async with runtime.prompt_lock:
+            if self._sessions.get(runtime.session_id) is runtime:
+                self._sessions.pop(runtime.session_id)
+            runtime.session_lease.close()
+
     def _build_agent(
         self,
         project_dir: Path,
@@ -564,11 +728,139 @@ class ConnectOnionACPAgent:
                 max_iterations=self._max_iterations,
                 yolo=self._yolo,
                 yolo_turns=self._yolo_turns,
+                resumable=True,
             )
         # A missing io currently means "skip approvals".  ACP must instead
         # remain safe until request_permission is mapped in #475.
         agent.io = acp_input or _FailClosedACPInput()
         return agent
+
+    def _open_session_runtime(
+        self,
+        project_dir: Path,
+        acp_input: _ACPEventBridge,
+        session_id: str,
+        resume: bool,
+    ) -> _SessionRuntime:
+        """Acquire ownership, validate state, then construct one runtime."""
+
+        lease = acquire_session_lease(self._session_co_dir, session_id)
+        try:
+            if resume:
+                session, tools = load_snapshot(
+                    self._session_co_dir,
+                    session_id,
+                    cwd=project_dir,
+                )
+            else:
+                session, tools = None, {}
+
+            agent = self._build_agent(project_dir, acp_input)
+            if session is None:
+                session = self._fresh_persistent_session(agent, session_id)
+            restore_tool_state(agent, tools)
+            normalized_tools = capture_tool_state(agent)
+            if not resume:
+                save_snapshot(
+                    self._session_co_dir,
+                    session,
+                    normalized_tools,
+                    cwd=project_dir,
+                )
+            return _SessionRuntime(
+                session_id=session_id,
+                cwd=project_dir,
+                agent=agent,
+                acp_input=acp_input,
+                session_lease=lease,
+                last_good_session=copy.deepcopy(session),
+                last_good_tools=copy.deepcopy(normalized_tools),
+                session_for_next_prompt=copy.deepcopy(session),
+            )
+        except BaseException:
+            lease.close()
+            raise
+
+    def _commit_runtime(self, runtime: _SessionRuntime) -> None:
+        """Prepare every checkpoint before the final atomic commit point."""
+
+        session = copy.deepcopy(runtime.agent.current_session)
+        if not isinstance(session, dict):
+            raise SessionSnapshotError("Agent did not produce a session snapshot.")
+        session["session_id"] = runtime.session_id
+        tools = capture_tool_state(runtime.agent)
+        last_good_session = copy.deepcopy(session)
+        last_good_tools = copy.deepcopy(tools)
+        # Assignment and checkpoint preparation happen before disk commit. If
+        # any of them fails, prompt rollback can still rely on the old file.
+        runtime.agent.current_session = session
+        save_snapshot(
+            self._session_co_dir,
+            session,
+            tools,
+            cwd=runtime.cwd,
+        )
+        # os.replace inside save_snapshot is the final fallible commit step.
+        # These reference assignments cannot split the durable snapshot from
+        # the already-prepared in-memory checkpoint.
+        runtime.last_good_session = last_good_session
+        runtime.last_good_tools = last_good_tools
+
+    @staticmethod
+    def _restore_runtime(runtime: _SessionRuntime) -> None:
+        """Roll Agent and supported tool state back to the last disk commit."""
+
+        runtime.agent.current_session = copy.deepcopy(runtime.last_good_session)
+        restore_tool_state(
+            runtime.agent,
+            copy.deepcopy(runtime.last_good_tools),
+        )
+
+    async def _restore_after_failure(self, runtime: _SessionRuntime) -> None:
+        restore = asyncio.create_task(asyncio.to_thread(self._restore_runtime, runtime))
+        runtime.active_operation = restore
+        await self._settle_owned_task(restore)
+        if not self._task_succeeded(restore):
+            error = self._task_exception(restore)
+            logger.error(
+                "Failed to restore co ai ACP session %s",
+                runtime.session_id,
+                exc_info=(type(error), error, error.__traceback__) if error else None,
+            )
+            # Never keep serving a runtime whose in-memory state may have
+            # diverged from its last atomic snapshot. The worker is settled
+            # before this method runs, so a clean process may resume safely.
+            runtime.closing.set()
+            if self._sessions.get(runtime.session_id) is runtime:
+                self._sessions.pop(runtime.session_id)
+            runtime.session_lease.close()
+        runtime.active_operation = None
+
+    @staticmethod
+    def _fresh_persistent_session(agent: Any, session_id: str) -> dict[str, Any]:
+        return {
+            "session_id": session_id,
+            "messages": [{
+                "role": "system",
+                "content": str(getattr(agent, "system_prompt", "")),
+            }],
+            "trace": [],
+            "turn": 0,
+        }
+
+    @staticmethod
+    def _reject_unsupported_session_inputs(
+        additional_directories: list[str] | None,
+        mcp_servers: list[Any] | None,
+    ) -> None:
+        if additional_directories:
+            raise RequestError.invalid_params(
+                {"details": "co ai ACP does not support additionalDirectories yet"}
+            )
+        if mcp_servers:
+            raise RequestError.invalid_params(
+                {"details": "co ai ACP does not support mcpServers yet"}
+            )
 
     def _run_prompt_generation(
         self,
@@ -631,9 +923,35 @@ class ConnectOnionACPAgent:
                 )
 
     @staticmethod
-    async def _settle_failed_worker(worker: asyncio.Task[Any]) -> None:
-        with suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(asyncio.shield(worker), timeout=1.0)
+    async def _settle_owned_task(task: asyncio.Task[Any]) -> bool:
+        """Wait through repeated caller cancellation until ``task`` is done.
+
+        Returns whether this waiter was cancelled while settling. The child is
+        always shielded: cancelling an ACP request must never abandon a thread
+        that still owns or mutates persistent session state.
+        """
+
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+            except BaseException:
+                break
+        with suppress(BaseException):
+            task.result()
+        return cancelled
+
+    @staticmethod
+    def _task_succeeded(task: asyncio.Task[Any]) -> bool:
+        return task.done() and not task.cancelled() and task.exception() is None
+
+    @staticmethod
+    def _task_exception(task: asyncio.Task[Any]) -> BaseException | None:
+        if not task.done() or task.cancelled():
+            return None
+        return task.exception()
 
     @staticmethod
     def _trace_length(agent: Any) -> int:
@@ -666,8 +984,15 @@ class ConnectOnionACPAgent:
 
     def _run_prompt(self, runtime: _SessionRuntime, prompt: str) -> Any:
         try:
+            session = runtime.session_for_next_prompt
+            runtime.session_for_next_prompt = None
             with self._process_context(runtime.cwd):
-                return runtime.agent.input(prompt)
+                if session is None:
+                    return runtime.agent.input(prompt)
+                return runtime.agent.input(
+                    prompt,
+                    session=copy.deepcopy(session),
+                )
         finally:
             runtime.prompt_active.clear()
 
@@ -735,6 +1060,13 @@ async def serve_acp(
         yolo_turns=yolo_turns,
     )
     try:
-        await run_agent(agent, input_stream=transport)
+        # ACP Python 0.12 gates the schema-v1.19 resume/close routes behind
+        # this transport flag even though their capability models are stable.
+        await run_agent(
+            agent,
+            input_stream=transport,
+            use_unstable_protocol=True,
+        )
     finally:
         agent.cancel_all()
+        await agent.close_all()

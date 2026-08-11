@@ -20,6 +20,14 @@ from connectonion.useful_tools.todo_list import TodoList
 from tests.utils.mock_helpers import MockLLM
 
 
+def _todo(content):
+    return {
+        "content": content,
+        "status": "pending",
+        "active_form": f"Working on {content}",
+    }
+
+
 class _ToolRegistry:
     def __init__(self, todo=None):
         self.todo = todo
@@ -69,7 +77,7 @@ class _Agent:
             "turn": base.get("turn", 0) + 1,
             "mode": "ulw",
         }
-        self.tools.todo.state.append(prompt)
+        self.tools.todo.state.append(_todo(prompt))
         return "done"
 
 
@@ -84,11 +92,11 @@ def test_snapshot_round_trip_preserves_full_session_and_tool_state(tmp_path):
         "permissions": {"Bash(git *)": {"allowed": True}},
     }
 
-    save_snapshot(tmp_path, session, {"todolist": [{"content": "ship"}]})
+    save_snapshot(tmp_path, session, {"todolist": [_todo("ship")]})
     loaded_session, tool_state = load_snapshot(tmp_path, session_id)
 
     assert loaded_session == session
-    assert tool_state == {"todolist": [{"content": "ship"}]}
+    assert tool_state == {"todolist": [_todo("ship")]}
     if os.name != "nt":
         assert oct((tmp_path / "ai" / "sessions").stat().st_mode & 0o777) == "0o700"
         snapshot = tmp_path / "ai" / "sessions" / f"{session_id}.json"
@@ -258,7 +266,7 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     stored, tools = load_snapshot(tmp_path, envelope["session_id"])
     assert stored["mode"] == "ulw"
     assert stored["turn"] == 1
-    assert tools == {"todolist": ["first"]}
+    assert tools == {"todolist": [_todo("first")]}
 
 
 def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, capsys):
@@ -272,7 +280,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
             "turn": 4,
             "mode": "accept_edits",
         },
-        {"todolist": ["old todo"]},
+        {"todolist": [_todo("old todo")]},
     )
     agent = _Agent()
     monkeypatch.setattr("connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", tmp_path)
@@ -284,7 +292,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
     assert envelope["session_id"] == session_id
     assert agent.received_session["mode"] == "accept_edits"
     assert agent.received_session["turn"] == 4
-    assert agent.tools.todo.state == ["old todo", "next"]
+    assert agent.tools.todo.state == [_todo("old todo"), _todo("next")]
 
 
 def test_failed_resume_preserves_the_last_atomic_snapshot(
@@ -298,13 +306,13 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
         "turn": 4,
         "mode": "accept_edits",
     }
-    save_snapshot(tmp_path, original, {"todolist": ["old todo"]})
+    save_snapshot(tmp_path, original, {"todolist": [_todo("old todo")]})
 
     class BrokenResumeAgent(_Agent):
         def input(self, prompt, session=None):
             session["turn"] = 99
             session["messages"].append({"role": "user", "content": prompt})
-            self.tools.todo.state.append("uncommitted todo")
+            self.tools.todo.state.append(_todo("uncommitted todo"))
             raise RuntimeError("follow-up failed")
 
     monkeypatch.setattr("connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", tmp_path)
@@ -327,7 +335,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
     }
     stored, tools = load_snapshot(tmp_path, session_id)
     assert stored == original
-    assert tools == {"todolist": ["old todo"]}
+    assert tools == {"todolist": [_todo("old todo")]}
 
 
 def test_json_failure_is_structured_and_nonzero(tmp_path, monkeypatch, capsys):
