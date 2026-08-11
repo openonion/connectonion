@@ -31,7 +31,15 @@ def _todo(content: str) -> dict[str, str]:
         "content": content,
         "status": "pending",
         "active_form": f"Working on {content}",
+        "priority": "medium",
     }
+
+
+def _plan(*contents: str) -> list[dict[str, str]]:
+    return [
+        {"content": content, "priority": "medium", "status": "pending"}
+        for content in contents
+    ]
 
 
 class _Todo:
@@ -95,6 +103,14 @@ class _PersistentFakeAgent:
         self.current_session["turn"] += 1
         self.current_session["messages"].append({"role": "user", "content": prompt})
         self.tools.todo.state.append(_todo(prompt))
+        self.current_session["plan"] = [
+            {
+                "content": item["content"],
+                "priority": item["priority"],
+                "status": item["status"],
+            }
+            for item in self.tools.todo.state
+        ]
         self.started.set()
         if action == "block":
             while not self.io.receive_all("INTERRUPT"):
@@ -222,6 +238,7 @@ async def test_new_session_persists_canonical_snapshot_and_holds_lease(
         "trace": [],
         "turn": 0,
         "mode": "safe",
+        "plan": [],
     }
     assert tools == {"todolist": []}
     with pytest.raises(SessionSnapshotError, match="already running"):
@@ -248,6 +265,7 @@ async def test_resume_restores_session_and_tool_state_without_replay(
         "trace": [{"type": "old"}],
         "turn": 4,
         "mode": "accept_edits",
+        "plan": _plan("old todo"),
     }
     save_snapshot(state_dir, saved, {"todolist": [_todo("old todo")]})
     agent = _PersistentFakeAgent()
@@ -273,6 +291,10 @@ async def test_resume_restores_session_and_tool_state_without_replay(
     assert agent.received_sessions[0]["mode"] == "accept_edits"
     stored, tools = load_snapshot(state_dir, session_id)
     assert stored["turn"] == 5
+    assert stored["plan"] == [
+        {"content": "old todo", "priority": "medium", "status": "pending"},
+        {"content": "next", "priority": "medium", "status": "pending"},
+    ]
     assert tools == {"todolist": [_todo("old todo"), _todo("next")]}
     await server.close_session(session_id)
 
@@ -449,6 +471,10 @@ async def test_successful_turns_commit_in_order(tmp_path, monkeypatch):
     assert first.stop_reason == "end_turn"
     assert second.stop_reason == "max_turn_requests"
     assert stored["turn"] == 2
+    assert stored["plan"] == [
+        {"content": "one", "priority": "medium", "status": "pending"},
+        {"content": "two", "priority": "medium", "status": "pending"},
+    ]
     assert [message["content"] for message in stored["messages"][-4:]] == [
         "one",
         "answer: one",
@@ -494,6 +520,9 @@ async def test_unsuccessful_turn_rolls_back_disk_and_runtime(
     assert recovered.stop_reason == "end_turn"
     stored, tools = load_snapshot(state_dir, session.session_id)
     assert stored["turn"] == 1
+    assert stored["plan"] == [
+        {"content": "good", "priority": "medium", "status": "pending"},
+    ]
     assert tools == {"todolist": [_todo("good")]}
     await server.close_session(session.session_id)
 
@@ -582,6 +611,7 @@ async def test_commit_uses_explicit_cwd_without_a_fallible_context_exit(
         "content": "explicit cwd",
     })
     runtime.agent.tools.todo.state.append(_todo("explicit cwd"))
+    runtime.agent.current_session["plan"] = _plan("explicit cwd")
 
     def reject_process_context(*_args: Any, **_kwargs: Any) -> None:
         raise AssertionError("snapshot commit must not change process cwd")

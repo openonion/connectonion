@@ -242,6 +242,13 @@ def create_tool_from_function(func: Callable) -> Callable:
     # Convention: if the original function has 'agent' in its signature, the executor provides it.
     tool_func._needs_agent = 'agent' in sig.parameters
 
+    # Preserve the exact owner of a bound method. The executor must not infer
+    # ownership by scanning registered instances for a matching method name:
+    # two unrelated instances may both expose e.g. ``add``.
+    bound_instance = getattr(func, '__self__', None)
+    if bound_instance is not None and not isinstance(bound_instance, type):
+        tool_func._bound_instance = bound_instance
+
     # Attach the necessary attributes for Agent compatibility
     tool_func.name = name
     tool_func.description = description

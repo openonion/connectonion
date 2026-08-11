@@ -11,6 +11,7 @@ from connectonion.core.acp_wire import (
     acp_notification_frame,
     legacy_tool_event_from_acp,
     map_message_event,
+    map_plan_event,
     map_thought_event,
 )
 from connectonion.network.connect import RemoteAgent
@@ -30,6 +31,13 @@ THOUGHT_FIXTURE = json.loads(
         Path(__file__).parents[1]
         / "fixtures"
         / "acp_thought_events.json"
+    ).read_text()
+)
+PLAN_FIXTURE = json.loads(
+    (
+        Path(__file__).parents[1]
+        / "fixtures"
+        / "acp_plan_events.json"
     ).read_text()
 )
 
@@ -59,6 +67,41 @@ def test_public_thoughts_match_the_shared_acp_fixture():
     ]
 
     assert actual == THOUGHT_FIXTURE["acp"]
+
+
+def test_plans_match_the_byte_identical_shared_react_fixture():
+    actual = [
+        acp_notification_frame(event, "session-1")
+        for event in PLAN_FIXTURE["legacy"]
+    ]
+
+    assert actual == PLAN_FIXTURE["acp"]
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        None,
+        [{"content": "", "priority": "high", "status": "pending"}],
+        [{"content": "Task", "priority": "urgent", "status": "pending"}],
+        [{"content": "Task", "priority": [], "status": "pending"}],
+        [{"content": "Task", "priority": "high", "status": "blocked"}],
+        [{"content": "Task", "priority": "high", "status": {}}],
+        [{"content": "Task", "priority": "high"}],
+        [{"content": "Task", "priority": "high", "status": "pending", "id": "x"}],
+    ],
+)
+def test_malformed_plans_are_rejected_atomically(entries):
+    with pytest.raises(ValueError):
+        map_plan_event({"type": "plan", "entries": entries})
+
+
+def test_empty_plan_is_a_valid_stable_replacement():
+    update = map_plan_event({"type": "plan", "entries": []})
+
+    assert update.model_dump(
+        mode="json", by_alias=True, exclude_none=True, exclude_unset=True
+    ) == {"entries": [], "sessionUpdate": "plan"}
 
 
 @pytest.mark.parametrize(
@@ -209,6 +252,7 @@ def test_python_remote_agent_applies_partial_acp_updates():
             "content": "must not become public reasoning",
         },
         {"type": "compact", "content": "private diagnostic"},
+        {"type": "plan_review", "plan_content": "approve me"},
     ],
 )
 def test_provider_and_internal_events_stay_connectonion_only(event):

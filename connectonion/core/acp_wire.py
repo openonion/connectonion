@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from acp import text_block, tool_content
 from acp.schema import (
     AgentMessageChunk,
+    AgentPlanUpdate,
     AgentRequest,
     AgentThoughtChunk,
     CancelNotification,
@@ -30,6 +31,7 @@ from acp.schema import (
     ToolCallStart,
     ToolCallUpdate,
 )
+from acp.schema import PlanEntry as ACPPlanEntry
 
 from .wire_events import normalize_wire_event
 
@@ -143,6 +145,37 @@ def map_thought_event(
         # Product presentation metadata is an extension, never authority.
         kwargs["field_meta"] = {"connectonion": {"kind": kind}}
     return AgentThoughtChunk(**kwargs)
+
+
+def map_plan_event(event: Mapping[str, Any]) -> AgentPlanUpdate | None:
+    """Map one canonical complete plan replacement to stable ACP v1.19."""
+    if event.get("type") != "plan":
+        return None
+    raw_entries = event.get("entries")
+    if not isinstance(raw_entries, list):
+        raise ValueError("Plan entries must be a list")
+    entries = []
+    for raw in raw_entries:
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "content", "priority", "status"
+        }:
+            raise ValueError("Plan entries must use the canonical shape")
+        priority = raw["priority"]
+        status = raw["status"]
+        if not isinstance(priority, str) or priority not in {
+            "high", "medium", "low"
+        }:
+            raise ValueError(f"Unsupported plan priority: {priority!r}")
+        if not isinstance(status, str) or status not in {
+            "pending", "in_progress", "completed"
+        }:
+            raise ValueError(f"Unsupported plan status: {status!r}")
+        entries.append(ACPPlanEntry(
+            content=_required_nonempty(raw["content"], "content"),
+            priority=priority,
+            status=status,
+        ))
+    return AgentPlanUpdate(session_update="plan", entries=entries)
 
 
 def session_mode_id(value: Any) -> str:
@@ -439,6 +472,7 @@ def acp_notification_frame(
         map_tool_event(event)
         or map_message_event(event)
         or map_thought_event(event)
+        or map_plan_event(event)
         or map_mode_event(event)
     )
     if update is None:

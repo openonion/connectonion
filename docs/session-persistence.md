@@ -11,6 +11,11 @@
 - **Session State (conversation)**: Client-side is source of truth
 - **Final Results (completed tasks)**: Server-side for polling recovery
 
+This section describes browser-to-Host chat continuation. Persistent
+`co ai --acp` sessions are a separate server-owned mode with versioned private
+snapshots and runtime-long leases; see
+[DD-029](design-decisions/029-acp-persistent-session-ownership.md).
+
 ### Why Client-Side for Session State?
 
 1. **No State Synchronization Problems**
@@ -171,10 +176,12 @@ this._clearSessionId();  // Clears after EVERY message!
 
 ## Deployment
 
-### Published Package
+### Active browser package
 
-**Package:** `connectonion@0.0.9`
-**Registry:** https://www.npmjs.com/package/connectonion
+The active frontend path is ConnectOnion Host -> `@connectonion/react` -> O
+Chat. React owns protocol decoding and per-session browser persistence. The
+standalone TypeScript SDK/package is retired and is not updated by new Host
+protocol work.
 
 ### What This Fixes
 

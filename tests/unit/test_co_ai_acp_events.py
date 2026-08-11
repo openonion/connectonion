@@ -13,6 +13,7 @@ import pytest
 from acp import RequestError, text_block
 from acp.schema import (
     AgentMessageChunk,
+    AgentPlanUpdate,
     AgentThoughtChunk,
     CurrentModeUpdate,
     ToolCallProgress,
@@ -151,6 +152,27 @@ def test_mode_change_maps_to_the_exact_current_mode_update():
     assert dumped(update) == {
         "currentModeId": "accept_edits",
         "sessionUpdate": "current_mode_update",
+    }
+
+
+def test_plan_maps_to_one_complete_stable_replacement():
+    update = map_agent_event({
+        "type": "plan",
+        "entries": [{
+            "content": "Implement writer",
+            "priority": "high",
+            "status": "in_progress",
+        }],
+    }).updates[0]
+
+    assert isinstance(update, AgentPlanUpdate)
+    assert dumped(update) == {
+        "entries": [{
+            "content": "Implement writer",
+            "priority": "high",
+            "status": "in_progress",
+        }],
+        "sessionUpdate": "plan",
     }
 
 

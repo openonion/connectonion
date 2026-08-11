@@ -31,6 +31,17 @@ class TestToolFactory:
         assert tool.description == "Add two numbers."
         assert tool.run(a=2, b=3) == 5
 
+    def test_bound_tool_preserves_its_exact_owner(self):
+        class Calculator:
+            def add(self, a: int, b: int) -> int:
+                return a + b
+
+        calculator = Calculator()
+
+        tool = create_tool_from_function(calculator.add)
+
+        assert tool._bound_instance is calculator
+
     def test_create_tool_with_optional_params(self):
         """Test creating tool with optional parameters."""
         def greet(name: str, greeting: str = "Hello") -> str:

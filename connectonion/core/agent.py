@@ -14,7 +14,7 @@ import os
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Union
 from uuid import uuid4
 
 from ..logger import Logger
@@ -28,6 +28,32 @@ from .tool_factory import create_tool_from_function, extract_methods_from_instan
 from .tool_registry import ToolRegistry
 from .usage import get_context_limit, turn_usage_from_trace
 from .wire_events import normalize_wire_event
+
+
+def _normalized_plan(entries: Any) -> list[dict[str, str]]:
+    if not isinstance(entries, list):
+        raise ValueError("Plan entries must be a list")
+    normalized = []
+    for entry in entries:
+        if not isinstance(entry, Mapping) or set(entry) != {
+            "content", "priority", "status"
+        }:
+            raise ValueError("Plan entries must use the canonical shape")
+        content = entry["content"]
+        priority = entry["priority"]
+        status = entry["status"]
+        if not isinstance(content, str) or not content:
+            raise ValueError("Plan content must be a non-empty string")
+        if not isinstance(priority, str) or priority not in {
+            "high", "medium", "low"
+        }:
+            raise ValueError(f"Unsupported plan priority: {priority!r}")
+        if not isinstance(status, str) or status not in {
+            "pending", "in_progress", "completed"
+        }:
+            raise ValueError(f"Unsupported plan status: {status!r}")
+        normalized.append(dict(entry))
+    return normalized
 
 
 class Agent:
@@ -165,6 +191,17 @@ class Agent:
         """Generate unique trace entry ID (UUID)."""
         import uuid
         return str(uuid.uuid4())
+
+    def _record_plan(self, entries: list[Mapping[str, Any]]) -> None:
+        """Persist and stream one canonical complete plan replacement."""
+        if not isinstance(self.current_session, dict):
+            return
+        normalized = _normalized_plan(entries)
+        self.current_session["plan"] = [dict(entry) for entry in normalized]
+        self._record_trace({
+            "type": "plan",
+            "entries": [dict(entry) for entry in normalized],
+        })
 
     def _record_trace(
         self,

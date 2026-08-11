@@ -181,6 +181,7 @@ def _fresh_session(agent, session_id: str) -> dict:
         "messages": [{"role": "system", "content": agent.system_prompt}],
         "trace": [],
         "turn": 0,
+        "plan": [],
     }
 
 

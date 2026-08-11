@@ -1,5 +1,6 @@
 """Run blocking agent steps while keeping the interrupt mailbox responsive."""
 
+import copy
 import threading
 from typing import Any, Callable, Optional, Tuple
 
@@ -15,10 +16,29 @@ class InterruptibleIO:
         self.__io = io
         self._cancelled = threading.Event()
         self._gate = threading.Lock()
+        self._deferred: list[tuple[bool, Any]] = []
 
     def cancel(self) -> None:
         with self._gate:
             self._cancelled.set()
+            self._deferred.clear()
+
+    def commit(self) -> bool:
+        """Publish Agent-owned state only after its tool transaction commits."""
+        with self._gate:
+            if self._cancelled.is_set():
+                self._deferred.clear()
+                return False
+            for persisted, event in self._deferred:
+                if persisted:
+                    sender = getattr(
+                        self.__io, "_send_persisted_trace", self.__io.send
+                    )
+                    sender(event)
+                else:
+                    self.__io.send(event)
+            self._deferred.clear()
+            return True
 
     def is_cancelled(self) -> bool:
         """Let cooperative blocking tools stop their own external work."""
@@ -27,7 +47,16 @@ class InterruptibleIO:
     def send(self, event) -> None:
         with self._gate:
             if not self._cancelled.is_set():
-                self.__io.send(event)
+                if event.get("type") == "session_sync":
+                    self._deferred.append((False, copy.deepcopy(event)))
+                else:
+                    self.__io.send(event)
+
+    def _send_persisted_trace(self, event) -> None:
+        """Defer Agent-owned provenance until the copied session commits."""
+        with self._gate:
+            if not self._cancelled.is_set():
+                self._deferred.append((True, copy.deepcopy(event)))
 
     def receive(self):
         response = self.__io.receive_interruptibly(self._cancelled)

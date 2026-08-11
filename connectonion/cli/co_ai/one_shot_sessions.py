@@ -11,8 +11,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
+_LEGACY_SNAPSHOT_VERSION = 1
 _TODO_STATUSES = {"pending", "in_progress", "completed"}
+_TODO_PRIORITIES = {"high", "medium", "low"}
 
 
 class SessionSnapshotError(ValueError):
@@ -144,6 +146,8 @@ def save_snapshot(
     session_id = _canonical_id(session.get("session_id"))
     tools = {} if tool_state is None else tool_state
     _validate_tool_state(tools, session_id)
+    _validate_session_plan(session, session_id)
+    _validate_plan_matches_tools(session, tools, session_id)
     payload = {
         "version": SNAPSHOT_VERSION,
         "cwd": _resolved_cwd(cwd),
@@ -194,7 +198,11 @@ def load_snapshot(
         raise SessionSnapshotError(f"Session {canonical} is unreadable: {exc}") from None
 
     version = payload.get("version") if isinstance(payload, dict) else None
-    if version != SNAPSHOT_VERSION:
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version not in {_LEGACY_SNAPSHOT_VERSION, SNAPSHOT_VERSION}
+    ):
         raise SessionSnapshotError(
             f"Session {canonical} uses unsupported snapshot version {version}."
         )
@@ -218,11 +226,22 @@ def load_snapshot(
         raise SessionSnapshotError(f"Session {canonical} has an invalid trace.")
     if not isinstance(session.get("turn"), int):
         raise SessionSnapshotError(f"Session {canonical} has an invalid turn counter.")
-    _validate_tool_state(tools, canonical)
+    _validate_tool_state(tools, canonical, version=version)
+    tools = _migrate_tool_state(tools, version)
+    if version == _LEGACY_SNAPSHOT_VERSION:
+        session = dict(session)
+        session["plan"] = _plan_from_tool_state(tools)
+    _validate_session_plan(session, canonical)
+    _validate_plan_matches_tools(session, tools, canonical)
     return session, tools
 
 
-def _validate_tool_state(state: Any, session_id: str) -> None:
+def _validate_tool_state(
+    state: Any,
+    session_id: str,
+    *,
+    version: int = SNAPSHOT_VERSION,
+) -> None:
     """Validate every supported tool snapshot before constructing an Agent."""
 
     if not isinstance(state, dict) or set(state) - {"todolist"}:
@@ -237,18 +256,90 @@ def _validate_tool_state(state: Any, session_id: str) -> None:
             f"Session {session_id} has invalid TodoList state."
         )
     required = {"content", "status", "active_form"}
+    if version == SNAPSHOT_VERSION:
+        required.add("priority")
     for item in todos:
         if (
             not isinstance(item, dict)
             or set(item) != required
             or not isinstance(item["content"], str)
+            or (version == SNAPSHOT_VERSION and not item["content"])
             or not isinstance(item["status"], str)
             or item["status"] not in _TODO_STATUSES
             or not isinstance(item["active_form"], str)
+            or (
+                version == SNAPSHOT_VERSION
+                and (
+                    not isinstance(item["priority"], str)
+                    or item["priority"] not in _TODO_PRIORITIES
+                )
+            )
         ):
             raise SessionSnapshotError(
                 f"Session {session_id} has invalid TodoList state."
             )
+
+
+def _migrate_tool_state(state: dict[str, Any], version: int) -> dict[str, Any]:
+    if version != _LEGACY_SNAPSHOT_VERSION or "todolist" not in state:
+        return state
+    return {
+        **state,
+        "todolist": [
+            {
+                **item,
+                "content": item["content"] or f"Untitled legacy task {index + 1}",
+                "priority": "medium",
+            }
+            for index, item in enumerate(state["todolist"])
+        ],
+    }
+
+
+def _plan_from_tool_state(state: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "content": item["content"],
+            "priority": item["priority"],
+            "status": item["status"],
+        }
+        for item in state.get("todolist", [])
+    ]
+
+
+def _validate_session_plan(session: Any, session_id: str) -> None:
+    if not isinstance(session, dict) or "plan" not in session:
+        return
+    plan = session["plan"]
+    if not isinstance(plan, list):
+        raise SessionSnapshotError(f"Session {session_id} has invalid plan state.")
+    for entry in plan:
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != {"content", "priority", "status"}
+            or not isinstance(entry["content"], str)
+            or not entry["content"]
+            or not isinstance(entry["priority"], str)
+            or entry["priority"] not in _TODO_PRIORITIES
+            or not isinstance(entry["status"], str)
+            or entry["status"] not in _TODO_STATUSES
+        ):
+            raise SessionSnapshotError(
+                f"Session {session_id} has invalid plan state."
+            )
+
+
+def _validate_plan_matches_tools(
+    session: dict[str, Any],
+    tools: dict[str, Any],
+    session_id: str,
+) -> None:
+    if "todolist" not in tools:
+        return
+    if session.get("plan") != _plan_from_tool_state(tools):
+        raise SessionSnapshotError(
+            f"Session {session_id} has inconsistent plan and TodoList state."
+        )
 
 
 def capture_tool_state(agent) -> dict[str, Any]:

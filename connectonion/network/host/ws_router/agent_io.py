@@ -150,7 +150,9 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
                 await send_msg(acp_request)
         should_mirror = event_type in {
             "tool_call", "tool_result", "mode_changed"
-        } or (event_type == "thinking" and persisted_trace)
+        } or (
+            event_type in {"thinking", "plan"} and persisted_trace
+        )
         acp_frame = (
             _acp_rollout_frame(event, session_id) if should_mirror else None
         )
