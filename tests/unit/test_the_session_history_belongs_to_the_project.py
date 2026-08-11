@@ -149,7 +149,8 @@ class TestHostUsesIt:
         monkeypatch.setattr(server_module.uvicorn, "run", lambda app, **kw: None)
         monkeypatch.setattr(server_module, "_print_host_banner", lambda **kw: None)
 
-        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash"),
+        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash",
+                                 api_key="test-key"),
                            relay_url=None)
 
         assert not (project / "sub" / ".co").exists()

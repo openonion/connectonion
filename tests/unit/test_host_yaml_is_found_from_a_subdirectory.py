@@ -125,7 +125,8 @@ class TestHostItselfUsesIt:
         monkeypatch.setattr(server_module.uvicorn, "run", lambda app, **kw: seen.update(kw))
         monkeypatch.setattr(server_module, "_print_host_banner", lambda **kw: None)
 
-        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash"),
+        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash",
+                                 api_key="test-key"),
                            relay_url=None)
 
         assert seen.get("port") == 8806
@@ -141,7 +142,8 @@ class TestHostItselfUsesIt:
         monkeypatch.setattr(server_module.uvicorn, "run", lambda app, **kw: None)
         monkeypatch.setattr(server_module, "_print_host_banner", lambda **kw: seen.update(kw))
 
-        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash"),
+        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash",
+                                 api_key="test-key"),
                            relay_url=None)
 
         assert seen.get("trust") == "strict", "the agent served a looser trust than configured"
