@@ -25,13 +25,6 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-class _AgentExecutionError(RuntimeError):
-    """Private Agent failure marker with a fixed public representation."""
-
-    def __init__(self):
-        super().__init__("Unable to run agent")
-
-
 def _acp_rollout_frame(event, session_id):
     if not session_id:
         return None
@@ -130,11 +123,14 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
                                                       requester_address=requester_address)
     except ModeTransactionError as exc:
         result_holder[0] = exc
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Hosted Agent execution failed for session %s", session_id
         )
-        result_holder[0] = _AgentExecutionError()
+        # Keep the original exception for in-process diagnostics and legacy
+        # callers. The WebSocket boundary below owns disclosure and maps every
+        # unexpected exception to one fixed -32603 response.
+        result_holder[0] = exc
     finally:
         # A failed run is finished too. Leaving it marked "running" routes the
         # next INPUT into a dead IO queue and creates another false ACK.

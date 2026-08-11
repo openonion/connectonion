@@ -434,7 +434,7 @@ class TestForwardAgentEvents:
         }]
         assert "private" not in str(sent_messages)
 
-    async def test_agent_thread_logs_private_error_before_sanitizing(
+    async def test_agent_thread_keeps_private_error_for_output_boundary(
         self, caplog
     ):
         io = WebSocketIO()
@@ -456,8 +456,8 @@ class TestForwardAgentEvents:
             "0xowner",
         )
 
-        assert isinstance(result_holder[0], Exception)
-        assert str(result_holder[0]) == "Unable to run agent"
+        assert isinstance(result_holder[0], OSError)
+        assert str(result_holder[0]) == private_detail
         assert private_detail in caplog.text
         registry.mark_session_connected.assert_called_once_with("s1")
 
