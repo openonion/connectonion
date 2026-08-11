@@ -914,6 +914,61 @@ class TestDownloadAttachments:
         assert (tmp_path / "out" / "owned.txt").exists()
         assert not (tmp_path.parent / "owned.txt").exists()
 
+    def test_refuses_to_overwrite_an_existing_file(self, monkeypatch, tmp_path):
+        import base64
+
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        existing = out_dir / "pyproject.toml"
+        existing.write_bytes(b"keep me")
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "pyproject.toml", "contentBytes": base64.b64encode(b"replace me").decode()},
+        ])
+
+        with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+            outlook.download_attachments("msg-id", out_dir)
+
+        assert existing.read_bytes() == b"keep me"
+
+    def test_refuses_to_follow_an_existing_symlink(self, monkeypatch, tmp_path):
+        import base64
+
+        outside = tmp_path / "outside.txt"
+        outside.write_bytes(b"keep me")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        (out_dir / "cover.jpg").symlink_to(outside)
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover.jpg", "contentBytes": base64.b64encode(b"replace me").decode()},
+        ])
+
+        with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+            outlook.download_attachments("msg-id", out_dir)
+
+        assert outside.read_bytes() == b"keep me"
+
+    def test_replaces_control_characters_in_sender_filename(self, monkeypatch, tmp_path):
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover\n\x1b[31m.jpg", "contentBytes": base64.b64encode(b"pixels").decode()},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert saved == [str(tmp_path / "out" / "cover__[31m.jpg")]
+        assert (tmp_path / "out" / "cover__[31m.jpg").read_bytes() == b"pixels"
+
+    def test_rejects_malformed_base64_without_creating_a_file(self, monkeypatch, tmp_path):
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "broken.pdf", "contentBytes": "not base64!"},
+        ])
+
+        with pytest.raises(ValueError):
+            outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert not (tmp_path / "out" / "broken.pdf").exists()
+
     def test_refuses_a_destination_outside_the_project(self, monkeypatch, tmp_path):
         outlook = self._outlook(monkeypatch, tmp_path, [])
 
