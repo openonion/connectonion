@@ -49,8 +49,10 @@ applications, `@connectonion/react` is the browser protocol boundary and the
 only SDK used by oo-chat; its reader ships before or with the writer in a
 coordinated release. The standalone `connectonion` TypeScript client may carry
 the same compatibility reader for non-React consumers, but it is not an
-oo-chat dependency or a React release gate. Legacy removal requires a future
-major version, usage evidence, and a separate decision.
+oo-chat dependency or a React release gate. DD-037 later retired that package
+from the frontend rollout entirely: new browser protocol work belongs in
+`@connectonion/react`. Legacy removal requires a future major version, usage
+evidence, and a separate decision.
 
 ACP mirroring is additive and non-authoritative. A malformed internal event or
 conversion failure is logged, the legacy frame is still delivered, and the

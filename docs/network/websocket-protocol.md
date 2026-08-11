@@ -391,6 +391,35 @@ The tool is checked against the host's `.co/host.yaml` permission whitelist (the
 { "type": "APPROVAL_RESPONSE", "approved": true, "scope": "once" }
 ```
 
+Legacy approval responses are consumed once and are bound to the currently
+pending request. Updated React clients answer the paired ACP request instead.
+
+#### ACP_RESPONSE
+
+Answer one `ACP_REQUEST`. The outer carrier binds the response to the Host
+session; `message` is the exact ACP JSON-RPC result for the request ID.
+
+```json
+{
+  "type": "ACP_RESPONSE",
+  "acpSchema": "schema-v1.19.0",
+  "sessionId": "550e8400-...",
+  "message": {
+    "jsonrpc": "2.0",
+    "id": "approval-event-uuid",
+    "result": {
+      "outcome": {"outcome": "selected", "optionId": "allow_once"}
+    }
+  }
+}
+```
+
+The Host accepts only an advertised option for the active request and session.
+`allow_once` and `allow_session` grant one call or the current session;
+`reject_soft`, `reject_hard`, and `reject_explain` deny. A matching malformed
+response or `cancelled` fails closed. Optional rejection feedback belongs at
+`result._meta.connectonion.feedback` and has no authorization meaning.
+
 #### ONBOARD_SUBMIT
 
 Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
@@ -481,6 +510,45 @@ Keep-alive. Sent every 30 seconds.
 ```json
 { "type": "PING" }
 ```
+
+#### ACP_REQUEST
+
+The Host sends this immediately before its legacy `approval_needed` event.
+The outer envelope is ConnectOnion; `message` is one exact ACP
+`session/request_permission` JSON-RPC request.
+
+```json
+{
+  "type": "ACP_REQUEST",
+  "acpSchema": "schema-v1.19.0",
+  "message": {
+    "jsonrpc": "2.0",
+    "id": "approval-event-uuid",
+    "method": "session/request_permission",
+    "params": {
+      "sessionId": "550e8400-...",
+      "toolCall": {
+        "toolCallId": "call-1",
+        "title": "Bash(npm test)",
+        "status": "pending",
+        "rawInput": {"command": "npm test"}
+      },
+      "options": [
+        {"optionId": "allow_once", "name": "Allow this call", "kind": "allow_once"},
+        {"optionId": "allow_session", "name": "Allow for this session", "kind": "allow_always"},
+        {"optionId": "reject_soft", "name": "Reject this call and continue", "kind": "reject_once"},
+        {"optionId": "reject_hard", "name": "Reject and stop this turn", "kind": "reject_once"},
+        {"optionId": "reject_explain", "name": "Reject and explain first", "kind": "reject_once"}
+      ]
+    }
+  }
+}
+```
+
+The request UUID, Host session ID, and tool-call ID are stable across replay.
+New browser code belongs in `@connectonion/react`; oo-chat consumes its
+normalized approval item and does not parse this envelope. The standalone
+TypeScript SDK is retired from this rollout.
 
 #### Stream Events
 

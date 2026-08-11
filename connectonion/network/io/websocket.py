@@ -45,6 +45,7 @@ class WebSocketIO(IO):
         self._accepting_runtime_inputs = False
 
         self._closed = False
+        self._pending_permission: Dict[str, Any] | None = None
 
     # ═══════════════════════════════════════════════════════
     # Agent side (sync)
@@ -154,6 +155,104 @@ class WebSocketIO(IO):
         with self._client_condition:
             self._msgs_from_client.append(msg)
             self._client_condition.notify_all()
+
+    def register_permission_request(
+        self,
+        event: Dict[str, Any],
+        session_id: str,
+        acp_frame: Dict[str, Any] | None,
+    ) -> bool:
+        """Bind one replayable approval event to this session's live mailbox."""
+
+        request_id = event.get("id")
+        if not isinstance(request_id, str) or not request_id:
+            return False
+        pending = {
+            "request_id": request_id,
+            "session_id": session_id,
+            "tool_call_id": event.get("tool_call_id"),
+            "acp": acp_frame is not None,
+        }
+        with self._client_condition:
+            if self._pending_permission is None:
+                self._pending_permission = pending
+                return True
+            return self._pending_permission == pending
+
+    def resolve_acp_permission(
+        self, frame: Dict[str, Any], session_id: str
+    ) -> bool:
+        """Consume one matching ACP response and enqueue a fail-closed decision."""
+
+        message = frame.get("message")
+        response_id = message.get("id") if isinstance(message, dict) else None
+        with self._client_condition:
+            pending = self._pending_permission
+            if (
+                pending is None
+                or not pending["acp"]
+                or pending["session_id"] != session_id
+                or frame.get("sessionId") != session_id
+                or response_id != pending["request_id"]
+            ):
+                return False
+            self._pending_permission = None
+
+        from ...core.acp_wire import legacy_approval_response_from_acp
+
+        try:
+            response = legacy_approval_response_from_acp(
+                frame,
+                expected_session_id=session_id,
+                expected_request_id=pending["request_id"],
+            )
+        except (TypeError, ValueError):
+            response = {
+                "approved": False,
+                "scope": "once",
+                "mode": "reject_hard",
+            }
+        self.send_to_agent(response)
+        return True
+
+    def resolve_legacy_permission(self, response: Dict[str, Any]) -> bool:
+        """Bind a rolling-upgrade legacy answer to the one pending request."""
+
+        with self._client_condition:
+            if self._pending_permission is None:
+                return False
+            self._pending_permission = None
+            self._msgs_from_client.append(
+                self._normalized_legacy_permission(response)
+            )
+            self._client_condition.notify_all()
+            return True
+
+    @staticmethod
+    def _normalized_legacy_permission(response: Dict[str, Any]) -> Dict[str, Any]:
+        """Accept only the legacy choices the policy gate actually implements."""
+
+        rejected = {
+            "approved": False,
+            "scope": "once",
+            "mode": "reject_hard",
+        }
+        approved = response.get("approved")
+        if not isinstance(approved, bool):
+            return rejected
+        scope = response.get("scope", "once")
+        if scope not in {"once", "session"}:
+            return rejected
+        if approved:
+            return {"approved": True, "scope": scope}
+        mode = response.get("mode", "reject_hard")
+        if mode not in {"reject_soft", "reject_hard", "reject_explain"}:
+            return rejected
+        result = {"approved": False, "scope": "once", "mode": mode}
+        feedback = response.get("feedback")
+        if isinstance(feedback, str) and feedback:
+            result["feedback"] = feedback
+        return result
 
     def push_runtime_input(self, msg: Dict[str, Any]) -> bool:
         """Queue mid-execution input only while the current turn can consume it."""
