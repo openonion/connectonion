@@ -9,15 +9,23 @@ from acp import text_block, tool_content
 from acp.schema import (
     AgentMessageChunk,
     AgentThoughtChunk,
+    CurrentModeUpdate,
     StopReason,
     ToolCallProgress,
     ToolCallStart,
     Usage,
 )
 
-ACPUpdate = AgentMessageChunk | AgentThoughtChunk | ToolCallStart | ToolCallProgress
+ACPUpdate = (
+    AgentMessageChunk
+    | AgentThoughtChunk
+    | CurrentModeUpdate
+    | ToolCallStart
+    | ToolCallProgress
+)
 STREAMED_AGENT_EVENT_TYPES = frozenset({
     "assistant",
+    "mode_changed",
     "thinking",
     "tool_call",
     "tool_result",
@@ -53,6 +61,8 @@ def map_agent_event(event: Mapping[str, Any]) -> ACPEventMapping:
         return ACPEventMapping(updates=(_thought(event),))
     if event_type == "assistant":
         return ACPEventMapping(updates=(_assistant(event),))
+    if event_type == "mode_changed":
+        return ACPEventMapping(updates=(_current_mode(event),))
     if event_type == "turn_result":
         return ACPEventMapping(terminal=_terminal(event))
     return ACPEventMapping()
@@ -102,6 +112,16 @@ def _assistant(event: Mapping[str, Any]) -> AgentMessageChunk:
         session_update="agent_message_chunk",
         message_id=_required_string(event, "message_id"),
         content=text_block(_required_string(event, "content")),
+    )
+
+
+def _current_mode(event: Mapping[str, Any]) -> CurrentModeUpdate:
+    mode = _required_string(event, "mode")
+    if mode not in {"safe", "accept_edits", "ulw"}:
+        raise ValueError(f"Unsupported Agent mode: {mode!r}")
+    return CurrentModeUpdate(
+        session_update="current_mode_update",
+        current_mode_id=mode,
     )
 
 

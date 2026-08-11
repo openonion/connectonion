@@ -221,6 +221,7 @@ async def test_new_session_persists_canonical_snapshot_and_holds_lease(
         "messages": [{"role": "system", "content": "system"}],
         "trace": [],
         "turn": 0,
+        "mode": "safe",
     }
     assert tools == {"todolist": []}
     with pytest.raises(SessionSnapshotError, match="already running"):

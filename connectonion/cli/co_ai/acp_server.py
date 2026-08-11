@@ -35,6 +35,7 @@ from acp.schema import (
     AgentCapabilities,
     ClientCapabilities,
     CloseSessionResponse,
+    CurrentModeUpdate,
     Implementation,
     PermissionOption,
     RequestPermissionResponse,
@@ -42,7 +43,10 @@ from acp.schema import (
     ResumeSessionResponse,
     SessionCapabilities,
     SessionCloseCapabilities,
+    SessionMode,
+    SessionModeState,
     SessionResumeCapabilities,
+    SetSessionModeResponse,
     TextContentBlock,
     ToolCallUpdate,
 )
@@ -92,6 +96,26 @@ _ACP_PERMISSION_OPTIONS = (
         kind="reject_once",
     ),
 )
+
+_ACP_SESSION_MODES = (
+    SessionMode(
+        id="safe",
+        name="Safe",
+        description="Ask before tools with side effects.",
+    ),
+    SessionMode(
+        id="accept_edits",
+        name="Auto",
+        description="Apply file edits automatically; ask before other risky tools.",
+    ),
+    SessionMode(
+        id="ulw",
+        name="ULW",
+        description="Run autonomously within the launch-time turn budget.",
+    ),
+)
+_ACP_MODE_IDS = frozenset(mode.id for mode in _ACP_SESSION_MODES)
+_ULW_STATE_KEYS = ("skip_tool_approval", "ulw_turns", "ulw_turns_used")
 
 
 class _FailClosedACPInput(IO):
@@ -639,7 +663,10 @@ class ConnectOnionACPAgent:
                 "Unable to create the coding agent session",
             ) from None
         self._sessions[session_id] = runtime
-        return NewSessionResponse(session_id=session_id)
+        return NewSessionResponse(
+            session_id=session_id,
+            modes=self._session_mode_state(runtime),
+        )
 
     async def resume_session(
         self,
@@ -685,7 +712,69 @@ class ConnectOnionACPAgent:
                 "Unable to resume the coding agent session",
             ) from None
         self._sessions[session_id] = runtime
-        return ResumeSessionResponse()
+        return ResumeSessionResponse(modes=self._session_mode_state(runtime))
+
+    async def set_session_mode(
+        self,
+        session_id: str,
+        mode_id: str,
+        **_kwargs: Any,
+    ) -> SetSessionModeResponse:
+        """Persist one idle mode change without exceeding launch authority."""
+
+        runtime = self._sessions.get(session_id)
+        if runtime is None:
+            raise RequestError(
+                -32002,
+                "Session not found",
+                {"sessionId": session_id},
+            )
+        if mode_id not in _ACP_MODE_IDS:
+            raise RequestError.invalid_params(
+                {"details": "Unsupported session mode"}
+            )
+        if mode_id == "ulw" and not self._yolo:
+            raise RequestError.invalid_params(
+                {"details": "ULW mode was not authorized when ACP started"}
+            )
+        if runtime.prompt_lock.locked() or runtime.prompt_active.is_set():
+            raise RequestError(
+                -32000,
+                "Session is busy",
+                {"sessionId": session_id},
+            )
+
+        async with runtime.prompt_lock:
+            if (
+                runtime.closing.is_set()
+                or self._sessions.get(session_id) is not runtime
+            ):
+                raise RequestError(
+                    -32002,
+                    "Session not found",
+                    {"sessionId": session_id},
+                )
+            operation = asyncio.create_task(
+                asyncio.to_thread(self._commit_mode, runtime, mode_id)
+            )
+            runtime.active_operation = operation
+            try:
+                await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                await self._settle_owned_task(operation)
+                raise
+            except Exception:
+                logger.exception(
+                    "Failed to change co ai ACP mode for session %s",
+                    session_id,
+                )
+                raise RequestError(
+                    -32603,
+                    "Unable to change session mode",
+                ) from None
+            finally:
+                runtime.active_operation = None
+        return SetSessionModeResponse()
 
     async def close_session(
         self,
@@ -761,7 +850,7 @@ class ConnectOnionACPAgent:
             commit: asyncio.Task[Any] | None = None
             runtime.active_operation = worker
             try:
-                terminal, finished = await self._consume_generation(
+                terminal, finished, current_mode_update = await self._consume_generation(
                     runtime.acp_input,
                     generation,
                     session_id,
@@ -774,12 +863,25 @@ class ConnectOnionACPAgent:
                 if terminal is None or terminal.stop_reason is None:
                     raise RuntimeError("Agent turn ended without an ACP stop reason")
                 if terminal.stop_reason in {"end_turn", "max_turn_requests"}:
+                    if current_mode_update is not None and (
+                        not isinstance(runtime.agent.current_session, dict)
+                        or runtime.agent.current_session.get("mode")
+                        != current_mode_update.current_mode_id
+                    ):
+                        raise RuntimeError(
+                            "Agent mode event does not match session state"
+                        )
                     commit = asyncio.create_task(
                         asyncio.to_thread(self._commit_runtime, runtime)
                     )
                     operation = commit
                     runtime.active_operation = commit
                     await asyncio.shield(commit)
+                    if current_mode_update is not None:
+                        await self._publish_committed_mode(
+                            runtime,
+                            current_mode_update,
+                        )
                 else:
                     operation = asyncio.create_task(
                         asyncio.to_thread(self._restore_runtime, runtime)
@@ -940,6 +1042,15 @@ class ConnectOnionACPAgent:
             agent = self._build_agent(project_dir, acp_input)
             if session is None:
                 session = self._fresh_persistent_session(agent, session_id)
+            else:
+                session = self._normalized_session_mode(session)
+            if hasattr(agent, "_yolo_turns"):
+                # In ACP, --yolo is an authority ceiling rather than a request
+                # to re-arm ULW before every input. The persisted session below
+                # already carries the exact current mode and bounded budget.
+                agent._yolo_turns = None
+            if hasattr(agent, "_yolo_needs_activation"):
+                agent._yolo_needs_activation = False
             restore_tool_state(agent, tools)
             normalized_tools = capture_tool_state(agent)
             if not resume:
@@ -970,6 +1081,7 @@ class ConnectOnionACPAgent:
         if not isinstance(session, dict):
             raise SessionSnapshotError("Agent did not produce a session snapshot.")
         session["session_id"] = runtime.session_id
+        session = self._normalized_session_mode(session)
         tools = capture_tool_state(runtime.agent)
         last_good_session = copy.deepcopy(session)
         last_good_tools = copy.deepcopy(tools)
@@ -1018,9 +1130,12 @@ class ConnectOnionACPAgent:
             runtime.session_lease.close()
         runtime.active_operation = None
 
-    @staticmethod
-    def _fresh_persistent_session(agent: Any, session_id: str) -> dict[str, Any]:
-        return {
+    def _fresh_persistent_session(
+        self,
+        agent: Any,
+        session_id: str,
+    ) -> dict[str, Any]:
+        session = {
             "session_id": session_id,
             "messages": [{
                 "role": "system",
@@ -1028,7 +1143,97 @@ class ConnectOnionACPAgent:
             }],
             "trace": [],
             "turn": 0,
+            "mode": "safe",
         }
+        if self._yolo:
+            self._apply_mode(session, "ulw")
+        return self._normalized_session_mode(session)
+
+    def _session_mode_state(self, runtime: _SessionRuntime) -> SessionModeState:
+        modes = _ACP_SESSION_MODES if self._yolo else _ACP_SESSION_MODES[:2]
+        return SessionModeState(
+            current_mode_id=runtime.last_good_session["mode"],
+            available_modes=[mode.model_copy(deep=True) for mode in modes],
+        )
+
+    def _normalized_session_mode(
+        self,
+        session: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Validate persisted authority-bearing mode state fail closed."""
+
+        normalized = copy.deepcopy(session)
+        mode = normalized.get("mode", "safe")
+        if not isinstance(mode, str) or mode not in _ACP_MODE_IDS:
+            raise SessionSnapshotError("Session has an unsupported mode.")
+        if mode == "ulw":
+            if not self._yolo:
+                raise SessionSnapshotError(
+                    "Session requires ULW launch authority."
+                )
+            turns = normalized.get("ulw_turns")
+            turns_used = normalized.get("ulw_turns_used")
+            if (
+                isinstance(turns, bool)
+                or not isinstance(turns, int)
+                or turns <= 0
+                or isinstance(turns_used, bool)
+                or not isinstance(turns_used, int)
+                or turns_used < 0
+                or turns_used >= turns
+                or isinstance(self._yolo_turns, bool)
+                or not isinstance(self._yolo_turns, int)
+                or self._yolo_turns <= 0
+                or turns - turns_used > self._yolo_turns
+                or normalized.get("skip_tool_approval") is not True
+            ):
+                raise SessionSnapshotError("Session has invalid ULW state.")
+        elif any(key in normalized for key in _ULW_STATE_KEYS):
+            raise SessionSnapshotError(
+                "Session has ULW authority outside ULW mode."
+            )
+        normalized["mode"] = mode
+        return normalized
+
+    def _apply_mode(self, session: dict[str, Any], mode: str) -> None:
+        for key in _ULW_STATE_KEYS:
+            session.pop(key, None)
+        session["mode"] = mode
+        if mode == "ulw":
+            session["ulw_turns"] = self._yolo_turns
+            session["ulw_turns_used"] = 0
+            session["skip_tool_approval"] = True
+
+    def _commit_mode(self, runtime: _SessionRuntime, mode: str) -> None:
+        """Write the detached mode checkpoint before exposing it in memory."""
+
+        session = copy.deepcopy(runtime.last_good_session)
+        if session.get("mode") == mode:
+            return
+        self._apply_mode(session, mode)
+        session = self._normalized_session_mode(session)
+        tools = copy.deepcopy(runtime.last_good_tools)
+        agent_session = copy.deepcopy(session)
+        last_good_session = copy.deepcopy(session)
+        next_prompt_session = (
+            copy.deepcopy(session)
+            if runtime.session_for_next_prompt is not None
+            else None
+        )
+        save_snapshot(
+            self._session_co_dir,
+            session,
+            tools,
+            cwd=runtime.cwd,
+        )
+        runtime.agent.current_session = agent_session
+        runtime.last_good_session = last_good_session
+        if next_prompt_session is not None:
+            runtime.session_for_next_prompt = next_prompt_session
+        if hasattr(runtime.agent, "_yolo_turns"):
+            runtime.agent._yolo_turns = None
+        if hasattr(runtime.agent, "_yolo_needs_activation"):
+            runtime.agent._yolo_needs_activation = False
 
     @staticmethod
     def _reject_unsupported_session_inputs(
@@ -1087,22 +1292,62 @@ class ConnectOnionACPAgent:
         bridge: _ACPEventBridge,
         generation: _TurnGeneration,
         session_id: str,
-    ) -> tuple[ACPTerminal | None, _TurnFinished]:
+    ) -> tuple[ACPTerminal | None, _TurnFinished, CurrentModeUpdate | None]:
         terminal = None
+        current_mode_update = None
         while True:
             item = await bridge.next_for(generation)
             if isinstance(item, _TurnFinished):
-                return terminal, item
+                return terminal, item, current_mode_update
             mapped = map_agent_event(item)
             if mapped.terminal is not None:
                 if terminal is not None:
                     raise RuntimeError("Agent turn emitted more than one terminal event")
                 terminal = mapped.terminal
             for update in mapped.updates:
+                if isinstance(update, CurrentModeUpdate):
+                    current_mode_update = update
+                    continue
                 await self._client.session_update(
                     session_id=session_id,
                     update=update,
                 )
+
+    async def _publish_committed_mode(
+        self,
+        runtime: _SessionRuntime,
+        update: CurrentModeUpdate,
+    ) -> None:
+        """Announce internal mode only after its snapshot is durable."""
+
+        try:
+            await self._client.session_update(
+                session_id=runtime.session_id,
+                update=update,
+            )
+        except asyncio.CancelledError:
+            self._quarantine_mode_desync(runtime)
+            raise
+        except Exception:
+            # The disk commit is already authoritative. Rolling memory back
+            # here would split it from disk. The client may still display a
+            # less privileged mode, so quarantine this runtime before it can
+            # execute another prompt. Reconnect/resume re-advertises the exact
+            # durable mode while the released lease keeps that path available.
+            logger.warning(
+                "Unable to publish committed ACP mode for session %s",
+                runtime.session_id,
+                exc_info=True,
+            )
+            self._quarantine_mode_desync(runtime)
+
+    def _quarantine_mode_desync(self, runtime: _SessionRuntime) -> None:
+        """Retire a runtime whose client missed a committed policy change."""
+
+        runtime.closing.set()
+        if self._sessions.get(runtime.session_id) is runtime:
+            self._sessions.pop(runtime.session_id)
+        runtime.session_lease.close()
 
     @staticmethod
     async def _settle_owned_task(task: asyncio.Task[Any]) -> bool:
