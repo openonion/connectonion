@@ -137,13 +137,15 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
                 await send_msg(acp_request)
         acp_frame = (
             _acp_rollout_frame(event, session_id)
-            if event.get("type") in {"tool_call", "tool_result"}
+            if event.get("type") in {
+                "tool_call", "tool_result", "mode_changed"
+            }
             else None
         )
         if acp_frame is not None:
             await send_msg(acp_frame)
             # Rollout is dual-write: older clients still need the legacy event,
-            # while new clients de-duplicate both shapes by the stable tool ID.
+            # while new clients de-duplicate the matching logical transition.
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)
