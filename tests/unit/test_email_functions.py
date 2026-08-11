@@ -10,6 +10,7 @@ Components under test:
 """
 
 
+import base64
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path
 import tempfile
@@ -36,6 +37,13 @@ from tests.utils.config_helpers import (
     SAMPLE_EMAILS,
     ProjectHelper,
 )
+
+
+def _token_for(public_key: str) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"public_key": public_key}).encode()
+    ).decode().rstrip("=")
+    return f"header.{payload}.signature"
 
 
 # -------- send_email tests -------- #
@@ -94,6 +102,119 @@ def test_send_email_no_project():
     result = send_email("test@example.com", "Test", "Message")
     assert result["success"] is False
     assert ("OPENONION_API_KEY" in result["error"]) or ("No .env file" in result["error"])
+
+
+def test_send_email_rejects_a_foreign_account_before_post(monkeypatch):
+    from connectonion import credentials
+
+    expected = "0x" + "1" * 64
+    foreign = "0x" + "2" * 64
+    token = _token_for(foreign)
+    monkeypatch.setenv("OPENONION_API_KEY", token)
+    monkeypatch.setenv("AGENT_EMAIL", "agent@mail.openonion.ai")
+    monkeypatch.setattr(
+        credentials,
+        "project_identity",
+        lambda: {"address": expected},
+    )
+    monkeypatch.setattr(
+        send_email_module.requests,
+        "post",
+        lambda *args, **kwargs: pytest.fail("foreign token reached email POST"),
+    )
+
+    result = send_email(
+        "test@example.com",
+        "Subject",
+        "Message",
+        idempotency_key="send-foreign",
+    )
+
+    assert result["success"] is False
+    assert result["retryable"] is False
+    assert result["request_id"] == "send-foreign"
+    assert result["idempotency_key"] == "send-foreign"
+    assert token not in result["error"]
+    assert foreign[:16] in result["error"]
+
+
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.post')
+def test_send_email_finds_the_project_env_from_a_deep_subdirectory(
+    mock_post, tmp_path, monkeypatch
+):
+    project = tmp_path / "project"
+    nested = project.joinpath(*("deep",) * 8)
+    home = tmp_path / "home"
+    (project / ".co").mkdir(parents=True)
+    nested.mkdir(parents=True)
+    home.mkdir()
+    (project / ".env").write_text(
+        "OPENONION_API_KEY=project-token\n"
+        "AGENT_EMAIL=project@mail.openonion.ai\n"
+    )
+    monkeypatch.chdir(nested)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    mock_post.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"message_id": "project-message"},
+    )
+
+    result = send_email("test@example.com", "Subject", "Message")
+
+    assert result["success"] is True
+    assert mock_post.call_args.kwargs["headers"]["Authorization"] == "Bearer project-token"
+
+
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.post')
+def test_send_email_keeps_the_global_keys_fallback(mock_post, tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (home / ".co").mkdir(parents=True)
+    (home / ".co" / "keys.env").write_text(
+        "OPENONION_API_KEY=global-token\n"
+        "AGENT_EMAIL=global@mail.openonion.ai\n"
+    )
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    mock_post.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"message_id": "global-message"},
+    )
+
+    result = send_email("test@example.com", "Subject", "Message")
+
+    assert result["success"] is True
+    assert mock_post.call_args.kwargs["headers"]["Authorization"] == "Bearer global-token"
+
+
+@patch('requests.post')
+def test_send_email_keeps_process_environment_precedence(
+    mock_post, tmp_path, monkeypatch
+):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    (project / ".co").mkdir(parents=True)
+    home.mkdir()
+    (project / ".env").write_text(
+        "OPENONION_API_KEY=project-token\n"
+        "AGENT_EMAIL=project@mail.openonion.ai\n"
+    )
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setenv("OPENONION_API_KEY", "process-token")
+    monkeypatch.setenv("AGENT_EMAIL", "process@mail.openonion.ai")
+    mock_post.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"message_id": "process-message"},
+    )
+
+    result = send_email("test@example.com", "Subject", "Message")
+
+    assert result["success"] is True
+    assert mock_post.call_args.kwargs["headers"]["Authorization"] == "Bearer process-token"
 
 
 @patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
