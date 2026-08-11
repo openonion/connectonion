@@ -373,6 +373,71 @@ def test_get_emails_unread_only(mock_get):
     assert call_args[1]["params"]["unread_only"] is True
 
 
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_filters_by_a_literal_subject_fragment(mock_get):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "emails": [],
+        "subject_filter_applied": "[CO-ASK:a%_'b]",
+    }
+    mock_get.return_value = mock_response
+
+    get_emails(last=3, subject_contains="[CO-ASK:a%_'b]")
+
+    assert mock_get.call_args.kwargs["params"] == {
+        "limit": 3,
+        "unread_only": False,
+        "subject_contains": "[CO-ASK:a%_'b]",
+    }
+    assert mock_get.call_args.kwargs["timeout"] == 10
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_rejects_a_server_that_silently_ignores_the_filter(mock_get):
+    from connectonion.useful_tools.get_emails import SubjectFilterUnsupportedError
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "emails": [
+            {"subject": f"new message {index}"}
+            for index in range(10)
+        ],
+    }
+    mock_get.return_value = mock_response
+
+    with pytest.raises(SubjectFilterUnsupportedError):
+        get_emails(subject_contains="[CO-ASK:older-reply]")
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_passes_the_bounded_request_timeout(mock_get):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"emails": []}
+    mock_get.return_value = mock_response
+
+    get_emails(request_timeout=1.25)
+
+    assert mock_get.call_args.kwargs["timeout"] == 1.25
+
+
+@pytest.mark.parametrize("subject", ["", "x" * 129])
+def test_get_emails_rejects_an_invalid_subject_filter_before_network(subject):
+    with pytest.raises(ValueError, match="subject_contains"):
+        get_emails(subject_contains=subject)
+
+
+@pytest.mark.parametrize("timeout", [0, -1, 10.1])
+def test_get_emails_rejects_an_invalid_request_timeout_before_network(timeout):
+    with pytest.raises(ValueError, match="request_timeout"):
+        get_emails(request_timeout=timeout)
+
+
 @patch.dict('os.environ', {}, clear=True)
 def test_get_emails_no_project():
     """Test getting emails without OPENONION_API_KEY."""

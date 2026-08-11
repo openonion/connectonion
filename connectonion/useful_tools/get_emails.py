@@ -4,23 +4,36 @@ LLM-Note:
   Dependencies: imports from [requests, typing, backend, credentials] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/unit/test_credentials.py, tests/test_real_email.py]
   Data flow: Agent calls a mailbox function → require_ambient_api_key() checks the already-loaded environment token against the canonical project identity → request to the configured backend → normalized result
   State/Effects: reads the ambient token and local identity keys | makes HTTP GET/POST requests | no local caching | mark_read()/mark_unread() modify server-side read status
-  Integration: exposes get_emails(last, unread), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?last=N&unread=true, PUT /api/v1/email/s/mark-read
+  Integration: exposes get_emails(last, unread, subject_contains), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received, POST /api/v1/email/s/mark-read
   Performance: one HTTP request per call | no pagination (uses 'last' param) | synchronous blocking | no local cache
   Errors: missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
 """
 
+from typing import Dict, List, Union
+
 import requests
-from typing import List, Dict, Union
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 
 
-def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
+class SubjectFilterUnsupportedError(RuntimeError):
+    """The server did not prove that it applied the requested inbox filter."""
+
+
+def get_emails(
+    last: int = 10,
+    unread: bool = False,
+    subject_contains: str = None,
+    request_timeout: float = 10.0,
+) -> List[Dict]:
     """Get emails sent to the agent's address.
 
     Args:
         last: Number of emails to retrieve (default: 10)
         unread: Only get unread emails (default: False)
+        subject_contains: Optional literal, case-insensitive subject fragment.
+        request_timeout: Maximum HTTP wait for this request in seconds.
 
     Returns:
         List of email dictionaries containing:
@@ -31,8 +44,13 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
             - timestamp: ISO format timestamp
             - read: Boolean read status
     """
+    if subject_contains is not None and not 1 <= len(subject_contains) <= 128:
+        raise ValueError("subject_contains must contain 1-128 characters")
+    if not 0 < request_timeout <= 10:
+        raise ValueError("request_timeout must be greater than 0 and at most 10 seconds")
+
     token = require_ambient_api_key()
-    
+
     # Fetch emails from backend API
     endpoint = f"{backend_url()}/api/v1/email/received"
 
@@ -45,18 +63,30 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
         "limit": last,
         "unread_only": unread
     }
+    if subject_contains is not None:
+        params["subject_contains"] = subject_contains
 
     response = requests.get(
         endpoint,
         params=params,
         headers=headers,
-        timeout=10
+        timeout=request_timeout,
     )
 
     # Raise error if API call failed
     response.raise_for_status()
 
     data = response.json()
+    if (
+        subject_contains is not None
+        and data.get("subject_filter_applied") != subject_contains
+    ):
+        # Older FastAPI deployments silently ignore unknown query parameters.
+        # Without this echo, a busy inbox could push the correlated reply out
+        # of the unfiltered result window while the client assumes filtering.
+        raise SubjectFilterUnsupportedError(
+            "Email backend did not confirm the requested subject filter"
+        )
     emails = data.get("emails", [])
 
     # Ensure consistent format
@@ -135,7 +165,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
         raise ValueError("No email IDs provided to mark as read")
 
     token = require_ambient_api_key()
-    
+
     # Mark emails as read via backend API
     endpoint = f"{backend_url()}/api/v1/email/s/mark-read"
 

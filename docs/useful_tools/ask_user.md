@@ -37,9 +37,11 @@ agent.input("Help me choose a programming language")
 ## How It Works
 
 When the agent calls `ask_user`, it:
-1. Sends an `ask_user` event via `agent.connection`
-2. Waits for user response
-3. Returns the answer to the agent
+1. Uses live `agent.io` when a frontend is connected.
+2. Otherwise returns `NOT ANSWERED` immediately by default.
+3. If the operator explicitly enables email fallback, sends one escaped,
+   correlated question to the configured contact and waits for a bounded reply.
+4. Returns the answer, or a fail-closed `NOT ANSWERED` result.
 
 ```
 Agent calls ask_user("What color?", ["red", "blue"])
@@ -99,5 +101,17 @@ And responds with:
 
 ## Requirements
 
-- Requires `agent.connection` to be set (works with hosted agents)
-- Frontend must handle `ask_user` event type
+- Live mode requires `agent.io`; the frontend handles the `ask_user` event.
+- Unattended email is opt-in: set `CONNECTONION_ASK_USER_EMAIL=1` and
+  `OWNER_EMAIL=you@example.com`. The machine-global `~/.co/keys.env` contact
+  wins over a conflicting project `.env` value.
+- Optional bounded settings are
+  `CONNECTONION_ASK_USER_EMAIL_TIMEOUT_SECONDS` (1–900, default 900) and
+  `CONNECTONION_ASK_USER_EMAIL_POLL_SECONDS` (0.1–60, default 20).
+- Email replies answer non-sensitive choice questions only; free-form fields
+  and replies outside the offered choices are rejected. They never grant
+  Host/ACP tool permissions. Passwords, secrets, tokens, OTPs, verification
+  codes, and common secret-shaped values are rejected before sending because
+  received mail is persisted.
+- The email backend must confirm that it applied the exact server-side subject
+  filter. Older deployments that silently ignore the filter fail closed.

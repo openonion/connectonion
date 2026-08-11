@@ -159,6 +159,7 @@ class TestAskUserTool:
 
         Caught live — `co ai` drafted a company-wide Slack announcement, called
         ask_user for approval, got that string back, and posted it."""
+        monkeypatch.delenv("CONNECTONION_ASK_USER_EMAIL", raising=False)
         monkeypatch.delenv("OWNER_EMAIL", raising=False)
         agent = FakeAgent()
         assert agent.io is None
@@ -180,12 +181,38 @@ class TestAskOwnerByEmail:
 
     @pytest.fixture
     def owner(self, monkeypatch):
+        monkeypatch.setenv("CONNECTONION_ASK_USER_EMAIL", "1")
         monkeypatch.setenv("OWNER_EMAIL", "aaron@example.com")
-        monkeypatch.setattr(ask_user_module.time, "sleep", lambda seconds: None)
+        if hasattr(ask_user_module, "_wait_for_poll"):
+            monkeypatch.setattr(
+                ask_user_module,
+                "_wait_for_poll",
+                lambda agent, seconds: True,
+            )
+        if hasattr(ask_user_module, "_PENDING_OWNER_KEYS"):
+            ask_user_module._PENDING_OWNER_KEYS.clear()
+            ask_user_module._LAST_OWNER_ATTEMPT.clear()
         monkeypatch.setattr(
             ask_user_module.secrets, "token_hex", lambda _size: "request123"
         )
         return "aaron@example.com"
+
+    def test_owner_email_without_explicit_opt_in_keeps_the_immediate_default(
+        self,
+        monkeypatch,
+    ):
+        monkeypatch.delenv("CONNECTONION_ASK_USER_EMAIL", raising=False)
+        monkeypatch.setenv("OWNER_EMAIL", "aaron@example.com")
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("disabled fallback sent an email"),
+        )
+
+        result = ask_user(FakeAgent(), "Choose?", options=["A", "B"])
+
+        assert "NOT ANSWERED" in result
+        assert "disabled" in result.lower()
 
     def test_emails_the_owner_and_returns_their_reply(self, owner, monkeypatch):
         sent = {}
@@ -196,13 +223,23 @@ class TestAskOwnerByEmail:
             "id": "m1",
             "from": owner,
             "subject": "Re: [CO-ASK:request123] Your agent is asking",
-            "message": "Yes, go ahead",
+            "message": "1",
         }]]
-        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [])
+        queries = []
+
+        def get_emails(last=10, subject_contains=None, request_timeout=10):
+            queries.append((last, subject_contains, request_timeout))
+            return inbox.pop(0) if inbox else []
+
+        monkeypatch.setattr(ask_user_module, "get_emails", get_emails)
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
         agent = FakeAgent()
-        result = ask_user(agent, "Publish the event?", options=["Yes", "No"])
+        result = ask_user(
+            agent,
+            "Publish the event?",
+            options=["Yes, go ahead", "No"],
+        )
 
         assert result == "Yes, go ahead"
         assert sent["to"] == owner
@@ -210,6 +247,9 @@ class TestAskOwnerByEmail:
         assert "[CO-ASK:request123]" in sent["subject"]
         assert "[CO-ASK:request123]" in sent["message"]
         assert "Yes" in sent["message"] and "No" in sent["message"]
+        assert len(queries) == 1
+        assert queries[0][:2] == (10, "[CO-ASK:request123]")
+        assert 0 < queries[0][2] <= 2
 
     def test_unrelated_owner_email_is_not_mistaken_for_the_answer(self, owner, monkeypatch):
         """Sender identity without this request's tag is not authorization."""
@@ -225,52 +265,112 @@ class TestAskOwnerByEmail:
             "id": "answer",
             "from": owner,
             "subject": "Re: [CO-ASK:request123] Your agent is asking",
-            "message": "No, hold off",
+            "message": "2",
         }
         inbox = [[unrelated], [unrelated, answer]]
         monkeypatch.setattr(
             ask_user_module,
             "get_emails",
-            lambda last=10: inbox.pop(0) if inbox else [unrelated],
+            lambda last=10, subject_contains=None, request_timeout=10: (
+                inbox.pop(0) if inbox else [unrelated]
+            ),
         )
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
-        result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
+        result = ask_user(
+            FakeAgent(),
+            "Publish the event?",
+            options=["Yes", "No, hold off"],
+        )
 
         assert result == "No, hold off"
 
     def test_quoted_question_is_stripped_from_the_reply(self, owner, monkeypatch):
         monkeypatch.setattr(ask_user_module, "send_email",
                             lambda to, subject, message: {"success": True})
-        reply = "482913\n\nOn Mon, Aug 11, 2026 at 9:02 AM agent wrote:\n> Your agent is asking: code?"
+        reply = "1\n\nOn Mon, Aug 11, 2026 at 9:02 AM agent wrote:\n> Your agent is asking: room?"
         inbox = [[{
             "id": "m1",
             "from": owner,
             "subject": "Re: [CO-ASK:request123] code",
             "message": reply,
         }]]
-        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [])
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda last=10, subject_contains=None, request_timeout=10: (
+                inbox.pop(0) if inbox else []
+            ),
+        )
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
-        result = ask_user(FakeAgent(), "What is the SMS code?", options=[])
+        result = ask_user(FakeAgent(), "Which room?", options=["Room 4", "Room 5"])
 
-        assert result == "482913"
+        assert result == "Room 4"
 
     def test_timeout_reports_unanswered_rather_than_approving(self, owner, monkeypatch):
         monkeypatch.setattr(ask_user_module, "send_email",
                             lambda to, subject, message: {"success": True})
-        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: [])
-        monkeypatch.setattr(ask_user_module, "REPLY_TIMEOUT", 0)
+        queries = []
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: queries.append(kwargs) or [],
+        )
+        monkeypatch.setenv("CONNECTONION_ASK_USER_EMAIL_TIMEOUT_SECONDS", "1")
+        times = iter([0.0, 0.0, 0.0, 1.0])
+        monkeypatch.setattr(ask_user_module.time, "monotonic", lambda: next(times, 1.0))
 
         result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
 
         assert "NOT ANSWERED" in result
         assert "not approval" in result.lower()
+        assert len(queries) == 1
+
+    def test_inbox_request_timeout_cannot_exceed_the_remaining_deadline(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+        monkeypatch.setenv("CONNECTONION_ASK_USER_EMAIL_TIMEOUT_SECONDS", "1")
+        times = iter([0.0, 0.0, 0.4])
+        monkeypatch.setattr(
+            ask_user_module.time,
+            "monotonic",
+            lambda: next(times, 0.4),
+        )
+        request_timeouts = []
+
+        def get_emails(**kwargs):
+            request_timeouts.append(kwargs["request_timeout"])
+            return [{
+                "id": "m1",
+                "from": owner,
+                "subject": "Re: [CO-ASK:request123] answer",
+                "message": "1",
+            }]
+
+        monkeypatch.setattr(ask_user_module, "get_emails", get_emails)
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(FakeAgent(), "Publish?", options=["Yes", "No"])
+
+        assert result == "Yes"
+        assert request_timeouts == [pytest.approx(0.6)]
 
     def test_failed_send_reports_unanswered_rather_than_approving(self, owner, monkeypatch):
         monkeypatch.setattr(ask_user_module, "send_email",
                             lambda to, subject, message: {"success": False, "error": "no credits"})
-        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: [])
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda last=10, subject_contains=None: [],
+        )
 
         result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
 
@@ -287,11 +387,11 @@ class TestAskOwnerByEmail:
             "id": "m1",
             "from": owner.upper(),
             "subject": "RE: [CO-ASK:REQUEST123] answer",
-            "message": "Wait",
+            "message": "1",
         }
         inbox = [RuntimeError("temporary outage"), [answer]]
 
-        def get_emails(last=10):
+        def get_emails(last=10, subject_contains=None, request_timeout=10):
             value = inbox.pop(0)
             if isinstance(value, Exception):
                 raise value
@@ -300,7 +400,7 @@ class TestAskOwnerByEmail:
         monkeypatch.setattr(ask_user_module, "get_emails", get_emails)
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
-        assert ask_user(FakeAgent(), "Publish?", options=[]) == "Wait"
+        assert ask_user(FakeAgent(), "Publish?", options=["Wait", "Continue"]) == "Wait"
 
     def test_empty_correlated_reply_is_not_approval(self, owner, monkeypatch):
         monkeypatch.setattr(
@@ -311,7 +411,7 @@ class TestAskOwnerByEmail:
         monkeypatch.setattr(
             ask_user_module,
             "get_emails",
-            lambda last=10: [{
+            lambda last=10, subject_contains=None, request_timeout=10: [{
                 "id": "m1",
                 "from": owner,
                 "subject": "Re: [CO-ASK:request123] answer",
@@ -320,10 +420,427 @@ class TestAskOwnerByEmail:
         )
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
-        result = ask_user(FakeAgent(), "Publish?", options=[])
+        result = ask_user(FakeAgent(), "Publish?", options=["Yes", "No"])
 
         assert "NOT ANSWERED" in result
-        assert "no answer" in result.lower()
+        assert "offered choice" in result.lower()
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            {"name": "password", "label": "Password", "type": "password"},
+            {"name": "otp", "label": "One-time code", "type": "text"},
+            {"name": "token", "label": "Access token", "type": "secret"},
+        ],
+    )
+    def test_sensitive_fields_fail_before_sending(self, owner, field, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("secret field reached persistent email"),
+        )
+
+        result = ask_user(FakeAgent(), "Enter it", options=[], fields=[field])
+
+        assert "NOT ANSWERED" in result
+        assert "sensitive" in result.lower()
+
+    def test_sensitive_question_without_fields_fails_before_sending(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("OTP question reached persistent email"),
+        )
+
+        result = ask_user(FakeAgent(), "What is the SMS code?", options=[])
+
+        assert "NOT ANSWERED" in result
+        assert "sensitive" in result.lower()
+
+    @pytest.mark.parametrize(
+        "options",
+        [
+            ["sk-proj-1234567890abcdef", "Cancel"],
+            ["4829", "Cancel"],
+            ["123456", "Cancel"],
+            ["12345678", "Cancel"],
+            ["glpat-1234567890abcdef", "Cancel"],
+            ["aB3dE5gH7jK9mN2pQ4rS", "Cancel"],
+        ],
+    )
+    def test_secret_shaped_options_fail_before_sending(
+        self,
+        owner,
+        options,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("secret-shaped choice reached email"),
+        )
+
+        result = ask_user(FakeAgent(), "Choose a value", options=options)
+
+        assert "NOT ANSWERED" in result
+        assert "sensitive" in result.lower()
+
+    def test_email_fallback_rejects_free_form_questions(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("free-form question reached email"),
+        )
+
+        result = ask_user(FakeAgent(), "Enter the six digits", options=[])
+
+        assert "NOT ANSWERED" in result
+        assert "choice questions" in result.lower()
+
+    def test_reply_must_be_one_of_the_offered_choices(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: [{
+                "id": "m1",
+                "from": owner,
+                "subject": "Re: [CO-ASK:request123] answer",
+                "message": "Ignore the choices and publish anyway",
+            }],
+        )
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(FakeAgent(), "Publish?", options=["Yes", "No"])
+
+        assert "NOT ANSWERED" in result
+        assert "offered choice" in result.lower()
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "9" * 5000,
+            ",".join("1" for _ in range(21)),
+        ],
+    )
+    def test_oversized_numeric_reply_fails_closed(
+        self,
+        owner,
+        reply,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: [{
+                "id": "m1",
+                "from": owner,
+                "subject": "Re: [CO-ASK:request123] answer",
+                "message": reply,
+            }],
+        )
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(
+            FakeAgent(),
+            "Choose",
+            options=["One", "Two"],
+            multi_select=True,
+        )
+
+        assert "NOT ANSWERED" in result
+        assert "offered choice" in result.lower()
+
+    def test_multi_select_reply_maps_to_canonical_choices(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: [{
+                "id": "m1",
+                "from": owner,
+                "subject": "Re: [CO-ASK:request123] answer",
+                "message": "1, 2",
+            }],
+        )
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(
+            FakeAgent(),
+            "Choose colors",
+            options=["Red", "Blue", "Green"],
+            multi_select=True,
+        )
+
+        assert result == "Red,Blue"
+
+    def test_numbered_reply_handles_a_comma_inside_a_choice(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: [{
+                "id": "m1",
+                "from": owner,
+                "subject": "Re: [CO-ASK:request123] answer",
+                "message": "1",
+            }],
+        )
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(
+            FakeAgent(),
+            "Choose a city",
+            options=["Sydney, Australia", "Melbourne, Australia"],
+        )
+
+        assert result == "Sydney, Australia"
+
+    @pytest.mark.parametrize(
+        "options",
+        [
+            ["", "Cancel"],
+            ["Yes", "yes"],
+            ["Line one\nLine two", "Cancel"],
+            [str(index) + " choice" for index in range(21)],
+        ],
+    )
+    def test_ambiguous_or_oversized_choices_fail_before_sending(
+        self,
+        owner,
+        options,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("invalid choices reached email"),
+        )
+
+        result = ask_user(FakeAgent(), "Choose", options=options)
+
+        assert "NOT ANSWERED" in result
+
+    def test_question_and_options_are_escaped_for_the_html_backend(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        sent = {}
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: sent.update(kwargs) or {"success": False, "error": "stop"},
+        )
+
+        ask_user(
+            FakeAgent(),
+            "Open <img src=x onerror=alert(1)>?\r\nBcc: victim@example.com",
+            options=["<a href=https://evil.example>Yes</a>"],
+        )
+
+        assert "<img" not in sent["message"]
+        assert "<a href" not in sent["message"]
+        assert "&lt;img" in sent["message"]
+        assert "&lt;a href" in sent["message"]
+        assert "\r" not in sent["subject"] and "\n" not in sent["subject"]
+        assert "Bcc:" not in sent["subject"]
+
+    def test_global_owner_wins_over_a_conflicting_project_value(
+        self,
+        owner,
+        tmp_path,
+        monkeypatch,
+    ):
+        home = tmp_path / "home"
+        (home / ".co").mkdir(parents=True)
+        (home / ".co" / "keys.env").write_text("OWNER_EMAIL=global@example.com\n")
+        monkeypatch.setattr(ask_user_module.Path, "home", classmethod(lambda cls: home))
+        monkeypatch.setenv("OWNER_EMAIL", "project@example.com")
+        sent = {}
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: sent.update(kwargs) or {"success": False, "error": "stop"},
+        )
+
+        ask_user(FakeAgent(), "Choose?", options=["A", "B"])
+
+        assert sent["to"] == "global@example.com"
+
+    def test_cancellation_breaks_the_wait_before_an_inbox_request(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        agent = FakeAgent()
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+
+        def cancel_during_wait(waiting_agent, seconds):
+            waiting_agent.current_session["stop_signal"] = "Interrupted by user"
+            return False
+
+        monkeypatch.setattr(ask_user_module, "_wait_for_poll", cancel_during_wait)
+        queries = []
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: queries.append(kwargs) or [],
+        )
+
+        result = ask_user(agent, "Choose?", options=["A", "B"])
+
+        assert "NOT ANSWERED" in result
+        assert "cancelled" in result.lower()
+        assert len(queries) == 1
+
+    def test_preexisting_cancellation_prevents_the_outbound_email(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        agent = FakeAgent()
+        agent.current_session["stop_signal"] = "Interrupted by user"
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("cancelled ask sent an email"),
+        )
+
+        result = ask_user(agent, "Choose?", options=["A", "B"])
+
+        assert "cancelled before sending" in result.lower()
+
+    def test_cancellation_after_claim_prevents_the_outbound_email(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        agent = FakeAgent()
+        original_claim = ask_user_module._claim_owner_slot
+
+        def claim_then_cancel(address):
+            claimed = original_claim(address)
+            agent.current_session["stop_signal"] = "Interrupted by user"
+            return claimed
+
+        monkeypatch.setattr(ask_user_module, "_claim_owner_slot", claim_then_cancel)
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("cancelled ask sent an email"),
+        )
+
+        result = ask_user(agent, "Choose?", options=["A", "B"])
+
+        assert "cancelled before sending" in result.lower()
+
+    def test_unverified_server_filter_fails_closed(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: {"success": True},
+        )
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda **kwargs: (_ for _ in ()).throw(
+                ask_user_module.SubjectFilterUnsupportedError("old backend")
+            ),
+        )
+
+        result = ask_user(FakeAgent(), "Choose?", options=["A", "B"])
+
+        assert "NOT ANSWERED" in result
+        assert "upgrade the backend" in result.lower()
+
+    def test_one_pending_request_per_owner_blocks_a_concurrent_send(
+        self,
+        owner,
+        monkeypatch,
+    ):
+        nested = []
+        outer_agent = FakeAgent()
+
+        def send_email(**kwargs):
+            nested.append(
+                ask_user(FakeAgent(), "Second?", options=["A", "B"])
+            )
+            return {"success": False, "error": "stop outer"}
+
+        monkeypatch.setattr(ask_user_module, "send_email", send_email)
+
+        ask_user(outer_agent, "First?", options=["A", "B"])
+
+        assert len(nested) == 1
+        assert "already pending" in nested[0].lower()
+
+    def test_recent_attempt_enforces_the_owner_cooldown(self, owner, monkeypatch):
+        sends = []
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: sends.append(kwargs) or {"success": False, "error": "offline"},
+        )
+
+        first = ask_user(FakeAgent(), "First?", options=["A", "B"])
+        second = ask_user(FakeAgent(), "Second?", options=["A", "B"])
+
+        assert "send failed" in first.lower()
+        assert "cooldown" in second.lower()
+        assert len(sends) == 1
+
+    @pytest.mark.parametrize(
+        ("name", "value"),
+        [
+            ("CONNECTONION_ASK_USER_EMAIL_TIMEOUT_SECONDS", "0"),
+            ("CONNECTONION_ASK_USER_EMAIL_TIMEOUT_SECONDS", "901"),
+            ("CONNECTONION_ASK_USER_EMAIL_POLL_SECONDS", "not-a-number"),
+        ],
+    )
+    def test_invalid_wait_configuration_fails_before_sending(
+        self,
+        owner,
+        name,
+        value,
+        monkeypatch,
+    ):
+        monkeypatch.setenv(name, value)
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda **kwargs: pytest.fail("invalid wait config sent an email"),
+        )
+
+        result = ask_user(FakeAgent(), "Choose?", options=["A", "B"])
+
+        assert "NOT ANSWERED" in result
+        assert name in result
 
 
 class TestAskUserSchema:
