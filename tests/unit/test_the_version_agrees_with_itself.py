@@ -22,6 +22,7 @@ the wrong number in exactly the setup developers use. Four literals that are
 checked beat three that can lie.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -42,6 +43,10 @@ def _docs_site_path() -> Path:
 
     The git common dir always points into the main checkout.
     """
+    configured = os.environ.get("CONNECTONION_DOCS_SITE")
+    if configured:
+        return Path(configured).expanduser().resolve() / "lib" / "version.ts"
+
     candidates = [REPO.parent]
     common = REPO / '.git'
     if common.is_file():                       # a worktree: .git is a pointer file
@@ -73,8 +78,12 @@ def _versioning_md_version() -> str:
 
 
 def _docs_site_version() -> str:
-    match = re.search(r"VERSION\s*=\s*'([^']+)'", DOCS_SITE.read_text(encoding='utf-8'))
-    assert match, f"{DOCS_SITE} has no VERSION"
+    text = DOCS_SITE.read_text(encoding='utf-8')
+    name = "PREVIEW_VERSION" if re.search(r"[a-zA-Z]", connectonion.__version__) else "STABLE_VERSION"
+    match = re.search(rf"{name}\s*=\s*'([^']+)'", text)
+    if not match:
+        match = re.search(r"VERSION\s*=\s*'([^']+)'", text)
+    assert match, f"{DOCS_SITE} has no {name} or VERSION"
     return match.group(1)
 
 

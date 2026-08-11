@@ -208,10 +208,15 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$wheel" "$sdist" --clobber
           else
+            release_flags=()
+            if [[ "$VERSION" =~ [a-zA-Z] ]]; then
+              release_flags+=(--prerelease --latest=false)
+            fi
             gh release create "$TAG" "$wheel" "$sdist" \
               --target "$GITHUB_SHA" \
               --generate-notes \
-              --title "$TAG"
+              --title "$TAG" \
+              "${release_flags[@]}"
           fi
 
       # Public announcements deliberately live outside this workflow. A broken

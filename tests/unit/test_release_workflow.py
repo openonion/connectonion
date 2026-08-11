@@ -79,6 +79,11 @@ def test_only_the_current_pair_is_built_and_attached():
     assert "gh release create" in RELEASE
 
 
+def test_preview_releases_are_not_advertised_as_latest():
+    assert '"$VERSION" =~ [a-zA-Z]' in RELEASE
+    assert "--prerelease --latest=false" in RELEASE
+
+
 def test_artifact_job_installs_what_its_wheel_acceptance_test_needs():
     build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
     install = 'python -m pip install --upgrade pip build twine ".[dev]"'

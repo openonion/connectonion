@@ -38,7 +38,7 @@ DENSE_HISTORY_FROM = (1, 5, 0)
 
 
 def _documented_versions() -> set:
-    return set(re.findall(r'^- (\d+\.\d+\.\d+)', VERSIONING.read_text(encoding='utf-8'),
+    return set(re.findall(r'^- (\d+\.\d+\.\d+(?:[a-zA-Z]+\d+)?)', VERSIONING.read_text(encoding='utf-8'),
                           re.MULTILINE))
 
 
