@@ -31,6 +31,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from .. import address as addr
+from ..core.acp_wire import legacy_tool_event_from_acp
+
+
+def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
+    if status in {"pending", "running", "in_progress"}:
+        return "running"
+    if status is None and not terminal:
+        return "running"
+    if status in {"success", "done", "completed"}:
+        return "done"
+    return "error"
 
 
 def _this_callers_identity():
@@ -817,20 +828,49 @@ class RemoteAgent:
 
     def _handle_stream_event(self, event: Dict[str, Any]) -> None:
         """Handle streaming event and update UI."""
+        try:
+            acp_event = legacy_tool_event_from_acp(event)
+        except (TypeError, ValueError):
+            return
+        if acp_event is not None:
+            event = acp_event
         event_type = event.get("type")
 
         if event_type == "tool_call":
-            # Add new tool_call UI event with running status
-            self._add_ui_event({
+            tool_id = event.get("tool_id") or event.get("id")
+            existing = next((
+                item for item in self._ui_events
+                if item.get("type") == "tool_call"
+                and (item.get("tool_id") or item.get("id")) == tool_id
+            ), None)
+            tool_item = {
                 "type": "tool_call",
                 "id": event.get("id"),
                 # The LLM's call id, which the result carries too. `id` is this
                 # event's own and differs between the call and its result.
-                "tool_id": event.get("tool_id"),
+                "tool_id": tool_id,
                 "name": event.get("name"),
                 "args": event.get("args"),
-                "status": "running"
-            })
+                "status": _tool_ui_status(event.get("status")),
+            }
+            if existing is None:
+                self._add_ui_event(tool_item)
+            else:
+                existing.update(tool_item)
+
+        elif event_type == "tool_call_update":
+            tool_id = event.get("tool_id") or event.get("id")
+            existing = next((
+                item for item in self._ui_events
+                if item.get("type") == "tool_call"
+                and (item.get("tool_id") or item.get("id")) == tool_id
+            ), None)
+            if existing is not None:
+                if event.get("status") is not None:
+                    existing["status"] = _tool_ui_status(event["status"])
+                for field in ("name", "args", "result", "timing_ms"):
+                    if field in event:
+                        existing[field] = event[field]
 
         elif event_type == "tool_result":
             # Correlate on tool_id -- the LLM's call id, which both frames
@@ -844,13 +884,9 @@ class RemoteAgent:
                 if ui_event.get("type") == "tool_call" and (
                     ui_event.get("tool_id") or ui_event.get("id")
                 ) == key:
-                    status = event.get("status")
-                    if status in {"success", "done", "completed"}:
-                        ui_event["status"] = "done"
-                    else:
-                        # Results are terminal. Unknown values must not be
-                        # presented as successful during a rolling upgrade.
-                        ui_event["status"] = "error"
+                    ui_event["status"] = _tool_ui_status(
+                        event.get("status"), terminal=True
+                    )
                     ui_event["result"] = event.get("result")
                     break
 

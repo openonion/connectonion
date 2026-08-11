@@ -12,9 +12,23 @@ import asyncio
 import threading
 
 from rich.console import Console
+
+from ....core.acp_wire import acp_notification_frame
 from ...io import WebSocketIO
 
 console = Console()
+
+
+def _acp_rollout_frame(event, session_id):
+    if not session_id:
+        return None
+    try:
+        return acp_notification_frame(event, session_id)
+    except (TypeError, ValueError) as exc:
+        console.print(
+            f"[yellow]ACP mirror skipped; legacy event continues: {exc}[/yellow]"
+        )
+        return None
 
 
 def _agent_thread_body(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder, requester_address=None):
@@ -36,6 +50,11 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     from ..session import session_to_chat_items
 
     async for event in io.read_msgs_from_agent():
+        acp_frame = _acp_rollout_frame(event, session_id)
+        if acp_frame is not None:
+            await send_msg(acp_frame)
+            # Rollout is dual-write: older clients still need the legacy event,
+            # while new clients de-duplicate both shapes by the stable tool ID.
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)
