@@ -193,9 +193,9 @@ The `tool_approval` plugin checks permissions in this order:
 
 ```
 1. Check skill's allowed_tools → Auto-approve if match
-2. Check SAFE_TOOLS (read, glob, grep) → Auto-approve
-3. Check session memory (previous approvals) → Auto-approve
-4. Check DANGEROUS_TOOLS → Ask user
+2. Check template/config permissions → Auto-approve if match
+3. Check session memory and explicit mode permissions → Auto-approve if match
+4. Ask for every remaining live-IO tool
 ```
 
 **Pattern matching** for flexible permissions:
@@ -460,16 +460,6 @@ def check_approval(agent):
     # Check unified permissions dict
     permissions = agent.current_session.get('permissions', {})
 
-    # Ensure safe tools are in permissions
-    if tool_name in SAFE_TOOLS:
-        if tool_name not in permissions:
-            permissions[tool_name] = {
-                'allowed': True,
-                'source': 'safe',
-                'reason': 'read-only operation',
-                'expires': {'type': 'never'}
-            }
-
     # Check each permission with pattern matching
     if permissions:
         for pattern, perm in permissions.items():
@@ -481,10 +471,9 @@ def check_approval(agent):
                 log(f"⚡ {tool_name} ({reason})")
                 return  # Auto-approve
 
-    # Ask user for dangerous tools
-    if tool_name in DANGEROUS_TOOLS:
-        response = agent.io.send({'type': 'approval_needed', ...})
-        # If approved for session, add to permissions dict
+    # Fail closed for every remaining tool when live IO is present
+    response = agent.io.send({'type': 'approval_needed', ...})
+    # If approved for session, add to permissions dict
 ```
 
 ### Pattern Matching

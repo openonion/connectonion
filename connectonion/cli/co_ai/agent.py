@@ -35,6 +35,7 @@ Debug:
 from pathlib import Path
 
 from connectonion import Agent, TodoList, bash
+from connectonion.core.events import after_user_input
 from connectonion.useful_plugins import (
     auto_compact,
     enable_yolo,
@@ -66,6 +67,23 @@ from .tools import (
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 # Global .co directory for co ai (consistent logs/evals location)
 GLOBAL_CO_DIR = Path.home() / ".co"
+
+
+@after_user_input
+def grant_managed_delegation_permissions(agent: Agent) -> None:
+    """Explicitly permit co ai wrappers that enforce their own inner policy.
+
+    Keep these grants local to co ai's LLM loop. Putting them in host.yaml's
+    shared defaults would also expose the wrappers to direct remote EXEC.
+    """
+    permissions = agent.current_session.setdefault('permissions', {})
+    for tool_name in ('codex', 'claude_code'):
+        permissions.setdefault(tool_name, {
+            'allowed': True,
+            'source': 'safe',
+            'reason': 'managed delegation owns inner approval',
+            'expires': {'type': 'never'},
+        })
 
 
 def agent_name(co_dir: Path = Path(".co")) -> str:
@@ -147,6 +165,7 @@ def create_agent(
         eval,
         system_reminder,
         prefer_write_tool,
+        [grant_managed_delegation_permissions],
         tool_approval,
         auto_compact,
         yolo,
