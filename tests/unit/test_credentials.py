@@ -12,6 +12,7 @@ from connectonion.credentials import (
     AmbientAPIKeyAccountMismatch,
     MissingAmbientAPIKey,
     account_in_token,
+    api_key_account_mismatch,
     require_ambient_api_key,
 )
 
@@ -78,6 +79,18 @@ def test_mismatch_raises_without_exposing_the_token(project, monkeypatch):
     assert caught.value.claimed == FOREIGN
     assert caught.value.expected == PROJECT
     assert token not in str(caught.value)
+
+
+def test_diagnostics_share_the_runtime_account_comparison():
+    token = token_for(FOREIGN)
+
+    assert api_key_account_mismatch(token, {"address": PROJECT}) == (
+        FOREIGN,
+        PROJECT,
+    )
+    assert api_key_account_mismatch(token_for(PROJECT.upper()), {"address": PROJECT}) is None
+    assert api_key_account_mismatch("opaque-token", {"address": PROJECT}) is None
+    assert api_key_account_mismatch(token, None) is None
 
 
 def test_missing_token_has_one_actionable_typed_error(project):
