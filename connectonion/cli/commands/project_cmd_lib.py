@@ -1046,13 +1046,20 @@ def load_api_key() -> Optional[str]:
     2. Local .env file
     3. Global ~/.co/keys.env file
 
+    Every source goes through `_token_for_this_account()`. The environment used
+    to skip it, which made the check dead code in practice: `connectonion/
+    __init__.py` calls `load_dotenv(Path.cwd() / ".env")` at import time, so by
+    the time any command runs the variable is already set and the early return
+    always fired. A `.env` in whatever directory you happened to be standing in
+    could then bill and read another agent's account in silence.
+
     Returns:
         API key if found, None otherwise
     """
     from dotenv import load_dotenv
 
     if api_key := os.getenv("OPENONION_API_KEY"):
-        return api_key
+        return _token_for_this_account(api_key)
 
     for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
         if env_path.exists():
@@ -1075,12 +1082,16 @@ def account_in_token(token: str) -> Optional[str]:
     payload = parts[1]
     payload += "=" * (-len(payload) % 4)          # base64url, padding stripped
     try:
-        return json.loads(base64.urlsafe_b64decode(payload)).get("public_key")
+        decoded = json.loads(base64.urlsafe_b64decode(payload))
     except (ValueError, binascii.Error):
         return None
+    if not isinstance(decoded, dict):
+        return None
+    public_key = decoded.get("public_key")
+    return public_key if isinstance(public_key, str) and public_key else None
 
 
-def _token_for_this_account(token: str) -> str:
+def _token_for_this_account(token: str) -> Optional[str]:
     """Re-authenticate when the stored token names an account we are not.
 
     `co server new` and `co deploy` bill whatever the token says; `co status`
@@ -1111,8 +1122,19 @@ def _token_for_this_account(token: str) -> str:
     if authenticate(co_dir, save_to_project=False, quiet=True):
         from dotenv import load_dotenv
         load_dotenv(co_dir / "keys.env", override=True)
-        return os.getenv("OPENONION_API_KEY", token)
-    return token
+        refreshed = os.getenv("OPENONION_API_KEY")
+        if refreshed and account_in_token(refreshed) == identity["address"]:
+            return refreshed
+
+    # Re-authentication did not produce a token for this machine. Returning the
+    # mismatched one anyway is the failure this function exists to prevent — it
+    # reads another account's mailbox and spends another account's credit while
+    # looking like an ordinary working session. No key at all is recoverable:
+    # callers say "run co auth", and the operator knows something is wrong.
+    console.print("[yellow]Could not get a token for this machine's key. "
+                  "Not using the one on hand — it bills another account. "
+                  "Run [bold]co auth[/bold].[/yellow]")
+    return None
 
 
 def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> None:
