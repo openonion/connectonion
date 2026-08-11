@@ -136,15 +136,19 @@ class TestReleaseArtifactsCannotMixVersions:
 
         assert sections.index("rm -rf dist/") < sections.index("python -m build")
 
-    def test_artifacts_are_checked_before_upload(self):
+    def test_artifacts_are_checked_before_the_tag_workflow(self):
         sections = _release_sections()
 
-        assert sections.index("python -m twine check") < sections.index("python -m twine upload")
+        assert sections.index("python -m twine check") < sections.index(
+            ".github/workflows/release.yml"
+        )
 
-    def test_upload_is_limited_to_the_current_version(self):
+    def test_normal_publication_is_limited_to_the_reviewed_tag_workflow(self):
         sections = _release_sections()
 
+        assert "python -m twine upload" not in sections
         assert "twine upload dist/*" not in sections
+        assert ".github/workflows/release.yml" in sections
         assert "dist/connectonion-X.Y.Z.tar.gz" in sections
         assert "dist/connectonion-X.Y.Z-py3-none-any.whl" in sections
 

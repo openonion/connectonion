@@ -6,10 +6,28 @@ ConnectOnion has two release channels:
   recommended for production agents.
 - **Preview** contains alpha, beta, and release-candidate builds for features
   that are still being exercised end to end. Install one explicitly, for
-  example: `pip install connectonion==1.7.0a1`.
+  example: `pip install connectonion==1.7.0a2`.
 
 Preview releases never replace the stable recommendation on the documentation
 site, and GitHub marks them as pre-releases rather than latest releases.
+
+## Current channels
+
+- Stable: `1.6.0`
+- Preview candidate: `1.7.0a2`
+
+The second alpha completes the Host side of the browser-facing ACP session
+contract: bound permission identity, negotiated cancellation, authoritative
+mode state and transactions, public thoughts, and canonical TodoList plans.
+The supported browser consumer is `@connectonion/react`; the retired standalone
+TypeScript SDK is not part of this release path.
+
+Normal upgrades stay on stable. Preview testers opt in explicitly:
+
+```bash
+python -m pip install --pre --upgrade connectonion
+python -m pip install connectonion==1.7.0a2
+```
 
 ## Design Journal
 

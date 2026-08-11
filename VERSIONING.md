@@ -43,9 +43,10 @@ Stable users remain on 1.6.0 while the 1.7.0 feature train is exercised through
 alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Current Version: 1.7.0a1
+## Current Version: 1.7.0a2
 
 ### Version History
+- 1.7.0a2 (**ACP becomes a coherent browser-facing session contract**: authenticated Host permission requests retain their bound identity; negotiated cancellation, authoritative mode updates, and durable mode transactions round-trip through the Host; persisted public thoughts and canonical TodoList plans cross ACP as stable session updates; and Codex app-server refreshes managed authentication before launch. This remains an opt-in alpha while React, O Chat, browser, and real-provider integration are exercised; 1.6.0 remains the stable recommendation.)
 - 1.7.0a1 (**the first 1.7 preview**: audience-scoped HTTP routes let an agent expose visibly public, contacts-only, and admin-only endpoints beside its existing WebSocket transport; ACP gains resumable sessions, ordered updates, official SDK conformance, tool approvals, MCP tools, and stable agent messages; Telegram messaging and safer attachment handling arrive; and billed operations now fail closed when ambient credentials belong to a different account. This is an opt-in preview; 1.6.0 remains the stable recommendation.)
 - 1.6.0 (**safer remote agents and a cleaner credential boundary**: host identity and temporary session-status probes are signed consistently; relay profile updates reject stale or conflicting state; Microsoft OAuth credentials and refresh-token rotation stay on the CLI machine instead of being stored by the backend; project invite credentials are private and no shared default invite code is documented; email sending has traceable, tenant-scoped idempotency and resilient provider-error handling; paid mailbox upgrades can preserve the existing address and are charged atomically; portable skills, dependency floors, cross-platform tests, and exact-artifact release verification are hardened for a stable release.)
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -113,30 +114,34 @@ When releasing a new version:
 - [ ] Update `version` in `pyproject.toml`
 - [ ] Update `## Current Version:` and add the release line in this file
 - [ ] Refresh `uv.lock`
+- [ ] Keep the one PyPI `Development Status` classifier aligned with the phase:
+      Alpha for `aN`, Beta for `bN`/`rcN`, and Production/Stable for a final
 - [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
 - [ ] Draft or substantially update a Design Journal post for a feature-train
       launch, first beta, first RC, stable release, or material architecture or
       workflow decision. Maintenance-only patches need release notes unless
       they contain a reusable design lesson.
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
-- [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
-- [ ] Create git tag: `git tag vX.Y.Z`
-- [ ] Push commits: `git push`
-- [ ] Push tag: `git push origin vX.Y.Z`
 - [ ] Remove artifacts from older releases: `rm -rf dist/`
 - [ ] Build package: `python -m build`
 - [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
-- [ ] Upload only the two artifacts just validated: `python -m twine upload dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
+- [ ] Review and merge the exact version commit, then create and push its immutable
+      `vX.Y.Z` tag. Do not upload from a workstation in the normal release path.
+- [ ] Let `.github/workflows/release.yml` rerun the full matrix, build once,
+      publish through PyPI Trusted Publishing, install the public package,
+      compare public artifacts byte-for-byte, and create the GitHub Release.
+- [ ] Confirm previews are GitHub Prereleases rather than Latest, normal pip
+      installs remain on stable, and `--pre` plus an exact pin install preview.
 - [ ] After PyPI and the GitHub Release are visible, publish the docs-site
       version state and Design Journal. Verify the canonical URL, social and
       structured metadata, sitemap, AI-readable indexes, internal links, and
       mobile layout.
 
-Replace `X.Y.Z` with the version being released. Do not upload the whole dist
-directory with a wildcard: build does not remove older artifacts, so that can
-mix a previous release into the current upload. PyPI uploads are not an atomic
-transaction; one file can succeed before a stale or duplicate file fails.
+Replace `X.Y.Z` with the complete canonical version, including `aN`, `bN`, or
+`rcN`. Manual workflow dispatch may retry an existing reviewed tag; it is not
+an arbitrary-branch release path. The documented emergency upload path is only
+for explicit recovery after CI has preserved the exact artifacts.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to

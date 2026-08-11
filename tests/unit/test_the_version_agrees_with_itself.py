@@ -77,14 +77,50 @@ def _versioning_md_version() -> str:
     return match.group(1)
 
 
+def _typescript_string_constant(text: str, name: str) -> str:
+    """Read one exported string constant from the docs' checked TS contract."""
+    match = re.search(
+        rf"\b{re.escape(name)}\b(?:\s*:\s*[^=\n]+)?\s*=\s*'([^']+)'",
+        text,
+    )
+    assert match, f"docs-site has no string value for {name}"
+    return match.group(1)
+
+
 def _docs_site_version() -> str:
     text = DOCS_SITE.read_text(encoding='utf-8')
     name = "PREVIEW_VERSION" if re.search(r"[a-zA-Z]", connectonion.__version__) else "STABLE_VERSION"
-    match = re.search(rf"{name}\s*=\s*'([^']+)'", text)
-    if not match:
-        match = re.search(r"VERSION\s*=\s*'([^']+)'", text)
-    assert match, f"{DOCS_SITE} has no {name} or VERSION"
-    return match.group(1)
+    return _typescript_string_constant(text, name)
+
+
+@pytest.mark.parametrize(
+    ("source", "name", "expected"),
+    [
+        ("export const STABLE_VERSION = '1.6.0'", "STABLE_VERSION", "1.6.0"),
+        (
+            "export const PREVIEW_VERSION: string | null = '1.7.0a2'",
+            "PREVIEW_VERSION",
+            "1.7.0a2",
+        ),
+    ],
+)
+def test_docs_channel_parser_accepts_the_checked_typescript_contract(
+    source, name, expected
+):
+    assert _typescript_string_constant(source, name) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "export const VERSION = '1.6.0'",
+        "export const PREVIEW_VERSION: string | null = null\n"
+        "export const VERSION = '1.6.0'",
+    ],
+)
+def test_docs_channel_parser_does_not_fall_back_to_stable(source):
+    with pytest.raises(AssertionError, match="PREVIEW_VERSION"):
+        _typescript_string_constant(source, "PREVIEW_VERSION")
 
 
 def test_pyproject_and_the_package_agree():
@@ -116,6 +152,27 @@ def test_uv_lock_names_the_version_being_shipped():
     assert package.group(1) == _pyproject_version(), (
         f"uv.lock says {package.group(1)}, pyproject.toml says "
         f"{_pyproject_version()}; run uv lock after every version bump"
+    )
+
+
+def test_pypi_development_status_matches_the_release_phase():
+    """Registry metadata must not call an opt-in preview production-stable."""
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    classifiers = re.findall(
+        r'"(Development Status :: [^"]+)"',
+        pyproject,
+    )
+    version = connectonion.__version__
+    if re.search(r"a\d+$", version):
+        expected = "Development Status :: 3 - Alpha"
+    elif re.search(r"(?:b|rc)\d+$", version):
+        # Trove does not define a separate release-candidate classifier.
+        expected = "Development Status :: 4 - Beta"
+    else:
+        expected = "Development Status :: 5 - Production/Stable"
+
+    assert classifiers == [expected], (
+        f"{version} must carry exactly {expected!r}, got {classifiers!r}"
     )
 
 
