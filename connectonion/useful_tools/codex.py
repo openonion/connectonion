@@ -118,6 +118,7 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
     try:
         client.start()
         client.initialize(timeout=_remaining(deadline))
+        client.refresh_account(timeout=_remaining(deadline))
         approval_policy = "untrusted" if approval == "manual" else "never"
         if session_id:
             sid = client.resume_thread(
@@ -470,6 +471,10 @@ class CodexAppServer:
                                                             "item/reasoning/textDelta"]},
         }, timeout=timeout)
         self._notify("initialized", {})
+
+    def refresh_account(self, timeout=60):
+        """Let Codex refresh its managed auth without exposing credentials."""
+        return self.request("account/read", {"refreshToken": True}, timeout=timeout)
 
     def start_thread(
         self,
