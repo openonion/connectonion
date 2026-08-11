@@ -38,7 +38,7 @@ ws.send(JSON.stringify({
 
 ### Phase 1: Client Sends INPUT
 
-**Client (TypeScript SDK):**
+**Client (`@connectonion/react` browser connection):**
 ```typescript
 // After CONNECTED, send prompt (no signature needed — already authenticated)
 ws.send(JSON.stringify({

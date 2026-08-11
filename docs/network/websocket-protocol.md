@@ -525,8 +525,8 @@ A client that has not connected — or has not passed onboarding — should show
 answer and not treat it as an incomplete version of this one. It is what that viewer is
 entitled to see.
 
-TypeScript SDK: `agent.profile` and `useAgentForHuman().profile`, `null` until the frame
-lands.
+React package: `agent.profile` and `useAgentForHuman().profile`, `null` until the
+frame lands.
 
 **There is a third profile surface, and it is not this one.** `host()` also sends a
 profile to the relay inside its `ANNOUNCE` frame — that is what registers the agent and
