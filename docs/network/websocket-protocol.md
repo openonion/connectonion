@@ -420,6 +420,54 @@ The Host accepts only an advertised option for the active request and session.
 response or `cancelled` fails closed. Optional rejection feedback belongs at
 `result._meta.connectonion.feedback` and has no authorization meaning.
 
+#### ACP_REQUEST (`session/set_mode`)
+
+An authenticated client selects one Host-advertised session mode with the exact
+ACP v1.19 request. On a signed-command connection the complete request is also
+the signed `payload`; the Host executes that verified copy.
+
+```json
+{
+  "type": "ACP_REQUEST",
+  "acpSchema": "schema-v1.19.0",
+  "message": {
+    "jsonrpc": "2.0",
+    "id": "mode-request-uuid",
+    "method": "session/set_mode",
+    "params": {
+      "sessionId": "550e8400-...",
+      "modeId": "accept_edits"
+    }
+  },
+  "payload": {
+    "type": "ACP_REQUEST",
+    "acpSchema": "schema-v1.19.0",
+    "message": {
+      "jsonrpc": "2.0",
+      "id": "mode-request-uuid",
+      "method": "session/set_mode",
+      "params": {
+        "sessionId": "550e8400-...",
+        "modeId": "accept_edits"
+      }
+    },
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567,
+    "nonce": "550e8400-..."
+  },
+  "from": "0xClientPublicKey",
+  "signature": "0x..."
+}
+```
+
+The request is accepted only while the durable session is idle and owned by
+the authenticated caller. `safe` is always available; `accept_edits` and `ulw`
+are identity- and launch-authority-bounded. No client field can supply or extend
+ULW turns. Success is an `ACP_RESPONSE` with an empty result and means the JSONL
+commit completed; busy, policy, ownership, and persistence failures are
+correlated JSON-RPC errors. `@connectonion/react` owns this browser operation;
+O Chat consumes it without constructing protocol frames.
+
 #### ONBOARD_SUBMIT
 
 Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
@@ -458,6 +506,20 @@ Response to CONNECT.
   "type": "CONNECTED",
   "session_id": "550e8400-...",
   "status": "new",
+  "carrier_capabilities": {
+    "acp": {
+      "schema": "schema-v1.19.0",
+      "client_notifications": ["session/cancel"],
+      "client_requests": ["session/set_mode"]
+    }
+  },
+  "session_modes": {
+    "currentModeId": "safe",
+    "availableModes": [
+      {"id": "safe", "name": "Safe", "description": "Ask before side effects."},
+      {"id": "accept_edits", "name": "Auto", "description": "Apply edits without asking; other tools still require approval."}
+    ]
+  },
   "server_newer": true,
   "session": { "messages": [...] },
   "chat_items": [...]
@@ -471,6 +533,8 @@ Response to CONNECT.
 | `"running"` | Agent still running | Wait for events/OUTPUT |
 
 `server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).
+`session_modes` is present only with the matching advertised client request and
+is the authoritative current/available state for this authenticated identity.
 
 #### OUTPUT
 
