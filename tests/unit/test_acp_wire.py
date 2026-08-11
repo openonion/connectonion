@@ -10,11 +10,19 @@ import pytest
 from connectonion.core.acp_wire import (
     acp_notification_frame,
     legacy_tool_event_from_acp,
+    map_message_event,
 )
 from connectonion.network.connect import RemoteAgent
 
 FIXTURE = json.loads(
     (Path(__file__).parents[1] / "fixtures" / "acp_tool_events.json").read_text()
+)
+MESSAGE_FIXTURE = json.loads(
+    (
+        Path(__file__).parents[1]
+        / "fixtures"
+        / "acp_agent_message_events.json"
+    ).read_text()
 )
 
 
@@ -25,6 +33,28 @@ def test_tool_events_match_the_shared_acp_fixture():
     ]
 
     assert actual == FIXTURE["acp"]
+
+
+def test_agent_messages_match_the_shared_acp_fixture():
+    actual = [
+        acp_notification_frame(event, "session-1")
+        for event in MESSAGE_FIXTURE["legacy"]
+    ]
+
+    assert actual == MESSAGE_FIXTURE["acp"]
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"type": "assistant", "id": "", "content": "answer"},
+        {"type": "assistant", "id": "message-2", "content": ""},
+        {"type": "assistant", "id": "message-2", "content": None},
+    ],
+)
+def test_empty_or_malformed_agent_messages_are_rejected(event):
+    with pytest.raises(ValueError):
+        map_message_event(event)
 
 
 def test_acp_tool_events_decode_to_the_legacy_python_ui_shape():

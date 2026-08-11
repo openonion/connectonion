@@ -623,6 +623,24 @@ class TestSessionToChatItems:
         assert items[0]['type'] == 'agent'
         assert items[0]['content'] == 'Hi there'
 
+    def test_persisted_assistant_identity_survives_index_shift(self):
+        """Compaction may move a message, but its domain identity stays fixed."""
+        message = {
+            'role': 'assistant',
+            'content': 'Stable answer',
+            'id': '6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e',
+        }
+        before = session_to_chat_items({
+            'messages': [
+                {'role': 'system', 'content': 'help'},
+                {'role': 'user', 'content': 'old question'},
+                message,
+            ],
+        })
+        after = session_to_chat_items({'messages': [message]})
+
+        assert before[-1]['id'] == after[-1]['id'] == message['id']
+
     def test_converts_trace_to_tool_calls(self):
         """Converts trace entries to tool_call ChatItems (matches tool_executor shape)."""
         session = {

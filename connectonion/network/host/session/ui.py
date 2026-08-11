@@ -2,7 +2,7 @@
 Purpose: Convert session storage format to ChatItems wire format for frontend rendering
 LLM-Note:
   Dependencies: imports from [useful_plugins/runtime_input.py for RUNTIME_INPUT_FRAME_PREFIX] | imported by [host/http_router.py, host/ws_router/agent_io.py, host/ws_router/connect.py, host/session/__init__.py] | tested by [tests/unit/test_host_session.py]
-  Data flow: session dict {messages, trace} → ChatItem[] with types: user, agent, tool_call, files_received, intent, eval, thinking
+  Data flow: session dict {messages, trace} → ChatItem[] with types: user, agent, tool_call, files_received, intent, eval, thinking | persisted assistant message IDs survive reconstruction; legacy messages fall back to their index
   State/Effects: pure function, no side effects
   Integration: exposes session_to_chat_items(session) → list[dict] | used by http_router and ws_router when delivering server_newer state and OUTPUT
   Performance: O(n) where n = messages + trace entries
@@ -141,7 +141,14 @@ def session_to_chat_items(session: dict) -> list[dict]:
                     if item_ui:
                         items_ui.append(item_ui)
         elif role == 'assistant' and msg.get('content'):
-            items_ui.append({'id': f"msg-{msg_idx}", 'type': 'agent', 'content': msg.get('content', '')})
+            message_id = msg.get('id')
+            if not isinstance(message_id, str) or not message_id:
+                message_id = f"msg-{msg_idx}"
+            items_ui.append({
+                'id': message_id,
+                'type': 'agent',
+                'content': msg.get('content', ''),
+            })
 
     # Fallback: if no user_input markers found in trace, append all remaining trace
     # entries at the end so the data isn't silently dropped (older sessions).

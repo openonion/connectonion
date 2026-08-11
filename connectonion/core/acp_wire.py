@@ -11,7 +11,12 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from acp import text_block, tool_content
-from acp.schema import SessionNotification, ToolCallProgress, ToolCallStart
+from acp.schema import (
+    AgentMessageChunk,
+    SessionNotification,
+    ToolCallProgress,
+    ToolCallStart,
+)
 
 from .wire_events import normalize_wire_event
 
@@ -33,6 +38,20 @@ def map_tool_event(
     if event_type == "tool_call":
         return _tool_start(normalized)
     return _tool_update(normalized)
+
+
+def map_message_event(
+    event: Mapping[str, Any],
+) -> AgentMessageChunk | None:
+    """Map one complete Host assistant message to an ACP text chunk."""
+
+    if event.get("type") != "assistant":
+        return None
+    return AgentMessageChunk(
+        session_update="agent_message_chunk",
+        message_id=_required_string(event, "id"),
+        content=text_block(_required_string(event, "content")),
+    )
 
 
 def _tool_start(event: Mapping[str, Any]) -> ToolCallStart:
@@ -68,9 +87,9 @@ def _tool_update(event: Mapping[str, Any]) -> ToolCallProgress:
 def acp_notification_frame(
     event: Mapping[str, Any], session_id: str
 ) -> dict[str, Any] | None:
-    """Return a detached ConnectOnion carrier for one ACP tool update."""
+    """Return a detached ConnectOnion carrier for one supported ACP update."""
 
-    update = map_tool_event(event)
+    update = map_tool_event(event) or map_message_event(event)
     if update is None:
         return None
     notification = SessionNotification(session_id=session_id, update=update)

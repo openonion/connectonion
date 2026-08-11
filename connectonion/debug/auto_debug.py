@@ -12,8 +12,10 @@ LLM-Note:
   Debugger pauses DURING tool execution (inside execute_single_tool), so current tool's result hasn't been added to messages yet. Timeline: 1) assistant message with tool_calls added, 2) tool executes → PAUSE HERE, 3) tool result message NOT YET ADDED. Must manually append current tool result to temp_messages for LLM preview to work correctly.
 """
 
-from typing import Any, Dict, Optional, List
-from .auto_debug_ui import AutoDebugUI, BreakpointContext, BreakpointAction
+from typing import Any, Dict, List, Optional
+
+from ..core.provider_messages import messages_for_provider
+from .auto_debug_ui import AutoDebugUI, BreakpointAction, BreakpointContext
 
 
 class AutoDebugger:
@@ -266,7 +268,9 @@ class AutoDebugger:
         """
         try:
             # Start with current messages (has assistant message + previous tool results)
-            temp_messages = self.agent.current_session['messages'].copy()
+            temp_messages = messages_for_provider(
+                self.agent.current_session['messages']
+            )
 
             # Add the current tool's result to complete the message history
             # (See docstring above for why this is necessary - we're paused mid-execution)

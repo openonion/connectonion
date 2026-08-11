@@ -308,6 +308,11 @@ class TestGetLLMNextActionPreview:
         mock_agent.current_session = {
             'messages': [
                 {'role': 'user', 'content': 'Find and save'},
+                {
+                    'role': 'assistant',
+                    'content': 'Earlier answer',
+                    'id': '6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e',
+                },
                 {'role': 'assistant', 'tool_calls': [
                     {'id': 'call_1', 'function': {'name': 'search'}}
                 ]}
@@ -324,6 +329,9 @@ class TestGetLLMNextActionPreview:
         assert len(result) == 1
         assert result[0]['name'] == "save"
         assert result[0]['args'] == {"data": "result"}
+        messages = mock_llm.complete.call_args.args[0]
+        assert all('id' not in message for message in messages)
+        assert mock_agent.current_session['messages'][1]['id'].startswith('6d1f')
 
     def test_preview_returns_empty_list_when_no_tools(self):
         """Test preview returns empty list when no tools planned."""
