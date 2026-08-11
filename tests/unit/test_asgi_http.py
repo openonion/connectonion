@@ -9,30 +9,21 @@ Tests cover:
 - CORS headers
 - Admin endpoint authentication
 """
-"""
-LLM-Note: Tests for asgi http
-
-What it tests:
-- Asgi Http functionality
-
-Components under test:
-- Module: asgi_http
-"""
-
-
 import json
 import os
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 
 from connectonion.network.asgi.http import (
-    read_body,
-    send_json,
-    send_html,
-    send_text,
     CORS_HEADERS,
+    read_body,
+    send_html,
+    send_json,
+    send_text,
 )
 from connectonion.network.host.http_router import handle_http
+from connectonion.network.host.session.mode import ModeTransactionError
 
 
 @pytest.mark.asyncio
@@ -467,6 +458,7 @@ class TestHandleHttpRouting:
         def mock_input(storage, prompt, session, **kw):
             captured["images"] = kw.get("images")
             captured["files"] = kw.get("files")
+            captured["requester_address"] = kw.get("requester_address")
             return {"result": "OK", "session_id": "x"}
 
         handlers = {
@@ -485,6 +477,7 @@ class TestHandleHttpRouting:
         assert sent[0]["status"] == 200
         assert captured["images"] == ["data:image/png;base64,abc"]
         assert captured["files"] == [{"name": "doc.pdf", "data": "data:application/pdf;base64,xyz"}]
+        assert captured["requester_address"] == "0xtest"
 
     async def test_input_endpoint_rejects_invalid_files(self):
         """POST /input returns 400 when file validation fails."""
@@ -524,6 +517,60 @@ class TestHandleHttpRouting:
         assert sent[0]["status"] == 400
         body = json.loads(sent[1]["body"])
         assert "File too large" in body["error"]
+
+    @pytest.mark.parametrize(
+        "error, status",
+        [
+            (ModeTransactionError(-32002, "Session not found"), 404),
+            (ModeTransactionError(
+                -32000, "Session is busy", {"retryable": True}
+            ), 409),
+            (ModeTransactionError(-32602, "Session mode is invalid"), 400),
+        ],
+    )
+    async def test_input_endpoint_maps_owned_mode_policy_errors(
+        self, error, status
+    ):
+        scope = {"method": "POST", "path": "/input", "headers": []}
+        sent = []
+
+        async def receive():
+            return {
+                "body": json.dumps({
+                    "payload": {"prompt": "Hello", "timestamp": 123},
+                    "from": "0xtest",
+                    "signature": "0xsig",
+                    "session": {"session_id": "owned"},
+                }).encode(),
+                "more_body": False,
+            }
+
+        async def send(message):
+            sent.append(message)
+
+        handlers = {
+            "auth": lambda data, trust, **kw: (
+                "Hello", "0xtest", True, None
+            ),
+            "input": Mock(side_effect=error),
+        }
+
+        await handle_http(
+            scope,
+            receive,
+            send,
+            route_handlers=handlers,
+            storage=Mock(),
+            trust="open",
+            start_time=0,
+        )
+
+        assert sent[0]["status"] == status
+        assert json.loads(sent[1]["body"]) == {
+            "error": error.message,
+            "code": error.code,
+            **({"data": error.data} if error.data else {}),
+        }
 
     async def test_input_endpoint_auth_error(self):
         """POST /input returns 401 on auth error."""

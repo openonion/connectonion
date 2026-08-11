@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from connectonion import address
+from connectonion.core.acp_wire import acp_set_mode_request_frame
 from connectonion.network.connect import RemoteAgent
 from connectonion.network.host import auth
 
@@ -334,6 +335,51 @@ async def test_v2_session_executes_the_verified_payload(keys, monkeypatch):
 
     assert ran[0][0]["tool"] == "safe"
     assert ran[0][1] == keys["address"]
+
+
+@pytest.mark.asyncio
+async def test_v2_session_passes_only_verified_acp_mode_request(keys, monkeypatch):
+    from connectonion.network.host.ws_router import session
+
+    agent = RemoteAgent("0x" + "12" * 20, keys=keys)
+    connect = {"type": "CONNECT", "from": keys["address"]}
+    signed = agent._build_command_message(
+        acp_set_mode_request_frame("request-1", "s1", "safe")
+    )
+    signed["message"]["params"]["modeId"] = "ulw"
+    handled = []
+
+    async def fake_mode(data, *_args):
+        handled.append(data)
+        return True
+
+    monkeypatch.setattr(session, "handle_acp_mode_request", fake_mode)
+    await _session_with(
+        [connect, signed], monkeypatch, signed_commands=True, ran=[]
+    )
+
+    assert handled[0]["message"]["params"]["modeId"] == "safe"
+
+
+@pytest.mark.asyncio
+async def test_v2_session_rejects_unsigned_acp_mode_request(keys, monkeypatch):
+    from connectonion.network.host.ws_router import session
+
+    connect = {"type": "CONNECT", "from": keys["address"]}
+    unsigned = acp_set_mode_request_frame("request-1", "s1", "safe")
+    handled = []
+
+    async def fake_mode(data, *_args):
+        handled.append(data)
+        return True
+
+    monkeypatch.setattr(session, "handle_acp_mode_request", fake_mode)
+    sent = await _session_with(
+        [connect, unsigned], monkeypatch, signed_commands=True, ran=[]
+    )
+
+    assert handled == []
+    assert "signed command required" in sent[-1]["message"]
 
 
 @pytest.mark.asyncio

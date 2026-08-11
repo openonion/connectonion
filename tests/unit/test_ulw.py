@@ -15,8 +15,8 @@ from connectonion.useful_plugins.ulw import (
     handle_yolo_mode_change,
     inject_ulw_prompt,
     poll_prompt_update,
-    yolo,
     ulw_keep_working,
+    yolo,
 )
 from tests.utils.mock_helpers import MockLLM
 
@@ -285,6 +285,25 @@ def test_keep_working_at_max_without_io_returns_silently():
     ulw_keep_working(agent)
     assert agent.input_calls == []
     assert agent.current_session['mode'] == 'ulw'  # state untouched
+
+
+def test_host_bounded_ulw_checkpoint_exits_safe_without_mailbox_extension():
+    io = Mock()
+    io.receive.return_value = {'action': 'continue', 'turns': 999999}
+    agent = FakeAgent(io=io, mode='ulw')
+    agent._host_ulw_turns_ceiling = 5
+    agent.current_session['ulw_turns'] = 5
+    agent.current_session['ulw_turns_used'] = 4
+    agent.current_session['skip_tool_approval'] = True
+
+    ulw_keep_working(agent)
+
+    io.receive.assert_not_called()
+    assert agent.current_session['mode'] == 'safe'
+    assert not {
+        'ulw_turns', 'ulw_turns_used', 'skip_tool_approval'
+    } & agent.current_session.keys()
+    assert agent.input_calls == []
 
 
 # ---------- poll_prompt_update ----------
