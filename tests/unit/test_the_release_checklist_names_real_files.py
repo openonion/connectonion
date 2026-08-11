@@ -147,3 +147,18 @@ class TestReleaseArtifactsCannotMixVersions:
         assert "twine upload dist/*" not in sections
         assert "dist/connectonion-X.Y.Z.tar.gz" in sections
         assert "dist/connectonion-X.Y.Z-py3-none-any.whl" in sections
+
+
+class TestTheReleaseDecisionIsPublished:
+    def test_the_checklist_requires_a_design_journal(self):
+        sections = _release_sections()
+
+        assert "Design Journal" in sections
+        assert "canonical URL" in sections
+
+    def test_the_journal_waits_for_public_artifacts(self):
+        sections = _release_sections()
+
+        assert sections.index("PyPI and the GitHub") < sections.index(
+            "publish the docs-site"
+        )

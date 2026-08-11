@@ -136,3 +136,14 @@ class TestTheSkillIsStillAReleaseProcedure:
 
     def test_it_is_not_empty(self, skill):
         assert len(skill.splitlines()) > 20
+
+
+class TestTheDesignJournalIsPartOfShipping:
+    """A public design record is part of a meaningful release, not cleanup."""
+
+    def test_the_skill_names_the_design_journal_surfaces(self, skill):
+        for required in ("Design Journal", "canonical URL", "sitemaps", "llms.txt"):
+            assert required in skill
+
+    def test_the_skill_does_not_publish_availability_before_artifacts(self, skill):
+        assert "After the exact PyPI package and GitHub Release are public" in skill
