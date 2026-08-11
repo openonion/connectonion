@@ -205,6 +205,58 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
 
+            elif msg_type == "ACP_NOTIFICATION":
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                if (
+                    not active_io
+                    or not registered
+                    or registered.status != "running"
+                    or registered.io is not active_io
+                ):
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "ACP cancel requires an active turn",
+                    })
+                    continue
+                from ....core.acp_wire import legacy_interrupt_from_acp_cancel
+
+                try:
+                    interrupt = legacy_interrupt_from_acp_cancel(
+                        data, expected_session_id=conn.get("session_id")
+                    )
+                except (TypeError, ValueError) as exc:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": f"invalid ACP cancel: {exc}",
+                    })
+                    continue
+                request_interrupt = getattr(active_io, "request_interrupt", None)
+                if request_interrupt is None:
+                    active_io.send_to_agent(interrupt)
+                else:
+                    request_interrupt()
+
+            elif msg_type == "INTERRUPT":
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                if (
+                    not active_io
+                    or not registered
+                    or registered.status != "running"
+                    or registered.io is not active_io
+                ):
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "interrupt requires an active turn",
+                    })
+                    continue
+                request_interrupt = getattr(active_io, "request_interrupt", None)
+                if request_interrupt is None:
+                    active_io.send_to_agent(data)
+                else:
+                    request_interrupt()
+
             elif msg_type == "ACP_RESPONSE":
                 if not active_io or not active_io.resolve_acp_permission(
                     data, conn.get("session_id")
