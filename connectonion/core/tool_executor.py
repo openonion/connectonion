@@ -412,14 +412,7 @@ def execute_single_tool(
                 tool_tools._tools = dict(original_tools._tools)
                 tool_tools._instances = dict(original_tools._instances)
                 tool_agent.tools = tool_tools
-                bound_instance = next(
-                    (
-                        instance
-                        for instance in original_tools._instances.values()
-                        if callable(getattr(type(instance), tool_name, None))
-                    ),
-                    None,
-                )
+                bound_instance = getattr(tool_func, '_bound_instance', None)
                 instance_type = type(bound_instance)
                 fork_instance = getattr(instance_type, '_fork_for_tool', None)
                 commit_instance = getattr(

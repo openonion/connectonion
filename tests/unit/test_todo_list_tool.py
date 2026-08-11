@@ -459,8 +459,19 @@ class TestTodoListIntegration:
                 self.release.wait(timeout=2)
                 self.finished.set()
 
+        class UnrelatedInstance:
+            # Deliberately lacks a return annotation, so this is not exported
+            # as a tool. Its name must not make it the owner of TodoList.add.
+            def add(self, content: str, active_form: str, agent=None):
+                return None
+
         todo = BlockingTodoList()
-        agent = Agent("worker", llm=MockLLM(), tools=[todo], log=False)
+        agent = Agent(
+            "worker",
+            llm=MockLLM(),
+            tools=[UnrelatedInstance(), todo],
+            log=False,
+        )
         agent.tools.add_instance("todolist", todo)
         io = WebSocketIO()
         agent.io = io
