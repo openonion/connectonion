@@ -2,13 +2,14 @@
 
 The official ACP SDK owns JSON-RPC routing and schema validation.  This module
 only adapts the lifecycle to ConnectOnion: one real coding Agent per ACP
-session, an exclusive stdout protocol stream, and fail-closed approvals until
-the dedicated permission bridge lands.
+session, an exclusive stdout protocol stream, and generation-scoped permission
+requests that reuse ConnectOnion's existing approval policy.
 """
 
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import copy
 import logging
 import os
@@ -18,7 +19,7 @@ from collections import deque
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
 from acp import (
@@ -35,12 +36,15 @@ from acp.schema import (
     ClientCapabilities,
     CloseSessionResponse,
     Implementation,
+    PermissionOption,
+    RequestPermissionResponse,
     ResourceContentBlock,
     ResumeSessionResponse,
     SessionCapabilities,
     SessionCloseCapabilities,
     SessionResumeCapabilities,
     TextContentBlock,
+    ToolCallUpdate,
 )
 
 from ..._version import __version__
@@ -64,12 +68,34 @@ from .one_shot_sessions import (
 )
 
 AgentFactory = Callable[..., Any]
+PermissionRequester = Callable[
+    [str, ToolCallUpdate, list[PermissionOption]],
+    Awaitable[RequestPermissionResponse],
+]
 ACP_EVENT_BUFFER_SIZE = 64
 logger = logging.getLogger(__name__)
 
+_ACP_PERMISSION_OPTIONS = (
+    PermissionOption(
+        option_id="allow_once",
+        name="Allow this call",
+        kind="allow_once",
+    ),
+    PermissionOption(
+        option_id="allow_session",
+        name="Allow for this session",
+        kind="allow_always",
+    ),
+    PermissionOption(
+        option_id="reject_once",
+        name="Reject and stop this turn",
+        kind="reject_once",
+    ),
+)
+
 
 class _FailClosedACPInput(IO):
-    """Keep sensitive tools closed until ACP approval bridging ships in #475."""
+    """Keep sensitive tools closed when no live ACP generation owns input."""
 
     def __init__(self) -> None:
         self._interrupted = threading.Event()
@@ -87,7 +113,7 @@ class _FailClosedACPInput(IO):
     def send(self, _message: dict[str, Any]) -> None:
         pass
 
-    def receive(self) -> dict[str, str]:
+    def receive(self) -> dict[str, Any]:
         if self.interrupted:
             return {"type": "INTERRUPT"}
         return {"type": "io_closed"}
@@ -104,7 +130,7 @@ class _FailClosedACPInput(IO):
             on_interrupt()
         return True
 
-    def receive_interruptibly(self, cancelled: threading.Event) -> dict[str, str]:
+    def receive_interruptibly(self, cancelled: threading.Event) -> dict[str, Any]:
         if self.interrupted or cancelled.is_set():
             return {"type": "INTERRUPT"}
         return {"type": "io_closed"}
@@ -132,6 +158,7 @@ class _TurnGeneration:
     terminal_claimed: bool = False
     terminal_reason: str | None = None
     assistant_claimed: bool = False
+    permission_future: concurrent.futures.Future[Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -154,8 +181,8 @@ class _ACPGenerationIO(IO):
     def send(self, message: dict[str, Any]) -> None:
         self._bridge.send_for(self._generation, message)
 
-    def receive(self) -> dict[str, str]:
-        return self._bridge.receive()
+    def receive(self) -> dict[str, Any]:
+        return self._bridge.receive_for(self._generation)
 
     def receive_all(self, message_type: str | None = None) -> list[Any]:
         return self._bridge.receive_all(message_type)
@@ -163,8 +190,8 @@ class _ACPGenerationIO(IO):
     def take_interrupt(self, on_interrupt: Callable[[], None] | None = None) -> bool:
         return self._bridge.take_interrupt(on_interrupt)
 
-    def receive_interruptibly(self, cancelled: threading.Event) -> dict[str, str]:
-        return self._bridge.receive_interruptibly(cancelled)
+    def receive_interruptibly(self, cancelled: threading.Event) -> dict[str, Any]:
+        return self._bridge.receive_for(self._generation, cancelled)
 
     def receive_all_interruptibly(
         self,
@@ -181,9 +208,16 @@ class _ACPGenerationIO(IO):
 class _ACPEventBridge(_FailClosedACPInput):
     """Move immutable Agent events from worker threads to one FIFO consumer."""
 
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        session_id: str,
+        permission_requester: PermissionRequester,
+    ) -> None:
         super().__init__()
         self._loop = loop
+        self._session_id = session_id
+        self._permission_requester = permission_requester
         self._outbound = threading.Condition()
         self._next_generation = 0
         self._active: _TurnGeneration | None = None
@@ -211,7 +245,118 @@ class _ACPEventBridge(_FailClosedACPInput):
         generation: _TurnGeneration,
         message: dict[str, Any],
     ) -> None:
+        if message.get("type") == "approval_needed":
+            self._request_permission_for(generation, message)
+            return
         self._send_for(generation, message, adapter_owned=False)
+
+    def _request_permission_for(
+        self,
+        generation: _TurnGeneration,
+        message: dict[str, Any],
+    ) -> None:
+        """Schedule one generation-owned ACP permission request."""
+
+        tool_call_id = message.get("tool_call_id")
+        tool = message.get("tool")
+        arguments = message.get("arguments")
+        if not isinstance(tool_call_id, str) or not tool_call_id:
+            raise ValueError("Approval request requires a tool-call ID")
+        if not isinstance(tool, str) or not tool:
+            raise ValueError("Approval request requires a tool name")
+        if not isinstance(arguments, dict):
+            raise ValueError("Approval request arguments must be a dictionary")
+
+        tool_call = ToolCallUpdate(
+            tool_call_id=tool_call_id,
+            title=tool,
+            status="pending",
+            raw_input=copy.deepcopy(arguments),
+        )
+        options = [option.model_copy(deep=True) for option in _ACP_PERMISSION_OPTIONS]
+        with self._outbound:
+            if self._active is not generation or self.interrupted:
+                raise RuntimeError("ACP prompt generation is not active")
+            if generation.permission_future is not None:
+                raise RuntimeError("ACP permission request is already pending")
+            generation.permission_future = asyncio.run_coroutine_threadsafe(
+                self._permission_requester(
+                    self._session_id,
+                    tool_call,
+                    options,
+                ),
+                self._loop,
+            )
+
+    def receive_for(
+        self,
+        generation: _TurnGeneration,
+        cancelled: threading.Event | None = None,
+    ) -> dict[str, Any]:
+        """Wait for one permission reply without blocking the event loop."""
+
+        while True:
+            with self._outbound:
+                future = generation.permission_future
+                interrupted = (
+                    self._active is not generation
+                    or self.interrupted
+                    or (cancelled is not None and cancelled.is_set())
+                )
+                if interrupted:
+                    generation.permission_future = None
+            if interrupted:
+                if future is not None:
+                    future.cancel()
+                return {"type": "INTERRUPT"}
+            if future is None:
+                return {"type": "io_closed"}
+
+            try:
+                response = future.result(timeout=0.05)
+            except concurrent.futures.TimeoutError:
+                continue
+            except BaseException:
+                with self._outbound:
+                    if generation.permission_future is future:
+                        generation.permission_future = None
+                return {"approved": False, "mode": "reject_hard"}
+
+            with self._outbound:
+                if (
+                    self._active is not generation
+                    or self.interrupted
+                    or (cancelled is not None and cancelled.is_set())
+                ):
+                    if generation.permission_future is future:
+                        generation.permission_future = None
+                    return {"type": "INTERRUPT"}
+                if generation.permission_future is not future:
+                    return {"type": "io_closed"}
+                generation.permission_future = None
+            return self._permission_response(response)
+
+    @staticmethod
+    def _permission_response(response: Any) -> dict[str, Any]:
+        """Map only exact advertised ACP outcomes to existing approval input."""
+
+        try:
+            parsed = (
+                response
+                if isinstance(response, RequestPermissionResponse)
+                else RequestPermissionResponse.model_validate(response)
+            )
+        except (TypeError, ValueError):
+            return {"approved": False, "mode": "reject_hard"}
+
+        outcome = parsed.outcome
+        if outcome.outcome != "selected":
+            return {"approved": False, "mode": "reject_hard"}
+        if outcome.option_id == "allow_once":
+            return {"approved": True, "scope": "once"}
+        if outcome.option_id == "allow_session":
+            return {"approved": True, "scope": "session"}
+        return {"approved": False, "mode": "reject_hard"}
 
     def send_terminal_for(
         self,
@@ -324,6 +469,8 @@ class _ACPEventBridge(_FailClosedACPInput):
         with self._outbound:
             if self._active is not generation:
                 return
+            permission_future = generation.permission_future
+            generation.permission_future = None
             ticket = generation.next_ticket
             generation.next_ticket += 1
             while (
@@ -345,13 +492,19 @@ class _ACPEventBridge(_FailClosedACPInput):
             generation.serving_ticket += 1
             self._active = None
             self._outbound.notify_all()
+        if permission_future is not None:
+            permission_future.cancel()
 
     def retire_turn(self, generation: _TurnGeneration) -> None:
         with self._outbound:
+            permission_future = generation.permission_future
+            generation.permission_future = None
             if self._active is generation:
                 self._active = None
             self._outbound.notify_all()
             self._signal(generation)
+        if permission_future is not None:
+            permission_future.cancel()
 
     async def next_for(self, generation: _TurnGeneration) -> Any:
         while True:
@@ -465,8 +618,12 @@ class ConnectOnionACPAgent:
     ) -> NewSessionResponse:
         self._reject_unsupported_session_inputs(additional_directories, mcp_servers)
         project_dir = self._validate_cwd(cwd)
-        acp_input = _ACPEventBridge(asyncio.get_running_loop())
         session_id = new_session_id()
+        acp_input = _ACPEventBridge(
+            asyncio.get_running_loop(),
+            session_id,
+            self._request_permission,
+        )
         try:
             runtime = await self._construct_runtime(
                 self._open_session_runtime,
@@ -502,7 +659,11 @@ class ConnectOnionACPAgent:
                 "Session is already open",
                 {"sessionId": session_id},
             )
-        acp_input = _ACPEventBridge(asyncio.get_running_loop())
+        acp_input = _ACPEventBridge(
+            asyncio.get_running_loop(),
+            session_id,
+            self._request_permission,
+        )
         try:
             runtime = await self._construct_runtime(
                 self._open_session_runtime,
@@ -665,6 +826,27 @@ class ConnectOnionACPAgent:
         if runtime is not None and runtime.prompt_active.is_set():
             runtime.acp_input.interrupt()
 
+    async def _request_permission(
+        self,
+        session_id: str,
+        tool_call: ToolCallUpdate,
+        options: list[PermissionOption],
+    ) -> RequestPermissionResponse:
+        """Send one schema-validated permission request to the ACP client."""
+
+        if self._client is None:
+            raise RuntimeError("ACP client connection is not available")
+        response = await self._client.request_permission(
+            session_id=session_id,
+            tool_call=tool_call,
+            options=options,
+        )
+        return (
+            response
+            if isinstance(response, RequestPermissionResponse)
+            else RequestPermissionResponse.model_validate(response)
+        )
+
     def cancel_all(self) -> None:
         """Stop active turns before the stdio event loop shuts down."""
 
@@ -730,8 +912,8 @@ class ConnectOnionACPAgent:
                 yolo_turns=self._yolo_turns,
                 resumable=True,
             )
-        # A missing io currently means "skip approvals".  ACP must instead
-        # remain safe until request_permission is mapped in #475.
+        # A missing IO currently means "skip approvals". Keep construction
+        # fail-closed; live ACP sessions install their generation-bound bridge.
         agent.io = acp_input or _FailClosedACPInput()
         return agent
 
