@@ -12,9 +12,10 @@ import asyncio
 import uuid
 
 from rich.console import Console
+
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
-from .connect import handle_connect, establish_connection
 from .agent_io import start_agent
+from .connect import establish_connection, handle_connect
 from .exec import run_exec
 from .ping import ping_loop
 
@@ -203,6 +204,25 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         run_exec(data, send_msg, route_handlers, conn["agent_address"]))
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
+
+            elif msg_type == "ACP_RESPONSE":
+                if not active_io or not active_io.resolve_acp_permission(
+                    data, conn.get("session_id")
+                ):
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "unknown or stale ACP permission response",
+                    })
+
+            elif msg_type == "APPROVAL_RESPONSE" and active_io:
+                resolver = getattr(active_io, "resolve_legacy_permission", None)
+                if resolver is None:
+                    active_io.send_to_agent(data)
+                elif not resolver(data):
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "unknown or stale approval response",
+                    })
 
             elif active_io:
                 # Anything else (ASK_USER_RESPONSE, APPROVAL_RESPONSE, mode_change, ...)

@@ -13,7 +13,10 @@ import threading
 
 from rich.console import Console
 
-from ....core.acp_wire import acp_notification_frame
+from ....core.acp_wire import (
+    acp_notification_frame,
+    acp_permission_request_frame,
+)
 from ...io import WebSocketIO
 
 console = Console()
@@ -27,6 +30,18 @@ def _acp_rollout_frame(event, session_id):
     except (TypeError, ValueError) as exc:
         console.print(
             f"[yellow]ACP mirror skipped; legacy event continues: {exc}[/yellow]"
+        )
+        return None
+
+
+def _acp_permission_rollout_frame(event, session_id):
+    if not session_id:
+        return None
+    try:
+        return acp_permission_request_frame(event, session_id)
+    except (TypeError, ValueError) as exc:
+        console.print(
+            f"[yellow]ACP permission mirror skipped; legacy request continues: {exc}[/yellow]"
         )
         return None
 
@@ -115,6 +130,11 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
 async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
     """Forward agent events to client. Send OUTPUT (or ERROR) when agent finishes."""
     async for event in io.read_msgs_from_agent():
+        if event.get("type") == "approval_needed":
+            acp_request = _acp_permission_rollout_frame(event, session_id)
+            io.register_permission_request(event, session_id, acp_request)
+            if acp_request is not None:
+                await send_msg(acp_request)
         acp_frame = (
             _acp_rollout_frame(event, session_id)
             if event.get("type") in {"tool_call", "tool_result"}
@@ -170,7 +190,7 @@ def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None
     alive. The io stayed live in ActiveSession across the WS drop; we just
     spawn a fresh task to pump it to the new client.
     """
-    console.print(f"  [dim]↻ resuming forwarding to running agent[/dim]")
+    console.print("  [dim]↻ resuming forwarding to running agent[/dim]")
     io = active.io
     registry.update_ping(session_id)
     task = asyncio.create_task(
@@ -222,7 +242,7 @@ def verified_prompt(data: dict, route_handlers) -> tuple:
 async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
     """Validate INPUT, spawn agent thread + forward task. Returns (io, forward_task) or None on error."""
     if not conn["authenticated"]:
-        console.print(f"[red]✗ INPUT rejected:[/red] not authenticated (send CONNECT first)")
+        console.print("[red]✗ INPUT rejected:[/red] not authenticated (send CONNECT first)")
         await send_msg({"type": "ERROR", "message": "authenticate first (send CONNECT)"})
         return None
 

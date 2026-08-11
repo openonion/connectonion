@@ -2,8 +2,9 @@
 
 The Host WebSocket also transports ConnectOnion authentication, onboarding,
 session persistence, and dashboard frames, so it is not an ACP connection. An
-``ACP_NOTIFICATION`` frame carries one exact ACP JSON-RPC notification without
-pretending that the surrounding socket negotiated ACP capabilities.
+``ACP_NOTIFICATION`` and ``ACP_REQUEST`` frames carry exact nested ACP JSON-RPC
+messages without pretending that the surrounding socket negotiated ACP
+capabilities.
 """
 
 from __future__ import annotations
@@ -13,16 +14,55 @@ from typing import Any, Mapping
 from acp import text_block, tool_content
 from acp.schema import (
     AgentMessageChunk,
+    AgentRequest,
+    PermissionOption,
+    RequestPermissionRequest,
+    RequestPermissionResponse,
     SessionNotification,
     ToolCallProgress,
     ToolCallStart,
+    ToolCallUpdate,
 )
 
 from .wire_events import normalize_wire_event
 
 ACP_FRAME_TYPE = "ACP_NOTIFICATION"
+ACP_REQUEST_FRAME_TYPE = "ACP_REQUEST"
+ACP_RESPONSE_FRAME_TYPE = "ACP_RESPONSE"
 ACP_SCHEMA_VERSION = "schema-v1.19.0"
 ACP_SESSION_UPDATE_METHOD = "session/update"
+ACP_PERMISSION_METHOD = "session/request_permission"
+
+ACP_PERMISSION_OPTIONS = (
+    PermissionOption(
+        option_id="allow_once",
+        name="Allow this call",
+        kind="allow_once",
+    ),
+    PermissionOption(
+        option_id="allow_session",
+        name="Allow for this session",
+        kind="allow_always",
+    ),
+    PermissionOption(
+        option_id="reject_soft",
+        name="Reject this call and continue",
+        kind="reject_once",
+    ),
+    PermissionOption(
+        option_id="reject_hard",
+        name="Reject and stop this turn",
+        kind="reject_once",
+    ),
+    PermissionOption(
+        option_id="reject_explain",
+        name="Reject and explain first",
+        kind="reject_once",
+    ),
+)
+ACP_PERMISSION_OPTION_IDS = frozenset(
+    option.option_id for option in ACP_PERMISSION_OPTIONS
+)
 
 
 def map_tool_event(
@@ -108,6 +148,101 @@ def acp_notification_frame(
             "params": params,
         },
     }
+
+
+def acp_permission_request_frame(
+    event: Mapping[str, Any], session_id: str
+) -> dict[str, Any]:
+    """Carry one exact ACP permission request beside the legacy Host event."""
+
+    if event.get("type") != "approval_needed":
+        raise ValueError("ACP permission source must be approval_needed")
+    arguments = _required_mapping(event, "arguments")
+    params = RequestPermissionRequest(
+        session_id=_required_nonempty(session_id, "session_id"),
+        tool_call=ToolCallUpdate(
+            tool_call_id=_required_string(event, "tool_call_id"),
+            title=_required_string(event, "tool"),
+            status="pending",
+            raw_input=dict(arguments),
+        ),
+        options=[option.model_copy(deep=True) for option in ACP_PERMISSION_OPTIONS],
+    )
+    request = AgentRequest(
+        id=_required_string(event, "id"),
+        method=ACP_PERMISSION_METHOD,
+        params=params,
+    )
+    message = request.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    return {
+        "type": ACP_REQUEST_FRAME_TYPE,
+        "acpSchema": ACP_SCHEMA_VERSION,
+        "message": {"jsonrpc": "2.0", **message},
+    }
+
+
+def legacy_approval_response_from_acp(
+    frame: Mapping[str, Any],
+    *,
+    expected_session_id: str,
+    expected_request_id: str,
+) -> dict[str, Any]:
+    """Validate one bound ACP response and return the existing policy input."""
+
+    if frame.get("type") != ACP_RESPONSE_FRAME_TYPE:
+        raise ValueError("Unsupported ACP permission response carrier")
+    if frame.get("acpSchema") != ACP_SCHEMA_VERSION:
+        raise ValueError("Unsupported ACP carrier schema")
+    if frame.get("sessionId") != expected_session_id:
+        raise ValueError("ACP permission response belongs to another session")
+    message = _required_mapping(frame, "message")
+    if message.get("jsonrpc") != "2.0":
+        raise ValueError("ACP response jsonrpc must be '2.0'")
+    if message.get("id") != expected_request_id:
+        raise ValueError("ACP permission response belongs to another request")
+    result = RequestPermissionResponse.model_validate(
+        _required_mapping(message, "result")
+    )
+    outcome = result.outcome
+    if outcome.outcome == "cancelled":
+        return _hard_rejection()
+
+    option_id = outcome.option_id
+    if option_id not in ACP_PERMISSION_OPTION_IDS:
+        raise ValueError("ACP permission response selected an unknown option")
+    if option_id == "allow_once":
+        return {"approved": True, "scope": "once"}
+    if option_id == "allow_session":
+        return {"approved": True, "scope": "session"}
+
+    response = {
+        "approved": False,
+        "scope": "once",
+        "mode": option_id,
+    }
+    feedback = _permission_feedback(result.field_meta)
+    if feedback:
+        response["feedback"] = feedback
+    return response
+
+
+def _hard_rejection() -> dict[str, Any]:
+    return {"approved": False, "scope": "once", "mode": "reject_hard"}
+
+
+def _permission_feedback(field_meta: Any) -> str | None:
+    if not isinstance(field_meta, Mapping):
+        return None
+    connectonion = field_meta.get("connectonion")
+    if not isinstance(connectonion, Mapping):
+        return None
+    feedback = connectonion.get("feedback")
+    return feedback if isinstance(feedback, str) and feedback else None
 
 
 def legacy_tool_event_from_acp(
@@ -237,3 +372,9 @@ def _required_string(value: Mapping[str, Any], field: str) -> str:
     if not isinstance(item, str) or not item:
         raise ValueError(f"ACP event field {field!r} must be a non-empty string")
     return item
+
+
+def _required_nonempty(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"ACP event field {field!r} must be a non-empty string")
+    return value
