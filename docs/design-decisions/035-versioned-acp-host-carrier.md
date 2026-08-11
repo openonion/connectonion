@@ -27,12 +27,12 @@ authentication, onboarding, reconnect, persistence, and dashboard control and
 does not perform ACP `initialize`. The nested message is serialized from the
 official Python models with ACP camelCase fields.
 
-Python pins `agent-client-protocol==0.12.0`; TypeScript readers pin
-`@agentclientprotocol/sdk==1.2.1`. Both were generated from stable
-`schema-v1.19.0`. The exact pair changes together with the carrier version and
-the shared cross-repository fixture. This supersedes DD-032's SDK range for
-the cross-language Host carrier; DD-032's typed stdio conformance boundary
-otherwise remains in force.
+Python pins `agent-client-protocol==0.12.0`; the JavaScript ACP models used by
+`@connectonion/react` pin `@agentclientprotocol/sdk==1.2.1`. Both were generated
+from stable `schema-v1.19.0`. The exact pair changes together with the carrier
+version and the shared cross-repository fixture. This supersedes DD-032's SDK
+range for the cross-language Host carrier; DD-032's typed stdio conformance
+boundary otherwise remains in force.
 
 The first carrier slice includes `tool_call` and `tool_call_update`. Canonical
 trace events and provider-facing IO keep their ConnectOnion names and statuses.
@@ -43,10 +43,14 @@ aliases.
 ## Rollout and compatibility
 
 Host dual-writes ACP and legacy tool frames during the migration. Released
-clients therefore continue to receive the old event, while updated Python,
-TypeScript, and React readers accept both and de-duplicate by stable tool ID.
-Readers ship before or with the writer. Legacy removal requires a future major
-version, usage evidence, and a separate decision.
+clients therefore continue to receive the old event, while updated Python and
+React readers accept both and de-duplicate by stable tool ID. For React
+applications, `@connectonion/react` is the browser protocol boundary and the
+only SDK used by oo-chat; its reader ships before or with the writer in a
+coordinated release. The standalone `connectonion` TypeScript client may carry
+the same compatibility reader for non-React consumers, but it is not an
+oo-chat dependency or a React release gate. Legacy removal requires a future
+major version, usage evidence, and a separate decision.
 
 ACP mirroring is additive and non-authoritative. A malformed internal event or
 conversion failure is logged, the legacy frame is still delivered, and the
