@@ -89,6 +89,21 @@ class TestGDriveInit:
         assert calls == ["test-refresh"]
         assert mock_build.call_args.kwargs["credentials"].token == "fresh"
 
+    @pytest.mark.real_refresh
+    def test_backend_refresh_error_does_not_expose_provider_body(self, monkeypatch):
+        from connectonion.useful_tools.gdrive import GDrive
+
+        monkeypatch.setenv("OPENONION_API_KEY", "opaque-api-key")
+        response = MagicMock(status_code=502, text="provider-refresh-secret")
+
+        with patch("httpx.post", return_value=response):
+            with pytest.raises(ValueError) as error:
+                GDrive.__new__(GDrive)._refresh_via_backend("local-refresh-secret")
+
+        assert str(error.value) == "Failed to refresh Google authorization via backend"
+        assert "provider-refresh-secret" not in str(error.value)
+        assert "local-refresh-secret" not in str(error.value)
+
 
 class TestListFiles:
 

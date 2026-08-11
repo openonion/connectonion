@@ -176,6 +176,7 @@ class TestGmailGetService:
 
         assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
 
+    @pytest.mark.real_refresh
     @patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}, clear=True)
     def test_get_service_missing_credentials(self):
         """Test _get_service raises error when credentials missing."""

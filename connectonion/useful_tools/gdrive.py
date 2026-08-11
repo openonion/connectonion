@@ -2,7 +2,7 @@
 Purpose: Google Drive integration tool for listing, searching, downloading, and uploading files via the Drive API
 LLM-Note:
   Dependencies: imports from [io, mimetypes, os, pathlib, googleapiclient.discovery, googleapiclient.http, google.oauth2.credentials] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gdrive.py]
-  Data flow: Agent calls GDrive methods → _get_service() refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() picks get_media() for binary files and export_media() for Google-native docs | upload() sends a MediaFileUpload
+  Data flow: Agent calls GDrive methods → _get_service() validates the ambient OpenOnion account and refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() picks get_media() for binary files and export_media() for Google-native docs | upload() sends a MediaFileUpload
   State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates/overwrites local files on download and remote files on upload | token refresh rewrites ~/.co/keys.env
   Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | list_files()/search_files() return dicts for the CLI (cli/commands/gdrive_commands.py) | used as agent tool via Agent(tools=[GDrive()])
   Performance: network I/O per API call | listings page at 100/request | downloads stream in chunks
@@ -44,6 +44,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from ..backend import backend_url
+from ..credentials import require_ambient_api_key
 
 # Everything under this prefix is a Google-native doc: it has no bytes of its
 # own, so it must be exported to a real format rather than downloaded.
@@ -127,13 +128,7 @@ class GDrive:
         import httpx
 
         selected_backend = backend_url()
-        api_key = os.getenv("OPENONION_API_KEY")
-
-        if not api_key:
-            raise ValueError(
-                "OPENONION_API_KEY not found.\n"
-                "This is needed to refresh tokens via backend."
-            )
+        api_key = require_ambient_api_key()
 
         response = httpx.post(
             f"{selected_backend}/api/v1/oauth/google/refresh",
@@ -142,9 +137,7 @@ class GDrive:
         )
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Failed to refresh token via backend: {response.text}"
-            )
+            raise ValueError("Failed to refresh Google authorization via backend")
 
         data = response.json()
         new_access_token = data["access_token"]

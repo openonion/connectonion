@@ -2,7 +2,7 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  Data flow: Agent calls Outlook methods → _get_access_token() validates the ambient OpenOnion account and refreshes locally owned Microsoft tokens via oo-api → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh rewrites ~/.co/keys.env
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
@@ -50,6 +50,7 @@ from pathlib import Path
 
 import httpx
 from ..backend import backend_url
+from ..credentials import require_ambient_api_key
 from ..project import project_root
 from ._attachment_files import path_of_open_file
 
@@ -129,13 +130,7 @@ class Outlook:
             New access token
         """
         selected_backend = backend_url()
-        api_key = os.getenv("OPENONION_API_KEY")
-
-        if not api_key:
-            raise ValueError(
-                "OPENONION_API_KEY not found.\n"
-                "This is needed to refresh tokens via backend."
-            )
+        api_key = require_ambient_api_key()
 
         response = httpx.post(
             f"{selected_backend}/api/v1/oauth/microsoft/refresh",
