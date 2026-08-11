@@ -16,6 +16,7 @@ from typing import Mapping
 import requests
 from dotenv import dotenv_values
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -118,11 +119,37 @@ def _credential_sources(
     )
 
 
+def _selected_credential_values(
+    names: tuple[str, ...],
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str | None]:
+    """Select the first configured value from the canonical source inventory."""
+    sources = _credential_sources(
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
+    )
+    return {
+        name: next(
+            (
+                str(values[name])
+                for _source, values in sources
+                if _is_configured(values.get(name))
+            ),
+            None,
+        )
+        for name in names
+    }
+
+
 def _short_account(account: str) -> str:
-    """A public address that distinguishes accounts without dominating a row."""
+    """A Rich-safe public address that distinguishes accounts in one row."""
     if len(account) <= 20:
-        return account
-    return f"{account[:16]}…{account[-4:]}"
+        return escape(account)
+    return escape(f"{account[:16]}…{account[-4:]}")
 
 
 def _openonion_source_status(

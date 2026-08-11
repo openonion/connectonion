@@ -66,6 +66,11 @@ class TestCredentialStatus:
         }
         assert secret not in repr(rows)
 
+    def test_account_labels_escape_rich_markup(self):
+        from connectonion.cli.commands.status_commands import _short_account
+
+        assert _short_account("[red]foreign[/red]") == r"\[red]foreign\[/red]"
+
     def test_reports_discovered_key_without_loading_environment(self, tmp_path):
         from connectonion.cli.commands.status_commands import _credential_rows
 

@@ -86,18 +86,36 @@ def require_ambient_api_key() -> str:
     if not token:
         raise MissingAmbientAPIKey()
 
-    claimed = account_in_token(token)
-    expected = _identity_address(project_identity())
-    if (
-        claimed is not None
-        and expected is not None
-        and claimed.casefold() != expected.casefold()
-    ):
+    mismatch = api_key_account_mismatch(token, project_identity())
+    if mismatch is not None:
+        claimed, expected = mismatch
         raise AmbientAPIKeyAccountMismatch(
             claimed=claimed,
             expected=expected,
         )
     return token
+
+
+def api_key_account_mismatch(
+    token: str,
+    identity: Any,
+) -> tuple[str, str] | None:
+    """Return ``(claimed, expected)`` when an inspectable token is foreign.
+
+    Diagnostics use the same comparison as the runtime guard without loading,
+    authenticating, or rewriting credentials. Opaque tokens and an unavailable
+    local identity cannot be classified here; the server remains authoritative.
+    """
+
+    claimed = account_in_token(token)
+    expected = _identity_address(identity)
+    if (
+        claimed is not None
+        and expected is not None
+        and claimed.casefold() != expected.casefold()
+    ):
+        return claimed, expected
+    return None
 
 
 def _identity_address(identity: Any) -> str | None:
