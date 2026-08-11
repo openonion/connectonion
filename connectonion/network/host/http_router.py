@@ -1,126 +1,125 @@
 """
-Purpose: HTTP route handlers for agent hosting endpoints (POST /input, session/admin/health/info)
+Purpose: HTTP routes for hosted agents, atomic prompt claims, and policy restore
 LLM-Note:
-  Dependencies: imports from [network/host/session/ (Session, SessionStorage, merge_sessions, session_to_chat_items), network/asgi/http (read_body, send_json, send_html, send_text, CORS_HEADERS), network/trust/http_admin] | imported by [network/host/server.py, network/asgi/http.py] | tested by [tests/unit/test_host_routes.py]
-  Data flow: input_handler() receives prompt+session → calls create_agent() factory → merges client+server session via merge_sessions() if stored exists → calls agent.input(prompt, session) → records 'running' shell + final 'done' to SessionStorage → returns {session_id, status, result, duration_ms, session, chat_items, server_newer}
-  State/Effects: reads/writes SessionStorage via storage.save()/get() | factory creates fresh agent per request (prevents state bleeding) | session records carry TTL expiry
-  Integration: exposes input_handler, session_handler, sessions_handler, health_handler, info_handler, admin_logs/sessions/trust/admins handlers | used by server.py and ASGI adapters
-  Performance: factory creates fresh agent per request (thread-safe) | SessionStorage TTL auto-cleanup | session continuation via session_id provided by client
-  Errors: input_handler raises ValueError if session_id missing | session_handler returns None if session_id not found | admin_logs_handler returns {"error": "..."} if log file missing
+  Dependencies: imports from [host/session, session.mode, asgi/http, trust/http_admin]
+  Data flow: claim durable session → create/disarm Agent → input → normalize → save
+  State/Effects: reads/writes append-only SessionStorage; rejects busy/foreign claims
+  Integration: route handlers used by server.py and ASGI adapters
+  Performance: creates one isolated Agent per request; storage applies TTL cleanup
+  Errors: missing session IDs are invalid; missing sessions return None
 
 Session ID ownership:
-  - Client generates UUID on first request (TypeScript SDK: generateUUID())
+  - A frontend client (normally @connectonion/react) generates a UUID on first request
   - Server uses client's session_id for storage and reconnection
   - Security: session_id is a correlation ID, not credential. Ed25519 signature provides auth.
 """
 
+import copy
 import json
+import logging
 import time
 import uuid
 from functools import partial
 from pathlib import Path
 from typing import Callable
-from ...project import project_co_dir
 
-from ..asgi.http import read_body, send_json, send_html, send_text, CORS_HEADERS
+from ...project import project_co_dir
+from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
-from .session import Session, SessionStorage, merge_sessions, session_to_chat_items
+from .session import SessionStorage, session_to_chat_items
+from .session.mode import SERVER_OWNED_SESSION_KEYS as SERVER_OWNED_SESSION_KEYS
+from .session.mode import (
+    HostModePolicy,
+    ModeTransactionError,
+    claim_host_prompt,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════
-# State a client carries but does not author. Set server-side — by a validated
-# mode_change, by the trust layer at CONNECT — and restored from storage so it
-# survives the round trip without the client being able to invent it.
-SERVER_OWNED_SESSION_KEYS = (
-    'mode', 'ulw_turns', 'ulw_turns_used', 'skip_tool_approval',
-    'permissions', 'approval', 'requester',
-)
-
-
 # Handlers
 # ═══════════════════════════════════════════════════════
 
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
                   session: dict | None = None, connection=None, images: list[str] | None = None,
-                  files: list[dict] | None = None, requester: dict | None = None) -> dict:
+                  files: list[dict] | None = None, requester: dict | None = None,
+                  mode_policy: HostModePolicy | None = None,
+                  is_admin: bool = False) -> dict:
     """POST /input (and WebSocket /ws) with session merge and UI conversion."""
-    agent = create_agent()
-    agent.io = connection
-    agent.storage = storage
-    now = time.time()
-
     session = session or {}
     session_id = session.get('session_id')
     if not session_id:
         raise ValueError("session_id required in session dict")
-    server_newer = False
 
-    stored = storage.get(session_id)
-    # Same rule CONNECT applies, because this is the same decision: a session
-    # belongs to whoever started it, and the id is on the client's frame.
-    #
-    # Fixing it only in establish_connection was not enough -- measured. B
-    # connected, was correctly given a fresh session ("belongs to another
-    # caller"), and then its INPUT named the same id and this lookup handed
-    # over A's conversation anyway:
-    #
-    #     B CONNECTED session=47edf32c… status=new     <- the CONNECT fix worked
-    #     B <- "PURPLE-OTTER-42."                      <- and it leaked here
-    #
-    # `requester` is the signature-verified address for this turn.
-    from .session import session_owner
-
-    owner = session_owner(stored)
-    if owner and requester and owner != requester.get('address'):
-        stored = None
-    if stored and stored.session:
-        session, server_newer = merge_sessions(
-            client_session=session,
-            server_session=stored.session
-        )
-
-    # Answers the server already gave, which the client does not get to change.
-    #
-    # merge_sessions picks one whole session, so a client that wins the merge
-    # would otherwise hand the agent its own `skip_tool_approval: True` and skip
-    # every approval check. These come from what the server stored, or from
-    # nowhere.
-    stored_session = (stored.session if stored and stored.session else {}) or {}
-    for key in SERVER_OWNED_SESSION_KEYS:
-        session.pop(key, None)
-        if key in stored_session:
-            session[key] = stored_session[key]
-
-    # After the merge, and overwriting whatever arrived. The session dict
-    # round-trips through the client, so anything read out of it is their
-    # input — a level taken from there would make "I am the operator" a matter
-    # of editing one JSON field. The caller recomputes this every turn from the
-    # signature-verified address.
-    if requester is not None:
-        session['requester'] = requester
-    else:
-        session.pop('requester', None)
-
-    record = Session(
-        session_id=session_id,
-        status="running",
-        prompt=prompt,
-        created=now,
-        expires=now + result_ttl,
+    # Preserve the legacy internal/scheduler order when no Host policy is in
+    # play. Network routes always pass a policy and must claim before factory
+    # side effects; standalone callers historically construct first.
+    agent = create_agent() if mode_policy is None else None
+    record, server_newer = claim_host_prompt(
+        storage,
+        session_id,
+        prompt,
+        result_ttl,
+        session,
+        requester=requester,
+        policy=mode_policy,
+        is_admin=is_admin,
     )
-    storage.save(record)
+    session = record.session
 
     start = time.time()
-    result = agent.input(prompt, session=session, images=images, files=files)
-    duration_ms = int((time.time() - start) * 1000)
+    try:
+        if agent is None:
+            agent = create_agent()
+        agent.io = connection
+        agent.storage = storage
+        if mode_policy is not None:
+            if hasattr(agent, "_yolo_turns"):
+                agent._yolo_turns = None
+            if hasattr(agent, "_yolo_needs_activation"):
+                agent._yolo_needs_activation = False
+            agent._host_ulw_turns_ceiling = mode_policy.ulw_turns
 
-    agent.current_session['updated'] = time.time()
+        result = agent.input(
+            prompt, session=session, images=images, files=files
+        )
+        duration_ms = int((time.time() - start) * 1000)
 
-    record.status = "done"
-    record.result = result
-    record.duration_ms = duration_ms
-    record.session = agent.current_session
-    storage.save(record)
+        if mode_policy is not None:
+            agent.current_session = _normalized_host_result(
+                agent.current_session,
+                requester=requester,
+                mode_policy=mode_policy,
+                is_admin=is_admin,
+            )
+
+        agent.current_session['updated'] = time.time()
+
+        record.status = "done"
+        record.result = result
+        record.duration_ms = duration_ms
+        record.session = agent.current_session
+        storage.save(record)
+    except Exception:
+        # The claim is already durable. Always terminate it so a factory/model
+        # exception cannot leave this session busy until Host restarts.
+        record.status = "failed"
+        record.duration_ms = int((time.time() - start) * 1000)
+        if mode_policy is not None:
+            record.session = _normalized_host_result(
+                record.session,
+                requester=requester,
+                mode_policy=mode_policy,
+                is_admin=is_admin,
+            )
+        try:
+            storage.save(record)
+        except Exception:
+            logger.exception(
+                "Unable to persist failed Host prompt %s", session_id
+            )
+        raise
 
     chat_items = session_to_chat_items(agent.current_session)
 
@@ -133,6 +132,28 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         "chat_items": chat_items,
         "server_newer": server_newer,
     }
+
+
+def _normalized_host_result(
+    session: dict,
+    *,
+    requester: dict | None,
+    mode_policy: HostModePolicy,
+    is_admin: bool,
+) -> dict:
+    """Restore verified identity and fail invalid Agent policy state to Safe."""
+    final_session = copy.deepcopy(session)
+    if requester is not None:
+        final_session["requester"] = copy.deepcopy(requester)
+    else:
+        final_session.pop("requester", None)
+    try:
+        return mode_policy.normalized(final_session, is_admin=is_admin)
+    except ModeTransactionError:
+        logger.exception(
+            "Agent produced invalid Host session policy; downgrading to Safe"
+        )
+        return mode_policy.apply(final_session, "safe", is_admin=is_admin)
 
 
 def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
@@ -263,7 +284,10 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
             "images": True,
             "files": {
                 "max_file_size_mb": file_config.get("max_file_size", DEFAULT_FILE_LIMITS["max_file_size"]),
-                "max_files_per_request": file_config.get("max_files_per_request", DEFAULT_FILE_LIMITS["max_files_per_request"]),
+                "max_files_per_request": file_config.get(
+                    "max_files_per_request",
+                    DEFAULT_FILE_LIMITS["max_files_per_request"],
+                ),
             },
         },
     }
@@ -464,7 +488,21 @@ async def handle_http(
         images = data.get("images")
         files = data.get("files")
         try:
-            result = route_handlers["input"](storage, prompt, session, images=images, files=files)
+            result = route_handlers["input"](
+                storage,
+                prompt,
+                session,
+                images=images,
+                files=files,
+                requester_address=agent_address,
+            )
+        except ModeTransactionError as exc:
+            status = 404 if exc.code == -32002 else 409 if exc.code == -32000 else 400
+            body = {"error": exc.message, "code": exc.code}
+            if exc.data:
+                body["data"] = exc.data
+            await send_json(send, body, status)
+            return
         except ValueError as e:
             await send_json(send, {"error": str(e)}, 400)
             return
@@ -475,7 +513,7 @@ async def handle_http(
         # has no body, so the signature is in headers over {method, path,
         # timestamp} and is verified by the same _authenticate_signed as every
         # other frame -- same freshness window, same blacklist (#683).
-        from .auth import request_from_headers, _authenticate_signed
+        from .auth import _authenticate_signed, request_from_headers
 
         headers = {k.decode(): v.decode() for k, v in scope.get("headers") or []}
         _, caller, err = _authenticate_signed(

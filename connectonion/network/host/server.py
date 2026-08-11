@@ -49,6 +49,7 @@ from .auth import authenticate_connect, extract_and_authenticate
 from .replay import SignatureReplayStore
 from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
+from .session.mode import HostModePolicy
 from .http_router import (
     input_handler,
     exec_handler,
@@ -222,6 +223,7 @@ def _create_route_handlers(
     config: dict,
     exec_permissions: dict | None = None,
     replay_check=None,
+    mode_policy: HostModePolicy | None = None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -240,14 +242,31 @@ def _create_route_handlers(
     """
     agent_name = agent_metadata["name"]
     exec_permissions = exec_permissions or {}
+    mode_policy = mode_policy or HostModePolicy()
     if replay_check is None:
         from .auth import signature_already_used
         replay_check = signature_already_used
 
-    def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
+    def requester_for(requester_address):
+        if not requester_address:
+            return None
+        level = (
+            "admin" if trust_agent.is_admin(requester_address)
+            else trust_agent.get_level(requester_address)
+        )
+        requester = {'address': requester_address, 'level': level}
+        return requester
+
+    def handle_input(storage, prompt, session=None, connection=None, images=None,
+                     files=None, requester_address=None):
         validate_files(files, config)
         validate_images(images, config)
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
+        requester = requester_for(requester_address)
+        return input_handler(
+            create_agent, storage, prompt, result_ttl, session, connection,
+            images, files, requester=requester, mode_policy=mode_policy,
+            is_admin=bool(requester and requester["level"] == "admin"),
+        )
 
     def handle_ws_input(storage, prompt, connection, session=None, images=None,
                         files=None, requester_address=None):
@@ -258,13 +277,11 @@ def _create_route_handlers(
         # contact / whitelist / blocked. The operator is whoever is in
         # .co/admins.txt, which is a separate question, and conflating them
         # would have refused the owner as loudly as everyone else.
-        requester = None
-        if requester_address:
-            level = ('admin' if trust_agent.is_admin(requester_address)
-                     else trust_agent.get_level(requester_address))
-            requester = {'address': requester_address, 'level': level}
+        requester = requester_for(requester_address)
         return input_handler(create_agent, storage, prompt, result_ttl, session,
-                             connection, images, files, requester=requester)
+                             connection, images, files, requester=requester,
+                             mode_policy=mode_policy,
+                             is_admin=bool(requester and requester["level"] == "admin"))
 
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
 
@@ -309,7 +326,21 @@ def _create_route_handlers(
         # unauthenticated and carry the published subset only; this is the copy a client
         # gets after CONNECT has passed the trust gate.
         "agent_metadata": agent_metadata,
+        "result_ttl": result_ttl,
+        "session_modes": mode_policy,
     }
+
+
+def _host_mode_policy(sample) -> HostModePolicy:
+    """Capture only an explicitly configured positive Agent ULW ceiling."""
+    turns = getattr(sample, "_yolo_turns", None)
+    if (
+        isinstance(turns, bool)
+        or not isinstance(turns, int)
+        or turns <= 0
+    ):
+        turns = None
+    return HostModePolicy(turns)
 
 
 def resolve_agent_identity(co_dir: Path) -> dict:
@@ -984,6 +1015,7 @@ def host(
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent, config,
         exec_permissions, replay_store.already_used,
+        mode_policy=_host_mode_policy(sample),
     )
 
     # Parse trust config for /info onboard info
@@ -1113,6 +1145,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         create_agent, agent_metadata, result_ttl, trust_agent,
         DEFAULT_FILE_LIMITS, load_permission_patterns(),
         replay_store.already_used,
+        mode_policy=_host_mode_policy(sample),
     )
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata

@@ -483,6 +483,11 @@ remote = connect("0x3d40...")
 # LLM-driven task
 resp = remote.input("Book a flight")      # -> Response(text, done)
 
+# The Host advertises the modes this identity may select. The setter returns
+# only after the Host has durably committed the new policy.
+remote.set_session_mode("accept_edits")
+print(remote.available_modes)
+
 # Direct tool execution — no LLM (see network/remote-call.md)
 res = remote.call("bash", command="co status")   # -> ExecResult
 ```
@@ -491,6 +496,13 @@ res = remote.call("bash", command="co status")   # -> ExecResult
 |--------|---------|---------|
 | `remote.input(prompt, timeout=60)` | `Response(text, done)` | Hand the remote LLM a task |
 | `remote.call(tool, timeout=60, **args)` | `ExecResult(text, status, duration_ms, error)` | Run one tool directly, no LLM |
+| `remote.set_session_mode(mode_id, timeout=30)` | `None` | Durably select one Host-advertised ACP session mode |
+
+`set_session_mode()` returning means the Host committed the policy. A
+`TimeoutError` is an unknown outcome, not a rollback: the Host may have
+committed before its acknowledgement was lost. Reconnect and read
+`available_modes` plus `current_session["mode"]` from the next authoritative
+`CONNECTED` response before retrying.
 
 `ExecResult`: `.ok` (bool), `.images` (base64 data URLs pulled from `.text`).
 Direct execution is gated by the host's `.co/host.yaml` permission whitelist.

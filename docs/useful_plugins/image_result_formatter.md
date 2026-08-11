@@ -107,7 +107,7 @@ agent = Agent("chart_bot", tools=[generate_chart])
 - Tools that need to send images should declare `agent` as a parameter
 - The `agent` parameter is automatically injected by the tool executor
 - Check `if agent.io` before calling `send_image()` (it's None in non-hosted mode)
-- Images appear in real-time in oo-chat and TypeScript SDK frontends
+- Images appear in real-time in O Chat and `@connectonion/react` frontends
 
 ## Customizing
 

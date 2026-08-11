@@ -1,10 +1,10 @@
 """
 Purpose: Run one client session — read loop, per-type dispatch, lifecycle of forward + ping tasks
 LLM-Note:
-  Dependencies: imports from [.connect (handle_connect), .agent_io (start_agent), .ping (ping_loop), ...trust.ws_admin (handle_admin_message, handle_onboard_submit), asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
-  Data flow: recv_msg() → match data["type"] → dispatch | PONG → registry.update_ping | SESSION_STATUS → registry lookup + reply (inline) | CONNECT → handle_connect (auth + reattach) | INPUT → if running session: push_runtime_input + RUNTIME_INPUT_ACK (inline); else: start_agent | EXEC → run_exec as own task (direct tool call, no LLM; requires auth) | other types with active_io → active_io.send_to_agent | finally: cancel forward + ping + exec tasks
+  Dependencies: imports from [.connect, .agent_io, .exec, .mode, .ping, ...trust.ws_admin, asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
+  Data flow: recv → verify every v2 application command → dispatch CONNECT/INPUT/EXEC/ACP_REQUEST/mode_change/ACP_NOTIFICATION/admin/runtime frames → bounded response → cancel spawned tasks on close
   State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
-  Integration: run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True) | enable_ping=True on both direct and relay paths: the 30s client PING is forwarded through the relay to the client, since the relay's ANNOUNCE heartbeat only keeps the agent↔relay link alive and never reaches the client
+  Integration: ACP session/set_mode and legacy mode_change use .mode durable authority; ACP cancel requires registered active IO; signed-command clients execute only verified payload copies
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
   Errors: recv_msg returning None → exit loop normally | other exceptions propagate out (transport-level errors, programmer bugs)
 """
@@ -17,6 +17,7 @@ from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from .agent_io import start_agent
 from .connect import establish_connection, handle_connect
 from .exec import run_exec
+from .mode import handle_acp_mode_request, handle_legacy_mode_change
 from .ping import ping_loop
 
 console = Console()
@@ -204,6 +205,21 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         run_exec(data, send_msg, route_handlers, conn["agent_address"]))
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
+
+            elif msg_type == "ACP_REQUEST":
+                handled = await handle_acp_mode_request(
+                    data, send_msg, conn, route_handlers, storage, registry
+                )
+                if not handled:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "unsupported ACP client request",
+                    })
+
+            elif msg_type == "mode_change":
+                await handle_legacy_mode_change(
+                    data, send_msg, conn, route_handlers, storage, registry
+                )
 
             elif msg_type == "ACP_NOTIFICATION":
                 sid = conn.get("session_id")

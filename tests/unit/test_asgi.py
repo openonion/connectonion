@@ -23,7 +23,11 @@ from connectonion.network.asgi import (
     send_json,
     read_body,
 )
-from connectonion.network.host.ws_router.agent_io import forward_agent_msgs_to_client
+from connectonion.network.host.session.mode import ModeTransactionError
+from connectonion.network.host.ws_router.agent_io import (
+    _agent_thread_body,
+    forward_agent_msgs_to_client,
+)
 from connectonion.network.host.ws_router import agent_io as agent_io_module
 from connectonion.network.io import WebSocketIO
 from connectonion.network.host.session import ActiveSessionRegistry
@@ -407,10 +411,10 @@ class TestForwardAgentEvents:
         assert "ERROR" not in event_types
 
     async def test_sends_error_from_exception(self):
-        """Test that ERROR is sent when agent raises."""
+        """Unexpected Agent errors never disclose their raw details."""
         io = WebSocketIO()
         sent_messages = []
-        result_holder = [RuntimeError("boom")]
+        result_holder = [OSError("private /srv/agent/.co/session_results.jsonl")]
 
         async def mock_send_msg(msg):
             sent_messages.append(msg)
@@ -423,8 +427,64 @@ class TestForwardAgentEvents:
         )
 
         error_msgs = [m for m in sent_messages if m.get("type") == "ERROR"]
-        assert len(error_msgs) == 1
-        assert "boom" in error_msgs[0]["message"]
+        assert error_msgs == [{
+            "type": "ERROR",
+            "code": -32603,
+            "message": "Unable to run agent",
+        }]
+        assert "private" not in str(sent_messages)
+
+    async def test_agent_thread_keeps_private_error_for_output_boundary(
+        self, caplog
+    ):
+        io = WebSocketIO()
+        result_holder = [None]
+        registry = Mock()
+        private_detail = "private /srv/agent/.co/session_results.jsonl"
+
+        _agent_thread_body(
+            {"ws_input": Mock(side_effect=OSError(private_detail))},
+            Mock(),
+            "prompt",
+            io,
+            {"session_id": "s1"},
+            None,
+            None,
+            registry,
+            "s1",
+            result_holder,
+            "0xowner",
+        )
+
+        assert isinstance(result_holder[0], OSError)
+        assert str(result_holder[0]) == private_detail
+        assert private_detail in caplog.text
+        registry.mark_session_connected.assert_called_once_with("s1")
+
+    async def test_owned_prompt_policy_error_keeps_stable_public_details(self):
+        io = WebSocketIO()
+        sent_messages = []
+        result_holder = [ModeTransactionError(
+            -32000, "Session is busy", {"retryable": True}
+        )]
+
+        async def mock_send_msg(message):
+            sent_messages.append(message)
+
+        io.mark_agent_done()
+        await forward_agent_msgs_to_client(
+            mock_send_msg, io, "s1", result_holder=result_holder
+        )
+
+        assert next(
+            message for message in sent_messages
+            if message.get("type") == "ERROR"
+        ) == {
+            "type": "ERROR",
+            "code": -32000,
+            "message": "Session is busy",
+            "retryable": True,
+        }
 
 
 @pytest.mark.asyncio

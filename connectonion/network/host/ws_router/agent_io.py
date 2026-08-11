@@ -1,14 +1,15 @@
 """
-Purpose: Agent thread orchestration + io → client streaming — the bridge between the sync agent and the async transport
+Purpose: Bridge synchronous hosted Agents to the async WebSocket transport
 LLM-Note:
-  Dependencies: imports from [...io (WebSocketIO), ..session (session_to_chat_items via lazy import), asyncio, threading, rich.console] | imported by [.session (start_agent), .connect (resume_forwarding)]
-  Data flow: start_agent: validate INPUT → create WebSocketIO → register in registry BEFORE thread.start (race-safe) → spawn _agent_thread_body (thread target running route_handlers["ws_input"]) → success or exception always returns registry to connected → spawn forward_task = forward_agent_msgs_to_client → return (io, task) | resume_forwarding: same forward_task spawn but on existing active.io | forward_agent_msgs_to_client: read_msgs_from_agent → send_msg loop → on agent finish read result_holder → mirror a persisted final assistant item as ACP → emit authoritative OUTPUT (success) / ERROR (exception)
-  State/Effects: spawns daemon Thread + asyncio.Task | mutates registry (register / mark_session_running) | calls io.mark_agent_done() in finally
-  Integration: imports core.acp_wire.acp_notification_frame and session.session_to_chat_items lazily | start_agent(data, send_msg, conn, route_handlers, storage, registry) → (io, forward_task) | None | resume_forwarding(send_msg, active, registry, session_id, storage, conn) → (io, forward_task) | forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder, conn, storage) — async, runs until io marked done
+  Dependencies: imports from [core.acp_wire, network.io, session.mode]
+  Data flow: INPUT → Agent thread → WebSocketIO → async forwarder → OUTPUT/ERROR
+  State/Effects: spawns Agent threads/tasks; updates the active-session registry
+  Integration: start_agent(), resume_forwarding(), forward_agent_msgs_to_client()
   Performance: thread-per-INPUT (worker isolation) | one forward_task per WS connection
-  Errors: agent thread exceptions captured in result_holder[0]; surfaced as ERROR frame by the forwarder (threads don't propagate exceptions natively)
+  Errors: owned failures stay public; unexpected failures log and become -32603
 """
 import asyncio
+import logging
 import threading
 
 from rich.console import Console
@@ -18,8 +19,10 @@ from ....core.acp_wire import (
     acp_permission_request_frame,
 )
 from ...io import WebSocketIO
+from ..session.mode import ModeTransactionError
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 def _acp_rollout_frame(event, session_id):
@@ -118,8 +121,16 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
     try:
         result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files,
                                                       requester_address=requester_address)
-    except Exception as e:
-        result_holder[0] = e
+    except ModeTransactionError as exc:
+        result_holder[0] = exc
+    except Exception as exc:
+        logger.exception(
+            "Hosted Agent execution failed for session %s", session_id
+        )
+        # Keep the original exception for in-process diagnostics and legacy
+        # callers. The WebSocket boundary below owns disclosure and maps every
+        # unexpected exception to one fixed -32603 response.
+        result_holder[0] = exc
     finally:
         # A failed run is finished too. Leaving it marked "running" routes the
         # next INPUT into a dead IO queue and creates another false ACK.
@@ -151,8 +162,23 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
         await send_msg(event)
 
     if result_holder and isinstance(result_holder[0], Exception):
-        console.print(f"[red]✗ agent error:[/red] {result_holder[0]}")
-        await send_msg({"type": "ERROR", "message": str(result_holder[0])})
+        error = result_holder[0]
+        if isinstance(error, ModeTransactionError):
+            message = {
+                "type": "ERROR",
+                "code": error.code,
+                "message": error.message,
+            }
+            if error.data:
+                message.update(error.data)
+        else:
+            message = {
+                "type": "ERROR",
+                "code": -32603,
+                "message": "Unable to run agent",
+            }
+        console.print(f"[red]✗ agent error:[/red] {message['message']}")
+        await send_msg(message)
     elif result_holder and result_holder[0]:
         result = result_holder[0]
         session_data = result.get('session', {})

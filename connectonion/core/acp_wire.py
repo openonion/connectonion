@@ -20,7 +20,11 @@ from acp.schema import (
     PermissionOption,
     RequestPermissionRequest,
     RequestPermissionResponse,
+    SessionMode,
+    SessionModeState,
     SessionNotification,
+    SetSessionModeRequest,
+    SetSessionModeResponse,
     ToolCallProgress,
     ToolCallStart,
     ToolCallUpdate,
@@ -35,7 +39,30 @@ ACP_SCHEMA_VERSION = "schema-v1.19.0"
 ACP_SESSION_UPDATE_METHOD = "session/update"
 ACP_PERMISSION_METHOD = "session/request_permission"
 ACP_CANCEL_METHOD = "session/cancel"
+ACP_SET_SESSION_MODE_METHOD = "session/set_mode"
 ACP_SESSION_MODE_IDS = frozenset({"safe", "accept_edits", "ulw"})
+
+ACP_SESSION_MODES = {
+    "safe": SessionMode(
+        id="safe",
+        name="Safe",
+        description="Ask before side effects.",
+    ),
+    "accept_edits": SessionMode(
+        id="accept_edits",
+        name="Auto",
+        description="Apply edits without asking; other tools still require approval.",
+    ),
+    "ulw": SessionMode(
+        id="ulw",
+        name="ULW",
+        description="Run without tool approvals within the Host launch ceiling.",
+    ),
+}
+
+
+class ACPSessionMismatchError(ValueError):
+    """A valid owned ACP message names a different Host session."""
 
 ACP_PERMISSION_OPTIONS = (
     PermissionOption(
@@ -104,6 +131,240 @@ def session_mode_id(value: Any) -> str:
     if not isinstance(value, str) or value not in ACP_SESSION_MODE_IDS:
         raise ValueError(f"Unsupported ACP session mode: {value!r}")
     return value
+
+
+def acp_session_mode_state(
+    current_mode_id: Any, available_mode_ids: list[str] | tuple[str, ...]
+) -> dict[str, Any]:
+    """Serialize one exact official SessionModeState for CONNECTED."""
+
+    current = session_mode_id(current_mode_id)
+    available: list[SessionMode] = []
+    seen: set[str] = set()
+    for value in available_mode_ids:
+        mode_id = session_mode_id(value)
+        if mode_id in seen:
+            raise ValueError(f"ACP session mode is duplicate: {mode_id!r}")
+        seen.add(mode_id)
+        available.append(ACP_SESSION_MODES[mode_id].model_copy(deep=True))
+    if current not in seen:
+        raise ValueError(f"Current ACP session mode is not advertised: {current!r}")
+    state = SessionModeState(
+        current_mode_id=current,
+        available_modes=available,
+    )
+    return state.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+
+
+def acp_set_mode_request_id(frame: Mapping[str, Any]) -> str | None:
+    """Return correlation identity only for this supported carrier method."""
+
+    if (
+        frame.get("type") != ACP_REQUEST_FRAME_TYPE
+        or frame.get("acpSchema") != ACP_SCHEMA_VERSION
+    ):
+        return None
+    message = frame.get("message")
+    if not isinstance(message, Mapping):
+        return None
+    if message.get("method") != ACP_SET_SESSION_MODE_METHOD:
+        return None
+    request_id = message.get("id")
+    return request_id if isinstance(request_id, str) and request_id else None
+
+
+def acp_set_mode_request_frame(
+    request_id: str, session_id: str, mode_id: Any
+) -> dict[str, Any]:
+    """Return one exact official session/set_mode client request carrier."""
+    params = SetSessionModeRequest(
+        session_id=_required_nonempty(session_id, "session_id"),
+        mode_id=session_mode_id(mode_id),
+    ).model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    return {
+        "type": ACP_REQUEST_FRAME_TYPE,
+        "acpSchema": ACP_SCHEMA_VERSION,
+        "message": {
+            "jsonrpc": "2.0",
+            "id": _required_nonempty(request_id, "request_id"),
+            "method": ACP_SET_SESSION_MODE_METHOD,
+            "params": params,
+        },
+    }
+
+
+def acp_set_mode_request(
+    frame: Mapping[str, Any], *, expected_session_id: str
+) -> tuple[str, str]:
+    """Validate one exact owned ACP session/set_mode request."""
+
+    if frame.get("type") != ACP_REQUEST_FRAME_TYPE:
+        raise ValueError("Unsupported ACP request carrier")
+    if frame.get("acpSchema") != ACP_SCHEMA_VERSION:
+        raise ValueError("Unsupported ACP carrier schema")
+    message = _required_mapping(frame, "message")
+    if set(message) != {"jsonrpc", "id", "method", "params"}:
+        raise ValueError("ACP set mode must be an exact JSON-RPC request")
+    if message.get("jsonrpc") != "2.0":
+        raise ValueError("ACP request jsonrpc must be '2.0'")
+    request_id = _required_string(message, "id")
+    if message.get("method") != ACP_SET_SESSION_MODE_METHOD:
+        raise ValueError("Unsupported ACP client request method")
+    params = _required_mapping(message, "params")
+    if not set(params).issubset({"sessionId", "modeId", "_meta"}):
+        raise ValueError("ACP set mode params contain unsupported fields")
+    parsed = SetSessionModeRequest.model_validate(params)
+    if parsed.session_id != expected_session_id:
+        raise ACPSessionMismatchError(
+            "ACP mode request belongs to another session"
+        )
+    return request_id, session_mode_id(parsed.mode_id)
+
+
+def host_session_mode_state(connected: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Read an exact advertised Host SessionModeState or return unsupported."""
+    capabilities = connected.get("carrier_capabilities")
+    if not isinstance(capabilities, Mapping):
+        return None
+    acp = capabilities.get("acp")
+    if not isinstance(acp, Mapping) or acp.get("schema") != ACP_SCHEMA_VERSION:
+        return None
+    requests = acp.get("client_requests")
+    if not isinstance(requests, list) or ACP_SET_SESSION_MODE_METHOD not in requests:
+        return None
+    raw_state = connected.get("session_modes")
+    if not isinstance(raw_state, Mapping):
+        return None
+    if not set(raw_state).issubset({"currentModeId", "availableModes", "_meta"}):
+        return None
+    try:
+        state = SessionModeState.model_validate(raw_state)
+        current = session_mode_id(state.current_mode_id)
+        seen: set[str] = set()
+        for mode in state.available_modes:
+            mode_id = session_mode_id(mode.id)
+            if mode_id in seen or not mode.name:
+                return None
+            seen.add(mode_id)
+        if current not in seen:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return state.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+
+
+def acp_set_mode_response_frame(
+    request_id: str, session_id: str
+) -> dict[str, Any]:
+    """Return the exact empty official set-mode success response."""
+
+    result = SetSessionModeResponse().model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    return {
+        "type": ACP_RESPONSE_FRAME_TYPE,
+        "acpSchema": ACP_SCHEMA_VERSION,
+        "sessionId": _required_nonempty(session_id, "session_id"),
+        "message": {
+            "jsonrpc": "2.0",
+            "id": _required_nonempty(request_id, "request_id"),
+            "result": result,
+        },
+    }
+
+
+def acp_set_mode_error_frame(
+    request_id: str,
+    session_id: str,
+    code: int,
+    message: str,
+    data: Any = None,
+) -> dict[str, Any]:
+    """Return one correlated JSON-RPC error in the Host ACP carrier."""
+
+    if isinstance(code, bool) or not isinstance(code, int):
+        raise ValueError("ACP error code must be an integer")
+    error: dict[str, Any] = {
+        "code": code,
+        "message": _required_nonempty(message, "error_message"),
+    }
+    if data is not None:
+        error["data"] = data
+    return {
+        "type": ACP_RESPONSE_FRAME_TYPE,
+        "acpSchema": ACP_SCHEMA_VERSION,
+        "sessionId": _required_nonempty(session_id, "session_id"),
+        "message": {
+            "jsonrpc": "2.0",
+            "id": _required_nonempty(request_id, "request_id"),
+            "error": error,
+        },
+    }
+
+
+def acp_set_mode_response(
+    frame: Mapping[str, Any], *, expected_request_id: str,
+    expected_session_id: str,
+) -> dict[str, Any]:
+    """Decode one complete owned set-mode response for a Host client."""
+    if frame.get("type") != ACP_RESPONSE_FRAME_TYPE:
+        raise ValueError("Unsupported ACP response carrier")
+    if frame.get("acpSchema") != ACP_SCHEMA_VERSION:
+        raise ValueError("Unsupported ACP carrier schema")
+    if frame.get("sessionId") != expected_session_id:
+        raise ValueError("ACP mode response belongs to another session")
+    message = _required_mapping(frame, "message")
+    if message.get("jsonrpc") != "2.0":
+        raise ValueError("ACP response jsonrpc must be '2.0'")
+    if message.get("id") != expected_request_id:
+        raise ValueError("ACP mode response belongs to another request")
+    has_result = "result" in message
+    has_error = "error" in message
+    if has_result == has_error:
+        raise ValueError("ACP mode response needs exactly one result or error")
+    expected_keys = {"jsonrpc", "id", "result" if has_result else "error"}
+    if set(message) != expected_keys:
+        raise ValueError("ACP mode response has unexpected fields")
+    if has_result:
+        raw_result = _required_mapping(message, "result")
+        if not set(raw_result).issubset({"_meta"}):
+            raise ValueError("ACP mode result has unexpected fields")
+        result = SetSessionModeResponse.model_validate(raw_result)
+        return {"result": result.model_dump(
+            mode="json", by_alias=True, exclude_none=True, exclude_unset=True
+        )}
+
+    error = _required_mapping(message, "error")
+    if not set(error).issubset({"code", "message", "data"}):
+        raise ValueError("ACP mode error has unexpected fields")
+    code = error.get("code")
+    text = error.get("message")
+    if isinstance(code, bool) or not isinstance(code, int):
+        raise ValueError("ACP mode error code must be an integer")
+    if not isinstance(text, str) or not text:
+        raise ValueError("ACP mode error message must be non-empty")
+    decoded: dict[str, Any] = {"code": code, "message": text}
+    if "data" in error:
+        decoded["data"] = error["data"]
+    return {"error": decoded}
 
 
 def map_mode_event(
