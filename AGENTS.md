@@ -131,15 +131,17 @@ co status                             # Show project status
 
 ### Building & Publishing
 ```bash
-# Build package
-python setup.py sdist bdist_wheel
+# Validate the exact candidate locally (see VERSIONING.md)
+python -m build
+python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl
 
-# Publish to PyPI
-twine upload dist/*
-
-# Version update (see VERSIONING.md)
-# Current: 0.4.1
-# Strategy: increment PATCH (0.4.1 → 0.4.2), roll to MINOR at .10 (0.4.10 → 0.5.0)
+# Normal publication is tag-driven and uses PyPI Trusted Publishing.
+# Merge the reviewed version commit, tag that immutable commit, push the tag,
+# then wait for the pinned release workflow. Never publish from a workstation.
+git fetch origin
+git tag -a vX.Y.Z <reviewed-merge-commit> -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+gh run list --workflow release.yml --limit 1
 ```
 
 ## Project Structure

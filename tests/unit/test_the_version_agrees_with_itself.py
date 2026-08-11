@@ -79,9 +79,13 @@ def _versioning_md_version() -> str:
 
 def _typescript_string_constant(text: str, name: str) -> str:
     """Read one exported string constant from the docs' checked TS contract."""
+    uncommented = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    uncommented = re.sub(r"//[^\n]*", "", uncommented)
     match = re.search(
-        rf"\b{re.escape(name)}\b(?:\s*:\s*[^=\n]+)?\s*=\s*'([^']+)'",
-        text,
+        rf"^[ \t]*export[ \t]+const[ \t]+{re.escape(name)}\b"
+        rf"(?:[ \t]*:[^=\n]+)?[ \t]*=[ \t]*'([^'\n]+)'[ \t]*;?[ \t]*$",
+        uncommented,
+        re.MULTILINE,
     )
     assert match, f"docs-site has no string value for {name}"
     return match.group(1)
@@ -116,6 +120,10 @@ def test_docs_channel_parser_accepts_the_checked_typescript_contract(
         "export const VERSION = '1.6.0'",
         "export const PREVIEW_VERSION: string | null = null\n"
         "export const VERSION = '1.6.0'",
+        "// export const PREVIEW_VERSION: string | null = '1.7.0a2'\n"
+        "export const PREVIEW_VERSION: string | null = null",
+        "/*\nexport const PREVIEW_VERSION = '1.7.0a2'\n*/\n"
+        "export const PREVIEW_VERSION: string | null = null",
     ],
 )
 def test_docs_channel_parser_does_not_fall_back_to_stable(source):

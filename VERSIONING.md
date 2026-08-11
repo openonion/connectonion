@@ -140,8 +140,9 @@ When releasing a new version:
 
 Replace `X.Y.Z` with the complete canonical version, including `aN`, `bN`, or
 `rcN`. Manual workflow dispatch may retry an existing reviewed tag; it is not
-an arbitrary-branch release path. The documented emergency upload path is only
-for explicit recovery after CI has preserved the exact artifacts.
+an arbitrary-branch release path. This procedure has no workstation publication
+path. Recovery must preserve the reviewed tag and artifacts and be implemented
+as a separate reviewed workflow change, not an ad hoc second registry writer.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to

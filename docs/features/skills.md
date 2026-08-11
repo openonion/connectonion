@@ -246,10 +246,12 @@ mkdir -p .co/skills/deploy
 cat > .co/skills/deploy/SKILL.md <<'EOF'
 ---
 name: deploy
-description: Deploy package to PyPI
+description: Prepare a reviewed, tag-driven PyPI release
 tools:
   - Bash(python -m build)
-  - Bash(python -m twine *)
+  - Bash(python -m twine check *)
+  - Bash(gh pr *)
+  - Bash(gh run *)
   - Bash(git tag *)
   - Bash(git push *)
   - read_file
@@ -258,16 +260,19 @@ tools:
 
 # Deploy Skill
 
-Deploy the package to PyPI.
+Prepare and verify the package release. PyPI publication belongs to the
+repository's exact-tag Trusted Publishing workflow.
 
 ## Steps
 
 1. Run tests: `pytest`
-2. Update version in setup.py
+2. Update the version in the project's canonical package metadata
 3. Build package: `python -m build`
-4. Upload to PyPI: `python -m twine upload dist/*`
-5. Create git tag: `git tag v0.4.2`
-6. Push tag: `git push origin v0.4.2`
+4. Validate only the exact versioned artifacts with `python -m twine check`
+5. Open a release PR and wait for review and merge
+6. Tag the reviewed merge commit: `git tag -a v0.4.2 <reviewed-merge-commit> -m "Release v0.4.2"`
+7. Push the tag: `git push origin v0.4.2`
+8. Wait for `.github/workflows/release.yml` and verify the public package and GitHub Release
 EOF
 ```
 

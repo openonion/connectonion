@@ -36,6 +36,12 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 VERSIONING = REPO / "VERSIONING.md"
+RELEASE_GUIDANCE = (
+    REPO / "AGENTS.md",
+    REPO / "CLAUDE.md",
+    REPO / "connectonion" / "useful_skills" / "ship-feature" / "SKILL.md",
+    REPO / "docs" / "features" / "skills.md",
+)
 
 
 def _release_sections() -> str:
@@ -151,6 +157,19 @@ class TestReleaseArtifactsCannotMixVersions:
         assert ".github/workflows/release.yml" in sections
         assert "dist/connectonion-X.Y.Z.tar.gz" in sections
         assert "dist/connectonion-X.Y.Z-py3-none-any.whl" in sections
+
+
+class TestEveryOperationalReleaseGuideUsesTrustedPublishing:
+    @pytest.mark.parametrize("guide", RELEASE_GUIDANCE, ids=lambda path: path.name)
+    def test_workstation_upload_cannot_return(self, guide):
+        text = guide.read_text(encoding="utf-8")
+
+        assert not re.search(r"\btwine\s+upload\b", text, re.IGNORECASE), (
+            f"{guide.relative_to(REPO)} bypasses the exact-tag release workflow"
+        )
+        assert ".github/workflows/release.yml" in text or "release.yml" in text
+        assert "Trusted Publishing" in text
+        assert "<reviewed-merge-commit>" in text
 
 
 class TestTheReleaseDecisionIsPublished:

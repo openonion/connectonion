@@ -130,15 +130,17 @@ co status                             # Show project status
 
 ### Building & Publishing
 ```bash
-# Build package (hatchling via pyproject.toml)
+# Validate the exact candidate locally (hatchling via pyproject.toml)
 python -m build
+python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl
 
-# Publish to PyPI
-twine upload dist/*
-
-# Version update (see VERSIONING.md)
-# Current: 1.2.1
-# Strategy: increment PATCH (1.2.1 → 1.2.2), roll to MINOR at .10 (1.2.10 → 1.3.0)
+# Normal publication is tag-driven and uses PyPI Trusted Publishing.
+# Merge the reviewed version commit, tag that immutable commit, push the tag,
+# then wait for the pinned release workflow. Never publish from a workstation.
+git fetch origin
+git tag -a vX.Y.Z <reviewed-merge-commit> -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+gh run list --workflow release.yml --limit 1
 ```
 
 ## Project Structure
