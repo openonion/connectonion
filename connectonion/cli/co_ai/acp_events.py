@@ -69,20 +69,25 @@ def map_agent_event(event: Mapping[str, Any]) -> ACPEventMapping:
 
 
 def _tool_start(event: Mapping[str, Any]) -> ToolCallStart:
+    status = event.get("status", "in_progress")
+    if status == "running":
+        status = "in_progress"
+    if status not in {"pending", "in_progress"}:
+        raise ValueError(f"Unsupported tool start status: {status!r}")
     return ToolCallStart(
         session_update="tool_call",
         tool_call_id=_required_string(event, "tool_id"),
         title=_required_string(event, "name"),
-        status="in_progress",
+        status=status,
         raw_input=event.get("args"),
     )
 
 
 def _tool_progress(event: Mapping[str, Any]) -> ToolCallProgress:
     status = event.get("status")
-    if status == "success":
+    if status in {"success", "done", "completed"}:
         acp_status = "completed"
-    elif status in {"error", "not_found", "interrupted"}:
+    elif status in {"error", "failed", "not_found", "interrupted"}:
         acp_status = "failed"
     else:
         raise ValueError(f"Unsupported tool result status: {status!r}")

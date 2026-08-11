@@ -44,7 +44,11 @@ class InterruptibleIO:
         return messages
 
     def log(self, event_type: str, **data) -> None:
-        self.send({"type": event_type, **data})
+        with self._gate:
+            if not self._cancelled.is_set():
+                # Preserve the lease's atomic cancellation gate while reusing
+                # the underlying IO boundary's wire-event normalization.
+                self.__io.log(event_type, **data)
 
     def request_approval(self, tool: str, arguments) -> bool:
         self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})

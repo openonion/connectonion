@@ -179,8 +179,9 @@ class TestFrontendEventVocabulary:
 
         call = next(d for et, d in agent.io.events if et == "tool_call")
         assert call["tool_id"] == "c1" and call["name"] == "pytest"
+        assert call["status"] == "in_progress"
         result = next(d for et, d in agent.io.events if et == "tool_result")
-        assert result["tool_id"] == "c1" and result["status"] == "done"
+        assert result["tool_id"] == "c1" and result["status"] == "completed"
 
     def test_failed_tool_maps_to_error(self):
         agent = _Agent(_IO())
@@ -196,7 +197,7 @@ class TestFrontendEventVocabulary:
             codex("fix", approval="auto", agent=agent)
 
         result = next(d for et, d in agent.io.events if et == "tool_result")
-        assert result["status"] == "error"
+        assert result["status"] == "failed"
 
     def test_no_custom_codex_event_type(self):
         agent = _Agent(_IO())

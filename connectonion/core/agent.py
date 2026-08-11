@@ -1,9 +1,9 @@
 """
 Purpose: Orchestrate AI agent execution with LLM calls, tool execution, and automatic logging
 LLM-Note:
-  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, logger.py, tool_executor.py, tool_registry.py] | imported by [__init__.py, debug_agent/__init__.py] | tested by [tests/unit/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
+  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, logger.py, tool_executor.py, tool_registry.py, wire_events.py] | imported by [__init__.py, debug_agent/__init__.py] | tested by [tests/unit/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py, tests/unit/test_wire_events.py]
   Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/evals/{name}.yaml → returns final response: str
-  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py
+  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py | streams a detached ACP-status-normalized copy without changing canonical trace statuses
   Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps eval logging | trust enforcement moved to host() for network access control
   Performance: max_iterations=100 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry
@@ -26,6 +26,7 @@ from .tool_executor import execute_and_record_tools, execute_single_tool
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
 from .usage import get_context_limit, turn_usage_from_trace
+from .wire_events import normalize_wire_event
 
 
 class Agent:
@@ -190,7 +191,9 @@ class Agent:
             # persists. Sharing one object and deleting fields after send would
             # race asynchronous transports.
             # Canonical correlation and status fields always win collisions.
-            wire_entry = {**wire_extras, **entry} if wire_extras else entry
+            wire_entry = normalize_wire_event(
+                {**wire_extras, **entry} if wire_extras else entry
+            )
             # Send entry first (without session to avoid circular ref)
             self.io.send(wire_entry)
             # Then send session sync separately
