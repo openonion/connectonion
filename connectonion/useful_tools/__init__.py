@@ -28,6 +28,7 @@ from .terminal import yes_no, autocomplete
 from .todo_list import TodoList
 from .slash_command import SlashCommand
 from .ask_user import ask_user
+from .telegram import send_telegram
 
 # Claude Code-style file tools
 from .file_tools import (
@@ -72,6 +73,7 @@ __all__ = [
     "TodoList",
     "SlashCommand",
     "ask_user",
+    "send_telegram",
     # Claude Code-style file tools
     "FileTools",
     "read_file",
