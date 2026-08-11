@@ -9,9 +9,6 @@ LLM-Note:
   Errors: validate_project_name() returns (False, error_msg) for invalid names | detect_api_provider() returns ("unknown", "unknown") for unrecognized keys | generate_custom_template_with_name() may fail if LLM API unreachable | api_key_setup_menu() catches KeyboardInterrupt and returns ("", "", None) | no try-except blocks (follows fail-fast principle)
 """
 
-import base64
-import binascii
-import json
 import os
 import re
 import sys
@@ -29,6 +26,7 @@ from typing import Optional, Tuple, List
 
 from ... import __version__
 from ... import address
+from ...credentials import account_in_token
 
 # What a new user may spend free credits on. The list lives in core.usage with
 # the other model facts, and PaidModelRequiredError offers the same tuple when a
@@ -1071,28 +1069,6 @@ def load_api_key() -> Optional[str]:
             if api_key := os.getenv("OPENONION_API_KEY"):
                 return _token_for_this_account(api_key)
     return None
-
-
-def account_in_token(token: str) -> Optional[str]:
-    """The public key a JWT claims, read without verifying it.
-
-    Not authentication — the server does that. This is only to notice that the
-    token in hand names a different account than the key on disk, which the
-    server cannot tell us until we have already asked it the wrong question.
-    """
-    parts = token.split(".")
-    if len(parts) != 3:
-        return None
-    payload = parts[1]
-    payload += "=" * (-len(payload) % 4)          # base64url, padding stripped
-    try:
-        decoded = json.loads(base64.urlsafe_b64decode(payload))
-    except (ValueError, binascii.Error):
-        return None
-    if not isinstance(decoded, dict):
-        return None
-    public_key = decoded.get("public_key")
-    return public_key if isinstance(public_key, str) and public_key else None
 
 
 def _token_for_this_account(token: str) -> Optional[str]:

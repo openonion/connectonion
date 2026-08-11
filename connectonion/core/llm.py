@@ -1056,12 +1056,14 @@ class OpenOnionLLM(LLM):
         # For co/ models, api_key is actually the auth token
         # Framework auto-loads .env, so OPENONION_API_KEY will be in environment
         import openai
-        self.auth_token = api_key or os.getenv("OPENONION_API_KEY")
-        if not self.auth_token:
-            raise ValueError(
-                "OPENONION_API_KEY not found in environment.\n"
-                "Run 'co init' to get started or set OPENONION_API_KEY in your .env file."
-            )
+        if api_key:
+            # Explicit dependency injection is caller-owned. Only the implicit
+            # environment fallback is checked against the local project.
+            self.auth_token = api_key
+        else:
+            from ..credentials import require_ambient_api_key
+
+            self.auth_token = require_ambient_api_key()
 
         # Strip co/ prefix - it's only for client-side routing
         self.model = model.removeprefix("co/")
