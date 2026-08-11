@@ -45,12 +45,17 @@ THIS_MACHINE = "0x" + "10e68f6d" * 8
 SOMEONE_ELSE = "0x" + "561605f3" * 8
 
 
-def token_for(public_key: str) -> str:
-    """A JWT shaped like the server's, signature not checked by the decoder."""
+def token_with_payload(payload_value) -> str:
+    """A JWT-shaped value; its signature is not checked by the local decoder."""
     payload = base64.urlsafe_b64encode(
-        json.dumps({"public_key": public_key}).encode()
+        json.dumps(payload_value).encode()
     ).decode().rstrip("=")
     return f"header.{payload}.signature"
+
+
+def token_for(public_key: str) -> str:
+    """A JWT shaped like the server's, signature not checked by the decoder."""
+    return token_with_payload({"public_key": public_key})
 
 
 @pytest.fixture
@@ -135,6 +140,26 @@ class TestTheOrdinaryCaseIsUndisturbed:
         )
 
         assert load_api_key() == "not-a-jwt"
+
+    @pytest.mark.parametrize(
+        "payload",
+        [[], "text", 7, None, {}, {"public_key": []}, {"public_key": 7}],
+    )
+    def test_a_non_string_account_claim_is_unreadable(
+        self, this_machine, monkeypatch, payload
+    ):
+        """A syntactically valid JSON payload must not crash every CLI call."""
+        token = token_with_payload(payload)
+        monkeypatch.setenv("OPENONION_API_KEY", token)
+
+        def authenticate(*args, **kwargs):
+            raise AssertionError("re-authenticated over an unreadable token")
+
+        monkeypatch.setattr(
+            "connectonion.cli.commands.auth_commands.authenticate", authenticate
+        )
+
+        assert load_api_key() == token
 
     def test_no_key_anywhere_still_returns_none(self, this_machine, monkeypatch, tmp_path):
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
