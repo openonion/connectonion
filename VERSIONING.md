@@ -114,6 +114,10 @@ When releasing a new version:
 - [ ] Update `## Current Version:` and add the release line in this file
 - [ ] Refresh `uv.lock`
 - [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
+- [ ] Draft or substantially update a Design Journal post for a feature-train
+      launch, first beta, first RC, stable release, or material architecture or
+      workflow decision. Maintenance-only patches need release notes unless
+      they contain a reusable design lesson.
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
 - [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
 - [ ] Create git tag: `git tag vX.Y.Z`
@@ -124,6 +128,10 @@ When releasing a new version:
 - [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
 - [ ] Upload only the two artifacts just validated: `python -m twine upload dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
+- [ ] After PyPI and the GitHub Release are visible, publish the docs-site
+      version state and Design Journal. Verify the canonical URL, social and
+      structured metadata, sitemap, AI-readable indexes, internal links, and
+      mobile layout.
 
 Replace `X.Y.Z` with the version being released. Do not upload the whole dist
 directory with a wildcard: build does not remove older artifacts, so that can

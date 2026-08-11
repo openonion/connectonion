@@ -32,6 +32,17 @@ A PR that says *"I didn't test the Windows path and I'm unsure the retry logic i
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Documentation update
 
+## Design Journal Impact
+
+- [ ] Release notes only — maintenance change with no reusable design lesson
+- [ ] Update an existing Design Journal post
+- [ ] Add a new Design Journal post for a feature train, phase promotion, stable release, or material design decision
+- [ ] Not applicable
+
+Link the draft or explain the choice:
+
+>
+
 ## Changes Made
 - List the main changes
 - Be specific about what was modified
@@ -69,6 +80,7 @@ from connectonion import Agent
 - [ ] I have read every line of this diff and can defend each change
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
+- [ ] I have handled the Design Journal impact described above
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged and published
 
