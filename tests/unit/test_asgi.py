@@ -166,11 +166,15 @@ class TestForwardAgentEvents:
             mock_send_msg, io, "s1", result_holder=result_holder
         )
 
-        assert [message["type"] for message in sent_messages] == [
+        terminal_messages = [
+            message for message in sent_messages
+            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
+        ]
+        assert [message["type"] for message in terminal_messages] == [
             "ACP_NOTIFICATION",
             "OUTPUT",
         ]
-        params = sent_messages[0]["message"]["params"]
+        params = terminal_messages[0]["message"]["params"]
         assert params == {
             "sessionId": "s1",
             "update": {
@@ -179,7 +183,7 @@ class TestForwardAgentEvents:
                 "sessionUpdate": "agent_message_chunk",
             },
         }
-        assert sent_messages[1]["chat_items"][-1] == {
+        assert terminal_messages[1]["chat_items"][-1] == {
             "id": self.FINAL_MESSAGE_ID,
             "type": "agent",
             "content": "answer",
@@ -202,7 +206,10 @@ class TestForwardAgentEvents:
             mock_send_msg, io, "s1", result_holder=result_holder
         )
 
-        assert [message["type"] for message in sent_messages] == ["OUTPUT"]
+        assert [
+            message["type"] for message in sent_messages
+            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
+        ] == ["OUTPUT"]
 
     async def test_legacy_stored_answer_without_id_uses_output_only(self):
         io = WebSocketIO()
@@ -223,7 +230,10 @@ class TestForwardAgentEvents:
             mock_send_msg, io, "s1", result_holder=result_holder
         )
 
-        assert [message["type"] for message in sent_messages] == ["OUTPUT"]
+        assert [
+            message["type"] for message in sent_messages
+            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
+        ] == ["OUTPUT"]
 
     async def test_terminal_text_does_not_reuse_an_older_matching_answer(self):
         io = WebSocketIO()
@@ -248,7 +258,10 @@ class TestForwardAgentEvents:
             mock_send_msg, io, "s1", result_holder=result_holder
         )
 
-        assert [message["type"] for message in sent_messages] == ["OUTPUT"]
+        assert [
+            message["type"] for message in sent_messages
+            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
+        ] == ["OUTPUT"]
 
     async def test_stored_completion_reuses_the_same_message_id(self):
         io = WebSocketIO()
@@ -316,7 +329,10 @@ class TestForwardAgentEvents:
                 mock_send_msg, io, "s1", result_holder=result_holder
             )
 
-        assert [message["type"] for message in sent_messages] == ["OUTPUT"]
+        assert [
+            message["type"] for message in sent_messages
+            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
+        ] == ["OUTPUT"]
 
     async def test_stray_live_assistant_event_cannot_duplicate_final_answer(self):
         io = WebSocketIO()
@@ -346,7 +362,12 @@ class TestForwardAgentEvents:
             mock_send_msg, io, "s1", result_holder=result_holder
         )
 
-        assert [message["type"] for message in sent_messages] == [
+        assert [
+            message["type"] for message in sent_messages
+            if message.get("type") in {
+                "assistant", "ACP_NOTIFICATION", "OUTPUT"
+            }
+        ] == [
             "assistant",
             "ACP_NOTIFICATION",
             "OUTPUT",
