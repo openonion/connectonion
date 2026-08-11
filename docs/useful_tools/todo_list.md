@@ -51,7 +51,7 @@ Don't use when:
 
 ## API
 
-### add(content, active_form)
+### add(content, active_form, priority="medium")
 
 Add a new pending task.
 
@@ -59,7 +59,11 @@ Add a new pending task.
 todo.add("Fix authentication bug", "Fixing authentication bug")
 todo.add("Run tests", "Running tests")
 todo.add("Update docs", "Updating docs")
+todo.add("Fix production", "Fixing production", priority="high")
 ```
+
+Priority uses the ACP values `high`, `medium`, or `low`. Existing calls default
+to `medium`.
 
 ### start(content)
 
@@ -104,11 +108,13 @@ Replace entire todo list (for bulk updates).
 
 ```python
 todo.update([
-    {"content": "Step 1", "status": "completed", "active_form": "Doing step 1"},
-    {"content": "Step 2", "status": "in_progress", "active_form": "Doing step 2"},
-    {"content": "Step 3", "status": "pending", "active_form": "Doing step 3"},
+    {"content": "Step 1", "status": "completed", "active_form": "Doing step 1", "priority": "high"},
+    {"content": "Step 2", "status": "in_progress", "active_form": "Doing step 2", "priority": "medium"},
+    {"content": "Step 3", "status": "pending", "active_form": "Doing step 3", "priority": "low"},
 ])
 ```
+
+Omitting priority in a bulk update also defaults it to `medium`.
 
 ### clear()
 
@@ -125,6 +131,19 @@ todo.clear()
 | ○ | pending | Not yet started |
 | ◐ | in_progress | Currently working on |
 | ● | completed | Finished |
+
+## Hosted plan state
+
+When an Agent invokes TodoList, every successful state change also updates the
+canonical session `plan` and streams one complete replacement. The stable ACP
+notification is followed by the legacy `type: "plan"` event during rollout.
+`@connectonion/react` exposes the normalized list as `plan`; O Chat renders it
+without parsing ACP.
+
+This progress state is observational. It is separate from `plan_review`, which
+is an interactive approval checkpoint. Seeing a TodoList plan never approves
+work or changes the Agent's mode. Calling TodoList directly without an Agent
+keeps the list local and sends nothing.
 
 ## Visual Display
 

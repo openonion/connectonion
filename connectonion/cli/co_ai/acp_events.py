@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from acp import text_block
 from acp.schema import (
     AgentMessageChunk,
+    AgentPlanUpdate,
     AgentThoughtChunk,
     CurrentModeUpdate,
     StopReason,
@@ -16,10 +17,11 @@ from acp.schema import (
     Usage,
 )
 
-from ...core.acp_wire import map_tool_event
+from ...core.acp_wire import map_plan_event, map_tool_event
 
 ACPUpdate = (
     AgentMessageChunk
+    | AgentPlanUpdate
     | AgentThoughtChunk
     | CurrentModeUpdate
     | ToolCallStart
@@ -28,6 +30,7 @@ ACPUpdate = (
 STREAMED_AGENT_EVENT_TYPES = frozenset({
     "assistant",
     "mode_changed",
+    "plan",
     "thinking",
     "tool_call",
     "tool_result",
@@ -65,6 +68,10 @@ def map_agent_event(event: Mapping[str, Any]) -> ACPEventMapping:
         return ACPEventMapping(updates=(_assistant(event),))
     if event_type == "mode_changed":
         return ACPEventMapping(updates=(_current_mode(event),))
+    if event_type == "plan":
+        update = map_plan_event(event)
+        assert update is not None
+        return ACPEventMapping(updates=(update,))
     if event_type == "turn_result":
         return ACPEventMapping(terminal=_terminal(event))
     return ACPEventMapping()

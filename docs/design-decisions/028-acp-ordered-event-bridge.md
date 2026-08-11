@@ -49,10 +49,15 @@ completed outcome.
 - `tool_result` becomes `ToolCallProgress` with ACP content objects, completed
   or failed status, and structured output when the SDK can represent it.
 - `thinking` becomes `AgentThoughtChunk`.
+- a canonical complete `plan` replacement becomes `AgentPlanUpdate`.
 - the adapter's final answer becomes one `AgentMessageChunk` with one UUID
   message ID.
 - `turn_result` supplies stop reason and measured usage to `PromptResponse`.
 - the client-owned user prompt and persistence/control events are not echoed.
+
+Plan is the exception among state-looking events because it is explicit
+application state produced by TodoList, not inferred from `session_sync` or tool
+output. DD-042 defines its persistence, migration, and authority boundary.
 
 The official SDK serializes optional null fields with `exclude_none`, so a null
 tool return keeps its text content but has no `rawOutput` property. The adapter

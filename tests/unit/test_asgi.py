@@ -196,6 +196,86 @@ class TestForwardAgentEvents:
             for message in sent_messages
         )
 
+    async def test_persisted_plan_acp_mirror_precedes_legacy_replacement(self):
+        io = WebSocketIO()
+        sent_messages = []
+
+        async def mock_send_msg(message):
+            sent_messages.append(message)
+
+        plan = {
+            "type": "plan",
+            "entries": [{
+                "content": "Ship the reader",
+                "priority": "high",
+                "status": "in_progress",
+            }],
+        }
+        io._send_persisted_trace(plan)
+        io.mark_agent_done()
+
+        await forward_agent_msgs_to_client(mock_send_msg, io, "session-1")
+
+        assert [message["type"] for message in sent_messages[:2]] == [
+            "ACP_NOTIFICATION",
+            "plan",
+        ]
+        assert sent_messages[0]["message"]["params"] == {
+            "sessionId": "session-1",
+            "update": {
+                "entries": plan["entries"],
+                "sessionUpdate": "plan",
+            },
+        }
+        assert sent_messages[1]["session_id"] == "session-1"
+
+    async def test_direct_plan_event_stays_legacy_only(self):
+        io = WebSocketIO()
+        sent_messages = []
+
+        async def mock_send_msg(message):
+            sent_messages.append(message)
+
+        io.send({"type": "plan", "entries": []})
+        io.mark_agent_done()
+        await forward_agent_msgs_to_client(mock_send_msg, io, "session-1")
+
+        assert [
+            message["type"] for message in sent_messages
+            if message["type"] != "DASHBOARD_SNAPSHOT"
+        ] == ["plan", "ERROR"]
+
+    async def test_bad_plan_mirror_still_drains_legacy_and_output(self):
+        io = WebSocketIO()
+        sent_messages = []
+        result_holder = [{
+            "result": "committed",
+            "duration_ms": 5,
+            "session": {"plan": []},
+        }]
+
+        async def mock_send_msg(message):
+            sent_messages.append(message)
+
+        io._send_persisted_trace({"type": "plan", "entries": []})
+        io.mark_agent_done()
+        with patch.object(
+            agent_io_module,
+            "acp_notification_frame",
+            side_effect=ValueError("bad plan mirror"),
+        ):
+            await forward_agent_msgs_to_client(
+                mock_send_msg,
+                io,
+                "session-1",
+                result_holder=result_holder,
+            )
+
+        assert [
+            message["type"] for message in sent_messages
+            if message["type"] != "DASHBOARD_SNAPSHOT"
+        ] == ["plan", "OUTPUT"]
+
     async def test_bad_thought_mirror_still_drains_legacy_and_output(self):
         io = WebSocketIO()
         sent_messages = []

@@ -29,6 +29,13 @@ class InterruptibleIO:
             if not self._cancelled.is_set():
                 self.__io.send(event)
 
+    def _send_persisted_trace(self, event) -> None:
+        """Preserve Agent-owned provenance through this revocable IO lease."""
+        with self._gate:
+            if not self._cancelled.is_set():
+                sender = getattr(self.__io, "_send_persisted_trace", self.__io.send)
+                sender(event)
+
     def receive(self):
         response = self.__io.receive_interruptibly(self._cancelled)
         if response.get("type") == "INTERRUPT":

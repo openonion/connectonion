@@ -550,6 +550,41 @@ Execution completed. **Session stays alive for next INPUT.**
 }
 ```
 
+The session may contain a canonical `plan` array. It is current replacement
+state, not a transcript entry, and is preserved across session sync, reconnect,
+and final output.
+
+#### ACP_NOTIFICATION (`plan`)
+
+After a successful TodoList state change, the Host sends the exact stable ACP
+v1.19 plan update immediately before the matching legacy `type: "plan"` event:
+
+```json
+{
+  "type": "ACP_NOTIFICATION",
+  "acpSchema": "schema-v1.19.0",
+  "message": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+      "sessionId": "550e8400-...",
+      "update": {
+        "sessionUpdate": "plan",
+        "entries": [
+          {"content": "Run tests", "priority": "high", "status": "in_progress"},
+          {"content": "Update docs", "priority": "medium", "status": "pending"}
+        ]
+      }
+    }
+  }
+}
+```
+
+Every update replaces the complete plan; an empty `entries` list clears it.
+Stable plan has no message or plan ID. Experimental `plan_update` and
+`plan_removed` are not part of this carrier. The event is observational and
+cannot answer `plan_review` or grant execution permission.
+
 #### EXEC_RESULT
 
 Reply to an `EXEC`. `exec_id` echoes the request. `result` is the tool's raw output — text, or a base64 data URL for a screenshot tool.
@@ -623,6 +658,7 @@ TypeScript SDK is retired from this rollout.
 | `tool_result` | Tool execution completed |
 | `ask_user` | Agent needs human input |
 | `approval_needed` | Tool requires approval |
+| `plan` | Complete observational TodoList replacement |
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
