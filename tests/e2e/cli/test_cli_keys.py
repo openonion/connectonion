@@ -446,6 +446,40 @@ class TestHandleKeysSuccess:
         assert "does not match" not in output
         assert "opaque-token" not in output
 
+    def test_telegram_token_is_fixed_width_masked_by_default(
+        self, monkeypatch, capsys
+    ):
+        from connectonion import address
+        from connectonion.cli.commands import keys_commands
+        from rich.console import Console
+
+        token = "tg-token-prefix:bot-secret-material"
+        monkeypatch.setattr(
+            keys_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: Path(".co"))
+        monkeypatch.setattr(address, "load", lambda _path: self.MOCK_ADDR)
+        monkeypatch.setattr(
+            keys_commands,
+            "_load_env_vars",
+            lambda: {
+                "OPENONION_API_KEY": None,
+                "GOOGLE_EMAIL": None,
+                "MICROSOFT_EMAIL": None,
+                "TELEGRAM_BOT_TOKEN": token,
+            },
+        )
+
+        keys_commands.handle_keys()
+        output = capsys.readouterr().out
+
+        assert "Telegram Bot" in output
+        assert "*" * 16 in output
+        assert token not in output
+        assert token[:8] not in output
+
 
 class TestHandleKeysOAuth:
     """Tests for OAuth section in handle_keys."""

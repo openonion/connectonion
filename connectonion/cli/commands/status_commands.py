@@ -39,6 +39,7 @@ CREDENTIAL_ENV_VARS = (
     ("XAI_API_KEY", "xAI"),
     ("OPENROUTER_API_KEY", "OpenRouter"),
     ("MISTRAL_API_KEY", "Mistral"),
+    ("TELEGRAM_BOT_TOKEN", "Telegram"),
 )
 
 OAUTH_CONNECTIONS = (

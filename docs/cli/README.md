@@ -226,6 +226,19 @@ details and current limitations.
 
 ---
 
+#### `co telegram` - Send from Your Telegram Bot
+
+```bash
+co telegram send 123456789 "The deployment needs attention"
+co telegram send @my_channel "Version 1.7 is ready for review"
+```
+
+Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
+are involved. The same `send_telegram` function is available as an agent tool.
+See [telegram.md](telegram.md) for setup, credential handling, and errors.
+
+---
+
 #### `co gmail` - Send & Read Gmail
 
 Your personal Gmail account from the terminal, via the Gmail API. Requires
