@@ -2,7 +2,7 @@
 Purpose: Google Calendar integration tool for managing events and meetings via Google API
 LLM-Note:
   Dependencies: imports from [os, datetime, google.oauth2.credentials, googleapiclient.discovery] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_google_calendar.py]
-  Data flow: Agent calls GoogleCalendar methods → _get_credentials() loads tokens from env → builds Calendar API service → API calls to Calendar REST endpoints → returns formatted results (event lists, confirmations, free slots)
+  Data flow: Agent calls GoogleCalendar methods → validates the ambient OpenOnion account and refreshes server-owned Google credentials via oo-api → builds Calendar API service → API calls to Calendar REST endpoints → returns formatted results (event lists, confirmations, free slots)
   State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Google Calendar API | can create/update/delete events
   Integration: exposes GoogleCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_meet(), get_upcoming_meetings(), find_free_slots() | used as agent tool via Agent(tools=[GoogleCalendar()])
   Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
@@ -47,6 +47,7 @@ from pathlib import Path
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from ..backend import backend_url
+from ..credentials import require_ambient_api_key
 
 
 class GoogleCalendar:
@@ -73,12 +74,6 @@ class GoogleCalendar:
         """Build a Calendar service backed by the server-owned token broker."""
         if self._service:
             return self._service
-
-        if not os.getenv("OPENONION_API_KEY"):
-            raise ValueError(
-                "OPENONION_API_KEY not found.\n"
-                "Run: co auth"
-            )
 
         access_token = self._refresh_via_backend(None)
         creds = Credentials(
@@ -119,13 +114,7 @@ class GoogleCalendar:
 
         # Get backend URL and auth
         selected_backend = backend_url()
-        api_key = os.getenv("OPENONION_API_KEY")
-
-        if not api_key:
-            raise ValueError(
-                "OPENONION_API_KEY not found.\n"
-                "This is needed to refresh tokens via backend."
-            )
+        api_key = require_ambient_api_key()
 
         # Call backend refresh endpoint
         response = httpx.post(
