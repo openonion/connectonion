@@ -29,6 +29,13 @@ def _todo(content):
     }
 
 
+def _plan(*contents):
+    return [
+        {"content": content, "priority": "medium", "status": "pending"}
+        for content in contents
+    ]
+
+
 class _ToolRegistry:
     def __init__(self, todo=None):
         self.todo = todo
@@ -99,6 +106,7 @@ def test_snapshot_round_trip_preserves_full_session_and_tool_state(tmp_path):
         "turn": 2,
         "mode": "ulw",
         "permissions": {"Bash(git *)": {"allowed": True}},
+        "plan": _plan("ship"),
     }
 
     save_snapshot(tmp_path, session, {"todolist": [_todo("ship")]})
@@ -141,6 +149,86 @@ def test_v1_todo_snapshot_migrates_priority_and_canonical_plan(tmp_path):
         "priority": "medium",
         "status": "pending",
     }]
+
+
+def test_v1_empty_todo_gets_stable_content_and_rebuilds_unowned_plan(tmp_path):
+    session_id = new_session_id()
+    session_dir = tmp_path / "ai" / "sessions"
+    session_dir.mkdir(parents=True)
+    (session_dir / f"{session_id}.json").write_text(json.dumps({
+        "version": 1,
+        "cwd": str(tmp_path.resolve()),
+        "session": {
+            "session_id": session_id,
+            "messages": [],
+            "trace": [],
+            "turn": 1,
+            "plan": [
+                {"content": "stale", "priority": "high", "status": "completed"},
+            ],
+        },
+        "tools": {"todolist": [{
+            "content": "",
+            "status": "pending",
+            "active_form": "",
+        }]},
+    }), encoding="utf-8")
+
+    session, tools = load_snapshot(tmp_path, session_id, cwd=tmp_path)
+
+    assert tools == {"todolist": [{
+        "content": "Untitled legacy task 1",
+        "status": "pending",
+        "active_form": "",
+        "priority": "medium",
+    }]}
+    assert session["plan"] == _plan("Untitled legacy task 1")
+
+
+@pytest.mark.parametrize("plan", [None, [], _plan("different")])
+def test_v2_snapshot_rejects_missing_or_mismatched_canonical_plan(
+    tmp_path,
+    plan,
+):
+    session_id = new_session_id()
+    session_dir = tmp_path / "ai" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 1,
+    }
+    if plan is not None:
+        session["plan"] = plan
+    (session_dir / f"{session_id}.json").write_text(json.dumps({
+        "version": 2,
+        "cwd": str(tmp_path.resolve()),
+        "session": session,
+        "tools": {"todolist": [_todo("canonical")]},
+    }), encoding="utf-8")
+
+    with pytest.raises(SessionSnapshotError, match="inconsistent plan"):
+        load_snapshot(tmp_path, session_id, cwd=tmp_path)
+
+
+def test_save_rejects_mismatched_canonical_plan(tmp_path):
+    session_id = new_session_id()
+    session = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 1,
+        "plan": _plan("session"),
+    }
+
+    with pytest.raises(SessionSnapshotError, match="inconsistent plan"):
+        save_snapshot(
+            tmp_path,
+            session,
+            {"todolist": [_todo("tool")]},
+            cwd=tmp_path,
+        )
 
 
 def test_new_snapshot_round_trips_high_and_low_priorities(tmp_path):
@@ -352,6 +440,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
             "trace": [{"type": "old"}],
             "turn": 4,
             "mode": "accept_edits",
+            "plan": _plan("old todo"),
         },
         {"todolist": [_todo("old todo")]},
     )
@@ -378,6 +467,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
         "trace": [{"type": "old"}],
         "turn": 4,
         "mode": "accept_edits",
+        "plan": _plan("old todo"),
     }
     save_snapshot(tmp_path, original, {"todolist": [_todo("old todo")]})
 

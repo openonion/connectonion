@@ -147,6 +147,7 @@ def save_snapshot(
     tools = {} if tool_state is None else tool_state
     _validate_tool_state(tools, session_id)
     _validate_session_plan(session, session_id)
+    _validate_plan_matches_tools(session, tools, session_id)
     payload = {
         "version": SNAPSHOT_VERSION,
         "cwd": _resolved_cwd(cwd),
@@ -227,10 +228,11 @@ def load_snapshot(
         raise SessionSnapshotError(f"Session {canonical} has an invalid turn counter.")
     _validate_tool_state(tools, canonical, version=version)
     tools = _migrate_tool_state(tools, version)
-    if version == _LEGACY_SNAPSHOT_VERSION and "plan" not in session:
+    if version == _LEGACY_SNAPSHOT_VERSION:
         session = dict(session)
         session["plan"] = _plan_from_tool_state(tools)
     _validate_session_plan(session, canonical)
+    _validate_plan_matches_tools(session, tools, canonical)
     return session, tools
 
 
@@ -261,7 +263,7 @@ def _validate_tool_state(
             not isinstance(item, dict)
             or set(item) != required
             or not isinstance(item["content"], str)
-            or not item["content"]
+            or (version == SNAPSHOT_VERSION and not item["content"])
             or not isinstance(item["status"], str)
             or item["status"] not in _TODO_STATUSES
             or not isinstance(item["active_form"], str)
@@ -284,8 +286,12 @@ def _migrate_tool_state(state: dict[str, Any], version: int) -> dict[str, Any]:
     return {
         **state,
         "todolist": [
-            {**item, "priority": "medium"}
-            for item in state["todolist"]
+            {
+                **item,
+                "content": item["content"] or f"Untitled legacy task {index + 1}",
+                "priority": "medium",
+            }
+            for index, item in enumerate(state["todolist"])
         ],
     }
 
@@ -321,6 +327,19 @@ def _validate_session_plan(session: Any, session_id: str) -> None:
             raise SessionSnapshotError(
                 f"Session {session_id} has invalid plan state."
             )
+
+
+def _validate_plan_matches_tools(
+    session: dict[str, Any],
+    tools: dict[str, Any],
+    session_id: str,
+) -> None:
+    if "todolist" not in tools:
+        return
+    if session.get("plan") != _plan_from_tool_state(tools):
+        raise SessionSnapshotError(
+            f"Session {session_id} has inconsistent plan and TodoList state."
+        )
 
 
 def capture_tool_state(agent) -> dict[str, Any]:

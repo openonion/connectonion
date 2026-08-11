@@ -22,6 +22,8 @@ Components under test:
 """
 
 
+import threading
+
 import pytest
 from unittest.mock import Mock
 from connectonion.useful_tools.todo_list import TodoList, TodoItem
@@ -415,6 +417,12 @@ class TestTodoListIntegration:
         })
 
         assert result["status"] == "success"
+        assert todo._dump_state() == [{
+            "content": "Ship plan",
+            "status": "pending",
+            "active_form": "Shipping plan",
+            "priority": "high",
+        }]
         assert agent.current_session["plan"] == [{
             "content": "Ship plan",
             "priority": "high",
@@ -432,3 +440,77 @@ class TestTodoListIntegration:
             and event["session"].get("plan")
         )
         assert sync["session"]["plan"] == agent.current_session["plan"]
+
+    def test_interrupted_plan_mutation_is_never_committed_or_streamed(self):
+        from connectonion import Agent
+        from connectonion.cli.co_ai.one_shot_sessions import capture_tool_state
+        from tests.utils.mock_helpers import MockLLM
+
+        class BlockingTodoList(TodoList):
+            def __init__(self):
+                super().__init__(console=Mock())
+                self.published = threading.Event()
+                self.release = threading.Event()
+                self.finished = threading.Event()
+
+            def _publish(self, agent) -> None:
+                super()._publish(agent)
+                self.published.set()
+                self.release.wait(timeout=2)
+                self.finished.set()
+
+        todo = BlockingTodoList()
+        agent = Agent("worker", llm=MockLLM(), tools=[todo], log=False)
+        agent.tools.add_instance("todolist", todo)
+        io = WebSocketIO()
+        agent.io = io
+
+        def interrupt_after_provisional_plan() -> None:
+            assert todo.published.wait(timeout=1)
+            io.send_to_agent({"type": "INTERRUPT"})
+
+        threading.Thread(
+            target=interrupt_after_provisional_plan,
+            daemon=True,
+        ).start()
+        result = agent.execute_tool("add", {
+            "content": "Must roll back",
+            "active_form": "Rolling back",
+        })
+        todo.release.set()
+
+        assert result["status"] == "interrupted"
+        assert todo.finished.wait(timeout=1)
+        assert todo._dump_state() == []
+        assert capture_tool_state(agent) == {"todolist": []}
+        assert "plan" not in agent.current_session
+        assert not any(event.get("type") == "plan" for event in io._msgs_from_agent)
+        assert not any(
+            event.get("type") == "session_sync"
+            and "plan" in event.get("session", {})
+            for event in io._msgs_from_agent
+        )
+
+    def test_failed_plan_mutation_is_never_committed_or_streamed(self):
+        from connectonion import Agent
+        from tests.utils.mock_helpers import MockLLM
+
+        class FailingTodoList(TodoList):
+            def _publish(self, agent) -> None:
+                super()._publish(agent)
+                raise RuntimeError("after provisional plan")
+
+        todo = FailingTodoList(console=Mock())
+        agent = Agent("worker", llm=MockLLM(), tools=[todo], log=False)
+        io = WebSocketIO()
+        agent.io = io
+
+        result = agent.execute_tool("add", {
+            "content": "Must fail",
+            "active_form": "Failing",
+        })
+
+        assert result["status"] == "error"
+        assert todo._dump_state() == []
+        assert "plan" not in agent.current_session
+        assert not any(event.get("type") == "plan" for event in io._msgs_from_agent)

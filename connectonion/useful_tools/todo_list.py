@@ -2,14 +2,15 @@
 Purpose: Task tracking tool for agents to manage multi-step task progress with visual display
 LLM-Note:
   Dependencies: imports from [typing, dataclasses, rich.console, rich.table, rich.panel] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_todo_list_tool.py]
-  Data flow: Agent calls TodoList methods → modifies internal _todos list → _display() renders Rich table with status indicators → returns confirmation string
-  State/Effects: maintains in-memory list of TodoItem objects | displays Rich-formatted table in terminal | no file persistence | no network I/O
-  Integration: exposes TodoList class with add(content, active_form), start(content), complete(content), remove(content), list()() | used as agent tool via Agent(tools=[TodoList()])
+  Data flow: Agent calls TodoList methods → hosted calls mutate a transactional fork → commit _todos + canonical plan → render progress → return confirmation
+  State/Effects: maintains in-memory TodoItem objects | hosted Agent plan events commit only with the tool | displays Rich output | no direct file persistence
+  Integration: exposes TodoList class with add(content, active_form, priority), start(content), complete(content), remove(content), list() | used via Agent(tools=[TodoList()])
   Performance: O(n) list operations | Rich rendering per state change | no caching
   Errors: returns "Not found" if todo doesn't exist | no exceptions raised
 
 TodoList - Task tracking for agents."""
 
+import copy
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
@@ -207,6 +208,16 @@ class TodoList:
     def _load_state(self, todos: List[dict]) -> None:
         """Restore state produced by :meth:`_dump_state`."""
         self._todos = [self._item_from_dict(item) for item in todos]
+
+    def _fork_for_tool(self) -> "TodoList":
+        """Detach state for a revocable hosted tool invocation."""
+        fork = copy.copy(self)
+        fork._load_state(self._dump_state())
+        return fork
+
+    def _commit_from_tool(self, fork: "TodoList") -> None:
+        """Commit one completed hosted invocation without sharing its list."""
+        self._load_state(fork._dump_state())
 
     @staticmethod
     def _validate_item(content, status, active_form, priority) -> None:

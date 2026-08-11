@@ -140,6 +140,11 @@ notification is followed by the legacy `type: "plan"` event during rollout.
 `@connectonion/react` exposes the normalized list as `plan`; O Chat renders it
 without parsing ACP.
 
+Hosted calls are transactional: TodoList changes happen on a detached fork and
+Agent-owned plan/session events remain buffered until the tool succeeds. An
+interrupt or exception discards both, so a cancelled task cannot reappear in a
+later snapshot or leak a provisional plan to the browser.
+
 This progress state is observational. It is separate from `plan_review`, which
 is an interactive approval checkpoint. Seeing a TodoList plan never approves
 work or changes the Agent's mode. Calling TodoList directly without an Agent

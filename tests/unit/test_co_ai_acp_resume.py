@@ -35,6 +35,13 @@ def _todo(content: str) -> dict[str, str]:
     }
 
 
+def _plan(*contents: str) -> list[dict[str, str]]:
+    return [
+        {"content": content, "priority": "medium", "status": "pending"}
+        for content in contents
+    ]
+
+
 class _Todo:
     def __init__(self) -> None:
         self.state: list[dict[str, str]] = []
@@ -231,6 +238,7 @@ async def test_new_session_persists_canonical_snapshot_and_holds_lease(
         "trace": [],
         "turn": 0,
         "mode": "safe",
+        "plan": [],
     }
     assert tools == {"todolist": []}
     with pytest.raises(SessionSnapshotError, match="already running"):
@@ -257,6 +265,7 @@ async def test_resume_restores_session_and_tool_state_without_replay(
         "trace": [{"type": "old"}],
         "turn": 4,
         "mode": "accept_edits",
+        "plan": _plan("old todo"),
     }
     save_snapshot(state_dir, saved, {"todolist": [_todo("old todo")]})
     agent = _PersistentFakeAgent()
@@ -602,6 +611,7 @@ async def test_commit_uses_explicit_cwd_without_a_fallible_context_exit(
         "content": "explicit cwd",
     })
     runtime.agent.tools.todo.state.append(_todo("explicit cwd"))
+    runtime.agent.current_session["plan"] = _plan("explicit cwd")
 
     def reject_process_context(*_args: Any, **_kwargs: Any) -> None:
         raise AssertionError("snapshot commit must not change process cwd")

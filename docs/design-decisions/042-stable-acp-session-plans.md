@@ -29,18 +29,23 @@ Rejected and no-op operations publish nothing. An empty replacement clears the
 plan.
 
 Agent tool injection supplies a hidden `agent` argument to TodoList methods.
-Direct TodoList use without an Agent remains local. The method calls the private
-`Agent._record_plan()` path only after its mutation succeeds. Agent validates
-and detaches the complete list, stores it at `current_session.plan`, appends a
-canonical `type=plan` trace transition, and sends the normal `session_sync`.
-Private methods stay excluded from tool discovery.
+Direct TodoList use without an Agent remains local. A revocable hosted call
+mutates a private TodoList fork, not the shared instance. The method calls the
+private `Agent._record_plan()` path only after its forked mutation succeeds.
+Agent validates and detaches the complete list, stores it at
+`current_session.plan`, and records a canonical `type=plan` trace transition.
+The executor commits the fork and copied session together only after the tool
+succeeds. Private methods stay excluded from tool discovery.
 
 The Host maps only a persisted-trace plan event to the official ACP
 `AgentPlanUpdate`. Persistence provenance remains the private WebSocket IO dict
 subtype introduced by DD-041 and is preserved through an interruptible tool IO
-lease. An ordinary `agent.io.send({"type": "plan", ...})` is still a legacy
-event and cannot become an ACP plan. This is a cooperative same-process
-boundary, not a hostile-plugin sandbox.
+lease. Persisted trace events and their `session_sync` are buffered by that
+lease until the tool transaction commits; cancellation or failure discards the
+buffer and fork, so provisional plans never reach a client or a later snapshot.
+An ordinary `agent.io.send({"type": "plan", ...})` is still a legacy event and
+cannot become an ACP plan. This is a cooperative same-process boundary, not a
+hostile-plugin sandbox.
 
 ACP v1.19 plan has no plan or message ID. The Host does not fabricate one.
 Session ownership and complete-replacement semantics provide idempotency. The
@@ -51,10 +56,15 @@ frame; legacy delivery, session state, and terminal `OUTPUT` continue.
 The one-shot/persistent `co ai` snapshot envelope advances from v1 to v2. V2
 TodoList state requires priority. A v1 snapshot is validated with its exact old
 shape, migrated in memory with `priority=medium`, and given canonical session
-plan state before Agent construction. New high/low values round-trip through
-tool state and the session snapshot. Unknown versions and malformed values
-remain fail-closed. Transaction rollback restores both session plan and tool
-state at the existing atomic checkpoint.
+plan state before Agent construction. V1 allowed empty content; those entries
+receive the deterministic label `Untitled legacy task N` because stable ACP
+cannot represent empty content. Any pre-existing v1 plan field is rebuilt from
+the migrated TodoList because v1 never owned that field. V2 requires the
+session plan to equal the TodoList-derived plan exactly on save and load. New
+high/low values round-trip through tool state and the session snapshot. Unknown
+versions, malformed values, and divergent v2 state remain fail-closed.
+Transaction rollback restores both session plan and tool state at the existing
+atomic checkpoint.
 
 `plan_review` remains unchanged. Observing progress never grants permission,
 changes approval mode, resumes execution, or answers a review. Experimental ACP

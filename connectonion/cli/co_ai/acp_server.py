@@ -1291,6 +1291,7 @@ class ConnectOnionACPAgent:
             "trace": [],
             "turn": 0,
             "mode": "safe",
+            "plan": [],
         }
         if self._yolo:
             self._apply_mode(session, "ulw")
