@@ -181,6 +181,9 @@ class TestAskOwnerByEmail:
     def owner(self, monkeypatch):
         monkeypatch.setenv("OWNER_EMAIL", "aaron@example.com")
         monkeypatch.setattr(ask_user_module.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(
+            ask_user_module.secrets, "token_hex", lambda _size: "request123"
+        )
         return "aaron@example.com"
 
     def test_emails_the_owner_and_returns_their_reply(self, owner, monkeypatch):
@@ -188,7 +191,12 @@ class TestAskOwnerByEmail:
         monkeypatch.setattr(ask_user_module, "send_email",
                             lambda to, subject, message: sent.update(to=to, subject=subject, message=message)
                             or {"success": True})
-        inbox = [[], [{"id": "m1", "from": owner, "message": "Yes, go ahead"}]]
+        inbox = [[{
+            "id": "m1",
+            "from": owner,
+            "subject": "Re: [CO-ASK:request123] Your agent is asking",
+            "message": "Yes, go ahead",
+        }]]
         monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [])
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
@@ -198,16 +206,32 @@ class TestAskOwnerByEmail:
         assert result == "Yes, go ahead"
         assert sent["to"] == owner
         assert "Publish the event?" in sent["subject"]
+        assert "[CO-ASK:request123]" in sent["subject"]
+        assert "[CO-ASK:request123]" in sent["message"]
         assert "Yes" in sent["message"] and "No" in sent["message"]
 
-    def test_emails_already_in_the_inbox_are_not_mistaken_for_the_answer(self, owner, monkeypatch):
-        """The owner has written before. Only mail that arrives AFTER we ask counts."""
+    def test_unrelated_owner_email_is_not_mistaken_for_the_answer(self, owner, monkeypatch):
+        """Sender identity without this request's tag is not authorization."""
         monkeypatch.setattr(ask_user_module, "send_email",
                             lambda to, subject, message: {"success": True})
-        old = {"id": "old", "from": owner, "message": "unrelated earlier email"}
-        new = {"id": "new", "from": owner, "message": "No, hold off"}
-        inbox = [[old], [old], [old, new]]
-        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [old])
+        unrelated = {
+            "id": "other",
+            "from": owner,
+            "subject": "Lunch tomorrow",
+            "message": "Yes, sounds good",
+        }
+        answer = {
+            "id": "answer",
+            "from": owner,
+            "subject": "Re: [CO-ASK:request123] Your agent is asking",
+            "message": "No, hold off",
+        }
+        inbox = [[unrelated], [unrelated, answer]]
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda last=10: inbox.pop(0) if inbox else [unrelated],
+        )
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
         result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
@@ -218,7 +242,12 @@ class TestAskOwnerByEmail:
         monkeypatch.setattr(ask_user_module, "send_email",
                             lambda to, subject, message: {"success": True})
         reply = "482913\n\nOn Mon, Aug 11, 2026 at 9:02 AM agent wrote:\n> Your agent is asking: code?"
-        inbox = [[], [{"id": "m1", "from": owner, "message": reply}]]
+        inbox = [[{
+            "id": "m1",
+            "from": owner,
+            "subject": "Re: [CO-ASK:request123] code",
+            "message": reply,
+        }]]
         monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [])
         monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
 
@@ -246,6 +275,54 @@ class TestAskOwnerByEmail:
 
         assert "NOT ANSWERED" in result
         assert "no credits" in result
+
+    def test_transient_inbox_failure_does_not_become_an_answer(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda to, subject, message: {"success": True},
+        )
+        answer = {
+            "id": "m1",
+            "from": owner.upper(),
+            "subject": "RE: [CO-ASK:REQUEST123] answer",
+            "message": "Wait",
+        }
+        inbox = [RuntimeError("temporary outage"), [answer]]
+
+        def get_emails(last=10):
+            value = inbox.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        monkeypatch.setattr(ask_user_module, "get_emails", get_emails)
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        assert ask_user(FakeAgent(), "Publish?", options=[]) == "Wait"
+
+    def test_empty_correlated_reply_is_not_approval(self, owner, monkeypatch):
+        monkeypatch.setattr(
+            ask_user_module,
+            "send_email",
+            lambda to, subject, message: {"success": True},
+        )
+        monkeypatch.setattr(
+            ask_user_module,
+            "get_emails",
+            lambda last=10: [{
+                "id": "m1",
+                "from": owner,
+                "subject": "Re: [CO-ASK:request123] answer",
+                "message": "> quoted question only",
+            }],
+        )
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(FakeAgent(), "Publish?", options=[])
+
+        assert "NOT ANSWERED" in result
+        assert "no answer" in result.lower()
 
 
 class TestAskUserSchema:

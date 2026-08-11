@@ -1,13 +1,14 @@
 """
 Purpose: Ask user a question during agent execution — via io when someone is connected, by email when nobody is
 LLM-Note:
-  Dependencies: imports from [os, time, typing, send_email, get_emails] | imported by [useful_tools/__init__.py]
+  Dependencies: imports from [os, secrets, time, typing, send_email, get_emails] | imported by [useful_tools/__init__.py]
   Data flow: agent calls ask_user tool → if agent.io: send ask_user event → wait for response | else: email OWNER_EMAIL → poll agent inbox for a reply → return its text
   State/Effects: blocks until user responds via io, or up to REPLY_TIMEOUT seconds while polling the inbox | sends one email | marks the reply read
   Integration: requires agent.io OR the OWNER_EMAIL env var | agent parameter injected by tool_executor
 """
 
 import os
+import secrets
 import time
 from typing import List
 
@@ -76,38 +77,73 @@ def ask_user(
 
 def ask_owner_by_email(question, options, multi_select, fields) -> str:
     """Email the question to the owner and wait for a reply in the agent's inbox."""
-    owner = os.getenv("OWNER_EMAIL")
+    owner = (os.getenv("OWNER_EMAIL") or "").strip()
     if not owner:
         return (
             NOT_ANSWERED
             + " (No OWNER_EMAIL is set, so there was no address to ask. Set "
-            "OWNER_EMAIL in ~/.co/keys.env to let an unattended agent reach its owner by email.)"
+            "OWNER_EMAIL in ~/.co/keys.env to let an unattended agent reach "
+            "its owner by email.)"
         )
 
-    # Ids present before we ask, so a reply is anything from the owner that is
-    # not one of them. Ids beat timestamps here: no clock skew, no parsing.
-    already_seen = {email["id"] for email in get_emails(last=20) if email["from"] == owner}
-
-    result = send_email(to=owner, subject=f"Your agent is asking: {question[:60]}",
-                        message=_body(question, options, multi_select, fields))
+    # The sender alone is not enough: an unrelated owner email arriving after
+    # the question must never become an approval, and concurrent questions must
+    # not consume one another's replies. A high-entropy subject tag binds the
+    # reply to exactly this wait without relying on clocks or shared state.
+    request_tag = f"[CO-ASK:{secrets.token_hex(16)}]"
+    result = send_email(
+        to=owner,
+        subject=f"{request_tag} Your agent is asking: {question[:60]}",
+        message=_body(question, options, multi_select, fields, request_tag),
+    )
     if not result.get("success"):
-        return NOT_ANSWERED + f" (Tried to ask {owner} by email and the send failed: {result.get('error')})"
+        return (
+            NOT_ANSWERED
+            + f" (Tried to ask {owner} by email and the send failed: "
+            f"{result.get('error')})"
+        )
 
-    deadline = time.time() + REPLY_TIMEOUT
-    while time.time() < deadline:
+    deadline = time.monotonic() + REPLY_TIMEOUT
+    while time.monotonic() < deadline:
         time.sleep(POLL_INTERVAL)
-        for email in get_emails(last=20):
-            if email["from"] == owner and email["id"] not in already_seen:
-                mark_read(email["id"])
-                return _strip_quoted(email["message"])
+        try:
+            emails = get_emails(last=20)
+        except Exception:
+            # Inbox outages are not answers. Keep the bounded wait alive for a
+            # transient failure, then return the ordinary fail-closed result.
+            continue
+        for email in emails:
+            if not isinstance(email, dict):
+                continue
+            sender = str(email.get("from", "")).strip().casefold()
+            subject = str(email.get("subject", "")).casefold()
+            if (
+                sender != owner.casefold()
+                or request_tag.casefold() not in subject
+            ):
+                continue
+            answer = _strip_quoted(str(email.get("message", "")))
+            try:
+                mark_read(str(email.get("id", "")))
+            except Exception:
+                # The correlated answer is already in hand. Read-state cleanup
+                # is useful but must not discard it or cause an outward retry.
+                pass
+            if not answer:
+                return (
+                    NOT_ANSWERED
+                    + " (The correlated email reply contained no answer.)"
+                )
+            return answer
 
     return (
         NOT_ANSWERED
-        + f" (Asked {owner} by email and waited {REPLY_TIMEOUT // 60} minutes with no reply.)"
+        + f" (Asked {owner} by email and waited {REPLY_TIMEOUT // 60} "
+        "minutes with no reply.)"
     )
 
 
-def _body(question, options, multi_select, fields) -> str:
+def _body(question, options, multi_select, fields, request_tag) -> str:
     """The email a human reads. Plain text, answerable by hitting reply."""
     lines = [question, ""]
     if options:
@@ -118,7 +154,10 @@ def _body(question, options, multi_select, fields) -> str:
         lines.append("Please include:")
         lines += [f"  - {field.get('label', field['name'])}" for field in fields]
         lines.append("")
-    lines.append("Reply to this email with your answer. Anything you write becomes the answer.")
+    lines.append(
+        "Reply to this email with your answer and keep the reference in the "
+        f"subject: {request_tag}"
+    )
     return "\n".join(lines)
 
 
@@ -126,7 +165,9 @@ def _strip_quoted(reply: str) -> str:
     """Just what the human typed — not our own question quoted back at us."""
     answer = []
     for line in reply.splitlines():
-        if line.startswith(">") or line.startswith("On ") and line.rstrip().endswith("wrote:"):
+        if line.startswith(">") or (
+            line.startswith("On ") and line.rstrip().endswith("wrote:")
+        ):
             break
         answer.append(line)
     return "\n".join(answer).strip()
