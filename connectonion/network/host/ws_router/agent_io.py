@@ -141,17 +141,18 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
 async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
     """Forward agent events to client. Send OUTPUT (or ERROR) when agent finishes."""
     async for event in io.read_msgs_from_agent():
+        persisted_trace = io.is_persisted_trace_event(event)
+        event_type = event.get("type")
         if event.get("type") == "approval_needed":
             acp_request = _acp_permission_rollout_frame(event, session_id)
             io.register_permission_request(event, session_id, acp_request)
             if acp_request is not None:
                 await send_msg(acp_request)
+        should_mirror = event_type in {
+            "tool_call", "tool_result", "mode_changed"
+        } or (event_type == "thinking" and persisted_trace)
         acp_frame = (
-            _acp_rollout_frame(event, session_id)
-            if event.get("type") in {
-                "tool_call", "tool_result", "mode_changed"
-            }
-            else None
+            _acp_rollout_frame(event, session_id) if should_mirror else None
         )
         if acp_frame is not None:
             await send_msg(acp_frame)

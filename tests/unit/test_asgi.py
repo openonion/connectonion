@@ -122,6 +122,155 @@ class TestForwardAgentEvents:
         assert acp_message["method"] == "session/update"
         assert acp_message["params"]["sessionId"] == "test-session"
 
+    async def test_public_thought_acp_mirror_precedes_legacy_event(self):
+        io = WebSocketIO()
+        sent_messages = []
+
+        async def mock_send_msg(msg):
+            sent_messages.append(msg)
+
+        thought = {
+            "type": "thinking",
+            "id": "thought-1",
+            "kind": "reflect",
+            "content": "checking the result",
+        }
+        io._send_persisted_trace(thought)
+        io.mark_agent_done()
+
+        await forward_agent_msgs_to_client(
+            mock_send_msg, io, "session-1"
+        )
+
+        assert [message["type"] for message in sent_messages[:2]] == [
+            "ACP_NOTIFICATION",
+            "thinking",
+        ]
+        assert sent_messages[0]["message"]["params"] == {
+            "sessionId": "session-1",
+            "update": {
+                "content": {"text": "checking the result", "type": "text"},
+                "messageId": "thought-1",
+                "_meta": {"connectonion": {"kind": "reflect"}},
+                "sessionUpdate": "agent_thought_chunk",
+            },
+        }
+        assert sent_messages[1]["type"] == "thinking"
+        assert sent_messages[1]["id"] == thought["id"]
+        assert sent_messages[1]["kind"] == thought["kind"]
+        assert sent_messages[1]["content"] == thought["content"]
+        assert sent_messages[1]["session_id"] == "session-1"
+        assert isinstance(sent_messages[1]["ts"], float)
+
+    async def test_direct_thinking_event_stays_legacy_only(self):
+        """The public IO primitive does not classify direct events as thoughts."""
+        io = WebSocketIO()
+        sent_messages = []
+
+        async def mock_send_msg(msg):
+            sent_messages.append(msg)
+
+        thought = {
+            "type": "thinking",
+            "id": "direct-thought",
+            "content": "not a persisted trace entry",
+        }
+        io.send(thought)
+        io.mark_agent_done()
+
+        await forward_agent_msgs_to_client(
+            mock_send_msg, io, "session-1"
+        )
+
+        protocol_types = [
+            message["type"] for message in sent_messages
+            if message["type"] != "DASHBOARD_SNAPSHOT"
+        ]
+        assert protocol_types == [
+            "thinking",
+            "ERROR",
+        ]
+        assert sent_messages[0] == {**thought, "session_id": "session-1"}
+        assert not any(
+            message.get("type") == "ACP_NOTIFICATION"
+            for message in sent_messages
+        )
+
+    async def test_bad_thought_mirror_still_drains_legacy_and_output(self):
+        io = WebSocketIO()
+        sent_messages = []
+        result_holder = [{
+            "result": "committed",
+            "duration_ms": 5,
+            "session": {},
+        }]
+
+        async def mock_send_msg(msg):
+            sent_messages.append(msg)
+
+        io._send_persisted_trace({
+            "type": "thinking",
+            "id": "thought-1",
+            "content": "already visible",
+        })
+        io.mark_agent_done()
+
+        with patch.object(
+            agent_io_module,
+            "acp_notification_frame",
+            side_effect=ValueError("bad thought mirror"),
+        ):
+            await forward_agent_msgs_to_client(
+                mock_send_msg,
+                io,
+                "session-1",
+                result_holder=result_holder,
+            )
+
+        protocol_types = [
+            message["type"] for message in sent_messages
+            if message["type"] != "DASHBOARD_SNAPSHOT"
+        ]
+        assert protocol_types == [
+            "thinking",
+            "OUTPUT",
+        ]
+
+    async def test_provider_diagnostics_are_not_acp_thoughts(self):
+        io = WebSocketIO()
+        sent_messages = []
+        result_holder = [{
+            "result": "committed",
+            "duration_ms": 5,
+            "session": {},
+        }]
+
+        async def mock_send_msg(msg):
+            sent_messages.append(msg)
+
+        io.send({
+            "type": "llm_result",
+            "id": "provider-1",
+            "content": "must not become public reasoning",
+        })
+        io.mark_agent_done()
+
+        await forward_agent_msgs_to_client(
+            mock_send_msg,
+            io,
+            "session-1",
+            result_holder=result_holder,
+        )
+
+        protocol_types = [
+            message["type"] for message in sent_messages
+            if message["type"] != "DASHBOARD_SNAPSHOT"
+        ]
+        assert protocol_types == [
+            "llm_result",
+            "OUTPUT",
+        ]
+
     async def test_sends_output_from_result_holder(self):
         """Test that OUTPUT is sent when agent completes with result."""
         io = WebSocketIO()

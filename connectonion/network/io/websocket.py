@@ -2,9 +2,9 @@
 Purpose: WebSocket IO bridging async WebSocket transport to sync agent code via thread-safe message channels
 LLM-Note:
   Dependencies: imports from [network/io/base.IO, asyncio, threading, time, uuid] | imported by [network/host/ws_router/agent_io.py] | tested by [tests/unit/test_io.py, tests/unit/test_io_image_support.py]
-  Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
+  Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | Agent._record_trace() calls internal _send_persisted_trace(event) → queues a private dict subtype as Host-local provenance | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
   State/Effects: maintains incoming + outgoing channels (async-safe) | finished flag prevents sends after close | unblocks agent's blocking receive on close
-  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
+  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, internal persisted-trace provenance queried by Host forwarder, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
   Performance: queue-based coordination between sync agent thread and async transport | blocking receive() is intended for agent thread | _wait_for_msgs_from_agent waits at most ~1s so idle-session forwarders don't pin executor-pool threads
   Errors: closed IO unblocks pending receive() so agent thread doesn't hang | no exceptions raised — channel coordination handled internally
 """
@@ -16,6 +16,10 @@ import uuid
 from typing import Any, Dict
 
 from .base import IO
+
+
+class _PersistedTraceEvent(dict):
+    """Cooperative Host-local provenance; never an extra wire field or sandbox."""
 
 
 class WebSocketIO(IO):
@@ -57,6 +61,19 @@ class WebSocketIO(IO):
 
         Auto-generates 'id' (UUID) and 'ts' (timestamp) if not present.
         """
+        self._append_agent_message(message)
+
+    def _send_persisted_trace(self, message: Dict[str, Any]) -> None:
+        """Queue one canonical trace event with cooperative Host provenance."""
+        self._append_agent_message(_PersistedTraceEvent(message))
+
+    @staticmethod
+    def is_persisted_trace_event(message: Dict[str, Any]) -> bool:
+        """Return whether this exact queued event came from Agent._record_trace."""
+        return isinstance(message, _PersistedTraceEvent)
+
+    def _append_agent_message(self, message: Dict[str, Any]) -> None:
+        """Stamp and append one agent event to the replayable outgoing log."""
         if not self._closed:
             if 'id' not in message:
                 message['id'] = str(uuid.uuid4())

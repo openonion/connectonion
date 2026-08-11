@@ -15,6 +15,7 @@ from acp import text_block, tool_content
 from acp.schema import (
     AgentMessageChunk,
     AgentRequest,
+    AgentThoughtChunk,
     CancelNotification,
     CurrentModeUpdate,
     PermissionOption,
@@ -123,6 +124,25 @@ def map_message_event(
         message_id=_required_string(event, "id"),
         content=text_block(_required_string(event, "content")),
     )
+
+
+def map_thought_event(
+    event: Mapping[str, Any],
+) -> AgentThoughtChunk | None:
+    """Map one persisted public application thought to ACP v1.19."""
+
+    if event.get("type") != "thinking":
+        return None
+    kwargs: dict[str, Any] = {
+        "session_update": "agent_thought_chunk",
+        "message_id": _required_string(event, "id"),
+        "content": text_block(_required_string(event, "content")),
+    }
+    kind = event.get("kind")
+    if isinstance(kind, str) and kind:
+        # Product presentation metadata is an extension, never authority.
+        kwargs["field_meta"] = {"connectonion": {"kind": kind}}
+    return AgentThoughtChunk(**kwargs)
 
 
 def session_mode_id(value: Any) -> str:
@@ -418,6 +438,7 @@ def acp_notification_frame(
     update = (
         map_tool_event(event)
         or map_message_event(event)
+        or map_thought_event(event)
         or map_mode_event(event)
     )
     if update is None:

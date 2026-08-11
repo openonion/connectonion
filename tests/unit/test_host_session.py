@@ -714,7 +714,8 @@ class TestSessionToChatItems:
                 {'type': 'intent', 'id': 'i1', 'ack': 'Got it', 'is_build': False},
                 {'type': 'eval', 'id': 'e1', 'passed': True, 'summary': 'ok',
                  'expected': 'q', 'eval_path': '/tmp/x.yaml'},
-                {'type': 'thinking', 'kind': 'reflect', 'content': 'reflecting'},
+                {'type': 'thinking', 'id': 'th1', 'kind': 'reflect',
+                 'content': 'reflecting'},
             ],
         }
 
@@ -724,6 +725,7 @@ class TestSessionToChatItems:
         assert items[1]['ack'] == 'Got it'
         assert items[2]['summary'] == 'ok'
         assert items[3]['kind'] == 'reflect'
+        assert items[3]['id'] == 'th1'
 
     def test_interleaves_multi_turn_by_user_input(self):
         """Multi-turn: each user_input marker bounds a turn; trace items emit in their turn."""

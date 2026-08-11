@@ -11,6 +11,7 @@ from connectonion.core.acp_wire import (
     acp_notification_frame,
     legacy_tool_event_from_acp,
     map_message_event,
+    map_thought_event,
 )
 from connectonion.network.connect import RemoteAgent
 
@@ -22,6 +23,13 @@ MESSAGE_FIXTURE = json.loads(
         Path(__file__).parents[1]
         / "fixtures"
         / "acp_agent_message_events.json"
+    ).read_text()
+)
+THOUGHT_FIXTURE = json.loads(
+    (
+        Path(__file__).parents[1]
+        / "fixtures"
+        / "acp_thought_events.json"
     ).read_text()
 )
 
@@ -44,6 +52,15 @@ def test_agent_messages_match_the_shared_acp_fixture():
     assert actual == MESSAGE_FIXTURE["acp"]
 
 
+def test_public_thoughts_match_the_shared_acp_fixture():
+    actual = [
+        acp_notification_frame(event, "session-1")
+        for event in THOUGHT_FIXTURE["legacy"]
+    ]
+
+    assert actual == THOUGHT_FIXTURE["acp"]
+
+
 @pytest.mark.parametrize(
     "event",
     [
@@ -55,6 +72,41 @@ def test_agent_messages_match_the_shared_acp_fixture():
 def test_empty_or_malformed_agent_messages_are_rejected(event):
     with pytest.raises(ValueError):
         map_message_event(event)
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"type": "thinking", "id": "", "content": "checking"},
+        {"type": "thinking", "id": "thought-1", "content": ""},
+        {"type": "thinking", "id": "thought-1", "content": None},
+        {"type": "thinking", "id": "thought-1"},
+    ],
+)
+def test_empty_or_malformed_thoughts_are_rejected(event):
+    with pytest.raises(ValueError):
+        map_thought_event(event)
+
+
+@pytest.mark.parametrize("kind", [None, "", 42, {"name": "reflect"}])
+def test_invalid_thought_kind_is_omitted_without_losing_public_text(kind):
+    event = {
+        "type": "thinking",
+        "id": "thought-1",
+        "content": "checking",
+        "kind": kind,
+    }
+
+    update = map_thought_event(event)
+
+    assert update is not None
+    assert update.model_dump(
+        mode="json", by_alias=True, exclude_none=True, exclude_unset=True
+    ) == {
+        "content": {"text": "checking", "type": "text"},
+        "messageId": "thought-1",
+        "sessionUpdate": "agent_thought_chunk",
+    }
 
 
 def test_acp_tool_events_decode_to_the_legacy_python_ui_shape():
@@ -147,9 +199,19 @@ def test_python_remote_agent_applies_partial_acp_updates():
     assert "result" not in agent.ui[0]
 
 
-def test_non_tool_events_stay_in_the_connectonion_namespace():
-    event = {"type": "thinking", "content": "checking"}
-
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"type": "llm_call", "id": "provider-1", "status": "running"},
+        {
+            "type": "llm_result",
+            "id": "provider-1",
+            "content": "must not become public reasoning",
+        },
+        {"type": "compact", "content": "private diagnostic"},
+    ],
+)
+def test_provider_and_internal_events_stay_connectonion_only(event):
     assert acp_notification_frame(event, "session-1") is None
     assert legacy_tool_event_from_acp(event) is None
 
