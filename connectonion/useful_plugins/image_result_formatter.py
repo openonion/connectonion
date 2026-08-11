@@ -26,6 +26,7 @@ import requests
 from typing import TYPE_CHECKING
 from ..core.events import after_tools
 from ..backend import backend_url
+from ..credentials import require_ambient_api_key
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -154,9 +155,10 @@ def _upload_to_oo_api(base64_data: str, mime_type: str) -> str:
     broken image pipeline while re-inflating the context.
     """
     base = backend_url()
+    token = require_ambient_api_key()
     resp = requests.post(
         f"{base}/api/v1/images",
-        headers={"Authorization": f"Bearer {os.environ['OPENONION_API_KEY']}"},
+        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("screenshot", base64.b64decode(base64_data), mime_type)},
         timeout=30,
     )
