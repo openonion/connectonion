@@ -47,10 +47,11 @@ case serialization required by the pinned SDK.
 
 ## Why
 
-Event names and fields are already consumed by Python `RemoteAgent`,
-`connectonion-ts`, and oo-chat. Renaming them would require a dual-vocabulary
-migration without eliminating the content and permission conversion that ACP
-necessarily requires.
+Event names and fields are already consumed by Python `RemoteAgent` and the
+browser connection layer in `@connectonion/react`, which is the only SDK used
+by oo-chat. Renaming them would require a dual-vocabulary migration without
+eliminating the content and permission conversion that ACP necessarily
+requires.
 
 Status is the useful shared layer. ACP 0.12 and the current stable v1 protocol
 both use `pending`, `in_progress`, `completed`, and `failed`. Provider adapters
@@ -63,10 +64,11 @@ inspect canonical tool outcomes.
 
 ## Compatibility and rollout
 
-Python and TypeScript consumers recognize old and new success/failure values.
-The TypeScript mapper treats every unknown terminal status as an error so a
-newer server cannot be presented as successful by accident. oo-chat needs no
-direct change because it renders the SDK's normalized ChatItems.
+Python and `@connectonion/react` consumers recognize old and new
+success/failure values. The React package's browser mapper treats every
+unknown terminal status as an error so a newer server cannot be presented as
+successful by accident. oo-chat needs no direct change because it renders the
+React package's normalized ChatItems.
 
 The Codex adapter now emits `in_progress`, `completed`, and `failed`. The
 Claude Code JSON adapter has no intermediate activity stream, so its final
@@ -75,7 +77,7 @@ result envelope is outside this IO event contract.
 ## Rejected alternatives
 
 - **Rename all events to ACP discriminators:** breaks established Python and
-  TypeScript consumers and still requires translation for content and approval.
+  React consumers and still requires translation for content and approval.
 - **Rewrite canonical trace statuses:** changes persisted data, hook semantics,
   and eval fixtures for no protocol benefit.
 - **Normalize only in the ACP mapper:** leaves provider adapters and other live

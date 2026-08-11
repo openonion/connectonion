@@ -84,7 +84,13 @@ class TestForwardAgentEvents:
             sent_messages.append(msg)
 
         io.send({"type": "thinking"})
-        io.send({"type": "tool_call", "name": "search"})
+        io.send({
+            "type": "tool_call",
+            "tool_id": "call-1",
+            "name": "search",
+            "args": {},
+            "status": "in_progress",
+        })
 
         def agent_done():
             import time
@@ -100,7 +106,14 @@ class TestForwardAgentEvents:
 
         event_types = [m["type"] for m in sent_messages if m.get("type") not in ("ERROR",)]
         assert "thinking" in event_types
+        assert "ACP_NOTIFICATION" in event_types
         assert "tool_call" in event_types
+        acp_message = next(
+            message for message in sent_messages
+            if message.get("type") == "ACP_NOTIFICATION"
+        )["message"]
+        assert acp_message["method"] == "session/update"
+        assert acp_message["params"]["sessionId"] == "test-session"
 
     async def test_sends_output_from_result_holder(self):
         """Test that OUTPUT is sent when agent completes with result."""
@@ -121,6 +134,31 @@ class TestForwardAgentEvents:
         output_msgs = [m for m in sent_messages if m.get("type") == "OUTPUT"]
         assert len(output_msgs) == 1
         assert output_msgs[0]["result"] == "answer"
+
+    async def test_bad_acp_mirror_falls_back_without_inviting_a_retry(self):
+        io = WebSocketIO()
+        sent_messages = []
+        result_holder = [{
+            "result": "committed",
+            "duration_ms": 5,
+            "session": {},
+        }]
+
+        async def mock_send_msg(msg):
+            sent_messages.append(msg)
+
+        io.send({"type": "tool_result", "status": "success", "result": "ok"})
+        io.mark_agent_done()
+
+        await forward_agent_msgs_to_client(
+            mock_send_msg, io, "s1", result_holder=result_holder
+        )
+
+        event_types = [message["type"] for message in sent_messages]
+        assert event_types.count("tool_result") == 1
+        assert event_types.count("OUTPUT") == 1
+        assert "ACP_NOTIFICATION" not in event_types
+        assert "ERROR" not in event_types
 
     async def test_sends_error_from_exception(self):
         """Test that ERROR is sent when agent raises."""
