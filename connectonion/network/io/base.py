@@ -2,9 +2,9 @@
 Purpose: Abstract IO interface for bidirectional agent-client communication in hosted agents
 LLM-Note:
   Dependencies: imports from [abc.ABC, typing, core/wire_events.py] | imported by [network/io/websocket.py, network/__init__.py, agent.py] | tested by [tests/unit/test_io.py, tests/unit/test_wire_events.py]
-  Data flow: agent.io.send(event) → client receives event → agent.io.receive() → blocks until client responds | high-level: io.log(type, **data) normalizes tool lifecycle status then sends one-way notifications | io.request_approval(tool, args) sends approval_needed → waits for client response → returns True/False
+  Data flow: agent.io.send(event) → client receives event → agent.io.receive() → blocks until client responds | Agent._record_trace() → internal _send_persisted_trace(event) transport hook | high-level: io.log(type, **data) normalizes tool lifecycle status then sends one-way notifications | io.request_approval(tool, args) sends approval_needed → waits for client response → returns True/False
   State/Effects: no state (abstract base class) | implementations handle message queuing/transport
-  Integration: exposes IO abstract class with send(event), receive() → dict primitives | convenience methods: log(type, **data), request_approval(tool, args) → bool | agent.io injected by host() for hosted execution | used in event handlers (@after_llm, @before_each_tool)
+  Integration: exposes IO abstract class with send(event), receive() → dict primitives and internal _send_persisted_trace(event) hook | convenience methods: log(type, **data), request_approval(tool, args) → bool | agent.io injected by host() for hosted execution | used in event handlers (@after_llm, @before_each_tool)
   Performance: abstract (implementation-specific) | WebSocketIO uses queue.Queue for thread-safe communication
   Errors: abstract methods must be implemented by subclasses | request_approval() blocks until response (timeout handled by implementation)
 IO interface for agent-client communication during hosted execution.
@@ -50,6 +50,15 @@ class IO(ABC):
             event: Dict with at least 'type' key, e.g. {"type": "thinking"}
         """
         pass
+
+    def _send_persisted_trace(self, event: Dict[str, Any]) -> None:
+        """Send an event that was committed to the canonical session trace.
+
+        Agent owns this internal path. Transports that expose persisted trace
+        events differently from ad-hoc ``send()`` calls can override it; other
+        transports keep their existing behavior through this safe default.
+        """
+        self.send(event)
 
     @abstractmethod
     def receive(self) -> Dict[str, Any]:

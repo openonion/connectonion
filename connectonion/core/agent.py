@@ -196,7 +196,10 @@ class Agent:
                 {**wire_extras, **entry} if wire_extras else entry
             )
             # Send entry first (without session to avoid circular ref)
-            self.io.send(wire_entry)
+            send_persisted_trace = getattr(
+                self.io, "_send_persisted_trace", self.io.send
+            )
+            send_persisted_trace(wire_entry)
             # Then send session sync separately
             self.io.send({
                 'type': 'session_sync',
