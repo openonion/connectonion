@@ -453,7 +453,29 @@ class Outlook:
             import re
             from html import unescape
             body_content = re.sub(r'<style[^>]*>.*?</style>', '', body_content, flags=re.DOTALL | re.IGNORECASE)
-            body_content = re.sub(r'<[^>]+>', '', body_content)
+            # Keep the address before the tags go. Stripping <a href="..."> as
+            # markup leaves the words and loses the link, and a URL carrying a
+            # per-recipient token is not one the reader can reconstruct.
+            def anchor_as_text(match) -> str:
+                url = match.group(1)
+                text = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+                # Clients often use the URL as its own link text; printing it
+                # twice reads as two different links.
+                if not text or unescape(text) == unescape(url):
+                    return url
+                return f"{text} <{url}>"
+
+            body_content = re.sub(
+                r'<a\b[^>]*\bhref=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+                anchor_as_text,
+                body_content,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            # Everything that is markup, but not the `<scheme://…>` the step
+            # above just wrote — `<[^>]+>` cannot tell those apart and ate the
+            # very addresses it was meant to preserve.
+            body_content = re.sub(r'<(?![a-zA-Z][a-zA-Z0-9+.-]*://)[^>]+>', '',
+                                  body_content)
             body_content = unescape(body_content)
             body_content = re.sub(r'\s+', ' ', body_content).strip()
 
