@@ -1,5 +1,5 @@
-"""Tests for co_ai agent creation and server entrypoint."""
-"""
+"""Tests for co_ai agent creation and server entrypoint.
+
 LLM-Note: Tests for co ai agent main
 
 What it tests:
@@ -9,12 +9,28 @@ Components under test:
 - Module: co_ai_agent_main
 """
 
-
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
+from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
+
+
+def test_managed_delegation_permissions_are_explicit(tmp_path):
+    """Nested coding agents own inner approval without reopening unknown tools."""
+    agent = SimpleNamespace(current_session={'permissions': {}})
+
+    agent_mod.grant_managed_delegation_permissions(agent)
+
+    assert set(agent.current_session['permissions']) == {'codex', 'claude_code'}
+    assert all(
+        permission['allowed'] is True
+        and permission['source'] == 'safe'
+        for permission in agent.current_session['permissions'].values()
+    )
+    shared_exec_permissions = load_permission_patterns(tmp_path / '.co')
+    assert not {'codex', 'claude_code'} & set(shared_exec_permissions)
 
 
 def test_create_coding_agent(monkeypatch, tmp_path):

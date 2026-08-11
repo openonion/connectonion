@@ -8,7 +8,7 @@ LLM-Note:
   Performance: plugin registration is O(1) | event handler overhead per tool call depends on approval.py check_approval()
   Errors: no errors at import time | errors from approval.py bubble up during agent execution
 
-Tool Approval Plugin - Request client approval before executing dangerous tools.
+Tool Approval Plugin - Request client approval before executing unpermitted tools.
 
 WebSocket-only. Uses io.send/receive pattern:
 1. Sends {type: "approval_needed", tool, arguments} to client
@@ -22,13 +22,13 @@ Rejection Modes (client sends mode field):
 - "reject_explain": Like soft, but instructs LLM to explain in simple terms.
 
 Tool Classification:
-- Safe tools (read, glob, grep, etc.) - defined in host.yaml template, auto-approved
-- DANGEROUS_TOOLS: Write/execute operations (bash, write, edit, etc.) - need approval
-- Unknown tools: Treated as safe (no approval needed)
+- Template-permitted tools (read, glob, grep, etc.) are auto-approved
+- DANGEROUS_TOOLS remains a public reference set for known effectful tools
+- Unknown tools require approval when live IO is present
 
 Mode System:
-- "safe" (default): Dangerous tools need approval
-- "accept_edits": File edits auto-approved, other dangerous tools need approval
+- "safe" (default): Every unpermitted tool needs approval
+- "accept_edits": Named file edits are auto-approved; other unpermitted tools need approval
 - "ulw": Handled by ulw plugin - bypasses all approvals
 
 Session Memory:
@@ -184,13 +184,13 @@ File Relationships:
 
 from .approval import (
     check_approval,
-    load_config_permissions,
-    poll_mode_changes,
-    poll_interrupt,
-    handle_mode_change,
     get_current_mode,
+    handle_mode_change,
+    load_config_permissions,
+    poll_interrupt,
+    poll_mode_changes,
 )
-from .constants import VALID_MODES, DEFAULT_MODE
+from .constants import DEFAULT_MODE, VALID_MODES
 
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[tool_approval])

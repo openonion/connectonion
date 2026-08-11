@@ -1,6 +1,6 @@
 # tool_approval
 
-Web-based approval for dangerous tools via WebSocket. Requires user confirmation before executing tools that can modify files or run commands.
+Web-based approval for tools via WebSocket. With live IO, a tool without an explicit permission must receive approval from the local/admin operator before execution. A hosted non-admin requester is rejected without a dialog.
 
 ## Quick Start
 
@@ -19,6 +19,9 @@ agent.input("Install dependencies")
 
 ## Lifecycle
 
+This example shows a local/admin operator session. Hosted non-admin requesters
+are rejected before an approval request is sent.
+
 ```
 User sends prompt
     ↓
@@ -30,8 +33,7 @@ tool_executor iterates sequentially:
     ↓
 ┌─ Tool #1: bash("npm install")
 │   before_each_tool fires → check_approval()
-│   → Is it safe? No (bash is DANGEROUS)
-│   → Already approved for session? No
+│   → Explicitly permitted? No
 │   → Send to client:
 │       {
 │         "type": "approval_needed",
@@ -50,7 +52,7 @@ tool_executor iterates sequentially:
 │
 ├─ Tool #2: write("config.json")
 │   before_each_tool fires → check_approval()
-│   → Is it safe? No (write is DANGEROUS)
+│   → Explicitly permitted? No
 │   → Send approval_needed (batch_remaining: [bash(...)])
 │   → Client responds: {"approved": false, "mode": "reject_soft"}
 │   → Skip this tool, continue to next
@@ -114,9 +116,9 @@ When a tool needs approval, the server includes `batch_remaining` — a list of 
 
 ## Tool Classification
 
-### Safe Tools (No Approval)
+### Template-Permitted Tools (No Approval)
 
-Read-only operations that never modify state:
+The standard host template grants explicit permissions to its built-in read-only tools:
 
 ```
 read, read_file, glob, grep, search
@@ -124,7 +126,7 @@ list_files, get_file_info, task, load_guide
 task_output, ask_user
 ```
 
-### Dangerous Tools (Require Approval)
+### Known Effectful Tools (Require Approval Unless Permitted)
 
 Operations that can modify files or have side effects:
 
@@ -137,7 +139,18 @@ send_email, post, delete, remove
 
 ### Unknown Tools
 
-Tools not in either list are treated as safe (no approval needed).
+Unknown and dynamically registered tools require operator approval when live IO is present. A hosted non-admin requester is rejected without a dialog. This fail-closed default keeps plugin and MCP tools behind the same approval boundary as built-in effectful tools.
+
+Three explicit exceptions preserve existing workflows:
+
+- Local library use without `agent.io` stays non-interactive.
+- `accept_edits` auto-approves only the named file-edit tools (`write`, `edit`, and `multi_edit`).
+- `ulw` remains an explicit bypass controlled by its own plugin.
+
+Only a local/admin operator receives approval dialogs or may enable
+`accept_edits` or `ulw`. In hosted sessions, only the admin operator can enable them.
+A contact, whitelisted caller, or stranger may switch back to `safe`, but cannot
+turn a mode-change frame into file or dynamic-tool authority.
 
 ## Config-Based Auto-Approval
 
@@ -258,11 +271,11 @@ All commands are whitelisted for bash command chains - if ALL commands in a chai
 
 Config permissions integrate with the existing approval system:
 
-1. **Safe tools** - Always approved (SAFE_TOOLS list)
+1. **Template permissions** - Explicit built-in allowlist (`source: safe`)
 2. **Config permissions** - Loaded from host.yaml (`source: config`)
 3. **Skill permissions** - Temporary, turn-scoped (`source: skill`)
 4. **Session approvals** - User approved for session (`source: user`)
-5. **Runtime approval** - Ask user (if none of above match)
+5. **Runtime approval** - Ask user for every remaining live-IO tool
 
 ### Terminal Logging
 
