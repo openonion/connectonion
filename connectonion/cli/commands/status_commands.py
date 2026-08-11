@@ -109,10 +109,11 @@ def _credential_sources(
     )
     home = (home or Path.home()).resolve()
     environ = os.environ if environ is None else environ
+    project_source = "~/.env" if project_dir == home else "<project>/.env"
 
     return (
         ("process environment", environ),
-        ("<project>/.env", _read_credential_file(project_dir / ".env")),
+        (project_source, _read_credential_file(project_dir / ".env")),
         ("~/.co/keys.env", _read_credential_file(home / ".co" / "keys.env")),
     )
 

@@ -113,6 +113,19 @@ class TestCredentialStatus:
         assert (project / ".env").read_text() == "OPENAI_API_KEY=project-secret\n"
         assert "project-secret" not in repr(rows)
 
+    def test_home_dotenv_is_named_as_home_not_as_a_project(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".env").write_text("OPENAI_API_KEY=home-secret\n")
+
+        rows = _credential_rows(project_dir=home, home=home, environ={})
+        openai = self._row(rows, "OPENAI_API_KEY")
+
+        assert openai["source"] == "~/.env"
+        assert "home-secret" not in repr(rows)
+
     def test_reports_conflicting_sources_without_values(self, tmp_path):
         from connectonion.cli.commands.status_commands import _credential_rows
 
