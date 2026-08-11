@@ -160,6 +160,13 @@ def test_outer_approval_does_not_duplicate_codex_action_approval():
     agent = SimpleNamespace(
         current_session={
             "mode": "safe",
+            "permissions": {
+                "codex": {
+                    "allowed": True,
+                    "source": "safe",
+                    "reason": "managed delegation owns inner approval",
+                }
+            },
             "pending_tool": {
                 "id": "call-1",
                 "name": "codex",

@@ -166,29 +166,12 @@ host(agent)
 ### Tool Approval
 
 ```python
-from connectonion import Agent, host, before_each_tool
+from connectonion import Agent, host
+from connectonion.useful_plugins import tool_approval
 
-class ToolRejected(Exception):
-    pass
-
-DANGEROUS_TOOLS = ["delete_file", "send_email", "run_shell"]
-
-@before_each_tool
-def check_approval(agent):
-    if not agent.io:
-        return
-
-    tool = agent.current_session['pending_tool']
-
-    # Notify tool is starting
-    agent.io.log("tool_call", name=tool['name'], arguments=tool['arguments'])
-
-    # Request approval for dangerous tools
-    if tool['name'] in DANGEROUS_TOOLS:
-        if not agent.io.request_approval(tool['name'], tool['arguments']):
-            raise ToolRejected(f"User rejected {tool['name']}")
-
-agent = Agent("helper", tools=[delete_file], on_events=[check_approval])
+# Explicit permissions are loaded from the host template and .co/host.yaml.
+# Every remaining live-IO tool asks, including names added by plugins later.
+agent = Agent("helper", tools=[delete_file], plugins=[tool_approval])
 host(agent)
 ```
 
@@ -393,11 +376,7 @@ from connectonion import (
     Agent, host,
     after_llm, before_each_tool, after_each_tool, on_complete, on_error
 )
-
-class ToolRejected(Exception):
-    pass
-
-DANGEROUS_TOOLS = ["delete_file", "send_email"]
+from connectonion.useful_plugins import tool_approval
 
 @after_llm
 def on_thinking(agent):
@@ -411,10 +390,6 @@ def on_tool_start(agent):
 
     tool = agent.current_session['pending_tool']
     agent.io.log("tool_call", name=tool['name'], arguments=tool['arguments'])
-
-    if tool['name'] in DANGEROUS_TOOLS:
-        if not agent.io.request_approval(tool['name'], tool['arguments']):
-            raise ToolRejected(tool['name'])
 
 @after_each_tool
 def on_tool_end(agent):
@@ -441,6 +416,7 @@ def on_fail(agent):
 agent = Agent(
     "helper",
     tools=[search, delete_file],
+    plugins=[tool_approval],
     on_events=[on_thinking, on_tool_start, on_tool_end, on_done, on_fail]
 )
 

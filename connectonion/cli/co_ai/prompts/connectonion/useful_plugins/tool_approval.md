@@ -9,13 +9,14 @@ The plugin is the same in every mode; what moves is the gate.
 
 | mode | behaviour |
 |---|---|
-| `safe` | dangerous tool calls are confirmed one at a time |
-| `plan` | the agent proposes a plan and waits for review before doing anything |
-| `accept_edits` | file edits land without asking; other dangerous calls still ask |
-| `ulw` | runs unattended for a bounded number of turns — see `useful_plugins/ulw` |
+| `safe` | local/admin operators confirm each unpermitted tool; hosted non-admin requesters are rejected without a dialog |
+| `plan` | legacy client request; normalized to `safe` |
+| `accept_edits` | local/admin-only: named file edits land without asking; every other unpermitted call still needs operator approval |
+| `ulw` | local/admin-only bounded approval bypass — see `useful_plugins/ulw` |
 
 Mode changes arrive over the WebSocket, so a client can move between them
-mid-session without restarting the agent.
+mid-session without restarting the agent. In a hosted session, only the admin
+operator can enable `accept_edits` or `ulw`; other requesters remain in `safe`.
 
 ## Scope of an approval
 
@@ -25,8 +26,16 @@ temporary grants are snapshotted and restored around the skill rather than
 merged into it — a permission the user gave for one turn must not survive
 into the next.
 
-## What it does not do
+## Classification boundary
 
-It does not decide what is dangerous. That comes from the tool's own
-declaration and the permission patterns, so adding a tool does not mean editing
-this plugin.
+The approval boundary is an allowlist, not a denylist. Template, config, skill,
+session, and explicit mode permissions run first. With live IO, every remaining
+tool must receive operator approval; a hosted non-admin requester is rejected
+without a dialog. Adding a plugin or MCP tool therefore cannot silently acquire
+side effects just because its name is new.
+
+The co ai `codex` and `claude_code` wrappers receive explicit grants only inside
+the outer LLM-loop session because their inner runtimes own action approval.
+That scope applies to CLI and hosted co-ai sessions, but the grants never enter
+the shared remote-EXEC whitelist. Hosted non-admin Claude delegation is refused;
+hosted non-admin Codex is read-only with nested approvals denied.

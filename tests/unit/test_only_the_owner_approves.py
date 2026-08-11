@@ -49,6 +49,7 @@ class FakeAgent:
 
 DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
                                            'description': 'clean'}}
+UNCLASSIFIED = {'name': 'third_party_tool', 'arguments': {'value': 'example'}}
 
 
 class TestOnlyAnAdminIsAsked:
@@ -85,6 +86,18 @@ class TestOnlyAnAdminIsAsked:
         assert 'host.yaml' in message
         assert 'bash' in message
 
+    def test_an_unclassified_tool_also_fails_closed(self):
+        """Dynamic tools do not bypass the operator gate by using a new name."""
+        io = FakeIO()
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': 'contact'})
+        agent.current_session['pending_tool'] = UNCLASSIFIED
+
+        with pytest.raises(ValueError, match='third_party_tool'):
+            check_approval(agent)
+
+        assert io.sent == []
+
     def test_an_admin_is_still_asked(self):
         io = FakeIO(responses=[{'approved': True}])
         agent = FakeAgent(io=io, requester={'address': '0x' + 'f' * 64,
@@ -97,10 +110,17 @@ class TestOnlyAnAdminIsAsked:
         assert io.sent[0]['type'] == 'approval_needed'
 
     def test_a_safe_tool_is_unaffected_for_everyone(self):
-        """This gates approval, not access. A contact may still use the agent."""
+        """This gates approval, not explicitly permitted access."""
         io = FakeIO()
         agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
                                             'level': 'contact'})
+        agent.current_session['permissions'] = {
+            'read_file': {
+                'allowed': True,
+                'source': 'safe',
+                'reason': 'read-only operation',
+            }
+        }
         agent.current_session['pending_tool'] = {'name': 'read_file',
                                                  'arguments': {'path': 'a.md'}}
 
