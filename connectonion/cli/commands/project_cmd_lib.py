@@ -1101,8 +1101,8 @@ def _token_for_this_account(token: str) -> Optional[str]:
     if not claimed or claimed.casefold() == identity["address"].casefold():
         return token
 
-    console.print(f"[dim]Your saved token is for {claimed[:16]}…, but this "
-                  f"project acts as {identity['address'][:16]}…. "
+    console.print(f"[dim]Your saved token is for {claimed[:16]}…, but the "
+                  f"current identity is {identity['address'][:16]}…. "
                   f"Authenticating again.[/dim]")
     if authenticate(co_dir, save_to_project=False, quiet=True):
         from dotenv import load_dotenv
@@ -1127,7 +1127,7 @@ def _token_for_this_account(token: str) -> Optional[str]:
     # reads another account's mailbox and spends another account's credit while
     # looking like an ordinary working session. No key at all is recoverable:
     # callers say "run co auth", and the operator knows something is wrong.
-    console.print("[yellow]Could not get a token for this project's identity. "
+    console.print("[yellow]Could not get a token for the current identity. "
                   "Not using the one on hand — it bills another account. "
                   "Run [bold]co auth[/bold].[/yellow]")
     return None
