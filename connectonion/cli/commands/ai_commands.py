@@ -7,6 +7,7 @@ LLM-Note:
   Errors: known LLM provider failures print one actionable message and exit 1; programmer errors still propagate with their traceback
 """
 
+import asyncio
 import json
 import sys
 from contextlib import nullcontext, redirect_stdout
@@ -26,6 +27,7 @@ def handle_ai(
     yolo_turns: int = 100,
     json_output: bool = False,
     resume: str = None,
+    acp: bool = False,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -38,11 +40,16 @@ def handle_ai(
         yolo_turns: Maximum autonomous turns before a checkpoint
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
+        acp: Serve the coding agent over ACP v1 on stdio
 
     Examples:
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
     """
+    if acp and (prompt or json_output or resume):
+        console.print("[red]--acp cannot be combined with a prompt, --json, or --resume[/red]")
+        raise typer.Exit(2)
+
     if not prompt and (json_output or resume):
         message = "--json and --resume require a one-shot prompt"
         if json_output:
@@ -58,6 +65,19 @@ def handle_ai(
     if prompt and json_output:
         _handle_json_one_shot(
             prompt, model, max_iterations, yolo, yolo_turns, resume
+        )
+        return
+
+    if acp:
+        from ..co_ai.acp_server import serve_acp
+
+        asyncio.run(
+            serve_acp(
+                model=model,
+                max_iterations=max_iterations,
+                yolo=yolo,
+                yolo_turns=yolo_turns,
+            )
         )
         return
 
