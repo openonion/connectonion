@@ -11,6 +11,8 @@ LLM-Note:
 import uuid
 
 from rich.console import Console
+
+from ....core.acp_wire import ACP_CANCEL_METHOD, ACP_SCHEMA_VERSION
 from ...trust.ws_admin import get_onboard_requirements
 from .agent_io import resume_forwarding
 
@@ -120,7 +122,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
             client = conn["session"] or {}
             conn["session"], server_newer = merge_sessions(client_session=client, server_session=stored.session)
             if server_newer:
-                console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
+                console.print("  [dim]↕ merged sessions (server newer)[/dim]")
 
     # The live half, and the worse one: resume_forwarding rewinds and streams
     # the output of a turn already in progress. A caller who does not own it was
@@ -136,7 +138,17 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
 
     console.print(f"[green]✓ CONNECT[/green] agent_address={agent_address[:16]}... session={session_id[:8]}... status={status}{' (server_newer)' if server_newer else ''}")
 
-    connected_msg = {"type": "CONNECTED", "session_id": session_id, "status": status}
+    connected_msg = {
+        "type": "CONNECTED",
+        "session_id": session_id,
+        "status": status,
+        "carrier_capabilities": {
+            "acp": {
+                "schema": ACP_SCHEMA_VERSION,
+                "client_notifications": [ACP_CANCEL_METHOD],
+            }
+        },
+    }
     if server_newer and conn["session"]:
         from ..session import session_to_chat_items
         connected_msg["server_newer"] = True

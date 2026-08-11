@@ -15,6 +15,7 @@ from acp import text_block, tool_content
 from acp.schema import (
     AgentMessageChunk,
     AgentRequest,
+    CancelNotification,
     PermissionOption,
     RequestPermissionRequest,
     RequestPermissionResponse,
@@ -32,6 +33,7 @@ ACP_RESPONSE_FRAME_TYPE = "ACP_RESPONSE"
 ACP_SCHEMA_VERSION = "schema-v1.19.0"
 ACP_SESSION_UPDATE_METHOD = "session/update"
 ACP_PERMISSION_METHOD = "session/request_permission"
+ACP_CANCEL_METHOD = "session/cancel"
 
 ACP_PERMISSION_OPTIONS = (
     PermissionOption(
@@ -229,6 +231,31 @@ def legacy_approval_response_from_acp(
     if feedback:
         response["feedback"] = feedback
     return response
+
+
+def legacy_interrupt_from_acp_cancel(
+    frame: Mapping[str, Any], *, expected_session_id: str
+) -> dict[str, str]:
+    """Validate one exact ACP cancel notification and map it to Host IO."""
+
+    if frame.get("type") != ACP_FRAME_TYPE:
+        raise ValueError("Unsupported ACP cancel carrier")
+    if frame.get("acpSchema") != ACP_SCHEMA_VERSION:
+        raise ValueError("Unsupported ACP carrier schema")
+    message = _required_mapping(frame, "message")
+    if set(message) != {"jsonrpc", "method", "params"}:
+        raise ValueError("ACP cancel must be a JSON-RPC notification")
+    if message.get("jsonrpc") != "2.0":
+        raise ValueError("ACP cancel jsonrpc must be '2.0'")
+    if message.get("method") != ACP_CANCEL_METHOD:
+        raise ValueError("Unsupported ACP client notification method")
+    params = _required_mapping(message, "params")
+    if not isinstance(params.get("sessionId"), str):
+        raise ValueError("ACP cancel sessionId must be a string")
+    cancel = CancelNotification.model_validate(params)
+    if cancel.session_id != expected_session_id:
+        raise ValueError("ACP cancel belongs to another session")
+    return {"type": "INTERRUPT"}
 
 
 def _hard_rejection() -> dict[str, Any]:

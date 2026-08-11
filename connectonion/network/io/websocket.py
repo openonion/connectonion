@@ -46,6 +46,7 @@ class WebSocketIO(IO):
 
         self._closed = False
         self._pending_permission: Dict[str, Any] | None = None
+        self._interrupt_requested = False
 
     # ═══════════════════════════════════════════════════════
     # Agent side (sync)
@@ -155,6 +156,17 @@ class WebSocketIO(IO):
         with self._client_condition:
             self._msgs_from_client.append(msg)
             self._client_condition.notify_all()
+
+    def request_interrupt(self) -> bool:
+        """Deliver at most one interrupt for this turn's IO generation."""
+
+        with self._client_condition:
+            if self._interrupt_requested:
+                return False
+            self._interrupt_requested = True
+            self._msgs_from_client.append({"type": "INTERRUPT"})
+            self._client_condition.notify_all()
+            return True
 
     def register_permission_request(
         self,
