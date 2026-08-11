@@ -10,9 +10,15 @@ Components under test:
 """
 
 
+import sys
+
 import pytest
 from unittest.mock import Mock
 from connectonion.useful_tools.ask_user import ask_user
+
+# The package re-exports the function under the module's own name, so
+# `connectonion.useful_tools.ask_user` resolves to the function. Reach the module itself.
+ask_user_module = sys.modules["connectonion.useful_tools.ask_user"]
 from connectonion.core.tool_factory import create_tool_from_function
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.core.tool_registry import ToolRegistry
@@ -144,7 +150,7 @@ class TestAskUserTool:
 
         assert agent.current_session["stop_signal"] == "Interrupted by user"
 
-    def test_unanswered_question_is_not_treated_as_approval(self):
+    def test_unanswered_question_is_not_treated_as_approval(self, monkeypatch):
         """With no io there is nobody to answer — one-shot runs and every
         deployed agent. This used to reply "decide from the request context",
         which reads as yes: an agent that correctly stopped to confirm an
@@ -152,6 +158,7 @@ class TestAskUserTool:
 
         Caught live — `co ai` drafted a company-wide Slack announcement, called
         ask_user for approval, got that string back, and posted it."""
+        monkeypatch.delenv("OWNER_EMAIL", raising=False)
         agent = FakeAgent()
         assert agent.io is None
 
@@ -165,6 +172,80 @@ class TestAskUserTool:
         # Names the actions it is gating, so the model knows what "this" covers.
         for action in ["send", "post", "delete", "overwrite", "deploy"]:
             assert action in lowered
+
+
+class TestAskOwnerByEmail:
+    """With no io, the owner's inbox is the only channel left to reach a human."""
+
+    @pytest.fixture
+    def owner(self, monkeypatch):
+        monkeypatch.setenv("OWNER_EMAIL", "aaron@example.com")
+        monkeypatch.setattr(ask_user_module.time, "sleep", lambda seconds: None)
+        return "aaron@example.com"
+
+    def test_emails_the_owner_and_returns_their_reply(self, owner, monkeypatch):
+        sent = {}
+        monkeypatch.setattr(ask_user_module, "send_email",
+                            lambda to, subject, message: sent.update(to=to, subject=subject, message=message)
+                            or {"success": True})
+        inbox = [[], [{"id": "m1", "from": owner, "message": "Yes, go ahead"}]]
+        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [])
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        agent = FakeAgent()
+        result = ask_user(agent, "Publish the event?", options=["Yes", "No"])
+
+        assert result == "Yes, go ahead"
+        assert sent["to"] == owner
+        assert "Publish the event?" in sent["subject"]
+        assert "Yes" in sent["message"] and "No" in sent["message"]
+
+    def test_emails_already_in_the_inbox_are_not_mistaken_for_the_answer(self, owner, monkeypatch):
+        """The owner has written before. Only mail that arrives AFTER we ask counts."""
+        monkeypatch.setattr(ask_user_module, "send_email",
+                            lambda to, subject, message: {"success": True})
+        old = {"id": "old", "from": owner, "message": "unrelated earlier email"}
+        new = {"id": "new", "from": owner, "message": "No, hold off"}
+        inbox = [[old], [old], [old, new]]
+        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [old])
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
+
+        assert result == "No, hold off"
+
+    def test_quoted_question_is_stripped_from_the_reply(self, owner, monkeypatch):
+        monkeypatch.setattr(ask_user_module, "send_email",
+                            lambda to, subject, message: {"success": True})
+        reply = "482913\n\nOn Mon, Aug 11, 2026 at 9:02 AM agent wrote:\n> Your agent is asking: code?"
+        inbox = [[], [{"id": "m1", "from": owner, "message": reply}]]
+        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: inbox.pop(0) if inbox else [])
+        monkeypatch.setattr(ask_user_module, "mark_read", lambda email_id: True)
+
+        result = ask_user(FakeAgent(), "What is the SMS code?", options=[])
+
+        assert result == "482913"
+
+    def test_timeout_reports_unanswered_rather_than_approving(self, owner, monkeypatch):
+        monkeypatch.setattr(ask_user_module, "send_email",
+                            lambda to, subject, message: {"success": True})
+        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: [])
+        monkeypatch.setattr(ask_user_module, "REPLY_TIMEOUT", 0)
+
+        result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
+
+        assert "NOT ANSWERED" in result
+        assert "not approval" in result.lower()
+
+    def test_failed_send_reports_unanswered_rather_than_approving(self, owner, monkeypatch):
+        monkeypatch.setattr(ask_user_module, "send_email",
+                            lambda to, subject, message: {"success": False, "error": "no credits"})
+        monkeypatch.setattr(ask_user_module, "get_emails", lambda last=10: [])
+
+        result = ask_user(FakeAgent(), "Publish the event?", options=["Yes", "No"])
+
+        assert "NOT ANSWERED" in result
+        assert "no credits" in result
 
 
 class TestAskUserSchema:
