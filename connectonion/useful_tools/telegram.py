@@ -5,11 +5,10 @@ LLM-Note:
   Data flow: send_telegram(chat, message) → reads TELEGRAM_BOT_TOKEN → POST api.telegram.org/bot<token>/sendMessage → returns {success, message_id, chat, error}
   State/Effects: one HTTP POST per message | no local state | no credential of ours is involved — the bot belongs to the user
   Integration: exposed as an agent tool and as `co telegram send` | the token comes from the user's own @BotFather bot, like Gmail's OAuth token rather than like a carrier account
-  Errors: returns {success: False, error} for a missing token or a refused send — the caller decides whether that is fatal
+  Errors: returns {success: False, error, chat} for setup, transport, protocol, and Telegram refusals without exposing the token-bearing URL
 """
 
 import os
-from typing import Dict
 
 import requests
 
@@ -23,7 +22,35 @@ NO_TOKEN = (
 )
 
 
-def send_telegram(chat: str, message: str) -> Dict:
+def _failure(chat: str, error: str) -> dict[str, object]:
+    return {"success": False, "error": error, "chat": chat}
+
+
+def _result_from_response(response, *, token: str, chat: str) -> dict[str, object]:
+    """Translate Telegram's envelope without echoing raw responses or URLs."""
+    status = getattr(response, "status_code", "unknown")
+    try:
+        body = response.json()
+    except ValueError:
+        return _failure(chat, f"Telegram returned HTTP {status} without JSON.")
+
+    if not isinstance(body, dict):
+        return _failure(chat, "Telegram returned an invalid response.")
+    if not body.get("ok"):
+        description = body.get("description")
+        if isinstance(description, str) and description:
+            safe_description = description.replace(token, "[redacted]")[:500]
+            return _failure(chat, f"Telegram refused the message: {safe_description}")
+        return _failure(chat, f"Telegram refused the message (HTTP {status}).")
+
+    result = body.get("result")
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    if message_id is None:
+        return _failure(chat, "Telegram returned an invalid success response.")
+    return {"success": True, "message_id": message_id, "chat": chat}
+
+
+def send_telegram(chat: str, message: str) -> dict[str, object]:
     """Send a Telegram message from your bot.
 
     Args:
@@ -35,27 +62,16 @@ def send_telegram(chat: str, message: str) -> Dict:
     """
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        return {"success": False, "error": NO_TOKEN}
+        return _failure(chat, NO_TOKEN)
 
-    response = requests.post(
-        f"{API}/bot{token}/sendMessage",
-        json={"chat_id": chat, "text": message},
-        timeout=15,
-    )
-    body = response.json()
-
-    if not body.get("ok"):
-        # Telegram's own description is more useful than anything we would
-        # write: "chat not found" and "bot was blocked by the user" are
-        # different problems with different fixes.
-        return {
-            "success": False,
-            "error": f"Telegram refused the message: {body.get('description', response.text[:200])}",
-            "chat": chat,
-        }
-
-    return {
-        "success": True,
-        "message_id": body["result"]["message_id"],
-        "chat": chat,
-    }
+    try:
+        response = requests.post(
+            f"{API}/bot{token}/sendMessage",
+            json={"chat_id": chat, "text": message},
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        # Request exception strings can contain the URL, and Telegram puts the
+        # bot token in that URL. The class names the failure without the secret.
+        return _failure(chat, f"Telegram request failed ({type(exc).__name__}).")
+    return _result_from_response(response, token=token, chat=chat)

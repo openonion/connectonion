@@ -69,6 +69,7 @@ def _load_env_vars(
         "MICROSOFT_EMAIL",
         "MICROSOFT_ACCESS_TOKEN",
         "MICROSOFT_REFRESH_TOKEN",
+        "TELEGRAM_BOT_TOKEN",
     )
     return _selected_credential_values(
         names,
@@ -209,6 +210,13 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
             )
     else:
         sec_table.add_row("API Key", "[dim]not set — run 'co auth'[/dim]")
+
+    telegram_token = env_vars.get("TELEGRAM_BOT_TOKEN")
+    if telegram_token:
+        sec_table.add_row(
+            "Telegram Bot",
+            telegram_token if reveal else _mask(telegram_token, secret=True),
+        )
 
     console.print(Panel(sec_table, title="[bold]Secrets[/bold]", border_style="yellow"))
 

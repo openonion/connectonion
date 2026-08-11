@@ -20,11 +20,14 @@ telegram = sys.modules["connectonion.useful_tools.telegram"]
 
 
 class FakeResponse:
-    def __init__(self, payload, text=""):
+    def __init__(self, payload=None, *, status_code=200, json_error=False):
         self._payload = payload
-        self.text = text
+        self.status_code = status_code
+        self._json_error = json_error
 
     def json(self):
+        if self._json_error:
+            raise ValueError("not json")
         return self._payload
 
 
@@ -96,6 +99,56 @@ def test_telegrams_own_reason_survives_to_the_caller(bot, monkeypatch):
     assert result["chat"] == "99999"
 
 
+def test_transport_errors_do_not_return_the_token_bearing_url(bot, monkeypatch):
+    def fail(url, json, timeout):
+        raise telegram.requests.ConnectionError(f"failed to reach {url}")
+
+    monkeypatch.setattr(telegram.requests, "post", fail)
+
+    result = send_telegram("12345", "hello")
+
+    assert result["success"] is False
+    assert "ConnectionError" in result["error"]
+    assert "123:ABC" not in repr(result)
+    assert "api.telegram.org" not in repr(result)
+
+
+def test_non_json_and_malformed_success_responses_fail_safely(bot, monkeypatch):
+    responses = iter(
+        [
+            FakeResponse(status_code=502, json_error=True),
+            FakeResponse({"ok": True, "result": {}}),
+        ]
+    )
+    monkeypatch.setattr(
+        telegram.requests,
+        "post",
+        lambda url, json, timeout: next(responses),
+    )
+
+    non_json = send_telegram("12345", "hello")
+    malformed = send_telegram("12345", "hello")
+
+    assert non_json["error"] == "Telegram returned HTTP 502 without JSON."
+    assert malformed["error"] == "Telegram returned an invalid success response."
+    assert "123:ABC" not in repr((non_json, malformed))
+
+
+def test_a_server_description_cannot_echo_the_bot_token(bot, monkeypatch):
+    monkeypatch.setattr(
+        telegram.requests,
+        "post",
+        lambda url, json, timeout: FakeResponse(
+            {"ok": False, "description": "bad token 123:ABC"}
+        ),
+    )
+
+    result = send_telegram("12345", "hello")
+
+    assert "[redacted]" in result["error"]
+    assert "123:ABC" not in repr(result)
+
+
 def test_a_channel_name_is_passed_through_as_given(bot, monkeypatch):
     """@channelname is a valid chat_id to Telegram — it must not be mangled."""
     posted = {}
@@ -135,3 +188,81 @@ class TestTheCommand:
         )
 
         assert telegram_commands.handle_telegram_send("12345", "hello") == 0
+
+    def test_terminal_input_is_rendered_as_text_not_rich_markup(
+        self, monkeypatch, capsys
+    ):
+        from connectonion.cli.commands import telegram_commands
+        from rich.console import Console
+
+        monkeypatch.setattr(
+            telegram_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(
+            telegram_commands,
+            "send_telegram",
+            lambda chat, message: {
+                "success": True,
+                "message_id": "[link=https://bad.example]5[/link]",
+                "chat": chat,
+            },
+        )
+
+        telegram_commands.handle_telegram_send("[bold]owner[/bold]", "hello")
+        output = capsys.readouterr().out
+
+        assert "[bold]owner[/bold]" in output
+        assert "[link=https://bad.example]5[/link]" in output
+
+    def test_terminal_error_is_rendered_as_text_not_rich_markup(
+        self, monkeypatch, capsys
+    ):
+        from connectonion.cli.commands import telegram_commands
+        from rich.console import Console
+
+        monkeypatch.setattr(
+            telegram_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(
+            telegram_commands,
+            "send_telegram",
+            lambda chat, message: {
+                "success": False,
+                "error": "[link=https://bad.example]refused[/link]",
+            },
+        )
+
+        with pytest.raises(SystemExit):
+            telegram_commands.handle_telegram_send("owner", "hello")
+        output = capsys.readouterr().out
+
+        assert "[link=https://bad.example]refused[/link]" in output
+
+
+def test_the_tool_is_available_from_the_public_package():
+    import connectonion
+
+    assert connectonion.send_telegram is send_telegram
+
+
+def test_status_discovers_the_bot_token_without_exposing_it(tmp_path):
+    from connectonion.cli.commands.status_commands import _credential_rows
+
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (home / ".co").mkdir(parents=True)
+    token = "123:ABC"
+    (home / ".co" / "keys.env").write_text(f"TELEGRAM_BOT_TOKEN={token}\n")
+
+    rows = _credential_rows(project_dir=project, home=home, environ={})
+    row = next(item for item in rows if item["credential"] == "TELEGRAM_BOT_TOKEN")
+
+    assert row["provider"] == "Telegram"
+    assert row["status"] == "discovered · not loaded"
+    assert row["source"] == "~/.co/keys.env"
+    assert token not in repr(rows)

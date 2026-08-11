@@ -78,7 +78,7 @@ _FROM = {
     "load_system_prompt": ".prompts",
     **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
     **{name: ".useful_tools" for name in (
-        "send_email", "get_emails", "mark_read", "mark_unread",
+        "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
         "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
         "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
         "claude_code",
@@ -160,6 +160,7 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    "send_telegram",
     # Class-based tools
     "Memory",
     "Gmail",
