@@ -22,6 +22,7 @@ from ..prompts import load_system_prompt
 from .events import EventHandler
 from .interrupt import run_interruptible
 from .llm import LLM, TokenUsage, create_llm
+from .provider_messages import messages_for_provider
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
@@ -547,7 +548,11 @@ class Agent:
             if response is not None:
                 if not response.tool_calls:
                     content = response.content or ""
-                    self.current_session['messages'].append({"role": "assistant", "content": content})
+                    self.current_session['messages'].append({
+                        "role": "assistant",
+                        "content": content,
+                        "id": self._next_trace_id(),
+                    })
                 else:
                     # Process tool calls
                     self._execute_and_record_tools(response.tool_calls)
@@ -617,7 +622,7 @@ class Agent:
         })
 
         start = time.time()
-        messages = list(self.current_session['messages'])
+        messages = messages_for_provider(self.current_session['messages'])
         response, interrupted = run_interruptible(
             lambda: self.llm.complete(messages, tools=tool_schemas),
             self.io,

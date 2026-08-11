@@ -10,6 +10,7 @@ Components under test:
 """
 
 from unittest.mock import Mock
+from uuid import UUID
 
 import pytest
 
@@ -1008,10 +1009,10 @@ class TestGracefulInterrupt:
         threading.Thread(target=complete_with_interrupt, daemon=True).start()
 
         assert agent.input("finish") == "completed answer"
-        assert agent.current_session['messages'][-1] == {
-            'role': 'assistant',
-            'content': 'completed answer',
-        }
+        final_message = agent.current_session['messages'][-1]
+        assert final_message['role'] == 'assistant'
+        assert final_message['content'] == 'completed answer'
+        UUID(final_message['id'])
         assert 'stop_signal' not in agent.current_session
 
     def test_completed_final_response_wins_interrupt_from_after_iteration(self):
@@ -1055,13 +1056,31 @@ class TestGracefulInterrupt:
         agent.io = io
 
         assert agent.input("finish") == "completed answer"
-        assert agent.current_session['messages'][-1] == {
-            'role': 'assistant',
-            'content': 'completed answer',
-        }
+        final_message = agent.current_session['messages'][-1]
+        assert final_message['role'] == 'assistant'
+        assert final_message['content'] == 'completed answer'
+        UUID(final_message['id'])
         assert io.messages == []
         assert 'stop_signal' not in agent.current_session
         assert '_final_response_ready' not in agent.current_session
+
+    def test_terminal_message_ids_are_unique_and_never_reach_the_provider(self):
+        llm = MockLLM(responses=[
+            LLMResponse(content="first", tool_calls=[], raw_response={}, usage=TokenUsage()),
+            LLMResponse(content="second", tool_calls=[], raw_response={}, usage=TokenUsage()),
+        ])
+        agent = Agent("message-identity", llm=llm, log=False, quiet=True)
+
+        assert agent.input("one") == "first"
+        first = agent.current_session['messages'][-1]
+        UUID(first['id'])
+
+        assert agent.input("two") == "second"
+        second = agent.current_session['messages'][-1]
+        UUID(second['id'])
+
+        assert first['id'] != second['id']
+        assert all('id' not in message for message in llm.last_call['messages'])
 
     def test_runtime_input_continuation_does_not_swallow_interrupt(self):
         from connectonion.network.io.websocket import WebSocketIO
