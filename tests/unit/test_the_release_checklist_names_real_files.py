@@ -41,6 +41,8 @@ RELEASE_GUIDANCE = (
     REPO / "CLAUDE.md",
     REPO / "connectonion" / "useful_skills" / "ship-feature" / "SKILL.md",
     REPO / "docs" / "features" / "skills.md",
+    REPO / "docs" / "useful_skills" / "ship-feature.md",
+    REPO / "docs" / "useful_plugins" / "skills.md",
 )
 
 

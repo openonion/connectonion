@@ -584,21 +584,25 @@ User types: `/commit`
 ```yaml
 ---
 name: release
-description: Run tests and publish to PyPI
+description: Prepare a reviewed, tag-driven PyPI release
 tools:
   - Bash(pytest *)
   - Bash(python -m build)
-  - Bash(python -m twine *)
+  - Bash(python -m twine check *)
+  - Bash(gh pr *)
+  - Bash(gh run *)
   - Bash(git tag *)
   - Bash(git push *)
   - read_file
   - edit
 ---
-Run tests, build package, and publish to PyPI.
+Run tests, validate the exact package, merge the release PR, tag
+`<reviewed-merge-commit>`, and wait for `.github/workflows/release.yml` to
+publish through PyPI Trusted Publishing.
 ```
 
 User types: `/release`
-→ Testing and publishing commands auto-approved
+→ Candidate validation and exact-tag workflow commands auto-approved
 → Other dangerous commands still require approval
 
 ### 3. Code Review

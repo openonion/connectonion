@@ -62,14 +62,20 @@ mkdir -p .co/skills/deploy
 cat > .co/skills/deploy/SKILL.md <<'EOF'
 ---
 name: deploy
-description: Deploy to PyPI
+description: Prepare a reviewed, tag-driven PyPI release
 tools:
   - Bash(pytest *)
   - Bash(python -m build)
-  - Bash(python -m twine *)
+  - Bash(python -m twine check *)
+  - Bash(gh pr *)
+  - Bash(gh run *)
+  - Bash(git tag *)
+  - Bash(git push *)
 ---
 
-Deploy package to PyPI after running tests.
+Run tests, validate the exact package, merge the release PR, tag
+`<reviewed-merge-commit>`, and wait for `.github/workflows/release.yml` to
+publish through PyPI Trusted Publishing.
 EOF
 ```
 
