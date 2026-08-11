@@ -206,7 +206,14 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     task.add_done_callback(exec_tasks.discard)
 
             elif msg_type == "ACP_NOTIFICATION":
-                if not active_io:
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                if (
+                    not active_io
+                    or not registered
+                    or registered.status != "running"
+                    or registered.io is not active_io
+                ):
                     await send_msg({
                         "type": "ERROR",
                         "message": "ACP cancel requires an active turn",
@@ -231,7 +238,14 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     request_interrupt()
 
             elif msg_type == "INTERRUPT":
-                if not active_io:
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                if (
+                    not active_io
+                    or not registered
+                    or registered.status != "running"
+                    or registered.io is not active_io
+                ):
                     await send_msg({
                         "type": "ERROR",
                         "message": "interrupt requires an active turn",

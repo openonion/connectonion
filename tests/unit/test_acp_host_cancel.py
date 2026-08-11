@@ -1,6 +1,7 @@
 """ACP session/cancel over the authenticated Host carrier."""
 
 from copy import deepcopy
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -66,7 +67,7 @@ def test_one_io_generation_accepts_one_interrupt_but_the_next_is_fresh():
     assert second.receive_all() == [{"type": "INTERRUPT"}]
 
 
-async def run_cancel(monkeypatch, *frames, active=True):
+async def run_cancel(monkeypatch, *frames, active=True, registry_status="running"):
     from connectonion.network.host.ws_router import session as ws_session
 
     io = WebSocketIO()
@@ -88,12 +89,16 @@ async def run_cancel(monkeypatch, *frames, active=True):
         sent.append(message)
 
     monkeypatch.setattr(ws_session, "handle_connect", fake_connect)
+    registry = Mock()
+    registry.get.return_value = (
+        SimpleNamespace(status=registry_status, io=io) if active else None
+    )
     await ws_session.run_ws_session(
         send_msg,
         recv_msg,
         route_handlers={},
         storage=None,
-        registry=None,
+        registry=registry,
         trust=None,
         enable_ping=False,
     )
@@ -133,6 +138,19 @@ async def test_dispatch_rejects_cross_session_cancel_without_interrupt(monkeypat
 async def test_dispatch_rejects_cancel_without_an_active_turn(monkeypatch):
     mailbox, sent = await run_cancel(
         monkeypatch, cancel_frame(), active=False
+    )
+
+    assert mailbox == []
+    assert sent == [{
+        "type": "ERROR",
+        "message": "ACP cancel requires an active turn",
+    }]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_rejects_cancel_after_the_turn_finished(monkeypatch):
+    mailbox, sent = await run_cancel(
+        monkeypatch, cancel_frame(), registry_status="connected"
     )
 
     assert mailbox == []
