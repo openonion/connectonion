@@ -1041,7 +1041,7 @@ def load_api_key() -> Optional[str]:
 
     Checks in order:
     1. Environment variable
-    2. Local .env file
+    2. Project-root .env file
     3. Global ~/.co/keys.env file
 
     Every source goes through `_token_for_this_account()`. The environment used
@@ -1055,11 +1055,15 @@ def load_api_key() -> Optional[str]:
         API key if found, None otherwise
     """
     from dotenv import load_dotenv
+    from ...project import project_root
 
     if api_key := os.getenv("OPENONION_API_KEY"):
         return _token_for_this_account(api_key)
 
-    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
+    for env_path in [
+        project_root() / ".env",
+        Path.home() / ".co" / "keys.env",
+    ]:
         if env_path.exists():
             load_dotenv(env_path)
             if api_key := os.getenv("OPENONION_API_KEY"):
@@ -1070,44 +1074,60 @@ def load_api_key() -> Optional[str]:
 def _token_for_this_account(token: str) -> Optional[str]:
     """Re-authenticate when the stored token names an account we are not.
 
-    `co server new` and `co deploy` bill whatever the token says; `co status`
-    signs fresh and reads the key on disk. After `co account migrate` those are
-    two different accounts, and nothing fails — `/api/v1/auth` creates an
-    account for any key that authenticates, so the old address quietly becomes a
-    fresh, empty, working one. The operator sees a balance that is not theirs
-    and spends credit they did not migrate. One $180 server was bought that way.
+    `co server new` and `co deploy` bill whatever the token says. After
+    `co account migrate`, or when a project has its own key, a token can name a
+    different account than the canonical project-first identity. Nothing fails
+    at the API boundary, so the operator sees and spends another account's
+    credit. One $180 server was bought that way.
 
     The CLI holds the signing key, so it can see the mismatch itself rather than
     waiting for a balance to look wrong. Cheap: a local decode, and a network
     call only when the two disagree.
     """
     from .auth_commands import authenticate
+    from ...project import project_co_dir, project_identity
 
-    co_dir = Path.home() / ".co"
-    identity = address.load(co_dir)
+    project_dir = project_co_dir()
+    global_dir = Path.home() / ".co"
+    identity = project_identity()
     if not identity:
         return token
 
+    # authenticate() needs the directory that owns the selected signing key.
+    # This mirrors project_identity(): local project key, else machine key.
+    co_dir = project_dir if address.load(project_dir) else global_dir
+
     claimed = account_in_token(token)
-    if not claimed or claimed == identity["address"]:
+    if not claimed or claimed.casefold() == identity["address"].casefold():
         return token
 
     console.print(f"[dim]Your saved token is for {claimed[:16]}…, but this "
-                  f"machine is {identity['address'][:16]}…. "
+                  f"project acts as {identity['address'][:16]}…. "
                   f"Authenticating again.[/dim]")
     if authenticate(co_dir, save_to_project=False, quiet=True):
         from dotenv import load_dotenv
-        load_dotenv(co_dir / "keys.env", override=True)
+
+        token_file = (
+            co_dir / "keys.env"
+            if co_dir.resolve() == global_dir.resolve()
+            else co_dir.parent / ".env"
+        )
+        load_dotenv(token_file, override=True)
         refreshed = os.getenv("OPENONION_API_KEY")
-        if refreshed and account_in_token(refreshed) == identity["address"]:
+        refreshed_account = account_in_token(refreshed) if refreshed else None
+        if (
+            refreshed
+            and refreshed_account
+            and refreshed_account.casefold() == identity["address"].casefold()
+        ):
             return refreshed
 
-    # Re-authentication did not produce a token for this machine. Returning the
-    # mismatched one anyway is the failure this function exists to prevent — it
+    # Re-authentication did not produce a token for the selected identity.
+    # Returning the mismatched one anyway is the failure this function exists to prevent — it
     # reads another account's mailbox and spends another account's credit while
     # looking like an ordinary working session. No key at all is recoverable:
     # callers say "run co auth", and the operator knows something is wrong.
-    console.print("[yellow]Could not get a token for this machine's key. "
+    console.print("[yellow]Could not get a token for this project's identity. "
                   "Not using the one on hand — it bills another account. "
                   "Run [bold]co auth[/bold].[/yellow]")
     return None
