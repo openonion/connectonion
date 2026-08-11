@@ -109,6 +109,9 @@ def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_p
         def initialize(self, timeout=60):
             pass
 
+        def refresh_account(self, timeout=60):
+            pass
+
         def start_thread(self, **kwargs):
             calls.append(("start", kwargs))
             return "thread-1"

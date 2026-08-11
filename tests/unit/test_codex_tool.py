@@ -45,6 +45,9 @@ class FakeServer:
     def initialize(self, timeout=60):
         self.calls.append("initialize")
 
+    def refresh_account(self, timeout=60):
+        self.calls.append("refresh_account")
+
     def start_thread(
         self,
         sandbox="workspace-write",
@@ -118,6 +121,38 @@ class TestCodexRun:
         assert result["last_message"] == "Hello world"
         assert result["exit_code"] == 0
         assert result["usage"]["input_tokens"] == 5
+        assert FakeServer.last.calls[:4] == [
+            "start",
+            "initialize",
+            "refresh_account",
+            ("start_thread", "workspace-write", "", "never"),
+        ]
+
+    def test_auth_refresh_failure_does_not_start_a_thread(self):
+        class AuthFailureServer(FakeServer):
+            def refresh_account(self, timeout=60):
+                super().refresh_account(timeout)
+                raise RuntimeError("account/read failed: login required")
+
+        with (
+            patch.object(codex_module, "CodexAppServer", AuthFailureServer),
+            patch.object(
+                codex_module,
+                "_base_command",
+                return_value=["codex", "app-server"],
+            ),
+        ):
+            result = json.loads(codex("fix", approval="auto"))
+
+        assert result["error"] == (
+            "codex app-server: account/read failed: login required"
+        )
+        assert AuthFailureServer.last.calls == [
+            "start",
+            "initialize",
+            "refresh_account",
+            "close",
+        ]
 
     def test_resume_reapplies_sandbox_and_model(self):
         agent = _Agent(_IO())
@@ -336,6 +371,15 @@ class TestApprovalDetails:
 
 
 class TestResumeProtocol:
+    def test_account_refresh_uses_codex_managed_auth(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+        with patch.object(client, "request", return_value={}) as request:
+            client.refresh_account(timeout=9)
+
+        request.assert_called_once_with(
+            "account/read", {"refreshToken": True}, timeout=9
+        )
+
     def test_start_uses_separate_process_group_and_drains_stderr(self):
         client = codex_module.CodexAppServer(["codex", "app-server"], cwd="/repo")
         process = MagicMock()
