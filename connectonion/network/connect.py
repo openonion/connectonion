@@ -31,7 +31,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from .. import address as addr
-from ..core.acp_wire import legacy_tool_event_from_acp
+from ..core.acp_wire import (
+    legacy_stream_event_from_acp,
+    session_mode_id,
+)
 
 
 def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
@@ -829,7 +832,14 @@ class RemoteAgent:
     def _handle_stream_event(self, event: Dict[str, Any]) -> None:
         """Handle streaming event and update UI."""
         try:
-            acp_event = legacy_tool_event_from_acp(event)
+            session_id = (
+                self._current_session.get("session_id")
+                if isinstance(self._current_session, dict)
+                else None
+            )
+            acp_event = legacy_stream_event_from_acp(
+                event, expected_session_id=session_id
+            )
         except (TypeError, ValueError):
             return
         if acp_event is not None:
@@ -902,6 +912,22 @@ class RemoteAgent:
                 "type": "agent",
                 "content": event.get("content")
             })
+
+        elif event_type == "mode_changed":
+            if not isinstance(self._current_session, dict):
+                return
+            current_session_id = self._current_session.get("session_id")
+            event_session_id = event.get("session_id")
+            if (
+                event_session_id is not None
+                and event_session_id != current_session_id
+            ):
+                return
+            try:
+                mode = session_mode_id(event.get("mode"))
+            except ValueError:
+                return
+            self._current_session["mode"] = mode
 
         elif event_type == "llm_call":
             # Internal event, add thinking indicator if not already present

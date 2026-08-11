@@ -16,6 +16,7 @@ from acp.schema import (
     AgentMessageChunk,
     AgentRequest,
     CancelNotification,
+    CurrentModeUpdate,
     PermissionOption,
     RequestPermissionRequest,
     RequestPermissionResponse,
@@ -34,6 +35,7 @@ ACP_SCHEMA_VERSION = "schema-v1.19.0"
 ACP_SESSION_UPDATE_METHOD = "session/update"
 ACP_PERMISSION_METHOD = "session/request_permission"
 ACP_CANCEL_METHOD = "session/cancel"
+ACP_SESSION_MODE_IDS = frozenset({"safe", "accept_edits", "ulw"})
 
 ACP_PERMISSION_OPTIONS = (
     PermissionOption(
@@ -96,6 +98,27 @@ def map_message_event(
     )
 
 
+def session_mode_id(value: Any) -> str:
+    """Return one persisted server mode ID or reject it without coercion."""
+
+    if not isinstance(value, str) or value not in ACP_SESSION_MODE_IDS:
+        raise ValueError(f"Unsupported ACP session mode: {value!r}")
+    return value
+
+
+def map_mode_event(
+    event: Mapping[str, Any],
+) -> CurrentModeUpdate | None:
+    """Map an authoritative Host mode observation to ACP v1.19."""
+
+    if event.get("type") != "mode_changed":
+        return None
+    return CurrentModeUpdate(
+        session_update="current_mode_update",
+        current_mode_id=session_mode_id(event.get("mode")),
+    )
+
+
 def _tool_start(event: Mapping[str, Any]) -> ToolCallStart:
     return ToolCallStart(
         session_update="tool_call",
@@ -131,7 +154,11 @@ def acp_notification_frame(
 ) -> dict[str, Any] | None:
     """Return a detached ConnectOnion carrier for one supported ACP update."""
 
-    update = map_tool_event(event) or map_message_event(event)
+    update = (
+        map_tool_event(event)
+        or map_message_event(event)
+        or map_mode_event(event)
+    )
     if update is None:
         return None
     notification = SessionNotification(session_id=session_id, update=update)
@@ -277,6 +304,37 @@ def legacy_tool_event_from_acp(
 ) -> dict[str, Any] | None:
     """Decode an ACP tool notification for the legacy Python UI mapper."""
 
+    decoded = _session_update_from_acp(frame)
+    if decoded is None:
+        return None
+    _, update = decoded
+    return _legacy_tool_event(update)
+
+
+def legacy_stream_event_from_acp(
+    frame: Mapping[str, Any],
+    *,
+    expected_session_id: str | None,
+) -> dict[str, Any] | None:
+    """Decode one ACP notification for the legacy Python stream handler."""
+
+    decoded = _session_update_from_acp(frame)
+    if decoded is None:
+        return None
+    session_id, update = decoded
+    if update.get("sessionUpdate") == "current_mode_update":
+        if expected_session_id is None or session_id != expected_session_id:
+            raise ValueError("ACP mode update belongs to another session")
+        return {
+            "type": "mode_changed",
+            "mode": session_mode_id(update.get("currentModeId")),
+        }
+    return _legacy_tool_event(update)
+
+
+def _session_update_from_acp(
+    frame: Mapping[str, Any],
+) -> tuple[str, Mapping[str, Any]] | None:
     if frame.get("type") != ACP_FRAME_TYPE:
         return None
     if frame.get("acpSchema") != ACP_SCHEMA_VERSION:
@@ -287,9 +345,9 @@ def legacy_tool_event_from_acp(
     if message.get("method") != ACP_SESSION_UPDATE_METHOD:
         raise ValueError("Unsupported ACP notification method")
     params = _required_mapping(message, "params")
-    _required_string(params, "sessionId")
+    session_id = _required_string(params, "sessionId")
     update = _required_mapping(params, "update")
-    return _legacy_tool_event(update)
+    return session_id, update
 
 
 def _legacy_tool_event(update: Mapping[str, Any]) -> dict[str, Any]:
