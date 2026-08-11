@@ -14,6 +14,8 @@ Components under test:
 - connectonion.cli.commands.status_commands.handle_status
 """
 
+import base64
+import json
 import os
 import tempfile
 from io import StringIO
@@ -23,6 +25,13 @@ from unittest.mock import Mock, patch
 from rich.console import Console
 
 from .argparse_runner import ArgparseCliRunner
+
+
+def _token_for(public_key: str, nonce: str = "") -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"public_key": public_key, "nonce": nonce}).encode()
+    ).decode().rstrip("=")
+    return f"header.{payload}.signature"
 
 
 class TestCredentialStatus:
@@ -79,6 +88,44 @@ class TestCredentialStatus:
         assert environment == {}
         assert "local-secret" not in repr(rows)
 
+    def test_default_discovery_uses_the_project_root_from_a_subdirectory(
+        self, tmp_path, monkeypatch
+    ):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        nested = project / "src" / "deeper"
+        home = tmp_path / "home"
+        (project / ".co").mkdir(parents=True)
+        nested.mkdir(parents=True)
+        home.mkdir()
+        (project / ".env").write_text("OPENAI_API_KEY=project-secret\n")
+        environment = {}
+        monkeypatch.chdir(nested)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+        rows = _credential_rows(environ=environment)
+        openai = self._row(rows, "OPENAI_API_KEY")
+
+        assert openai["status"] == "discovered · not loaded"
+        assert openai["source"] == "<project>/.env"
+        assert environment == {}
+        assert (project / ".env").read_text() == "OPENAI_API_KEY=project-secret\n"
+        assert "project-secret" not in repr(rows)
+
+    def test_home_dotenv_is_named_as_home_not_as_a_project(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".env").write_text("OPENAI_API_KEY=home-secret\n")
+
+        rows = _credential_rows(project_dir=home, home=home, environ={})
+        openai = self._row(rows, "OPENAI_API_KEY")
+
+        assert openai["source"] == "~/.env"
+        assert "home-secret" not in repr(rows)
+
     def test_reports_conflicting_sources_without_values(self, tmp_path):
         from connectonion.cli.commands.status_commands import _credential_rows
 
@@ -107,6 +154,88 @@ class TestCredentialStatus:
         assert "local-secret" not in repr(rows)
         assert "global-secret" not in repr(rows)
         assert str(tmp_path) not in repr(rows)
+
+    def test_rotated_openonion_tokens_for_one_account_are_not_a_conflict(
+        self, tmp_path
+    ):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        (home / ".co").mkdir(parents=True)
+        account = "0x" + "a" * 64
+        process_token = _token_for(account, "new")
+        stored_token = _token_for(account.upper(), "old")
+        (project / ".env").write_text(
+            f"OPENONION_API_KEY={stored_token}\n"
+        )
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ={"OPENONION_API_KEY": process_token},
+        )
+        openonion = self._row(rows, "OPENONION_API_KEY")
+
+        assert openonion["status"] == "configured"
+        assert "process environment" in openonion["source"]
+        assert "<project>/.env" in openonion["source"]
+        assert account[:16] in openonion["source"].lower()
+        assert process_token not in repr(rows)
+        assert stored_token not in repr(rows)
+
+    def test_openonion_account_conflict_names_redacted_accounts(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        (home / ".co").mkdir(parents=True)
+        used_account = "0x" + "1" * 64
+        other_account = "0x" + "2" * 64
+        used_token = _token_for(used_account)
+        other_token = _token_for(other_account)
+        (project / ".env").write_text(
+            f"OPENONION_API_KEY={other_token}\n"
+        )
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ={"OPENONION_API_KEY": used_token},
+        )
+        openonion = self._row(rows, "OPENONION_API_KEY")
+
+        assert openonion["status"] == "conflict"
+        assert "process environment (used" in openonion["source"]
+        assert used_account[:16] in openonion["source"]
+        assert other_account[:16] in openonion["source"]
+        assert used_token not in repr(rows)
+        assert other_token not in repr(rows)
+
+    def test_opaque_openonion_tokens_fall_back_without_crashing(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        home.mkdir()
+        (project / ".env").write_text("OPENONION_API_KEY=other-opaque\n")
+        environment = {"OPENONION_API_KEY": "opaque-token"}
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ=environment,
+        )
+        openonion = self._row(rows, "OPENONION_API_KEY")
+
+        assert openonion["status"] == "conflict"
+        assert "account" not in openonion["source"]
+        assert "opaque-token" not in repr(rows)
+        assert "other-opaque" not in repr(rows)
+        assert environment == {"OPENONION_API_KEY": "opaque-token"}
 
     def test_ignores_placeholders_and_empty_values(self, tmp_path):
         from connectonion.cli.commands.status_commands import _credential_rows
@@ -262,6 +391,26 @@ class TestLoadApiKey:
             finally:
                 os.chdir(original_cwd)
 
+    def test_load_api_key_finds_the_project_env_from_a_subdirectory(
+        self, tmp_path, monkeypatch
+    ):
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
+
+        project = tmp_path / "project"
+        nested = project / "src" / "deeper"
+        home = tmp_path / "home"
+        (project / ".co").mkdir(parents=True)
+        nested.mkdir(parents=True)
+        home.mkdir()
+        (project / ".env").write_text(
+            "OPENONION_API_KEY=project-root-token\n"
+        )
+        monkeypatch.chdir(nested)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+
+        assert load_api_key() == "project-root-token"
+
     def test_load_api_key_from_global_keys_env(self):
         """Test loading API key from ~/.co/keys.env."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -374,6 +523,100 @@ class TestHandleStatusNoKeys:
                 assert mock_console.print.called
             finally:
                 os.chdir(original_cwd)
+
+
+class TestStatusUsesTheCanonicalProjectIdentity:
+    """The account panel and signed request must describe the project in cwd."""
+
+    @staticmethod
+    def _successful_account():
+        return Mock(
+            status_code=200,
+            json=lambda: {
+                "user": {
+                    "balance_usd": 1.0,
+                    "total_cost_usd": 0.0,
+                    "credits_usd": 1.0,
+                }
+            },
+        )
+
+    @patch('connectonion.cli.commands.status_commands.console')
+    @patch('connectonion.cli.commands.status_commands.load_api_key', return_value="token")
+    @patch('connectonion.address.load')
+    @patch('connectonion.address.sign', return_value=b'\x00' * 64)
+    @patch('connectonion.cli.commands.status_commands.requests.get')
+    @patch('connectonion.cli.commands.status_commands.requests.post')
+    def test_nested_directory_signs_as_the_project(
+        self, mock_post, mock_get, mock_sign, mock_load, _mock_key, _mock_console,
+        tmp_path, monkeypatch,
+    ):
+        from connectonion.cli.commands.status_commands import handle_status
+
+        project = tmp_path / "project"
+        project_co = project / ".co"
+        nested = project / "src" / "deeper"
+        home = tmp_path / "home"
+        global_co = home / ".co"
+        project_co.mkdir(parents=True)
+        nested.mkdir(parents=True)
+        global_co.mkdir(parents=True)
+        project_identity = {"address": "0x" + "1" * 64}
+        global_identity = {"address": "0x" + "2" * 64}
+
+        def identity_at(path):
+            path = Path(path).resolve()
+            if path == project_co.resolve():
+                return project_identity
+            if path == global_co.resolve():
+                return global_identity
+            return None
+
+        mock_load.side_effect = identity_at
+        mock_post.return_value = self._successful_account()
+        mock_get.return_value = Mock(status_code=200, json=lambda: {"deployments": []})
+        monkeypatch.chdir(nested)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+        handle_status()
+
+        assert mock_post.call_args.kwargs["json"]["public_key"] == project_identity["address"]
+        assert mock_sign.call_args.args[0] == project_identity
+
+    @patch('connectonion.cli.commands.status_commands.console')
+    @patch('connectonion.cli.commands.status_commands.load_api_key', return_value="token")
+    @patch('connectonion.address.load')
+    @patch('connectonion.address.sign', return_value=b'\x00' * 64)
+    @patch('connectonion.cli.commands.status_commands.requests.get')
+    @patch('connectonion.cli.commands.status_commands.requests.post')
+    def test_project_without_a_key_signs_as_the_global_fallback(
+        self, mock_post, mock_get, mock_sign, mock_load, _mock_key, _mock_console,
+        tmp_path, monkeypatch,
+    ):
+        from connectonion.cli.commands.status_commands import handle_status
+
+        project = tmp_path / "project"
+        nested = project / "src"
+        home = tmp_path / "home"
+        global_co = home / ".co"
+        (project / ".co").mkdir(parents=True)
+        nested.mkdir()
+        global_co.mkdir(parents=True)
+        global_identity = {"address": "0x" + "2" * 64}
+        mock_load.side_effect = lambda path: (
+            global_identity
+            if Path(path).resolve() == global_co.resolve()
+            else None
+        )
+        mock_post.return_value = self._successful_account()
+        mock_get.return_value = Mock(status_code=200, json=lambda: {"deployments": []})
+        monkeypatch.chdir(nested)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+        handle_status()
+
+        assert mock_post.call_args.kwargs["json"]["public_key"] == global_identity["address"]
+        assert mock_sign.call_args.args[0] == global_identity
 
 
 class TestHandleStatusSuccess:
