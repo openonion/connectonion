@@ -115,7 +115,8 @@ class TestHostActuallyUsesIt:
         monkeypatch.setattr(server_module.uvicorn, "run",
                             lambda app, **kw: seen.update(kw))
 
-        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash"),
+        server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash",
+                                 api_key="test-key"),
                            relay_url=None)
         return seen
 
