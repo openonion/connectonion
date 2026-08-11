@@ -1,20 +1,29 @@
 """
-Purpose: Handle the CONNECT message — Ed25519 signature auth, session merge, status decision, optional reattach to a still-running agent
+Purpose: Authenticate CONNECT, bind session ownership, initialize durable Host mode policy, advertise capabilities, and optionally reattach running work
 LLM-Note:
   Dependencies: imports from [..session (merge_sessions, session_to_chat_items via lazy local import), ...trust.ws_admin (get_onboard_requirements), .agent_io (resume_forwarding), uuid, rich.console] | imported by [.session as part of CONNECT dispatch]
-  Data flow: route_handlers["auth"] verifies sig → if forbidden + onboard methods configured: stash conn['pending_connect'] + send ONBOARD_REQUIRED | else if other err: send ERROR | else: establish_connection(): populate conn (authenticated/agent_address/session_id/session) → merge_sessions if stored exists → registry status check (running/connected/new) → send CONNECTED → if running: io.rewind_to(last_msg_id) + resume_forwarding (returns (io, task)) | establish_connection is also called by the session loop after a successful onboard, with the onboard-verified agent_address (no CONNECT replay — its signature may have aged past the 5-minute window)
-  State/Effects: mutates conn dict in place (authenticated, agent_address, session_id, session) | calls registry.update_ping when reattaching to 'connected'
+  Data flow: verify identity/trust → bind/replace session ID by owner → merge conversation → ensure durable Safe/current policy → derive identity-bounded SessionModeState → CONNECTED → optional running-agent rewind/resume
+  State/Effects: mutates authenticated connection state; may append initial/normalized durable session; refreshes registry ping when reattaching
   Integration: handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist) → returns (io, forward_task) for reattach or None
-  Performance: one storage.get + optional merge_sessions per CONNECT | one registry.get for status decision
-  Errors: auth errors surface to client as ERROR (let it crash for unexpected internals)
+  Performance: one ownership read plus one atomic mode-state initialization and registry checks per CONNECT
+  Errors: auth/policy/storage initialization failures surface as bounded ERROR frames; private storage exceptions are not sent
 """
+import asyncio
+import logging
 import uuid
 
 from rich.console import Console
+
+from ....core.acp_wire import (
+    ACP_CANCEL_METHOD,
+    ACP_SCHEMA_VERSION,
+    ACP_SET_SESSION_MODE_METHOD,
+)
 from ...trust.ws_admin import get_onboard_requirements
 from .agent_io import resume_forwarding
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
@@ -76,19 +85,25 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     ``route_handlers`` is optional so a caller that only needs the session half can
     omit it; without it no AGENT_PROFILE is sent.
     """
-    conn["authenticated"] = True
-    conn["agent_address"] = agent_address
-    conn["signed_commands"] = (
+    # A second CONNECT on the same socket must not inherit the first identity
+    # while durable policy initialization is in flight or after it fails.
+    conn["authenticated"] = False
+    for key in (
+        "agent_address", "signed_commands", "recipient_address", "session_id",
+        "session", "mode_is_admin",
+    ):
+        conn.pop(key, None)
+
+    signed_commands = (
         data.get("payload", {}).get("signed_commands") == 1
     )
-    conn["recipient_address"] = data.get("payload", {}).get("to")
+    recipient_address = data.get("payload", {}).get("to")
     session_id = data.get("session_id") or str(uuid.uuid4())
-    conn["session_id"] = session_id
-    conn["session"] = data.get("session")
+    client_session = data.get("session")
     server_newer = False
 
-    if conn["session"]:
-        msg_count = len(conn["session"].get("messages", []))
+    if client_session:
+        msg_count = len(client_session.get("messages", []))
         console.print(f"  [dim]↑ client session: {msg_count} messages[/dim]")
 
     if session_id:
@@ -115,12 +130,13 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
                           f"caller — starting a new one[/dim]")
             stored = None
             session_id = str(uuid.uuid4())
-            conn["session_id"] = session_id
         if stored and stored.session:
-            client = conn["session"] or {}
-            conn["session"], server_newer = merge_sessions(client_session=client, server_session=stored.session)
+            client = client_session or {}
+            client_session, server_newer = merge_sessions(
+                client_session=client, server_session=stored.session
+            )
             if server_newer:
-                console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
+                console.print("  [dim]↕ merged sessions (server newer)[/dim]")
 
     # The live half, and the worse one: resume_forwarding rewinds and streams
     # the output of a turn already in progress. A caller who does not own it was
@@ -134,14 +150,91 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     else:
         status = "new"
 
+    mode_state = None
+    mode_policy = (
+        route_handlers.get("session_modes") if route_handlers is not None else None
+    )
+    mode_is_admin = None
+    if mode_policy is not None:
+        from ..session.mode import (
+            ModeTransactionError,
+            ensure_host_mode_session,
+            session_with_durable_policy,
+        )
+
+        trust_agent = route_handlers["trust_agent"]
+        is_admin = trust_agent.is_admin(agent_address)
+        level = "admin" if is_admin else trust_agent.get_level(agent_address)
+        try:
+            mode_record = await asyncio.to_thread(
+                ensure_host_mode_session,
+                storage,
+                session_id,
+                requester={"address": agent_address, "level": level},
+                result_ttl=route_handlers["result_ttl"],
+                policy=mode_policy,
+                is_admin=is_admin,
+            )
+            client_session = session_with_durable_policy(
+                client_session, mode_record.session
+            )
+            mode_state = mode_policy.state(
+                mode_record.session, is_admin=is_admin
+            )
+        except ModeTransactionError as exc:
+            logger.warning(
+                "Host mode initialization rejected for session %s: %s",
+                session_id,
+                exc,
+            )
+            await send_msg({"type": "ERROR", "message": exc.message})
+            return None
+        except Exception:
+            logger.exception(
+                "Host mode initialization failed for session %s", session_id
+            )
+            await send_msg({
+                "type": "ERROR",
+                "message": "Unable to initialize session mode",
+            })
+            return None
+        mode_is_admin = is_admin
+
+    # Publish the verified identity only after every durable initialization and
+    # policy derivation above has succeeded.
+    conn.update({
+        "authenticated": True,
+        "agent_address": agent_address,
+        "signed_commands": signed_commands,
+        "recipient_address": recipient_address,
+        "session_id": session_id,
+        "session": client_session,
+    })
+    if mode_is_admin is not None:
+        conn["mode_is_admin"] = mode_is_admin
+
     console.print(f"[green]✓ CONNECT[/green] agent_address={agent_address[:16]}... session={session_id[:8]}... status={status}{' (server_newer)' if server_newer else ''}")
 
-    connected_msg = {"type": "CONNECTED", "session_id": session_id, "status": status}
-    if server_newer and conn["session"]:
+    connected_msg = {
+        "type": "CONNECTED",
+        "session_id": session_id,
+        "status": status,
+        "carrier_capabilities": {
+            "acp": {
+                "schema": ACP_SCHEMA_VERSION,
+                "client_notifications": [ACP_CANCEL_METHOD],
+                **({"client_requests": [ACP_SET_SESSION_MODE_METHOD]}
+                   if mode_state is not None else {}),
+            }
+        },
+    }
+    if mode_state is not None:
+        connected_msg["session_modes"] = mode_state
+    if server_newer and client_session:
         from ..session import session_to_chat_items
         connected_msg["server_newer"] = True
-        connected_msg["session"] = conn["session"]
-        connected_msg["chat_items"] = session_to_chat_items(conn["session"])
+        connected_msg["session"] = client_session
+        connected_msg["chat_items"] = session_to_chat_items(client_session)
     await send_msg(connected_msg)
 
     # This socket is now past signature verification and the trust gate, so it is the

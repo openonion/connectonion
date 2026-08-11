@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Optional
 import httpx
 from connectonion.backend import backend_url
+from connectonion.credentials import require_ambient_api_key
 
 
 # MIME type mapping for audio formats
@@ -67,14 +68,7 @@ def _get_mime_type(file_path: Path) -> str:
 def _get_api_key(model: str) -> str:
     """Get API key based on model."""
     if model.startswith("co/"):
-        # Use OpenOnion managed keys
-        api_key = os.getenv("OPENONION_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OpenOnion API key required for co/ models. "
-                "Run `co auth` to authenticate or set OPENONION_API_KEY."
-            )
-        return api_key
+        return require_ambient_api_key()
     else:
         # Use Gemini API key directly
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")

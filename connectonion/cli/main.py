@@ -157,6 +157,7 @@ def _show_help():
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
@@ -361,6 +362,14 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
+    acp: bool = typer.Option(
+        False, "--acp", help="Serve co ai as an ACP v1 agent over stdio"
+    ),
+    acp_mcp: bool = typer.Option(
+        False,
+        "--acp-mcp",
+        help="Allow ACP clients to launch session-scoped stdio MCP servers",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -373,6 +382,8 @@ def ai(
         yolo_turns=yolo_turns,
         json_output=json_output,
         resume=resume,
+        acp=acp,
+        acp_mcp=acp_mcp,
     )
 
 
@@ -760,6 +771,22 @@ def email_upgrade(
     handle_email_upgrade(tier, domain=domain, alias=alias, keep_address=keep_address)
 
 
+# Telegram command group. The bot is the user's own (@BotFather), so the token
+# lives in their keys.env -- no OpenOnion credential and nothing billed.
+telegram_app = _typer_app(help="Send a message from your Telegram bot.")
+app.add_typer(telegram_app, name="telegram")
+
+
+@telegram_app.command("send")
+def telegram_send(
+    chat: str = typer.Argument(..., help="Chat id, or @channelname for a channel"),
+    message: str = typer.Argument(..., help="The text to send"),
+):
+    """Send a Telegram message."""
+    from .commands.telegram_commands import handle_telegram_send
+    handle_telegram_send(chat, message)
+
+
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
 gmail_app = _typer_app(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
@@ -1054,6 +1081,16 @@ def outlook_read(email_id: str = typer.Argument(..., help="Email # from your las
     """Show one email's body and mark it read."""
     from .commands.outlook_commands import handle_outlook_read
     handle_outlook_read(email_id)
+
+
+@outlook_app.command("download")
+def outlook_download(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
+):
+    """Save an email's attachments to disk."""
+    from .commands.outlook_commands import handle_outlook_download
+    handle_outlook_download(email_id, out_dir)
 
 
 @outlook_app.command("reply")

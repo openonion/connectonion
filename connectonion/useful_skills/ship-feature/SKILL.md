@@ -56,14 +56,34 @@ If `docs-site/` exists:
 - Find the corresponding page: `glob("docs-site/app/**/*.{tsx,mdx}")`
 - Update it to match what you changed in `docs/`
 - Respect existing component structure (`CommandBlock`, `CodeBlock`, etc.)
-- Commit and push it as a separate commit in that repo:
-  ```bash
-  cd docs-site && git add . && git commit -m "Update docs for <feature>" && git push && cd ..
-  ```
+- Run its lint and production build. Prepare the docs commit, but do not publish
+  version availability before the matching PyPI package and GitHub Release are
+  public. Publish the prepared docs in Step 5e.
 
 If `docs-site/` does NOT exist locally:
 - Tell the user explicitly: "docs-site was not updated — clone it and run `co copy ship-feature --force` to re-run"
 - Do NOT silently skip — the user must know this is incomplete
+
+### Step 4b: Record the design and release story
+
+For a feature-train launch, first beta, first RC, stable release, or material
+architecture/workflow decision, create or substantially update a Design Journal
+post in the docs site. Maintenance-only patches need release notes unless they
+contain a reusable lesson.
+
+The post must explain:
+- the problem and user impact;
+- alternatives considered;
+- the decision and tradeoffs;
+- evidence and current limitations;
+- what would make the team revisit the decision.
+
+Keep one canonical Markdown source and a rendered blog page. Add the post to the
+blog index, internal navigation, site search, dynamic and static sitemaps,
+`llms.txt`, and relevant AI-readable indexes. Give it unique metadata, a
+canonical URL, social metadata, and `TechArticle` or `BlogPosting` structured
+data. Test desktop and mobile layouts. Draft with provisional wording; do not
+claim that an artifact is published until that is verified.
 
 ## Step 5: Release
 
@@ -112,17 +132,27 @@ twine upload dist/*X.Y.Z*
 
 Confirm upload succeeded by checking the output for "View at: https://pypi.org/project/<package>/X.Y.Z/"
 
+### 5e. Publish documentation and the Design Journal
+
+After the exact PyPI package and GitHub Release are public, commit and push only
+the reviewed docs-site files. Verify the deployed stable/preview labels,
+installation commands, canonical blog URL, structured data, sitemap entry,
+internal links, AI-readable indexes, and mobile rendering. If the docs site
+cannot be published, report the release handoff as incomplete rather than
+silently skipping it.
+
 ## Checklist
 
 - [ ] Tests updated and passing
 - [ ] `docs/` updated
-- [ ] `docs-site/` updated and pushed
+- [ ] `docs-site/` and any required Design Journal post updated; lint and build pass
 - [ ] Version bumped in every file that held it, and they agree
       (in connectonion: `connectonion/_version.py` and `pyproject.toml`;
        `__init__.py` only re-exports it and there is no `setup.py`)
 - [ ] Committed and tagged
 - [ ] Pushed to remote
 - [ ] Published to PyPI
+- [ ] Docs-site version state and Design Journal published after public artifacts were verified
 
 ## Notes
 

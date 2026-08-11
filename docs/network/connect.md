@@ -768,13 +768,22 @@ agent = connect("0x...", relay_url="ws://localhost:8000/ws/announce")
 class RemoteAgent:
     # Actions
     def input(self, prompt: str) -> Response
+    def set_session_mode(self, mode_id: str, timeout: float = 30.0) -> None
     def reset(self) -> None
 
     # State (read-only)
     current_session: dict    # Full session data
+    available_modes: list    # Host-advertised ACP modes for this identity
     ui: List[UIEvent]        # Shortcut to current_session['trace']
     status: str              # 'idle' | 'working' | 'waiting'
 ```
+
+`set_session_mode()` uses one timeout budget for endpoint resolution,
+CONNECT, PING handling, and the owned ACP response. If it raises
+`TimeoutError`, the durable outcome is unknown: Host persistence may have
+completed even though the acknowledgement did not arrive. Reconnect and use
+the next `CONNECTED` mode state (`available_modes` and
+`current_session["mode"]`) as authority before retrying.
 
 ### useAgentForHuman() (React)
 

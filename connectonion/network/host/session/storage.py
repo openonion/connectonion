@@ -1,19 +1,20 @@
 """
 Purpose: Persistent session storage for hosted agent requests with TTL expiry
 LLM-Note:
-  Dependencies: imports from [pydantic, pathlib, json, time] | imported by [host/http_router.py, host/server.py, host/ws_router/agent_io.py, host/session/__init__.py] | tested by [tests/unit/test_session_storage.py]
-  Data flow: save(session) appends to JSONL → get(session_id) reads backwards, returns latest if not expired → list() loads all, filters expired
-  State/Effects: writes to .co/session_results.jsonl (append-only) | creates .co/ directory if missing
-  Integration: exposes Session (Pydantic model), SessionStorage class with save/get/list | used by http_router.input_handler and ws_router agent execution paths
-  Performance: append-only writes O(1) | linear scan on read O(n) - acceptable for thousands of sessions
-  Errors: returns None if session not found or expired | creates parent directory if missing
+  Dependencies: imports from [pydantic, pathlib, json, os, threading, time] | imported by [host/http_router.py, host/server.py, host/ws_router/, host/session/] | tested by [test_session_storage.py, test_acp_host_set_mode.py]
+  Data flow: save() appends under the file lock | atomic_update() locks, reads detached latest, validates replacement, and appends if changed | get() reads newest matching valid line | compact() replaces under the same lock
+  State/Effects: append-only JSONL plus sibling lock file; thread-local depth permits same-thread nested operations while OS locks serialize threads/processes
+  Integration: atomic_update is the durable boundary shared by prompt claims and Host policy transactions
+  Performance: append O(1); reverse get usually finds recent state near EOF; list/compaction scan the file
+  Errors: missing/expired returns None; torn records are skipped; lock timeout and invalid updater fail closed without an unlocked append
 """
 
 import json
 import os
+import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from pydantic import BaseModel
 
@@ -122,6 +123,7 @@ class SessionStorage:
         # tool calling os.chdir would move the history mid-run.
         self.path = Path(path) if path else project_co_dir() / "session_results.jsonl"
         self.path.parent.mkdir(exist_ok=True)
+        self._lock_state = threading.local()
 
     @property
     def _lock_path(self) -> Path:
@@ -129,12 +131,70 @@ class SessionStorage:
 
     def save(self, session: Session):
         # Excludes compact(), which replaces this file wholesale.
-        handle = _exclusive(self._lock_path)
+        if not self._acquire_lock():
+            raise TimeoutError("could not acquire session storage lock")
         try:
-            with open(self.path, "a", encoding="utf-8") as f:
-                f.write(session.model_dump_json() + "\n")
+            self._append_locked(session)
         finally:
-            _release(handle)
+            self._release_lock()
+
+    def atomic_update(
+        self,
+        session_id: str,
+        updater: Callable[[Session | None], Session],
+    ) -> Session:
+        """Read latest, prepare a replacement, and append under one lock.
+
+        The callback receives a detached Pydantic record. Raising leaves the
+        append-only log unchanged; returning a different session id is refused.
+        This is the short cross-process commit boundary used by prompt claims
+        and policy writes -- never hold it across an Agent or network wait.
+        """
+        if not self._acquire_lock():
+            raise TimeoutError("could not acquire session storage lock")
+        try:
+            current = self.get(session_id)
+            if current is not None:
+                current = current.model_copy(deep=True)
+            replacement = updater(current)
+            if not isinstance(replacement, Session):
+                raise TypeError("session storage updater must return Session")
+            if replacement.session_id != session_id:
+                raise ValueError("session storage updater changed session id")
+            if current is None or replacement != current:
+                self._append_locked(replacement)
+            return replacement.model_copy(deep=True)
+        finally:
+            self._release_lock()
+
+    def _append_locked(self, session: Session) -> None:
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(session.model_dump_json() + "\n")
+
+    def _acquire_lock(self, *, wait: bool = True) -> bool:
+        """Acquire this storage lock, reusing it only in the owning thread."""
+        depth = getattr(self._lock_state, "depth", 0)
+        if depth:
+            self._lock_state.depth = depth + 1
+            return True
+        handle = _exclusive(self._lock_path, wait=wait)
+        if handle is None:
+            return False
+        self._lock_state.handle = handle
+        self._lock_state.depth = 1
+        return True
+
+    def _release_lock(self) -> None:
+        depth = getattr(self._lock_state, "depth", 0)
+        if depth <= 0:
+            raise RuntimeError("session storage lock is not held")
+        if depth > 1:
+            self._lock_state.depth = depth - 1
+            return
+        handle = self._lock_state.handle
+        del self._lock_state.handle
+        del self._lock_state.depth
+        _release(handle)
 
     def _records(self) -> list:
         """Every parseable record, oldest first. A torn line costs itself, nothing more.
@@ -240,13 +300,12 @@ class SessionStorage:
         if not self.path.exists():
             return
 
-        handle = _exclusive(self._lock_path, wait=False)
-        if handle is None:
+        if not self._acquire_lock(wait=False):
             return          # someone is writing; the next cycle compacts
         try:
             self._compact_locked()
         finally:
-            _release(handle)
+            self._release_lock()
 
     def _compact_locked(self) -> None:
         now = time.time()

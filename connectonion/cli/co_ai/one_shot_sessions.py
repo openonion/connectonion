@@ -1,14 +1,20 @@
 """Private, versioned snapshots for resumable ``co ai`` subprocess turns."""
 
+from __future__ import annotations
+
 import json
 import os
+import stat
 import tempfile
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
+_LEGACY_SNAPSHOT_VERSION = 1
+_TODO_STATUSES = {"pending", "in_progress", "completed"}
+_TODO_PRIORITIES = {"high", "medium", "low"}
 
 
 class SessionSnapshotError(ValueError):
@@ -39,20 +45,68 @@ def _session_path(co_dir: Path, canonical_id: str) -> Path:
     return _session_dir(co_dir) / f"{canonical_id}.json"
 
 
-def _resolved_cwd() -> str:
-    return str(Path.cwd().resolve())
+def _resolved_cwd(cwd: Path | str | None = None) -> str:
+    return str((Path.cwd() if cwd is None else Path(cwd)).resolve())
 
 
-@contextmanager
-def session_lock(co_dir: Path, session_id: str):
-    """Fail fast unless this process exclusively owns a resumed turn."""
+class SessionLease:
+    """Exclusive OS-backed ownership that can outlive one function call."""
+
+    def __init__(self, session_id: str, handle: Any) -> None:
+        self.session_id = session_id
+        self._handle = handle
+
+    @property
+    def closed(self) -> bool:
+        return self._handle is None
+
+    def close(self) -> None:
+        """Release ownership once; repeated shutdown paths are harmless."""
+        handle = self._handle
+        if handle is None:
+            return
+        self._handle = None
+        handle.close()
+
+    def __enter__(self) -> SessionLease:
+        return self
+
+    def __exit__(self, *_exc_info: Any) -> None:
+        self.close()
+
+
+def acquire_session_lease(co_dir: Path, session_id: str) -> SessionLease:
+    """Fail fast unless this process can exclusively own ``session_id``."""
     canonical = _canonical_id(session_id)
     directory = _session_dir(co_dir)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name != "nt":
         os.chmod(directory, 0o700)
     lock_path = directory / f"{canonical}.lock"
-    handle = lock_path.open("a+", encoding="utf-8")
+    flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(lock_path, flags, 0o600)
+    except OSError:
+        raise SessionSnapshotError(
+            f"Session {canonical} lock is unavailable."
+        ) from None
+    try:
+        handle = os.fdopen(descriptor, "a+", encoding="utf-8")
+        descriptor = -1
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise OSError("session lock is not a regular file")
+        if hasattr(os, "fchmod"):
+            os.fchmod(handle.fileno(), 0o600)
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        else:
+            handle.close()
+        raise SessionSnapshotError(
+            f"Session {canonical} lock is unavailable."
+        ) from None
     try:
         if os.name == "nt":
             import msvcrt
@@ -68,24 +122,37 @@ def session_lock(co_dir: Path, session_id: str):
         raise SessionSnapshotError(
             f"Session {canonical} is already running in another process."
         ) from None
+    return SessionLease(canonical, handle)
+
+
+@contextmanager
+def session_lock(co_dir: Path, session_id: str):
+    """Fail fast unless this process exclusively owns a resumed turn."""
+    lease = acquire_session_lease(co_dir, session_id)
     try:
         yield
     finally:
-        handle.close()
+        lease.close()
 
 
 def save_snapshot(
     co_dir: Path,
     session: dict[str, Any],
     tool_state: dict[str, Any] | None = None,
+    *,
+    cwd: Path | str | None = None,
 ) -> None:
     """Atomically persist one completed Agent turn."""
     session_id = _canonical_id(session.get("session_id"))
+    tools = {} if tool_state is None else tool_state
+    _validate_tool_state(tools, session_id)
+    _validate_session_plan(session, session_id)
+    _validate_plan_matches_tools(session, tools, session_id)
     payload = {
         "version": SNAPSHOT_VERSION,
-        "cwd": _resolved_cwd(),
+        "cwd": _resolved_cwd(cwd),
         "session": session,
-        "tools": tool_state or {},
+        "tools": tools,
     }
     try:
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -114,7 +181,12 @@ def save_snapshot(
             Path(temporary).unlink(missing_ok=True)
 
 
-def load_snapshot(co_dir: Path, session_id: str) -> tuple[dict, dict]:
+def load_snapshot(
+    co_dir: Path,
+    session_id: str,
+    *,
+    cwd: Path | str | None = None,
+) -> tuple[dict, dict]:
     """Load and validate the exact snapshot named by ``session_id``."""
     canonical = _canonical_id(session_id)
     path = _session_path(co_dir, canonical)
@@ -126,14 +198,18 @@ def load_snapshot(co_dir: Path, session_id: str) -> tuple[dict, dict]:
         raise SessionSnapshotError(f"Session {canonical} is unreadable: {exc}") from None
 
     version = payload.get("version") if isinstance(payload, dict) else None
-    if version != SNAPSHOT_VERSION:
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version not in {_LEGACY_SNAPSHOT_VERSION, SNAPSHOT_VERSION}
+    ):
         raise SessionSnapshotError(
             f"Session {canonical} uses unsupported snapshot version {version}."
         )
     saved_cwd = payload.get("cwd")
     if not isinstance(saved_cwd, str) or not Path(saved_cwd).is_absolute():
         raise SessionSnapshotError(f"Session {canonical} has an invalid working directory.")
-    current_cwd = _resolved_cwd()
+    current_cwd = _resolved_cwd(cwd)
     if os.path.normcase(str(Path(saved_cwd).resolve())) != os.path.normcase(current_cwd):
         raise SessionSnapshotError(
             f"Session {canonical} belongs to {saved_cwd}; resume it from that directory."
@@ -150,12 +226,127 @@ def load_snapshot(co_dir: Path, session_id: str) -> tuple[dict, dict]:
         raise SessionSnapshotError(f"Session {canonical} has an invalid trace.")
     if not isinstance(session.get("turn"), int):
         raise SessionSnapshotError(f"Session {canonical} has an invalid turn counter.")
+    _validate_tool_state(tools, canonical, version=version)
+    tools = _migrate_tool_state(tools, version)
+    if version == _LEGACY_SNAPSHOT_VERSION:
+        session = dict(session)
+        session["plan"] = _plan_from_tool_state(tools)
+    _validate_session_plan(session, canonical)
+    _validate_plan_matches_tools(session, tools, canonical)
     return session, tools
+
+
+def _validate_tool_state(
+    state: Any,
+    session_id: str,
+    *,
+    version: int = SNAPSHOT_VERSION,
+) -> None:
+    """Validate every supported tool snapshot before constructing an Agent."""
+
+    if not isinstance(state, dict) or set(state) - {"todolist"}:
+        raise SessionSnapshotError(
+            f"Session {session_id} contains unsupported tool state."
+        )
+    if "todolist" not in state:
+        return
+    todos = state["todolist"]
+    if not isinstance(todos, list):
+        raise SessionSnapshotError(
+            f"Session {session_id} has invalid TodoList state."
+        )
+    required = {"content", "status", "active_form"}
+    if version == SNAPSHOT_VERSION:
+        required.add("priority")
+    for item in todos:
+        if (
+            not isinstance(item, dict)
+            or set(item) != required
+            or not isinstance(item["content"], str)
+            or (version == SNAPSHOT_VERSION and not item["content"])
+            or not isinstance(item["status"], str)
+            or item["status"] not in _TODO_STATUSES
+            or not isinstance(item["active_form"], str)
+            or (
+                version == SNAPSHOT_VERSION
+                and (
+                    not isinstance(item["priority"], str)
+                    or item["priority"] not in _TODO_PRIORITIES
+                )
+            )
+        ):
+            raise SessionSnapshotError(
+                f"Session {session_id} has invalid TodoList state."
+            )
+
+
+def _migrate_tool_state(state: dict[str, Any], version: int) -> dict[str, Any]:
+    if version != _LEGACY_SNAPSHOT_VERSION or "todolist" not in state:
+        return state
+    return {
+        **state,
+        "todolist": [
+            {
+                **item,
+                "content": item["content"] or f"Untitled legacy task {index + 1}",
+                "priority": "medium",
+            }
+            for index, item in enumerate(state["todolist"])
+        ],
+    }
+
+
+def _plan_from_tool_state(state: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "content": item["content"],
+            "priority": item["priority"],
+            "status": item["status"],
+        }
+        for item in state.get("todolist", [])
+    ]
+
+
+def _validate_session_plan(session: Any, session_id: str) -> None:
+    if not isinstance(session, dict) or "plan" not in session:
+        return
+    plan = session["plan"]
+    if not isinstance(plan, list):
+        raise SessionSnapshotError(f"Session {session_id} has invalid plan state.")
+    for entry in plan:
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != {"content", "priority", "status"}
+            or not isinstance(entry["content"], str)
+            or not entry["content"]
+            or not isinstance(entry["priority"], str)
+            or entry["priority"] not in _TODO_PRIORITIES
+            or not isinstance(entry["status"], str)
+            or entry["status"] not in _TODO_STATUSES
+        ):
+            raise SessionSnapshotError(
+                f"Session {session_id} has invalid plan state."
+            )
+
+
+def _validate_plan_matches_tools(
+    session: dict[str, Any],
+    tools: dict[str, Any],
+    session_id: str,
+) -> None:
+    if "todolist" not in tools:
+        return
+    if session.get("plan") != _plan_from_tool_state(tools):
+        raise SessionSnapshotError(
+            f"Session {session_id} has inconsistent plan and TodoList state."
+        )
 
 
 def capture_tool_state(agent) -> dict[str, Any]:
     """Capture only tool state with an explicit, private snapshot contract."""
-    todo = agent.tools.get_instance("todolist")
+    tools = getattr(agent, "tools", None)
+    get_instance = getattr(tools, "get_instance", None)
+    todo = get_instance("todolist") if callable(get_instance) else None
     return {"todolist": todo._dump_state()} if todo is not None else {}
 
 
@@ -163,7 +354,9 @@ def restore_tool_state(agent, state: dict[str, Any]) -> None:
     """Restore supported tool state without deserializing arbitrary objects."""
     if "todolist" not in state:
         return
-    todo = agent.tools.get_instance("todolist")
+    tools = getattr(agent, "tools", None)
+    get_instance = getattr(tools, "get_instance", None)
+    todo = get_instance("todolist") if callable(get_instance) else None
     if todo is None:
         raise SessionSnapshotError("This co ai build cannot restore TodoList state.")
     todo._load_state(state["todolist"])

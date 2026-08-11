@@ -623,6 +623,24 @@ class TestSessionToChatItems:
         assert items[0]['type'] == 'agent'
         assert items[0]['content'] == 'Hi there'
 
+    def test_persisted_assistant_identity_survives_index_shift(self):
+        """Compaction may move a message, but its domain identity stays fixed."""
+        message = {
+            'role': 'assistant',
+            'content': 'Stable answer',
+            'id': '6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e',
+        }
+        before = session_to_chat_items({
+            'messages': [
+                {'role': 'system', 'content': 'help'},
+                {'role': 'user', 'content': 'old question'},
+                message,
+            ],
+        })
+        after = session_to_chat_items({'messages': [message]})
+
+        assert before[-1]['id'] == after[-1]['id'] == message['id']
+
     def test_converts_trace_to_tool_calls(self):
         """Converts trace entries to tool_call ChatItems (matches tool_executor shape)."""
         session = {
@@ -651,15 +669,25 @@ class TestSessionToChatItems:
                 {'type': 'tool_result', 'tool_id': 'b', 'name': 'write', 'status': 'running'},
                 {'type': 'tool_result', 'tool_id': 'c', 'name': 'edit', 'status': 'success'},
                 {'type': 'tool_result', 'tool_id': 'd', 'name': 'cmd', 'status': 'not_found'},
+                {'type': 'tool_result', 'tool_id': 'e', 'name': 'wait', 'status': 'pending'},
+                {'type': 'tool_result', 'tool_id': 'f', 'name': 'wait', 'status': 'in_progress'},
+                {'type': 'tool_result', 'tool_id': 'g', 'name': 'new', 'status': 'mystery'},
+                {'type': 'tool_result', 'tool_id': 'h', 'name': 'old'},
+                {'type': 'tool_result', 'tool_id': 'i', 'name': 'new', 'status': 'completed'},
             ],
         }
 
         items = session_to_chat_items(session)
 
         assert items[0]['status'] == 'error'
-        assert items[1]['status'] == 'running'
+        assert items[1]['status'] == 'error'
         assert items[2]['status'] == 'done'
         assert items[3]['status'] == 'error'
+        assert items[4]['status'] == 'error'
+        assert items[5]['status'] == 'error'
+        assert items[6]['status'] == 'error'
+        assert items[7]['status'] == 'error'
+        assert items[8]['status'] == 'done'
 
     def test_skips_tool_call_placeholders(self):
         """Initial 'tool_call' trace entries (no result yet) are skipped — only 'tool_result' renders."""
@@ -686,7 +714,8 @@ class TestSessionToChatItems:
                 {'type': 'intent', 'id': 'i1', 'ack': 'Got it', 'is_build': False},
                 {'type': 'eval', 'id': 'e1', 'passed': True, 'summary': 'ok',
                  'expected': 'q', 'eval_path': '/tmp/x.yaml'},
-                {'type': 'thinking', 'kind': 'reflect', 'content': 'reflecting'},
+                {'type': 'thinking', 'id': 'th1', 'kind': 'reflect',
+                 'content': 'reflecting'},
             ],
         }
 
@@ -696,6 +725,7 @@ class TestSessionToChatItems:
         assert items[1]['ack'] == 'Got it'
         assert items[2]['summary'] == 'ok'
         assert items[3]['kind'] == 'reflect'
+        assert items[3]['id'] == 'th1'
 
     def test_interleaves_multi_turn_by_user_input(self):
         """Multi-turn: each user_input marker bounds a turn; trace items emit in their turn."""

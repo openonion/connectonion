@@ -342,6 +342,12 @@ git push
 - Mobile-friendly, scannable structure
 - Command blocks use `CommandBlock` component (no $ in copy text)
 - Each page has "copy all as markdown" button
+- Meaningful feature-train launches, phase promotions, stable releases, and
+  material architecture or workflow decisions need a public Design Journal
+  entry. Draft it with the change, record alternatives and tradeoffs, and
+  publish it only after any claimed package and GitHub Release are visible.
+- Maintenance-only patches need release notes, not a thin duplicate blog post,
+  unless they contain a reusable design lesson.
 
 ## Common Development Tasks
 

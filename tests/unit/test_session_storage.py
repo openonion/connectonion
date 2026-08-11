@@ -1,6 +1,8 @@
 """Unit tests for connectonion/network/host/session/storage.py"""
 
+import importlib
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -136,3 +138,62 @@ def test_checkpoint_noop_when_session_lacks_id(storage):
     """No session_id → silent no-op (don't corrupt store)."""
     storage.checkpoint({'messages': ['hi']})  # no session_id key
     assert storage.list() == []
+
+
+# ---------- atomic update ----------
+
+def test_atomic_update_reads_latest_and_appends_replacement(storage):
+    storage.save(_make_session(sid="mode", result="safe"))
+
+    updated = storage.atomic_update(
+        "mode",
+        lambda current: current.model_copy(update={"result": "accept_edits"}),
+    )
+
+    assert updated.result == "accept_edits"
+    assert storage.get("mode").result == "accept_edits"
+
+
+def test_atomic_update_serializes_competing_writers(storage):
+    storage.save(_make_session(sid="counter", result="0"))
+
+    def increment(_):
+        def replace(current):
+            return current.model_copy(
+                update={"result": str(int(current.result) + 1)}
+            )
+
+        storage.atomic_update("counter", replace)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(increment, range(40)))
+
+    assert storage.get("counter").result == "40"
+
+
+def test_atomic_update_failure_appends_nothing(storage):
+    storage.save(_make_session(sid="unchanged", result="before"))
+
+    def fail(_current):
+        raise ValueError("policy rejected")
+
+    with pytest.raises(ValueError, match="policy rejected"):
+        storage.atomic_update("unchanged", fail)
+
+    assert storage.get("unchanged").result == "before"
+
+
+def test_save_and_atomic_update_fail_closed_when_lock_is_unavailable(
+    storage, monkeypatch
+):
+    storage_module = importlib.import_module(
+        "connectonion.network.host.session.storage"
+    )
+
+    monkeypatch.setattr(storage_module, "_exclusive", lambda *_a, **_k: None)
+
+    with pytest.raises(TimeoutError, match="session storage lock"):
+        storage.save(_make_session(sid="save"))
+    with pytest.raises(TimeoutError, match="session storage lock"):
+        storage.atomic_update("update", lambda _current: _make_session("update"))
+    assert not storage.path.exists()

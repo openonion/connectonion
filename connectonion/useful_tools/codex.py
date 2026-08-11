@@ -2,8 +2,8 @@
 Purpose: Run Codex via its native app-server protocol, stream steps and permission requests to the frontend, and resume sessions
 LLM-Note:
   Dependencies: imports from [json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
-  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to the FRONTEND's native events (tool_call / tool_result) via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
-  State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | streams live events to agent.io using the tool_call/tool_result/approval_needed events the connectonion-ts SDK already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
+  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to ACP-status-aligned FRONTEND events (tool_call / tool_result) via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
+  State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
   Integration: exposes codex(...) and CodexAppServer | this IS the adapter — ConnectOnion's own Python client drives the codex CLI's native app-server (no external codex-acp Node binary) | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
   Performance: long-lived process per call | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
   Errors: returns envelope with error on missing binary, JSON-RPC failure/timeout, or exception | never raises to the agent loop
@@ -19,8 +19,8 @@ when the selected policy requires them. Those callbacks map onto
 agent.io.request_approval.
 
 Frontend contract: Codex's steps are streamed as the SAME events the
-connectonion-ts SDK already maps to ChatItems — `tool_call` (stable tool_id)
-and `tool_result` — so no frontend or SDK change is needed.
+`@connectonion/react` package already maps to ChatItems — `tool_call` (stable
+tool_id) and `tool_result` — so no oo-chat change is needed.
 
 Usage:
     from connectonion import Agent
@@ -118,6 +118,7 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
     try:
         client.start()
         client.initialize(timeout=_remaining(deadline))
+        client.refresh_account(timeout=_remaining(deadline))
         approval_policy = "untrusted" if approval == "manual" else "never"
         if session_id:
             sid = client.resume_thread(
@@ -190,19 +191,20 @@ def _base_command():
 def _forward_ui(agent, event):
     """Convert one Codex thread event into the frontend's native event stream.
 
-    The connectonion-ts SDK maps `tool_call` (stable tool_id) → a running tool
-    card and `tool_result` (same id) → its completion, so Codex's inner command
-    runs / file edits render live with no frontend change.
+    The @connectonion/react package maps `tool_call` (stable tool_id) → a
+    running tool card and `tool_result` (same id) → its completion, so Codex's
+    inner command runs / file edits render live with no oo-chat change.
     """
     if agent is None or getattr(agent, "io", None) is None:
         return
     kind = event.get("kind", "")
     if kind == "tool_start":
         agent.io.log("tool_call", tool_id=event.get("id", ""),
-                     name=event.get("name", "codex"), args={})
+                     name=event.get("name", "codex"), args={},
+                     status="in_progress")
     elif kind == "tool_end":
         agent.io.log("tool_result", tool_id=event.get("id", ""),
-                     status="error" if event.get("failed") else "done",
+                     status="failed" if event.get("failed") else "completed",
                      result=event.get("name", ""))
 
 
@@ -469,6 +471,10 @@ class CodexAppServer:
                                                             "item/reasoning/textDelta"]},
         }, timeout=timeout)
         self._notify("initialized", {})
+
+    def refresh_account(self, timeout=60):
+        """Let Codex refresh its managed auth without exposing credentials."""
+        return self.request("account/read", {"refreshToken": True}, timeout=timeout)
 
     def start_thread(
         self,

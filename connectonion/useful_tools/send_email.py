@@ -1,12 +1,12 @@
 """
 Purpose: Send emails via OpenOnion API using agent's authenticated email address
 LLM-Note:
-  Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → POST to the configured backend /api/v1/email/send with auth token → returns {success, message_id, from, error}
-  State/Effects: reads .env files from filesystem | loads environment variables via dotenv | makes HTTP POST request to OpenOnion API | no local state persistence
+  Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv, credentials, project] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/test_real_email.py]
+  Data flow: Agent calls send_email(to, subject, message) → preserves environment precedence and fills missing values from project-root .env then ~/.co/keys.env → validates the selected ambient token against the canonical project identity → validates email format → POST to /api/v1/email/send → returns {success, message_id, from, error}
+  State/Effects: reads canonical credential files and loads missing values into the process environment | makes one HTTP POST only after credential validation | no local state persistence
   Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/v1/email/send with Bearer token
-  Performance: file search up to 5 parent dirs | one HTTP request per email | no caching | synchronous (blocks on network)
-  Errors: returns {success: False, error: str} for: missing .env, missing keys, invalid email format, API failures | HTTP errors caught and wrapped | validates @ and . in email | let-it-crash pattern (returns errors, doesn't raise)
+  Performance: canonical project-root lookup plus at most two dotenv reads | one HTTP request per email | no caching | synchronous (blocks on network)
+  Errors: returns {success: False, error: str} for missing/mismatched credentials, invalid email format, and API failures | credential errors are redacted and non-retryable | HTTP errors caught and wrapped
 """
 
 import os
@@ -15,7 +15,8 @@ import yaml
 import requests
 import uuid
 from pathlib import Path
-from ..project import project_co_dir
+from ..credentials import AmbientCredentialError, require_ambient_api_key
+from ..project import project_co_dir, project_root
 from typing import Dict, Optional
 from dotenv import load_dotenv
 from ..backend import backend_url
@@ -48,45 +49,29 @@ def send_email(
             - retryable (bool): Whether retrying this key is currently safe
     """
     send_key = idempotency_key or str(uuid.uuid4())
-    # Credentials come from the environment. A .env file is a convenience fallback,
-    # NOT a precondition: env vars set directly (container / CI / systemd, or already
-    # loaded by the `co` CLI) are equally valid. Load a .env if we can find one to
-    # populate any missing vars, but never require the file to exist on disk.
-    env_file = None
-    current_dir = Path.cwd()
+    # Environment values (container, CI, systemd, or an importing application)
+    # keep precedence. Canonical project/global files only fill missing values;
+    # the arbitrary five-parent crawl used here before disagreed with every
+    # other project boundary in the framework.
+    for env_file in (
+        project_root() / ".env",
+        Path.home() / ".co" / "keys.env",
+    ):
+        if env_file.is_file():
+            load_dotenv(env_file)
 
-    # Search up to 5 levels for a local .env
-    for _ in range(5):
-        potential_env = current_dir / ".env"
-        if potential_env.exists():
-            env_file = potential_env
-            break
-        if current_dir == current_dir.parent:  # Reached root
-            break
-        current_dir = current_dir.parent
-
-    # Fall back to the global keys.env
-    if not env_file:
-        global_keys_env = Path.home() / ".co" / "keys.env"
-        if global_keys_env.exists():
-            env_file = global_keys_env
-
-    # Load it if present (does not override vars already set in the environment)
-    if env_file:
-        load_dotenv(env_file)
-
-    # Get authentication token and agent email from the environment
-    token = os.getenv("OPENONION_API_KEY")
-    from_email = os.getenv("AGENT_EMAIL")
-
-    if not token:
+    try:
+        token = require_ambient_api_key()
+    except AmbientCredentialError as exc:
         return {
             "success": False,
-            "error": "OPENONION_API_KEY not set. Run 'co auth' to authenticate.",
+            "error": str(exc),
             "request_id": send_key,
             "idempotency_key": send_key,
             "retryable": False,
         }
+
+    from_email = os.getenv("AGENT_EMAIL")
 
     if not from_email:
         return {

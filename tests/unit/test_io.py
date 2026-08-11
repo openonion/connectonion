@@ -61,6 +61,43 @@ class TestWebSocketIO:
 
         assert io._msgs_from_agent[0]["id"] == "custom-id-123"  # preserved, not overwritten
 
+    def test_only_internal_trace_path_marks_persisted_events(self):
+        """A plain send cannot forge the Host's persisted-trace provenance."""
+        io = WebSocketIO()
+        direct = {"type": "thinking", "id": "direct"}
+        persisted = {"type": "thinking", "id": "persisted"}
+
+        io.send(direct)
+        io._send_persisted_trace(persisted)
+
+        assert io.is_persisted_trace_event(io._msgs_from_agent[0]) is False
+        assert io.is_persisted_trace_event(io._msgs_from_agent[1]) is True
+        assert type(io._msgs_from_agent[0]) is dict
+        assert type(io._msgs_from_agent[1]) is not dict
+        assert io._msgs_from_agent[1]["type"] == persisted["type"]
+        assert io._msgs_from_agent[1]["id"] == persisted["id"]
+        assert isinstance(io._msgs_from_agent[1]["ts"], float)
+
+    def test_agent_record_trace_uses_internal_provenance_path(self):
+        """Only Agent's canonical trace writer marks the streamed trace event."""
+        from connectonion import Agent
+
+        io = WebSocketIO()
+        agent = Agent.__new__(Agent)
+        agent.current_session = {"trace": []}
+        agent.io = io
+
+        agent._record_trace({
+            "type": "thinking",
+            "content": "persisted public thought",
+        })
+
+        assert len(io._msgs_from_agent) == 2
+        assert io.is_persisted_trace_event(io._msgs_from_agent[0]) is True
+        assert io.is_persisted_trace_event(io._msgs_from_agent[1]) is False
+        assert io._msgs_from_agent[0]["id"] == agent.current_session["trace"][0]["id"]
+        assert io._msgs_from_agent[1]["type"] == "session_sync"
+
     def test_send_skips_when_closed(self):
         """send() does nothing when IO is closed."""
         io = WebSocketIO()

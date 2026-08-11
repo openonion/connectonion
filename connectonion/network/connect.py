@@ -1,12 +1,12 @@
 """
-Purpose: Client SDK for talking to remote ConnectOnion agents over websockets — handles relay/direct endpoint resolution, signed CONNECT and per-command frames, streaming UI events, and onboard (invite/payment) flows.
+Purpose: Python client SDK for talking to remote ConnectOnion agents over websockets — handles signed transport, acknowledged ACP session modes, streaming UI events, and onboarding.
 LLM-Note:
-  Dependencies: imports from [asyncio, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), .. address (sign)] | imported by [network/__init__.py (re-exports connect, RemoteAgent, Response), connectonion/__init__.py (top-level re-export)] | tested by [tests/unit/test_connect.py, tests/unit/test_connect.py]
-  Data flow: connect(address, keys, relay_url) → RemoteAgent → .input(prompt) opens ws → CONNECT (signed payload {to, timestamp, signed_commands}, optional session) → CONNECTED {session_id} → INPUT (complete command duplicated top-level for v1 compatibility and signed as payload for v2) → streams (tool_call, tool_result, thinking, assistant, ask_user, ONBOARD_REQUIRED/SUCCESS) → OUTPUT {result, session} → returns Response(text, done)
-  State/Effects: mutates self._current_session, self._ui_events, self._status; opens outbound websocket connection; performs signed payloads via address.sign(keys, canonical_json) when keys provided; resolve_endpoint() makes httpx GETs to relay /api/agents/{addr} and /info on each candidate to pick localhost/LAN/public WS endpoint (cached after first attempt)
-  Integration: exposes connect(address, keys=None, relay_url=None) -> RemoteAgent | omitted relay resolves from the shared backend selector | RemoteAgent.input/input_async/reset, .status, .current_session, .ui properties | Response dataclass(text, done) | resolve_endpoint(agent_address, relay_url, timeout=3.0) helper
+  Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign), ..core.acp_wire] | imported by [network/__init__.py, connectonion/__init__.py] | tested by [test_connect.py, test_each_command_is_signed.py, test_acp_host_set_mode.py]
+  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_session_mode() validates Host SessionModeState, sends signed ACP_REQUEST, and waits for its exact ACP_RESPONSE before changing local mode
+  State/Effects: mutates current session/modes/UI/status only from authenticated carrier responses; opens outbound sockets; signs deep-detached command payloads; endpoint resolution may query relay and candidate /info endpoints
+  Integration: exposes connect(), RemoteAgent, Response, ExecResult, ACPModeError; RemoteAgent provides input/call/set_session_mode sync+async actions and read-only state
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
-  Errors: raises ConnectionError on auth/agent ERROR frames | TimeoutError on ws recv timeout | RuntimeError if .input() called from async context | ValueError when interactive onboard prompt yields no credentials
+  Errors: raises ConnectionError on transport/auth failure, ACPModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.
 
@@ -21,16 +21,34 @@ Lifecycle:
 """
 
 import asyncio
+import copy
 import json
 import sys
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
 from .. import address as addr
+from ..core.acp_wire import (
+    acp_set_mode_request_frame,
+    acp_set_mode_response,
+    host_session_mode_state,
+    legacy_stream_event_from_acp,
+    session_mode_id,
+)
+
+
+def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
+    if status in {"pending", "running", "in_progress"}:
+        return "running"
+    if status is None and not terminal:
+        return "running"
+    if status in {"success", "done", "completed"}:
+        return "done"
+    return "error"
 
 
 def _this_callers_identity():
@@ -231,6 +249,15 @@ class ExecResult:
         return re.findall(r'data:image/[a-z]+;base64,[A-Za-z0-9+/=]+', self.text)
 
 
+class ACPModeError(ConnectionError):
+    """An acknowledged Host session-mode policy rejection."""
+
+    def __init__(self, code: int, message: str, data: Any = None):
+        super().__init__(message)
+        self.code = code
+        self.data = data
+
+
 class RemoteAgent:
     """
     Interface to a remote agent with real-time UI updates.
@@ -268,6 +295,7 @@ class RemoteAgent:
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
         self._ui_events: List[Dict[str, Any]] = []
+        self._available_modes: List[Dict[str, Any]] = []
         self._resolved_endpoint: Optional[str] = None
         self._endpoint_resolved = False
 
@@ -291,6 +319,68 @@ class RemoteAgent:
         - assistant → type: 'agent'
         """
         return self._ui_events
+
+    @property
+    def available_modes(self) -> List[Dict[str, Any]]:
+        """Server-authorized ACP modes from the latest CONNECTED frame."""
+        return copy.deepcopy(self._available_modes)
+
+    def set_session_mode(self, mode_id: str, timeout: float = 30.0) -> None:
+        """Persist Host policy and return only after its owned acknowledgement."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "set_session_mode() cannot be used inside async context. "
+                "Use 'await agent.set_session_mode_async()' instead."
+            )
+        except RuntimeError as exc:
+            if "set_session_mode() cannot be used" in str(exc):
+                raise
+        asyncio.run(self.set_session_mode_async(mode_id, timeout=timeout))
+
+    async def set_session_mode_async(
+        self, mode_id: str, timeout: float = 30.0
+    ) -> None:
+        """Commit a Host mode, or time out with the remote outcome unknown."""
+        mode_id = session_mode_id(mode_id)
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive number")
+        try:
+            await asyncio.wait_for(
+                self._set_session_mode_transaction(mode_id), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Session mode change timed out after {timeout}s"
+            ) from None
+
+    async def _set_session_mode_transaction(self, mode_id: str) -> None:
+        """Run negotiation and response handling under the caller's deadline."""
+        import websockets
+
+        await self._try_resolve_endpoint()
+        connection, is_direct = await self._open_best_connection(websockets)
+        request_id = str(uuid.uuid4())
+
+        async with connection as ws:
+            await ws.send(json.dumps(self._build_connect_message(is_direct)))
+            state = await self._wait_for_mode_connected(ws)
+            if not any(mode.get("id") == mode_id for mode in state["availableModes"]):
+                raise ValueError(f"Session mode is not available: {mode_id}")
+            session_id = self._current_session["session_id"]
+            request = acp_set_mode_request_frame(
+                request_id, session_id, mode_id
+            )
+            await ws.send(json.dumps(
+                self._build_command_message(request, is_direct)
+            ))
+            await self._wait_for_mode_response(
+                ws, request_id, session_id, mode_id
+            )
 
     def input(
         self,
@@ -565,11 +655,7 @@ class RemoteAgent:
                     raw = await asyncio.wait_for(ws.recv(), timeout=30)
                     event = json.loads(raw)
                     if event.get("type") == "CONNECTED":
-                        sid = event.get("session_id")
-                        if sid and not self._current_session:
-                            self._current_session = {"session_id": sid}
-                        elif sid and self._current_session:
-                            self._current_session["session_id"] = sid
+                        self._consume_connected_mode_state(event)
                         break
                     elif event.get("type") == "ERROR":
                         self._status = "idle"
@@ -692,6 +778,74 @@ class RemoteAgent:
             self._status = "idle"
             raise TimeoutError(f"Request timed out after {timeout}s")
 
+    async def _wait_for_mode_connected(self, ws) -> Dict[str, Any]:
+        while True:
+            event = json.loads(await ws.recv())
+            event_type = event.get("type")
+            if event_type == "CONNECTED":
+                state = self._consume_connected_mode_state(event)
+                if state is None:
+                    raise ConnectionError(
+                        "Host does not support acknowledged ACP session modes"
+                    )
+                return state
+            if event_type == "PING":
+                await ws.send(json.dumps({"type": "PONG"}))
+            elif event_type == "ERROR":
+                raise ConnectionError(
+                    f"Auth error: {event.get('message', event.get('error'))}"
+                )
+
+    async def _wait_for_mode_response(
+        self, ws, request_id: str, session_id: str, mode_id: str,
+    ) -> None:
+        while True:
+            event = json.loads(await ws.recv())
+            event_type = event.get("type")
+            if event_type == "PING":
+                await ws.send(json.dumps({"type": "PONG"}))
+                continue
+            if event_type == "ERROR":
+                raise ConnectionError(
+                    event.get("message", "Session mode change failed")
+                )
+            if event_type != "ACP_RESPONSE":
+                self._handle_stream_event(event)
+                continue
+            response = acp_set_mode_response(
+                event,
+                expected_request_id=request_id,
+                expected_session_id=session_id,
+            )
+            if "error" in response:
+                error = response["error"]
+                raise ACPModeError(
+                    error["code"], error["message"], error.get("data")
+                )
+            for field in (
+                "skip_tool_approval", "ulw_turns", "ulw_turns_used"
+            ):
+                self._current_session.pop(field, None)
+            self._current_session["mode"] = mode_id
+            return
+
+    def _consume_connected_mode_state(
+        self, event: Dict[str, Any]
+    ) -> Dict[str, Any] | None:
+        sid = event.get("session_id")
+        if sid and not self._current_session:
+            self._current_session = {"session_id": sid}
+        elif sid and self._current_session:
+            self._current_session["session_id"] = sid
+        state = host_session_mode_state(event)
+        if state is None:
+            self._available_modes = []
+            return None
+        self._available_modes = copy.deepcopy(state["availableModes"])
+        if self._current_session is not None:
+            self._current_session["mode"] = state["currentModeId"]
+        return state
+
     def _build_connect_message(self, is_direct: bool = False) -> Dict[str, Any]:
         """Build CONNECT message with signing."""
         connect_msg: Dict[str, Any] = {
@@ -760,7 +914,7 @@ class RemoteAgent:
         Fields remain duplicated at the top level so pre-v2 hosts can consume
         the frame. A v2 host discards those copies and executes this payload.
         """
-        command = dict(message)
+        command = copy.deepcopy(message)
         command["timestamp"] = int(time.time())
         command["nonce"] = str(uuid.uuid4())
         # Recipient stays in the signature even on a direct socket. Only the
@@ -768,7 +922,7 @@ class RemoteAgent:
         # captured for one agent from being delivered to another.
         command["to"] = self.address
 
-        frame = dict(command)
+        frame = copy.deepcopy(command)
         if self._keys:
             canonical = json.dumps(command, sort_keys=True, separators=(',', ':'))
             frame["payload"] = command
@@ -817,20 +971,56 @@ class RemoteAgent:
 
     def _handle_stream_event(self, event: Dict[str, Any]) -> None:
         """Handle streaming event and update UI."""
+        try:
+            session_id = (
+                self._current_session.get("session_id")
+                if isinstance(self._current_session, dict)
+                else None
+            )
+            acp_event = legacy_stream_event_from_acp(
+                event, expected_session_id=session_id
+            )
+        except (TypeError, ValueError):
+            return
+        if acp_event is not None:
+            event = acp_event
         event_type = event.get("type")
 
         if event_type == "tool_call":
-            # Add new tool_call UI event with running status
-            self._add_ui_event({
+            tool_id = event.get("tool_id") or event.get("id")
+            existing = next((
+                item for item in self._ui_events
+                if item.get("type") == "tool_call"
+                and (item.get("tool_id") or item.get("id")) == tool_id
+            ), None)
+            tool_item = {
                 "type": "tool_call",
                 "id": event.get("id"),
                 # The LLM's call id, which the result carries too. `id` is this
                 # event's own and differs between the call and its result.
-                "tool_id": event.get("tool_id"),
+                "tool_id": tool_id,
                 "name": event.get("name"),
                 "args": event.get("args"),
-                "status": "running"
-            })
+                "status": _tool_ui_status(event.get("status")),
+            }
+            if existing is None:
+                self._add_ui_event(tool_item)
+            else:
+                existing.update(tool_item)
+
+        elif event_type == "tool_call_update":
+            tool_id = event.get("tool_id") or event.get("id")
+            existing = next((
+                item for item in self._ui_events
+                if item.get("type") == "tool_call"
+                and (item.get("tool_id") or item.get("id")) == tool_id
+            ), None)
+            if existing is not None:
+                if event.get("status") is not None:
+                    existing["status"] = _tool_ui_status(event["status"])
+                for field in ("name", "args", "result", "timing_ms"):
+                    if field in event:
+                        existing[field] = event[field]
 
         elif event_type == "tool_result":
             # Correlate on tool_id -- the LLM's call id, which both frames
@@ -844,7 +1034,9 @@ class RemoteAgent:
                 if ui_event.get("type") == "tool_call" and (
                     ui_event.get("tool_id") or ui_event.get("id")
                 ) == key:
-                    ui_event["status"] = "done" if event.get("status") == "success" else "error"
+                    ui_event["status"] = _tool_ui_status(
+                        event.get("status"), terminal=True
+                    )
                     ui_event["result"] = event.get("result")
                     break
 
@@ -860,6 +1052,22 @@ class RemoteAgent:
                 "type": "agent",
                 "content": event.get("content")
             })
+
+        elif event_type == "mode_changed":
+            if not isinstance(self._current_session, dict):
+                return
+            current_session_id = self._current_session.get("session_id")
+            event_session_id = event.get("session_id")
+            if (
+                event_session_id is not None
+                and event_session_id != current_session_id
+            ):
+                return
+            try:
+                mode = session_mode_id(event.get("mode"))
+            except ValueError:
+                return
+            self._current_session["mode"] = mode
 
         elif event_type == "llm_call":
             # Internal event, add thinking indicator if not already present

@@ -1,9 +1,9 @@
 """
-Purpose: Display account status, deployments, and credential-source diagnostics without re-authenticating
+Purpose: Display redacted credential diagnostics, canonical account status, and deployments
 LLM-Note:
-  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
-  Data flow: receives reveal=False by default → inspects supported provider variable names in process env/local .env/global ~/.co/keys.env without loading values → displays redacted name/status/source table → if reveal=True, displays full values in a separate warning-marked table → load_api_key() resolves OPENONION_API_KEY → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth → displays account and deployments
-  State/Effects: no state modifications | makes network requests to the configured backend after local diagnostics | reads env vars, .env, ~/.co/keys.env without exporting them | default output contains no secret material; explicit --reveal writes full values to the terminal | does NOT update any files
+  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, credentials.account_in_token, project_identity, project_root, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
+  Data flow: receives reveal=False by default → inspects supported provider variable names in process env/project-root .env/global ~/.co/keys.env without loading values → compares OpenOnion sources by public account claim while keeping token values redacted → if reveal=True, displays full values in a separate warning-marked table → load_api_key() performs guarded resolution/recovery → project_identity() selects the project key or global fallback → creates and signs a fresh auth message → POST to /api/v1/auth → displays account and deployments
+  State/Effects: discovery is non-mutating and makes no network call | account resolution may re-authenticate and repair a stored token only when the guarded CLI policy finds a different account | then makes account/deployment requests | default output contains no secret material; explicit --reveal writes full values to the terminal
   Integration: exposes handle_status(reveal=False) for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
   Performance: network call to backend (1-2s) | signature generation is fast (<10ms) | file I/O for .env files
   Errors: credential parse/read failures are treated as no discovered keys | account status fails gracefully if OPENONION_API_KEY or identity keys are missing | backend errors do not expose credential values; only explicit --reveal prints them
@@ -16,10 +16,13 @@ from typing import Mapping
 import requests
 from dotenv import dotenv_values
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from ...backend import backend_url
+from ...credentials import account_in_token
+from ...project import project_identity, project_root
 
 from .project_cmd_lib import load_api_key
 
@@ -36,6 +39,7 @@ CREDENTIAL_ENV_VARS = (
     ("XAI_API_KEY", "xAI"),
     ("OPENROUTER_API_KEY", "OpenRouter"),
     ("MISTRAL_API_KEY", "Mistral"),
+    ("TELEGRAM_BOT_TOKEN", "Telegram"),
 )
 
 OAUTH_CONNECTIONS = (
@@ -100,15 +104,87 @@ def _credential_sources(
     environ: Mapping[str, str] | None = None,
 ) -> tuple[tuple[str, Mapping[str, str]], ...]:
     """Return supported credential values grouped by privacy-safe source."""
-    project_dir = (project_dir or Path.cwd()).resolve()
+    project_dir = (
+        Path(project_dir).resolve()
+        if project_dir is not None
+        else project_root().resolve()
+    )
     home = (home or Path.home()).resolve()
     environ = os.environ if environ is None else environ
+    project_source = "~/.env" if project_dir == home else "<project>/.env"
 
     return (
         ("process environment", environ),
-        ("<project>/.env", _read_credential_file(project_dir / ".env")),
+        (project_source, _read_credential_file(project_dir / ".env")),
         ("~/.co/keys.env", _read_credential_file(home / ".co" / "keys.env")),
     )
+
+
+def _selected_credential_values(
+    names: tuple[str, ...],
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str | None]:
+    """Select the first configured value from the canonical source inventory."""
+    sources = _credential_sources(
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
+    )
+    return {
+        name: next(
+            (
+                str(values[name])
+                for _source, values in sources
+                if _is_configured(values.get(name))
+            ),
+            None,
+        )
+        for name in names
+    }
+
+
+def _short_account(account: str) -> str:
+    """A Rich-safe public address that distinguishes accounts in one row."""
+    if len(account) <= 20:
+        return escape(account)
+    return escape(f"{account[:16]}…{account[-4:]}")
+
+
+def _openonion_source_status(
+    found: list[tuple[str, str]],
+) -> tuple[str, str]:
+    """Describe OpenOnion sources by account identity, never token text.
+
+    JWTs rotate, so two different strings can still authorize the same account.
+    When every token has an inspectable public claim, the claims define whether
+    there is a conflict. If any token is opaque, value equality is the only safe
+    fallback; server authentication remains authoritative.
+    """
+    claims = [account_in_token(value) for _source, value in found]
+    if all(claim is not None for claim in claims):
+        conflict = len({claim.casefold() for claim in claims if claim}) > 1
+    else:
+        conflict = len({value for _source, value in found}) > 1
+
+    labels = []
+    for index, ((source, _value), claim) in enumerate(zip(found, claims)):
+        details = []
+        if conflict and index == 0:
+            details.append("used")
+        if claim:
+            details.append(f"account {_short_account(claim)}")
+        labels.append(
+            f"{source} ({' · '.join(details)})" if details else source
+        )
+
+    if conflict:
+        return "conflict", " + ".join(labels)
+    if found[0][0] == "process environment":
+        return "configured", " + ".join(labels)
+    return "discovered · not loaded", " + ".join(labels)
 
 
 def _credential_rows(
@@ -140,6 +216,8 @@ def _credential_rows(
         if not found:
             status = "missing"
             source = "—"
+        elif name == "OPENONION_API_KEY":
+            status, source = _openonion_source_status(found)
         elif len(unique_values) > 1:
             status = "conflict"
             # Which one is actually used. _credential_sources returns its
@@ -386,7 +464,11 @@ def _show_deployments(deployments):
 
 
 def handle_status(reveal: bool = False):
-    """Check account status without re-authenticating.
+    """Check canonical account status after redacted local diagnostics.
+
+    Credential discovery itself is read-only. The subsequent account phase uses
+    the ordinary CLI guard, which re-authenticates only to recover an explicit
+    account mismatch.
 
     Args:
         reveal: If True, print full provider credential values.
@@ -413,12 +495,9 @@ def handle_status(reveal: bool = False):
 
     from ... import address
 
-    # Load keys to re-sign
-    co_dir = Path(".co")
-    if not (co_dir.exists() and (co_dir / "keys" / "agent.key").exists()):
-        co_dir = Path.home() / ".co"
-
-    addr_data = address.load(co_dir)
+    # Sign as the same canonical identity the credential guard expects:
+    # project key first (including from nested directories), global fallback.
+    addr_data = project_identity()
     if not addr_data:
         console.print("\n❌ [bold red]No keys found[/bold red]")
         console.print("[yellow]Run 'co auth' first.[/yellow]\n")

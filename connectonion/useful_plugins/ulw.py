@@ -23,7 +23,7 @@ Usage:
 
 from typing import TYPE_CHECKING
 
-from ..core.events import after_user_input, on_complete, before_iteration, before_llm
+from ..core.events import after_user_input, before_iteration, before_llm, on_complete
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -148,6 +148,19 @@ def ulw_keep_working(agent: 'Agent') -> None:
     max_turns = agent.current_session.get('ulw_turns', ULW_DEFAULT_TURNS)
 
     if turns_used >= max_turns:
+        # A hosted grant is bounded by the launch-time authority captured by
+        # Host. The local mailbox extension below is a standalone Agent
+        # compatibility path; it must never increase remote authority.
+        if getattr(agent, '_host_ulw_turns_ceiling', None) is not None:
+            if agent.io:
+                agent.io.send({
+                    'type': 'ulw_turns_reached',
+                    'turns_used': turns_used,
+                    'max_turns': max_turns
+                })
+            _exit_ulw_mode(agent, 'safe')
+            return
+
         # Max turns reached - pause for user (if IO available)
         if agent.io:
             agent.io.send({

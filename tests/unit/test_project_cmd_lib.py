@@ -1,6 +1,7 @@
 """Tests for CLI project helpers — upsert_env credential writing."""
 
 import sys
+from pathlib import Path
 
 from connectonion.cli.commands.project_cmd_lib import upsert_env
 
@@ -107,6 +108,49 @@ class TestATokenThatNamesAnotherAccount:
 
         assert lib._token_for_this_account(token) == token
         assert not calls, "re-authenticated for no reason"
+
+    def test_a_project_mismatch_reauthenticates_with_the_project_key(
+        self, tmp_path, monkeypatch
+    ):
+        from connectonion.cli.commands import project_cmd_lib as lib
+
+        project = tmp_path / "project"
+        nested = project / "src"
+        project_co = project / ".co"
+        home = tmp_path / "home"
+        global_co = home / ".co"
+        project_co.mkdir(parents=True)
+        nested.mkdir()
+        global_co.mkdir(parents=True)
+        project_account = "0x" + "c" * 64
+        global_account = "0x" + "d" * 64
+        fresh = self._token(project_account)
+        calls = []
+
+        def identity_at(path):
+            path = Path(path).resolve()
+            if path == project_co.resolve():
+                return {"address": project_account}
+            if path == global_co.resolve():
+                return {"address": global_account}
+            return None
+
+        def authenticate(co_dir, **_kwargs):
+            calls.append(Path(co_dir).resolve())
+            monkeypatch.setenv("OPENONION_API_KEY", fresh)
+            return True
+
+        monkeypatch.chdir(nested)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.setattr(lib.address, "load", identity_at)
+        monkeypatch.setattr(
+            "connectonion.cli.commands.auth_commands.authenticate",
+            authenticate,
+        )
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: True)
+
+        assert lib._token_for_this_account(self._token(self.THEIRS)) == fresh
+        assert calls == [project_co.resolve()]
 
     def test_an_unreadable_token_is_left_alone(self, monkeypatch):
         """It may be a shape we do not know. The server is the authority on

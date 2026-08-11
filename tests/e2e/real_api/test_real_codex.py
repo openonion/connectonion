@@ -27,11 +27,21 @@ from connectonion.useful_tools import codex
 pytestmark = pytest.mark.real_api
 
 HAS_CODEX = bool(os.environ.get("CODEX_CMD") or shutil.which("codex"))
-HAS_AUTH = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("CODEX_API_KEY")
-                or os.path.exists(os.path.expanduser("~/.codex/auth.json")))
+REAL_CODEX_HOME = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+HAS_AUTH = bool(
+    os.environ.get("OPENAI_API_KEY")
+    or os.environ.get("CODEX_API_KEY")
+    or os.path.exists(os.path.join(REAL_CODEX_HOME, "auth.json"))
+)
 
 requires_codex = pytest.mark.skipif(
     not HAS_CODEX, reason="codex CLI not installed (npm i -g @openai/codex) / set $CODEX_CMD")
+
+
+@pytest.fixture(autouse=True)
+def _use_real_codex_config(monkeypatch):
+    """Opt-in real tests use Codex's config without exposing the whole HOME."""
+    monkeypatch.setenv("CODEX_HOME", REAL_CODEX_HOME)
 
 
 class _RecordingIO:

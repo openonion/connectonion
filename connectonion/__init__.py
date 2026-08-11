@@ -78,7 +78,7 @@ _FROM = {
     "load_system_prompt": ".prompts",
     **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
     **{name: ".useful_tools" for name in (
-        "send_email", "get_emails", "mark_read", "mark_unread",
+        "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
         "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
         "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
         "claude_code",
@@ -89,7 +89,8 @@ _FROM = {
         "read_file", "edit", "multi_edit", "glob", "grep", "write",
     )},
     **{name: ".network" for name in (
-        "connect", "RemoteAgent", "Response", "ExecResult", "host", "create_app",
+        "connect", "RemoteAgent", "Response", "ExecResult", "ACPModeError",
+        "host", "create_app",
         "IO", "relay", "announce", "HTTPRequest", "HTTPResponse", "HTTPRoute",
         "HTTPRouter",
     )},
@@ -160,6 +161,7 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    "send_telegram",
     # Class-based tools
     "Memory",
     "Gmail",
@@ -197,6 +199,7 @@ __all__ = [
     "RemoteAgent",
     "Response",
     "ExecResult",
+    "ACPModeError",
     "host",
     "create_app",
     "IO",

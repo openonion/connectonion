@@ -15,13 +15,17 @@ co copy ship-feature
 /ship-feature
 ```
 
-The skill walks through 5 steps automatically:
+The skill walks through 6 steps automatically:
 
 1. **Understand** — reads `git diff` and recent commits to know what changed
 2. **Tests** — finds the matching test file, adds/updates tests, runs them
 3. **docs/** — updates the relevant markdown doc; creates a new one if none exists
-4. **docs-site** — updates the Next.js docs site and pushes its own commit
-5. **Release** — bumps version, commits, tags, pushes, builds, uploads to PyPI
+4. **docs-site** — updates and validates the Next.js docs site without claiming
+   that an unpublished artifact is available
+5. **Design Journal** — records the problem, alternatives, decision, tradeoffs,
+   and evidence for a meaningful release or architecture change
+6. **Release** — bumps version, commits, tags, pushes, publishes the package,
+   then publishes the prepared docs
 
 ## What It Does In Detail
 
@@ -49,16 +53,32 @@ git log --oneline -5  # recent context
 ### Step 4: docs-site
 
 - Checks if `docs-site/` is cloned locally
-- If yes: finds the matching page, updates it, commits and pushes separately
+- If yes: finds the matching page, updates it, and runs lint and a production
+  build
+- Publishes the docs-site commit only after the matching PyPI package and GitHub
+  Release are public
 - If no: **warns you** — does not silently skip
 
-### Step 5: Release
+### Step 5: Design Journal
+
+- Creates or substantially updates a post for a feature-train launch, first
+  beta, first RC, stable release, or material architecture/workflow decision
+- Keeps the canonical Markdown and rendered page aligned
+- Adds metadata, structured data, blog and search entries, sitemap links, and
+  AI-readable index links
+- Tests desktop and mobile layouts
+- Leaves maintenance-only patches in release notes unless they contain a
+  reusable design lesson
+
+### Step 6: Release
 
 - Detects current version from `__init__.py`, `pyproject.toml`, or `setup.py`
 - Reads `VERSIONING.md` for rollover rules if present
 - Updates all files containing the version string
 - Commits, tags, and pushes
 - Builds with `python -m build` and uploads with `twine`
+- Publishes the verified docs-site version state and Design Journal after the
+  public package and GitHub Release exist
 
 ## Required Permissions
 

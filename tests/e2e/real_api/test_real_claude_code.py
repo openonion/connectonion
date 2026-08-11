@@ -15,16 +15,33 @@ from connectonion.useful_tools import claude_code
 
 pytestmark = pytest.mark.real_api
 HAS_CLAUDE = bool(os.environ.get("CLAUDE_CODE_CMD") or shutil.which("claude"))
+REAL_CLAUDE_CONFIG_DIR = (
+    os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+)
 requires_claude = pytest.mark.skipif(
     not HAS_CLAUDE, reason="Claude Code CLI is not installed"
 )
+
+
+@pytest.fixture(autouse=True)
+def _use_real_claude_config(monkeypatch):
+    """Opt-in real tests use Claude's config without exposing the whole HOME."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", REAL_CLAUDE_CONFIG_DIR)
 
 
 def _require_success(result):
     if result["status"] == "completed":
         return
     error = result["error"].lower()
-    if any(word in error for word in ("authentication", "log in", "login", "api key")):
+    auth_errors = (
+        "authentication",
+        "authenticate",
+        "log in",
+        "login",
+        "api key",
+        "oauth access token has expired",
+    )
+    if any(message in error for message in auth_errors):
         pytest.skip(result["error"])
     pytest.fail(result["error"])
 

@@ -2,9 +2,9 @@
 Purpose: WebSocket IO bridging async WebSocket transport to sync agent code via thread-safe message channels
 LLM-Note:
   Dependencies: imports from [network/io/base.IO, asyncio, threading, time, uuid] | imported by [network/host/ws_router/agent_io.py] | tested by [tests/unit/test_io.py, tests/unit/test_io_image_support.py]
-  Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
+  Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | Agent._record_trace() calls internal _send_persisted_trace(event) → queues a private dict subtype as Host-local provenance | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
   State/Effects: maintains incoming + outgoing channels (async-safe) | finished flag prevents sends after close | unblocks agent's blocking receive on close
-  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
+  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, internal persisted-trace provenance queried by Host forwarder, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
   Performance: queue-based coordination between sync agent thread and async transport | blocking receive() is intended for agent thread | _wait_for_msgs_from_agent waits at most ~1s so idle-session forwarders don't pin executor-pool threads
   Errors: closed IO unblocks pending receive() so agent thread doesn't hang | no exceptions raised — channel coordination handled internally
 """
@@ -16,6 +16,10 @@ import uuid
 from typing import Any, Dict
 
 from .base import IO
+
+
+class _PersistedTraceEvent(dict):
+    """Cooperative Host-local provenance; never an extra wire field or sandbox."""
 
 
 class WebSocketIO(IO):
@@ -45,6 +49,8 @@ class WebSocketIO(IO):
         self._accepting_runtime_inputs = False
 
         self._closed = False
+        self._pending_permission: Dict[str, Any] | None = None
+        self._interrupt_requested = False
 
     # ═══════════════════════════════════════════════════════
     # Agent side (sync)
@@ -55,6 +61,19 @@ class WebSocketIO(IO):
 
         Auto-generates 'id' (UUID) and 'ts' (timestamp) if not present.
         """
+        self._append_agent_message(message)
+
+    def _send_persisted_trace(self, message: Dict[str, Any]) -> None:
+        """Queue one canonical trace event with cooperative Host provenance."""
+        self._append_agent_message(_PersistedTraceEvent(message))
+
+    @staticmethod
+    def is_persisted_trace_event(message: Dict[str, Any]) -> bool:
+        """Return whether this exact queued event came from Agent._record_trace."""
+        return isinstance(message, _PersistedTraceEvent)
+
+    def _append_agent_message(self, message: Dict[str, Any]) -> None:
+        """Stamp and append one agent event to the replayable outgoing log."""
         if not self._closed:
             if 'id' not in message:
                 message['id'] = str(uuid.uuid4())
@@ -154,6 +173,115 @@ class WebSocketIO(IO):
         with self._client_condition:
             self._msgs_from_client.append(msg)
             self._client_condition.notify_all()
+
+    def request_interrupt(self) -> bool:
+        """Deliver at most one interrupt for this turn's IO generation."""
+
+        with self._client_condition:
+            if self._interrupt_requested:
+                return False
+            self._interrupt_requested = True
+            self._msgs_from_client.append({"type": "INTERRUPT"})
+            self._client_condition.notify_all()
+            return True
+
+    def register_permission_request(
+        self,
+        event: Dict[str, Any],
+        session_id: str,
+        acp_frame: Dict[str, Any] | None,
+    ) -> bool:
+        """Bind one replayable approval event to this session's live mailbox."""
+
+        request_id = event.get("id")
+        if not isinstance(request_id, str) or not request_id:
+            return False
+        pending = {
+            "request_id": request_id,
+            "session_id": session_id,
+            "tool_call_id": event.get("tool_call_id"),
+            "acp": acp_frame is not None,
+        }
+        with self._client_condition:
+            if self._pending_permission is None:
+                self._pending_permission = pending
+                return True
+            return self._pending_permission == pending
+
+    def resolve_acp_permission(
+        self, frame: Dict[str, Any], session_id: str
+    ) -> bool:
+        """Consume one matching ACP response and enqueue a fail-closed decision."""
+
+        message = frame.get("message")
+        response_id = message.get("id") if isinstance(message, dict) else None
+        with self._client_condition:
+            pending = self._pending_permission
+            if (
+                pending is None
+                or not pending["acp"]
+                or pending["session_id"] != session_id
+                or frame.get("sessionId") != session_id
+                or response_id != pending["request_id"]
+            ):
+                return False
+            self._pending_permission = None
+
+        from ...core.acp_wire import legacy_approval_response_from_acp
+
+        try:
+            response = legacy_approval_response_from_acp(
+                frame,
+                expected_session_id=session_id,
+                expected_request_id=pending["request_id"],
+            )
+        except (TypeError, ValueError):
+            response = {
+                "approved": False,
+                "scope": "once",
+                "mode": "reject_hard",
+            }
+        self.send_to_agent(response)
+        return True
+
+    def resolve_legacy_permission(self, response: Dict[str, Any]) -> bool:
+        """Bind a rolling-upgrade legacy answer to the one pending request."""
+
+        with self._client_condition:
+            if self._pending_permission is None:
+                return False
+            self._pending_permission = None
+            self._msgs_from_client.append(
+                self._normalized_legacy_permission(response)
+            )
+            self._client_condition.notify_all()
+            return True
+
+    @staticmethod
+    def _normalized_legacy_permission(response: Dict[str, Any]) -> Dict[str, Any]:
+        """Accept only the legacy choices the policy gate actually implements."""
+
+        rejected = {
+            "approved": False,
+            "scope": "once",
+            "mode": "reject_hard",
+        }
+        approved = response.get("approved")
+        if not isinstance(approved, bool):
+            return rejected
+        scope = response.get("scope", "once")
+        if scope not in {"once", "session"}:
+            return rejected
+        if approved:
+            return {"approved": True, "scope": scope}
+        mode = response.get("mode", "reject_hard")
+        if mode not in {"reject_soft", "reject_hard", "reject_explain"}:
+            return rejected
+        result = {"approved": False, "scope": "once", "mode": mode}
+        feedback = response.get("feedback")
+        if isinstance(feedback, str) and feedback:
+            result["feedback"] = feedback
+        return result
 
     def push_runtime_input(self, msg: Dict[str, Any]) -> bool:
         """Queue mid-execution input only while the current turn can consume it."""

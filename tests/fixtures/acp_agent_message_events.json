@@ -1,0 +1,30 @@
+{
+  "legacy": [
+    {
+      "type": "assistant",
+      "id": "6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e",
+      "content": "The final answer."
+    }
+  ],
+  "acp": [
+    {
+      "type": "ACP_NOTIFICATION",
+      "acpSchema": "schema-v1.19.0",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-1",
+          "update": {
+            "content": {
+              "text": "The final answer.",
+              "type": "text"
+            },
+            "messageId": "6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e",
+            "sessionUpdate": "agent_message_chunk"
+          }
+        }
+      }
+    }
+  ]
+}

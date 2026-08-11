@@ -238,6 +238,29 @@ class TestRuntimeContextAnalyzeWhy:
         assert result == "I chose search because the user asked to find something"
         mock_agent.llm.complete.assert_called_once()
 
+    def test_persisted_message_ids_do_not_reach_debug_provider_calls(self):
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
+
+        mock_bp = Mock(tool_name="search", tool_args={"query": "test"})
+        mock_agent = Mock()
+        mock_agent.current_session = {
+            'messages': [
+                {'role': 'user', 'content': 'First question'},
+                {
+                    'role': 'assistant',
+                    'content': 'First answer',
+                    'id': '6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e',
+                },
+            ],
+        }
+        mock_agent.llm.complete.return_value = Mock(content="Because", tool_calls=[])
+
+        RuntimeContext(mock_bp, mock_agent).analyze_why_this_tool()
+
+        messages = mock_agent.llm.complete.call_args.args[0]
+        assert all('id' not in message for message in messages)
+        assert mock_agent.current_session['messages'][1]['id'].startswith('6d1f')
+
 
 class TestRuntimeContextRootCause:
     """Tests for analyze_root_cause method."""
@@ -306,4 +329,3 @@ class TestRuntimeContextRootCause:
         # Verify model was passed
         call_kwargs = mock_llm_do.call_args.kwargs
         assert call_kwargs.get('model') == "claude-3-sonnet"
-

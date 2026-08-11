@@ -25,7 +25,7 @@ session['permissions'] = {
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 1. SAFE_TOOLS - Always auto-approved                       │
+│ 1. Template Permissions - Explicit built-in allowlist      │
 │    read_file, glob, grep (read-only operations)            │
 │    Stored as: source='safe', expires='never'               │
 └─────────────────────────────────────────────────────────────┘
@@ -52,9 +52,9 @@ session['permissions'] = {
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. Tool Approval - Ask user for dangerous operations       │
-│    bash, edit, write → require explicit user approval      │
-│    If no permission in unified dict → ask user             │
+│ 5. Tool Approval - Resolve unpermitted operations          │
+│    Local/admin operator → explicit approval                │
+│    Hosted non-admin requester → reject without a dialog    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -114,9 +114,9 @@ def create_agent():
 
 host(create_agent)  # Loads permissions from .co/host.yaml
 
-# Safe tools - always auto-approved
+# Template-permitted tools - auto-approved
 agent.input("Read the README")
-# → read_file auto-approved (SAFE_TOOLS) ✓
+# → read_file auto-approved (template permission) ✓
 
 # Config permissions - auto-approved from host.yaml
 agent.input("Check git status")
@@ -137,9 +137,10 @@ agent.input("Run tests")
 # → User approves for "session"
 # → Future pytest calls auto-approved for this session ✓
 
-# Dangerous operations - always ask
+# Unpermitted operations - operator approval or fail closed
 agent.input("Delete all files")
-# → User approval required (destructive operation)
+# → Local/admin operator: approval required
+# → Hosted non-admin requester: rejected without a dialog
 ```
 
 ## Unified Permission Format
@@ -224,22 +225,21 @@ permissions = snapshot  # Restore - user's 'write' preserved, skill's 'bash' cle
 
 **Result**: Skills grant temporary permissions without losing user approvals.
 
-## 1. SAFE_TOOLS - Always Auto-Approved
+## 1. Template Permissions - Explicit Built-In Allowlist
 
-Read-only operations that can't harm the system.
+The standard host template explicitly permits its built-in read-only tools. The permission entries use `source: safe`; safety does not come from a tool being absent from a denylist.
 
-```python
-SAFE_TOOLS = [
-    'FileTools.read_file',
-    'FileTools.glob',
-    'FileTools.grep',
-    'ls',
-    'list_directory',
-    'tree'
-]
+```yaml
+permissions:
+  "read_file":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
 ```
 
-**No approval needed** - these tools are always safe to execute.
+These named tools need no approval. A custom or dynamically registered tool is not implicitly safe just because its name is new.
 
 ### Example
 
@@ -759,11 +759,11 @@ def check_approval(agent):
     # ... ask user for approval
 ```
 
-## 5. Tool Approval - Ask User for Dangerous Operations
+## 5. Tool Approval - Ask User for Unpermitted Operations
 
-Web-based approval UI for dangerous tools.
+With live IO, the web approval UI handles every tool call that did not match an explicit template, config, skill, user, or mode permission. Known effectful tools remain documented for discoverability, but that list is not the security boundary.
 
-### Dangerous Tools
+### Known Effectful Tools
 
 ```python
 DANGEROUS_TOOLS = [
@@ -782,7 +782,7 @@ DANGEROUS_TOOLS = [
    ↓
 2. Tool approval plugin intercepts
    ↓
-3. Send approval request to web UI
+3. Local/admin operator receives an approval request
    ┌──────────────────────────────────┐
    │ ⚠️ Approval needed: bash         │
    │                                  │
@@ -792,7 +792,7 @@ DANGEROUS_TOOLS = [
    │ [Approve for session]            │
    │ [Deny]                           │
    └──────────────────────────────────┘
-4. User decides
+4. Operator decides (a hosted non-admin is rejected before this step)
    ↓
 5. Tool executes (or blocked)
 ```
@@ -804,8 +804,10 @@ DANGEROUS_TOOLS = [
 def check_approval(agent):
     """Check if tool needs approval before execution."""
 
-    tool_name = agent.current_session['pending_tool_call']['name']
-    tool_args = agent.current_session['pending_tool_call']['arguments']
+    pending = agent.current_session['pending_tool']
+    tool_name = pending['name']
+    tool_args = pending['arguments']
+    requester = agent.current_session.get('requester')
 
     # 1. Check skill permission scope (highest priority)
     scope = agent.current_session.get('permission_scope')
@@ -813,8 +815,9 @@ def check_approval(agent):
         if _matches_pattern(tool_name, tool_args, scope['allowed_tools']):
             return  # Auto-approve
 
-    # 2. Check SAFE_TOOLS
-    if tool_name in SAFE_TOOLS:
+    # 2. Check explicit template/config/skill permissions
+    permissions = agent.current_session.get('permissions', {})
+    if matches_permission(tool_name, tool_args, permissions):
         return  # Auto-approve
 
     # 3. Check session memory
@@ -826,24 +829,24 @@ def check_approval(agent):
     if tool_name in approved_tools and approved_tools[tool_name] == 'deny':
         raise ToolDenied(f"{tool_name} was denied")
 
-    # 5. Ask user for dangerous tools
-    if tool_name in DANGEROUS_TOOLS:
-        response = agent.io.send({
-            'type': 'approval_needed',
-            'tool_name': tool_name,
-            'tool_args': tool_args
-        })
+    # 5. Fail closed: only the local/admin operator may approve
+    if requester and requester.get('level') != 'admin':
+        raise ToolDenied(f"{tool_name} requires operator approval")
 
-        scope = response['scope']  # 'once', 'session', 'deny'
+    agent.io.send({
+        'type': 'approval_needed',
+        'tool': tool_name,
+        'arguments': tool_args,
+    })
+    response = agent.io.receive()
 
-        if scope == 'deny':
-            agent.current_session.setdefault('approval', {})['approved_tools'][tool_name] = 'deny'
-            raise ToolDenied(f"User denied {tool_name}")
+    if not response.get('approved', False):
+        raise ToolDenied(f"User denied {tool_name}")
 
-        if scope == 'session':
-            agent.current_session.setdefault('approval', {})['approved_tools'][tool_name] = 'session'
+    if response.get('scope', 'once') == 'session':
+        agent.current_session.setdefault('approval', {})['approved_tools'][tool_name] = 'session'
 
-        # scope == 'once' → just execute this time
+    # scope == 'once' → just execute this time
 
 tool_approval = [before_each_tool(check_approval)]
 ```
@@ -862,7 +865,8 @@ The approval system uses unified permissions - all permissions stored in `sessio
        └─ Log: "⚡ tool_name (reason from permission)"
 
 2. If no match in permissions
-   └─ ASK USER (web approval UI)
+   ├─ Hosted non-admin requester → REJECT without a dialog
+   └─ Local/admin operator → ASK USER (web approval UI)
        └─ If approved for "session" → Add to permissions dict
 ```
 
@@ -905,11 +909,11 @@ agent = Agent(
 )
 
 # ────────────────────────────────────────────────────────
-# Scenario 1: Safe tools (always auto-approved)
+# Scenario 1: Template-permitted tools
 # ────────────────────────────────────────────────────────
 agent.input("Find all tests")
-# → glob("**/test_*.py") - SAFE_TOOLS ✓
-# → read_file("test_agent.py") - SAFE_TOOLS ✓
+# → glob("**/test_*.py") - template permission ✓
+# → read_file("test_agent.py") - template permission ✓
 
 # ────────────────────────────────────────────────────────
 # Scenario 2: Skills (scoped permissions for one turn)
@@ -939,12 +943,13 @@ agent.input("Deploy")
 # → bash("./deploy.sh") - session memory ✓
 
 # ────────────────────────────────────────────────────────
-# Scenario 5: Dangerous operations (always ask)
+# Scenario 5: Unpermitted operations (operator approval or fail closed)
 # ────────────────────────────────────────────────────────
 agent.input("Create new config file")
 # → write("config.json", ...) - REQUIRES APPROVAL
 # → User approves "once"
 # → Executes this time only
+# → A hosted non-admin requester is rejected without a dialog instead
 
 agent.input("Create another file")
 # → write("data.json", ...) - REQUIRES APPROVAL again
@@ -953,50 +958,32 @@ agent.input("Create another file")
 ## Flow Diagram
 
 ```
-┌─────────────────────────┐
-│ Agent wants to use tool │
-└────────────┬────────────┘
-             │
-             ▼
-┌────────────────────────────────┐
-│ 1. Skills permission scope?    │
-│    (turn-specific)              │
-└─────┬──────────────────────┬───┘
-  YES │                      │ NO
-      ▼                      ▼
-   ┌──────┐     ┌────────────────────────┐
-   │ ✓ OK │     │ 2. SAFE_TOOLS?         │
-   └──────┘     └─────┬──────────────┬───┘
-                  YES │              │ NO
-                      ▼              ▼
-                   ┌──────┐     ┌────────────────────────┐
-                   │ ✓ OK │     │ 3. Plan mode + edit?   │
-                   └──────┘     └─────┬──────────────┬───┘
-                                  YES │              │ NO
-                                      ▼              ▼
-                                   ┌──────┐     ┌────────────────────────┐
-                                   │ ✓ OK │     │ 4. Session memory?     │
-                                   └──────┘     └─────┬──────────────┬───┘
-                                                  YES │              │ NO
-                                                      ▼              ▼
-                                               ┌────────────┐   ┌──────────────┐
-                                               │ ✓ approved │   │ 5. Ask user  │
-                                               │ ✗ denied   │   └──────┬───────┘
-                                               └────────────┘          │
-                                                                       ▼
-                                                            ┌─────────────────────┐
-                                                            │ once / session /    │
-                                                            │ deny                │
-                                                            └──────┬──────────────┘
-                                                                   │
-                                                        ┌──────────┼──────────┐
-                                                        │          │          │
-                                                        ▼          ▼          ▼
-                                                     ┌────┐   ┌────────┐  ┌──────┐
-                                                     │ ✓  │   │ ✓ save │  │ ✗    │
-                                                     │once│   │ to     │  │deny  │
-                                                     └────┘   │session │  └──────┘
-                                                              └────────┘
+Agent wants to use a tool
+          │
+          ▼
+Explicit template, config, skill,
+user, or session permission?
+    ├─ yes → execute
+    └─ no
+          │
+          ▼
+No live IO?
+    ├─ yes → execute
+    └─ no
+          │
+          ▼
+Operator-owned mode bypass?
+(`ulw`, or `accept_edits` for named edit tools)
+    ├─ yes → execute
+    └─ no
+          │
+          ▼
+Hosted non-admin requester?
+    ├─ yes → reject without a dialog
+    └─ no  → ask the local/admin operator
+                 ├─ once → execute once
+                 ├─ session → save permission and execute
+                 └─ deny → reject
 ```
 
 ## Best Practices
@@ -1090,7 +1077,7 @@ User decisions don't persist across sessions.
 
 ### Tool Approval Is Final Layer
 
-Even with all auto-approval mechanisms, dangerous tools not covered by other layers still require explicit user approval.
+Even with all auto-approval mechanisms, every remaining live-IO tool requires an operator decision. A local/admin operator receives the approval dialog; a hosted non-admin requester is rejected without one. Unknown plugin and protocol-provided tools fail closed too.
 
 ## Related Documentation
 

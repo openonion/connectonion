@@ -1,7 +1,7 @@
 """
 Purpose: Provide experimental debugging tools to understand and fix unwanted tool calls via prompt testing
 LLM-Note:
-  Dependencies: imports from [typing, pathlib, pydantic, ../llm_do.py] | imported by [explain_agent.py] | no dedicated tests found
+  Dependencies: imports from [typing, pathlib, pydantic, core.provider_messages, ../llm_do.py] | imported by [explain_agent.py] | tested by [tests/unit/test_explain_context.py]
   Data flow: explain_tool_choice() creates RuntimeContext(breakpoint_context, agent) → stores bp_ctx and agent state → methods test_system_prompt_variation(new_prompt), suggest_prompt_improvements(), verify_stability() call llm_do() with modified prompts → returns RootCauseAnalysis (Pydantic model with primary_cause_source, influential_text, explanation, is_correct_choice, suggested_fix)
   State/Effects: stores breakpoint_context and agent_instance | no file I/O | calls llm_do() for LLM analysis (multiple LLM requests per method) | no global state
   Integration: exposes RuntimeContext class, RootCauseAnalysis (Pydantic model) | used by explain_agent.py to provide experimental debugging | methods help developers understand why agent chose specific tool and how to fix unwanted choices via prompt engineering
@@ -9,9 +9,12 @@ LLM-Note:
   Errors: LLM call failures propagate from llm_do() | Pydantic validation errors if LLM returns invalid structure
 """
 
-from typing import Dict, List, Any
 from pathlib import Path
+from typing import Any
+
 from pydantic import BaseModel
+
+from ...core.provider_messages import messages_for_provider
 from ...llm_do import llm_do
 
 
@@ -57,7 +60,9 @@ class RuntimeContext:
             What the agent would do with the modified prompt
         """
         # Get messages up to the decision point
-        temp_messages = self.agent.current_session['messages'].copy()
+        temp_messages = messages_for_provider(
+            self.agent.current_session['messages']
+        )
 
         # Remove the assistant message that made this tool call
         if temp_messages and temp_messages[-1].get('role') == 'assistant':
@@ -107,7 +112,9 @@ class RuntimeContext:
             Analysis of decision stability
         """
         # Get messages up to decision point
-        temp_messages = self.agent.current_session['messages'].copy()
+        temp_messages = messages_for_provider(
+            self.agent.current_session['messages']
+        )
         if temp_messages and temp_messages[-1].get('role') == 'assistant':
             temp_messages = temp_messages[:-1]
 
@@ -154,7 +161,9 @@ class RuntimeContext:
         current_next = self.bp_ctx.next_actions or []
 
         # Build modified message history with different result
-        temp_messages = self.agent.current_session['messages'].copy()
+        temp_messages = messages_for_provider(
+            self.agent.current_session['messages']
+        )
 
         # Find the assistant message with tool calls and add modified result
         for msg in reversed(temp_messages):
@@ -205,7 +214,9 @@ class RuntimeContext:
             Agent's explanation of why it chose this tool
         """
         # Use the agent's current messages up to this point
-        temp_messages = self.agent.current_session['messages'].copy()
+        temp_messages = messages_for_provider(
+            self.agent.current_session['messages']
+        )
 
         # Remove the assistant message that made the tool call
         if temp_messages and temp_messages[-1].get('role') == 'assistant':

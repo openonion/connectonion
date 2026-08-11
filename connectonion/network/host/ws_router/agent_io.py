@@ -1,20 +1,119 @@
 """
-Purpose: Agent thread orchestration + io → client streaming — the bridge between the sync agent and the async transport
+Purpose: Bridge synchronous hosted Agents to the async WebSocket transport
 LLM-Note:
-  Dependencies: imports from [...io (WebSocketIO), ..session (session_to_chat_items via lazy import), asyncio, threading, rich.console] | imported by [.session (start_agent), .connect (resume_forwarding)]
-  Data flow: start_agent: validate INPUT → create WebSocketIO → register in registry BEFORE thread.start (race-safe) → spawn _agent_thread_body (thread target running route_handlers["ws_input"]) → success or exception always returns registry to connected → spawn forward_task = forward_agent_msgs_to_client → return (io, task) | resume_forwarding: same forward_task spawn but on existing active.io | forward_agent_msgs_to_client: read_msgs_from_agent → send_msg loop → on agent finish read result_holder → emit OUTPUT (success) / ERROR (exception)
-  State/Effects: spawns daemon Thread + asyncio.Task | mutates registry (register / mark_session_running) | calls io.mark_agent_done() in finally
-  Integration: start_agent(data, send_msg, conn, route_handlers, storage, registry) → (io, forward_task) | None | resume_forwarding(send_msg, active, registry, session_id, storage, conn) → (io, forward_task) | forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder, conn, storage) — async, runs until io marked done
+  Dependencies: imports from [core.acp_wire, network.io, session.mode]
+  Data flow: INPUT → Agent thread → WebSocketIO → async forwarder → OUTPUT/ERROR
+  State/Effects: spawns Agent threads/tasks; updates the active-session registry
+  Integration: start_agent(), resume_forwarding(), forward_agent_msgs_to_client()
   Performance: thread-per-INPUT (worker isolation) | one forward_task per WS connection
-  Errors: agent thread exceptions captured in result_holder[0]; surfaced as ERROR frame by the forwarder (threads don't propagate exceptions natively)
+  Errors: owned failures stay public; unexpected failures log and become -32603
 """
 import asyncio
+import logging
 import threading
 
 from rich.console import Console
+
+from ....core.acp_wire import (
+    acp_notification_frame,
+    acp_permission_request_frame,
+)
 from ...io import WebSocketIO
+from ..session.mode import ModeTransactionError
 
 console = Console()
+logger = logging.getLogger(__name__)
+
+
+def _acp_rollout_frame(event, session_id):
+    if not session_id:
+        return None
+    try:
+        return acp_notification_frame(event, session_id)
+    except (TypeError, ValueError) as exc:
+        console.print(
+            f"[yellow]ACP mirror skipped; legacy event continues: {exc}[/yellow]"
+        )
+        return None
+
+
+def _acp_permission_rollout_frame(event, session_id):
+    if not session_id:
+        return None
+    try:
+        return acp_permission_request_frame(event, session_id)
+    except (TypeError, ValueError) as exc:
+        console.print(
+            f"[yellow]ACP permission mirror skipped; legacy request continues: {exc}[/yellow]"
+        )
+        return None
+
+
+def _final_agent_event(result, session, chat_items):
+    """Return a terminal answer with transport-neutral persisted identity."""
+    if (
+        not isinstance(result, str)
+        or not result
+        or not isinstance(session, dict)
+    ):
+        return None
+    final_message = next(
+        (
+            message for message in reversed(session.get("messages", []))
+            if message.get("role") == "assistant" and message.get("content")
+        ),
+        None,
+    )
+    if (
+        final_message is None
+        or final_message.get("content") != result
+        or not isinstance(final_message.get("id"), str)
+        or not final_message["id"]
+    ):
+        return None
+    final_agent = next(
+        (
+            item for item in reversed(chat_items)
+            if item.get("type") == "agent"
+            and item.get("id") == final_message["id"]
+            and item.get("content") == result
+        ),
+        None,
+    )
+    if final_agent is None:
+        return None
+    return {
+        "type": "assistant",
+        "id": final_message["id"],
+        "content": result,
+    }
+
+
+async def _send_output(
+    send_msg,
+    *,
+    result,
+    session_id,
+    duration_ms,
+    session,
+):
+    """Send the additive ACP message mirror, then authoritative OUTPUT."""
+    from ..session import session_to_chat_items
+
+    chat_items = session_to_chat_items(session or {})
+    final_event = _final_agent_event(result, session, chat_items)
+    if final_event is not None:
+        acp_frame = _acp_rollout_frame(final_event, session_id)
+        if acp_frame is not None:
+            await send_msg(acp_frame)
+    await send_msg({
+        "type": "OUTPUT",
+        "result": result,
+        "session_id": session_id,
+        "duration_ms": duration_ms,
+        "session": session,
+        "chat_items": chat_items,
+    })
 
 
 def _agent_thread_body(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder, requester_address=None):
@@ -22,8 +121,16 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
     try:
         result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files,
                                                       requester_address=requester_address)
-    except Exception as e:
-        result_holder[0] = e
+    except ModeTransactionError as exc:
+        result_holder[0] = exc
+    except Exception as exc:
+        logger.exception(
+            "Hosted Agent execution failed for session %s", session_id
+        )
+        # Keep the original exception for in-process diagnostics and legacy
+        # callers. The WebSocket boundary below owns disclosure and maps every
+        # unexpected exception to one fixed -32603 response.
+        result_holder[0] = exc
     finally:
         # A failed run is finished too. Leaving it marked "running" routes the
         # next INPUT into a dead IO queue and creates another false ACK.
@@ -33,40 +140,70 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
 
 async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
     """Forward agent events to client. Send OUTPUT (or ERROR) when agent finishes."""
-    from ..session import session_to_chat_items
-
     async for event in io.read_msgs_from_agent():
+        persisted_trace = io.is_persisted_trace_event(event)
+        event_type = event.get("type")
+        if event.get("type") == "approval_needed":
+            acp_request = _acp_permission_rollout_frame(event, session_id)
+            io.register_permission_request(event, session_id, acp_request)
+            if acp_request is not None:
+                await send_msg(acp_request)
+        should_mirror = event_type in {
+            "tool_call", "tool_result", "mode_changed"
+        } or (
+            event_type in {"thinking", "plan"} and persisted_trace
+        )
+        acp_frame = (
+            _acp_rollout_frame(event, session_id) if should_mirror else None
+        )
+        if acp_frame is not None:
+            await send_msg(acp_frame)
+            # Rollout is dual-write: older clients still need the legacy event,
+            # while new clients de-duplicate the matching logical transition.
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)
 
     if result_holder and isinstance(result_holder[0], Exception):
-        console.print(f"[red]✗ agent error:[/red] {result_holder[0]}")
-        await send_msg({"type": "ERROR", "message": str(result_holder[0])})
+        error = result_holder[0]
+        if isinstance(error, ModeTransactionError):
+            message = {
+                "type": "ERROR",
+                "code": error.code,
+                "message": error.message,
+            }
+            if error.data:
+                message.update(error.data)
+        else:
+            message = {
+                "type": "ERROR",
+                "code": -32603,
+                "message": "Unable to run agent",
+            }
+        console.print(f"[red]✗ agent error:[/red] {message['message']}")
+        await send_msg(message)
     elif result_holder and result_holder[0]:
         result = result_holder[0]
         session_data = result.get('session', {})
         if conn:
             conn["session"] = session_data
-        await send_msg({
-            "type": "OUTPUT",
-            "result": result["result"],
-            "session_id": session_id,
-            "duration_ms": result["duration_ms"],
-            "session": session_data,
-            "chat_items": session_to_chat_items(session_data),
-        })
+        await _send_output(
+            send_msg,
+            result=result["result"],
+            session_id=session_id,
+            duration_ms=result["duration_ms"],
+            session=session_data,
+        )
     elif storage:
         stored = storage.get(session_id)
         if stored and stored.status == "done":
-            await send_msg({
-                "type": "OUTPUT",
-                "result": stored.result,
-                "session_id": session_id,
-                "duration_ms": stored.duration_ms,
-                "session": stored.session,
-                "chat_items": session_to_chat_items(stored.session or {}),
-            })
+            await _send_output(
+                send_msg,
+                result=stored.result,
+                session_id=session_id,
+                duration_ms=stored.duration_ms,
+                session=stored.session,
+            )
     else:
         await send_msg({"type": "ERROR", "message": "Agent completed without result"})
 
@@ -84,7 +221,7 @@ def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None
     alive. The io stayed live in ActiveSession across the WS drop; we just
     spawn a fresh task to pump it to the new client.
     """
-    console.print(f"  [dim]↻ resuming forwarding to running agent[/dim]")
+    console.print("  [dim]↻ resuming forwarding to running agent[/dim]")
     io = active.io
     registry.update_ping(session_id)
     task = asyncio.create_task(
@@ -136,7 +273,7 @@ def verified_prompt(data: dict, route_handlers) -> tuple:
 async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
     """Validate INPUT, spawn agent thread + forward task. Returns (io, forward_task) or None on error."""
     if not conn["authenticated"]:
-        console.print(f"[red]✗ INPUT rejected:[/red] not authenticated (send CONNECT first)")
+        console.print("[red]✗ INPUT rejected:[/red] not authenticated (send CONNECT first)")
         await send_msg({"type": "ERROR", "message": "authenticate first (send CONNECT)"})
         return None
 

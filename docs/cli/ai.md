@@ -10,7 +10,7 @@ co ai
 
 Opens a web chat at `chat.openonion.ai` connected to a coding agent running locally. The agent can read and edit your project files, run shell commands, manage tasks, and more.
 
-## Two Modes
+## Three Modes
 
 ### Web Server Mode (default)
 
@@ -55,6 +55,66 @@ Use foreground shell commands when the next subprocess must retain their result.
 On Windows, snapshot files rely on the current user's profile-directory ACLs;
 POSIX systems additionally enforce `0700` directories and `0600` files.
 
+### ACP Agent Mode
+
+```bash
+co ai --acp
+```
+
+Starts a stable ACP v1 agent server over stdio so an ACP-compatible editor or
+CLI can create a session and drive the real `co ai` coding agent. ACP messages
+are newline-delimited JSON-RPC on stdin/stdout; human-readable diagnostics stay
+on stderr.
+
+Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
+session reuse its conversation and tool state. The working directory supplied
+by the client must be an existing absolute directory. Additional workspace
+roots are not accepted yet.
+
+ACP stdio MCP servers are disabled by default because their configuration can
+launch local processes. An operator can grant that launch authority explicitly:
+
+```bash
+co ai --acp --acp-mcp
+```
+
+With that flag, `session/new` and `session/resume` may provide up to eight
+stdio MCP servers with absolute executable paths. HTTP, SSE, and ACP-transport
+MCP servers are rejected. Each server runs in the session cwd with the MCP
+SDK's safe environment baseline plus only the environment entries explicitly
+provided for that server; the complete parent environment is not copied.
+
+MCP commands, arguments, environment values, and discovered tools are not
+persisted. A resumed session must provide its complete MCP list again. Closing
+the session, client EOF, or partial startup failure reaps every owned process.
+Discovery is bounded to 128 tools and 32 pages, schemas and results are bounded
+to 64 KiB, tool-call arguments are bounded to 64 KiB, and calls have a
+60-second read timeout.
+
+Remote tool names and annotations are not trusted as permissions. MCP tools
+receive collision-resistant `mcp__...` names and pass through the ordinary
+ConnectOnion approval hook. Safe and Accept Edits modes ask the ACP operator
+before executing them; explicit ULW remains the only approval bypass.
+"Allow for this session" lasts only for the current open MCP process pool.
+Client-granted MCP approvals are not persisted, so resume asks again even when
+the client supplies the same server and tool names. Explicit operator rules in
+`.co/host.yaml` remain durable configuration.
+
+ACP session updates preserve the Agent's event order: thinking, tool starts,
+tool results, and the terminal assistant response are emitted through one FIFO
+consumer per session. Tool arguments and supported JSON-native results remain
+structured in ACP `rawInput`/`rawOutput`; every result also carries text content
+for compatibility. Turn usage and stop reasons come from the Agent's structured
+terminal record, not display text. `session/cancel` and client EOF cooperatively
+stop the active turn, and late events from that retired turn are not forwarded
+into a later prompt.
+
+ConnectOnion currently receives one complete response from the model provider,
+so the terminal assistant message is one ACP chunk rather than a live token
+stream. Client-mediated approval is generation-scoped and fails closed on
+cancelled, unknown, or disconnected outcomes. `--yolo` remains an explicit
+operator choice at process launch.
+
 ## Options
 
 | Option | Short | Default | Description |
@@ -66,12 +126,16 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 | `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
+| `--acp` | | off | Serve stable ACP v1 over stdin/stdout |
+| `--acp-mcp` | | off | With `--acp`, allow session-scoped stdio MCP launches |
 
 ```bash
 co ai --port 9000
 co ai --model co/gemini-3.6-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
+co ai --acp
+co ai --acp --acp-mcp
 ```
 
 ## YOLO mode

@@ -27,12 +27,21 @@ Components under test:
 - Helper functions: _find_co_dir, _load_env_vars, _mask, _short_path, _source_label
 """
 
+import base64
+import json
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from .argparse_runner import ArgparseCliRunner
+
+
+def _token_for(address: str) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"public_key": address}).encode()
+    ).decode().rstrip("=")
+    return f"header.{payload}.signature"
 
 
 class TestMask:
@@ -201,6 +210,45 @@ class TestLoadEnvVars:
             finally:
                 os.chdir(original_cwd)
 
+    def test_uses_canonical_sources_from_a_deep_directory_without_mutation(
+        self, tmp_path, monkeypatch
+    ):
+        project = tmp_path / "project"
+        deep = project.joinpath(*("deep",) * 8)
+        home = tmp_path / "home"
+        (project / ".co").mkdir(parents=True)
+        (home / ".co").mkdir(parents=True)
+        deep.mkdir(parents=True)
+        (project / ".env").write_text(
+            "OPENONION_API_KEY=project-key\nGOOGLE_EMAIL=project@gmail.com\n"
+        )
+        (home / ".co" / "keys.env").write_text(
+            "OPENONION_API_KEY=global-key\nMICROSOFT_EMAIL=global@outlook.com\n"
+        )
+        monkeypatch.chdir(deep)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        for name in (
+            "OPENONION_API_KEY",
+            "GOOGLE_EMAIL",
+            "GOOGLE_ACCESS_TOKEN",
+            "GOOGLE_REFRESH_TOKEN",
+            "MICROSOFT_EMAIL",
+            "MICROSOFT_ACCESS_TOKEN",
+            "MICROSOFT_REFRESH_TOKEN",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("OPENONION_API_KEY", "process-key")
+
+        from connectonion.cli.commands.keys_commands import _load_env_vars
+
+        before = dict(os.environ)
+        result = _load_env_vars()
+
+        assert result["OPENONION_API_KEY"] == "process-key"
+        assert result["GOOGLE_EMAIL"] == "project@gmail.com"
+        assert result["MICROSOFT_EMAIL"] == "global@outlook.com"
+        assert dict(os.environ) == before
+
 
 class TestHandleKeysNoKeys:
     """Tests for handle_keys when no keys exist."""
@@ -322,6 +370,115 @@ class TestHandleKeysSuccess:
         handle_keys()
 
         assert mock_console.print.called
+
+    def test_reports_a_foreign_token_without_exposing_token_material(
+        self, monkeypatch, capsys
+    ):
+        from connectonion import address
+        from connectonion.cli.commands import keys_commands
+        from rich.console import Console
+
+        expected = self.MOCK_ADDR["address"]
+        foreign = "0x" + "2" * 64
+        token = _token_for(foreign)
+        monkeypatch.setattr(
+            keys_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: Path(".co"))
+        monkeypatch.setattr(address, "load", lambda _path: self.MOCK_ADDR)
+        monkeypatch.setattr(
+            keys_commands,
+            "_load_env_vars",
+            lambda: {
+                "OPENONION_API_KEY": token,
+                "GOOGLE_EMAIL": None,
+                "GOOGLE_ACCESS_TOKEN": None,
+                "GOOGLE_REFRESH_TOKEN": None,
+                "MICROSOFT_EMAIL": None,
+                "MICROSOFT_ACCESS_TOKEN": None,
+                "MICROSOFT_REFRESH_TOKEN": None,
+            },
+        )
+
+        keys_commands.handle_keys()
+        output = capsys.readouterr().out
+
+        assert "does not match identity" in output
+        assert foreign[:16] in output
+        assert expected[:16] in output
+        assert token not in output
+        assert token[:8] not in output
+
+    def test_opaque_token_is_not_reported_as_a_false_mismatch(
+        self, monkeypatch, capsys
+    ):
+        from connectonion import address
+        from connectonion.cli.commands import keys_commands
+        from rich.console import Console
+
+        monkeypatch.setattr(
+            keys_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: Path(".co"))
+        monkeypatch.setattr(address, "load", lambda _path: self.MOCK_ADDR)
+        monkeypatch.setattr(
+            keys_commands,
+            "_load_env_vars",
+            lambda: {
+                "OPENONION_API_KEY": "opaque-token",
+                "GOOGLE_EMAIL": None,
+                "GOOGLE_ACCESS_TOKEN": None,
+                "GOOGLE_REFRESH_TOKEN": None,
+                "MICROSOFT_EMAIL": None,
+                "MICROSOFT_ACCESS_TOKEN": None,
+                "MICROSOFT_REFRESH_TOKEN": None,
+            },
+        )
+
+        keys_commands.handle_keys()
+        output = capsys.readouterr().out
+
+        assert "not inspectable locally" in output
+        assert "does not match" not in output
+        assert "opaque-token" not in output
+
+    def test_telegram_token_is_fixed_width_masked_by_default(
+        self, monkeypatch, capsys
+    ):
+        from connectonion import address
+        from connectonion.cli.commands import keys_commands
+        from rich.console import Console
+
+        token = "tg-token-prefix:bot-secret-material"
+        monkeypatch.setattr(
+            keys_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: Path(".co"))
+        monkeypatch.setattr(address, "load", lambda _path: self.MOCK_ADDR)
+        monkeypatch.setattr(
+            keys_commands,
+            "_load_env_vars",
+            lambda: {
+                "OPENONION_API_KEY": None,
+                "GOOGLE_EMAIL": None,
+                "MICROSOFT_EMAIL": None,
+                "TELEGRAM_BOT_TOKEN": token,
+            },
+        )
+
+        keys_commands.handle_keys()
+        output = capsys.readouterr().out
+
+        assert "Telegram Bot" in output
+        assert "*" * 16 in output
+        assert token not in output
+        assert token[:8] not in output
 
 
 class TestHandleKeysOAuth:

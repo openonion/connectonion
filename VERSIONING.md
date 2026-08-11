@@ -1,7 +1,8 @@
 # ConnectOnion Versioning Rules
 
 ## Version Format
-We follow semantic versioning: `MAJOR.MINOR.PATCH`
+We follow semantic versioning, with PEP 440 pre-release suffixes:
+`MAJOR.MINOR.PATCH`, `aN`, `bN`, and `rcN`.
 
 Example: `0.0.2`
 
@@ -38,9 +39,14 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.6.0
+Stable users remain on 1.6.0 while the 1.7.0 feature train is exercised through
+alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
+marked as pre-releases on PyPI and GitHub.
+
+## Current Version: 1.7.0a1
 
 ### Version History
+- 1.7.0a1 (**the first 1.7 preview**: audience-scoped HTTP routes let an agent expose visibly public, contacts-only, and admin-only endpoints beside its existing WebSocket transport; ACP gains resumable sessions, ordered updates, official SDK conformance, tool approvals, MCP tools, and stable agent messages; Telegram messaging and safer attachment handling arrive; and billed operations now fail closed when ambient credentials belong to a different account. This is an opt-in preview; 1.6.0 remains the stable recommendation.)
 - 1.6.0 (**safer remote agents and a cleaner credential boundary**: host identity and temporary session-status probes are signed consistently; relay profile updates reject stale or conflicting state; Microsoft OAuth credentials and refresh-token rotation stay on the CLI machine instead of being stored by the backend; project invite credentials are private and no shared default invite code is documented; email sending has traceable, tenant-scoped idempotency and resilient provider-error handling; paid mailbox upgrades can preserve the existing address and are charged atomically; portable skills, dependency floors, cross-platform tests, and exact-artifact release verification are hardened for a stable release.)
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
 - 0.0.2 → 0.0.9 (Early production releases)
@@ -79,7 +85,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 
 ## Files to Update When Versioning
 
-Three files carry the version, and `test_the_version_agrees_with_itself.py`
+Four files carry the package version, and `test_the_version_agrees_with_itself.py`
 fails if they disagree — so a release that misses one is caught rather than
 shipped.
 
@@ -89,9 +95,12 @@ shipped.
    there.
 2. `pyproject.toml` — the `version` field. This is what the wheel carries.
 3. `## Current Version:` at the top of this file.
+4. `uv.lock` — the editable root package metadata; refresh it after a bump.
 
 And one in the sibling docs repo, checked by the same test when it is beside
-this one: `docs-site/lib/version.ts` — `VERSION = 'X.Y.Z'`.
+this one: `docs-site/lib/version.ts`. Stable releases update `STABLE_VERSION`;
+pre-releases update `PREVIEW_VERSION` while the public site keeps advertising
+the stable channel through `VERSION`.
 
 The entry in the release list below is not optional either: a version with no
 entry fails `test_every_release_has_an_entry.py`.
@@ -103,7 +112,12 @@ When releasing a new version:
 - [ ] Update `__version__` in `connectonion/_version.py`
 - [ ] Update `version` in `pyproject.toml`
 - [ ] Update `## Current Version:` and add the release line in this file
-- [ ] Update `VERSION` in the docs site's `lib/version.ts`
+- [ ] Refresh `uv.lock`
+- [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
+- [ ] Draft or substantially update a Design Journal post for a feature-train
+      launch, first beta, first RC, stable release, or material architecture or
+      workflow decision. Maintenance-only patches need release notes unless
+      they contain a reusable design lesson.
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
 - [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
 - [ ] Create git tag: `git tag vX.Y.Z`
@@ -114,6 +128,10 @@ When releasing a new version:
 - [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
 - [ ] Upload only the two artifacts just validated: `python -m twine upload dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
+- [ ] After PyPI and the GitHub Release are visible, publish the docs-site
+      version state and Design Journal. Verify the canonical URL, social and
+      structured metadata, sitemap, AI-readable indexes, internal links, and
+      mobile layout.
 
 Replace `X.Y.Z` with the version being released. Do not upload the whole dist
 directory with a wildcard: build does not remove older artifacts, so that can

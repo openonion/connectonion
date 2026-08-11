@@ -84,6 +84,13 @@ class TestToolExecutor:
             logger=logger,
         )
         assert trace["status"] == "not_found"
+        assert [entry["type"] for entry in agent.current_session["trace"]] == [
+            "tool_call",
+            "tool_result",
+        ]
+        assert {
+            entry["tool_id"] for entry in agent.current_session["trace"]
+        } == {"call_2"}
 
     def test_execute_async_tool_success(self):
         """Async tool functions are detected and awaited correctly."""

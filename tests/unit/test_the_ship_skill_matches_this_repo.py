@@ -75,8 +75,11 @@ class TestItNamesWhereTheVersionActuallyIs:
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         version_py = (ROOT / "connectonion/_version.py").read_text(encoding="utf-8")
 
-        in_pyproject = re.search(r'^version = "([\d.]+)"', pyproject, re.M)
-        in_module = re.search(r'__version__ = "([\d.]+)"', version_py)
+        # PEP 440 versions may include a pre-release segment (for example,
+        # ``1.7.0a1``), so compare the complete quoted values rather than only
+        # digits and dots.
+        in_pyproject = re.search(r'^version = "([^"]+)"', pyproject, re.M)
+        in_module = re.search(r'__version__ = "([^"]+)"', version_py)
 
         assert in_pyproject and in_module
         assert in_pyproject.group(1) == in_module.group(1), (
@@ -133,3 +136,14 @@ class TestTheSkillIsStillAReleaseProcedure:
 
     def test_it_is_not_empty(self, skill):
         assert len(skill.splitlines()) > 20
+
+
+class TestTheDesignJournalIsPartOfShipping:
+    """A public design record is part of a meaningful release, not cleanup."""
+
+    def test_the_skill_names_the_design_journal_surfaces(self, skill):
+        for required in ("Design Journal", "canonical URL", "sitemaps", "llms.txt"):
+            assert required in skill
+
+    def test_the_skill_does_not_publish_availability_before_artifacts(self, skill):
+        assert "After the exact PyPI package and GitHub Release are public" in skill

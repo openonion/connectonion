@@ -2,19 +2,21 @@
 Purpose: Task tracking tool for agents to manage multi-step task progress with visual display
 LLM-Note:
   Dependencies: imports from [typing, dataclasses, rich.console, rich.table, rich.panel] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_todo_list_tool.py]
-  Data flow: Agent calls TodoList methods → modifies internal _todos list → _display() renders Rich table with status indicators → returns confirmation string
-  State/Effects: maintains in-memory list of TodoItem objects | displays Rich-formatted table in terminal | no file persistence | no network I/O
-  Integration: exposes TodoList class with add(content, active_form), start(content), complete(content), remove(content), list()() | used as agent tool via Agent(tools=[TodoList()])
+  Data flow: Agent calls TodoList methods → hosted calls mutate a transactional fork → commit _todos + canonical plan → render progress → return confirmation
+  State/Effects: maintains in-memory TodoItem objects | hosted Agent plan events commit only with the tool | displays Rich output | no direct file persistence
+  Integration: exposes TodoList class with add(content, active_form, priority), start(content), complete(content), remove(content), list() | used via Agent(tools=[TodoList()])
   Performance: O(n) list operations | Rich rendering per state change | no caching
   Errors: returns "Not found" if todo doesn't exist | no exceptions raised
 
 TodoList - Task tracking for agents."""
 
+import copy
+from dataclasses import dataclass
 from typing import List, Literal, Optional
-from dataclasses import dataclass, field
+
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 
 @dataclass
@@ -23,6 +25,7 @@ class TodoItem:
     content: str
     status: Literal["pending", "in_progress", "completed"]
     active_form: str
+    priority: Literal["high", "medium", "low"] = "medium"
 
 
 class TodoList:
@@ -45,28 +48,38 @@ class TodoList:
         self._todos: List[TodoItem] = []
         self._console = console or Console()
 
-    def add(self, content: str, active_form: str) -> str:
+    def add(
+        self,
+        content: str,
+        active_form: str,
+        priority: Literal["high", "medium", "low"] = "medium",
+        agent=None,
+    ) -> str:
         """Add a new todo item.
 
         Args:
             content: What needs to be done (imperative form, e.g., "Fix bug")
             active_form: Present continuous form (e.g., "Fixing bug")
+            priority: ACP plan priority; defaults to medium for compatibility
 
         Returns:
             Confirmation message
         """
+        self._validate_item(content, "pending", active_form, priority)
         if self._find(content):
             return f"Todo already exists: {content}"
 
         self._todos.append(TodoItem(
             content=content,
             status="pending",
-            active_form=active_form
+            active_form=active_form,
+            priority=priority,
         ))
         self._display()
+        self._publish(agent)
         return f"Added: {content}"
 
-    def start(self, content: str) -> str:
+    def start(self, content: str, agent=None) -> str:
         """Mark a todo as in_progress.
 
         Args:
@@ -82,6 +95,9 @@ class TodoList:
         if item.status == "completed":
             return f"Cannot start completed todo: {content}"
 
+        if item.status == "in_progress":
+            return f"Started: {item.active_form}"
+
         # Check if another task is in_progress
         in_progress = [t for t in self._todos if t.status == "in_progress"]
         if in_progress and in_progress[0].content != content:
@@ -89,9 +105,10 @@ class TodoList:
 
         item.status = "in_progress"
         self._display()
+        self._publish(agent)
         return f"Started: {item.active_form}"
 
-    def complete(self, content: str) -> str:
+    def complete(self, content: str, agent=None) -> str:
         """Mark a todo as completed.
 
         Args:
@@ -104,11 +121,15 @@ class TodoList:
         if not item:
             return f"Todo not found: {content}"
 
+        if item.status == "completed":
+            return f"Completed: {content}"
+
         item.status = "completed"
         self._display()
+        self._publish(agent)
         return f"Completed: {content}"
 
-    def remove(self, content: str) -> str:
+    def remove(self, content: str, agent=None) -> str:
         """Remove a todo from the list.
 
         Args:
@@ -123,6 +144,7 @@ class TodoList:
 
         self._todos.remove(item)
         self._display()
+        self._publish(agent)
         return f"Removed: {content}"
 
     def list(self) -> str:
@@ -141,33 +163,34 @@ class TodoList:
 
         return "\n".join(lines)
 
-    def update(self, todos: List[dict]) -> str:
+    def update(self, todos: List[dict], agent=None) -> str:
         """Replace entire todo list (for bulk updates).
 
         Args:
-            todos: List of dicts with content, status, active_form keys
+            todos: List of dicts with content, status, active_form, priority keys
 
         Returns:
             Confirmation message
         """
-        self._todos = []
-        for t in todos:
-            self._todos.append(TodoItem(
-                content=t["content"],
-                status=t["status"],
-                active_form=t.get("active_form", t["content"] + "...")
-            ))
+        next_todos = [self._item_from_dict(item) for item in todos]
+        if next_todos == self._todos:
+            return f"Updated {len(self._todos)} todos"
+        self._todos = next_todos
         self._display()
+        self._publish(agent)
         return f"Updated {len(self._todos)} todos"
 
-    def clear(self) -> str:
+    def clear(self, agent=None) -> str:
         """Clear all todos.
 
         Returns:
             Confirmation message
         """
         count = len(self._todos)
+        if count == 0:
+            return "Cleared 0 todos"
         self._todos = []
+        self._publish(agent)
         return f"Cleared {count} todos"
 
     def _dump_state(self) -> List[dict]:
@@ -177,20 +200,62 @@ class TodoList:
                 "content": item.content,
                 "status": item.status,
                 "active_form": item.active_form,
+                "priority": item.priority,
             }
             for item in self._todos
         ]
 
     def _load_state(self, todos: List[dict]) -> None:
         """Restore state produced by :meth:`_dump_state`."""
-        self._todos = [
-            TodoItem(
-                content=item["content"],
-                status=item["status"],
-                active_form=item["active_form"],
-            )
-            for item in todos
-        ]
+        self._todos = [self._item_from_dict(item) for item in todos]
+
+    def _fork_for_tool(self) -> "TodoList":
+        """Detach state for a revocable hosted tool invocation."""
+        fork = copy.copy(self)
+        fork._load_state(self._dump_state())
+        return fork
+
+    def _commit_from_tool(self, fork: "TodoList") -> None:
+        """Commit one completed hosted invocation without sharing its list."""
+        self._load_state(fork._dump_state())
+
+    @staticmethod
+    def _validate_item(content, status, active_form, priority) -> None:
+        if not isinstance(content, str) or not content:
+            raise ValueError("Todo content must be a non-empty string")
+        if not isinstance(status, str) or status not in {
+            "pending", "in_progress", "completed"
+        }:
+            raise ValueError(f"Unsupported todo status: {status!r}")
+        if not isinstance(active_form, str):
+            raise ValueError("Todo active_form must be a string")
+        if not isinstance(priority, str) or priority not in {
+            "high", "medium", "low"
+        }:
+            raise ValueError(f"Unsupported todo priority: {priority!r}")
+
+    @classmethod
+    def _item_from_dict(cls, item: dict) -> TodoItem:
+        if not isinstance(item, dict):
+            raise ValueError("Each todo must be a dictionary")
+        content = item.get("content")
+        status = item.get("status")
+        active_form = item.get("active_form", f"{content}...")
+        priority = item.get("priority", "medium")
+        cls._validate_item(content, status, active_form, priority)
+        return TodoItem(content, status, active_form, priority)
+
+    def _publish(self, agent) -> None:
+        publish = getattr(agent, "_record_plan", None)
+        if callable(publish):
+            publish([
+                {
+                    "content": item.content,
+                    "priority": item.priority,
+                    "status": item.status,
+                }
+                for item in self._todos
+            ])
 
     def _find(self, content: str) -> Optional[TodoItem]:
         """Find todo by content."""
