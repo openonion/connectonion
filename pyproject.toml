@@ -89,6 +89,10 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
+    # pytest.ini has wanted `timeout = 300` since before this was installable.
+    # Without it a hung test is indistinguishable from a slow one: no output,
+    # no failure, nothing to grep. One cost 25 minutes before anyone looked.
+    "pytest-timeout>=2.3.0",
 ]
 
 [project.urls]
