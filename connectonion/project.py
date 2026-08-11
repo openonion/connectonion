@@ -26,14 +26,36 @@ CO_DIR = ".co"
 def project_root(start: Optional[Union[str, Path]] = None) -> Path:
     """The directory that owns ``.co/``, found by walking up from ``start``.
 
+    The walk stops where the project must stop: at the repository, and at
+    ``$HOME``. A ``.co/`` reached only by climbing out of those belongs to
+    something else — most often ``~/.co``, which is the *global* config
+    directory and sits above every directory the user owns. Without the bound,
+    ``co`` run from anywhere under ``$HOME`` outside a project resolved to
+    ``$HOME`` and read the machine's own config as that project's, trust list
+    included: the silent, fail-open case this module's history is made of.
+
+    The global ``~/.co`` is still read where it is genuinely global — see
+    ``project_identity()``, which falls back to it by name. What it no longer
+    does is stand in for a project nobody created.
+
     Falls back to ``start`` when there is no ``.co/`` above it — an agent hosted
     outside a project still works, its files just live where it was started.
     """
     start = Path(start or Path.cwd()).resolve()
+    home = Path.home().resolve()
+
     for directory in (start, *start.parents):
-        if (directory / CO_DIR).is_dir():
+        # $HOME/.co is the machine's config, not a project's.
+        if (directory / CO_DIR).is_dir() and directory != home:
             return directory
+        if directory == home or _is_repository(directory):
+            break
     return start
+
+
+def _is_repository(directory: Path) -> bool:
+    """A checkout boundary. ``.git`` is a directory in a clone, a file in a worktree."""
+    return (directory / ".git").exists()
 
 
 def project_co_dir(start: Optional[Union[str, Path]] = None) -> Path:

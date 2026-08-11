@@ -364,6 +364,11 @@ def ai(
     acp: bool = typer.Option(
         False, "--acp", help="Serve co ai as an ACP v1 agent over stdio"
     ),
+    acp_mcp: bool = typer.Option(
+        False,
+        "--acp-mcp",
+        help="Allow ACP clients to launch session-scoped stdio MCP servers",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -377,6 +382,7 @@ def ai(
         json_output=json_output,
         resume=resume,
         acp=acp,
+        acp_mcp=acp_mcp,
     )
 
 
@@ -1058,6 +1064,16 @@ def outlook_read(email_id: str = typer.Argument(..., help="Email # from your las
     """Show one email's body and mark it read."""
     from .commands.outlook_commands import handle_outlook_read
     handle_outlook_read(email_id)
+
+
+@outlook_app.command("download")
+def outlook_download(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
+):
+    """Save an email's attachments to disk."""
+    from .commands.outlook_commands import handle_outlook_download
+    handle_outlook_download(email_id, out_dir)
 
 
 @outlook_app.command("reply")

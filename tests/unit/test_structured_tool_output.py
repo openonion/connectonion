@@ -472,5 +472,10 @@ def test_wire_extras_cannot_override_canonical_event_fields(tmp_path):
     )
 
     wire_result = io.events[0]
-    assert wire_result == {**canonical, "raw_output": {"ok": True}}
+    assert wire_result == {
+        **canonical,
+        "status": "completed",
+        "raw_output": {"ok": True},
+    }
     assert agent.current_session["trace"] == [canonical]
+    assert canonical["status"] == "success"

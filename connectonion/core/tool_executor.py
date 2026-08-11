@@ -288,6 +288,16 @@ def execute_single_tool(
         "timing_ms": 0,
     }
 
+    # Every result must have a preceding start with the same stable ID.  This
+    # is required by ACP clients and also avoids a completion that cannot be
+    # correlated by ConnectOnion clients when the requested tool is unknown.
+    agent._record_trace({
+        "type": "tool_call",
+        "tool_id": tool_id,
+        "name": tool_name,
+        "args": tool_args,
+    })
+
     # Check if tool exists
     tool_func = tools.get(tool_name)
     if tool_func is None:
@@ -309,14 +319,6 @@ def execute_single_tool(
         entry.get("name") for entry in agent.current_session['trace']
         if entry.get("type") == "tool_result"
     ]
-
-    # Record tool_call event BEFORE execution (for real-time UI updates)
-    agent._record_trace({
-        "type": "tool_call",
-        "tool_id": tool_id,  # LLM's tool call ID
-        "name": tool_name,
-        "args": tool_args,
-    })
 
     # Inject xray context before tool execution
     inject_xray_context(

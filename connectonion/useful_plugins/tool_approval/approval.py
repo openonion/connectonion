@@ -460,7 +460,7 @@ def check_approval(agent: 'Agent') -> None:
                 # Check if ALL commands in chain are permitted
                 permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions)
                 if permitted:
-                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    if getattr(getattr(agent, 'logger', None), 'console', None):
                         agent.logger.console.log_permission_granted('bash', tool_args, source, reason)
                     return
 
@@ -489,7 +489,7 @@ def check_approval(agent: 'Agent') -> None:
                     # Pattern matched (and params matched if 'when' field exists)
                     reason = perm.get('reason', 'unknown')
                     source = perm.get('source', 'config')
-                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    if getattr(getattr(agent, 'logger', None), 'console', None):
                         agent.logger.console.log_permission_granted(tool_name, tool_args, source, reason)
                     return
 
@@ -501,7 +501,7 @@ def check_approval(agent: 'Agent') -> None:
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
-        if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+        if getattr(getattr(agent, 'logger', None), 'console', None):
             agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'ulw mode')
         return
 
@@ -527,7 +527,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     if mode == 'accept_edits':
         if tool_name in FILE_EDIT_TOOLS and requester_is_operator:
-            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+            if getattr(getattr(agent, 'logger', None), 'console', None):
                 agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
             return
         # Every other unpermitted tool falls through to approval logic.
@@ -570,6 +570,7 @@ def check_approval(agent: 'Agent') -> None:
     # Send approval request to client
     approval_msg = {
         'type': 'approval_needed',
+        'tool_call_id': tool_id,
         'tool': approval_key,
         'arguments': tool_args,
         'description': tool_args.get('description', ''),

@@ -1082,9 +1082,13 @@ def account_in_token(token: str) -> Optional[str]:
     payload = parts[1]
     payload += "=" * (-len(payload) % 4)          # base64url, padding stripped
     try:
-        return json.loads(base64.urlsafe_b64decode(payload)).get("public_key")
+        decoded = json.loads(base64.urlsafe_b64decode(payload))
     except (ValueError, binascii.Error):
         return None
+    if not isinstance(decoded, dict):
+        return None
+    public_key = decoded.get("public_key")
+    return public_key if isinstance(public_key, str) and public_key else None
 
 
 def _token_for_this_account(token: str) -> Optional[str]:
