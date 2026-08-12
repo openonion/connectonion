@@ -149,7 +149,7 @@ def _isolate_project_lookup(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_new_safe_session_returns_exact_modes_and_persists_default(
+async def test_new_default_session_returns_exact_modes_and_persists_default(
     tmp_path,
     monkeypatch,
 ):
@@ -160,30 +160,30 @@ async def test_new_safe_session_returns_exact_modes_and_persists_default(
     created = await server.new_session(str(project), mcp_servers=[])
 
     assert _dump(created.modes) == {
-        "currentModeId": "safe",
+        "currentModeId": ":read-only",
         "availableModes": [
             {
-                "id": "safe",
-                "name": "Safe",
-                "description": "Ask before tools with side effects.",
+                "id": ":read-only",
+                "name": "Read only",
+                "description": "Read freely; ask before edits, commands, or broader access.",
             },
             {
-                "id": "accept_edits",
+                "id": ":workspace",
                 "name": "Auto",
                 "description": (
-                    "Apply file edits automatically; ask before other risky tools."
+                    "Edit the workspace automatically; broader actions still ask."
                 ),
             },
         ],
     }
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "safe"
-    assert not {"skip_tool_approval", "ulw_turns", "ulw_turns_used"} & stored.keys()
+    assert stored["mode"] == ":read-only"
+    assert not {"skip_tool_approval", "full_access_turns", "full_access_turns_used"} & stored.keys()
     await server.close_session(created.session_id)
 
 
 @pytest.mark.asyncio
-async def test_yolo_launch_advertises_and_persists_bounded_ulw(
+async def test_yolo_launch_advertises_and_persists_bounded_full_access(
     tmp_path,
     monkeypatch,
 ):
@@ -198,16 +198,16 @@ async def test_yolo_launch_advertises_and_persists_bounded_ulw(
 
     created = await server.new_session(str(project), mcp_servers=[])
 
-    assert created.modes.current_mode_id == "ulw"
+    assert created.modes.current_mode_id == ":danger-full-access"
     assert [mode.id for mode in created.modes.available_modes] == [
-        "safe",
-        "accept_edits",
-        "ulw",
+        ":read-only",
+        ":workspace",
+        ":danger-full-access",
     ]
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "ulw"
-    assert stored["ulw_turns"] == 7
-    assert stored["ulw_turns_used"] == 0
+    assert stored["mode"] == ":danger-full-access"
+    assert stored["full_access_turns"] == 7
+    assert stored["full_access_turns_used"] == 0
     assert stored["skip_tool_approval"] is True
     await server.close_session(created.session_id)
 
@@ -222,14 +222,14 @@ async def test_idle_auto_change_commits_memory_disk_and_resume(
     first = _server(state_dir, lambda **_: _ModeAgent())
     created = await first.new_session(str(project), mcp_servers=[])
 
-    changed = await first.set_session_mode(created.session_id, "accept_edits")
+    changed = await first.set_session_mode(created.session_id, ":workspace")
 
     assert isinstance(changed, SetSessionModeResponse)
     runtime = first._sessions[created.session_id]
-    assert runtime.last_good_session["mode"] == "accept_edits"
-    assert runtime.session_for_next_prompt["mode"] == "accept_edits"
+    assert runtime.last_good_session["mode"] == ":workspace"
+    assert runtime.session_for_next_prompt["mode"] == ":workspace"
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
     await first.close_session(created.session_id)
 
     resumed_server = _server(state_dir, lambda **_: _ModeAgent())
@@ -238,12 +238,12 @@ async def test_idle_auto_change_commits_memory_disk_and_resume(
         str(project),
         mcp_servers=[],
     )
-    assert resumed.modes.current_mode_id == "accept_edits"
+    assert resumed.modes.current_mode_id == ":workspace"
     await resumed_server.close_session(created.session_id)
 
 
 @pytest.mark.asyncio
-async def test_unknown_and_unauthorized_ulw_do_not_mutate_session(
+async def test_unknown_and_unauthorized_full_access_do_not_mutate_session(
     tmp_path,
     monkeypatch,
 ):
@@ -252,19 +252,19 @@ async def test_unknown_and_unauthorized_ulw_do_not_mutate_session(
     server = _server(state_dir, lambda **_: _ModeAgent())
     created = await server.new_session(str(project), mcp_servers=[])
 
-    for mode in ("future", "ulw"):
+    for mode in ("future", ":danger-full-access"):
         with pytest.raises(RequestError, match="Invalid params"):
             await server.set_session_mode(created.session_id, mode)
 
     runtime = server._sessions[created.session_id]
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert runtime.last_good_session["mode"] == "safe"
-    assert stored["mode"] == "safe"
+    assert runtime.last_good_session["mode"] == ":read-only"
+    assert stored["mode"] == ":read-only"
     await server.close_session(created.session_id)
 
 
 @pytest.mark.asyncio
-async def test_authorized_ulw_upgrade_and_downgrade_clean_bypass_state(
+async def test_authorized_full_access_upgrade_and_downgrade_clean_bypass_state(
     tmp_path,
     monkeypatch,
 ):
@@ -278,17 +278,17 @@ async def test_authorized_ulw_upgrade_and_downgrade_clean_bypass_state(
     )
     created = await server.new_session(str(project), mcp_servers=[])
 
-    await server.set_session_mode(created.session_id, "safe")
+    await server.set_session_mode(created.session_id, ":read-only")
     safe, _ = load_snapshot(state_dir, created.session_id)
-    assert safe["mode"] == "safe"
-    assert not {"skip_tool_approval", "ulw_turns", "ulw_turns_used"} & safe.keys()
+    assert safe["mode"] == ":read-only"
+    assert not {"skip_tool_approval", "full_access_turns", "full_access_turns_used"} & safe.keys()
 
-    await server.set_session_mode(created.session_id, "ulw")
-    ulw, _ = load_snapshot(state_dir, created.session_id)
-    assert ulw["mode"] == "ulw"
-    assert ulw["ulw_turns"] == 9
-    assert ulw["ulw_turns_used"] == 0
-    assert ulw["skip_tool_approval"] is True
+    await server.set_session_mode(created.session_id, ":danger-full-access")
+    full_access, _ = load_snapshot(state_dir, created.session_id)
+    assert full_access["mode"] == ":danger-full-access"
+    assert full_access["full_access_turns"] == 9
+    assert full_access["full_access_turns_used"] == 0
+    assert full_access["skip_tool_approval"] is True
     await server.close_session(created.session_id)
 
 
@@ -337,19 +337,19 @@ async def test_auto_mode_drives_the_existing_tool_approval_policy(
     server = _server(state_dir, factory)
     server.on_connect(_Client())
     created = await server.new_session(str(project), mcp_servers=[])
-    await server.set_session_mode(created.session_id, "accept_edits")
+    await server.set_session_mode(created.session_id, ":workspace")
 
     response = await server.prompt(created.session_id, [text_block("write")])
 
     assert response.stop_reason == "end_turn"
     assert executed == ["value"]
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
     await server.close_session(created.session_id)
 
 
 @pytest.mark.asyncio
-async def test_safe_downgrade_disarms_real_agent_yolo_activation(
+async def test_default_downgrade_disarms_real_agent_full_access_activation(
     tmp_path,
     monkeypatch,
 ):
@@ -358,7 +358,7 @@ async def test_safe_downgrade_disarms_real_agent_yolo_activation(
     executed: list[str] = []
 
     def write(content: str) -> str:
-        """Record a side effect that Safe mode must not auto-approve."""
+        """Record a side effect that Default mode must not auto-approve."""
 
         executed.append(content)
         return content
@@ -391,7 +391,7 @@ async def test_safe_downgrade_disarms_real_agent_yolo_activation(
     created = await server.new_session(str(project), mcp_servers=[])
     runtime = server._sessions[created.session_id]
     assert runtime.agent._yolo_turns is None
-    await server.set_session_mode(created.session_id, "safe")
+    await server.set_session_mode(created.session_id, ":read-only")
 
     response = await server.prompt(created.session_id, [text_block("write")])
 
@@ -399,7 +399,7 @@ async def test_safe_downgrade_disarms_real_agent_yolo_activation(
     assert executed == []
     assert len(client.permission_requests) == 1
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "safe"
+    assert stored["mode"] == ":read-only"
     assert "skip_tool_approval" not in stored
     await server.close_session(created.session_id)
 
@@ -420,13 +420,13 @@ async def test_busy_prompt_rejects_mode_change_without_policy_race(
     await asyncio.wait_for(asyncio.to_thread(agent.started.wait), timeout=1)
 
     with pytest.raises(RequestError, match="Session is busy"):
-        await server.set_session_mode(created.session_id, "accept_edits")
+        await server.set_session_mode(created.session_id, ":workspace")
 
     await server.cancel(created.session_id)
     response = await asyncio.wait_for(prompting, timeout=1)
     assert response.stop_reason == "cancelled"
     stored, _ = load_snapshot(tmp_path / "state", created.session_id)
-    assert stored["mode"] == "safe"
+    assert stored["mode"] == ":read-only"
     await server.close_session(created.session_id)
 
 
@@ -445,14 +445,14 @@ async def test_persistence_failure_leaves_mode_unchanged_without_private_details
 
     monkeypatch.setattr(acp_server, "save_snapshot", fail_save)
     with pytest.raises(RequestError) as exc_info:
-        await server.set_session_mode(created.session_id, "accept_edits")
+        await server.set_session_mode(created.session_id, ":workspace")
 
     assert "private mode persistence marker" not in str(exc_info.value)
     runtime = server._sessions[created.session_id]
-    assert runtime.last_good_session["mode"] == "safe"
-    assert runtime.session_for_next_prompt["mode"] == "safe"
+    assert runtime.last_good_session["mode"] == ":read-only"
+    assert runtime.session_for_next_prompt["mode"] == ":read-only"
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "safe"
+    assert stored["mode"] == ":read-only"
     await server.close_session(created.session_id)
 
 
@@ -463,7 +463,7 @@ async def test_internal_mode_update_is_published_only_after_commit(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    agent = _ModeAgent(internal_mode="accept_edits")
+    agent = _ModeAgent(internal_mode=":workspace")
     client = _Client()
     server = _server(state_dir, lambda **_: agent)
     server.on_connect(client)
@@ -476,9 +476,9 @@ async def test_internal_mode_update_is_published_only_after_commit(
         update for _, update in client.updates
         if isinstance(update, CurrentModeUpdate)
     ]
-    assert [update.current_mode_id for update in mode_updates] == ["accept_edits"]
+    assert [update.current_mode_id for update in mode_updates] == [":workspace"]
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
     await server.close_session(created.session_id)
 
 
@@ -489,7 +489,7 @@ async def test_failed_prompt_commit_does_not_publish_internal_mode(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    agent = _ModeAgent(internal_mode="accept_edits")
+    agent = _ModeAgent(internal_mode=":workspace")
     client = _Client()
     server = _server(state_dir, lambda **_: agent)
     server.on_connect(client)
@@ -506,7 +506,7 @@ async def test_failed_prompt_commit_does_not_publish_internal_mode(
         isinstance(update, CurrentModeUpdate) for _, update in client.updates
     )
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "safe"
+    assert stored["mode"] == ":read-only"
     await server.close_session(created.session_id)
 
 
@@ -517,7 +517,7 @@ async def test_mode_notification_failure_cannot_roll_back_durable_commit(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    agent = _ModeAgent(internal_mode="accept_edits")
+    agent = _ModeAgent(internal_mode=":workspace")
     server = _server(state_dir, lambda **_: agent)
     server.on_connect(_Client(fail_mode_update=True))
     created = await server.new_session(str(project), mcp_servers=[])
@@ -527,8 +527,8 @@ async def test_mode_notification_failure_cannot_roll_back_durable_commit(
 
     assert response.stop_reason == "end_turn"
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
-    assert runtime.last_good_session["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
+    assert runtime.last_good_session["mode"] == ":workspace"
     assert created.session_id not in server._sessions
     with session_lock(state_dir, created.session_id):
         pass
@@ -544,7 +544,7 @@ async def test_cancelled_mode_notification_quarantines_committed_runtime(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    agent = _ModeAgent(internal_mode="accept_edits")
+    agent = _ModeAgent(internal_mode=":workspace")
     client = _BlockingModeClient()
     server = _server(state_dir, lambda **_: agent)
     server.on_connect(client)
@@ -559,7 +559,7 @@ async def test_cancelled_mode_notification_quarantines_committed_runtime(
         await prompting
 
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
     assert created.session_id not in server._sessions
     with session_lock(state_dir, created.session_id):
         pass
@@ -587,7 +587,7 @@ async def test_cancelled_mode_request_settles_atomic_commit(
 
     monkeypatch.setattr(acp_server, "save_snapshot", blocking_save)
     changing = asyncio.create_task(
-        server.set_session_mode(created.session_id, "accept_edits")
+        server.set_session_mode(created.session_id, ":workspace")
     )
     await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
     changing.cancel()
@@ -596,8 +596,8 @@ async def test_cancelled_mode_request_settles_atomic_commit(
     with pytest.raises(asyncio.CancelledError):
         await changing
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
-    assert server._sessions[created.session_id].last_good_session["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
+    assert server._sessions[created.session_id].last_good_session["mode"] == ":workspace"
     await server.close_session(created.session_id)
 
 
@@ -621,7 +621,7 @@ async def test_close_waits_for_mode_commit_then_releases_lease(
 
     monkeypatch.setattr(acp_server, "save_snapshot", blocking_save)
     changing = asyncio.create_task(
-        server.set_session_mode(created.session_id, "accept_edits")
+        server.set_session_mode(created.session_id, ":workspace")
     )
     await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
     closing = asyncio.create_task(server.close_session(created.session_id))
@@ -632,13 +632,13 @@ async def test_close_waits_for_mode_commit_then_releases_lease(
     await asyncio.wait_for(changing, timeout=1)
     await asyncio.wait_for(closing, timeout=1)
     stored, _ = load_snapshot(state_dir, created.session_id)
-    assert stored["mode"] == "accept_edits"
+    assert stored["mode"] == ":workspace"
     with session_lock(state_dir, created.session_id):
         pass
 
 
 @pytest.mark.asyncio
-async def test_resume_preserves_committed_ulw_budget_without_reset(
+async def test_resume_preserves_committed_full_access_budget_without_reset(
     tmp_path,
     monkeypatch,
 ):
@@ -650,9 +650,9 @@ async def test_resume_preserves_committed_ulw_budget_without_reset(
         "messages": [{"role": "system", "content": "system"}],
         "trace": [],
         "turn": 2,
-        "mode": "ulw",
-        "ulw_turns": 8,
-        "ulw_turns_used": 3,
+        "mode": ":danger-full-access",
+        "full_access_turns": 8,
+        "full_access_turns_used": 3,
         "skip_tool_approval": True,
     }
     save_snapshot(state_dir, saved, {}, cwd=project)
@@ -665,15 +665,15 @@ async def test_resume_preserves_committed_ulw_budget_without_reset(
 
     resumed = await server.resume_session(session_id, str(project), mcp_servers=[])
 
-    assert resumed.modes.current_mode_id == "ulw"
+    assert resumed.modes.current_mode_id == ":danger-full-access"
     runtime = server._sessions[session_id]
-    assert runtime.last_good_session["ulw_turns"] == 8
-    assert runtime.last_good_session["ulw_turns_used"] == 3
+    assert runtime.last_good_session["full_access_turns"] == 8
+    assert runtime.last_good_session["full_access_turns_used"] == 3
     await server.close_session(session_id)
 
 
 @pytest.mark.asyncio
-async def test_resume_rejects_ulw_budget_above_current_launch_ceiling(
+async def test_resume_rejects_full_access_budget_above_current_launch_ceiling(
     tmp_path,
     monkeypatch,
 ):
@@ -685,9 +685,9 @@ async def test_resume_rejects_ulw_budget_above_current_launch_ceiling(
         "messages": [{"role": "system", "content": "system"}],
         "trace": [],
         "turn": 2,
-        "mode": "ulw",
-        "ulw_turns": 8,
-        "ulw_turns_used": 3,
+        "mode": ":danger-full-access",
+        "full_access_turns": 8,
+        "full_access_turns_used": 3,
         "skip_tool_approval": True,
     }
     save_snapshot(state_dir, saved, {}, cwd=project)
@@ -711,16 +711,16 @@ async def test_resume_rejects_ulw_budget_above_current_launch_ceiling(
     [
         ({"mode": "future"}, False),
         ({
-            "mode": "ulw",
-            "ulw_turns": 8,
-            "ulw_turns_used": 3,
+            "mode": ":danger-full-access",
+            "full_access_turns": 8,
+            "full_access_turns_used": 3,
             "skip_tool_approval": True,
         }, False),
-        ({"mode": "safe", "skip_tool_approval": True}, False),
+        ({"mode": ":read-only", "skip_tool_approval": True}, False),
         ({
-            "mode": "ulw",
-            "ulw_turns": 8,
-            "ulw_turns_used": 8,
+            "mode": ":danger-full-access",
+            "full_access_turns": 8,
+            "full_access_turns_used": 8,
             "skip_tool_approval": True,
         }, True),
     ],

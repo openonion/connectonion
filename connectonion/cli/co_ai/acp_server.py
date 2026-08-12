@@ -52,6 +52,14 @@ from acp.schema import (
 )
 
 from ..._version import __version__
+from ...core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    PERMISSION_PROFILE_IDS,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+    migrate_legacy_full_access_fields,
+)
 from ...network.io.base import IO
 from .acp_events import (
     STREAMED_AGENT_EVENT_TYPES,
@@ -100,23 +108,27 @@ _ACP_PERMISSION_OPTIONS = (
 
 _ACP_SESSION_MODES = (
     SessionMode(
-        id="safe",
-        name="Safe",
-        description="Ask before tools with side effects.",
+        id=READ_ONLY_PERMISSION_PROFILE,
+        name="Read only",
+        description="Read freely; ask before edits, commands, or broader access.",
     ),
     SessionMode(
-        id="accept_edits",
+        id=WORKSPACE_PERMISSION_PROFILE,
         name="Auto",
-        description="Apply file edits automatically; ask before other risky tools.",
+        description="Edit the workspace automatically; broader actions still ask.",
     ),
     SessionMode(
-        id="ulw",
-        name="ULW",
+        id=DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+        name="Full access",
         description="Run autonomously within the launch-time turn budget.",
     ),
 )
-_ACP_MODE_IDS = frozenset(mode.id for mode in _ACP_SESSION_MODES)
-_ULW_STATE_KEYS = ("skip_tool_approval", "ulw_turns", "ulw_turns_used")
+_ACP_MODE_IDS = PERMISSION_PROFILE_IDS
+_FULL_ACCESS_STATE_KEYS = (
+    "skip_tool_approval",
+    "full_access_turns",
+    "full_access_turns_used",
+)
 
 
 class _FailClosedACPInput(IO):
@@ -742,13 +754,15 @@ class ConnectOnionACPAgent:
                 "Session not found",
                 {"sessionId": session_id},
             )
-        if mode_id not in _ACP_MODE_IDS:
+        try:
+            mode_id = legacy_permission_profile_id(mode_id)
+        except ValueError:
             raise RequestError.invalid_params(
                 {"details": "Unsupported session mode"}
-            )
-        if mode_id == "ulw" and not self._yolo:
+            ) from None
+        if mode_id == DANGER_FULL_ACCESS_PERMISSION_PROFILE and not self._yolo:
             raise RequestError.invalid_params(
-                {"details": "ULW mode was not authorized when ACP started"}
+                {"details": "Full access mode was not authorized when ACP started"}
             )
         if runtime.prompt_lock.locked() or runtime.prompt_active.is_set():
             raise RequestError(
@@ -1159,7 +1173,7 @@ class ConnectOnionACPAgent:
                 session = self._normalized_session_mode(session)
             if hasattr(agent, "_yolo_turns"):
                 # In ACP, --yolo is an authority ceiling rather than a request
-                # to re-arm ULW before every input. The persisted session below
+                # to re-arm Full access before every input. The persisted session below
                 # already carries the exact current mode and bounded budget.
                 agent._yolo_turns = None
             if hasattr(agent, "_yolo_needs_activation"):
@@ -1290,11 +1304,11 @@ class ConnectOnionACPAgent:
             }],
             "trace": [],
             "turn": 0,
-            "mode": "safe",
+            "mode": READ_ONLY_PERMISSION_PROFILE,
             "plan": [],
         }
         if self._yolo:
-            self._apply_mode(session, "ulw")
+            self._apply_mode(session, DANGER_FULL_ACCESS_PERMISSION_PROFILE)
         return self._normalized_session_mode(session)
 
     def _session_mode_state(self, runtime: _SessionRuntime) -> SessionModeState:
@@ -1311,16 +1325,20 @@ class ConnectOnionACPAgent:
         """Validate persisted authority-bearing mode state fail closed."""
 
         normalized = copy.deepcopy(session)
-        mode = normalized.get("mode", "safe")
-        if not isinstance(mode, str) or mode not in _ACP_MODE_IDS:
+        migrate_legacy_full_access_fields(normalized)
+        try:
+            mode = legacy_permission_profile_id(
+                normalized.get("mode", READ_ONLY_PERMISSION_PROFILE)
+            )
+        except ValueError:
             raise SessionSnapshotError("Session has an unsupported mode.")
-        if mode == "ulw":
+        if mode == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
             if not self._yolo:
                 raise SessionSnapshotError(
-                    "Session requires ULW launch authority."
+                    "Session requires Full access launch authority."
                 )
-            turns = normalized.get("ulw_turns")
-            turns_used = normalized.get("ulw_turns_used")
+            turns = normalized.get("full_access_turns")
+            turns_used = normalized.get("full_access_turns_used")
             if (
                 isinstance(turns, bool)
                 or not isinstance(turns, int)
@@ -1335,21 +1353,21 @@ class ConnectOnionACPAgent:
                 or turns - turns_used > self._yolo_turns
                 or normalized.get("skip_tool_approval") is not True
             ):
-                raise SessionSnapshotError("Session has invalid ULW state.")
-        elif any(key in normalized for key in _ULW_STATE_KEYS):
+                raise SessionSnapshotError("Session has invalid Full access state.")
+        elif any(key in normalized for key in _FULL_ACCESS_STATE_KEYS):
             raise SessionSnapshotError(
-                "Session has ULW authority outside ULW mode."
+                "Session has Full access authority outside Full access mode."
             )
         normalized["mode"] = mode
         return normalized
 
     def _apply_mode(self, session: dict[str, Any], mode: str) -> None:
-        for key in _ULW_STATE_KEYS:
+        for key in _FULL_ACCESS_STATE_KEYS:
             session.pop(key, None)
         session["mode"] = mode
-        if mode == "ulw":
-            session["ulw_turns"] = self._yolo_turns
-            session["ulw_turns_used"] = 0
+        if mode == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
+            session["full_access_turns"] = self._yolo_turns
+            session["full_access_turns_used"] = 0
             session["skip_tool_approval"] = True
 
     def _commit_mode(self, runtime: _SessionRuntime, mode: str) -> None:

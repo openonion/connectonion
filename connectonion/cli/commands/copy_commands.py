@@ -47,6 +47,7 @@ PLUGINS = {
     "auto_compact": "auto_compact.py",
     "calendar_plugin": "calendar_plugin.py",
     "eval": "eval.py",
+    "full_access": "full_access.py",
     "gmail_plugin": "gmail_plugin.py",
     "image_result_formatter": "image_result_formatter.py",
     "prefer_write_tool": "prefer_write_tool.py",
@@ -56,7 +57,8 @@ PLUGINS = {
     "subagents": "subagents.py",
     "system_reminder": "system_reminder.py",
     "ui_stream": "ui_stream.py",
-    "ulw": "ulw.py",
+    "ulw": "ulw.py",  # Deprecated compatibility shim.
+    "yolo": "full_access.py",
 }
 
 # Registry of copyable plugin directories

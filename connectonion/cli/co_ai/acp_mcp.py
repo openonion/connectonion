@@ -29,7 +29,10 @@ MAX_MCP_TOOL_PAGES = 32
 MAX_MCP_SCHEMA_BYTES = 64 * 1024
 MAX_MCP_ARGUMENT_BYTES = 64 * 1024
 MAX_MCP_RESULT_BYTES = 64 * 1024
-MCP_CONNECT_TIMEOUT_SECONDS = 15.0
+# MCP 2.x has a comparatively heavy cold import path on Python 3.10. Keep
+# startup bounded, but leave enough headroom for the child process to import
+# the SDK and answer its initialize request on a cold or resource-limited host.
+MCP_CONNECT_TIMEOUT_SECONDS = 30.0
 MCP_CALL_TIMEOUT_SECONDS = 60.0
 _MCP_TOOL_NAME_LIMIT = 64
 _MCP_NAME_LIMIT = 128

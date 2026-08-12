@@ -93,8 +93,9 @@ to 64 KiB, tool-call arguments are bounded to 64 KiB, and calls have a
 
 Remote tool names and annotations are not trusted as permissions. MCP tools
 receive collision-resistant `mcp__...` names and pass through the ordinary
-ConnectOnion approval hook. Safe and Accept Edits modes ask the ACP operator
-before executing them; explicit ULW remains the only approval bypass.
+ConnectOnion approval hook. Read only and Auto profiles ask the ACP operator
+when an action is outside their policy; explicit Full access remains the only
+approval bypass.
 "Allow for this session" lasts only for the current open MCP process pool.
 Client-granted MCP approvals are not persisted, so resume asks again even when
 the client supplies the same server and tool names. Explicit operator rules in
@@ -138,7 +139,7 @@ co ai --acp
 co ai --acp --acp-mcp
 ```
 
-## YOLO mode
+## Full access (`--yolo`)
 
 Use `--yolo` for a trusted task that should run without tool-approval prompts.
 It works in both one-shot and web-server modes:
@@ -159,9 +160,9 @@ directly:
 co ai --yolo "/deploy-oo-chat" --yolo-turns 10
 ```
 
-YOLO deliberately reuses the existing ULW session and frontend protocol.
-Persisted fields such as `mode: ulw`, `ulw_turns`, and
-`skip_tool_approval` remain unchanged for compatibility.
+YOLO is the familiar CLI shorthand for Full access. It selects the canonical
+`:danger-full-access` permission profile and uses `full_access_turns` for the
+bounded autonomous checkpoint.
 
 ## What the Agent Can Do
 
@@ -196,12 +197,11 @@ review the diff yourself. Continue the same Codex session for any fixes.
 
 The Codex CLI must be installed and authenticated. `co ai` passes an explicit
 working directory and returns a structured result containing the resumable
-session ID. Safe Mode starts Codex read-only and asks when it requests more
-permission. Accept Edits permits workspace changes but still asks about
-untrusted commands, while explicit
-YOLO/ULW runs without prompts inside that same sandbox. The policy is reapplied
-when a Codex session is resumed, and `danger-full-access` is never selected by
-the integration. In a hosted session, only the operator can approve Codex's
+session ID. Read only starts Codex read-only and asks when it requests more
+permission. Auto permits workspace changes but still asks about untrusted
+commands, while Full access runs without prompts using Codex's
+`danger-full-access` sandbox. The policy is reapplied when a Codex session is
+resumed. In a hosted session, only the operator can approve Codex's
 nested permission requests; shared contacts are always confined to read-only
 Codex runs with permission requests denied.
 
@@ -227,10 +227,11 @@ such as `Claude Code › Read`, `Claude Code › Edit`, and `Claude Code › Bas
 it happens. The enclosing ConnectOnion agent keeps ownership of the final
 answer and reviews Claude's result.
 
-Safe Mode retains Claude's normal permission rules, Accept Edits allows
-in-workspace edits, and explicit YOLO/ULW uses Claude Auto mode. The integration
-never selects `bypassPermissions`, and the selected mode is supplied again when
-a session resumes. Delegated runs use Claude's `--safe-mode`, which disables
+Read only maps to Claude's manual permission mode, Auto maps to
+`acceptEdits`, and Full access maps to Claude Auto mode. The
+integration never selects `bypassPermissions`, and the selected mode is
+supplied again when a session resumes. Separately, every delegated run uses
+Claude's `--safe-mode` isolation switch, which disables
 ordinary user and project customizations—including `CLAUDE.md`, skills,
 plugins, hooks, MCP servers, commands, and custom agents—so they cannot raise
 that mode's authority; admin-managed policy still applies. The directory
@@ -240,8 +241,8 @@ of being reloaded as provider-side filesystem configuration.
 
 Claude Code runs in headless `stream-json` mode. Its inner tool activity is
 visible, but it still cannot display an unmatched Claude permission prompt in
-the `co ai` UI: Safe Mode can run actions allowed by its bound mode, while other
-protected actions fail closed. Accept Edits automatically
+the `co ai` UI: Read only can run actions allowed by its bound provider mode,
+while other protected actions fail closed. Auto automatically
 permits in-scope edits, but shell or network actions that still need a prompt
 also fail closed. A denied action can be described in a successful provider
 result, so always review the diff and test output rather than treating `status`

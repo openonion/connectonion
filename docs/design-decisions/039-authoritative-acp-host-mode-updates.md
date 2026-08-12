@@ -17,9 +17,11 @@ field into a permission grant or changing persisted sessions during rollout.
 ## Decision
 
 The Host mirrors an Agent-originated `mode_changed` event as the exact ACP v1.19
-`CurrentModeUpdate(sessionUpdate="current_mode_update")`. The persisted IDs are
-used directly: `safe`, `accept_edits`, and `ulw`. `plan` is a legacy request
-alias that the Agent normalizes to Safe; it is not valid authoritative output.
+`CurrentModeUpdate(sessionUpdate="current_mode_update")`. The persisted Host
+permission profiles are used directly: `:read-only`, `:workspace`, and
+`:danger-full-access`. `plan` is a collaboration workflow that the Agent
+normalizes to Read only at the authority boundary; it is not valid
+authoritative output.
 
 The Host-owned connection session ID is placed in the ACP notification. A
 session ID supplied by the Agent event is never trusted. The ACP mirror is sent
@@ -29,7 +31,7 @@ terminal `OUTPUT`; updated readers validate both representations and ignore the
 invalid value.
 
 This notification reports policy that the Agent has already applied. It cannot
-change approval behavior, restore ULW, increase ULW turns, or bypass the
+change approval behavior, restore Full access, increase its turn budget, or bypass the
 operator checks in the tool-approval hooks. Canonical traces and session
 snapshots remain unchanged.
 
@@ -62,4 +64,3 @@ available-mode advertisement, busy-session rejection, durable commit, and the
 - DD-035: Versioned ACP Host carrier
 - DD-037: Bound ACP Host permissions
 - DD-038: Negotiated ACP Host cancellation
-

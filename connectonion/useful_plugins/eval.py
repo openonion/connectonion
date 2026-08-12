@@ -26,9 +26,15 @@ Usage:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict
+from typing import TYPE_CHECKING, Dict, List
+
 from pydantic import BaseModel
-from ..core.events import on_complete, after_user_input
+
+from ..core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+)
+from ..core.events import after_user_input, on_complete
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -142,12 +148,16 @@ def evaluate_completion(agent: 'Agent') -> None:
     Generates expected outcome (if not set) and evaluates AFTER task completes.
     This avoids blocking the main workflow.
 
-    Skips evaluation in ULW mode since the agent is still working autonomously.
+    Skips evaluation in Full access mode since the agent is still working autonomously.
     """
     import uuid
 
-    # Skip eval in ULW mode - agent is still working, not done yet
-    if agent.current_session.get('mode') == 'ulw':
+    # Skip eval in Full access mode - agent is still working, not done yet
+    try:
+        profile = legacy_permission_profile_id(agent.current_session.get('mode'))
+    except ValueError:
+        profile = None
+    if profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
         return
 
     user_prompt = agent.current_session.get('user_prompt', '')

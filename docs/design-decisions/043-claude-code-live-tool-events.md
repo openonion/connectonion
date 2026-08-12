@@ -51,9 +51,10 @@ and claim of completion.
 
 ## Permission boundary
 
-Permission mode remains operator-owned and absent from the model-visible tool
-schema. Safe, Accept Edits, and explicit YOLO/ULW modes continue to bind a
-Claude mode before launch; `bypassPermissions` is never selected by `co ai`.
+The permission profile remains operator-owned and absent from the model-visible
+tool schema. ConnectOnion's Read only, Auto, and Full access profiles bind the
+corresponding Claude boundary before launch; `bypassPermissions` is never
+selected by `co ai`.
 The adapter explicitly supplies the CLI's `--safe-mode` boundary so ordinary
 user, project, and local customizations cannot raise the authority of the
 current mode. Safe mode disables `CLAUDE.md`,

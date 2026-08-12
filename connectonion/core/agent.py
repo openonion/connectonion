@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from ..logger import Logger
 from ..prompts import load_system_prompt
+from .approval_modes import normalize_runtime_approval_session
 from .events import EventHandler
 from .interrupt import run_interruptible
 from .llm import LLM, TokenUsage, create_llm
@@ -303,16 +304,16 @@ class Agent:
         logger_session_id = None
         if session is not None:
             # Everything the caller passed, not four chosen keys. Plugins keep
-            # their state here — ULW's mode and turn budget, the approval gate's
+            # their state here — Full access's mode and turn budget, the approval gate's
             # requester — and rebuilding from a whitelist silently dropped all of
-            # it: ULW fell back to Safe after a turn, and the approval gate saw
+            # it: Full access fell back to Default after a turn, and the approval gate saw
             # every requester as unknown. #191.
             #
             # Which of these keys a client is allowed to state is decided before
             # this point, in input_handler: a session arriving over the wire has
             # the server-owned ones stripped and re-applied from what the server
             # stored. Here we only restore what we were handed.
-            self.current_session = dict(session)
+            self.current_session = normalize_runtime_approval_session(session)
             self.current_session['session_id'] = session.get('session_id')
             self.current_session['messages'] = list(session.get('messages', []))
             self.current_session['trace'] = list(session.get('trace', []))

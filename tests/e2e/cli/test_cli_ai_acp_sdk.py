@@ -142,8 +142,8 @@ async def test_official_sdk_validates_lifecycle_content_mode_and_resume(tmp_path
             assert capabilities.close is not None
 
             created = await agent.new_session(str(tmp_path), mcp_servers=[])
-            assert created.modes.current_mode_id == "safe"
-            await agent.set_session_mode(created.session_id, "accept_edits")
+            assert created.modes.current_mode_id == ":read-only"
+            await agent.set_session_mode(created.session_id, ":workspace")
             prompted = await agent.prompt(
                 created.session_id,
                 [
@@ -174,7 +174,7 @@ async def test_official_sdk_validates_lifecycle_content_mode_and_resume(tmp_path
                 str(tmp_path),
                 mcp_servers=[],
             )
-            assert resumed.modes.current_mode_id == "accept_edits"
+            assert resumed.modes.current_mode_id == ":workspace"
             await agent.close_session(created.session_id)
             assert process.returncode is None
 

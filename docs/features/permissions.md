@@ -973,7 +973,7 @@ No live IO?
           │
           ▼
 Operator-owned mode bypass?
-(`ulw`, or `accept_edits` for named edit tools)
+(`full_access`, or `auto_approve` for named edit tools)
     ├─ yes → execute
     └─ no
           │
