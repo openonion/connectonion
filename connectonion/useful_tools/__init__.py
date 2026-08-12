@@ -21,6 +21,7 @@ from .web_fetch import WebFetch
 from .shell import Shell
 from .bash import bash
 from .codex import codex
+from .acp_agent import acp_agent, engine_status
 from .claude_code import ClaudeCode, claude_code
 from .diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
 from ..tui import pick
@@ -59,6 +60,8 @@ __all__ = [
     "Shell",
     "bash",
     "codex",
+    "acp_agent",
+    "engine_status",
     "ClaudeCode",
     "claude_code",
     "DiffWriter",
