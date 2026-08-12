@@ -2,21 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import sys
 import textwrap
+import threading
+import time
+from types import SimpleNamespace
 
 import pytest
-
-from connectonion.useful_tools.acp_agent import (
-    ACPAgent,
-    ENGINES,
-    _engine_environment,
-    acp_agent,
-    engine_status,
+from acp.schema import (
+    AgentMessageChunk,
+    PermissionOption,
+    TextContentBlock,
+    ToolCallProgress,
+    ToolCallStart,
 )
 
+from connectonion.useful_tools import _acp_agent_client as acp_client
+from connectonion.useful_tools._acp_agent_client import (
+    ToolClient,
+    engine_environment,
+    required_mode,
+    session_metadata,
+)
+from connectonion.useful_tools.acp_agent import ENGINES, ACPAgent, acp_agent, engine_status
 
 FAKE_AGENT = textwrap.dedent(
     """
@@ -49,6 +60,9 @@ FAKE_AGENT = textwrap.dedent(
         elif method == "session/load":
             if message["params"]["sessionId"] == "sess-known":
                 active_session = "sess-known"
+                update({"sessionUpdate": "tool_call", "toolCallId": "old-call",
+                        "title": "Old tool", "kind": "execute",
+                        "status": "pending"})
                 update({"sessionUpdate": "agent_message_chunk",
                         "messageId": "old-answer",
                         "content": {"type": "text", "text": "OLD"}})
@@ -106,6 +120,7 @@ class RecordingIO:
         self.cancelled = cancelled
         self.events: list[dict] = []
         self.approvals: list[dict] = []
+        self.revoked = threading.Event()
 
     def log(self, event_type: str, **fields) -> None:
         self.events.append({"type": event_type, **fields})
@@ -116,6 +131,9 @@ class RecordingIO:
 
     def is_cancelled(self) -> bool:
         return self.cancelled
+
+    def cancel(self) -> None:
+        self.revoked.set()
 
 
 class FakeAgent:
@@ -153,14 +171,32 @@ class TestPublicBoundary:
         parameters = inspect.signature(configured.acp_agent).parameters
         assert "command" not in parameters
         assert "approval" not in parameters
+        assert "workspace" not in parameters
 
     def test_codex_manual_and_deny_start_below_workspace_write_authority(self):
-        manual = _engine_environment("codex", "manual")
-        deny = _engine_environment("codex", "deny")
-        automatic = _engine_environment("codex", "auto")
+        manual = engine_environment("codex", "manual")
+        deny = engine_environment("codex", "deny")
+        automatic = engine_environment("codex", "auto")
         assert manual["INITIAL_AGENT_MODE"] == deny["INITIAL_AGENT_MODE"] == "read-only"
         assert automatic["INITIAL_AGENT_MODE"] == "agent"
         assert json.loads(manual["CODEX_CONFIG"])["approvals_reviewer"] == "user"
+
+    def test_named_engines_enforce_permission_modes(self):
+        assert required_mode("codex", "manual") == "read-only"
+        assert required_mode("codex", "deny") == "read-only"
+        assert required_mode("codex", "auto") == "agent"
+        assert required_mode("claude-code", "manual") == "default"
+        assert required_mode("claude-code", "deny") == "dontAsk"
+        assert required_mode("gemini", "manual") == "default"
+        assert required_mode("gemini", "deny") == "plan"
+        assert required_mode("gemini", "auto") == "yolo"
+        assert required_mode("custom", "manual") is None
+
+    def test_claude_does_not_inherit_interactive_cli_allow_rules(self):
+        assert session_metadata("claude-code") == {
+            "claudeCode": {"options": {"settingSources": []}}
+        }
+        assert session_metadata("codex") == {}
 
 
 class TestTypedRun:
@@ -181,21 +217,13 @@ class TestTypedRun:
         runner(fake_command).acp_agent("fix", agent=FakeAgent(io))
 
         assert [event["type"] for event in io.events] == [
-            "thinking", "plan", "tool_call", "tool_result", "thinking"
+            "tool_call", "tool_result"
         ]
-        thought, plan, call, result, finished_thought = io.events
-        assert thought["id"] == finished_thought["id"] == "thought-1"
-        assert thought["status"] == "running"
-        assert finished_thought["status"] == "done"
-        assert thought["content"] == finished_thought["content"] == "Checking"
-        assert plan["entries"] == [{
-            "content": "Run the tests", "priority": "high",
-            "status": "in_progress",
-        }]
+        call, result = io.events
         assert call["tool_id"] == result["tool_id"] == "call-1"
-        assert call["args"] == {"command": "pytest"}
+        assert call["args"] == {}
         assert result["status"] == "completed"
-        assert result["result"] == {"allowed": True}
+        assert result["result"] == "Run pytest"
 
     def test_known_session_resumes(self, fake_command):
         output = json.loads(runner(fake_command).acp_agent(
@@ -215,6 +243,29 @@ class TestTypedRun:
         assert output["resumed"] is False
         assert "unknown session" in output["error"]
 
+    @pytest.mark.asyncio
+    async def test_rpc_boundary_waits_for_scheduled_history_callbacks(self):
+        client = ToolClient(None, "deny")
+        client.observe_stream(SimpleNamespace(
+            direction=SimpleNamespace(value="incoming"),
+            message={"method": "session/update"},
+        ))
+        deadline = asyncio.get_running_loop().time() + 1
+        barrier = asyncio.create_task(client.drain_updates(deadline, 1))
+        await asyncio.sleep(0)
+        assert not barrier.done()
+
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                content=TextContentBlock(type="text", text="OLD"),
+            ),
+        )
+        await barrier
+        client.begin_prompt()
+        assert client.message_text() == ""
+
 
 class TestPermissionBoundary:
     def test_manual_routes_through_operator_gate(self, fake_command):
@@ -228,6 +279,7 @@ class TestPermissionBoundary:
             "name": "acp_agent",
             "title": "Run pytest",
             "tool_call_id": "call-1",
+            "input_preview": "null",
         }]
 
     def test_operator_refusal_reaches_engine(self, fake_command):
@@ -256,6 +308,144 @@ class TestPermissionBoundary:
         result = next(event for event in io.events if event["type"] == "tool_result")
         assert result["status"] == "failed"
 
+    def test_manual_gate_is_revoked_when_total_timeout_expires(self, fake_command):
+        class BlockingIO(RecordingIO):
+            def request_approval(self, name: str, details: dict) -> bool:
+                self.approvals.append({"name": name, **details})
+                self.revoked.wait(timeout=5)
+                return True
+
+        io = BlockingIO()
+        started = time.monotonic()
+        output = json.loads(runner(fake_command, approval="manual").acp_agent(
+            "fix", timeout=1, agent=FakeAgent(io)
+        ))
+        assert "timed out" in output["error"]
+        assert io.revoked.is_set()
+        assert time.monotonic() - started < 3
+
+    @pytest.mark.asyncio
+    async def test_manual_never_persists_an_allow_always_choice(self):
+        io = RecordingIO()
+        client = ToolClient(FakeAgent(io), "manual")
+        client.begin_prompt()
+        response = await client.request_permission(
+            "sess",
+            ToolCallProgress(
+                session_update="tool_call_update",
+                tool_call_id="call-1",
+                title="Write",
+            ),
+            [
+                PermissionOption(
+                    option_id="forever", name="Always", kind="allow_always"
+                ),
+                PermissionOption(option_id="no", name="No", kind="reject_once"),
+            ],
+        )
+        assert response.outcome.outcome == "cancelled"
+        assert io.approvals == []
+
+
+class TestDisclosureBounds:
+    def test_error_envelope_is_bounded(self):
+        output = json.loads(
+            acp_client.envelope("custom", error="x" * 100_000)
+        )
+        assert len(output["error"].encode("utf-8")) <= 4 * 1024
+
+    @pytest.mark.asyncio
+    async def test_result_is_bounded_without_splitting_utf8(self):
+        client = ToolClient(None, "deny")
+        client.begin_prompt()
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                content=TextContentBlock(type="text", text="海" * 30_000),
+            ),
+        )
+        result = client.message_text()
+        assert result.endswith("... (ACP result truncated at 64 KiB)")
+        assert len(result.encode("utf-8")) <= 64 * 1024
+
+    @pytest.mark.asyncio
+    async def test_oversized_tool_ids_are_not_retained_as_internal_keys(self):
+        io = RecordingIO()
+        client = ToolClient(FakeAgent(io), "deny")
+        client.begin_prompt()
+        oversized_id = "x" * 10_000
+        await client.session_update(
+            "sess",
+            ToolCallStart(
+                session_update="tool_call",
+                tool_call_id=oversized_id,
+                title="Read",
+                status="pending",
+            ),
+        )
+
+        stored_id = next(iter(client._tool_titles))
+        assert stored_id.startswith("acp-")
+        assert len(stored_id) == 68
+        assert io.events[0]["tool_id"] == stored_id
+
+    @pytest.mark.asyncio
+    async def test_tool_events_hide_raw_inputs_and_outputs(self):
+        io = RecordingIO()
+        client = ToolClient(FakeAgent(io), "deny")
+        client.begin_prompt()
+        await client.session_update(
+            "sess",
+            ToolCallStart(
+                session_update="tool_call",
+                tool_call_id="call-secret",
+                title="Read config",
+                status="pending",
+                raw_input={"token": "secret"},
+            ),
+        )
+        await client.session_update(
+            "sess",
+            ToolCallProgress(
+                session_update="tool_call_update",
+                tool_call_id="call-secret",
+                status="completed",
+                raw_output={"token": "secret"},
+            ),
+        )
+        assert io.events == [
+            {"type": "tool_call", "tool_id": "call-secret", "name": "Read config", "args": {}, "status": "in_progress"},
+            {"type": "tool_result", "tool_id": "call-secret", "status": "completed", "result": "Read config"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_progress_delivery_failure_does_not_break_protocol_callback(self):
+        class BrokenIO(RecordingIO):
+            def log(self, event_type: str, **fields) -> None:
+                raise RuntimeError("browser disconnected")
+
+        client = ToolClient(FakeAgent(BrokenIO()), "deny")
+        client.begin_prompt()
+        await client.session_update(
+            "sess",
+            ToolCallStart(
+                session_update="tool_call",
+                tool_call_id="call-1",
+                title="Read",
+                status="pending",
+            ),
+        )
+        await client.session_update(
+            "sess",
+            ToolCallProgress(
+                session_update="tool_call_update",
+                tool_call_id="call-1",
+                status="completed",
+            ),
+        )
+        assert client._events_disabled is True
+
 
 class TestFailures:
     def test_unknown_engine(self):
@@ -266,6 +456,21 @@ class TestFailures:
     def test_timeout_must_be_a_positive_integer(self, fake_command, value):
         output = json.loads(runner(fake_command).acp_agent("hi", timeout=value))
         assert "positive integer" in output["error"]
+
+    def test_timeout_has_an_operator_bounded_maximum(self, fake_command):
+        output = json.loads(runner(fake_command).acp_agent("hi", timeout=3601))
+        assert "must not exceed 3600" in output["error"]
+
+    @pytest.mark.parametrize("engine", [[], "x" * 65])
+    def test_engine_must_be_a_bounded_string(self, engine):
+        output = json.loads(acp_agent("hi", engine=engine))
+        assert "Engine" in output["error"]
+
+    def test_prompt_and_session_id_are_bounded(self, fake_command):
+        prompt = json.loads(runner(fake_command).acp_agent("x" * (1024 * 1024 + 1)))
+        session = json.loads(runner(fake_command).acp_agent("hi", session_id="s" * 513))
+        assert "1 MiB" in prompt["error"]
+        assert "Session ID is too long" in session["error"]
 
     def test_timeout_is_one_end_to_end_budget(self, fake_command):
         output = json.loads(runner(fake_command).acp_agent("hang", timeout=1))
@@ -279,10 +484,32 @@ class TestFailures:
         assert "interrupted" in output["error"]
 
     def test_working_directory_must_exist(self, fake_command, tmp_path):
-        output = json.loads(runner(fake_command).acp_agent(
+        output = json.loads(ACPAgent(
+            command=fake_command, name="fake", workspace=tmp_path
+        ).acp_agent(
             "hi", cwd=str(tmp_path / "missing")
         ))
         assert "Working directory" in output["error"]
+
+    def test_model_cannot_leave_operator_workspace(self, fake_command, tmp_path):
+        workspace = tmp_path / "workspace"
+        outside = tmp_path / "outside"
+        workspace.mkdir()
+        outside.mkdir()
+        output = json.loads(ACPAgent(
+            command=fake_command, name="fake", workspace=workspace
+        ).acp_agent("hi", cwd=str(outside)))
+        assert "must stay inside workspace" in output["error"]
+
+    def test_relative_cwd_is_resolved_from_operator_workspace(
+        self, fake_command, tmp_path
+    ):
+        child = tmp_path / "child"
+        child.mkdir()
+        output = json.loads(ACPAgent(
+            command=fake_command, name="fake", workspace=tmp_path
+        ).acp_agent("hi", cwd="child"))
+        assert output.get("error") is None
 
 
 class TestEngineStatus:
