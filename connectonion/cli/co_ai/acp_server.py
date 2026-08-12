@@ -609,6 +609,7 @@ class ConnectOnionACPAgent:
         yolo_turns: int,
         agent_factory: AgentFactory | None = None,
         session_co_dir: Path | None = None,
+        network_workspace: Path | None = None,
         allow_mcp: bool = False,
         mcp_connector: MCPConnector | None = None,
     ) -> None:
@@ -618,6 +619,11 @@ class ConnectOnionACPAgent:
         self._yolo_turns = yolo_turns
         self._agent_factory = agent_factory
         self._session_co_dir = Path(session_co_dir or GLOBAL_CO_DIR)
+        self._network_workspace = (
+            Path(network_workspace).resolve(strict=True)
+            if network_workspace is not None
+            else None
+        )
         self._allow_mcp = allow_mcp
         self._mcp_connector = mcp_connector
         self._client: Client | None = None
@@ -666,7 +672,7 @@ class ConnectOnionACPAgent:
         **_kwargs: Any,
     ) -> NewSessionResponse:
         self._validate_session_inputs(additional_directories, mcp_servers)
-        project_dir = self._validate_cwd(cwd)
+        project_dir = self._session_cwd(cwd)
         session_id = new_session_id()
         acp_input = _ACPEventBridge(
             asyncio.get_running_loop(),
@@ -704,7 +710,7 @@ class ConnectOnionACPAgent:
         """Resume one persisted session without replaying its transcript."""
 
         self._validate_session_inputs(additional_directories, mcp_servers)
-        project_dir = self._validate_cwd(cwd)
+        project_dir = self._session_cwd(cwd)
         if session_id in self._sessions:
             raise RequestError(
                 -32000,
@@ -1633,6 +1639,17 @@ class ConnectOnionACPAgent:
             )
         return resolved
 
+    def _session_cwd(self, cwd: str) -> Path:
+        """Resolve local stdio paths or the network-only virtual root."""
+
+        if self._network_workspace is None:
+            return self._validate_cwd(cwd)
+        if cwd != "/":
+            raise RequestError.invalid_params(
+                {"details": "network ACP cwd must be the virtual workspace root /"}
+            )
+        return self._network_workspace
+
     @staticmethod
     def _prompt_text(prompt: list[Any]) -> str:
         parts: list[str] = []
@@ -1657,6 +1674,7 @@ def create_acp_agent(
     yolo: bool,
     yolo_turns: int,
     session_co_dir: Path | None = None,
+    network_workspace: Path | None = None,
     allow_mcp: bool = False,
 ) -> ConnectOnionACPAgent:
     """Build the shared ACP lifecycle adapter for stdio or network transport."""
@@ -1667,6 +1685,7 @@ def create_acp_agent(
         yolo=yolo,
         yolo_turns=yolo_turns,
         session_co_dir=session_co_dir,
+        network_workspace=network_workspace,
         allow_mcp=allow_mcp,
     )
 

@@ -8,6 +8,7 @@ import json
 import threading
 import time
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -314,6 +315,71 @@ async def test_acp_rejects_unsupported_session_inputs(tmp_path):
         await acp_agent.new_session(str(tmp_path), mcp_servers=[object()])
     with pytest.raises(RequestError, match="Invalid params"):
         await acp_agent.new_session("relative/path")
+
+
+@pytest.mark.asyncio
+async def test_network_acp_maps_only_virtual_root_to_host_workspace(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    constructed_in: list[Path] = []
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        constructed_in.append(Path.cwd())
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        network_workspace=workspace,
+    )
+
+    session = await acp_agent.new_session(
+        "/",
+        mcp_servers=[],
+        _meta={"cwd": "/tmp", "additionalDirectories": ["/private"]},
+    )
+
+    assert constructed_in == [workspace.resolve()]
+    assert acp_agent._sessions[session.session_id].cwd == workspace.resolve()
+
+
+@pytest.mark.asyncio
+async def test_network_acp_rejects_host_paths_before_agent_construction(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    constructed = 0
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        nonlocal constructed
+        constructed += 1
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        network_workspace=workspace,
+    )
+
+    for cwd in (str(workspace), "/./", "/tmp"):
+        with pytest.raises(RequestError, match="Invalid params") as exc_info:
+            await acp_agent.new_session(cwd, mcp_servers=[])
+        assert str(workspace) not in str(exc_info.value)
+        with pytest.raises(RequestError, match="Invalid params"):
+            await acp_agent.resume_session("copied-session", cwd, mcp_servers=[])
+
+    with pytest.raises(RequestError, match="Invalid params"):
+        await acp_agent.new_session(
+            "/",
+            additional_directories=[str(tmp_path / "other")],
+        )
+
+    assert constructed == 0
 
 
 class _BufferWriter:

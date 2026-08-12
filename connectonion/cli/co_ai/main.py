@@ -62,6 +62,7 @@ def start_server(
     # Use global ~/.co/ for consistent identity across all co ai sessions
     co_dir = Path.home() / ".co"
     addr_data = address.load(co_dir)
+    network_workspace = Path.cwd().resolve(strict=True)
 
     # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
@@ -105,6 +106,7 @@ def start_server(
             yolo=yolo and principal.level == "admin",
             yolo_turns=yolo_turns,
             session_co_dir=session_co_dir,
+            network_workspace=network_workspace,
         )
 
     # Start server with same co_dir (relay enabled by default for web chat).

@@ -119,6 +119,12 @@ from the recipient Agent, verified caller, exact Origin, and admission method.
 The same principal can reauthenticate and resume; another principal cannot
 load the snapshot even with the copied session UUID and working directory.
 
+Network sessions use `/` as a virtual workspace root. The Host maps it to the
+directory captured when `co ai` started and rejects every other `cwd` before
+constructing an Agent. The actual Host path is not part of the public protocol.
+Stdio ACP keeps accepting an existing absolute directory from its local
+launcher. See [DD-047](../design-decisions/047-network-acp-virtual-workspace.md).
+
 Collaboration and permission are independent under DD-044. React owns
 `default` / `plan` workflow state. The Host advertises only `:read-only`,
 `:workspace`, and, when authorized, `:danger-full-access`. A launch `--yolo`

@@ -185,6 +185,35 @@ def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only
         load_snapshot(other_contact._session_co_dir, session_id, cwd=tmp_path)
 
 
+def test_network_acp_workspace_is_captured_when_server_starts(monkeypatch, tmp_path):
+    launch_dir = tmp_path / "launch"
+    later_dir = tmp_path / "later"
+    launch_dir.mkdir()
+    later_dir.mkdir()
+    agent = SimpleNamespace(name="agent")
+    called = {}
+    monkeypatch.chdir(launch_dir)
+
+    def fake_host(_agent, **kwargs):
+        called.update(kwargs)
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+    main_mod.start_server(agent)
+    monkeypatch.chdir(later_dir)
+
+    principal = ACPPrincipal(
+        address="0xcontact",
+        level="contact",
+        recipient="0xrecipient",
+        origin="https://chat.openonion.ai",
+        auth_method="browser_ticket",
+        authenticated_at=1.0,
+    )
+    network_agent = called["acp_agent_factory"](principal)
+
+    assert network_agent._network_workspace == launch_dir.resolve()
+
+
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):
     """The factory→assembler hop was untested: assemble_prompt(role=) had tests
     and the template's role string had tests, but nothing checked that

@@ -35,6 +35,10 @@ single-use, Origin-bound ticket. Programmatic clients can sign the WebSocket
 upgrade directly. See [Authenticated ACP WebSocket](../network/acp-websocket.md).
 This preview supports direct loopback or TLS/WSS connections only. It does not
 claim end-to-end encryption through an untrusted TLS-terminating relay.
+Network clients send `/` as their ACP workspace; the Host maps that virtual
+root to the project directory captured when `co ai` started. They cannot select
+another Host path. Local stdio ACP clients continue to provide an existing
+absolute working directory.
 
 ### One-Shot Mode
 
