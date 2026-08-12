@@ -3,13 +3,14 @@
 LLM-Note: Tests for outlook
 
 What it tests:
-- Outlook functionality: init scope checks, token management, formatting, read/search, send (attachments, send_at scheduling), reply (plain-text→HTML paragraph conversion, scheduled), get_scheduled (paging), mark read, unread count
+- Outlook functionality: init scope checks, token management, formatting, read/search, send (attachments, send_at scheduling), reply (plain-text→HTML paragraph conversion, attachments on the threaded reply action, scheduled, send_at still third positional with attachments keyword-only), get_scheduled (paging), mark read, unread count
 
 Components under test:
 - Module: outlook
 """
 
 
+import base64
 import os
 import pytest
 from unittest.mock import patch, MagicMock
@@ -671,6 +672,190 @@ class TestOutlookReply:
 
             comment = mock_httpx.request.call_args.kwargs["json"]["comment"]
             assert comment == "<p>cost &lt; $10 &amp; rising</p>"
+
+
+class TestOutlookReplyAttachments:
+    """Replying with files attached, without giving up Graph's threading."""
+
+    @pytest.fixture(autouse=True)
+    def _connected(self, monkeypatch):
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.Read,Mail.Send")
+        monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN", "test-token")
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "test-refresh")
+
+    def _outlook(self, allow_external_attachments=True):
+        from connectonion.useful_tools.outlook import Outlook
+        return Outlook(allow_external_attachments=allow_external_attachments)
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_with_one_attachment_still_replies_to_the_thread(self, mock_httpx, tmp_path):
+        """The file rides on the reply action, so the thread is kept."""
+        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+        signed = tmp_path / "signed.pdf"
+        signed.write_bytes(b"%PDF-1.4 fake")
+
+        result = self._outlook().reply("msg-1", "Signed copy attached",
+                                      attachments=[str(signed)])
+
+        assert "sent" in result.lower()
+        assert "signed.pdf" in result
+
+        method, url = mock_httpx.request.call_args.args[:2]
+        assert method == "POST"
+        # A reply must not degrade into a fresh sendMail — that loses threading.
+        assert url.endswith("/me/messages/msg-1/reply")
+
+        payload = mock_httpx.request.call_args.kwargs["json"]
+        assert payload["comment"] == "<p>Signed copy attached</p>"
+        attachment = payload["message"]["attachments"][0]
+        assert attachment["@odata.type"] == "#microsoft.graph.fileAttachment"
+        assert attachment["name"] == "signed.pdf"
+        assert attachment["contentType"] == "application/pdf"
+        assert base64.b64decode(attachment["contentBytes"]) == b"%PDF-1.4 fake"
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_attaches_every_file_in_order(self, mock_httpx, tmp_path):
+        """Several attachments all reach Graph, each with its own MIME type."""
+        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+        report = tmp_path / "report.pdf"
+        report.write_bytes(b"%PDF report")
+        chart = tmp_path / "chart.png"
+        chart.write_bytes(b"\x89PNG chart")
+
+        result = self._outlook().reply("msg-1", "Both attached",
+                                      attachments=[str(report), str(chart)])
+
+        attachments = mock_httpx.request.call_args.kwargs["json"]["message"]["attachments"]
+        assert [(a["name"], a["contentType"]) for a in attachments] == [
+            ("report.pdf", "application/pdf"),
+            ("chart.png", "image/png"),
+        ]
+        assert [base64.b64decode(a["contentBytes"]) for a in attachments] == [
+            b"%PDF report", b"\x89PNG chart",
+        ]
+        assert "report.pdf, chart.png" in result
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_scheduled_reply_keeps_both_attachments_and_deferred_send(self, mock_httpx, tmp_path):
+        """--attach and --at are not a choice: one message carries both."""
+        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+        signed = tmp_path / "signed.pdf"
+        signed.write_bytes(b"%PDF-1.4 fake")
+
+        result = self._outlook().reply("msg-1", "Tomorrow", attachments=[str(signed)],
+                                      send_at="2026-07-06T15:30:00Z")
+
+        assert "scheduled" in result.lower()
+        assert "signed.pdf" in result
+
+        message = mock_httpx.request.call_args.kwargs["json"]["message"]
+        assert message["attachments"][0]["name"] == "signed.pdf"
+        assert message["singleValueExtendedProperties"] == [
+            {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
+        ]
+
+    def test_missing_attachment_reports_no_reply_sent(self, tmp_path):
+        """A path that isn't there must fail before anything reaches Graph."""
+        outlook = self._outlook()
+        outlook._request = MagicMock()
+
+        with pytest.raises(ValueError, match="Attachment not found"):
+            outlook.reply("msg-1", "Attached", attachments=[str(tmp_path / "gone.pdf")])
+
+        outlook._request.assert_not_called()
+
+    def test_oversize_attachment_reports_no_reply_sent(self, tmp_path):
+        """The 3MB send limit applies to replies, and stops the POST."""
+        huge = tmp_path / "huge.bin"
+        huge.write_bytes(b"")
+        os.truncate(huge, 3_000_001)
+        outlook = self._outlook()
+        outlook._request = MagicMock()
+
+        with pytest.raises(ValueError, match="3MB"):
+            outlook.reply("msg-1", "Attached", attachments=[str(huge)])
+
+        outlook._request.assert_not_called()
+
+    def test_agent_reply_attachment_must_stay_inside_the_project(self, tmp_path, monkeypatch):
+        """Agent-facing instances cannot attach a file outside the project."""
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".co").mkdir()
+        outside = tmp_path / "secret.txt"
+        outside.write_text("secret")
+        monkeypatch.chdir(project)
+
+        outlook = self._outlook(allow_external_attachments=False)
+        outlook._request = MagicMock()
+
+        with pytest.raises(PermissionError, match="outside the project"):
+            outlook.reply("msg-1", "Attached", attachments=[str(outside)])
+
+        outlook._request.assert_not_called()
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_graph_rejection_is_not_reported_as_a_sent_reply(self, mock_httpx, tmp_path):
+        """A Graph error on the upload must raise, not return 'Reply sent'."""
+        mock_httpx.request.return_value = MagicMock(
+            status_code=413, text="attachment too large"
+        )
+        signed = tmp_path / "signed.pdf"
+        signed.write_bytes(b"%PDF-1.4 fake")
+
+        with pytest.raises(ValueError, match="Microsoft Graph API error"):
+            self._outlook().reply("msg-1", "Attached", attachments=[str(signed)])
+
+
+class TestOutlookReplyPositionalCompatibility:
+    """reply()'s third positional argument is send_at, as it always was."""
+
+    @pytest.fixture(autouse=True)
+    def _connected(self, monkeypatch):
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.Read,Mail.Send")
+        monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN", "test-token")
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "test-refresh")
+
+    def _outlook(self):
+        from connectonion.useful_tools.outlook import Outlook
+        return Outlook(allow_external_attachments=True)
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_legacy_third_positional_argument_still_schedules(self, mock_httpx):
+        """A caller written before attachments existed still schedules, not attaches."""
+        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+
+        result = self._outlook().reply("msg-1", "See you then", "2026-07-06T15:30:00Z")
+
+        assert "scheduled" in result.lower()
+        payload = mock_httpx.request.call_args.kwargs["json"]
+        assert payload["message"]["singleValueExtendedProperties"] == [
+            {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
+        ]
+        # The timestamp must never be read as a file path.
+        assert "attachments" not in payload["message"]
+
+    def test_attachments_cannot_be_passed_positionally(self, tmp_path):
+        """Keyword-only attachments freeze the positional order for good."""
+        signed = tmp_path / "signed.pdf"
+        signed.write_bytes(b"%PDF-1.4 fake")
+        outlook = self._outlook()
+        outlook._request = MagicMock()
+
+        with pytest.raises(TypeError):
+            outlook.reply("msg-1", "Attached", None, [str(signed)])
+
+        outlook._request.assert_not_called()
+
+    def test_reply_signature_keeps_send_at_third(self):
+        """Guard the contract itself, so a future edit can't quietly reorder it."""
+        import inspect
+
+        from connectonion.useful_tools.outlook import Outlook
+
+        params = inspect.signature(Outlook.reply).parameters
+        assert list(params) == ["self", "email_id", "body", "send_at", "attachments"]
+        assert params["attachments"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class TestOutlookActions:
