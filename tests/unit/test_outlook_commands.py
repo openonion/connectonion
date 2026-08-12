@@ -8,6 +8,7 @@ What it tests:
 - _resolve_email_id short-number resolution via cache file and list_inbox fallback
 - handle_outlook_inbox writes the {#: message_id} cache
 - handle_outlook_send reads the body from stdin when message is '-'
+- handle_outlook_reply forwards --attach files (and stdin bodies, and --at) to Outlook.reply, rejects missing/oversize files before replying, and keeps `at` third positional with attachments keyword-only
 
 Components under test:
 - Module: connectonion.cli.commands.outlook_commands
@@ -34,6 +35,7 @@ from connectonion.cli.commands.outlook_commands import (
     handle_outlook_contact_list,
     handle_outlook_contact_search,
     handle_outlook_inbox,
+    handle_outlook_reply,
     handle_outlook_send,
 )
 
@@ -325,6 +327,157 @@ class TestHandleOutlookSend:
                     handle_outlook_send(to="bob@example.com", subject="Hi", message="hello")
 
         mock_cls.assert_not_called()
+
+
+class TestHandleOutlookReply:
+    """handle_outlook_reply carries --attach files through to the Outlook tool."""
+
+    def _reply(self, outlook, monkeypatch, **kwargs):
+        cache = {"3": "msg-cached-3"}
+        monkeypatch.setattr(outlook_commands, "_resolve_email_id",
+                            lambda _outlook, email_id: cache.get(email_id, ""))
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_reply(**kwargs)
+
+    def test_without_attachments_replies_as_before(self, monkeypatch, capsys):
+        outlook = MagicMock()
+        self._reply(outlook, monkeypatch, email_id="3", message="Sounds good")
+
+        outlook.reply.assert_called_once_with(
+            "msg-cached-3", "Sounds good", attachments=None, send_at=None,
+        )
+        output = capsys.readouterr().out
+        assert "Replied" in output
+        assert "Attached" not in output
+
+    def test_forwards_repeated_attachments(self, tmp_path, monkeypatch, capsys):
+        report = tmp_path / "report.pdf"
+        report.write_bytes(b"%PDF report")
+        chart = tmp_path / "chart.png"
+        chart.write_bytes(b"\x89PNG chart")
+
+        outlook = MagicMock()
+        self._reply(outlook, monkeypatch, email_id="3", message="Both attached",
+                    attachments=[str(report), str(chart)])
+
+        outlook.reply.assert_called_once_with(
+            "msg-cached-3", "Both attached",
+            attachments=[str(report), str(chart)], send_at=None,
+        )
+        output = capsys.readouterr().out
+        assert "Replied" in output
+        assert "Attached: report.pdf, chart.png" in output
+
+    def test_stdin_body_still_works_with_an_attachment(self, tmp_path, monkeypatch):
+        report = tmp_path / "report.pdf"
+        report.write_bytes(b"%PDF report")
+        monkeypatch.setattr(sys, "stdin", io.StringIO("Body from stdin\nline two\n"))
+
+        outlook = MagicMock()
+        self._reply(outlook, monkeypatch, email_id="3", message="-",
+                    attachments=[str(report)])
+
+        outlook.reply.assert_called_once_with(
+            "msg-cached-3", "Body from stdin\nline two\n",
+            attachments=[str(report)], send_at=None,
+        )
+
+    def test_scheduled_reply_keeps_its_attachment(self, tmp_path, monkeypatch, capsys):
+        report = tmp_path / "report.pdf"
+        report.write_bytes(b"%PDF report")
+
+        outlook = MagicMock()
+        self._reply(outlook, monkeypatch, email_id="3", message="Tomorrow",
+                    attachments=[str(report)], at="2026-07-06T15:30:00Z")
+
+        outlook.reply.assert_called_once_with(
+            "msg-cached-3", "Tomorrow",
+            attachments=[str(report)], send_at="2026-07-06T15:30:00Z",
+        )
+        output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
+        assert "Reply scheduled" in output
+        assert "2026-07-06T15:30:00Z" in output
+        assert "Attached: report.pdf" in output
+
+    def test_missing_attachment_exits_without_replying(self, tmp_path, monkeypatch, capsys):
+        outlook = MagicMock()
+
+        with pytest.raises(typer.Exit):
+            self._reply(outlook, monkeypatch, email_id="3", message="Attached",
+                        attachments=[str(tmp_path / "gone.pdf")])
+
+        outlook.reply.assert_not_called()
+        assert "Attachment not found" in capsys.readouterr().out
+
+    def test_oversize_attachments_exit_without_replying(self, tmp_path, monkeypatch, capsys):
+        huge = tmp_path / "huge.bin"
+        huge.write_bytes(b"")
+        os.truncate(huge, 3_000_001)
+        outlook = MagicMock()
+
+        with pytest.raises(typer.Exit):
+            self._reply(outlook, monkeypatch, email_id="3", message="Attached",
+                        attachments=[str(huge)])
+
+        outlook.reply.assert_not_called()
+        assert "3MB" in capsys.readouterr().out
+
+    def test_unknown_email_number_does_not_reply(self, tmp_path, monkeypatch, capsys):
+        report = tmp_path / "report.pdf"
+        report.write_bytes(b"%PDF report")
+        outlook = MagicMock()
+
+        with pytest.raises(typer.Exit):
+            self._reply(outlook, monkeypatch, email_id="99", message="Attached",
+                        attachments=[str(report)])
+
+        outlook.reply.assert_not_called()
+        assert "No email #99" in capsys.readouterr().out
+
+
+class TestHandleOutlookReplyPositionalCompatibility:
+    """handle_outlook_reply's third positional argument is `at`, as it always was."""
+
+    def _call(self, outlook, monkeypatch, *args, **kwargs):
+        cache = {"3": "msg-cached-3"}
+        monkeypatch.setattr(outlook_commands, "_resolve_email_id",
+                            lambda _outlook, email_id: cache.get(email_id, ""))
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_reply(*args, **kwargs)
+
+    def test_legacy_third_positional_argument_still_schedules(self, monkeypatch, capsys):
+        """The old handle_outlook_reply(id, message, at) call still schedules."""
+        outlook = MagicMock()
+        self._call(outlook, monkeypatch, "3", "See you then", "2026-07-06T15:30:00Z")
+
+        outlook.reply.assert_called_once_with(
+            "msg-cached-3", "See you then",
+            attachments=None, send_at="2026-07-06T15:30:00Z",
+        )
+        output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
+        assert "Reply scheduled" in output
+        assert "Attached" not in output
+
+    def test_attachments_cannot_be_passed_positionally(self, tmp_path, monkeypatch):
+        """A fourth positional argument is a TypeError, not a silent schedule/attach swap."""
+        report = tmp_path / "report.pdf"
+        report.write_bytes(b"%PDF report")
+        outlook = MagicMock()
+
+        with pytest.raises(TypeError):
+            self._call(outlook, monkeypatch, "3", "Attached", None, [str(report)])
+
+        outlook.reply.assert_not_called()
+
+    def test_handler_signature_keeps_at_third(self):
+        """Guard the contract itself, so a future edit can't quietly reorder it."""
+        import inspect
+
+        params = inspect.signature(handle_outlook_reply).parameters
+        assert list(params) == ["email_id", "message", "at", "attachments"]
+        assert params["attachments"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class TestHandleOutlookContacts:
