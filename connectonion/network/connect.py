@@ -955,7 +955,7 @@ class RemoteAgent:
 
     def _prompt_onboard(self, methods: List[str], payment_amount: Optional[float]) -> Dict[str, Any]:
         """Prompt user interactively for onboard credentials."""
-        print(f"\n🔐 Access verification required")
+        print("\n🔐 Access verification required")
         print(f"   Available methods: {', '.join(methods)}")
 
         if "invite_code" in methods:

@@ -686,6 +686,9 @@ class TestUnknownTools:
         io = FakeIO()
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = 'full_access'
+        agent.current_session['full_access_turns'] = 5
+        agent.current_session['full_access_turns_used'] = 1
+        agent.current_session['skip_tool_approval'] = True
         agent.current_session['pending_tool'] = {
             'name': 'my_custom_tool',
             'arguments': {},
@@ -694,6 +697,20 @@ class TestUnknownTools:
         check_approval(agent)
 
         assert io.sent == []
+
+    def test_malformed_full_access_state_needs_explicit_approval(self):
+        """A mode label without its bounded grant is presentation, not authority."""
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'full_access'
+        agent.current_session['pending_tool'] = {
+            'name': 'my_custom_tool',
+            'arguments': {},
+        }
+
+        check_approval(agent)
+
+        assert [event['type'] for event in io.sent] == ['approval_needed']
 
     def test_auto_approve_still_allows_named_file_edits(self):
         """The fail-closed fallback must not redefine auto_approve."""

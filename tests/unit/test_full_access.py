@@ -2,22 +2,24 @@
 
 from unittest.mock import Mock
 
+import pytest
+
 from connectonion import Agent
 from connectonion.core.llm import LLMResponse
 from connectonion.core.usage import TokenUsage
-from connectonion.useful_plugins.skills import skills
 from connectonion.useful_plugins.full_access import (
     FULL_ACCESS_CONTINUE_PROMPT,
     FULL_ACCESS_DEFAULT_TURNS,
     YOLO_DEFAULT_TURNS,
     enable_yolo,
+    full_access_keep_working,
     handle_full_access_mode_change,
     handle_yolo_mode_change,
     inject_full_access_prompt,
     poll_prompt_update,
-    full_access_keep_working,
     yolo,
 )
+from connectonion.useful_plugins.skills import skills
 from tests.utils.mock_helpers import MockLLM
 
 
@@ -55,6 +57,17 @@ def test_mode_change_uses_explicit_turns():
     assert agent.current_session['full_access_turns'] == 5
 
 
+@pytest.mark.parametrize('turns', [0, -1, True, 1.5, '5'])
+def test_mode_change_rejects_malformed_turn_budgets_without_granting(turns):
+    agent = FakeAgent(mode='default')
+
+    with pytest.raises(ValueError, match='positive integer'):
+        handle_full_access_mode_change(agent, turns=turns)
+
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+
+
 def test_mode_change_notifies_io_when_present():
     io = Mock()
     agent = FakeAgent(io=io)
@@ -81,7 +94,7 @@ def test_yolo_public_api_uses_full_access_compatibility_state():
     assert yolo
 
 
-def test_enable_yolo_before_first_input_activates_on_the_first_turn(tmp_path, monkeypatch):
+def test_enable_yolo_before_first_input_runs_one_bounded_turn(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     skill_dir = tmp_path / '.claude' / 'skills' / 'deploy-oo-chat'
     skill_dir.mkdir(parents=True)
@@ -123,10 +136,11 @@ def test_enable_yolo_before_first_input_activates_on_the_first_turn(tmp_path, mo
     assert user_message['content'] == (
         'Run the deployment checks without deploying.'
     )
-    assert agent.current_session['mode'] == 'full_access'
-    assert agent.current_session['skip_tool_approval'] is True
-    assert agent.current_session['full_access_turns'] == 1
-    assert agent.current_session['full_access_turns_used'] == 1
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+    assert 'full_access_turns' not in agent.current_session
+    assert 'full_access_prompt' not in agent.current_session
+    assert 'full_access_turns_used' not in agent.current_session
 
 
 def test_plain_full_access_plugin_does_not_enable_yolo_implicitly():
@@ -152,7 +166,7 @@ def test_plain_full_access_plugin_does_not_enable_yolo_implicitly():
     assert 'skip_tool_approval' not in agent.current_session
 
 
-def test_configured_yolo_activates_after_hosted_session_restore():
+def test_configured_yolo_runs_after_hosted_session_restore_then_expires():
     llm = MockLLM(responses=[
         LLMResponse(
             content='done',
@@ -180,13 +194,13 @@ def test_configured_yolo_activates_after_hosted_session_restore():
         },
     )
 
-    assert agent.current_session['mode'] == 'full_access'
-    assert agent.current_session['skip_tool_approval'] is True
-    assert agent.current_session['full_access_turns'] == 1
-    assert agent.current_session['full_access_turns_used'] == 1
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+    assert 'full_access_turns' not in agent.current_session
+    assert 'full_access_turns_used' not in agent.current_session
 
 
-def test_explicit_yolo_rearms_an_exhausted_restored_session():
+def test_explicit_yolo_rearms_then_expires_an_exhausted_restored_session():
     llm = MockLLM(responses=[
         LLMResponse(
             content='done',
@@ -218,10 +232,10 @@ def test_explicit_yolo_rearms_an_exhausted_restored_session():
         },
     )
 
-    assert agent.current_session['mode'] == 'full_access'
-    assert agent.current_session['full_access_turns'] == 2
-    assert agent.current_session['full_access_turns_used'] == 2
-    assert agent.current_session['skip_tool_approval'] is True
+    assert agent.current_session['mode'] == 'default'
+    assert 'full_access_turns' not in agent.current_session
+    assert 'full_access_turns_used' not in agent.current_session
+    assert 'skip_tool_approval' not in agent.current_session
     assert llm.call_count == 2
 
 
@@ -256,12 +270,12 @@ def test_keep_working_at_max_with_continue_action_extends_and_falls_through():
 
 def test_keep_working_at_max_with_switch_mode_exits_to_new_mode():
     io = Mock()
-    io.receive.return_value = {'action': 'switch_mode', 'mode': 'review'}
+    io.receive.return_value = {'action': 'switch_mode', 'mode': 'auto_approve'}
     agent = FakeAgent(io=io, mode='full_access')
     agent.current_session['full_access_turns'] = 2
     agent.current_session['full_access_turns_used'] = 1
     full_access_keep_working(agent)
-    assert agent.current_session['mode'] == 'review'
+    assert agent.current_session['mode'] == 'auto_approve'
     assert 'skip_tool_approval' not in agent.current_session
     assert 'full_access_turns' not in agent.current_session
     assert agent.input_calls == []
@@ -278,13 +292,62 @@ def test_keep_working_at_max_with_unknown_action_exits_to_default():
     assert agent.input_calls == []
 
 
-def test_keep_working_at_max_without_io_returns_silently():
+@pytest.mark.parametrize('mode', ['full_access', 'ulw', 'unknown'])
+def test_checkpoint_cannot_reenter_or_invent_an_approval_mode(mode):
+    io = Mock()
+    io.receive.return_value = {'action': 'switch_mode', 'mode': mode}
+    agent = FakeAgent(io=io, mode='full_access')
+    agent.current_session['full_access_turns'] = 1
+    agent.current_session['full_access_turns_used'] = 0
+    agent.current_session['skip_tool_approval'] = True
+
+    full_access_keep_working(agent)
+
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+
+
+@pytest.mark.parametrize('turns', [0, -1, True, 1.5, '5'])
+def test_checkpoint_rejects_malformed_extensions_and_exits_default(turns):
+    io = Mock()
+    io.receive.return_value = {'action': 'continue', 'turns': turns}
+    agent = FakeAgent(io=io, mode='full_access')
+    agent.current_session['full_access_turns'] = 1
+    agent.current_session['full_access_turns_used'] = 0
+    agent.current_session['skip_tool_approval'] = True
+
+    full_access_keep_working(agent)
+
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+    assert agent.input_calls == []
+
+
+def test_keep_working_at_max_without_io_removes_the_expired_grant():
     agent = FakeAgent(io=None, mode='full_access')
     agent.current_session['full_access_turns'] = 1
     agent.current_session['full_access_turns_used'] = 0
     full_access_keep_working(agent)
     assert agent.input_calls == []
-    assert agent.current_session['mode'] == 'full_access'  # state untouched
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+
+
+@pytest.mark.parametrize(
+    ('turns', 'used'),
+    [(0, 0), (-1, 0), (True, 0), (1, -1), (1, True), (1, 1)],
+)
+def test_keep_working_rejects_malformed_or_exhausted_restored_state(turns, used):
+    agent = FakeAgent(mode='full_access')
+    agent.current_session['full_access_turns'] = turns
+    agent.current_session['full_access_turns_used'] = used
+    agent.current_session['skip_tool_approval'] = True
+
+    full_access_keep_working(agent)
+
+    assert agent.current_session['mode'] == 'default'
+    assert 'skip_tool_approval' not in agent.current_session
+    assert agent.input_calls == []
 
 
 def test_host_bounded_full_access_checkpoint_exits_default_without_mailbox_extension():

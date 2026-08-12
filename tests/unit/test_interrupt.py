@@ -299,6 +299,7 @@ def test_interrupt_stops_provider_process_before_late_write(
         log=False,
         quiet=True,
     )
+    agent._delegation_workspace = tmp_path
     agent.current_session = {
         "messages": [],
         "trace": [],

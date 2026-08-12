@@ -1,6 +1,7 @@
 """Expose Claude Code to co ai without exposing its permission policy."""
 
 import json
+from pathlib import Path
 
 from connectonion.core.approval_modes import (
     AUTO_APPROVE_MODE,
@@ -56,4 +57,9 @@ def claude_code(
         model=model,
         timeout=timeout,
         agent=agent,
+        workspace=(
+            getattr(agent, "_delegation_workspace", Path.cwd())
+            if agent is not None
+            else None
+        ),
     )

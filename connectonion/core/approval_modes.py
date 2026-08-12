@@ -9,8 +9,7 @@ before they reach runtime state.
 
 from __future__ import annotations
 
-from typing import Any
-
+from typing import Any, Mapping
 
 DEFAULT_MODE = "default"
 AUTO_APPROVE_MODE = "auto_approve"
@@ -67,12 +66,70 @@ def migrate_legacy_full_access_fields(session: dict) -> dict:
     return session
 
 
+def has_valid_full_access_grant(session: Mapping[str, Any]) -> bool:
+    """Return whether one session carries a complete bounded bypass grant."""
+
+    turns = session.get("full_access_turns")
+    used = session.get("full_access_turns_used")
+    return (
+        session.get("mode") == FULL_ACCESS_MODE
+        and not isinstance(turns, bool)
+        and isinstance(turns, int)
+        and turns > 0
+        and not isinstance(used, bool)
+        and isinstance(used, int)
+        and 0 <= used < turns
+        and session.get("skip_tool_approval") is True
+    )
+
+
+def normalize_runtime_approval_session(session: dict) -> dict:
+    """Return canonical local Agent state, removing malformed authority.
+
+    Host and ACP persistence use their stricter policy validators and reject a
+    corrupt snapshot.  A direct ``Agent.input(session=...)`` restoration has no
+    transaction to reject, so it takes the fail-closed local behavior: legacy
+    fields migrate, while unknown modes or inconsistent Full access state are
+    reduced to Default before any hook, model call, or tool can run.
+    """
+
+    normalized = dict(session)
+    migrate_legacy_full_access_fields(normalized)
+    raw_mode = normalized.get("mode", DEFAULT_MODE)
+    if raw_mode == "plan":
+        mode = DEFAULT_MODE
+    else:
+        try:
+            mode = legacy_approval_mode_id(raw_mode)
+        except ValueError:
+            mode = DEFAULT_MODE
+
+    full_access_fields = (
+        "skip_tool_approval",
+        "full_access_turns",
+        "full_access_turns_used",
+        "full_access_prompt",
+    )
+    normalized["mode"] = mode
+    if mode == FULL_ACCESS_MODE:
+        if not has_valid_full_access_grant(normalized):
+            mode = DEFAULT_MODE
+
+    if mode != FULL_ACCESS_MODE:
+        for field in full_access_fields:
+            normalized.pop(field, None)
+    normalized["mode"] = mode
+    return normalized
+
+
 __all__ = [
     "APPROVAL_MODE_IDS",
     "AUTO_APPROVE_MODE",
     "DEFAULT_MODE",
     "FULL_ACCESS_MODE",
     "approval_mode_id",
+    "has_valid_full_access_grant",
     "legacy_approval_mode_id",
     "migrate_legacy_full_access_fields",
+    "normalize_runtime_approval_session",
 ]

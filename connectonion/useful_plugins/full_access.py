@@ -23,7 +23,12 @@ Usage:
 
 from typing import TYPE_CHECKING
 
-from ..core.approval_modes import DEFAULT_MODE, FULL_ACCESS_MODE
+from ..core.approval_modes import (
+    AUTO_APPROVE_MODE,
+    DEFAULT_MODE,
+    FULL_ACCESS_MODE,
+    legacy_approval_mode_id,
+)
 from ..core.events import after_user_input, before_iteration, before_llm, on_complete
 
 if TYPE_CHECKING:
@@ -49,6 +54,15 @@ def _log(agent: 'Agent', message: str) -> None:
         agent.logger.print(message)
 
 
+def _positive_turn_count(value: object, *, default: int | None = None) -> int:
+    """Return a bounded counter input without bool or numeric coercion."""
+    if value is None:
+        value = default
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("Full access turns must be a positive integer")
+    return value
+
+
 def handle_full_access_mode_change(agent: 'Agent', turns: int = None) -> None:
     """Handle mode change to Full access.
 
@@ -64,7 +78,7 @@ def handle_full_access_mode_change(agent: 'Agent', turns: int = None) -> None:
         agent: Agent instance
         turns: Max turns before checkpoint (default: 100)
     """
-    turns = turns or FULL_ACCESS_DEFAULT_TURNS
+    turns = _positive_turn_count(turns, default=FULL_ACCESS_DEFAULT_TURNS)
 
     # Preserve the documented pre-input activation path. The session does not
     # exist until Agent.input(), so defer activation to after_user_input.
@@ -94,9 +108,7 @@ def handle_yolo_mode_change(agent: 'Agent', turns: int = None) -> None:
 
 def enable_full_access(agent: 'Agent', turns: int = None) -> None:
     """Configure approval-free autonomous mode before the agent's first input."""
-    turns = FULL_ACCESS_DEFAULT_TURNS if turns is None else turns
-    if isinstance(turns, bool) or turns <= 0:
-        raise ValueError("Full access turns must be a positive integer")
+    turns = _positive_turn_count(turns, default=FULL_ACCESS_DEFAULT_TURNS)
 
     agent._yolo_turns = turns
     agent._yolo_needs_activation = True
@@ -131,6 +143,7 @@ def _exit_full_access_mode(agent: 'Agent', new_mode: str = DEFAULT_MODE) -> None
     agent.current_session.pop('skip_tool_approval', None)
     agent.current_session.pop('full_access_turns', None)
     agent.current_session.pop('full_access_turns_used', None)
+    agent.current_session.pop('full_access_prompt', None)
     agent.current_session['mode'] = new_mode
 
     if agent.io:
@@ -146,10 +159,27 @@ def full_access_keep_working(agent: 'Agent') -> None:
     if mode != FULL_ACCESS_MODE:
         return
 
+    # Validate restored/local state before it can keep approval bypass active.
+    raw_used = agent.current_session.get('full_access_turns_used')
+    try:
+        max_turns = _positive_turn_count(
+            agent.current_session.get('full_access_turns'),
+        )
+    except ValueError:
+        _exit_full_access_mode(agent, DEFAULT_MODE)
+        return
+    if (
+        isinstance(raw_used, bool)
+        or not isinstance(raw_used, int)
+        or raw_used < 0
+        or raw_used >= max_turns
+    ):
+        _exit_full_access_mode(agent, DEFAULT_MODE)
+        return
+
     # Track turns
-    turns_used = agent.current_session.get('full_access_turns_used', 0) + 1
+    turns_used = raw_used + 1
     agent.current_session['full_access_turns_used'] = turns_used
-    max_turns = agent.current_session.get('full_access_turns', FULL_ACCESS_DEFAULT_TURNS)
 
     if turns_used >= max_turns:
         # A hosted grant is bounded by the launch-time authority captured by
@@ -177,13 +207,29 @@ def full_access_keep_working(agent: 'Agent') -> None:
             action = response.get('action')
             if action == 'continue':
                 # Extend turns and continue
-                extend = response.get('turns', FULL_ACCESS_DEFAULT_TURNS)
+                try:
+                    extend = _positive_turn_count(
+                        response.get('turns'),
+                        default=FULL_ACCESS_DEFAULT_TURNS,
+                    )
+                except ValueError:
+                    _exit_full_access_mode(agent, DEFAULT_MODE)
+                    return
                 agent.current_session['full_access_turns'] += extend
                 _log(agent, f"[cyan]Full access extended: +{extend} turns[/cyan]")
                 # Fall through to continue working
             elif action == 'switch_mode':
-                # Switch to another mode
-                new_mode = response.get('mode', DEFAULT_MODE)
+                # A checkpoint may leave Full access only for a bounded mode.
+                # Re-selecting Full access here would bypass the transaction
+                # that establishes its turn budget.
+                try:
+                    new_mode = legacy_approval_mode_id(
+                        response.get('mode', DEFAULT_MODE)
+                    )
+                except ValueError:
+                    new_mode = DEFAULT_MODE
+                if new_mode not in {DEFAULT_MODE, AUTO_APPROVE_MODE}:
+                    new_mode = DEFAULT_MODE
                 _exit_full_access_mode(agent, new_mode)
                 return  # Stop working
             else:
@@ -191,7 +237,9 @@ def full_access_keep_working(agent: 'Agent') -> None:
                 _exit_full_access_mode(agent, DEFAULT_MODE)
                 return
         else:
-            # No IO, truly complete
+            # No checkpoint receiver means there is no authority to extend the
+            # grant. Remove bypass state before the next caller can resume it.
+            _exit_full_access_mode(agent, DEFAULT_MODE)
             return
 
     # Continue working - start another turn

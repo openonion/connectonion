@@ -5,8 +5,10 @@ from connectonion.core.approval_modes import (
     DEFAULT_MODE,
     FULL_ACCESS_MODE,
     approval_mode_id,
+    has_valid_full_access_grant,
     legacy_approval_mode_id,
     migrate_legacy_full_access_fields,
+    normalize_runtime_approval_session,
 )
 
 
@@ -40,3 +42,53 @@ def test_legacy_full_access_fields_migrate_without_overwriting_canonical_state()
         "full_access_turns_used": 3,
         "full_access_prompt": "legacy",
     }
+
+
+def test_runtime_session_migrates_one_valid_legacy_full_access_grant():
+    assert normalize_runtime_approval_session({
+        "mode": "ulw",
+        "ulw_turns": 10,
+        "ulw_turns_used": 3,
+        "skip_tool_approval": True,
+    }) == {
+        "mode": "full_access",
+        "full_access_turns": 10,
+        "full_access_turns_used": 3,
+        "skip_tool_approval": True,
+    }
+
+
+def test_full_access_grant_requires_all_bounded_authority_fields():
+    assert has_valid_full_access_grant({
+        "mode": "full_access",
+        "full_access_turns": 10,
+        "full_access_turns_used": 3,
+        "skip_tool_approval": True,
+    })
+    assert not has_valid_full_access_grant({"mode": "full_access"})
+
+
+@pytest.mark.parametrize(
+    "session",
+    [
+        {"mode": "future", "skip_tool_approval": True},
+        {"mode": "plan", "skip_tool_approval": True},
+        {"mode": "full_access", "full_access_turns": 5},
+        {
+            "mode": "full_access",
+            "full_access_turns": 5,
+            "full_access_turns_used": 5,
+            "skip_tool_approval": True,
+        },
+    ],
+)
+def test_runtime_session_downgrades_malformed_authority_before_execution(session):
+    normalized = normalize_runtime_approval_session(session)
+
+    assert normalized["mode"] == "default"
+    assert not {
+        "skip_tool_approval",
+        "full_access_turns",
+        "full_access_turns_used",
+        "full_access_prompt",
+    } & normalized.keys()

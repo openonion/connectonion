@@ -17,9 +17,8 @@ from acp.schema import (
     Usage,
 )
 
-from ...core.approval_modes import approval_mode_id
-
 from ...core.acp_wire import map_plan_event, map_tool_event
+from ...core.approval_modes import approval_mode_id
 
 ACPUpdate = (
     AgentMessageChunk

@@ -17,13 +17,9 @@ agent its own `skip_tool_approval: True`. A defined set of keys is therefore
 the server's to state, taken from what it stored and never from what arrived.
 """
 
-import importlib
-
-import pytest
-
 from connectonion import Agent
 from connectonion.network.host.http_router import input_handler
-from connectonion.network.host.session import SessionStorage, Session
+from connectonion.network.host.session import Session, SessionStorage
 from tests.utils.mock_helpers import MockLLM
 
 
@@ -41,6 +37,31 @@ class TestInputKeepsWhatItIsGiven:
         assert agent.current_session.get('mode') == 'full_access'
         assert agent.current_session.get('full_access_turns') == 5
         assert agent.current_session.get('skip_tool_approval') is True
+
+    def test_legacy_plugin_fields_normalize_before_the_turn_runs(self):
+        agent = Agent("a", llm=MockLLM())
+
+        agent.input("hi", session={
+            'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0,
+            'mode': 'ulw', 'ulw_turns': 5, 'ulw_turns_used': 1,
+            'skip_tool_approval': True,
+        })
+
+        assert agent.current_session.get('mode') == 'full_access'
+        assert agent.current_session.get('full_access_turns') == 5
+        assert 'ulw_turns' not in agent.current_session
+
+    def test_malformed_full_access_state_is_removed_before_the_turn_runs(self):
+        agent = Agent("a", llm=MockLLM())
+
+        agent.input("hi", session={
+            'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0,
+            'mode': 'full_access', 'full_access_turns': 5,
+            'full_access_turns_used': 5, 'skip_tool_approval': True,
+        })
+
+        assert agent.current_session.get('mode') == 'default'
+        assert 'skip_tool_approval' not in agent.current_session
 
     def test_the_requester_survives_a_restore(self):
         """#579's gate reads this. Dropped, it silently does nothing."""

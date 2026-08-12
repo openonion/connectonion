@@ -196,10 +196,13 @@ File Relationships:
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ...core.approval_modes import (
+    has_valid_full_access_grant,
+    legacy_approval_mode_id,
+)
 from ...core.events import after_iteration, after_user_input, before_each_tool, before_iteration
 from ...project import project_co_dir
 from .bash_parser import check_bash_chain_permitted
-from ...core.approval_modes import legacy_approval_mode_id
 from .constants import (
     AUTO_APPROVE_MODE,
     DEFAULT_MODE,
@@ -504,7 +507,7 @@ def check_approval(agent: 'Agent') -> None:
     # Check the explicit unlimited mode (local/admin operator only)
     # =================================================================
     requester_is_operator = _requester_is_operator(agent)
-    if agent.current_session.get('mode') == FULL_ACCESS_MODE and requester_is_operator:
+    if has_valid_full_access_grant(agent.current_session) and requester_is_operator:
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
@@ -908,7 +911,11 @@ def poll_mode_changes(agent: 'Agent') -> None:
         elif new_mode == FULL_ACCESS_MODE:
             if _requester_is_operator(agent):
                 from ..full_access import handle_full_access_mode_change
-                handle_full_access_mode_change(agent, msg.get('turns'))
+                try:
+                    handle_full_access_mode_change(agent, msg.get('turns'))
+                except ValueError:
+                    _set_mode(agent, DEFAULT_MODE)
+                    _log(agent, "[yellow]Full access requires a positive integer turn budget[/yellow]")
             else:
                 _set_mode(agent, DEFAULT_MODE)
                 _log(agent, "[yellow]Only the operator can enable Full access[/yellow]")
