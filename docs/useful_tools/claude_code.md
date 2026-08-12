@@ -26,18 +26,18 @@ import json
 
 from connectonion import ClaudeCode
 
-claude = ClaudeCode(permission_mode="plan")
+claude = ClaudeCode(permission_mode="plan", workspace="./my-project")
 
 first = json.loads(claude.claude_code(
     "Find the failing test",
-    cwd="./my-project",
+    cwd=".",
 ))
 
-editor = ClaudeCode(permission_mode="acceptEdits")
+editor = ClaudeCode(permission_mode="acceptEdits", workspace="./my-project")
 second = json.loads(editor.claude_code(
     "Now implement the fix",
     session_id=first["session_id"],
-    cwd="./my-project",
+    cwd=".",
 ))
 ```
 
@@ -73,7 +73,8 @@ The forwarded event also carries `provider=claude_code`, the Claude session ID,
 and any parent tool-use ID. Current clients can render a flat card immediately;
 future clients can use the parent ID for nested sub-agent presentation. Tool
 arguments and results are bounded before they reach live IO, and common
-credential-shaped argument keys are redacted.
+credential-shaped argument keys are redacted. Provider-controlled IDs, names,
+event counts, stream lines, and active tool state are bounded as well.
 
 Only tool activity is forwarded in this release. Claude's intermediate text is
 not added to the parent transcript, so the final answer still has one owner:
@@ -88,7 +89,7 @@ tool reaches the Agent:
 ```python
 from connectonion import Agent, ClaudeCode
 
-claude = ClaudeCode(permission_mode="acceptEdits")
+claude = ClaudeCode(permission_mode="acceptEdits", workspace="./my-project")
 agent = Agent("lead", tools=[claude])
 ```
 
@@ -101,15 +102,27 @@ directory, model, and timeout fields. Supported constructor modes are
 in operator-written code running inside an isolated environment; a model can
 never select it through the tool schema.
 
-The tool does not use Claude Code's `--bare` mode by default. This preserves the
-user's normal Claude Code authentication and project instructions such as
-`CLAUDE.md`.
-
 Headless Claude Code cannot open its own interactive permission prompt inside
-O Chat. Actions already allowed by the operator-bound mode or local Claude
-settings can run and appear as live cards; an unmatched permission request
-fails closed. Live web approval for those unmatched inner requests is a
-separate integration boundary and is not implemented by this adapter.
+O Chat. The adapter uses Claude's `--safe-mode`, which disables `CLAUDE.md`,
+skills, plugins, hooks, MCP servers, custom commands and agents, and related
+customizations. This preserves installed authentication but prevents ordinary
+user, project, and local configuration from raising this delegated turn's
+authority. Include relevant project instructions in the delegated prompt.
+Admin-managed policy still applies and may be stricter. Actions allowed by the
+operator-bound mode can run and appear as live cards; an unmatched permission
+request fails closed.
+
+The subprocess receives only a small process/locale environment and
+Claude-specific authentication variables. Unrelated API keys and cloud/GitHub
+credentials from the parent process are not copied into Claude's environment.
+
+The operator-bound workspace becomes the launch root. A model may choose that
+directory or a resolved descendant; paths and symlinks outside it fail closed.
+This is not an operating-system sandbox, so run hostile tasks inside a
+container or other OS isolation boundary.
+
+Pass back only the canonical UUID returned in `session_id`. Fuzzy Claude CLI
+session search is intentionally unavailable through this tool.
 
 ## Installation and testing
 

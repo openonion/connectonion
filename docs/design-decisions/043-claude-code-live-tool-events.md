@@ -33,9 +33,12 @@ and parent tool-use metadata without requiring current clients to understand
 nested agents.
 
 Arguments and results are bounded before live delivery. Common secret-shaped
-argument keys are redacted. Duplicate starts are ignored, and an out-of-order
-result receives a synthetic start so every result has a stable correlation
-target under DD-034.
+argument keys are redacted. Provider-controlled IDs, names, result text, final
+output, usage, stream lines, event counts, and active correlation state all
+have hard limits; oversized IDs become stable SHA-256-based identifiers.
+Duplicate starts are ignored, completed entries are released, and an
+out-of-order result receives a synthetic start so every result has a stable
+correlation target under DD-034.
 
 Cancellation and timeout remain owned by the parent tool call. The adapter
 checks cancellation while the stream is quiet, terminates the provider process
@@ -51,9 +54,26 @@ and claim of completion.
 Permission mode remains operator-owned and absent from the model-visible tool
 schema. Safe, Accept Edits, and explicit YOLO/ULW modes continue to bind a
 Claude mode before launch; `bypassPermissions` is never selected by `co ai`.
+The adapter explicitly supplies the CLI's `--safe-mode` boundary so ordinary
+user, project, and local customizations cannot raise the authority of the
+current mode. Safe mode disables `CLAUDE.md`,
+skills, plugins, hooks, MCP servers, custom commands and agents, and related
+customizations; callers put the relevant instructions in the delegated prompt.
+Authentication and admin-managed policy still apply, and admin policy may be
+stricter. The child process receives a small process/locale environment plus
+Claude-specific authentication variables; unrelated provider, cloud, and
+GitHub credentials from the parent process are not inherited.
+
+The operator also binds a workspace root. A model-selected working directory
+must resolve to that root or one of its descendants; symlink escapes fail
+closed. This limits launch selection, not every filesystem syscall. Hostile
+child code still requires a container or operating-system sandbox.
+
+Resume accepts only the canonical UUID returned by an earlier invocation; it
+does not expose Claude CLI's fuzzy session search to the model.
 
 This decision adds observability, not an approval bridge. Headless Claude Code
-can execute actions allowed by its bound mode and local settings, but an
+can execute actions allowed by its bound mode and admin-managed policy, but an
 unmatched interactive permission request cannot round-trip through O Chat in
 this version and fails closed.
 
@@ -65,8 +85,8 @@ environment is unsatisfiable. Weakening ConnectOnion's MCP v2 boundary to gain
 one provider callback would create a framework-wide regression.
 
 The CLI stream is Claude Code's documented automation interface, preserves the
-user's installed authentication and `CLAUDE.md` behavior, and exposes the tool
-events needed for the first product slice without another Python dependency.
+user's installed authentication under safe mode, and exposes the tool events
+needed for the first product slice without another Python dependency.
 
 Revisit the Agent SDK or an isolated sidecar when it is compatible with MCP v2,
 or when a separately versioned bridge can support interactive permission
@@ -80,6 +100,8 @@ callbacks without sharing ConnectOnion's dependency environment.
 - **Install the Python Agent SDK beside MCP v2:** has an unsatisfiable declared
   dependency set at this decision date.
 - **Lower ConnectOnion to MCP v1:** breaks the chosen 1.7 protocol baseline.
+- **Inherit interactive Claude setting sources:** allows a persistent local
+  rule to bypass the permission ceiling selected for this delegated turn.
 - **Forward all Claude text into the parent transcript:** creates two competing
   authors and unstable message ownership.
 - **Claim live approval from tool events:** observability is not permission

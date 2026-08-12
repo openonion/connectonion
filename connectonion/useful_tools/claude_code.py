@@ -1,6 +1,8 @@
 """Run Claude Code once while streaming its inner tools to ConnectOnion IO."""
 
+import hashlib
 import json
+import math
 import os
 import queue
 import shlex
@@ -12,6 +14,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from uuid import UUID
+
+from acp import default_environment
 
 PERMISSION_MODES = (
     "default",
@@ -28,6 +33,19 @@ _MAX_FIELD_CHARS = 1_000
 _MAX_RESULT_CHARS = 4_000
 _MAX_STDERR_CHARS = 16_000
 _MAX_COLLECTION_ITEMS = 20
+_MAX_STREAM_LINE_CHARS = 1024 * 1024
+_MAX_FINAL_RESULT_CHARS = 64 * 1024
+_MAX_USAGE_CHARS = 16 * 1024
+_MAX_IDENTIFIER_CHARS = 512
+_MAX_LIVE_EVENTS = 2_048
+_MAX_ACTIVE_TOOLS = 256
+_MAX_MAILBOX_LINES = 1_024
+_MAX_CAPTURE_PARTS = 1_024
+_MAX_PROMPT_CHARS = 1024 * 1024
+_MAX_SESSION_CHARS = 512
+_MAX_PATH_CHARS = 4_096
+_MAX_MODEL_CHARS = 128
+_MAX_TIMEOUT_SECONDS = 3_600
 _SENSITIVE_KEY_PARTS = (
     "api_key",
     "apikey",
@@ -36,6 +54,28 @@ _SENSITIVE_KEY_PARTS = (
     "password",
     "secret",
     "token",
+)
+_CLAUDE_ENVIRONMENT_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "APPDATA",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CONFIG_DIR",
+    "COMSPEC",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LOCALAPPDATA",
+    "NODE_EXTRA_CA_CERTS",
+    "PATHEXT",
+    "PROGRAMDATA",
+    "SSL_CERT_FILE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "WINDIR",
 )
 
 
@@ -61,19 +101,25 @@ def claude_code(
         model=model,
         timeout=timeout,
         agent=agent,
+        workspace=Path.cwd() if agent is not None else None,
     )
 
 
 class ClaudeCode:
     """Claude Code tool with an operator-owned permission policy."""
 
-    def __init__(self, permission_mode: str = "default") -> None:
+    def __init__(
+        self,
+        permission_mode: str = "default",
+        workspace: str | Path | None = None,
+    ) -> None:
         if permission_mode not in PERMISSION_MODES:
             choices = ", ".join(PERMISSION_MODES)
             raise ValueError(
                 f"Invalid permission mode {permission_mode!r}. Use one of: {choices}."
             )
         self._permission_mode = permission_mode
+        self._workspace = _resolve_workspace(workspace)
 
     def claude_code(
         self,
@@ -93,6 +139,7 @@ class ClaudeCode:
             model=model,
             timeout=timeout,
             agent=agent,
+            workspace=self._workspace,
         )
 
 
@@ -104,6 +151,7 @@ def _run_claude_code(
     model: str = "",
     timeout: int = 600,
     agent=None,
+    workspace: str | Path | None = None,
 ) -> str:
     """Private runner shared by safe, configured, and co-ai entry points."""
     validation = _validate_request(prompt, session_id, cwd, model, timeout)
@@ -116,7 +164,7 @@ def _run_claude_code(
             error=f"Invalid permission mode {permission_mode!r}. Use one of: {choices}.",
         )
 
-    working_directory, error = _working_directory(cwd)
+    working_directory, error = _working_directory(cwd, workspace)
     if error:
         return _envelope(session_id, error=error)
     command, error = _claude_command()
@@ -164,22 +212,60 @@ def _validate_request(prompt, session_id, cwd, model, timeout) -> str:
         return "Session ID must be a string."
     if not isinstance(prompt, str) or not prompt.strip():
         return "Prompt must be a non-empty string."
+    if len(prompt) > _MAX_PROMPT_CHARS:
+        return "Prompt must not exceed 1 MiB."
+    if len(session_id) > _MAX_SESSION_CHARS:
+        return "Session ID is too long."
+    if session_id and not _is_uuid(session_id):
+        return "Session ID must be a canonical UUID."
     if not isinstance(cwd, str):
         return "Working directory must be a string."
     if not isinstance(model, str):
         return "Model must be a string."
+    if len(cwd) > _MAX_PATH_CHARS:
+        return "Working directory path is too long."
+    if len(model) > _MAX_MODEL_CHARS:
+        return "Model name is too long."
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
         return "Timeout must be a positive integer."
+    if timeout > _MAX_TIMEOUT_SECONDS:
+        return "Timeout must not exceed 3600 seconds."
     return ""
 
 
-def _working_directory(cwd: str) -> tuple[Path | None, str]:
+def _is_uuid(value: str) -> bool:
     try:
-        directory = Path(cwd or ".").expanduser().resolve(strict=True)
+        return str(UUID(value)) == value
+    except (ValueError, AttributeError):
+        return False
+
+
+def _resolve_workspace(workspace: str | Path | None) -> Path:
+    root = Path.cwd() if workspace is None else Path(workspace)
+    try:
+        resolved = root.expanduser().resolve(strict=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"Claude Code workspace is unavailable: {exc}") from exc
+    if not resolved.is_dir():
+        raise ValueError(f"Claude Code workspace is not a directory: {resolved}")
+    return resolved
+
+
+def _working_directory(
+    cwd: str, workspace: str | Path | None
+) -> tuple[Path | None, str]:
+    try:
+        root = _resolve_workspace(workspace) if workspace is not None else None
+        requested = Path(cwd).expanduser() if cwd else (root or Path.cwd())
+        if not requested.is_absolute():
+            requested = (root or Path.cwd()) / requested
+        directory = requested.resolve(strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
         return None, f"Working directory is unavailable: {exc}"
     if not directory.is_dir():
         return None, f"Working directory is not a directory: {directory}"
+    if root is not None and not directory.is_relative_to(root):
+        return None, f"Working directory must stay inside workspace: {root}"
     return directory, ""
 
 
@@ -208,6 +294,7 @@ def _stream_command(command, prompt, session_id, permission_mode, model):
         "stream-json",
         "--verbose",
         "--forward-subagent-text",
+        "--safe-mode",
         "--permission-mode",
         cli_mode,
     ]
@@ -231,10 +318,14 @@ def _completed_envelope(completed, requested_session: str) -> str:
         )
 
     provider_session = payload.get("session_id")
-    valid_session = isinstance(provider_session, str) and bool(provider_session.strip())
+    valid_session = (
+        isinstance(provider_session, str)
+        and bool(provider_session.strip())
+        and len(provider_session) <= _MAX_SESSION_CHARS
+        and _is_uuid(provider_session)
+    )
     returned_session = requested_session or (provider_session if valid_session else "")
-    result = payload.get("result", "")
-    result = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+    result = _bounded_result(payload.get("result", ""), _MAX_FINAL_RESULT_CHARS)
     failed = completed.returncode != 0 or bool(payload.get("is_error"))
     error = _provider_error(payload, completed.stderr, completed.returncode) if failed else ""
     if requested_session and valid_session and provider_session != requested_session:
@@ -254,8 +345,8 @@ def _completed_envelope(completed, requested_session: str) -> str:
         result=result,
         error=error,
         exit_code=completed.returncode,
-        usage=payload.get("usage") if isinstance(payload.get("usage"), dict) else {},
-        total_cost_usd=payload.get("total_cost_usd"),
+        usage=_bounded_usage(payload.get("usage")),
+        total_cost_usd=_finite_number(payload.get("total_cost_usd")),
     )
 
 
@@ -265,6 +356,7 @@ class _ClaudeStreamForwarder:
     def __init__(self, agent) -> None:
         self._io = getattr(agent, "io", None) if agent is not None else None
         self._tools: dict[str, dict[str, Any]] = {}
+        self._event_count = 0
 
     def handle(self, event: dict[str, Any]) -> None:
         if self._io is None or not isinstance(event, dict):
@@ -280,12 +372,20 @@ class _ClaudeStreamForwarder:
             if block.get("type") != "tool_use":
                 continue
             provider_id = block.get("id")
-            if not isinstance(provider_id, str) or not provider_id or provider_id in self._tools:
+            if not isinstance(provider_id, str) or not provider_id:
+                continue
+            tool_id = _stable_identifier(provider_id)
+            if tool_id in self._tools:
+                continue
+            if len(self._tools) >= _MAX_ACTIVE_TOOLS:
+                continue
+            # Reserve one later event for this tool's matching result. This
+            # keeps the hard cap from leaving a visible card permanently open.
+            if self._event_count + len(self._tools) + 2 > _MAX_LIVE_EVENTS:
                 continue
             metadata = _event_metadata(event)
-            metadata["name"] = str(block.get("name") or "Tool")
-            self._tools[provider_id] = metadata
-            self._io.log(
+            metadata["name"] = _bounded_text(block.get("name") or "Tool")
+            self._emit(
                 "tool_call",
                 tool_id=_wire_tool_id(provider_id),
                 name=f"Claude Code › {metadata['name']}",
@@ -295,6 +395,7 @@ class _ClaudeStreamForwarder:
                 child_session_id=metadata["session_id"],
                 parent_tool_id=metadata["parent_tool_id"],
             )
+            self._tools[tool_id] = metadata
 
     def _user(self, event: dict[str, Any]) -> None:
         for block in _content_blocks(event):
@@ -303,10 +404,13 @@ class _ClaudeStreamForwarder:
             provider_id = block.get("tool_use_id")
             if not isinstance(provider_id, str) or not provider_id:
                 continue
-            metadata = self._tools.get(provider_id) or _event_metadata(event)
-            if provider_id not in self._tools:
+            tool_id = _stable_identifier(provider_id)
+            metadata = self._tools.get(tool_id) or _event_metadata(event)
+            if tool_id not in self._tools:
+                if self._event_count + len(self._tools) + 2 > _MAX_LIVE_EVENTS:
+                    continue
                 self._emit_unknown_start(provider_id, metadata)
-            self._io.log(
+            self._emit(
                 "tool_result",
                 tool_id=_wire_tool_id(provider_id),
                 status="failed" if block.get("is_error") else "completed",
@@ -315,10 +419,10 @@ class _ClaudeStreamForwarder:
                 child_session_id=metadata["session_id"],
                 parent_tool_id=metadata["parent_tool_id"],
             )
+            self._tools.pop(tool_id, None)
 
     def _emit_unknown_start(self, provider_id: str, metadata: dict[str, Any]) -> None:
-        self._tools[provider_id] = {**metadata, "name": "Tool"}
-        self._io.log(
+        self._emit(
             "tool_call",
             tool_id=_wire_tool_id(provider_id),
             name="Claude Code › Tool",
@@ -329,6 +433,12 @@ class _ClaudeStreamForwarder:
             parent_tool_id=metadata["parent_tool_id"],
         )
 
+    def _emit(self, event_type: str, **fields: Any) -> None:
+        if self._event_count >= _MAX_LIVE_EVENTS:
+            return
+        self._event_count += 1
+        self._io.log(event_type, **fields)
+
 
 def _content_blocks(event: dict[str, Any]) -> list[dict[str, Any]]:
     message = event.get("message")
@@ -337,20 +447,32 @@ def _content_blocks(event: dict[str, Any]) -> list[dict[str, Any]]:
         content = [content]
     if not isinstance(content, list):
         return []
-    return [block for block in content if isinstance(block, dict)]
+    return [block for block in content[:_MAX_COLLECTION_ITEMS] if isinstance(block, dict)]
 
 
 def _event_metadata(event: dict[str, Any]) -> dict[str, Any]:
     session_id = event.get("session_id")
     parent_id = event.get("parent_tool_use_id")
     return {
-        "session_id": session_id if isinstance(session_id, str) else "",
-        "parent_tool_id": parent_id if isinstance(parent_id, str) else None,
+        "session_id": _stable_identifier(session_id) if isinstance(session_id, str) else "",
+        "parent_tool_id": (
+            _stable_identifier(parent_id) if isinstance(parent_id, str) else None
+        ),
     }
 
 
 def _wire_tool_id(provider_id: str) -> str:
-    return f"claude:{provider_id}"
+    return f"claude:{_stable_identifier(provider_id)}"
+
+
+def _stable_identifier(value: str) -> str:
+    if len(value) <= _MAX_IDENTIFIER_CHARS:
+        return value
+    return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _bounded_text(value: Any) -> str:
+    return _bounded_result(value, _MAX_FIELD_CHARS)
 
 
 def _bounded_args(value: Any) -> dict[str, Any]:
@@ -453,6 +575,24 @@ def _bounded_result(value: Any, limit: int = _MAX_RESULT_CHARS) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _bounded_usage(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    safe = {}
+    for key, item in list(value.items())[:_MAX_COLLECTION_ITEMS]:
+        number = _finite_number(item)
+        if number is not None:
+            safe[_bounded_text(key)] = number
+    encoded = json.dumps(safe, ensure_ascii=False, default=str)
+    return safe if len(encoded) <= _MAX_USAGE_CHARS else {}
+
+
+def _finite_number(value: Any) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) else None
+
+
 @dataclass
 class _StreamCompleted:
     payload: dict[str, Any] | None
@@ -479,9 +619,10 @@ def _run_process(
 ) -> _StreamCompleted:
     """Read Claude NDJSON without blocking cancellation on one quiet stream."""
     process = _start_process(argv, cwd)
-    mailbox: queue.Queue = queue.Queue()
-    _start_reader(process.stdout, "stdout", mailbox)
-    _start_reader(process.stderr, "stderr", mailbox)
+    mailbox: queue.Queue = queue.Queue(maxsize=_MAX_MAILBOX_LINES)
+    readers_stopped = threading.Event()
+    _start_reader(process.stdout, "stdout", mailbox, readers_stopped)
+    _start_reader(process.stderr, "stderr", mailbox, readers_stopped)
     deadline = time.monotonic() + timeout
     payload = None
     stderr_parts: list[str] = []
@@ -506,11 +647,14 @@ def _run_process(
                     if event.get("type") == "result":
                         payload = event
     except (_ProviderCancelled, subprocess.TimeoutExpired):
+        readers_stopped.set()
         raise
     except Exception as exc:
+        readers_stopped.set()
         _kill_process_tree(process)
         _close_pipes(process)
         raise _ProviderStreamError(_one_line(exc)) from exc
+    readers_stopped.set()
     returncode = process.wait(timeout=1)
     _close_pipes(process)
     return _StreamCompleted(
@@ -536,26 +680,56 @@ def _start_process(argv: list[str], cwd: str):
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=_claude_environment(),
         shell=False,
         **platform_options,
     )
 
 
-def _start_reader(stream, source: str, mailbox: queue.Queue) -> None:
+def _claude_environment() -> dict[str, str]:
+    environment = default_environment()
+    for key in _CLAUDE_ENVIRONMENT_KEYS:
+        value = os.environ.get(key)
+        if value and not value.startswith("()"):
+            environment[key] = value
+    return environment
+
+
+def _start_reader(
+    stream, source: str, mailbox: queue.Queue, stopped: threading.Event
+) -> threading.Thread:
+    def put(item) -> None:
+        while not stopped.is_set():
+            try:
+                mailbox.put(item, timeout=0.1)
+                return
+            except queue.Full:
+                continue
+
     def read() -> None:
         try:
-            for line in stream:
-                mailbox.put((source, line))
+            while True:
+                line = stream.readline(_MAX_STREAM_LINE_CHARS + 1)
+                if not line:
+                    break
+                if len(line) > _MAX_STREAM_LINE_CHARS:
+                    while line and not line.endswith("\n"):
+                        line = stream.readline(_MAX_STREAM_LINE_CHARS + 1)
+                    put(("stderr", f"Claude Code {source} line exceeded 1 MiB\n"))
+                    continue
+                put((source, line))
         except (OSError, ValueError) as exc:
-            mailbox.put(("stderr", f"Claude Code {source} reader failed: {exc}\n"))
+            put(("stderr", f"Claude Code {source} reader failed: {exc}\n"))
         finally:
-            mailbox.put((source, None))
+            put((source, None))
 
-    threading.Thread(
+    thread = threading.Thread(
         target=read,
         name=f"claude-code-{source}",
         daemon=True,
-    ).start()
+    )
+    thread.start()
+    return thread
 
 
 def _check_process_boundary(process, argv, timeout, deadline, cancelled) -> None:
@@ -570,6 +744,9 @@ def _check_process_boundary(process, argv, timeout, deadline, cancelled) -> None
 
 
 def _parse_stream_line(line: str, invalid_parts: list[str]) -> dict | None:
+    if len(line) > _MAX_STREAM_LINE_CHARS:
+        _append_bounded(invalid_parts, "oversized stream line\n", _MAX_STDERR_CHARS)
+        return None
     try:
         event = json.loads(line)
     except json.JSONDecodeError:
@@ -582,7 +759,9 @@ def _parse_stream_line(line: str, invalid_parts: list[str]) -> dict | None:
 
 
 def _append_bounded(parts: list[str], value: str, limit: int) -> None:
-    used = sum(len(part) for part in parts)
+    if len(parts) >= _MAX_CAPTURE_PARTS:
+        return
+    used = sum(map(len, parts))
     if used < limit:
         parts.append(value[: limit - used])
 

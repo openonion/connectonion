@@ -230,20 +230,26 @@ answer and reviews Claude's result.
 Safe Mode retains Claude's normal permission rules, Accept Edits allows
 in-workspace edits, and explicit YOLO/ULW uses Claude Auto mode. The integration
 never selects `bypassPermissions`, and the selected mode is supplied again when
-a session resumes.
+a session resumes. Delegated runs use Claude's `--safe-mode`, which disables
+ordinary user and project customizations—including `CLAUDE.md`, skills,
+plugins, hooks, MCP servers, commands, and custom agents—so they cannot raise
+that mode's authority; admin-managed policy still applies. The directory
+passed by the model must resolve inside the project root where `co ai` started.
+Relevant project instructions are already carried by the parent prompt instead
+of being reloaded as provider-side filesystem configuration.
 
 Claude Code runs in headless `stream-json` mode. Its inner tool activity is
 visible, but it still cannot display an unmatched Claude permission prompt in
-the `co ai` UI: Safe Mode can read and run actions already allowed by Claude
-settings, while other protected actions fail closed. Accept Edits automatically
+the `co ai` UI: Safe Mode can run actions allowed by its bound mode, while other
+protected actions fail closed. Accept Edits automatically
 permits in-scope edits, but shell or network actions that still need a prompt
 also fail closed. A denied action can be described in a successful provider
 result, so always review the diff and test output rather than treating `status`
 alone as proof of completion.
 
-Because Claude's local settings can pre-approve actions, hosted Claude Code
-delegation is operator-only. Shared contacts receive a structured error and the
-local Claude CLI is not started.
+Because delegation starts a local coding subprocess with operator-bound
+authority, hosted Claude Code remains operator-only. Shared contacts receive a
+structured error and the local Claude CLI is not started.
 
 Auto mode is narrower than `bypassPermissions`, but it is not universally
 available. It requires an eligible account and model, an Anthropic API

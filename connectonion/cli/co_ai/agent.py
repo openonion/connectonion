@@ -183,6 +183,7 @@ def create_agent(
         max_iterations=max_iterations,
         co_dir=co_dir,
     )
+    agent._delegation_workspace = Path.cwd().resolve()
     # This browser helper blocks on stdin, which is wrong for co ai's websocket
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.
     agent.tools.remove("wait_for_manual_login")
