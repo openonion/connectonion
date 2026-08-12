@@ -52,6 +52,13 @@ retained for resumable sessions under a per-authenticated-principal quota
 default). Reaching either cumulative limit fails before the Agent turn without
 writing another file.
 
+Durable native-network ACP sessions have a separate authenticated-principal
+quota: 100 snapshots, 100 MiB total serialized state, and 32 MiB for one
+snapshot by default. Operators can lower these with `max_acp_sessions`,
+`max_acp_session_storage`, and `max_acp_snapshot_size`. Quota exhaustion keeps
+the previous resumable snapshot unchanged; it never truncates conversation
+state. Local stdio ACP is not charged to a remote principal quota.
+
 ### One-Shot Mode
 
 ```bash

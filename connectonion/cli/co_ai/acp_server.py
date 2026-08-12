@@ -83,8 +83,11 @@ from .agent import GLOBAL_CO_DIR
 from .one_shot_sessions import (
     SessionLease,
     SessionSnapshotError,
+    SnapshotStorageLimits,
+    acquire_bounded_new_session_lease,
     acquire_session_lease,
     capture_tool_state,
+    discard_unpublished_session,
     load_snapshot,
     new_session_id,
     restore_tool_state,
@@ -783,6 +786,9 @@ class ConnectOnionACPAgent:
         max_count = limits.get("max_files_per_request")
         max_storage_mb = limits.get("max_acp_upload_storage")
         max_stored_files = limits.get("max_acp_upload_files")
+        max_sessions = limits.get("max_acp_sessions")
+        max_session_storage_mb = limits.get("max_acp_session_storage")
+        max_snapshot_mb = limits.get("max_acp_snapshot_size")
         if (
             isinstance(max_size_mb, bool)
             or not isinstance(max_size_mb, (int, float))
@@ -798,8 +804,19 @@ class ConnectOnionACPAgent:
             or isinstance(max_stored_files, bool)
             or not isinstance(max_stored_files, int)
             or max_stored_files <= 0
+            or isinstance(max_sessions, bool)
+            or not isinstance(max_sessions, int)
+            or max_sessions <= 0
+            or isinstance(max_session_storage_mb, bool)
+            or not isinstance(max_session_storage_mb, (int, float))
+            or not math.isfinite(max_session_storage_mb)
+            or max_session_storage_mb <= 0
+            or isinstance(max_snapshot_mb, bool)
+            or not isinstance(max_snapshot_mb, (int, float))
+            or not math.isfinite(max_snapshot_mb)
+            or max_snapshot_mb <= 0
         ):
-            raise ValueError("ACP attachment limits must be positive numbers")
+            raise ValueError("ACP storage and attachment limits must be positive numbers")
         max_attachment_bytes = max_size_mb * 1024 * 1024
         if not math.isfinite(max_attachment_bytes) or max_attachment_bytes < 1:
             raise ValueError("ACP attachment size limit must be at least one byte")
@@ -813,6 +830,27 @@ class ConnectOnionACPAgent:
             raise ValueError("ACP upload storage limit must be at least one byte")
         self._max_upload_storage_bytes = int(max_upload_storage_bytes)
         self._max_upload_files = max_stored_files
+        max_session_storage_bytes = max_session_storage_mb * 1024 * 1024
+        max_snapshot_bytes = max_snapshot_mb * 1024 * 1024
+        if (
+            not math.isfinite(max_session_storage_bytes)
+            or max_session_storage_bytes < 1
+            or not math.isfinite(max_snapshot_bytes)
+            or max_snapshot_bytes < 1
+            or max_snapshot_bytes > max_session_storage_bytes
+        ):
+            raise ValueError(
+                "ACP session storage limits must be at least one byte and consistent"
+            )
+        self._snapshot_storage_limits = (
+            SnapshotStorageLimits(
+                max_sessions=max_sessions,
+                max_total_bytes=int(max_session_storage_bytes),
+                max_snapshot_bytes=int(max_snapshot_bytes),
+            )
+            if network_workspace is not None
+            else None
+        )
         self._allow_mcp = allow_mcp
         self._mcp_connector = mcp_connector
         self._client: Client | None = None
@@ -1229,22 +1267,6 @@ class ConnectOnionACPAgent:
         for close_task in close_tasks:
             await self._settle_owned_task(close_task)
 
-    async def _construct_runtime(
-        self,
-        constructor: Callable[..., _SessionRuntime],
-        *args: Any,
-    ) -> _SessionRuntime:
-        """Finish threaded construction even if its ACP request is cancelled."""
-
-        construction = asyncio.create_task(asyncio.to_thread(constructor, *args))
-        try:
-            return await asyncio.shield(construction)
-        except asyncio.CancelledError:
-            await self._settle_owned_task(construction)
-            if self._task_succeeded(construction):
-                construction.result().session_lease.close()
-            raise
-
     async def _construct_session_runtime(
         self,
         project_dir: Path,
@@ -1263,20 +1285,33 @@ class ConnectOnionACPAgent:
         mcp_pool = None
         try:
             mcp_pool = await self._connect_mcp_servers(mcp_servers, project_dir)
-            runtime = await self._construct_runtime(
-                self._open_session_runtime,
-                project_dir,
-                acp_input,
-                session_id,
-                list(mcp_pool.tools) if mcp_pool is not None else [],
-                ownership,
+            construction = asyncio.create_task(
+                asyncio.to_thread(
+                    self._open_session_runtime,
+                    project_dir,
+                    acp_input,
+                    session_id,
+                    list(mcp_pool.tools) if mcp_pool is not None else [],
+                    ownership,
+                )
             )
+            try:
+                runtime = await asyncio.shield(construction)
+            except asyncio.CancelledError:
+                await self._settle_owned_task(construction)
+                raise
         except BaseException:
             try:
                 if mcp_pool is not None:
                     await mcp_pool.close()
             finally:
-                ownership.lease.close()
+                if not resume and self._snapshot_storage_limits is not None:
+                    await self._settle_unpublished_session_cleanup(
+                        session_id,
+                        ownership.lease,
+                    )
+                else:
+                    ownership.lease.close()
             raise
         runtime.mcp_pool = mcp_pool
         return runtime
@@ -1302,7 +1337,14 @@ class ConnectOnionACPAgent:
         except asyncio.CancelledError:
             await self._settle_owned_task(acquisition)
             if self._task_succeeded(acquisition):
-                acquisition.result().lease.close()
+                ownership = acquisition.result()
+                if not resume and self._snapshot_storage_limits is not None:
+                    await self._settle_unpublished_session_cleanup(
+                        session_id,
+                        ownership.lease,
+                    )
+                else:
+                    ownership.lease.close()
             raise
 
     def _load_owned_session(
@@ -1311,19 +1353,52 @@ class ConnectOnionACPAgent:
         session_id: str,
         resume: bool,
     ) -> _SessionOwnership:
-        lease = acquire_session_lease(self._session_co_dir, session_id)
+        # A remote caller can supply arbitrary resume IDs. Confirm a bounded,
+        # existing snapshot before creating its per-session lease file, then
+        # reload after acquiring ownership so a live writer cannot race resume.
+        # New network sessions reserve their lease under the principal quota
+        # lock so simultaneous admissions cannot make every contender fail.
+        if resume and self._snapshot_storage_limits is not None:
+            load_snapshot(
+                self._session_co_dir,
+                session_id,
+                **self._snapshot_location(project_dir),
+                storage_limits=self._snapshot_storage_limits,
+            )
+        if not resume and self._snapshot_storage_limits is not None:
+            lease = acquire_bounded_new_session_lease(
+                self._session_co_dir,
+                session_id,
+                self._snapshot_storage_limits,
+            )
+        else:
+            lease = acquire_session_lease(self._session_co_dir, session_id)
         try:
             if resume:
                 session, tools = load_snapshot(
                     self._session_co_dir,
                     session_id,
                     **self._snapshot_location(project_dir),
+                    storage_limits=self._snapshot_storage_limits,
                 )
             else:
                 session, tools = None, {}
             return _SessionOwnership(lease, session, tools)
         except BaseException:
-            lease.close()
+            if not resume and self._snapshot_storage_limits is not None:
+                try:
+                    discard_unpublished_session(
+                        self._session_co_dir,
+                        session_id,
+                        lease,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Unable to remove failed ACP session admission",
+                        exc_info=True,
+                    )
+            else:
+                lease.close()
             raise
 
     async def _connect_mcp_servers(
@@ -1430,6 +1505,7 @@ class ConnectOnionACPAgent:
                     session,
                     normalized_tools,
                     **self._snapshot_location(project_dir),
+                    storage_limits=self._snapshot_storage_limits,
                 )
             return _SessionRuntime(
                 session_id=session_id,
@@ -1468,6 +1544,7 @@ class ConnectOnionACPAgent:
             persistent_session,
             tools,
             **self._snapshot_location(runtime.cwd),
+            storage_limits=self._snapshot_storage_limits,
         )
         # os.replace inside save_snapshot is the final fallible commit step.
         # These reference assignments cannot split the durable snapshot from
@@ -1635,6 +1712,7 @@ class ConnectOnionACPAgent:
             session,
             tools,
             **self._snapshot_location(runtime.cwd),
+            storage_limits=self._snapshot_storage_limits,
         )
         runtime.agent.current_session = agent_session
         runtime.last_good_session = last_good_session
@@ -1794,6 +1872,33 @@ class ConnectOnionACPAgent:
         with suppress(BaseException):
             task.result()
         return cancelled
+
+    async def _settle_unpublished_session_cleanup(
+        self,
+        session_id: str,
+        lease: SessionLease,
+    ) -> None:
+        """Finish blocking unpublished-state cleanup without stalling the loop."""
+
+        cleanup = asyncio.create_task(
+            asyncio.to_thread(
+                discard_unpublished_session,
+                self._session_co_dir,
+                session_id,
+                lease,
+            )
+        )
+        await self._settle_owned_task(cleanup)
+        if cleanup.cancelled() or cleanup.exception() is None:
+            return
+        error = cleanup.exception()
+        assert error is not None
+        # Preserve the request's original failure or cancellation. An orphaned
+        # canonical lease ID still consumes quota and therefore fails closed.
+        logger.warning(
+            "Unable to remove unpublished ACP session state",
+            exc_info=(type(error), error, error.__traceback__),
+        )
 
     @staticmethod
     def _task_succeeded(task: asyncio.Task[Any]) -> bool:

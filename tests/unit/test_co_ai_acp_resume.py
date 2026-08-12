@@ -16,7 +16,10 @@ from acp import RequestError, text_block
 from acp.schema import CloseSessionResponse, ResumeSessionResponse
 
 from connectonion.cli.co_ai import acp_server
-from connectonion.cli.co_ai.acp_server import ConnectOnionACPAgent
+from connectonion.cli.co_ai.acp_server import (
+    ConnectOnionACPAgent,
+    capture_network_workspace,
+)
 from connectonion.cli.co_ai.one_shot_sessions import (
     SessionSnapshotError,
     acquire_session_lease,
@@ -161,6 +164,21 @@ def _server(
         agent_factory=factory,
         session_co_dir=state_dir,
     )
+
+
+def _network_server(state_dir, project, factory, **limits):
+    workspace = capture_network_workspace(project)
+    server = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        session_co_dir=state_dir,
+        network_workspace=workspace,
+        input_limits=limits,
+    )
+    return server, workspace
 
 
 def _project(tmp_path, monkeypatch):
@@ -320,6 +338,227 @@ async def test_runtime_lease_blocks_a_second_server_until_close(
     await owner.close_session(session.session_id)
     await contender.resume_session(session.session_id, str(project), mcp_servers=[])
     await contender.close_session(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_network_session_count_quota_is_shared_across_connections(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "principal"
+    first, first_workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+        max_acp_sessions=1,
+    )
+    second, second_workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+        max_acp_sessions=1,
+    )
+    try:
+        created = await first.new_session("/", mcp_servers=[])
+
+        with pytest.raises(RequestError, match="Unable to create"):
+            await second.new_session("/", mcp_servers=[])
+
+        snapshots = list((state_dir / "ai" / "sessions").glob("*.json"))
+        assert [path.stem for path in snapshots] == [created.session_id]
+        locks = list((state_dir / "ai" / "sessions").glob("*.lock"))
+        assert [path.stem for path in locks] == [created.session_id]
+        await first.close_session(created.session_id)
+    finally:
+        first_workspace.close()
+        second_workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_network_admission_fills_last_slot_once(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "principal"
+    first, first_workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+        max_acp_sessions=1,
+    )
+    second, second_workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+        max_acp_sessions=1,
+    )
+    try:
+        results = await asyncio.gather(
+            first.new_session("/", mcp_servers=[]),
+            second.new_session("/", mcp_servers=[]),
+            return_exceptions=True,
+        )
+
+        created = [result for result in results if not isinstance(result, BaseException)]
+        rejected = [result for result in results if isinstance(result, RequestError)]
+        assert len(created) == 1
+        assert len(rejected) == 1
+        assert len(list((state_dir / "ai" / "sessions").glob("*.json"))) == 1
+        await (first if results[0] is created[0] else second).close_session(
+            created[0].session_id
+        )
+    finally:
+        first_workspace.close()
+        second_workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_network_admission_removes_provisional_lease(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "principal"
+    server, workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+        max_acp_sessions=1,
+    )
+    reserved = threading.Event()
+    release_admission = threading.Event()
+    real_load = server._load_owned_session
+
+    def pause_after_reservation(*args, **kwargs):
+        ownership = real_load(*args, **kwargs)
+        reserved.set()
+        assert release_admission.wait(timeout=1)
+        return ownership
+
+    monkeypatch.setattr(server, "_load_owned_session", pause_after_reservation)
+    try:
+        request = asyncio.create_task(server.new_session("/", mcp_servers=[]))
+        assert await asyncio.to_thread(reserved.wait, 1)
+        request.cancel()
+        release_admission.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await request
+        directory = state_dir / "ai" / "sessions"
+        assert list(directory.glob("*.json")) == []
+        assert list(directory.glob("*.lock")) == []
+    finally:
+        release_admission.set()
+        workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_network_prompt_snapshot_quota_rolls_back_disk_and_runtime(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "principal"
+    agent = _PersistentFakeAgent()
+    server, workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: agent,
+        max_acp_snapshot_size=1 / 1024,
+        max_acp_session_storage=1,
+    )
+    server.on_connect(_Client())
+    try:
+        created = await server.new_session("/", mcp_servers=[])
+        path = state_dir / "ai" / "sessions" / f"{created.session_id}.json"
+        before = path.read_bytes()
+
+        with pytest.raises(RequestError, match="co ai prompt failed"):
+            await server.prompt(created.session_id, [text_block("x" * 2000)])
+
+        assert path.read_bytes() == before
+        stored, _ = load_snapshot(
+            state_dir,
+            created.session_id,
+            virtual_cwd="/",
+        )
+        assert stored["turn"] == 0
+        assert agent.current_session["turn"] == 0
+        await server.close_session(created.session_id)
+    finally:
+        workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_network_unknown_resume_does_not_create_a_durable_lock_file(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "principal"
+    server, workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+    )
+    unknown = "cfb44753-f6da-47b3-9281-a0e9f664dd3c"
+    try:
+        with pytest.raises(RequestError, match="Unable to resume"):
+            await server.resume_session(unknown, "/", mcp_servers=[])
+
+        assert list((state_dir / "ai" / "sessions").glob("*.lock")) == []
+    finally:
+        workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_network_new_session_removes_unpublished_snapshot_and_lease(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "principal"
+    server, workspace = _network_server(
+        state_dir,
+        project,
+        lambda **_: _PersistentFakeAgent(),
+    )
+    committed = threading.Event()
+    release_constructor = threading.Event()
+    cleanup_threads = []
+    real_open = server._open_session_runtime
+    real_discard = acp_server.discard_unpublished_session
+
+    def pause_after_initial_commit(*args, **kwargs):
+        runtime = real_open(*args, **kwargs)
+        committed.set()
+        assert release_constructor.wait(timeout=1)
+        return runtime
+
+    def track_discard(*args, **kwargs):
+        cleanup_threads.append(threading.get_ident())
+        return real_discard(*args, **kwargs)
+
+    monkeypatch.setattr(server, "_open_session_runtime", pause_after_initial_commit)
+    monkeypatch.setattr(acp_server, "discard_unpublished_session", track_discard)
+    try:
+        request = asyncio.create_task(server.new_session("/", mcp_servers=[]))
+        assert await asyncio.to_thread(committed.wait, 1)
+        request.cancel()
+        release_constructor.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+        directory = state_dir / "ai" / "sessions"
+        assert list(directory.glob("*.json")) == []
+        assert list(directory.glob("*.lock")) == []
+        assert cleanup_threads
+        assert cleanup_threads != [threading.get_ident()]
+    finally:
+        release_constructor.set()
+        workspace.close()
 
 
 @pytest.mark.asyncio

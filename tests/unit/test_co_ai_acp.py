@@ -465,6 +465,14 @@ def test_acp_rejects_invalid_attachment_count_limits(count):
         ("max_acp_upload_storage", 1e308, "at least one byte"),
         ("max_acp_upload_files", 0, "positive numbers"),
         ("max_acp_upload_files", 1.5, "positive numbers"),
+        ("max_acp_sessions", 0, "positive numbers"),
+        ("max_acp_sessions", 1.5, "positive numbers"),
+        ("max_acp_session_storage", 0, "positive numbers"),
+        ("max_acp_session_storage", 1e-308, "at least one byte"),
+        ("max_acp_session_storage", 1e308, "at least one byte"),
+        ("max_acp_snapshot_size", 0, "positive numbers"),
+        ("max_acp_snapshot_size", 1e-308, "at least one byte"),
+        ("max_acp_snapshot_size", 1e308, "at least one byte"),
     ],
 )
 def test_acp_rejects_invalid_principal_storage_limits(key, value, message):
@@ -476,6 +484,21 @@ def test_acp_rejects_invalid_principal_storage_limits(key, value, message):
             yolo_turns=2,
             agent_factory=lambda **_kwargs: _FakeAgent(),
             input_limits={key: value},
+        )
+
+
+def test_acp_rejects_single_snapshot_limit_above_total_storage():
+    with pytest.raises(ValueError, match="consistent"):
+        ConnectOnionACPAgent(
+            model="test",
+            max_iterations=2,
+            yolo=False,
+            yolo_turns=2,
+            agent_factory=lambda **_kwargs: _FakeAgent(),
+            input_limits={
+                "max_acp_session_storage": 1,
+                "max_acp_snapshot_size": 2,
+            },
         )
 
 

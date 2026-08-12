@@ -135,7 +135,10 @@ def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only
         "max_file_size: 2\n"
         "max_files_per_request: 4\n"
         "max_acp_upload_storage: 20\n"
-        "max_acp_upload_files: 40\n",
+        "max_acp_upload_files: 40\n"
+        "max_acp_sessions: 12\n"
+        "max_acp_session_storage: 24\n"
+        "max_acp_snapshot_size: 6\n",
         encoding="utf-8",
     )
 
@@ -175,6 +178,10 @@ def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only
     assert contact._max_attachments == 4
     assert contact._max_upload_storage_bytes == 20 * 1024 * 1024
     assert contact._max_upload_files == 40
+    assert contact._snapshot_storage_limits.max_sessions == 12
+    assert contact._snapshot_storage_limits.max_total_bytes == 24 * 1024 * 1024
+    assert contact._snapshot_storage_limits.max_snapshot_bytes == 6 * 1024 * 1024
+    assert contact._snapshot_storage_limits is not same_contact._snapshot_storage_limits
     assert admin._yolo is True
     assert admin._yolo_turns == 7
 
