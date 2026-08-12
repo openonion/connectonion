@@ -731,10 +731,11 @@ class ConnectOnionACPAgent:
                 mcp_servers or [],
             )
         except SessionSnapshotError as exc:
+            details = None if self._network_workspace is not None else str(exc)
             raise RequestError(
                 -32002,
                 "Unable to resume session",
-                {"details": str(exc)},
+                {"details": details} if details is not None else None,
             ) from None
         except Exception:
             logger.exception("Failed to resume co ai ACP session")

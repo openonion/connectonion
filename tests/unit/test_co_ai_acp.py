@@ -25,6 +25,7 @@ from connectonion.cli.co_ai.acp_transport import (
     _BoundStdoutWriter,
     _StrictNDJSONTransport,
 )
+from connectonion.cli.co_ai.one_shot_sessions import save_snapshot
 from connectonion.useful_plugins.tool_approval import check_approval
 
 
@@ -380,6 +381,45 @@ async def test_network_acp_rejects_host_paths_before_agent_construction(tmp_path
         )
 
     assert constructed == 0
+
+
+@pytest.mark.asyncio
+async def test_network_acp_resume_does_not_disclose_saved_host_workspace(tmp_path):
+    old_workspace = tmp_path / "old-private-project"
+    new_workspace = tmp_path / "new-private-project"
+    old_workspace.mkdir()
+    new_workspace.mkdir()
+    session_id = "40c0397c-972b-4133-899b-5ab4cc5c4883"
+    session = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 0,
+        "mode": ":read-only",
+        "plan": [],
+    }
+    save_snapshot(
+        tmp_path / "network-state",
+        session,
+        {},
+        cwd=old_workspace,
+    )
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+        session_co_dir=tmp_path / "network-state",
+        network_workspace=new_workspace,
+    )
+
+    with pytest.raises(RequestError, match="Unable to resume session") as exc_info:
+        await acp_agent.resume_session(session_id, "/", mcp_servers=[])
+
+    error = str(exc_info.value)
+    assert str(old_workspace) not in error
+    assert str(new_workspace) not in error
 
 
 class _BufferWriter:
