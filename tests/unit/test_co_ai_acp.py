@@ -251,7 +251,17 @@ def test_acp_approval_input_denies_sensitive_tools_unless_mode_is_explicit_full_
     with pytest.raises(ValueError, match="Connection closed"):
         check_approval(agent)
 
+    # A mode label alone is not authority.  Full access is valid only when the
+    # bounded grant written by the ACP mode transaction is complete.
     session["mode"] = "full_access"
+    with pytest.raises(ValueError, match="Connection closed"):
+        check_approval(agent)
+
+    session.update({
+        "full_access_turns": 20,
+        "full_access_turns_used": 0,
+        "skip_tool_approval": True,
+    })
     check_approval(agent)
 
 
