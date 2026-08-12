@@ -744,6 +744,7 @@ class _SessionRuntime:
     mcp_pool: Any | None = None
     prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     prompt_active: threading.Event = field(default_factory=threading.Event)
+    prompt_cancelled: threading.Event = field(default_factory=threading.Event)
     closing: threading.Event = field(default_factory=threading.Event)
     active_operation: asyncio.Task[Any] | None = None
     close_task: asyncio.Task[None] | None = None
@@ -1058,15 +1059,31 @@ class ConnectOnionACPAgent:
                 raise RequestError.internal_error(
                     {"details": "ACP client connection is not available"}
                 )
-            upload_reservation = await self._acquire_network_upload_reservation(
-                prompt_input
-            )
+            runtime.prompt_cancelled.clear()
+            runtime.prompt_active.set()
+            try:
+                upload_reservation = await self._acquire_network_upload_reservation(
+                    prompt_input
+                )
+            except BaseException:
+                runtime.prompt_active.clear()
+                raise
+            if runtime.prompt_cancelled.is_set() or runtime.closing.is_set():
+                if upload_reservation is not None:
+                    upload_reservation.release()
+                runtime.prompt_active.clear()
+                return PromptResponse(stop_reason="cancelled")
             generation: _TurnGeneration | None = None
             try:
                 trace_start = self._trace_length(runtime.agent)
                 generation, generation_io = runtime.acp_input.begin_turn()
+                if runtime.prompt_cancelled.is_set() or runtime.closing.is_set():
+                    runtime.acp_input.retire_turn(generation)
+                    if upload_reservation is not None:
+                        upload_reservation.release()
+                    runtime.prompt_active.clear()
+                    return PromptResponse(stop_reason="cancelled")
                 runtime.agent.io = generation_io
-                runtime.prompt_active.set()
                 worker = asyncio.create_task(
                     asyncio.to_thread(
                         self._run_prompt_generation,
@@ -1171,6 +1188,7 @@ class ConnectOnionACPAgent:
 
         runtime = self._sessions.get(session_id)
         if runtime is not None and runtime.prompt_active.is_set():
+            runtime.prompt_cancelled.set()
             runtime.acp_input.interrupt()
 
     async def _request_permission(
@@ -1912,7 +1930,12 @@ class ConnectOnionACPAgent:
             stored_bytes = 0
             stored_files = 0
             for entry in os.scandir(upload_dir):
-                entry_stat = entry.stat(follow_symlinks=False)
+                try:
+                    entry_stat = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    # Failed-turn rollback can only reduce quota usage. If it
+                    # removes an entry returned by scandir, skip that stale view.
+                    continue
                 if not stat.S_ISREG(entry_stat.st_mode):
                     raise OSError("unexpected ACP upload entry")
                 stored_bytes += entry_stat.st_size

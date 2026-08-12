@@ -829,6 +829,56 @@ def test_network_acp_upload_reservations_are_shared_across_connections(tmp_path)
     assert isinstance(result[0], RequestError)
 
 
+def test_network_acp_quota_scan_ignores_a_concurrently_rolled_back_file(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = capture_network_workspace(tmp_path)
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+        session_co_dir=tmp_path / "principal",
+        network_workspace=workspace,
+    )
+    prompt = acp_agent._parse_prompt(
+        [
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/new.txt",
+                    blob=base64.b64encode(b"x").decode("ascii"),
+                ),
+            )
+        ]
+    )
+    upload_dir = tmp_path / "principal" / "uploads"
+    upload_dir.mkdir(parents=True)
+    rolled_back = upload_dir / "old.txt"
+    rolled_back.write_bytes(b"old")
+    original_scandir = os.scandir
+
+    class StaleEntry:
+        def stat(self, *, follow_symlinks):
+            assert follow_symlinks is False
+            rolled_back.unlink()
+            raise FileNotFoundError
+
+    monkeypatch.setattr(
+        os,
+        "scandir",
+        lambda path: [StaleEntry()] if Path(path) == upload_dir else original_scandir(path),
+    )
+    try:
+        reservation = acp_agent._reserve_network_uploads(prompt)
+        assert reservation is not None
+        reservation.release()
+    finally:
+        workspace.close()
+
+
 def test_network_acp_upload_quota_rejects_unexpected_entries(tmp_path):
     workspace = capture_network_workspace(tmp_path)
     acp_agent = ConnectOnionACPAgent(
@@ -943,6 +993,146 @@ async def test_acp_cancel_stops_an_active_prompt(tmp_path):
     response = await asyncio.wait_for(prompt_task, timeout=1)
 
     assert response.stop_reason == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_acp_cancel_while_waiting_for_upload_quota_never_starts_agent(tmp_path):
+    workspace = capture_network_workspace(tmp_path)
+    principal_co_dir = tmp_path / "principal"
+    recording_agent = _AttachmentRecordingAgent()
+    kwargs = {
+        "model": "test",
+        "max_iterations": 2,
+        "yolo": False,
+        "yolo_turns": 2,
+        "session_co_dir": principal_co_dir,
+        "network_workspace": workspace,
+    }
+    holder = ConnectOnionACPAgent(
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+        **kwargs,
+    )
+    contender = ConnectOnionACPAgent(
+        agent_factory=lambda **_kwargs: recording_agent,
+        **kwargs,
+    )
+    contender.on_connect(_RecordingClient())
+    (principal_co_dir / "uploads").mkdir(parents=True)
+    parsed = holder._parse_prompt(
+        [
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/hold.txt",
+                    blob=base64.b64encode(b"x").decode("ascii"),
+                ),
+            )
+        ]
+    )
+    reservation = holder._reserve_network_uploads(parsed)
+    assert reservation is not None
+    try:
+        session = await contender.new_session("/", mcp_servers=[])
+        prompt_task = asyncio.create_task(
+            contender.prompt(
+                session.session_id,
+                [
+                    EmbeddedResourceContentBlock(
+                        type="resource",
+                        resource=BlobResourceContents(
+                            uri="connectonion-upload:/cancelled.txt",
+                            blob=base64.b64encode(b"y").decode("ascii"),
+                        ),
+                    )
+                ],
+            )
+        )
+        runtime = contender._sessions[session.session_id]
+        await asyncio.wait_for(
+            asyncio.to_thread(runtime.prompt_active.wait),
+            timeout=1,
+        )
+        await contender.cancel(session.session_id)
+        reservation.release()
+
+        response = await asyncio.wait_for(prompt_task, timeout=1)
+        assert response.stop_reason == "cancelled"
+        assert recording_agent.inputs == []
+        assert list((principal_co_dir / "uploads").iterdir()) == []
+    finally:
+        reservation.release()
+        workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_acp_close_while_waiting_for_upload_quota_never_starts_agent(tmp_path):
+    workspace = capture_network_workspace(tmp_path)
+    principal_co_dir = tmp_path / "principal"
+    recording_agent = _AttachmentRecordingAgent()
+    kwargs = {
+        "model": "test",
+        "max_iterations": 2,
+        "yolo": False,
+        "yolo_turns": 2,
+        "session_co_dir": principal_co_dir,
+        "network_workspace": workspace,
+    }
+    holder = ConnectOnionACPAgent(
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+        **kwargs,
+    )
+    contender = ConnectOnionACPAgent(
+        agent_factory=lambda **_kwargs: recording_agent,
+        **kwargs,
+    )
+    contender.on_connect(_RecordingClient())
+    (principal_co_dir / "uploads").mkdir(parents=True)
+    parsed = holder._parse_prompt(
+        [
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/hold.txt",
+                    blob=base64.b64encode(b"x").decode("ascii"),
+                ),
+            )
+        ]
+    )
+    reservation = holder._reserve_network_uploads(parsed)
+    assert reservation is not None
+    try:
+        session = await contender.new_session("/", mcp_servers=[])
+        prompt_task = asyncio.create_task(
+            contender.prompt(
+                session.session_id,
+                [
+                    EmbeddedResourceContentBlock(
+                        type="resource",
+                        resource=BlobResourceContents(
+                            uri="connectonion-upload:/closed.txt",
+                            blob=base64.b64encode(b"y").decode("ascii"),
+                        ),
+                    )
+                ],
+            )
+        )
+        runtime = contender._sessions[session.session_id]
+        await asyncio.wait_for(
+            asyncio.to_thread(runtime.prompt_active.wait),
+            timeout=1,
+        )
+        close_task = asyncio.create_task(contender.close_session(session.session_id))
+        await asyncio.sleep(0)
+        reservation.release()
+
+        response = await asyncio.wait_for(prompt_task, timeout=1)
+        await asyncio.wait_for(close_task, timeout=1)
+        assert response.stop_reason == "cancelled"
+        assert recording_agent.inputs == []
+        assert session.session_id not in contender._sessions
+    finally:
+        reservation.release()
+        workspace.close()
 
 
 def test_acp_approval_input_denies_sensitive_tools_unless_mode_is_explicit_full_access():
