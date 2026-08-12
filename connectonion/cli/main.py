@@ -286,6 +286,30 @@ def status(
 
 
 @app.command()
+def transfer(
+    address: Optional[str] = typer.Argument(None, help="Recipient address"),
+    amount: Optional[float] = typer.Argument(None, help="Amount in USD"),
+    memo: Optional[str] = typer.Option(None, "--memo", "-m", help="Optional memo"),
+    list_: bool = typer.Option(False, "--list", "-l", help="List recent transfers instead of sending"),
+    direction: str = typer.Option("all", "--type", help="With --list: sent, received, or all"),
+):
+    """Transfer credits to another address."""
+    from .commands.transfer_commands import handle_transfer, handle_transfer_list
+
+    if list_:
+        raise typer.Exit(0 if handle_transfer_list(direction=direction) else 1)
+
+    # Typer cannot mark an argument required only when a flag is absent, so the
+    # check lands here. Without it, a bare `co transfer` walked into a TypeError.
+    if address is None or amount is None:
+        console.print("[red]Usage:[/red] co transfer <address> <amount> [--memo \"...\"]")
+        console.print("       co transfer --list")
+        raise typer.Exit(1)
+
+    raise typer.Exit(0 if handle_transfer(address=address, amount=amount, memo=memo) else 1)
+
+
+@app.command()
 def reset():
     """Reset account (destructive)."""
     from .commands.reset_commands import handle_reset
