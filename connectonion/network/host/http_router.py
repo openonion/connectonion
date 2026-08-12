@@ -23,8 +23,8 @@ from functools import partial
 from pathlib import Path
 from typing import Callable
 
-from ...project import project_co_dir
 from ...core.approval_modes import READ_ONLY_PERMISSION_PROFILE
+from ...project import project_co_dir
 from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
 from .session import SessionStorage, session_to_chat_items

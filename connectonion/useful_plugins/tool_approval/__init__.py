@@ -193,6 +193,8 @@ from .approval import (
     poll_mode_changes,
 )
 from .constants import (
+    DEFAULT_MODE,
+    VALID_MODES,
     VALID_PERMISSION_PROFILES,
 )
 
@@ -206,4 +208,9 @@ __all__ = [
     'handle_permission_profile_change',
     'get_current_permission_profile',
     'VALID_PERMISSION_PROFILES',
+    # One source-compatibility window for existing plugin consumers.
+    'handle_mode_change',
+    'get_current_mode',
+    'VALID_MODES',
+    'DEFAULT_MODE',
 ]

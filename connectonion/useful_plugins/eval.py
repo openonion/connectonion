@@ -26,14 +26,15 @@ Usage:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict
+from typing import TYPE_CHECKING, Dict, List
+
 from pydantic import BaseModel
 
 from ..core.approval_modes import (
     DANGER_FULL_ACCESS_PERMISSION_PROFILE,
     legacy_permission_profile_id,
 )
-from ..core.events import on_complete, after_user_input
+from ..core.events import after_user_input, on_complete
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
