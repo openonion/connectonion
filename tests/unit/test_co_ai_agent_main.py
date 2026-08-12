@@ -211,7 +211,39 @@ def test_network_acp_workspace_is_captured_when_server_starts(monkeypatch, tmp_p
     )
     network_agent = called["acp_agent_factory"](principal)
 
-    assert network_agent._network_workspace == launch_dir.resolve()
+    assert network_agent._network_workspace.path == launch_dir.resolve()
+
+
+def test_network_acp_session_namespace_is_workspace_scoped(monkeypatch, tmp_path):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    agent = SimpleNamespace(name="agent")
+    factories = []
+    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
+
+    def fake_host(_agent, **kwargs):
+        factories.append(kwargs["acp_agent_factory"])
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+    principal = ACPPrincipal(
+        address="0xcontact",
+        level="contact",
+        recipient="0xrecipient",
+        origin="https://chat.openonion.ai",
+        auth_method="browser_ticket",
+        authenticated_at=1.0,
+    )
+
+    monkeypatch.chdir(first_dir)
+    main_mod.start_server(agent)
+    monkeypatch.chdir(second_dir)
+    main_mod.start_server(agent)
+
+    first_agent = factories[0](principal)
+    second_agent = factories[1](principal)
+    assert first_agent._session_co_dir != second_agent._session_co_dir
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):

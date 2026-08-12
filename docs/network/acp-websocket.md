@@ -115,7 +115,8 @@ selection cannot reuse a stale transport descriptor.
 ## Session ownership and permissions
 
 Persistent network ACP sessions are stored under a stable namespace derived
-from the recipient Agent, verified caller, exact Origin, and admission method.
+from the recipient Agent, verified caller, exact Origin, admission method, and
+bound workspace identity.
 The same principal can reauthenticate and resume; another principal cannot
 load the snapshot even with the copied session UUID and working directory.
 

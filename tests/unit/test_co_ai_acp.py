@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import threading
 import time
 from copy import deepcopy
@@ -20,6 +21,7 @@ from connectonion.cli.co_ai import acp_server
 from connectonion.cli.co_ai.acp_server import (
     ConnectOnionACPAgent,
     _FailClosedACPInput,
+    capture_network_workspace,
 )
 from connectonion.cli.co_ai.acp_transport import (
     _BoundStdoutWriter,
@@ -334,7 +336,7 @@ async def test_network_acp_maps_only_virtual_root_to_host_workspace(tmp_path):
         yolo=False,
         yolo_turns=2,
         agent_factory=factory,
-        network_workspace=workspace,
+        network_workspace=capture_network_workspace(workspace),
     )
 
     session = await acp_agent.new_session(
@@ -364,7 +366,7 @@ async def test_network_acp_rejects_host_paths_before_agent_construction(tmp_path
         yolo=False,
         yolo_turns=2,
         agent_factory=factory,
-        network_workspace=workspace,
+        network_workspace=capture_network_workspace(workspace),
     )
 
     for cwd in (str(workspace), "/./", "/tmp"):
@@ -411,7 +413,7 @@ async def test_network_acp_resume_does_not_disclose_saved_host_workspace(tmp_pat
         yolo_turns=2,
         agent_factory=lambda **_kwargs: _FakeAgent(),
         session_co_dir=tmp_path / "network-state",
-        network_workspace=new_workspace,
+        network_workspace=capture_network_workspace(new_workspace),
     )
 
     with pytest.raises(RequestError, match="Unable to resume session") as exc_info:
@@ -420,6 +422,96 @@ async def test_network_acp_resume_does_not_disclose_saved_host_workspace(tmp_pat
     error = str(exc_info.value)
     assert str(old_workspace) not in error
     assert str(new_workspace) not in error
+
+
+@pytest.mark.asyncio
+async def test_network_acp_workspace_does_not_follow_replaced_launch_path(tmp_path):
+    launch_path = tmp_path / "project"
+    moved_path = tmp_path / "moved-project"
+    replacement = tmp_path / "replacement"
+    launch_path.mkdir()
+    replacement.mkdir()
+    (launch_path / "workspace-marker").write_text("original", encoding="utf-8")
+    (replacement / "workspace-marker").write_text("replacement", encoding="utf-8")
+    workspace = capture_network_workspace(launch_path)
+    launch_path.rename(moved_path)
+    if os.name == "nt":
+        launch_path.mkdir()
+    else:
+        launch_path.symlink_to(replacement, target_is_directory=True)
+    observed: list[str] = []
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        observed.append(Path("workspace-marker").read_text(encoding="utf-8"))
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        network_workspace=workspace,
+    )
+
+    if hasattr(os, "fchdir"):
+        await acp_agent.new_session("/", mcp_servers=[])
+        assert observed == ["original"]
+    else:
+        with pytest.raises(RequestError, match="Unable to create"):
+            await acp_agent.new_session("/", mcp_servers=[])
+        assert observed == []
+
+
+@pytest.mark.asyncio
+async def test_acp_adapters_share_one_process_context_lock(tmp_path):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_started = threading.Event()
+    release_first = threading.Event()
+    observed: list[tuple[str, Path]] = []
+
+    def first_factory(**_kwargs: Any) -> _FakeAgent:
+        observed.append(("first-start", Path.cwd()))
+        first_started.set()
+        assert release_first.wait(timeout=1)
+        observed.append(("first-end", Path.cwd()))
+        return _FakeAgent()
+
+    def second_factory(**_kwargs: Any) -> _FakeAgent:
+        observed.append(("second", Path.cwd()))
+        return _FakeAgent()
+
+    first = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=first_factory,
+    )
+    second = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=second_factory,
+    )
+
+    first_task = asyncio.create_task(first.new_session(str(first_dir), mcp_servers=[]))
+    await asyncio.wait_for(asyncio.to_thread(first_started.wait), timeout=1)
+    second_task = asyncio.create_task(second.new_session(str(second_dir), mcp_servers=[]))
+    await asyncio.sleep(0.05)
+    assert observed == [("first-start", first_dir.resolve())]
+    release_first.set()
+    await asyncio.gather(first_task, second_task)
+
+    assert observed == [
+        ("first-start", first_dir.resolve()),
+        ("first-end", first_dir.resolve()),
+        ("second", second_dir.resolve()),
+    ]
 
 
 class _BufferWriter:

@@ -59,10 +59,13 @@ def start_server(
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
+    from .acp_server import capture_network_workspace, create_acp_agent
+
+    network_workspace = capture_network_workspace(Path.cwd())
+
     # Use global ~/.co/ for consistent identity across all co ai sessions
     co_dir = Path.home() / ".co"
     addr_data = address.load(co_dir)
-    network_workspace = Path.cwd().resolve(strict=True)
 
     # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
@@ -76,8 +79,6 @@ def start_server(
     # ACP needs one isolated lifecycle adapter per authenticated connection.
     # The existing /ws web client remains available during its native-ACP
     # migration; both doors share the host's signature and trust boundary.
-    from .acp_server import create_acp_agent
-
     acp_model = model or getattr(getattr(agent, "llm", None), "model", None)
     acp_model = acp_model or "co/claude-opus-4-5"
     acp_max_iterations = max_iterations if max_iterations is not None else getattr(agent, "max_iterations", 100)
@@ -93,6 +94,7 @@ def start_server(
                 principal.address,
                 principal.origin or "",
                 principal.auth_method,
+                network_workspace.namespace_key,
             )
         )
         owner_id = hashlib.sha256(owner.encode("utf-8")).hexdigest()
