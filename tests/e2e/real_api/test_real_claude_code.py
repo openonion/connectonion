@@ -47,7 +47,7 @@ def _require_success(result):
 
 
 @requires_claude
-def test_real_claude_code_json_contract(tmp_path):
+def test_real_claude_code_stream_contract(tmp_path):
     result = json.loads(
         claude_code("Reply with exactly: pong", cwd=str(tmp_path), timeout=120)
     )

@@ -134,14 +134,14 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
     def fake_run(argv, **kwargs):
         calls.append((argv, kwargs))
         return SimpleNamespace(
-            stdout=json.dumps(
-                {
-                    "result": "continued",
-                    "session_id": "session-old",
-                    "is_error": False,
-                }
-            ),
+            payload={
+                "type": "result",
+                "result": "continued",
+                "session_id": "session-old",
+                "is_error": False,
+            },
             stderr="",
+            invalid_output="",
             returncode=0,
         )
 

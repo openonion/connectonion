@@ -208,6 +208,7 @@ Codex runs with permission requests denied.
 **Claude Code delegation**
 - Hand a scoped coding task to the installed Claude Code CLI
 - Continue the same Claude Code session by passing back its `session_id`
+- Watch Claude's inner tools start and finish as live O Chat cards
 - Receive one stable JSON result for success, timeout, or provider errors
 
 ### Delegate to Claude Code
@@ -220,19 +221,25 @@ Ask Claude Code to implement the parser in /path/to/repo and run the focused
 tests. Review its diff, then continue the same session for any fixes.
 ```
 
-The Claude Code CLI must be installed and authenticated. Safe Mode retains
-Claude's normal permission rules, Accept Edits allows in-workspace edits, and
-explicit YOLO/ULW uses Claude Auto mode.
-The integration never selects `bypassPermissions`, and the selected mode is
-supplied again when a session resumes.
+The Claude Code CLI must be installed and authenticated. `co ai` still makes
+one ordinary `claude_code` tool call, but the web UI now shows inner activity
+such as `Claude Code › Read`, `Claude Code › Edit`, and `Claude Code › Bash` as
+it happens. The enclosing ConnectOnion agent keeps ownership of the final
+answer and reviews Claude's result.
 
-Claude Code runs in headless print mode. It cannot display an inner permission
-prompt in the co ai UI: Safe Mode can read and run actions already allowed by
-Claude settings, while other protected actions fail closed. Accept Edits
-automatically permits in-scope edits, but shell or network actions that still
-need a prompt also fail closed. A denied action can be described in a
-successful provider result, so always review the diff and test output rather
-than treating `status` alone as proof of completion.
+Safe Mode retains Claude's normal permission rules, Accept Edits allows
+in-workspace edits, and explicit YOLO/ULW uses Claude Auto mode. The integration
+never selects `bypassPermissions`, and the selected mode is supplied again when
+a session resumes.
+
+Claude Code runs in headless `stream-json` mode. Its inner tool activity is
+visible, but it still cannot display an unmatched Claude permission prompt in
+the `co ai` UI: Safe Mode can read and run actions already allowed by Claude
+settings, while other protected actions fail closed. Accept Edits automatically
+permits in-scope edits, but shell or network actions that still need a prompt
+also fail closed. A denied action can be described in a successful provider
+result, so always review the diff and test output rather than treating `status`
+alone as proof of completion.
 
 Because Claude's local settings can pre-approve actions, hosted Claude Code
 delegation is operator-only. Shared contacts receive a structured error and the

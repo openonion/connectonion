@@ -13,11 +13,13 @@ separate coding agent is better suited to implement or investigate it.
 - Read the structured `status`, `result`, and `error` fields. A missing CLI,
   authentication failure, unavailable Auto mode/model, timeout, or non-zero
   exit is a result to handle; never claim the delegated work completed.
-- Claude Code runs headlessly here. Safe Mode can read and use actions already
-  allowed by Claude's settings, but it cannot open a permission prompt in the
-  co ai UI. Accept Edits can edit in-scope files; other actions that need a
-  prompt fail closed. Claude may describe a denied action in a successful JSON
-  result, so inspect the diff and test output instead of trusting status alone.
+- Claude Code runs headlessly here. Its inner tool starts and results appear
+  automatically as live cards in co ai, so do not narrate or duplicate them.
+  Safe Mode can read and use actions already allowed by Claude's settings, but
+  it cannot open an unmatched Claude permission prompt in the co ai UI. Accept
+  Edits can edit in-scope files; other actions that need a prompt fail closed.
+  Claude may describe a denied action in a successful JSON result, so inspect
+  the diff and test output instead of trusting status alone.
 - In a hosted session, Claude Code delegation is operator-only. Shared contacts
   receive a structured refusal and the local CLI is not started.
 
