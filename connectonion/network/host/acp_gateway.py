@@ -27,6 +27,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterable
 from urllib.parse import urlsplit
 
+from acp import PROTOCOL_VERSION
 from acp.agent.connection import AgentSideConnection
 from acp.schema import InitializeRequest
 from pydantic import ValidationError
@@ -65,6 +66,19 @@ _UNIQUE_SECURITY_HEADERS = _CORS_REQUEST_HEADER_NAMES | frozenset(
     }
 )
 _IGNORED_WEBSOCKET_FRAME = object()
+
+
+def acp_transport_descriptor() -> dict[str, Any]:
+    """Return the public, non-authoritative discovery shape for this gateway."""
+    return {
+        "protocol_version": PROTOCOL_VERSION,
+        "type": "websocket",
+        "path": ACP_PATH,
+        "authorization": {
+            "type": "connectonion-ticket",
+            "path": ACP_AUTHORIZE_PATH,
+        },
+    }
 
 
 def _reject_json_constant(value: str) -> None:
@@ -1051,5 +1065,6 @@ __all__ = [
     "DEFAULT_ACP_ORIGINS",
     "DEFAULT_INITIALIZE_TIMEOUT_SECONDS",
     "TICKET_SUBPROTOCOL_PREFIX",
+    "acp_transport_descriptor",
     "create_authenticated_acp_app",
 ]

@@ -295,6 +295,12 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         },
     }
 
+    # Public transport discovery is intentionally separate from ACP's
+    # post-initialize feature capabilities.  It contains fixed route metadata
+    # only: never copy connection, session, permission, or credential state here.
+    if agent_metadata.get("transports"):
+        result["transports"] = agent_metadata["transports"]
+
     # The balance is deliberately not here. /info needs no credentials, so on a
     # deployed agent this response is readable by the whole internet, and the
     # operator's account balance is both commercially revealing on its own and a
@@ -537,7 +543,13 @@ async def handle_http(
         await send_json(send, route_handlers["health"](start_time))
 
     elif method == "GET" and path == "/info":
-        await send_json(send, route_handlers["info"](trust, trust_config))
+        # Transport absence selects the legacy fallback.  Never let a browser or
+        # intermediary reuse an answer from before an ACP deployment or rollback.
+        await send_json(
+            send,
+            route_handlers["info"](trust, trust_config),
+            extra_headers=[[b"cache-control", b"no-store"]],
+        )
 
     elif method == "GET" and path == "/docs":
         base = Path(__file__).resolve().parent.parent
