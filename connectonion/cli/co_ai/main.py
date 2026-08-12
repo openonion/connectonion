@@ -59,12 +59,14 @@ def start_server(
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
+    from ...network.host.config import load_host_config
     from .acp_server import capture_network_workspace, create_acp_agent
 
     network_workspace = capture_network_workspace(Path.cwd())
     try:
         # Use global ~/.co/ for consistent identity across all co ai sessions
         co_dir = Path.home() / ".co"
+        input_limits = load_host_config(co_dir)
         addr_data = address.load(co_dir)
 
         # Open chat URL after agent successfully starts (2 second delay)
@@ -109,6 +111,7 @@ def start_server(
                 yolo_turns=yolo_turns,
                 session_co_dir=session_co_dir,
                 network_workspace=network_workspace,
+                input_limits=input_limits,
             )
 
         # Start server with same co_dir (relay enabled by default for web chat).

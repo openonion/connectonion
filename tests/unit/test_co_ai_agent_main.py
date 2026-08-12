@@ -129,6 +129,15 @@ def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only
     agent = SimpleNamespace(name="agent")
     called = {}
     monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
+    global_co_dir = tmp_path / ".co"
+    global_co_dir.mkdir()
+    (global_co_dir / "host.yaml").write_text(
+        "max_file_size: 2\n"
+        "max_files_per_request: 4\n"
+        "max_acp_upload_storage: 20\n"
+        "max_acp_upload_files: 40\n",
+        encoding="utf-8",
+    )
 
     def fake_host(_agent, **kwargs):
         called.update(kwargs)
@@ -162,6 +171,10 @@ def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only
         tmp_path / ".co" / "acp-principals"
     )
     assert contact._yolo is False
+    assert contact._max_attachment_bytes == 2 * 1024 * 1024
+    assert contact._max_attachments == 4
+    assert contact._max_upload_storage_bytes == 20 * 1024 * 1024
+    assert contact._max_upload_files == 40
     assert admin._yolo is True
     assert admin._yolo_turns == 7
 

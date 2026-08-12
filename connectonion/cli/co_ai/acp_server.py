@@ -9,17 +9,24 @@ requests that reuse ConnectOnion's existing approval policy.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import concurrent.futures
 import copy
 import logging
+import math
 import os
+import re
+import stat
 import sys
 import threading
+import unicodedata
 from collections import deque
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
+from urllib.parse import unquote_to_bytes, urlsplit
 from uuid import uuid4
 
 from acp import (
@@ -33,11 +40,15 @@ from acp import (
 from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
+    BlobResourceContents,
     ClientCapabilities,
     CloseSessionResponse,
     CurrentModeUpdate,
+    EmbeddedResourceContentBlock,
+    ImageContentBlock,
     Implementation,
     PermissionOption,
+    PromptCapabilities,
     RequestPermissionResponse,
     ResourceContentBlock,
     ResumeSessionResponse,
@@ -48,6 +59,7 @@ from acp.schema import (
     SessionResumeCapabilities,
     SetSessionModeResponse,
     TextContentBlock,
+    TextResourceContents,
     ToolCallUpdate,
 )
 
@@ -88,9 +100,45 @@ PermissionRequester = Callable[
 ACP_EVENT_BUFFER_SIZE = 64
 logger = logging.getLogger(__name__)
 
+_UPLOAD_URI_SCHEME = "connectonion-upload"
+_MIME_TYPE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"
+)
+_IMAGE_MIME_TYPES = frozenset(
+    {"image/gif", "image/jpeg", "image/png", "image/webp"}
+)
+_UNSAFE_FILENAME_CHARACTER = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')
+_WINDOWS_DEVICE_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CLOCK$"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
+
 # cwd and redirect_stdout are process-global, so every ACP adapter in this
 # process must share one lock rather than protecting only itself.
 _PROCESS_CONTEXT_LOCK = threading.RLock()
+
+
+@dataclass(frozen=True)
+class _PromptInput:
+    text: str
+    images: tuple[str, ...] = ()
+    files: tuple[dict[str, str], ...] = ()
+    file_bytes: int = 0
+
+
+class _UploadQuotaReservation:
+    """Cross-process file lock held through one upload transaction."""
+
+    def __init__(self, handle: Any) -> None:
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        if handle is None:
+            return
+        self._handle = None
+        handle.close()
 
 
 class _BoundNetworkWorkspace:
@@ -696,6 +744,7 @@ class _SessionRuntime:
     mcp_pool: Any | None = None
     prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     prompt_active: threading.Event = field(default_factory=threading.Event)
+    prompt_cancelled: threading.Event = field(default_factory=threading.Event)
     closing: threading.Event = field(default_factory=threading.Event)
     active_operation: asyncio.Task[Any] | None = None
     close_task: asyncio.Task[None] | None = None
@@ -714,6 +763,7 @@ class ConnectOnionACPAgent:
         agent_factory: AgentFactory | None = None,
         session_co_dir: Path | None = None,
         network_workspace: _BoundNetworkWorkspace | None = None,
+        input_limits: Mapping[str, int | float] | None = None,
         allow_mcp: bool = False,
         mcp_connector: MCPConnector | None = None,
     ) -> None:
@@ -724,6 +774,45 @@ class ConnectOnionACPAgent:
         self._agent_factory = agent_factory
         self._session_co_dir = Path(session_co_dir or GLOBAL_CO_DIR)
         self._network_workspace = network_workspace
+        from ...network.host.config import DEFAULT_FILE_LIMITS
+
+        limits = dict(DEFAULT_FILE_LIMITS)
+        if input_limits is not None:
+            limits.update(input_limits)
+        max_size_mb = limits.get("max_file_size")
+        max_count = limits.get("max_files_per_request")
+        max_storage_mb = limits.get("max_acp_upload_storage")
+        max_stored_files = limits.get("max_acp_upload_files")
+        if (
+            isinstance(max_size_mb, bool)
+            or not isinstance(max_size_mb, (int, float))
+            or not math.isfinite(max_size_mb)
+            or max_size_mb <= 0
+            or isinstance(max_count, bool)
+            or not isinstance(max_count, int)
+            or max_count <= 0
+            or isinstance(max_storage_mb, bool)
+            or not isinstance(max_storage_mb, (int, float))
+            or not math.isfinite(max_storage_mb)
+            or max_storage_mb <= 0
+            or isinstance(max_stored_files, bool)
+            or not isinstance(max_stored_files, int)
+            or max_stored_files <= 0
+        ):
+            raise ValueError("ACP attachment limits must be positive numbers")
+        max_attachment_bytes = max_size_mb * 1024 * 1024
+        if not math.isfinite(max_attachment_bytes) or max_attachment_bytes < 1:
+            raise ValueError("ACP attachment size limit must be at least one byte")
+        self._max_attachment_bytes = int(max_attachment_bytes)
+        self._max_attachments = max_count
+        max_upload_storage_bytes = max_storage_mb * 1024 * 1024
+        if (
+            not math.isfinite(max_upload_storage_bytes)
+            or max_upload_storage_bytes < 1
+        ):
+            raise ValueError("ACP upload storage limit must be at least one byte")
+        self._max_upload_storage_bytes = int(max_upload_storage_bytes)
+        self._max_upload_files = max_stored_files
         self._allow_mcp = allow_mcp
         self._mcp_connector = mcp_connector
         self._client: Client | None = None
@@ -748,6 +837,10 @@ class ConnectOnionACPAgent:
             protocol_version=selected_version,
             agent_capabilities=AgentCapabilities(
                 load_session=False,
+                prompt_capabilities=PromptCapabilities(
+                    image=True,
+                    embedded_context=True,
+                ),
                 session_capabilities=SessionCapabilities(
                     resume=SessionResumeCapabilities(),
                     close=SessionCloseCapabilities(),
@@ -951,7 +1044,7 @@ class ConnectOnionACPAgent:
                 {"sessionId": session_id},
             )
 
-        prompt_text = self._prompt_text(prompt)
+        prompt_input = self._parse_prompt(prompt)
         async with runtime.prompt_lock:
             if (
                 runtime.closing.is_set()
@@ -966,17 +1059,48 @@ class ConnectOnionACPAgent:
                 raise RequestError.internal_error(
                     {"details": "ACP client connection is not available"}
                 )
-            generation, generation_io = runtime.acp_input.begin_turn()
-            runtime.agent.io = generation_io
+            runtime.prompt_cancelled.clear()
             runtime.prompt_active.set()
-            worker = asyncio.create_task(
-                asyncio.to_thread(
-                    self._run_prompt_generation,
-                    runtime,
-                    generation,
-                    prompt_text,
+            try:
+                upload_reservation = await self._acquire_network_upload_reservation(
+                    prompt_input
                 )
-            )
+            except BaseException:
+                runtime.prompt_active.clear()
+                raise
+            if runtime.prompt_cancelled.is_set() or runtime.closing.is_set():
+                if upload_reservation is not None:
+                    upload_reservation.release()
+                runtime.prompt_active.clear()
+                return PromptResponse(stop_reason="cancelled")
+            generation: _TurnGeneration | None = None
+            try:
+                trace_start = self._trace_length(runtime.agent)
+                generation, generation_io = runtime.acp_input.begin_turn()
+                if runtime.prompt_cancelled.is_set() or runtime.closing.is_set():
+                    runtime.acp_input.retire_turn(generation)
+                    if upload_reservation is not None:
+                        upload_reservation.release()
+                    runtime.prompt_active.clear()
+                    return PromptResponse(stop_reason="cancelled")
+                runtime.agent.io = generation_io
+                worker = asyncio.create_task(
+                    asyncio.to_thread(
+                        self._run_prompt_generation,
+                        runtime,
+                        generation,
+                        prompt_input,
+                        trace_start,
+                        upload_reservation,
+                    )
+                )
+            except BaseException:
+                if generation is not None:
+                    runtime.acp_input.retire_turn(generation)
+                runtime.prompt_active.clear()
+                if upload_reservation is not None:
+                    upload_reservation.release()
+                raise
             operation: asyncio.Task[Any] | None = worker
             commit: asyncio.Task[Any] | None = None
             runtime.active_operation = worker
@@ -1014,6 +1138,7 @@ class ConnectOnionACPAgent:
                             current_mode_update,
                         )
                 else:
+                    self._remove_failed_turn_uploads(runtime.agent, trace_start)
                     operation = asyncio.create_task(
                         asyncio.to_thread(self._restore_runtime, runtime)
                     )
@@ -1032,6 +1157,7 @@ class ConnectOnionACPAgent:
                 # the successful transaction back. Before that point, restore
                 # the previous checkpoint.
                 if commit is None or not self._task_succeeded(commit):
+                    self._remove_failed_turn_uploads(runtime.agent, trace_start)
                     await self._restore_after_failure(runtime)
                 runtime.active_operation = None
                 raise
@@ -1040,6 +1166,8 @@ class ConnectOnionACPAgent:
                 runtime.acp_input.retire_turn(generation)
                 if operation is not None:
                     await self._settle_owned_task(operation)
+                if commit is None or not self._task_succeeded(commit):
+                    self._remove_failed_turn_uploads(runtime.agent, trace_start)
                 await self._restore_after_failure(runtime)
                 runtime.active_operation = None
                 logger.exception("co ai ACP prompt failed for session %s", session_id)
@@ -1047,6 +1175,9 @@ class ConnectOnionACPAgent:
                     -32603,
                     "co ai prompt failed",
                 ) from None
+            finally:
+                if upload_reservation is not None:
+                    upload_reservation.release()
             return PromptResponse(
                 stop_reason=terminal.stop_reason,
                 usage=terminal.usage,
@@ -1057,6 +1188,7 @@ class ConnectOnionACPAgent:
 
         runtime = self._sessions.get(session_id)
         if runtime is not None and runtime.prompt_active.is_set():
+            runtime.prompt_cancelled.set()
             runtime.acp_input.interrupt()
 
     async def _request_permission(
@@ -1248,6 +1380,14 @@ class ConnectOnionACPAgent:
                 yolo_turns=self._yolo_turns,
                 resumable=True,
             )
+        if self._network_workspace is not None:
+            # Keep files from one authenticated network principal in the same
+            # private namespace as that principal's durable ACP sessions.
+            private_upload_dir = self._session_co_dir / "uploads"
+            private_upload_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if os.name != "nt":
+                os.chmod(private_upload_dir, 0o700)
+            agent._upload_dir = private_upload_dir
         # A missing IO currently means "skip approvals". Keep construction
         # fail-closed; live ACP sessions install their generation-bound bridge.
         agent.io = acp_input or _FailClosedACPInput()
@@ -1532,13 +1672,14 @@ class ConnectOnionACPAgent:
         self,
         runtime: _SessionRuntime,
         generation: _TurnGeneration,
-        prompt: str,
+        prompt: _PromptInput,
+        trace_start: int,
+        upload_reservation: _UploadQuotaReservation | None,
     ) -> None:
         result = None
         error = None
-        trace_start = self._trace_length(runtime.agent)
         try:
-            result = self._run_prompt(runtime, prompt)
+            result = self._run_prompt(runtime, prompt, upload_reservation)
         except BaseException as exc:
             error = exc
         finally:
@@ -1693,19 +1834,150 @@ class ConnectOnionACPAgent:
                 return entry
         return None
 
-    def _run_prompt(self, runtime: _SessionRuntime, prompt: str) -> Any:
+    def _run_prompt(
+        self,
+        runtime: _SessionRuntime,
+        prompt: _PromptInput,
+        upload_reservation: _UploadQuotaReservation | None,
+    ) -> Any:
         try:
             session = runtime.session_for_next_prompt
             runtime.session_for_next_prompt = None
+            attachments: dict[str, Any] = {}
+            if prompt.images:
+                attachments["images"] = list(prompt.images)
+            if prompt.files:
+                attachments["files"] = [dict(file) for file in prompt.files]
+            if upload_reservation is not None:
+                attachments["_upload_reservation"] = upload_reservation
             with self._process_context(runtime.cwd):
                 if session is None:
-                    return runtime.agent.input(prompt)
+                    return runtime.agent.input(prompt.text, **attachments)
                 return runtime.agent.input(
-                    prompt,
+                    prompt.text,
                     session=copy.deepcopy(session),
+                    **attachments,
                 )
         finally:
             runtime.prompt_active.clear()
+
+    @staticmethod
+    def _remove_failed_turn_uploads(agent: Any, trace_start: int) -> None:
+        """Remove files written by an ACP turn that will be rolled back."""
+
+        session = getattr(agent, "current_session", None)
+        trace = session.get("trace") if isinstance(session, dict) else None
+        agent_logger = getattr(agent, "logger", None)
+        logger_co_dir = getattr(agent_logger, "co_dir", None)
+        upload_dir_value = getattr(agent, "_upload_dir", None)
+        if upload_dir_value is None and logger_co_dir is not None:
+            upload_dir_value = Path(logger_co_dir) / "uploads"
+        if not isinstance(trace, list) or upload_dir_value is None:
+            return
+        upload_dir = Path(upload_dir_value).resolve()
+        for event in trace[trace_start:]:
+            if not isinstance(event, dict) or event.get("type") != "files_received":
+                continue
+            for item in event.get("files", []):
+                path_value = item.get("path") if isinstance(item, dict) else None
+                if not isinstance(path_value, str):
+                    continue
+                path = Path(path_value)
+                try:
+                    if path.parent.resolve() == upload_dir:
+                        path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning(
+                        "Unable to remove rolled-back ACP upload %s",
+                        path.name,
+                    )
+
+    def _reserve_network_uploads(
+        self,
+        prompt: _PromptInput,
+    ) -> _UploadQuotaReservation | None:
+        """Atomically bound retained files across this principal's sessions."""
+
+        if self._network_workspace is None or not prompt.files:
+            return None
+        upload_dir = self._session_co_dir / "uploads"
+        flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_path = self._session_co_dir / "uploads.lock"
+        try:
+            descriptor = os.open(lock_path, flags, 0o600)
+        except OSError:
+            raise RequestError.internal_error(
+                {"details": "ACP upload storage is unavailable"}
+            ) from None
+        try:
+            handle = os.fdopen(descriptor, "a+b")
+            descriptor = -1
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise OSError("ACP upload lock is not a regular file")
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o600)
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            stored_bytes = 0
+            stored_files = 0
+            for entry in os.scandir(upload_dir):
+                try:
+                    entry_stat = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    # Failed-turn rollback can only reduce quota usage. If it
+                    # removes an entry returned by scandir, skip that stale view.
+                    continue
+                if not stat.S_ISREG(entry_stat.st_mode):
+                    raise OSError("unexpected ACP upload entry")
+                stored_bytes += entry_stat.st_size
+                stored_files += 1
+            requested_files = len(prompt.files)
+            if (
+                stored_bytes + prompt.file_bytes > self._max_upload_storage_bytes
+                or stored_files + requested_files > self._max_upload_files
+            ):
+                raise RequestError.invalid_params(
+                    {"details": "ACP upload storage quota exceeded"}
+                )
+            return _UploadQuotaReservation(handle)
+        except BaseException as exc:
+            if descriptor >= 0:
+                os.close(descriptor)
+            else:
+                handle.close()
+            if isinstance(exc, OSError):
+                raise RequestError.internal_error(
+                    {"details": "ACP upload storage is unavailable"}
+                ) from None
+            raise
+
+    async def _acquire_network_upload_reservation(
+        self,
+        prompt: _PromptInput,
+    ) -> _UploadQuotaReservation | None:
+        """Wait for the cross-process quota lock without blocking the event loop."""
+
+        acquisition = asyncio.create_task(
+            asyncio.to_thread(self._reserve_network_uploads, prompt)
+        )
+        try:
+            return await asyncio.shield(acquisition)
+        except asyncio.CancelledError:
+            await self._settle_owned_task(acquisition)
+            if self._task_succeeded(acquisition):
+                reservation = acquisition.result()
+                if reservation is not None:
+                    reservation.release()
+            raise
 
     @contextmanager
     def _process_context(self, cwd: Path):
@@ -1760,12 +2032,47 @@ class ConnectOnionACPAgent:
             return {"virtual_cwd": "/"}
         return {"cwd": cwd}
 
-    @staticmethod
-    def _prompt_text(prompt: list[Any]) -> str:
+    def _parse_prompt(self, prompt: list[Any]) -> _PromptInput:
         parts: list[str] = []
+        images: list[str] = []
+        files: list[dict[str, str]] = []
+        file_bytes = 0
         for block in prompt:
             if isinstance(block, TextContentBlock):
                 parts.append(block.text)
+                continue
+            if isinstance(block, ImageContentBlock):
+                self._check_attachment_count(len(images) + len(files) + 1)
+                mime_type = self._image_mime_type(block.mime_type)
+                data, _decoded_size = self._decode_attachment(block.data, "image")
+                images.append(f"data:{mime_type};base64,{data}")
+                continue
+            if isinstance(block, EmbeddedResourceContentBlock):
+                self._check_attachment_count(len(images) + len(files) + 1)
+                resource = block.resource
+                name = self._upload_name(resource.uri)
+                mime_type = self._resource_mime_type(resource.mime_type)
+                if isinstance(resource, TextResourceContents):
+                    raw_data = resource.text.encode("utf-8")
+                    self._check_attachment_size(len(raw_data), "file")
+                    encoded = base64.b64encode(raw_data).decode("ascii")
+                    decoded_size = len(raw_data)
+                elif isinstance(resource, BlobResourceContents):
+                    encoded, decoded_size = self._decode_attachment(
+                        resource.blob,
+                        "file",
+                    )
+                else:  # The official discriminated model should make this unreachable.
+                    raise RequestError.invalid_params(
+                        {"details": "Unsupported ACP embedded resource"}
+                    )
+                files.append(
+                    {
+                        "name": name,
+                        "data": f"data:{mime_type};base64,{encoded}",
+                    }
+                )
+                file_bytes += decoded_size
                 continue
             if isinstance(block, ResourceContentBlock):
                 label = block.title or block.name
@@ -1774,7 +2081,99 @@ class ConnectOnionACPAgent:
             raise RequestError.invalid_params(
                 {"details": f"Unsupported ACP content block: {type(block).__name__}"}
             )
-        return "\n\n".join(parts)
+        return _PromptInput(
+            text="\n\n".join(parts),
+            images=tuple(images),
+            files=tuple(files),
+            file_bytes=file_bytes,
+        )
+
+    def _check_attachment_count(self, count: int) -> None:
+        if count > self._max_attachments:
+            raise RequestError.invalid_params(
+                {"details": "Too many ACP prompt attachments"}
+            )
+
+    def _decode_attachment(self, value: str, kind: str) -> tuple[str, int]:
+        encoded_limit = ((self._max_attachment_bytes + 2) // 3) * 4
+        if len(value) > encoded_limit:
+            raise RequestError.invalid_params(
+                {"details": f"ACP {kind} exceeds the configured size limit"}
+            )
+        try:
+            decoded = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError):
+            raise RequestError.invalid_params(
+                {"details": f"ACP {kind} is not valid base64"}
+            ) from None
+        self._check_attachment_size(len(decoded), kind)
+        return value, len(decoded)
+
+    def _check_attachment_size(self, size: int, kind: str) -> None:
+        if size > self._max_attachment_bytes:
+            raise RequestError.invalid_params(
+                {"details": f"ACP {kind} exceeds the configured size limit"}
+            )
+
+    @staticmethod
+    def _image_mime_type(value: str) -> str:
+        mime_type = value.lower()
+        if mime_type not in _IMAGE_MIME_TYPES:
+            raise RequestError.invalid_params(
+                {"details": "Unsupported ACP image MIME type"}
+            )
+        return mime_type
+
+    @staticmethod
+    def _resource_mime_type(value: str | None) -> str:
+        mime_type = (value or "application/octet-stream").lower()
+        if len(mime_type) > 127 or _MIME_TYPE.fullmatch(mime_type) is None:
+            raise RequestError.invalid_params(
+                {"details": "Unsupported ACP file MIME type"}
+            )
+        return mime_type
+
+    @staticmethod
+    def _upload_name(uri: str) -> str:
+        parsed = urlsplit(uri)
+        if (
+            parsed.scheme != _UPLOAD_URI_SCHEME
+            or parsed.netloc
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.startswith("/")
+            or parsed.path == "/"
+        ):
+            raise RequestError.invalid_params(
+                {"details": "ACP file must use a connectonion-upload URI"}
+            )
+        encoded_name = parsed.path[1:]
+        if re.search(r"%(?![0-9A-Fa-f]{2})", encoded_name):
+            raise RequestError.invalid_params(
+                {"details": "ACP upload filename is malformed"}
+            )
+        try:
+            name = unquote_to_bytes(encoded_name).decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            raise RequestError.invalid_params(
+                {"details": "ACP upload filename is not valid UTF-8"}
+            ) from None
+        if (
+            not name
+            or name in {".", ".."}
+            or name[-1] in {" ", "."}
+            or _UNSAFE_FILENAME_CHARACTER.search(name) is not None
+            or any(
+                unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+                for character in name
+            )
+            or name.split(".", 1)[0].upper() in _WINDOWS_DEVICE_NAMES
+            or len(name.encode("utf-8")) > 255
+        ):
+            raise RequestError.invalid_params(
+                {"details": "ACP upload filename is unsafe"}
+            )
+        return name
 
 
 def create_acp_agent(
@@ -1785,6 +2184,7 @@ def create_acp_agent(
     yolo_turns: int,
     session_co_dir: Path | None = None,
     network_workspace: _BoundNetworkWorkspace | None = None,
+    input_limits: Mapping[str, int | float] | None = None,
     allow_mcp: bool = False,
 ) -> ConnectOnionACPAgent:
     """Build the shared ACP lifecycle adapter for stdio or network transport."""
@@ -1796,6 +2196,7 @@ def create_acp_agent(
         yolo_turns=yolo_turns,
         session_co_dir=session_co_dir,
         network_workspace=network_workspace,
+        input_limits=input_limits,
         allow_mcp=allow_mcp,
     )
 
