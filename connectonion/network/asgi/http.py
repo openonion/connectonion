@@ -69,11 +69,18 @@ async def read_body(receive) -> bytes:
     return body
 
 
-async def send_json(send, data: dict, status: int = 200):
+async def send_json(
+    send,
+    data: dict,
+    status: int = 200,
+    extra_headers: list[list[bytes]] | None = None,
+):
     """Send JSON response via ASGI send."""
     # Use pydantic_json_encoder to handle Pydantic models (e.g., TokenUsage) in response
     body = json.dumps(data, default=pydantic_json_encoder).encode()
     headers = [[b"content-type", b"application/json"]] + CORS_HEADERS
+    if extra_headers:
+        headers += extra_headers
     await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
 

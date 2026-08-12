@@ -123,6 +123,9 @@ ConnectOnion Host -> @connectonion/react -> O Chat
 ```
 
 Starting `/acp` and moving the released browser are separate rollback points.
+The explicit transport discovery and fail-closed downgrade rule used for that
+move are defined separately in
+[DD-046](046-explicit-acp-transport-discovery.md).
 
 ### Relay ACP is not approved here
 

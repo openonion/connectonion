@@ -1030,7 +1030,10 @@ def host(
 
     acp_app = None
     if acp_agent_factory is not None:
-        from .acp_gateway import create_authenticated_acp_app
+        from .acp_gateway import (
+            acp_transport_descriptor,
+            create_authenticated_acp_app,
+        )
 
         acp_options = {
             "trust_agent": trust_agent,
@@ -1045,6 +1048,10 @@ def host(
             acp_agent_factory,
             **acp_options,
         )
+        # Discovery must describe the transport that was actually mounted.  React
+        # uses this before admission to select exactly one protocol; publishing it
+        # earlier (or from package version alone) could advertise a dead endpoint.
+        agent_metadata["transports"] = {"acp": acp_transport_descriptor()}
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)

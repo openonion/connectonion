@@ -85,6 +85,33 @@ transport limitations; it does not replace ConnectOnion identity or trust.
 The preflight accepts only the documented signing headers and supports Private
 Network Access when an HTTPS page reaches a loopback Agent.
 
+Before admission, an ACP-enabled Host advertises the transport in its public
+`/info` response:
+
+```json
+{
+  "transports": {
+    "acp": {
+      "protocol_version": 1,
+      "type": "websocket",
+      "path": "/acp",
+      "authorization": {
+        "type": "connectonion-ticket",
+        "path": "/acp/authorize"
+      }
+    }
+  }
+}
+```
+
+This is ConnectOnion transport discovery, not an ACP `initialize` capability.
+React selects native ACP when the exact supported descriptor is present and
+uses the compatibility `/ws` transport only when it is absent. A malformed or
+unsupported descriptor, or any later admission/transport failure, fails closed
+instead of silently downgrading or sending through both paths.
+The `/info` response is `Cache-Control: no-store`, so upgrade and rollback
+selection cannot reuse a stale transport descriptor.
+
 ## Session ownership and permissions
 
 Persistent network ACP sessions are stored under a stable namespace derived
