@@ -4,6 +4,33 @@ ConnectOnion's development roadmap. Track progress on [GitHub](https://github.co
 
 ## Current Milestones
 
+### 1.7.0 — ACP + coding-agent preview train
+
+The 1.7 preview train makes one coding-agent lifecycle available to editors,
+CLIs, and the browser without removing ConnectOnion's authentication and trust
+boundary.
+
+**Merge order:**
+
+1. [#895](https://github.com/openonion/connectonion/issues/895) — native `/acp`
+   WebSocket behind signed admission and exact browser-Origin tickets
+2. [#896](https://github.com/openonion/connectonion/issues/896) — complete the
+   shared principal model and bind canonical permission profiles to it;
+   collaboration `default` / `plan` remains React-owned
+3. [#893](https://github.com/openonion/connectonion/issues/893) — migrate
+   `@connectonion/react` and O Chat from `/ws` to native ACP
+4. [#894](https://github.com/openonion/connectonion/issues/894) — run direct
+   conformance, security, and browser reconnect gates before beta promotion
+5. [#898](https://github.com/openonion/connectonion/issues/898) — separately
+   decide and review an end-to-end secure relay channel before relay ACP ships
+
+The parent design and exit criteria live in
+[#892](https://github.com/openonion/connectonion/issues/892). The legacy `/ws`
+path remains a bounded compatibility fallback during the preview; it is not
+renamed or presented as ACP. #897's signed `_meta` proposal is not relay
+encryption and is deferred until #898 decides whether it has a narrower
+post-decryption provenance role.
+
 ### Launch the Network (Q4 2025)
 
 Implement the ConnectOnion peer-to-peer network protocol where agents discover and collaborate using public keys as addresses.

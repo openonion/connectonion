@@ -93,7 +93,14 @@ def handle_ai(
         _handle_plain_one_shot(agent, prompt)
     else:
         from ..co_ai.main import start_server
-        start_server(agent, port=port)
+        start_server(
+            agent,
+            port=port,
+            model=model,
+            max_iterations=max_iterations,
+            yolo=yolo,
+            yolo_turns=yolo_turns,
+        )
 
 
 def _create_agent(model, max_iterations, yolo, yolo_turns, *, resumable=False):

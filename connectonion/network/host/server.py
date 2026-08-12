@@ -483,6 +483,7 @@ def _print_host_banner(
     trust: str,
     trust_config: dict | None,
     co_dir: Path = None,
+    acp_enabled: bool = False,
 ):
     """Print clean host startup banner focused on server info.
 
@@ -517,7 +518,10 @@ def _print_host_banner(
     console.print()
     console.print(f"{prefix} [dim]{'─' * 35}[/dim]")
     console.print(f"{indent}[cyan]{base_url}[/cyan]")
-    console.print(f"{indent}[bold]POST[/bold] /input · [bold]WS[/bold] /ws · [dim]GET /docs[/dim]")
+    endpoints = "[bold]POST[/bold] /input · [bold]WS[/bold] /ws"
+    if acp_enabled:
+        endpoints += " · [bold]ACP[/bold] /acp"
+    console.print(f"{indent}{endpoints} · [dim]GET /docs[/dim]")
     console.print()
 
     # Full address, and the chat site — but only when this agent announces on the
@@ -830,6 +834,8 @@ def host(
     summary: str = None,
     examples: list = None,
     http=None,
+    acp_agent_factory: Callable | None = None,
+    acp_origins: list[str] | tuple[str, ...] | None = None,
 ):
     """
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
@@ -876,6 +882,10 @@ def host(
         summary: Agent description (default: from config or agent.system_prompt)
         examples: Example prompts (default: from config or auto-generated)
         http: Optional HTTPRouter with publisher-defined resource routes
+        acp_agent_factory: Optional ``factory(principal)`` returning an ACP Agent.
+            When set, the host serves authenticated ACP v1 over WS /acp.
+        acp_origins: Exact browser origins allowed to request an ACP ticket.
+            Defaults to https://chat.openonion.ai when ACP is enabled.
 
     Direct execution (WS EXEC):
         Clients can run a tool directly, bypassing the LLM, via
@@ -1018,6 +1028,24 @@ def host(
         mode_policy=_host_mode_policy(sample),
     )
 
+    acp_app = None
+    if acp_agent_factory is not None:
+        from .acp_gateway import create_authenticated_acp_app
+
+        acp_options = {
+            "trust_agent": trust_agent,
+            "recipient_address": addr_data["address"],
+            "replay_check": replay_store.already_used,
+            "blacklist": blacklist,
+            "whitelist": whitelist,
+        }
+        if acp_origins is not None:
+            acp_options["allowed_origins"] = acp_origins
+        acp_app = create_authenticated_acp_app(
+            acp_agent_factory,
+            **acp_options,
+        )
+
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
 
@@ -1075,6 +1103,7 @@ def host(
         on_startup=on_startup,
         on_shutdown=on_shutdown,
         http=http,
+        acp=acp_app,
     )
 
     # Display host startup banner (agent info shown separately by Agent class)
@@ -1085,6 +1114,7 @@ def host(
         trust=trust,
         trust_config=trust_config,
         co_dir=co_dir,
+        acp_enabled=acp_app is not None,
     )
 
     workers, reload = usable_uvicorn_options(workers, reload)
