@@ -24,13 +24,13 @@ from pathlib import Path
 from typing import Callable
 
 from ...project import project_co_dir
-from ...core.approval_modes import DEFAULT_MODE
+from ...core.approval_modes import READ_ONLY_PERMISSION_PROFILE
 from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
 from .session import SessionStorage, session_to_chat_items
 from .session.mode import SERVER_OWNED_SESSION_KEYS as SERVER_OWNED_SESSION_KEYS
 from .session.mode import (
-    HostModePolicy,
+    HostPermissionPolicy,
     ModeTransactionError,
     claim_host_prompt,
 )
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
                   session: dict | None = None, connection=None, images: list[str] | None = None,
                   files: list[dict] | None = None, requester: dict | None = None,
-                  mode_policy: HostModePolicy | None = None,
+                  mode_policy: HostPermissionPolicy | None = None,
                   is_admin: bool = False) -> dict:
     """POST /input (and WebSocket /ws) with session merge and UI conversion."""
     session = session or {}
@@ -139,10 +139,10 @@ def _normalized_host_result(
     session: dict,
     *,
     requester: dict | None,
-    mode_policy: HostModePolicy,
+    mode_policy: HostPermissionPolicy,
     is_admin: bool,
 ) -> dict:
-    """Restore verified identity and fail invalid Agent policy state to Default."""
+    """Restore verified identity and fail invalid Agent policy state to read-only."""
     final_session = copy.deepcopy(session)
     if requester is not None:
         final_session["requester"] = copy.deepcopy(requester)
@@ -152,9 +152,11 @@ def _normalized_host_result(
         return mode_policy.normalized(final_session, is_admin=is_admin)
     except ModeTransactionError:
         logger.exception(
-            "Agent produced invalid Host session policy; downgrading to Default"
+            "Agent produced invalid Host session policy; downgrading to :read-only"
         )
-        return mode_policy.apply(final_session, DEFAULT_MODE, is_admin=is_admin)
+        return mode_policy.apply(
+            final_session, READ_ONLY_PERMISSION_PROFILE, is_admin=is_admin
+        )
 
 
 def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:

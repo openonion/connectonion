@@ -30,11 +30,11 @@ class TestInputKeepsWhatItIsGiven:
 
         agent.input("hi", session={
             'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0,
-            'mode': 'full_access', 'full_access_turns': 5, 'full_access_turns_used': 1,
+            'mode': ':danger-full-access', 'full_access_turns': 5, 'full_access_turns_used': 1,
             'skip_tool_approval': True,
         })
 
-        assert agent.current_session.get('mode') == 'full_access'
+        assert agent.current_session.get('mode') == ':danger-full-access'
         assert agent.current_session.get('full_access_turns') == 5
         assert agent.current_session.get('skip_tool_approval') is True
 
@@ -47,7 +47,7 @@ class TestInputKeepsWhatItIsGiven:
             'skip_tool_approval': True,
         })
 
-        assert agent.current_session.get('mode') == 'full_access'
+        assert agent.current_session.get('mode') == ':danger-full-access'
         assert agent.current_session.get('full_access_turns') == 5
         assert 'ulw_turns' not in agent.current_session
 
@@ -56,11 +56,11 @@ class TestInputKeepsWhatItIsGiven:
 
         agent.input("hi", session={
             'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0,
-            'mode': 'full_access', 'full_access_turns': 5,
+            'mode': ':danger-full-access', 'full_access_turns': 5,
             'full_access_turns_used': 5, 'skip_tool_approval': True,
         })
 
-        assert agent.current_session.get('mode') == 'default'
+        assert agent.current_session.get('mode') == ':read-only'
         assert 'skip_tool_approval' not in agent.current_session
 
     def test_the_requester_survives_a_restore(self):
@@ -138,9 +138,9 @@ class TestTheClientDoesNotGrantItself:
             tmp_path,
             {'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0},
             stored_session={'session_id': 's1', 'messages': [], 'trace': [],
-                            'turn': 0, 'mode': 'full_access', 'full_access_turns': 5,
+                            'turn': 0, 'mode': ':danger-full-access', 'full_access_turns': 5,
                             'skip_tool_approval': True},
         )
 
-        assert seen.get('mode') == 'full_access'
+        assert seen.get('mode') == ':danger-full-access'
         assert seen.get('skip_tool_approval') is True

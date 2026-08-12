@@ -34,12 +34,12 @@ from acp.schema import (
 from acp.schema import PlanEntry as ACPPlanEntry
 
 from .approval_modes import (
-    APPROVAL_MODE_IDS,
-    AUTO_APPROVE_MODE,
-    DEFAULT_MODE,
-    FULL_ACCESS_MODE,
-    approval_mode_id,
-    legacy_approval_mode_id,
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    PERMISSION_PROFILE_IDS,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+    permission_profile_id,
 )
 from .wire_events import normalize_wire_event
 
@@ -51,22 +51,22 @@ ACP_SESSION_UPDATE_METHOD = "session/update"
 ACP_PERMISSION_METHOD = "session/request_permission"
 ACP_CANCEL_METHOD = "session/cancel"
 ACP_SET_SESSION_MODE_METHOD = "session/set_mode"
-ACP_SESSION_MODE_IDS = APPROVAL_MODE_IDS
+ACP_SESSION_MODE_IDS = PERMISSION_PROFILE_IDS
 
 ACP_SESSION_MODES = {
-    DEFAULT_MODE: SessionMode(
-        id=DEFAULT_MODE,
-        name="Default",
-        description="Ask before unapproved sensitive actions.",
+    READ_ONLY_PERMISSION_PROFILE: SessionMode(
+        id=READ_ONLY_PERMISSION_PROFILE,
+        name="Read only",
+        description="Read freely; ask before edits, commands, or broader access.",
     ),
-    AUTO_APPROVE_MODE: SessionMode(
-        id=AUTO_APPROVE_MODE,
-        name="Auto-approve",
-        description="Apply edits automatically; other sensitive actions follow policy.",
+    WORKSPACE_PERMISSION_PROFILE: SessionMode(
+        id=WORKSPACE_PERMISSION_PROFILE,
+        name="Auto",
+        description="Edit the workspace automatically; broader actions still ask.",
     ),
-    FULL_ACCESS_MODE: SessionMode(
-        id=FULL_ACCESS_MODE,
-        name="Full access (YOLO)",
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE: SessionMode(
+        id=DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+        name="Full access",
         description="Run without approval prompts within the Host launch ceiling.",
     ),
 }
@@ -187,9 +187,9 @@ def map_plan_event(event: Mapping[str, Any]) -> AgentPlanUpdate | None:
 
 
 def session_mode_id(value: Any) -> str:
-    """Return one canonical persisted server mode ID."""
+    """Return one canonical permission profile carried by ACP session mode."""
 
-    return approval_mode_id(value)
+    return permission_profile_id(value)
 
 
 def acp_session_mode_state(
@@ -290,7 +290,7 @@ def acp_set_mode_request(
     # A rolling-upgrade client may still send an old mode ID. Normalize it at
     # this one compatibility boundary; all committed and emitted state is
     # canonical.
-    return request_id, legacy_approval_mode_id(parsed.mode_id)
+    return request_id, legacy_permission_profile_id(parsed.mode_id)
 
 
 def host_session_mode_state(connected: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -311,11 +311,11 @@ def host_session_mode_state(connected: Mapping[str, Any]) -> dict[str, Any] | No
         return None
     try:
         state = SessionModeState.model_validate(raw_state)
-        current = legacy_approval_mode_id(state.current_mode_id)
+        current = legacy_permission_profile_id(state.current_mode_id)
         seen: set[str] = set()
         available: list[SessionMode] = []
         for mode in state.available_modes:
-            mode_id = legacy_approval_mode_id(mode.id)
+            mode_id = legacy_permission_profile_id(mode.id)
             if mode_id in seen or not mode.name:
                 return None
             seen.add(mode_id)
@@ -659,7 +659,7 @@ def legacy_stream_event_from_acp(
             raise ValueError("ACP mode update belongs to another session")
         return {
             "type": "mode_changed",
-            "mode": legacy_approval_mode_id(update.get("currentModeId")),
+            "mode": legacy_permission_profile_id(update.get("currentModeId")),
         }
     return _legacy_tool_event(update)
 

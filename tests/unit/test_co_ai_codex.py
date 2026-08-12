@@ -16,9 +16,9 @@ library_module = importlib.import_module("connectonion.useful_tools.codex")
 @pytest.mark.parametrize(
     ("mode", "sandbox", "approval"),
     [
-        ("default", "read-only", "manual"),
-        ("auto_approve", "workspace-write", "manual"),
-        ("full_access", "workspace-write", "deny"),
+        (":read-only", "read-only", "manual"),
+        (":workspace", "workspace-write", "manual"),
+        (":danger-full-access", "danger-full-access", "deny"),
     ],
 )
 def test_co_ai_mode_owns_the_codex_policy(monkeypatch, mode, sandbox, approval):
@@ -29,7 +29,14 @@ def test_co_ai_mode_owns_the_codex_policy(monkeypatch, mode, sandbox, approval):
         return '{"provider":"codex","session_id":"s"}'
 
     monkeypatch.setattr(codex_module, "run_codex", fake_codex)
-    agent = SimpleNamespace(current_session={"mode": mode})
+    session = {"mode": mode}
+    if mode == ":danger-full-access":
+        session.update({
+            "skip_tool_approval": True,
+            "full_access_turns": 10,
+            "full_access_turns_used": 0,
+        })
+    agent = SimpleNamespace(current_session=session)
 
     result = codex(
         "fix it",
@@ -74,7 +81,24 @@ def test_unknown_or_missing_mode_fails_closed_to_manual_read_only(monkeypatch):
     assert all(call["approval"] == "manual" for call in calls)
 
 
-@pytest.mark.parametrize("mode", ["default", "auto_approve", "full_access"])
+def test_full_access_label_without_bounded_grant_fails_closed(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        codex_module,
+        "run_codex",
+        lambda **kwargs: seen.update(kwargs) or "result",
+    )
+
+    assert codex(
+        "inspect",
+        cwd="/repo",
+        agent=SimpleNamespace(current_session={"mode": ":danger-full-access"}),
+    ) == "result"
+    assert seen["sandbox"] == "read-only"
+    assert seen["approval"] == "manual"
+
+
+@pytest.mark.parametrize("mode", [":read-only", ":workspace", ":danger-full-access"])
 def test_hosted_contact_is_confined_to_read_only_without_prompts(monkeypatch, mode):
     seen = {}
     monkeypatch.setattr(
@@ -133,8 +157,13 @@ def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_p
     )
     monkeypatch.setattr(codex_module, "run_codex", library_module.codex)
 
-    safe = SimpleNamespace(current_session={"mode": "default"})
-    yolo = SimpleNamespace(current_session={"mode": "full_access"})
+    safe = SimpleNamespace(current_session={"mode": ":read-only"})
+    yolo = SimpleNamespace(current_session={
+        "mode": ":danger-full-access",
+        "skip_tool_approval": True,
+        "full_access_turns": 10,
+        "full_access_turns_used": 0,
+    })
     first = codex("inspect", cwd=str(tmp_path), agent=safe)
     resumed = codex(
         "continue",
@@ -147,7 +176,7 @@ def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_p
     assert '"resumed": true' in resumed
     assert calls[0][1]["sandbox"] == "read-only"
     assert calls[0][1]["approval_policy"] == "untrusted"
-    assert calls[1][1]["sandbox"] == "workspace-write"
+    assert calls[1][1]["sandbox"] == "danger-full-access"
     assert calls[1][1]["approval_policy"] == "never"
 
 
@@ -162,7 +191,7 @@ def test_outer_approval_does_not_duplicate_codex_action_approval():
     io = SimpleNamespace(send=lambda *_: pytest.fail("outer approval must not prompt"))
     agent = SimpleNamespace(
         current_session={
-            "mode": "default",
+            "mode": ":read-only",
             "permissions": {
                 "codex": {
                     "allowed": True,

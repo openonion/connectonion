@@ -42,10 +42,12 @@ When activated, Full access:
 3. pauses at the Host-owned turn ceiling; and
 4. lets the operator continue locally, switch modes, or stop.
 
-The canonical mode-change request is:
+The canonical permission profile request is the ACP `session/set_mode`
+transaction with `modeId: ":danger-full-access"`. Older clients may send this
+compatibility frame:
 
 ```json
-{ "type": "mode_change", "mode": "full_access", "turns": 10 }
+{ "type": "mode_change", "mode": ":danger-full-access", "turns": 10 }
 ```
 
 At the limit, the frontend receives:
@@ -57,16 +59,17 @@ At the limit, the frontend receives:
 The canonical responses are:
 
 - `{ "type": "FULL_ACCESS_RESPONSE", "action": "continue", "turns": 10 }`
-- `{ "type": "FULL_ACCESS_RESPONSE", "action": "switch_mode", "mode": "default" }`
+- `{ "type": "FULL_ACCESS_RESPONSE", "action": "switch_mode", "mode": ":read-only" }`
 
-Any other response exits to Default. A hosted grant cannot be extended beyond
-the launch-time ceiling; another durable mode transaction is required.
+Any other response exits to Read only. A hosted grant cannot be extended
+beyond the launch-time ceiling; another durable profile transaction is
+required.
 
 ## Session state
 
 ```json
 {
-  "mode": "full_access",
+  "mode": ":danger-full-access",
   "full_access_turns": 10,
   "full_access_turns_used": 0,
   "skip_tool_approval": true
@@ -88,8 +91,9 @@ The frontend can update the goal while the agent is working:
 ## Compatibility window
 
 Versions before 1.7 used the name “ULW” and corresponding lower-case IDs and
-field prefixes. New readers accept those legacy inputs only at the migration
-boundary, normalize them immediately, and never emit or newly persist them.
+field prefixes; one unreleased migration also used `full_access`. New readers
+accept those legacy inputs only at the migration boundary, normalize them
+immediately, and never emit or newly persist them.
 Deprecated imports remain available from
 `connectonion.useful_plugins.ulw` for one compatibility window.
 

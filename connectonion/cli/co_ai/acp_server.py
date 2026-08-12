@@ -53,11 +53,11 @@ from acp.schema import (
 
 from ..._version import __version__
 from ...core.approval_modes import (
-    APPROVAL_MODE_IDS,
-    AUTO_APPROVE_MODE,
-    DEFAULT_MODE,
-    FULL_ACCESS_MODE,
-    legacy_approval_mode_id,
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    PERMISSION_PROFILE_IDS,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
     migrate_legacy_full_access_fields,
 )
 from ...network.io.base import IO
@@ -108,22 +108,22 @@ _ACP_PERMISSION_OPTIONS = (
 
 _ACP_SESSION_MODES = (
     SessionMode(
-        id=DEFAULT_MODE,
-        name="Default",
-        description="Ask before unapproved sensitive actions.",
+        id=READ_ONLY_PERMISSION_PROFILE,
+        name="Read only",
+        description="Read freely; ask before edits, commands, or broader access.",
     ),
     SessionMode(
-        id=AUTO_APPROVE_MODE,
-        name="Auto-approve",
-        description="Apply edits automatically; other sensitive actions follow policy.",
+        id=WORKSPACE_PERMISSION_PROFILE,
+        name="Auto",
+        description="Edit the workspace automatically; broader actions still ask.",
     ),
     SessionMode(
-        id=FULL_ACCESS_MODE,
-        name="Full access (YOLO)",
+        id=DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+        name="Full access",
         description="Run autonomously within the launch-time turn budget.",
     ),
 )
-_ACP_MODE_IDS = APPROVAL_MODE_IDS
+_ACP_MODE_IDS = PERMISSION_PROFILE_IDS
 _FULL_ACCESS_STATE_KEYS = (
     "skip_tool_approval",
     "full_access_turns",
@@ -755,12 +755,12 @@ class ConnectOnionACPAgent:
                 {"sessionId": session_id},
             )
         try:
-            mode_id = legacy_approval_mode_id(mode_id)
+            mode_id = legacy_permission_profile_id(mode_id)
         except ValueError:
             raise RequestError.invalid_params(
                 {"details": "Unsupported session mode"}
             ) from None
-        if mode_id == FULL_ACCESS_MODE and not self._yolo:
+        if mode_id == DANGER_FULL_ACCESS_PERMISSION_PROFILE and not self._yolo:
             raise RequestError.invalid_params(
                 {"details": "Full access mode was not authorized when ACP started"}
             )
@@ -1304,11 +1304,11 @@ class ConnectOnionACPAgent:
             }],
             "trace": [],
             "turn": 0,
-            "mode": DEFAULT_MODE,
+            "mode": READ_ONLY_PERMISSION_PROFILE,
             "plan": [],
         }
         if self._yolo:
-            self._apply_mode(session, FULL_ACCESS_MODE)
+            self._apply_mode(session, DANGER_FULL_ACCESS_PERMISSION_PROFILE)
         return self._normalized_session_mode(session)
 
     def _session_mode_state(self, runtime: _SessionRuntime) -> SessionModeState:
@@ -1327,10 +1327,12 @@ class ConnectOnionACPAgent:
         normalized = copy.deepcopy(session)
         migrate_legacy_full_access_fields(normalized)
         try:
-            mode = legacy_approval_mode_id(normalized.get("mode", DEFAULT_MODE))
+            mode = legacy_permission_profile_id(
+                normalized.get("mode", READ_ONLY_PERMISSION_PROFILE)
+            )
         except ValueError:
             raise SessionSnapshotError("Session has an unsupported mode.")
-        if mode == FULL_ACCESS_MODE:
+        if mode == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
             if not self._yolo:
                 raise SessionSnapshotError(
                     "Session requires Full access launch authority."
@@ -1363,7 +1365,7 @@ class ConnectOnionACPAgent:
         for key in _FULL_ACCESS_STATE_KEYS:
             session.pop(key, None)
         session["mode"] = mode
-        if mode == FULL_ACCESS_MODE:
+        if mode == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
             session["full_access_turns"] = self._yolo_turns
             session["full_access_turns_used"] = 0
             session["skip_tool_approval"] = True

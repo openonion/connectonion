@@ -1,58 +1,73 @@
-"""Canonical approval-mode vocabulary and bounded legacy normalization.
+"""Codex-aligned collaboration and permission-profile vocabulary.
 
-The product and ACP surfaces use ``default``, ``auto_approve``, and
-``full_access``.  Older persisted sessions and rolling-upgrade clients may
-still contain ``safe``, ``accept_edits``, or ``ulw``; those spellings are
-accepted only through :func:`legacy_approval_mode_id` and are normalized
-before they reach runtime state.
+Codex keeps collaboration intent (``default`` / ``plan``) separate from the
+permission profile that bounds tool execution.  ConnectOnion mirrors that
+shape while retaining one compatibility reader for snapshots written with the
+older ``safe`` / ``accept_edits`` / ``ulw`` approval-mode vocabulary.
+
+The module name remains ``approval_modes`` for one import-compatibility window;
+new code should use the collaboration/profile names exported below.
 """
 
 from __future__ import annotations
 
 from typing import Any, Mapping
 
-DEFAULT_MODE = "default"
-AUTO_APPROVE_MODE = "auto_approve"
-FULL_ACCESS_MODE = "full_access"
-
-APPROVAL_MODE_IDS = frozenset({
-    DEFAULT_MODE,
-    AUTO_APPROVE_MODE,
-    FULL_ACCESS_MODE,
+DEFAULT_COLLABORATION_MODE = "default"
+PLAN_COLLABORATION_MODE = "plan"
+COLLABORATION_MODE_IDS = frozenset({
+    DEFAULT_COLLABORATION_MODE,
+    PLAN_COLLABORATION_MODE,
 })
 
-# This is intentionally private: primary code must never emit these values.
-_LEGACY_MODE_ALIASES = {
-    "safe": DEFAULT_MODE,
-    "accept_edits": AUTO_APPROVE_MODE,
-    "ulw": FULL_ACCESS_MODE,
+READ_ONLY_PERMISSION_PROFILE = ":read-only"
+WORKSPACE_PERMISSION_PROFILE = ":workspace"
+DANGER_FULL_ACCESS_PERMISSION_PROFILE = ":danger-full-access"
+PERMISSION_PROFILE_IDS = frozenset({
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+})
+
+# Primary code never emits these values.  ``default`` / ``auto_approve`` /
+# ``full_access`` were prepared in an unreleased migration branch, so accepting
+# them here also makes rolling draft builds fail closed during review.
+_LEGACY_PERMISSION_PROFILE_ALIASES = {
+    "safe": READ_ONLY_PERMISSION_PROFILE,
+    "default": READ_ONLY_PERMISSION_PROFILE,
+    "accept_edits": WORKSPACE_PERMISSION_PROFILE,
+    "auto_approve": WORKSPACE_PERMISSION_PROFILE,
+    "ulw": DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    "full_access": DANGER_FULL_ACCESS_PERMISSION_PROFILE,
 }
 
 
-def approval_mode_id(value: Any) -> str:
-    """Return one canonical mode ID or reject it without coercion."""
+def collaboration_mode_id(value: Any) -> str:
+    """Return one canonical collaboration mode or reject it."""
 
-    if not isinstance(value, str) or value not in APPROVAL_MODE_IDS:
-        raise ValueError(f"Unsupported approval mode: {value!r}")
+    if not isinstance(value, str) or value not in COLLABORATION_MODE_IDS:
+        raise ValueError(f"Unsupported collaboration mode: {value!r}")
     return value
 
 
-def legacy_approval_mode_id(value: Any) -> str:
-    """Normalize a canonical or legacy boundary value to a canonical ID."""
+def permission_profile_id(value: Any) -> str:
+    """Return one canonical Codex-compatible permission profile or reject it."""
+
+    if not isinstance(value, str) or value not in PERMISSION_PROFILE_IDS:
+        raise ValueError(f"Unsupported permission profile: {value!r}")
+    return value
+
+
+def legacy_permission_profile_id(value: Any) -> str:
+    """Normalize one canonical or previous boundary value."""
 
     if isinstance(value, str):
-        value = _LEGACY_MODE_ALIASES.get(value, value)
-    return approval_mode_id(value)
+        value = _LEGACY_PERMISSION_PROFILE_ALIASES.get(value, value)
+    return permission_profile_id(value)
 
 
 def migrate_legacy_full_access_fields(session: dict) -> dict:
-    """Rename legacy autonomous-run fields in one detached session copy.
-
-    The caller is responsible for copying the session before invoking this
-    helper.  A canonical field always wins if a malformed snapshot contains
-    both forms; policy validation still decides whether the resulting grant is
-    authorized.
-    """
+    """Rename previous autonomous-run fields in one detached session copy."""
 
     field_aliases = {
         "ulw_turns": "full_access_turns",
@@ -72,7 +87,7 @@ def has_valid_full_access_grant(session: Mapping[str, Any]) -> bool:
     turns = session.get("full_access_turns")
     used = session.get("full_access_turns_used")
     return (
-        session.get("mode") == FULL_ACCESS_MODE
+        session.get("mode") == DANGER_FULL_ACCESS_PERMISSION_PROFILE
         and not isinstance(turns, bool)
         and isinstance(turns, int)
         and turns > 0
@@ -86,23 +101,24 @@ def has_valid_full_access_grant(session: Mapping[str, Any]) -> bool:
 def normalize_runtime_approval_session(session: dict) -> dict:
     """Return canonical local Agent state, removing malformed authority.
 
-    Host and ACP persistence use their stricter policy validators and reject a
-    corrupt snapshot.  A direct ``Agent.input(session=...)`` restoration has no
-    transaction to reject, so it takes the fail-closed local behavior: legacy
-    fields migrate, while unknown modes or inconsistent Full access state are
-    reduced to Default before any hook, model call, or tool can run.
+    Direct ``Agent.input(session=...)`` restoration has no transaction to
+    reject.  Previous fields are therefore normalized, while unknown or
+    inconsistent authority falls back to the read-only profile before any
+    hook, model call, or tool can run.
     """
 
     normalized = dict(session)
     migrate_legacy_full_access_fields(normalized)
-    raw_mode = normalized.get("mode", DEFAULT_MODE)
-    if raw_mode == "plan":
-        mode = DEFAULT_MODE
-    else:
-        try:
-            mode = legacy_approval_mode_id(raw_mode)
-        except ValueError:
-            mode = DEFAULT_MODE
+
+    raw_profile = normalized.get(
+        "permission_profile", normalized.get("mode", READ_ONLY_PERMISSION_PROFILE)
+    )
+    if raw_profile == PLAN_COLLABORATION_MODE:
+        raw_profile = READ_ONLY_PERMISSION_PROFILE
+    try:
+        profile = legacy_permission_profile_id(raw_profile)
+    except ValueError:
+        profile = READ_ONLY_PERMISSION_PROFILE
 
     full_access_fields = (
         "skip_tool_approval",
@@ -110,26 +126,43 @@ def normalize_runtime_approval_session(session: dict) -> dict:
         "full_access_turns_used",
         "full_access_prompt",
     )
-    normalized["mode"] = mode
-    if mode == FULL_ACCESS_MODE:
-        if not has_valid_full_access_grant(normalized):
-            mode = DEFAULT_MODE
+    normalized["mode"] = profile
+    normalized.pop("permission_profile", None)
+    if (
+        profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE
+        and not has_valid_full_access_grant(normalized)
+    ):
+        profile = READ_ONLY_PERMISSION_PROFILE
 
-    if mode != FULL_ACCESS_MODE:
+    if profile != DANGER_FULL_ACCESS_PERMISSION_PROFILE:
         for field in full_access_fields:
             normalized.pop(field, None)
-    normalized["mode"] = mode
+    normalized["mode"] = profile
     return normalized
 
 
+# Deprecated source aliases.  Compatibility callers may still import these,
+# but primary protocol/runtime code uses the names above.
+DEFAULT_MODE = READ_ONLY_PERMISSION_PROFILE
+AUTO_APPROVE_MODE = WORKSPACE_PERMISSION_PROFILE
+FULL_ACCESS_MODE = DANGER_FULL_ACCESS_PERMISSION_PROFILE
+APPROVAL_MODE_IDS = PERMISSION_PROFILE_IDS
+approval_mode_id = permission_profile_id
+legacy_approval_mode_id = legacy_permission_profile_id
+
+
 __all__ = [
-    "APPROVAL_MODE_IDS",
-    "AUTO_APPROVE_MODE",
-    "DEFAULT_MODE",
-    "FULL_ACCESS_MODE",
-    "approval_mode_id",
+    "COLLABORATION_MODE_IDS",
+    "DANGER_FULL_ACCESS_PERMISSION_PROFILE",
+    "DEFAULT_COLLABORATION_MODE",
+    "PERMISSION_PROFILE_IDS",
+    "PLAN_COLLABORATION_MODE",
+    "READ_ONLY_PERMISSION_PROFILE",
+    "WORKSPACE_PERMISSION_PROFILE",
+    "collaboration_mode_id",
     "has_valid_full_access_grant",
-    "legacy_approval_mode_id",
+    "legacy_permission_profile_id",
     "migrate_legacy_full_access_fields",
     "normalize_runtime_approval_session",
+    "permission_profile_id",
 ]

@@ -15,5 +15,5 @@ agent.input("Fix the failing tests")
 co ai --yolo "Fix the failing tests" --yolo-turns 10
 ```
 
-The canonical mode ID, types, state, and events use `full_access`. See the
+The canonical permission profile is `:danger-full-access`. See the
 linked page for authority rules, checkpoints, and migration behavior.

@@ -49,7 +49,7 @@ from .auth import authenticate_connect, extract_and_authenticate
 from .replay import SignatureReplayStore
 from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
-from .session.mode import HostModePolicy
+from .session.mode import HostPermissionPolicy
 from .http_router import (
     input_handler,
     exec_handler,
@@ -223,7 +223,7 @@ def _create_route_handlers(
     config: dict,
     exec_permissions: dict | None = None,
     replay_check=None,
-    mode_policy: HostModePolicy | None = None,
+    mode_policy: HostPermissionPolicy | None = None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -242,7 +242,7 @@ def _create_route_handlers(
     """
     agent_name = agent_metadata["name"]
     exec_permissions = exec_permissions or {}
-    mode_policy = mode_policy or HostModePolicy()
+    mode_policy = mode_policy or HostPermissionPolicy()
     if replay_check is None:
         from .auth import signature_already_used
         replay_check = signature_already_used
@@ -331,7 +331,7 @@ def _create_route_handlers(
     }
 
 
-def _host_mode_policy(sample) -> HostModePolicy:
+def _host_mode_policy(sample) -> HostPermissionPolicy:
     """Capture only an explicitly configured positive Full access ceiling."""
     turns = getattr(sample, "_yolo_turns", None)
     if (
@@ -340,7 +340,7 @@ def _host_mode_policy(sample) -> HostModePolicy:
         or turns <= 0
     ):
         turns = None
-    return HostModePolicy(full_access_turns=turns)
+    return HostPermissionPolicy(full_access_turns=turns)
 
 
 def resolve_agent_identity(co_dir: Path) -> dict:

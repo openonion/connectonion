@@ -1,10 +1,10 @@
 """
-Purpose: Python client SDK for talking to remote ConnectOnion agents over websockets — handles signed transport, acknowledged ACP session modes, streaming UI events, and onboarding.
+Purpose: Python client for remote ConnectOnion agents — signed transport, acknowledged Host permission profiles, streaming UI events, and onboarding.
 LLM-Note:
   Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign), ..core.acp_wire] | imported by [network/__init__.py, connectonion/__init__.py] | tested by [test_connect.py, test_each_command_is_signed.py, test_acp_host_set_mode.py]
-  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_session_mode() validates Host SessionModeState, sends signed ACP_REQUEST, and waits for its exact ACP_RESPONSE before changing local mode
+  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_permission_profile() validates Host SessionModeState, sends signed ACP_REQUEST, and waits for its exact ACP_RESPONSE before changing local authority
   State/Effects: mutates current session/modes/UI/status only from authenticated carrier responses; opens outbound sockets; signs deep-detached command payloads; endpoint resolution may query relay and candidate /info endpoints
-  Integration: exposes connect(), RemoteAgent, Response, ExecResult, ACPModeError; RemoteAgent provides input/call/set_session_mode sync+async actions and read-only state
+  Integration: exposes connect(), RemoteAgent, Response, ExecResult, ACPModeError; RemoteAgent provides input/call/set_permission_profile sync+async actions and read-only state; set_session_mode is deprecated
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
   Errors: raises ConnectionError on transport/auth failure, ACPModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
@@ -39,6 +39,7 @@ from ..core.acp_wire import (
     legacy_stream_event_from_acp,
     session_mode_id,
 )
+from ..core.approval_modes import legacy_permission_profile_id
 
 
 def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
@@ -295,7 +296,7 @@ class RemoteAgent:
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
         self._ui_events: List[Dict[str, Any]] = []
-        self._available_modes: List[Dict[str, Any]] = []
+        self._available_permission_profiles: List[Dict[str, Any]] = []
         self._resolved_endpoint: Optional[str] = None
         self._endpoint_resolved = False
 
@@ -322,27 +323,34 @@ class RemoteAgent:
 
     @property
     def available_modes(self) -> List[Dict[str, Any]]:
-        """Server-authorized ACP modes from the latest CONNECTED frame."""
-        return copy.deepcopy(self._available_modes)
+        """Deprecated alias for :attr:`available_permission_profiles`."""
+        return self.available_permission_profiles
 
-    def set_session_mode(self, mode_id: str, timeout: float = 30.0) -> None:
-        """Persist Host policy and return only after its owned acknowledgement."""
+    @property
+    def available_permission_profiles(self) -> List[Dict[str, Any]]:
+        """Server-authorized permission profiles from the latest connection."""
+        return copy.deepcopy(self._available_permission_profiles)
+
+    def set_permission_profile(
+        self, profile_id: str, timeout: float = 30.0
+    ) -> None:
+        """Persist a Host permission profile after its owned acknowledgement."""
         try:
             asyncio.get_running_loop()
             raise RuntimeError(
-                "set_session_mode() cannot be used inside async context. "
-                "Use 'await agent.set_session_mode_async()' instead."
+                "set_permission_profile() cannot be used inside async context. "
+                "Use 'await agent.set_permission_profile_async()' instead."
             )
         except RuntimeError as exc:
-            if "set_session_mode() cannot be used" in str(exc):
+            if "set_permission_profile() cannot be used" in str(exc):
                 raise
-        asyncio.run(self.set_session_mode_async(mode_id, timeout=timeout))
+        asyncio.run(self.set_permission_profile_async(profile_id, timeout=timeout))
 
-    async def set_session_mode_async(
-        self, mode_id: str, timeout: float = 30.0
+    async def set_permission_profile_async(
+        self, profile_id: str, timeout: float = 30.0
     ) -> None:
-        """Commit a Host mode, or time out with the remote outcome unknown."""
-        mode_id = session_mode_id(mode_id)
+        """Commit a permission profile, or time out with outcome unknown."""
+        profile_id = session_mode_id(profile_id)
         if (
             isinstance(timeout, bool)
             or not isinstance(timeout, (int, float))
@@ -351,14 +359,28 @@ class RemoteAgent:
             raise ValueError("timeout must be a positive number")
         try:
             await asyncio.wait_for(
-                self._set_session_mode_transaction(mode_id), timeout=timeout
+                self._set_permission_profile_transaction(profile_id), timeout=timeout
             )
         except asyncio.TimeoutError:
             raise TimeoutError(
-                f"Session mode change timed out after {timeout}s"
+                f"Permission profile change timed out after {timeout}s"
             ) from None
 
-    async def _set_session_mode_transaction(self, mode_id: str) -> None:
+    def set_session_mode(self, mode_id: str, timeout: float = 30.0) -> None:
+        """Deprecated alias for :meth:`set_permission_profile`."""
+        self.set_permission_profile(
+            legacy_permission_profile_id(mode_id), timeout=timeout
+        )
+
+    async def set_session_mode_async(
+        self, mode_id: str, timeout: float = 30.0
+    ) -> None:
+        """Deprecated alias for :meth:`set_permission_profile_async`."""
+        await self.set_permission_profile_async(
+            legacy_permission_profile_id(mode_id), timeout=timeout
+        )
+
+    async def _set_permission_profile_transaction(self, profile_id: str) -> None:
         """Run negotiation and response handling under the caller's deadline."""
         import websockets
 
@@ -369,17 +391,22 @@ class RemoteAgent:
         async with connection as ws:
             await ws.send(json.dumps(self._build_connect_message(is_direct)))
             state = await self._wait_for_mode_connected(ws)
-            if not any(mode.get("id") == mode_id for mode in state["availableModes"]):
-                raise ValueError(f"Session mode is not available: {mode_id}")
+            if not any(
+                profile.get("id") == profile_id
+                for profile in state["availableModes"]
+            ):
+                raise ValueError(
+                    f"Permission profile is not available: {profile_id}"
+                )
             session_id = self._current_session["session_id"]
             request = acp_set_mode_request_frame(
-                request_id, session_id, mode_id
+                request_id, session_id, profile_id
             )
             await ws.send(json.dumps(
                 self._build_command_message(request, is_direct)
             ))
             await self._wait_for_mode_response(
-                ws, request_id, session_id, mode_id
+                ws, request_id, session_id, profile_id
             )
 
     def input(
@@ -797,7 +824,7 @@ class RemoteAgent:
                 )
 
     async def _wait_for_mode_response(
-        self, ws, request_id: str, session_id: str, mode_id: str,
+        self, ws, request_id: str, session_id: str, profile_id: str,
     ) -> None:
         while True:
             event = json.loads(await ws.recv())
@@ -828,7 +855,7 @@ class RemoteAgent:
                 "full_access_turns_used",
             ):
                 self._current_session.pop(field, None)
-            self._current_session["mode"] = mode_id
+            self._current_session["mode"] = profile_id
             return
 
     def _consume_connected_mode_state(
@@ -841,9 +868,11 @@ class RemoteAgent:
             self._current_session["session_id"] = sid
         state = host_session_mode_state(event)
         if state is None:
-            self._available_modes = []
+            self._available_permission_profiles = []
             return None
-        self._available_modes = copy.deepcopy(state["availableModes"])
+        self._available_permission_profiles = copy.deepcopy(
+            state["availableModes"]
+        )
         if self._current_session is not None:
             self._current_session["mode"] = state["currentModeId"]
         return state

@@ -428,7 +428,7 @@ def test_interruptible_io_makes_request_approval_an_interrupted_tool():
 
 def test_completed_agent_tool_commits_its_session_snapshot():
     def change_mode(agent) -> str:
-        agent.current_session["mode"] = "auto_approve"
+        agent.current_session["mode"] = ":workspace"
         agent.tools.remove("victim")
         return "changed"
 
@@ -450,7 +450,7 @@ def test_completed_agent_tool_commits_its_session_snapshot():
 
     assert trace["status"] == "success"
     assert agent.current_session is session
-    assert session["mode"] == "auto_approve"
+    assert session["mode"] == ":workspace"
     assert "victim" not in agent.tools
 
 

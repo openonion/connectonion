@@ -7,10 +7,10 @@
 ## Context
 
 ACP can advertise session modes and lets a client request `session/set_mode`.
-ConnectOnion persists `default`, `auto_approve`, and `full_access` in the Agent
-session. Those values are security policy, not presentation preferences:
-`auto_approve` skips file-edit approval and `full_access` skips every tool approval for
-a bounded number of autonomous turns.
+ConnectOnion persists `:read-only`, `:workspace`, and
+`:danger-full-access` in the Agent session. Those values are security policy,
+not presentation preferences: the workspace profile permits named file edits,
+and Full access skips tool approval for a bounded number of autonomous turns.
 
 The ACP client owns the user interface, but it must not gain more authority
 than the operator granted when starting `co ai --acp`. Mode changes must also
@@ -21,11 +21,11 @@ approval boundary from DD-030.
 
 ### Keep one canonical session vocabulary
 
-ACP IDs are the persisted ConnectOnion IDs:
+ACP IDs are the persisted Codex-aligned permission profiles:
 
-- `default`, displayed as **Default**
-- `auto_approve`, displayed as **Auto-approve**
-- `full_access`, displayed as **Full access (YOLO)**
+- `:read-only`, displayed as **Read only**
+- `:workspace`, displayed as **Auto**
+- `:danger-full-access`, displayed as **Full access**
 
 The adapter does not translate a second set of mode names. New sessions store
 an explicit mode, and new/resumed responses return the official
@@ -33,22 +33,22 @@ an explicit mode, and new/resumed responses return the official
 
 ### Treat process launch as the authority ceiling
 
-Default and Auto-approve are available to a local stdio client. Full access is advertised and
+Read only and Auto are available to a local stdio client. Full access is advertised and
 accepted only if the server was started with `--yolo`. A saved Full access session
 cannot be resumed by a server without that launch authority. Its saved
 remaining autonomous turns must also be no greater than this process's
 `--yolo-turns` ceiling.
 
-Full access state is valid only when all three bounded fields agree with `mode=full_access`:
+Full access state is valid only when all three bounded fields agree with `mode=:danger-full-access`:
 `skip_tool_approval=true`, positive `full_access_turns`, and non-negative
-`full_access_turns_used` below that limit. Default or Auto-approve snapshots containing Full access bypass
+`full_access_turns_used` below that limit. Read only or Auto snapshots containing Full access bypass
 state are rejected. Unknown and malformed persisted modes fail closed before
 the Agent can run.
 
 The normal `enable_yolo` hook is disarmed after ACP constructs the runtime.
 ACP's validated snapshot is the current mode; the launch flag only controls
 whether that snapshot may enter Full access. This prevents a deliberate downgrade to
-Default or Auto-approve from being silently reversed on the next prompt.
+Read only or Auto from being silently reversed on the next prompt.
 
 ### Change mode only at an idle transaction boundary
 
@@ -77,17 +77,17 @@ its checkpoint instead of being announced as usable policy.
 
 ## Consequences
 
-- An ACP UI can present and persist Default/Auto-approve without a parallel policy model.
+- An ACP UI can present and persist Read only/Auto without a parallel policy model.
 - Full access remains an operator-granted capability; a client request or stored file
   cannot manufacture it.
 - Mode changes may return “Session is busy” and be retried after the prompt.
-- Older snapshots without a mode normalize to Default. Corrupt or over-authorized
+- Older snapshots without a profile normalize to Read only. Corrupt or over-authorized
   snapshots require an explicit operator decision instead of silent repair.
 
 ## Rejected alternatives
 
 - **Always advertise Full access:** lets a client escalate beyond process launch.
-- **Silently downgrade saved Full access to Default:** hides a material policy change and
+- **Silently downgrade saved Full access to Read only:** hides a material policy change and
   rewrites the meaning of a resumable session.
 - **Change mode during a prompt:** creates a race at the approval boundary.
 - **Mutate memory before saving:** can leave the runtime more permissive than

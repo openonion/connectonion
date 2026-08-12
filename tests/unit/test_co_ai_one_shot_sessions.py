@@ -83,7 +83,7 @@ class _Agent:
             "messages": messages,
             "trace": list(base.get("trace", [])),
             "turn": base.get("turn", 0) + 1,
-            "mode": "full_access",
+            "mode": ":danger-full-access",
         }
         self.tools.todo.state.append(_todo(prompt))
         self.current_session["plan"] = [
@@ -104,7 +104,7 @@ def test_snapshot_round_trip_preserves_full_session_and_tool_state(tmp_path):
         "messages": [{"role": "system", "content": "s"}],
         "trace": [],
         "turn": 2,
-        "mode": "full_access",
+        "mode": ":danger-full-access",
         "permissions": {"Bash(git *)": {"allowed": True}},
         "plan": _plan("ship"),
     }
@@ -425,7 +425,7 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     assert created["background_tools"] is False
 
     stored, tools = load_snapshot(tmp_path, envelope["session_id"])
-    assert stored["mode"] == "full_access"
+    assert stored["mode"] == ":danger-full-access"
     assert stored["turn"] == 1
     assert tools == {"todolist": [_todo("first")]}
 
@@ -439,7 +439,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
             "messages": [{"role": "system", "content": "old"}],
             "trace": [{"type": "old"}],
             "turn": 4,
-            "mode": "auto_approve",
+            "mode": ":workspace",
             "plan": _plan("old todo"),
         },
         {"todolist": [_todo("old todo")]},
@@ -452,7 +452,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
 
     envelope = json.loads(capsys.readouterr().out)
     assert envelope["session_id"] == session_id
-    assert agent.received_session["mode"] == "auto_approve"
+    assert agent.received_session["mode"] == ":workspace"
     assert agent.received_session["turn"] == 4
     assert agent.tools.todo.state == [_todo("old todo"), _todo("next")]
 
@@ -466,7 +466,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
         "messages": [{"role": "system", "content": "old"}],
         "trace": [{"type": "old"}],
         "turn": 4,
-        "mode": "auto_approve",
+        "mode": ":workspace",
         "plan": _plan("old todo"),
     }
     save_snapshot(tmp_path, original, {"todolist": [_todo("old todo")]})

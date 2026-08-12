@@ -422,9 +422,10 @@ response or `cancelled` fails closed. Optional rejection feedback belongs at
 
 #### ACP_REQUEST (`session/set_mode`)
 
-An authenticated client selects one Host-advertised session mode with the exact
-ACP v1.19 request. On a signed-command connection the complete request is also
-the signed `payload`; the Host executes that verified copy.
+An authenticated client selects one Host-advertised permission profile with
+the exact ACP v1.19 request. The ACP method retains its standard
+`session/set_mode` name. On a signed-command connection the complete request is
+also the signed `payload`; the Host executes that verified copy.
 
 ```json
 {
@@ -436,7 +437,7 @@ the signed `payload`; the Host executes that verified copy.
     "method": "session/set_mode",
     "params": {
       "sessionId": "550e8400-...",
-      "modeId": "auto_approve"
+      "modeId": ":workspace"
     }
   },
   "payload": {
@@ -448,7 +449,7 @@ the signed `payload`; the Host executes that verified copy.
       "method": "session/set_mode",
       "params": {
         "sessionId": "550e8400-...",
-        "modeId": "auto_approve"
+        "modeId": ":workspace"
       }
     },
     "to": "0x3d4017c3e843...",
@@ -461,12 +462,14 @@ the signed `payload`; the Host executes that verified copy.
 ```
 
 The request is accepted only while the durable session is idle and owned by
-the authenticated caller. `default` is always available; `auto_approve` and `full_access`
-are identity- and launch-authority-bounded. No client field can supply or extend
-Full access turns. Success is an `ACP_RESPONSE` with an empty result and means the JSONL
-commit completed; busy, policy, ownership, and persistence failures are
-correlated JSON-RPC errors. `@connectonion/react` owns this browser operation;
-O Chat consumes it without constructing protocol frames.
+the authenticated caller. `:read-only` is always available; `:workspace` and
+`:danger-full-access` are identity- and launch-authority-bounded. No client
+field can supply or extend Full access turns. Success is an `ACP_RESPONSE` with
+an empty result and means the JSONL commit completed; busy, policy, ownership,
+and persistence failures are correlated JSON-RPC errors.
+`@connectonion/react` owns this browser operation; O Chat consumes it without
+constructing protocol frames. Default and Plan are separate client
+collaboration modes and do not appear in this Host permission list.
 
 #### ONBOARD_SUBMIT
 
@@ -514,11 +517,11 @@ Response to CONNECT.
     }
   },
   "session_modes": {
-    "currentModeId": "default",
+    "currentModeId": ":read-only",
     "availableModes": [
-      {"id": "default", "name": "Default", "description": "Ask before sensitive tool calls."},
-      {"id": "auto_approve", "name": "Auto-approve", "description": "Apply named edits without asking; other sensitive tools still require approval."},
-      {"id": "full_access", "name": "Full access (YOLO)", "description": "Skip tool approval and continue autonomously to the configured checkpoint."}
+      {"id": ":read-only", "name": "Read only", "description": "Read freely; ask before edits, commands, or broader access."},
+      {"id": ":workspace", "name": "Auto", "description": "Edit the workspace automatically; broader actions still ask."},
+      {"id": ":danger-full-access", "name": "Full access", "description": "Run without approval prompts within the Host launch ceiling."}
     ]
   },
   "server_newer": true,

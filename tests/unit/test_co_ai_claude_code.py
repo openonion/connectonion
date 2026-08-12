@@ -20,9 +20,9 @@ OLD_SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 @pytest.mark.parametrize(
     ("mode", "permission_mode"),
     [
-        ("default", "default"),
-        ("auto_approve", "acceptEdits"),
-        ("full_access", "auto"),
+        (":read-only", "default"),
+        (":workspace", "acceptEdits"),
+        (":danger-full-access", "auto"),
     ],
 )
 def test_co_ai_mode_owns_claude_permission_mode(
@@ -35,10 +35,14 @@ def test_co_ai_mode_owns_claude_permission_mode(
         return '{"provider":"claude_code","session_id":"s"}'
 
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", fake_claude_code)
-    agent = SimpleNamespace(
-        current_session={"mode": mode},
-        _delegation_workspace=tmp_path,
-    )
+    session = {"mode": mode}
+    if mode == ":danger-full-access":
+        session.update({
+            "skip_tool_approval": True,
+            "full_access_turns": 10,
+            "full_access_turns_used": 0,
+        })
+    agent = SimpleNamespace(current_session=session, _delegation_workspace=tmp_path)
 
     result = claude_code(
         "fix it",
@@ -82,7 +86,25 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
     assert all(call["permission_mode"] == "default" for call in calls)
 
 
-@pytest.mark.parametrize("mode", ["default", "auto_approve", "full_access"])
+def test_full_access_label_without_bounded_grant_uses_provider_default(
+    monkeypatch, tmp_path
+):
+    seen = {}
+    monkeypatch.setattr(
+        claude_wrapper,
+        "_run_claude_code",
+        lambda **kwargs: seen.update(kwargs) or "result",
+    )
+
+    assert claude_code(
+        "inspect",
+        cwd=str(tmp_path),
+        agent=SimpleNamespace(current_session={"mode": ":danger-full-access"}),
+    ) == "result"
+    assert seen["permission_mode"] == "default"
+
+
+@pytest.mark.parametrize("mode", [":read-only", ":workspace", ":danger-full-access"])
 def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
     backend = pytest.fail
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", backend)
@@ -158,7 +180,7 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
             cwd=str(tmp_path),
             session_id=OLD_SESSION,
             agent=SimpleNamespace(
-                current_session={"mode": "auto_approve"},
+                current_session={"mode": ":workspace"},
                 _delegation_workspace=tmp_path,
             ),
         )
@@ -186,7 +208,7 @@ def test_outer_approval_does_not_duplicate_claude_permissions():
     io = SimpleNamespace(send=lambda *_: pytest.fail("outer approval must not prompt"))
     agent = SimpleNamespace(
         current_session={
-            "mode": "default",
+            "mode": ":read-only",
             "permissions": {
                 "claude_code": {
                     "allowed": True,

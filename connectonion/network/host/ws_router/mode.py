@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [core.acp_wire, host.session.mode, rich.console] | imported by [.session] | tested by [tests/unit/test_acp_host_set_mode.py]
   Data flow: run_ws_session routes ACP_REQUEST/mode_change here -> validate request identity/session -> commit_host_session_mode() -> update conn only after append -> send ACP_RESPONSE or legacy mode_changed
   State/Effects: tracks a bounded insertion-ordered map of consumed request IDs in conn; mutates conn['session'] only after durable success
-  Integration: handle_acp_mode_request returns False for an unsupported schema/method so session.py can reject without forwarding; handle_legacy_mode_change maps the temporary plan alias to Default
+  Integration: handle_acp_mode_request returns False for an unsupported schema/method so session.py can reject without forwarding; handle_legacy_mode_change maps the historical plan alias to :read-only
   Errors: policy failures retain their owned JSON-RPC code; malformed params=-32602, storage failure=-32603 without private exception details
 """
 
@@ -20,7 +20,7 @@ from ....core.acp_wire import (
     acp_set_mode_request_id,
     acp_set_mode_response_frame,
 )
-from ....core.approval_modes import DEFAULT_MODE
+from ....core.approval_modes import READ_ONLY_PERMISSION_PROFILE
 from ..session.mode import ModeTransactionError, commit_host_session_mode
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,11 @@ async def handle_legacy_mode_change(
     if not conn.get("authenticated") or policy is None or not session_id:
         await send_msg({"type": "ERROR", "message": "mode change is unavailable"})
         return
-    mode_id = DEFAULT_MODE if frame.get("mode") == "plan" else frame.get("mode")
+    mode_id = (
+        READ_ONLY_PERMISSION_PROFILE
+        if frame.get("mode") == "plan"
+        else frame.get("mode")
+    )
     try:
         record = await asyncio.to_thread(
             commit_host_session_mode,

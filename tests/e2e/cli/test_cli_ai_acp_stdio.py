@@ -258,7 +258,7 @@ async def test_acp_subprocess_lease_blocks_a_second_process_until_close(tmp_path
             "session/resume",
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
-        assert resumed["result"]["modes"]["currentModeId"] == "default"
+        assert resumed["result"]["modes"]["currentModeId"] == ":read-only"
         assert notifications == []
 
 
@@ -278,7 +278,7 @@ async def test_acp_subprocess_eof_releases_lease_for_later_resume(tmp_path):
             "session/resume",
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
-        assert resumed["result"]["modes"]["currentModeId"] == "default"
+        assert resumed["result"]["modes"]["currentModeId"] == ":read-only"
         assert notifications == []
 
         response, notifications = await _request(
@@ -309,10 +309,10 @@ async def test_acp_subprocess_sets_and_resumes_the_official_mode_state(tmp_path)
         )
         session_id = created["result"]["sessionId"]
         modes = created["result"]["modes"]
-        assert modes["currentModeId"] == "default"
+        assert modes["currentModeId"] == ":read-only"
         assert [mode["id"] for mode in modes["availableModes"]] == [
-            "default",
-            "auto_approve",
+            ":read-only",
+            ":workspace",
         ]
         assert notifications == []
 
@@ -320,7 +320,7 @@ async def test_acp_subprocess_sets_and_resumes_the_official_mode_state(tmp_path)
             first,
             3,
             "session/set_mode",
-            {"sessionId": session_id, "modeId": "auto_approve"},
+            {"sessionId": session_id, "modeId": ":workspace"},
         )
         assert changed["result"] == {}
         assert notifications == []
@@ -340,5 +340,5 @@ async def test_acp_subprocess_sets_and_resumes_the_official_mode_state(tmp_path)
             "session/resume",
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
-        assert resumed["result"]["modes"]["currentModeId"] == "auto_approve"
+        assert resumed["result"]["modes"]["currentModeId"] == ":workspace"
         assert notifications == []

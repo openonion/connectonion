@@ -1,66 +1,81 @@
-# DD-044: Approval modes use mainstream product vocabulary
+# DD-044: Align collaboration and permissions with Codex
 
 **Status:** Accepted
 
 **Date:** 2026-08-12
 
-**Related:** [030 Generation-scoped Tool Approvals](030-acp-generation-scoped-tool-approvals.md), [031 Session Mode Authority](031-acp-session-mode-authority.md), [039 Authoritative Host Mode Updates](039-authoritative-acp-host-mode-updates.md), [040 Durable Host Mode Transactions](040-durable-acp-host-session-mode-transactions.md), [Issue #903](https://github.com/openonion/connectonion/issues/903)
+**Related:** [031 Session Mode Authority](031-acp-session-mode-authority.md), [039 Authoritative Host Mode Updates](039-authoritative-acp-host-mode-updates.md), [040 Durable Host Mode Transactions](040-durable-acp-host-session-mode-transactions.md), [Issue #903](https://github.com/openonion/connectonion/issues/903)
 
 ## Context
 
-ConnectOnion exposed the approval IDs `safe`, `accept_edits`, and `ulw`. Their
-behavior was useful, but the names required ConnectOnion-specific explanation
-and differed across the Host, `@connectonion/react`, O Chat, ACP, documentation, and
-delegated coding tools. O Chat also has a local Plan workflow, which is a
-conversation state rather than server approval authority.
+ConnectOnion historically mixed `safe`, `plan`, and `ulw` in one selector.
+That combined two different questions: how the agent collaborates with the
+user, and what the agent may do without asking. It also required
+ConnectOnion-specific vocabulary across Host, React, O Chat, and delegated
+coding tools.
+
+Codex keeps those concerns independent. Its app-server collaboration mode has
+`default` and `plan`; its built-in permission profiles are `:read-only`,
+`:workspace`, and `:danger-full-access`.
 
 ## Decision
 
-The canonical approval vocabulary is:
+Connect uses the same two-layer model:
 
-| ID | Display name | Authority |
+| Layer | Canonical ID | Display name |
 |---|---|---|
-| `default` | Default | Ask before sensitive, unpermitted tool calls. |
-| `auto_approve` | Auto-approve | Automatically approve named file-edit tools; retain policy checks for other sensitive tools. |
-| `full_access` | Full access (YOLO) | Operator-only approval bypass with the configured autonomous checkpoint. |
+| Collaboration | `default` | Default |
+| Collaboration | `plan` | Plan |
+| Permission | `:read-only` | Read only |
+| Permission | `:workspace` | Auto |
+| Permission | `:danger-full-access` | Full access |
 
-Plan remains an O Chat workflow. When Plan talks to the Host, its server
-approval authority is `default`. YOLO is a familiar display name and API
-shorthand for `full_access`, not a fourth mode.
+Collaboration is client workflow state. Plan never grants or rewrites Host
+authority. Permission profiles are authenticated Host state and change only
+after the durable ACP `session/set_mode` transaction is acknowledged.
 
-Host and React serializers emit only canonical values. Compatibility readers may
-accept the previous three IDs and their corresponding turn fields, normalize
-them immediately, and expose only canonical state to the rest of the system.
-New sessions and persisted updates never write the previous vocabulary.
+`Auto` is the product label for the workspace profile, not a canonical
+`auto_approve` identifier. `--yolo` remains a recognizable CLI shorthand for
+Full access; it is not a fourth mode or the primary UI/code identifier.
 
-An untrusted presentation reader may omit an unknown value and display Default.
-An authority-bearing persisted Host or ACP snapshot with an unknown, malformed,
-or over-authorized value is rejected before the Agent runs, as required by
-DD-031; “fail closed” does not mean silently rewriting corrupt authority state.
+The exact permission profiles are emitted on ACP and persisted in session
+state. Full access remains operator-only and requires ConnectOnion's complete,
+current Host grant and turn ceiling. This vocabulary alignment does not claim
+that every provider implements Codex's operating-system sandbox.
 
-Delegation adapters translate canonical product intent to provider-specific
-controls at their boundary. Provider terms do not leak back into the Host
-protocol.
+Provider adapters translate the permission profile at their boundary. Codex
+receives `read-only`, `workspace-write`, or `danger-full-access`; Claude Code
+receives its own provider-specific permission value. Those terms do not leak
+back into Connect's public contract.
 
-Claude's CLI `--safe-mode` is an isolation switch, not the retired product mode
-ID `safe`. Delegated runs keep that switch while the ConnectOnion product mode
-becomes `default`; renaming the product vocabulary must not re-enable provider
-customizations or persistent local allow rules.
+## Migration
 
-## Compatibility and rollback
+Compatibility readers accept old persisted or wire values only at the
+boundary, normalize immediately, and never newly emit them:
 
-The compatibility reader is deliberately isolated and covered by migration
-tests. It can be removed after one compatibility window. Rolling back the UI is
-safe only while the server still has that reader; canonical-only sessions must
-not be rewritten with previous IDs.
+| Previous value | Canonical result |
+|---|---|
+| `safe`, `default` | `:read-only` |
+| `accept_edits`, `auto_approve` | `:workspace` |
+| `ulw`, `full_access` | `:danger-full-access` |
+| `plan` in an old permission field | collaboration `plan` plus permission `:read-only` |
+
+Unknown or incomplete authority fails closed. A malformed Full access label
+without its bounded grant is downgraded before any tool can run.
+
+## References
+
+- [Codex agent approvals and security](https://learn.chatgpt.com/codex/agent-approvals-security)
+- [Codex permissions](https://learn.chatgpt.com/codex/permissions)
+- [Codex configuration reference](https://learn.chatgpt.com/codex/config-file/config-reference)
 
 ## Rejected alternatives
 
-- **Keep both vocabularies public:** creates two names for every state and lets
-  old IDs continue to spread through persisted data.
-- **Treat Plan as server authority:** conflates planning UI with tool approval
-  and can leave a session without a valid exit path.
-- **Make YOLO a separate protocol ID:** duplicates Full access behavior and
-  forces every client to handle a fourth state.
-- **Map Auto-approve to every tool:** changes the existing security boundary;
-  this decision renames behavior rather than widening it.
+- **One selector containing Plan and Full access:** still conflates workflow
+  intent with authority.
+- **Public `auto_approve` / `full_access` IDs:** resembles common wording but
+  does not match Codex's profile contract.
+- **YOLO as a fourth protocol value:** duplicates Full access and complicates
+  every client.
+- **Silent unknown-value fallback in Host authority:** can hide corrupt or
+  over-authorized persisted state.

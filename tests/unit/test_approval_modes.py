@@ -1,32 +1,32 @@
 import pytest
 
 from connectonion.core.approval_modes import (
-    AUTO_APPROVE_MODE,
-    DEFAULT_MODE,
-    FULL_ACCESS_MODE,
-    approval_mode_id,
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
     has_valid_full_access_grant,
-    legacy_approval_mode_id,
+    legacy_permission_profile_id,
     migrate_legacy_full_access_fields,
     normalize_runtime_approval_session,
+    permission_profile_id,
 )
 
 
 @pytest.mark.parametrize(
     ("legacy", "canonical"),
     [
-        ("safe", DEFAULT_MODE),
-        ("accept_edits", AUTO_APPROVE_MODE),
-        ("ulw", FULL_ACCESS_MODE),
+        ("safe", READ_ONLY_PERMISSION_PROFILE),
+        ("accept_edits", WORKSPACE_PERMISSION_PROFILE),
+        ("ulw", DANGER_FULL_ACCESS_PERMISSION_PROFILE),
     ],
 )
 def test_legacy_mode_ids_normalize_only_through_the_compatibility_reader(
     legacy,
     canonical,
 ):
-    assert legacy_approval_mode_id(legacy) == canonical
-    with pytest.raises(ValueError, match="Unsupported approval mode"):
-        approval_mode_id(legacy)
+    assert legacy_permission_profile_id(legacy) == canonical
+    with pytest.raises(ValueError, match="Unsupported permission profile"):
+        permission_profile_id(legacy)
 
 
 def test_legacy_full_access_fields_migrate_without_overwriting_canonical_state():
@@ -51,7 +51,7 @@ def test_runtime_session_migrates_one_valid_legacy_full_access_grant():
         "ulw_turns_used": 3,
         "skip_tool_approval": True,
     }) == {
-        "mode": "full_access",
+        "mode": ":danger-full-access",
         "full_access_turns": 10,
         "full_access_turns_used": 3,
         "skip_tool_approval": True,
@@ -60,12 +60,12 @@ def test_runtime_session_migrates_one_valid_legacy_full_access_grant():
 
 def test_full_access_grant_requires_all_bounded_authority_fields():
     assert has_valid_full_access_grant({
-        "mode": "full_access",
+        "mode": ":danger-full-access",
         "full_access_turns": 10,
         "full_access_turns_used": 3,
         "skip_tool_approval": True,
     })
-    assert not has_valid_full_access_grant({"mode": "full_access"})
+    assert not has_valid_full_access_grant({"mode": ":danger-full-access"})
 
 
 @pytest.mark.parametrize(
@@ -73,9 +73,9 @@ def test_full_access_grant_requires_all_bounded_authority_fields():
     [
         {"mode": "future", "skip_tool_approval": True},
         {"mode": "plan", "skip_tool_approval": True},
-        {"mode": "full_access", "full_access_turns": 5},
+        {"mode": ":danger-full-access", "full_access_turns": 5},
         {
-            "mode": "full_access",
+            "mode": ":danger-full-access",
             "full_access_turns": 5,
             "full_access_turns_used": 5,
             "skip_tool_approval": True,
@@ -85,7 +85,7 @@ def test_full_access_grant_requires_all_bounded_authority_fields():
 def test_runtime_session_downgrades_malformed_authority_before_execution(session):
     normalized = normalize_runtime_approval_session(session)
 
-    assert normalized["mode"] == "default"
+    assert normalized["mode"] == ":read-only"
     assert not {
         "skip_tool_approval",
         "full_access_turns",

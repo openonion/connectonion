@@ -17,9 +17,11 @@ field into a permission grant or changing persisted sessions during rollout.
 ## Decision
 
 The Host mirrors an Agent-originated `mode_changed` event as the exact ACP v1.19
-`CurrentModeUpdate(sessionUpdate="current_mode_update")`. The persisted IDs are
-used directly: `default`, `auto_approve`, and `full_access`. `plan` is a product
-workflow that the Agent normalizes to Default; it is not valid authoritative output.
+`CurrentModeUpdate(sessionUpdate="current_mode_update")`. The persisted Host
+permission profiles are used directly: `:read-only`, `:workspace`, and
+`:danger-full-access`. `plan` is a collaboration workflow that the Agent
+normalizes to Read only at the authority boundary; it is not valid
+authoritative output.
 
 The Host-owned connection session ID is placed in the ACP notification. A
 session ID supplied by the Agent event is never trusted. The ACP mirror is sent

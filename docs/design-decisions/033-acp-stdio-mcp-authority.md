@@ -61,7 +61,7 @@ remaining collision.
 
 MCP annotations never grant authority. Exported MCP callables enter the normal
 ConnectOnion tool registry and the fail-closed policy established by DD-030 and
-the unclassified-tool decision. Default and Auto-approve modes request ACP
+the unclassified-tool decision. Read only and Auto profiles request ACP
 operator permission before an MCP side effect. Only explicit Full access authority can
 bypass that prompt.
 

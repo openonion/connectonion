@@ -237,7 +237,7 @@ async def test_new_session_persists_canonical_snapshot_and_holds_lease(
         "messages": [{"role": "system", "content": "system"}],
         "trace": [],
         "turn": 0,
-        "mode": "default",
+        "mode": ":read-only",
         "plan": [],
     }
     assert tools == {"todolist": []}
@@ -264,7 +264,7 @@ async def test_resume_restores_session_and_tool_state_without_replay(
         "messages": [{"role": "system", "content": "old"}],
         "trace": [{"type": "old"}],
         "turn": 4,
-        "mode": "auto_approve",
+        "mode": ":workspace",
         "plan": _plan("old todo"),
     }
     save_snapshot(state_dir, saved, {"todolist": [_todo("old todo")]})
@@ -288,7 +288,7 @@ async def test_resume_restores_session_and_tool_state_without_replay(
 
     assert response.stop_reason == "end_turn"
     assert agent.received_sessions[0]["turn"] == 4
-    assert agent.received_sessions[0]["mode"] == "auto_approve"
+    assert agent.received_sessions[0]["mode"] == ":workspace"
     stored, tools = load_snapshot(state_dir, session_id)
     assert stored["turn"] == 5
     assert stored["plan"] == [

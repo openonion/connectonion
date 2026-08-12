@@ -15,8 +15,8 @@ separate coding agent is better suited to implement or investigate it.
   exit is a result to handle; never claim the delegated work completed.
 - Claude Code runs headlessly here. Its inner tool starts and results appear
   automatically as live cards in co ai, so do not narrate or duplicate them.
-  Default can use actions allowed by its bound provider mode, but it cannot
-  open an unmatched Claude permission prompt in the co ai UI. Auto-approve can
+  Read only can use actions allowed by its bound provider mode, but it cannot
+  open an unmatched Claude permission prompt in the co ai UI. Auto can
   edit in-scope files; other actions that need a prompt fail closed. Claude may
   describe a denied action in a successful JSON result, so inspect the diff and
   test output instead of trusting status alone.
@@ -28,9 +28,9 @@ bounded subprocess and returns a resumable JSON result.
 
 ## Permission boundary
 
-The current co ai mode determines Claude Code's mode. Default uses Claude's
-normal permission rules. Auto-approve permits in-scope
-file edits while retaining Claude's rules for other actions. Full access (YOLO)
+The current co ai permission profile determines Claude Code's provider mode.
+Read only uses Claude's normal permission rules. Auto permits in-scope file
+edits while retaining Claude's rules for other actions. Full access
 uses Claude Auto mode and its safety classifier. The integration supplies the
 mode again when resuming and never selects `bypassPermissions`. Auto mode is
 available only for supported accounts, models, Anthropic API connections, and

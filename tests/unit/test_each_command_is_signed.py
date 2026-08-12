@@ -344,9 +344,9 @@ async def test_v2_session_passes_only_verified_acp_mode_request(keys, monkeypatc
     agent = RemoteAgent("0x" + "12" * 20, keys=keys)
     connect = {"type": "CONNECT", "from": keys["address"]}
     signed = agent._build_command_message(
-        acp_set_mode_request_frame("request-1", "s1", "default")
+        acp_set_mode_request_frame("request-1", "s1", ":read-only")
     )
-    signed["message"]["params"]["modeId"] = "full_access"
+    signed["message"]["params"]["modeId"] = ":danger-full-access"
     handled = []
 
     async def fake_mode(data, *_args):
@@ -358,7 +358,7 @@ async def test_v2_session_passes_only_verified_acp_mode_request(keys, monkeypatc
         [connect, signed], monkeypatch, signed_commands=True, ran=[]
     )
 
-    assert handled[0]["message"]["params"]["modeId"] == "default"
+    assert handled[0]["message"]["params"]["modeId"] == ":read-only"
 
 
 @pytest.mark.asyncio
@@ -366,7 +366,7 @@ async def test_v2_session_rejects_unsigned_acp_mode_request(keys, monkeypatch):
     from connectonion.network.host.ws_router import session
 
     connect = {"type": "CONNECT", "from": keys["address"]}
-    unsigned = acp_set_mode_request_frame("request-1", "s1", "default")
+    unsigned = acp_set_mode_request_frame("request-1", "s1", ":read-only")
     handled = []
 
     async def fake_mode(data, *_args):

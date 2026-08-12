@@ -18,7 +18,7 @@ from acp.schema import (
 )
 
 from ...core.acp_wire import map_plan_event, map_tool_event
-from ...core.approval_modes import approval_mode_id
+from ...core.approval_modes import legacy_permission_profile_id
 
 ACPUpdate = (
     AgentMessageChunk
@@ -97,7 +97,7 @@ def _assistant(event: Mapping[str, Any]) -> AgentMessageChunk:
 def _current_mode(event: Mapping[str, Any]) -> CurrentModeUpdate:
     value = _required_string(event, "mode")
     try:
-        mode = approval_mode_id(value)
+        mode = legacy_permission_profile_id(value)
     except ValueError:
         raise ValueError(f"Unsupported Agent mode: {value!r}") from None
     return CurrentModeUpdate(
