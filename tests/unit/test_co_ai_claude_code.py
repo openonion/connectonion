@@ -14,6 +14,7 @@ claude_wrapper = importlib.import_module(
     "connectonion.cli.co_ai.tools.claude_code"
 )
 claude_library = importlib.import_module("connectonion.useful_tools.claude_code")
+OLD_SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
 @pytest.mark.parametrize(
@@ -34,7 +35,10 @@ def test_co_ai_mode_owns_claude_permission_mode(
         return '{"provider":"claude_code","session_id":"s"}'
 
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", fake_claude_code)
-    agent = SimpleNamespace(current_session={"mode": mode})
+    agent = SimpleNamespace(
+        current_session={"mode": mode},
+        _delegation_workspace=tmp_path,
+    )
 
     result = claude_code(
         "fix it",
@@ -54,6 +58,7 @@ def test_co_ai_mode_owns_claude_permission_mode(
         "model": "sonnet",
         "timeout": 42,
         "agent": agent,
+        "workspace": tmp_path,
     }
 
 
@@ -134,14 +139,14 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
     def fake_run(argv, **kwargs):
         calls.append((argv, kwargs))
         return SimpleNamespace(
-            stdout=json.dumps(
-                {
-                    "result": "continued",
-                    "session_id": "session-old",
-                    "is_error": False,
-                }
-            ),
+            payload={
+                "type": "result",
+                "result": "continued",
+                "session_id": OLD_SESSION,
+                "is_error": False,
+            },
             stderr="",
+            invalid_output="",
             returncode=0,
         )
 
@@ -151,17 +156,20 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
         claude_code(
             "continue",
             cwd=str(tmp_path),
-            session_id="session-old",
-            agent=SimpleNamespace(current_session={"mode": "accept_edits"}),
+            session_id=OLD_SESSION,
+            agent=SimpleNamespace(
+                current_session={"mode": "accept_edits"},
+                _delegation_workspace=tmp_path,
+            ),
         )
     )
 
     argv = calls[0][0]
     assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
-    assert argv[argv.index("--resume") + 1] == "session-old"
+    assert argv[argv.index("--resume") + 1] == OLD_SESSION
     assert calls[0][1]["cwd"] == str(tmp_path.resolve())
     assert result["resumed"] is True
-    assert result["session_id"] == "session-old"
+    assert result["session_id"] == OLD_SESSION
 
 
 def test_structured_library_failure_passes_through(monkeypatch, tmp_path):
