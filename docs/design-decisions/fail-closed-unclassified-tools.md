@@ -14,12 +14,12 @@ That assumption was valid only while the framework controlled every tool name. A
 When an agent has live IO, approval is allowlist-based:
 
 1. Explicit template, config, skill, and user permissions are evaluated first.
-2. `accept_edits` auto-approves only the named file-edit tools.
-3. `ulw` remains an explicit authority bypass owned by its plugin.
+2. `auto_approve` auto-approves only the named file-edit tools.
+3. `full_access` remains an explicit authority bypass owned by its plugin.
 4. Every other tool call must receive operator approval; a hosted non-admin requester is rejected without a dialog.
 
-In a hosted session, only an admin operator may enable `accept_edits` or `ulw`.
-Non-admin requesters are normalized to `safe`, and the approval hook also
+In a hosted session, only an admin operator may enable `auto_approve` or `full_access`.
+Non-admin requesters are normalized to `default`, and the approval hook also
 refuses to honor stale elevated mode state as defense in depth.
 
 Local library use without `agent.io` remains non-interactive. `DANGEROUS_TOOLS` remains public compatibility metadata for known effectful tools, but it is no longer the security boundary.

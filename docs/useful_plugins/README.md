@@ -18,8 +18,8 @@ Pre-built plugins that extend agent behavior via event hooks.
 | [ui_stream](ui_stream.md) | Stream events to WebSocket clients | `from connectonion.useful_plugins import ui_stream` |
 | [auto_compact](auto_compact.md) | Compact conversation when context fills up | `from connectonion.useful_plugins import auto_compact` |
 | [prefer_write_tool](prefer_write_tool.md) | Guide agent to prefer write for new files | `from connectonion.useful_plugins import prefer_write_tool` |
-| [yolo](yolo.md) | Approval-free autonomous work with a turn bound | `from connectonion.useful_plugins import yolo` |
-| [ulw](ulw.md) | Compatibility alias and frontend wire protocol for YOLO | `from connectonion.useful_plugins import ulw` |
+| [full_access](full_access.md) | Full access (YOLO), bounded by a Host turn ceiling | `from connectonion.useful_plugins import full_access` |
+| [yolo](yolo.md) | CLI/API shorthand for Full access | `from connectonion.useful_plugins import yolo` |
 | [gmail_plugin](gmail_plugin.md) | Gmail OAuth flow | `from connectonion.useful_plugins import gmail_plugin` |
 | [calendar_plugin](calendar_plugin.md) | Calendar OAuth flow | `from connectonion.useful_plugins import calendar_plugin` |
 
@@ -87,8 +87,8 @@ See [co copy](../cli/copy.md) for full details.
 - **auto_compact** - Compact conversation when context window fills up
 
 ### User Interaction
-- **yolo** - Approval-free autonomous loop with bounded checkpoints
-- **ulw** - Compatibility alias and existing frontend wire protocol
+- **full_access** - Approval-free autonomous loop with bounded checkpoints
+- **yolo** - CLI/API shorthand for Full access
 
 ### Streaming
 - **ui_stream** - Stream agent trace events to WebSocket clients

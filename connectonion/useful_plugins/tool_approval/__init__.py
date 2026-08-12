@@ -1,7 +1,7 @@
 """
 Purpose: WebSocket-based tool approval plugin with mode system and unified permissions
 LLM-Note:
-  Dependencies: imports from [./approval.py (check_approval, load_config_permissions, poll_mode_changes, poll_interrupt, handle_mode_change, get_current_mode), ./constants.py (VALID_MODES, DEFAULT_MODE)] | imported by [../.__init__.py useful_plugins package, cli/co_ai/agent.py, cli/templates/minimal/agent.py, ulw.py, skills.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_tool_approval.py, tests/unit/test_shell_approval.py]
+  Dependencies: imports from [./approval.py (check_approval, load_config_permissions, poll_mode_changes, poll_interrupt, handle_mode_change, get_current_mode), ./constants.py (VALID_MODES, DEFAULT_MODE)] | imported by [../.__init__.py useful_plugins package, cli/co_ai/agent.py, cli/templates/minimal/agent.py, full_access.py, skills.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_tool_approval.py, tests/unit/test_shell_approval.py]
   Data flow: agent loads plugin → [load_config_permissions, poll_mode_changes, poll_interrupt, check_approval] registered as event handlers → after_user_input fires → load_config_permissions() loads .co/host.yaml → before_iteration fires → poll_mode_changes() checks WebSocket for mode_change → before_each_tool fires → check_approval() validates tool → if dangerous: WebSocket approval protocol → if approved: tool executes | if rejected: ValueError raised → after_iteration fires → poll_interrupt() checks WebSocket for INTERRUPT (sets stop_signal so the loop's existing check halts)
   State/Effects: exports tool_approval plugin list | exports utility functions handle_mode_change, get_current_mode | no module state
   Integration: exposes tool_approval (list of 4 event handlers), handle_mode_change(agent, mode), get_current_mode(agent), VALID_MODES, DEFAULT_MODE | used by Agent(plugins=[tool_approval]) | integrates with co ai CLI for WebSocket-based coding agent
@@ -27,9 +27,9 @@ Tool Classification:
 - Unknown tools require approval when live IO is present
 
 Mode System:
-- "safe" (default): Every unpermitted tool needs approval
-- "accept_edits": Named file edits are auto-approved; other unpermitted tools need approval
-- "ulw": Handled by ulw plugin - bypasses all approvals
+- "default": Every unpermitted tool needs approval
+- "auto_approve": Named file edits are auto-approved; other unpermitted tools need approval
+- "full_access": Handled by full_access plugin - bypasses all approvals
 
 Session Memory:
 - scope="once": Approve for this call only
@@ -111,7 +111,7 @@ Architecture - Unified Permission System Lifecycle:
     │ 3. TOOL EXECUTION (@before_each_tool)                                   │
     │    check_approval()                                                     │
     │    ├─ Check skip flags (no_io, skip_tool_approval)                      │
-    │    ├─ Check mode (safe/accept_edits)                                    │
+    │    ├─ Check mode (default/auto_approve/full_access)                     │
     │    ├─ Iterate permissions dict:                                         │
     │    │  ├─ matches_permission_pattern(tool_name, args, key)               │
     │    │  │  - For 'bash': matches tool name                                │
@@ -165,7 +165,7 @@ Architecture - Unified Permission System Lifecycle:
 
 Integration with other plugins:
     - skills plugin: grants turn-scoped permissions, snapshots/restores
-    - ulw plugin: sets skip_tool_approval=True to bypass all checks
+    - full_access plugin: sets skip_tool_approval=True to bypass all checks
     - tool_approval: owns matches_permission_pattern() for validation
     - co_ai CLI: includes tool_approval by default for WebSocket agent
 

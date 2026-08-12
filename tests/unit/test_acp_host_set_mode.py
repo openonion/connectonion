@@ -41,7 +41,7 @@ def requester(address="0xowner", level="admin"):
     return {"address": address, "level": level}
 
 
-def request(*, session_id=SESSION_ID, mode_id="accept_edits", **message_fields):
+def request(*, session_id=SESSION_ID, mode_id="auto_approve", **message_fields):
     return {
         "type": "ACP_REQUEST",
         "acpSchema": ACP_SCHEMA_VERSION,
@@ -57,55 +57,69 @@ def request(*, session_id=SESSION_ID, mode_id="accept_edits", **message_fields):
 
 def test_exact_official_session_mode_state_uses_persisted_ids():
     assert acp_session_mode_state(
-        "accept_edits", ["safe", "accept_edits", "ulw"]
+        "auto_approve", ["default", "auto_approve", "full_access"]
     ) == {
-        "currentModeId": "accept_edits",
+        "currentModeId": "auto_approve",
         "availableModes": [
             {
-                "id": "safe",
-                "name": "Safe",
-                "description": "Ask before side effects.",
+                "id": "default",
+                "name": "Default",
+                "description": "Ask before unapproved sensitive actions.",
             },
             {
-                "id": "accept_edits",
-                "name": "Auto",
-                "description": "Apply edits without asking; other tools still require approval.",
+                "id": "auto_approve",
+                "name": "Auto-approve",
+                "description": "Apply edits automatically; other sensitive actions follow policy.",
             },
             {
-                "id": "ulw",
-                "name": "ULW",
-                "description": "Run without tool approvals within the Host launch ceiling.",
+                "id": "full_access",
+                "name": "Full access (YOLO)",
+                "description": "Run without approval prompts within the Host launch ceiling.",
             },
         ],
     }
 
 
 def test_mode_state_rejects_plan_unknown_duplicates_and_unadvertised_current():
-    with pytest.raises(ValueError, match="Unsupported ACP session mode"):
-        acp_session_mode_state("plan", ["safe"])
-    with pytest.raises(ValueError, match="Unsupported ACP session mode"):
-        acp_session_mode_state("safe", ["safe", "future"])
+    with pytest.raises(ValueError, match="Unsupported approval mode"):
+        acp_session_mode_state("plan", ["default"])
+    with pytest.raises(ValueError, match="Unsupported approval mode"):
+        acp_session_mode_state("default", ["default", "future"])
     with pytest.raises(ValueError, match="duplicate"):
-        acp_session_mode_state("safe", ["safe", "safe"])
+        acp_session_mode_state("default", ["default", "default"])
     with pytest.raises(ValueError, match="not advertised"):
-        acp_session_mode_state("accept_edits", ["safe"])
+        acp_session_mode_state("auto_approve", ["default"])
 
 
 def test_exact_set_mode_request_parses_through_official_model():
     assert acp_set_mode_request_frame(
-        REQUEST_ID, SESSION_ID, "accept_edits"
+        REQUEST_ID, SESSION_ID, "auto_approve"
     ) == request()
     assert acp_set_mode_request(
         request(), expected_session_id=SESSION_ID
-    ) == (REQUEST_ID, "accept_edits")
+    ) == (REQUEST_ID, "auto_approve")
     assert acp_set_mode_request_id(request()) == REQUEST_ID
+
+
+@pytest.mark.parametrize(
+    ("legacy", "canonical"),
+    [
+        ("safe", "default"),
+        ("accept_edits", "auto_approve"),
+        ("ulw", "full_access"),
+    ],
+)
+def test_rolling_upgrade_requests_normalize_before_commit(legacy, canonical):
+    assert acp_set_mode_request(
+        request(mode_id=legacy), expected_session_id=SESSION_ID
+    ) == (REQUEST_ID, canonical)
 
 
 @pytest.mark.parametrize(
     "frame, message",
     [
         (request(session_id="another-session"), "another session"),
-        (request(mode_id="plan"), "Unsupported ACP session mode"),
+        (request(mode_id="plan"), "Unsupported approval mode"),
         (request(extra=True), "exact JSON-RPC request"),
         ({**request(), "acpSchema": "future"}, "carrier schema"),
         ({**request(), "type": "ACP_RESPONSE"}, "request carrier"),
@@ -117,15 +131,15 @@ def test_set_mode_request_fails_closed(frame, message):
 
 
 def test_set_mode_request_allows_meta_but_never_reads_authority_from_it():
-    frame = request(mode_id="safe")
+    frame = request(mode_id="default")
     frame["message"]["params"]["_meta"] = {
         "turns": 999999,
-        "modeId": "ulw",
+        "modeId": "full_access",
     }
 
     assert acp_set_mode_request(
         frame, expected_session_id=SESSION_ID
-    ) == (REQUEST_ID, "safe")
+    ) == (REQUEST_ID, "default")
 
 
 def test_exact_success_and_error_response_carriers():
@@ -151,11 +165,11 @@ def test_client_decodes_exact_advertisement_and_owned_response():
             }
         },
         "session_modes": acp_session_mode_state(
-            "safe", ["safe", "accept_edits"]
+            "default", ["default", "auto_approve"]
         ),
     }
 
-    assert host_session_mode_state(connected)["currentModeId"] == "safe"
+    assert host_session_mode_state(connected)["currentModeId"] == "default"
     assert acp_set_mode_response(
         acp_set_mode_response_frame(REQUEST_ID, SESSION_ID),
         expected_request_id=REQUEST_ID,
@@ -199,25 +213,25 @@ def test_client_decodes_exact_advertisement_and_owned_response():
 
 def test_mode_policy_advertises_only_identity_and_launch_authority():
     safe_only = HostModePolicy()
-    with_ulw = HostModePolicy(ulw_turns=7)
+    with_full_access = HostModePolicy(full_access_turns=7)
 
-    assert safe_only.available_mode_ids(is_admin=False) == ("safe",)
+    assert safe_only.available_mode_ids(is_admin=False) == ("default",)
     assert safe_only.available_mode_ids(is_admin=True) == (
-        "safe", "accept_edits"
+        "default", "auto_approve"
     )
-    assert with_ulw.available_mode_ids(is_admin=False) == ("safe",)
-    assert with_ulw.available_mode_ids(is_admin=True) == (
-        "safe", "accept_edits", "ulw"
+    assert with_full_access.available_mode_ids(is_admin=False) == ("default",)
+    assert with_full_access.available_mode_ids(is_admin=True) == (
+        "default", "auto_approve", "full_access"
     )
 
 
 @pytest.mark.parametrize("turns", [True, 0, -1, "7"])
 def test_mode_policy_rejects_an_invalid_launch_ceiling(turns):
     with pytest.raises(ValueError, match="positive integer"):
-        HostModePolicy(ulw_turns=turns)
+        HostModePolicy(full_access_turns=turns)
 
 
-def test_connect_persists_an_owned_safe_session_before_first_prompt(storage):
+def test_connect_persists_an_owned_default_session_before_first_prompt(storage):
     policy = HostModePolicy()
 
     record = ensure_host_mode_session(
@@ -236,7 +250,7 @@ def test_connect_persists_an_owned_safe_session_before_first_prompt(storage):
         "messages": [],
         "trace": [],
         "turn": 0,
-        "mode": "safe",
+        "mode": "default",
         "requester": requester(),
     }
     assert storage.get(SESSION_ID).session == record.session
@@ -262,12 +276,12 @@ def test_idle_mode_commit_preserves_history_owner_and_ttl(storage):
         registry=None,
         session_id=SESSION_ID,
         owner="0xowner",
-        mode_id="accept_edits",
+        mode_id="auto_approve",
         policy=policy,
         is_admin=True,
     )
 
-    assert changed.session["mode"] == "accept_edits"
+    assert changed.session["mode"] == "auto_approve"
     assert changed.session["messages"] == [
         {"role": "user", "content": "keep"}
     ]
@@ -277,8 +291,8 @@ def test_idle_mode_commit_preserves_history_owner_and_ttl(storage):
     assert changed.expires == original.expires
 
 
-def test_ulw_uses_only_server_ceiling_and_downgrade_removes_all_bypass(storage):
-    policy = HostModePolicy(ulw_turns=7)
+def test_full_access_uses_only_server_ceiling_and_downgrade_removes_all_bypass(storage):
+    policy = HostModePolicy(full_access_turns=7)
     ensure_host_mode_session(
         storage,
         SESSION_ID,
@@ -288,20 +302,20 @@ def test_ulw_uses_only_server_ceiling_and_downgrade_removes_all_bypass(storage):
         is_admin=True,
     )
 
-    ulw = commit_host_session_mode(
-        storage, None, SESSION_ID, "0xowner", "ulw", policy, True
+    full_access = commit_host_session_mode(
+        storage, None, SESSION_ID, "0xowner", "full_access", policy, True
     )
-    assert ulw.session["mode"] == "ulw"
-    assert ulw.session["ulw_turns"] == 7
-    assert ulw.session["ulw_turns_used"] == 0
-    assert ulw.session["skip_tool_approval"] is True
+    assert full_access.session["mode"] == "full_access"
+    assert full_access.session["full_access_turns"] == 7
+    assert full_access.session["full_access_turns_used"] == 0
+    assert full_access.session["skip_tool_approval"] is True
 
     safe = commit_host_session_mode(
-        storage, None, SESSION_ID, "0xowner", "safe", policy, True
+        storage, None, SESSION_ID, "0xowner", "default", policy, True
     )
-    assert safe.session["mode"] == "safe"
+    assert safe.session["mode"] == "default"
     assert not {
-        "ulw_turns", "ulw_turns_used", "skip_tool_approval"
+        "full_access_turns", "full_access_turns_used", "skip_tool_approval"
     } & safe.session.keys()
 
 
@@ -309,21 +323,21 @@ def test_ulw_uses_only_server_ceiling_and_downgrade_removes_all_bypass(storage):
     "corrupt",
     [
         {
-            "mode": "safe",
+            "mode": "default",
             "skip_tool_approval": True,
-            "ulw_turns": 7,
-            "ulw_turns_used": 0,
+            "full_access_turns": 7,
+            "full_access_turns_used": 0,
         },
         {
-            "mode": "ulw",
+            "mode": "full_access",
             "skip_tool_approval": True,
-            "ulw_turns": 100,
-            "ulw_turns_used": 0,
+            "full_access_turns": 100,
+            "full_access_turns_used": 0,
         },
     ],
 )
 def test_corrupt_durable_authority_fails_closed_without_append(storage, corrupt):
-    policy = HostModePolicy(ulw_turns=7)
+    policy = HostModePolicy(full_access_turns=7)
     record = ensure_host_mode_session(
         storage,
         SESSION_ID,
@@ -339,7 +353,7 @@ def test_corrupt_durable_authority_fails_closed_without_append(storage, corrupt)
 
     with pytest.raises(ModeTransactionError) as exc_info:
         commit_host_session_mode(
-            storage, None, SESSION_ID, "0xowner", "safe", policy, True
+            storage, None, SESSION_ID, "0xowner", "default", policy, True
         )
 
     assert exc_info.value.code == -32602
@@ -347,9 +361,9 @@ def test_corrupt_durable_authority_fails_closed_without_append(storage, corrupt)
     assert storage.get(SESSION_ID).session == corrupt_session
 
 
-@pytest.mark.parametrize("mode_id", ["accept_edits", "ulw"])
+@pytest.mark.parametrize("mode_id", ["auto_approve", "full_access"])
 def test_non_admin_cannot_select_more_authority(storage, mode_id):
-    policy = HostModePolicy(ulw_turns=7)
+    policy = HostModePolicy(full_access_turns=7)
     ensure_host_mode_session(
         storage,
         SESSION_ID,
@@ -365,7 +379,7 @@ def test_non_admin_cannot_select_more_authority(storage, mode_id):
         )
 
     assert exc_info.value.code == -32602
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.parametrize("status", ["running", "waiting_approval"])
@@ -383,12 +397,12 @@ def test_durable_busy_record_rejects_without_mutation(storage, status):
 
     with pytest.raises(ModeTransactionError) as exc_info:
         commit_host_session_mode(
-            storage, None, SESSION_ID, "0xowner", "accept_edits", policy, True
+            storage, None, SESSION_ID, "0xowner", "auto_approve", policy, True
         )
 
     assert exc_info.value.code == -32000
     assert exc_info.value.data == {"retryable": True}
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 def test_wrong_owner_and_missing_session_are_indistinguishable(storage):
@@ -408,7 +422,7 @@ def test_wrong_owner_and_missing_session_are_indistinguishable(storage):
     ]:
         with pytest.raises(ModeTransactionError) as exc_info:
             commit_host_session_mode(
-                storage, None, session_id, owner, "safe", policy, True
+                storage, None, session_id, owner, "default", policy, True
             )
         assert exc_info.value.code == -32002
         assert exc_info.value.message == "Session not found"
@@ -464,11 +478,11 @@ def test_process_local_running_registry_is_a_fast_busy_guard(storage):
     with pytest.raises(ModeTransactionError) as exc_info:
         commit_host_session_mode(
             storage, Registry(), SESSION_ID, "0xowner",
-            "accept_edits", policy, True,
+            "auto_approve", policy, True,
         )
 
     assert exc_info.value.code == -32000
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 class Trust:
@@ -487,7 +501,7 @@ async def test_connected_advertises_exact_identity_bounded_mode_state(storage):
     from connectonion.network.host.ws_router.connect import establish_connection
 
     sent = []
-    policy = HostModePolicy(ulw_turns=7)
+    policy = HostModePolicy(full_access_turns=7)
     route_handlers = {
         "session_modes": policy,
         "trust_agent": Trust(admin=True),
@@ -513,11 +527,11 @@ async def test_connected_advertises_exact_identity_bounded_mode_state(storage):
     assert connected["session_modes"] == policy.state(
         storage.get(SESSION_ID).session, is_admin=True
     )
-    assert connected["session_modes"]["currentModeId"] == "safe"
+    assert connected["session_modes"]["currentModeId"] == "default"
 
 
 @pytest.mark.asyncio
-async def test_connected_non_admin_sees_safe_only(storage):
+async def test_connected_non_admin_sees_default_only(storage):
     from connectonion.network.host.ws_router.connect import establish_connection
 
     sent = []
@@ -531,7 +545,7 @@ async def test_connected_non_admin_sees_safe_only(storage):
         storage,
         registry,
         {
-            "session_modes": HostModePolicy(ulw_turns=7),
+            "session_modes": HostModePolicy(full_access_turns=7),
             "trust_agent": Trust(admin=False),
             "result_ttl": 3600,
         },
@@ -539,9 +553,9 @@ async def test_connected_non_admin_sees_safe_only(storage):
 
     connected = next(message for message in sent if message["type"] == "CONNECTED")
     assert connected["session_modes"]["availableModes"] == [{
-        "id": "safe",
-        "name": "Safe",
-        "description": "Ask before side effects.",
+        "id": "default",
+        "name": "Default",
+        "description": "Ask before unapproved sensitive actions.",
     }]
 
 
@@ -599,7 +613,7 @@ async def test_idle_mode_commit_survives_a_fresh_connection(storage):
         is_admin=True,
     )
     commit_host_session_mode(
-        storage, None, SESSION_ID, "0xowner", "accept_edits", policy, True
+        storage, None, SESSION_ID, "0xowner", "auto_approve", policy, True
     )
     sent = []
     conn = {}
@@ -607,7 +621,7 @@ async def test_idle_mode_commit_survives_a_fresh_connection(storage):
     registry.get.return_value = None
 
     await establish_connection(
-        {"session_id": SESSION_ID, "session": {"mode": "safe"}},
+        {"session_id": SESSION_ID, "session": {"mode": "default"}},
         "0xowner",
         AsyncMock(side_effect=lambda message: sent.append(message)),
         conn,
@@ -621,8 +635,8 @@ async def test_idle_mode_commit_survives_a_fresh_connection(storage):
     )
 
     connected = next(message for message in sent if message["type"] == "CONNECTED")
-    assert connected["session_modes"]["currentModeId"] == "accept_edits"
-    assert conn["session"]["mode"] == "accept_edits"
+    assert connected["session_modes"]["currentModeId"] == "auto_approve"
+    assert conn["session"]["mode"] == "auto_approve"
 
 
 async def run_mode_dispatch(
@@ -635,7 +649,7 @@ async def run_mode_dispatch(
 ):
     from connectonion.network.host.ws_router import session as ws_session
 
-    policy = policy or HostModePolicy(ulw_turns=7)
+    policy = policy or HostModePolicy(full_access_turns=7)
     ensure_host_mode_session(
         storage,
         SESSION_ID,
@@ -686,7 +700,7 @@ async def test_idle_acp_request_commits_then_acknowledges(monkeypatch, storage):
     sent = await run_mode_dispatch(monkeypatch, storage, request())
 
     assert sent == [acp_set_mode_response_frame(REQUEST_ID, SESSION_ID)]
-    assert storage.get(SESSION_ID).session["mode"] == "accept_edits"
+    assert storage.get(SESSION_ID).session["mode"] == "auto_approve"
 
 
 @pytest.mark.asyncio
@@ -702,7 +716,7 @@ async def test_busy_acp_request_returns_owned_retryable_error(monkeypatch, stora
         "message": "Session is busy",
         "data": {"retryable": True},
     }
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.asyncio
@@ -714,7 +728,7 @@ async def test_malformed_owned_request_returns_invalid_params(monkeypatch, stora
 
     assert sent[0]["type"] == "ACP_RESPONSE"
     assert sent[0]["message"]["error"]["code"] == -32602
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.asyncio
@@ -727,11 +741,11 @@ async def test_request_for_another_session_returns_not_found(monkeypatch, storag
         "code": -32002,
         "message": "ACP mode request belongs to another session",
     }
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.asyncio
-async def test_non_admin_dispatch_cannot_gain_accept_edits(monkeypatch, storage):
+async def test_non_admin_dispatch_cannot_gain_auto_approve(monkeypatch, storage):
     sent = await run_mode_dispatch(
         monkeypatch, storage, request(), is_admin=False
     )
@@ -740,7 +754,7 @@ async def test_non_admin_dispatch_cannot_gain_accept_edits(monkeypatch, storage)
         "code": -32602,
         "message": "Session mode is not available",
     }
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.asyncio
@@ -787,8 +801,8 @@ async def test_persistence_failure_returns_internal_error_without_granting_mode(
         "message": "Unable to change session mode",
     }
     assert "private" not in str(sent)
-    assert conn["session"]["mode"] == "safe"
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert conn["session"]["mode"] == "default"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.asyncio
@@ -824,7 +838,7 @@ async def test_mode_commit_does_not_block_the_async_event_loop(
     }
     started = time.monotonic()
     task = asyncio.create_task(mode_router.handle_acp_mode_request(
-        request(mode_id="safe"),
+        request(mode_id="default"),
         AsyncMock(),
         conn,
         {"session_modes": policy},
@@ -873,7 +887,7 @@ async def test_unknown_acp_request_is_not_forwarded_to_agent(monkeypatch, storag
         "type": "ERROR",
         "message": "unsupported ACP client request",
     }]
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 @pytest.mark.asyncio
@@ -882,39 +896,39 @@ async def test_legacy_mode_change_uses_same_commit_and_plan_alias(monkeypatch, s
     sent = await run_mode_dispatch(
         monkeypatch,
         storage,
-        {"type": "mode_change", "mode": "accept_edits"},
+        {"type": "mode_change", "mode": "auto_approve"},
         {"type": "mode_change", "mode": "plan", "turns": 999999},
         policy=policy,
     )
 
     assert sent == [
-        {"type": "mode_changed", "mode": "accept_edits", "session_id": SESSION_ID},
-        {"type": "mode_changed", "mode": "safe", "session_id": SESSION_ID},
+        {"type": "mode_changed", "mode": "auto_approve", "session_id": SESSION_ID},
+        {"type": "mode_changed", "mode": "default", "session_id": SESSION_ID},
     ]
     safe = storage.get(SESSION_ID).session
-    assert safe["mode"] == "safe"
-    assert "ulw_turns" not in safe
+    assert safe["mode"] == "default"
+    assert "full_access_turns" not in safe
 
 
 @pytest.mark.asyncio
-async def test_legacy_ulw_ignores_client_turns_and_uses_launch_ceiling(
+async def test_legacy_full_access_ignores_client_turns_and_uses_launch_ceiling(
     monkeypatch, storage
 ):
     sent = await run_mode_dispatch(
         monkeypatch,
         storage,
-        {"type": "mode_change", "mode": "ulw", "turns": 999999},
-        policy=HostModePolicy(ulw_turns=7),
+        {"type": "mode_change", "mode": "full_access", "turns": 999999},
+        policy=HostModePolicy(full_access_turns=7),
     )
 
     assert sent == [{
         "type": "mode_changed",
-        "mode": "ulw",
+        "mode": "full_access",
         "session_id": SESSION_ID,
     }]
     durable = storage.get(SESSION_ID).session
-    assert durable["ulw_turns"] == 7
-    assert durable["ulw_turns_used"] == 0
+    assert durable["full_access_turns"] == 7
+    assert durable["full_access_turns_used"] == 0
 
 
 class RecordingAgent:
@@ -934,8 +948,8 @@ class RecordingAgent:
             "session": deepcopy(session),
             "yolo_turns": self._yolo_turns,
             "yolo_needs_activation": self._yolo_needs_activation,
-            "host_ulw_turns_ceiling": getattr(
-                self, "_host_ulw_turns_ceiling", None
+            "host_full_access_turns_ceiling": getattr(
+                self, "_host_full_access_turns_ceiling", None
             ),
         })
         if self.started:
@@ -952,7 +966,7 @@ class RecordingAgent:
 def test_mode_before_first_prompt_drives_agent_and_disarms_auto_yolo(storage):
     from connectonion.network.host.http_router import input_handler
 
-    policy = HostModePolicy(ulw_turns=7)
+    policy = HostModePolicy(full_access_turns=7)
     ensure_host_mode_session(
         storage,
         SESSION_ID,
@@ -962,7 +976,7 @@ def test_mode_before_first_prompt_drives_agent_and_disarms_auto_yolo(storage):
         is_admin=True,
     )
     commit_host_session_mode(
-        storage, None, SESSION_ID, "0xowner", "accept_edits", policy, True
+        storage, None, SESSION_ID, "0xowner", "auto_approve", policy, True
     )
     seen = []
 
@@ -977,11 +991,11 @@ def test_mode_before_first_prompt_drives_agent_and_disarms_auto_yolo(storage):
         is_admin=True,
     )
 
-    assert seen[0]["session"]["mode"] == "accept_edits"
+    assert seen[0]["session"]["mode"] == "auto_approve"
     assert seen[0]["yolo_turns"] is None
     assert seen[0]["yolo_needs_activation"] is False
-    assert seen[0]["host_ulw_turns_ceiling"] == 7
-    assert result["session"]["mode"] == "accept_edits"
+    assert seen[0]["host_full_access_turns_ceiling"] == 7
+    assert result["session"]["mode"] == "auto_approve"
 
 
 def test_final_host_snapshot_downgrades_invalid_agent_authority(storage, caplog):
@@ -991,15 +1005,15 @@ def test_final_host_snapshot_downgrades_invalid_agent_authority(storage, caplog)
         def input(self, *args, **kwargs):
             result = super().input(*args, **kwargs)
             self.current_session.update({
-                "mode": "ulw",
-                "ulw_turns": 999999,
-                "ulw_turns_used": 0,
+                "mode": "full_access",
+                "full_access_turns": 999999,
+                "full_access_turns_used": 0,
                 "skip_tool_approval": True,
                 "requester": requester(address="0xattacker"),
             })
             return result
 
-    policy = HostModePolicy(ulw_turns=7)
+    policy = HostModePolicy(full_access_turns=7)
     ensure_host_mode_session(
         storage,
         SESSION_ID,
@@ -1020,10 +1034,10 @@ def test_final_host_snapshot_downgrades_invalid_agent_authority(storage, caplog)
         is_admin=True,
     )
 
-    assert result["session"]["mode"] == "safe"
+    assert result["session"]["mode"] == "default"
     assert result["session"]["requester"] == requester()
     assert not {
-        "ulw_turns", "ulw_turns_used", "skip_tool_approval"
+        "full_access_turns", "full_access_turns_used", "skip_tool_approval"
     } & result["session"].keys()
     assert storage.get(SESSION_ID).session == result["session"]
     assert "invalid Host session policy" in caplog.text
@@ -1059,12 +1073,12 @@ def test_agent_factory_failure_releases_the_durable_prompt_claim(storage):
 
     failed = storage.get(SESSION_ID)
     assert failed.status == "failed"
-    assert failed.session["mode"] == "safe"
+    assert failed.session["mode"] == "default"
     changed = commit_host_session_mode(
         storage, None, SESSION_ID, "0xowner",
-        "accept_edits", policy, True,
+        "auto_approve", policy, True,
     )
-    assert changed.session["mode"] == "accept_edits"
+    assert changed.session["mode"] == "auto_approve"
 
 
 def test_cross_worker_mode_write_loses_to_running_prompt_claim(storage):
@@ -1107,7 +1121,7 @@ def test_cross_worker_mode_write_loses_to_running_prompt_claim(storage):
     with pytest.raises(ModeTransactionError) as exc_info:
         commit_host_session_mode(
             other_worker_storage, None, SESSION_ID, "0xowner",
-            "accept_edits", policy, True,
+            "auto_approve", policy, True,
         )
     assert exc_info.value.code == -32000
 
@@ -1115,7 +1129,7 @@ def test_cross_worker_mode_write_loses_to_running_prompt_claim(storage):
     thread.join(timeout=2)
     assert not thread.is_alive()
     assert failures == []
-    assert storage.get(SESSION_ID).session["mode"] == "safe"
+    assert storage.get(SESSION_ID).session["mode"] == "default"
 
 
 class ModeClientSocket:
@@ -1143,7 +1157,7 @@ class ModeClientSocket:
                         }
                     },
                     "session_modes": acp_session_mode_state(
-                        "safe", ["safe", "accept_edits"]
+                        "default", ["default", "auto_approve"]
                     ),
                 })
             self.outbox.append(connected)
@@ -1186,41 +1200,41 @@ async def test_python_client_waits_for_ack_and_applies_mode_once():
     socket = ModeClientSocket()
     agent = python_mode_client(socket)
 
-    await agent.set_session_mode_async("accept_edits")
+    await agent.set_session_mode_async("auto_approve")
 
     assert agent.current_session == {
         "session_id": SESSION_ID,
-        "mode": "accept_edits",
+        "mode": "auto_approve",
     }
     assert [mode["id"] for mode in agent.available_modes] == [
-        "safe", "accept_edits"
+        "default", "auto_approve"
     ]
     request_frame = next(
         frame for frame in socket.sent if frame["type"] == "ACP_REQUEST"
     )
     assert request_frame["message"]["params"] == {
         "sessionId": SESSION_ID,
-        "modeId": "accept_edits",
+        "modeId": "auto_approve",
     }
 
 
 @pytest.mark.asyncio
-async def test_python_client_ack_clears_stale_ulw_authority():
+async def test_python_client_ack_clears_stale_full_access_authority():
     socket = ModeClientSocket()
     agent = python_mode_client(socket)
     agent._current_session = {
         "session_id": SESSION_ID,
-        "mode": "ulw",
-        "ulw_turns": 7,
-        "ulw_turns_used": 2,
+        "mode": "full_access",
+        "full_access_turns": 7,
+        "full_access_turns_used": 2,
         "skip_tool_approval": True,
     }
 
-    await agent.set_session_mode_async("safe")
+    await agent.set_session_mode_async("default")
 
     assert agent.current_session == {
         "session_id": SESSION_ID,
-        "mode": "safe",
+        "mode": "default",
     }
 
 
@@ -1236,7 +1250,7 @@ async def test_python_client_timeout_is_one_total_deadline_across_pings():
 
     started = time.monotonic()
     with pytest.raises(TimeoutError, match="timed out"):
-        await agent.set_session_mode_async("safe", timeout=0.025)
+        await agent.set_session_mode_async("default", timeout=0.025)
 
     assert time.monotonic() - started < 0.2
 
@@ -1266,10 +1280,10 @@ async def test_python_client_timeout_keeps_local_state_until_reconnect():
     agent = python_mode_client(socket)
 
     with pytest.raises(TimeoutError):
-        await agent.set_session_mode_async("accept_edits", timeout=0.025)
+        await agent.set_session_mode_async("auto_approve", timeout=0.025)
 
-    assert socket.committed_mode == "accept_edits"
-    assert agent.current_session["mode"] == "safe"
+    assert socket.committed_mode == "auto_approve"
+    assert agent.current_session["mode"] == "default"
 
     agent._consume_connected_mode_state({
         "type": "CONNECTED",
@@ -1281,11 +1295,11 @@ async def test_python_client_timeout_keeps_local_state_until_reconnect():
             }
         },
         "session_modes": acp_session_mode_state(
-            "accept_edits", ["safe", "accept_edits"]
+            "auto_approve", ["default", "auto_approve"]
         ),
     })
 
-    assert agent.current_session["mode"] == "accept_edits"
+    assert agent.current_session["mode"] == "auto_approve"
 
 
 @pytest.mark.asyncio
@@ -1298,11 +1312,11 @@ async def test_python_client_keeps_mode_on_owned_policy_error():
     agent = python_mode_client(socket)
 
     with pytest.raises(ACPModeError) as exc_info:
-        await agent.set_session_mode_async("accept_edits")
+        await agent.set_session_mode_async("auto_approve")
 
     assert exc_info.value.code == -32000
     assert exc_info.value.data == {"retryable": True}
-    assert agent.current_session["mode"] == "safe"
+    assert agent.current_session["mode"] == "default"
 
 
 @pytest.mark.asyncio
@@ -1311,6 +1325,6 @@ async def test_python_client_rejects_old_host_instead_of_inventing_durability():
     agent = python_mode_client(socket)
 
     with pytest.raises(ConnectionError, match="does not support"):
-        await agent.set_session_mode_async("accept_edits")
+        await agent.set_session_mode_async("auto_approve")
 
     assert [frame["type"] for frame in socket.sent] == ["CONNECT"]

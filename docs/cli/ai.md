@@ -93,8 +93,8 @@ to 64 KiB, tool-call arguments are bounded to 64 KiB, and calls have a
 
 Remote tool names and annotations are not trusted as permissions. MCP tools
 receive collision-resistant `mcp__...` names and pass through the ordinary
-ConnectOnion approval hook. Safe and Accept Edits modes ask the ACP operator
-before executing them; explicit ULW remains the only approval bypass.
+ConnectOnion approval hook. Default and Auto-approve modes ask the ACP operator
+before executing them; explicit Full access remains the only approval bypass.
 "Allow for this session" lasts only for the current open MCP process pool.
 Client-granted MCP approvals are not persisted, so resume asks again even when
 the client supplies the same server and tool names. Explicit operator rules in
@@ -159,9 +159,9 @@ directly:
 co ai --yolo "/deploy-oo-chat" --yolo-turns 10
 ```
 
-YOLO deliberately reuses the existing ULW session and frontend protocol.
-Persisted fields such as `mode: ulw`, `ulw_turns`, and
-`skip_tool_approval` remain unchanged for compatibility.
+YOLO is the familiar shorthand for Full access. Both names select the canonical
+`full_access` session mode and use `full_access_turns` for the bounded autonomous
+checkpoint.
 
 ## What the Agent Can Do
 
@@ -196,10 +196,10 @@ review the diff yourself. Continue the same Codex session for any fixes.
 
 The Codex CLI must be installed and authenticated. `co ai` passes an explicit
 working directory and returns a structured result containing the resumable
-session ID. Safe Mode starts Codex read-only and asks when it requests more
-permission. Accept Edits permits workspace changes but still asks about
+session ID. Default starts Codex read-only and asks when it requests more
+permission. Auto-approve permits workspace changes but still asks about
 untrusted commands, while explicit
-YOLO/ULW runs without prompts inside that same sandbox. The policy is reapplied
+YOLO/Full access runs without prompts inside that same sandbox. The policy is reapplied
 when a Codex session is resumed, and `danger-full-access` is never selected by
 the integration. In a hosted session, only the operator can approve Codex's
 nested permission requests; shared contacts are always confined to read-only
@@ -220,15 +220,15 @@ Ask Claude Code to implement the parser in /path/to/repo and run the focused
 tests. Review its diff, then continue the same session for any fixes.
 ```
 
-The Claude Code CLI must be installed and authenticated. Safe Mode retains
-Claude's normal permission rules, Accept Edits allows in-workspace edits, and
-explicit YOLO/ULW uses Claude Auto mode.
+The Claude Code CLI must be installed and authenticated. Default retains
+Claude's normal permission rules, Auto-approve allows in-workspace edits, and
+explicit YOLO/Full access uses Claude Auto mode.
 The integration never selects `bypassPermissions`, and the selected mode is
 supplied again when a session resumes.
 
 Claude Code runs in headless print mode. It cannot display an inner permission
-prompt in the co ai UI: Safe Mode can read and run actions already allowed by
-Claude settings, while other protected actions fail closed. Accept Edits
+prompt in the co ai UI: Default can read and run actions already allowed by
+Claude settings, while other protected actions fail closed. Auto-approve
 automatically permits in-scope edits, but shell or network actions that still
 need a prompt also fail closed. A denied action can be described in a
 successful provider result, so always review the diff and test output rather

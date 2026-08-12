@@ -9,14 +9,14 @@ The plugin is the same in every mode; what moves is the gate.
 
 | mode | behaviour |
 |---|---|
-| `safe` | local/admin operators confirm each unpermitted tool; hosted non-admin requesters are rejected without a dialog |
-| `plan` | legacy client request; normalized to `safe` |
-| `accept_edits` | local/admin-only: named file edits land without asking; every other unpermitted call still needs operator approval |
-| `ulw` | local/admin-only bounded approval bypass — see `useful_plugins/ulw` |
+| `default` | local/admin operators confirm each unpermitted tool; hosted non-admin requesters are rejected without a dialog |
+| `plan` | O Chat workflow; server approval authority remains `default` |
+| `auto_approve` | local/admin-only: named file edits land without asking; every other unpermitted call still needs operator approval |
+| `full_access` | local/admin-only bounded approval bypass — see `useful_plugins/full_access` |
 
 Mode changes arrive over the WebSocket, so a client can move between them
 mid-session without restarting the agent. In a hosted session, only the admin
-operator can enable `accept_edits` or `ulw`; other requesters remain in `safe`.
+operator can enable `auto_approve` or `full_access`; other requesters remain in `default`.
 
 ## Scope of an approval
 

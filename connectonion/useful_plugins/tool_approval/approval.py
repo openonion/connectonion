@@ -3,8 +3,8 @@ Purpose: Orchestrate WebSocket-based tool approval with mode system and permissi
 LLM-Note:
   Dependencies: imports from [../../core/events.py (before_each_tool, before_iteration, after_user_input), ./constants.py (VALID_MODES, DEFAULT_MODE, FILE_EDIT_TOOLS), ./bash_parser.py (check_bash_chain_permitted), ../skills.py (matches_permission_pattern), pathlib.Path, typing.TYPE_CHECKING] | imported by [tool_approval/__init__.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_tool_approval.py, tests/unit/test_shell_approval.py]
   Data flow: after_user_input → load_config_permissions() loads .co/host.yaml permissions into session['permissions'] | before_iteration → poll_mode_changes() checks for mode_change messages | before_each_tool → check_approval() validates tool against mode+permissions → if unpermitted with live IO: agent.io.send(approval_needed) → agent.io.receive() blocks for client response → if approved: return (execute tool) | if rejected: raise ValueError (LLM sees rejection message)
-  State/Effects: modifies session['permissions'] (permission cache), session['approval']['approved_tools'] (session-scoped approvals), session['mode'] (safe/accept_edits) | reads .co/host.yaml file | writes to agent.logger for approval logs | sends WebSocket messages via agent.io | blocks execution waiting for user approval
-  Integration: exposes check_approval (before_each_tool hook), load_config_permissions (after_user_input hook), poll_mode_changes (before_iteration hook), handle_mode_change(agent, mode), get_current_mode(agent) | uses agent.io.send/receive for client communication | integrates with skills plugin for permission pattern matching | integrates with ulw plugin for ulw mode handling
+  State/Effects: modifies session['permissions'] (permission cache), session['approval']['approved_tools'] (session-scoped approvals), session['mode'] (default/auto_approve/full_access) | reads .co/host.yaml file | writes to agent.logger for approval logs | sends WebSocket messages via agent.io | blocks execution waiting for user approval
+  Integration: exposes check_approval (before_each_tool hook), load_config_permissions (after_user_input hook), poll_mode_changes (before_iteration hook), handle_mode_change(agent, mode), get_current_mode(agent) | uses agent.io.send/receive for client communication | integrates with skills plugin for permission pattern matching | integrates with full_access plugin for full_access mode handling
   Performance: yaml file loaded once per session (cached) | permission checks are O(n) where n=number of permission patterns | WebSocket receive() blocks until user responds (can be seconds/minutes)
   Errors: ValueError raised when tool rejected → LLM sees error message with feedback | raises ValueError if connection closed during approval | bubbles up bashlex.ParsingError from bash_parser
 
@@ -27,19 +27,19 @@ Architecture:
     └─────────────────────────────────────────────────────────────────┘
 
 Mode System (session['mode']):
-    safe (default):
+    default:
         - Explicitly permitted tools are auto-approved
         - Every remaining tool needs approval when live IO is present
         - Used for: normal coding assistance
 
-    accept_edits:
+    auto_approve:
         - File edit tools: auto-approved (write, edit, multi_edit)
         - Every other unpermitted tool needs approval
         - Used for: rapid editing with approval only for risky ops
 
-    ulw (handled by ulw plugin):
+    full_access (handled by full_access plugin):
         - Sets skip_tool_approval=True → bypasses all checks
-        - Used for: unlimited write access (trusted scenarios)
+        - Used for: trusted operator sessions with bounded autonomous checkpoints
 
 Unified Permissions (session['permissions']):
     All permissions use unified format with single key per tool:
@@ -77,7 +77,7 @@ Unified Permissions (session['permissions']):
         - "config": Project .co/host.yaml using Bash() patterns
         - "skill": Skill-granted using Bash() patterns (turn-scoped)
         - "user": Runtime approvals (tool-level, session-scoped)
-        - "mode": Mode-specific auto-approvals (accept_edits mode)
+        - "mode": Mode-specific auto-approvals (auto_approve mode)
 
     Pattern Matching (matches_permission_pattern):
         - Simple: "read" → matches tool_name
@@ -199,7 +199,14 @@ from typing import TYPE_CHECKING
 from ...core.events import after_iteration, after_user_input, before_each_tool, before_iteration
 from ...project import project_co_dir
 from .bash_parser import check_bash_chain_permitted
-from .constants import DEFAULT_MODE, FILE_EDIT_TOOLS, VALID_MODES
+from ...core.approval_modes import legacy_approval_mode_id
+from .constants import (
+    AUTO_APPROVE_MODE,
+    DEFAULT_MODE,
+    FILE_EDIT_TOOLS,
+    FULL_ACCESS_MODE,
+    VALID_MODES,
+)
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
@@ -318,11 +325,11 @@ def _get_mode(agent: 'Agent') -> str:
     """Get current approval mode from session.
 
     Modes:
-        'safe': Unpermitted tools need approval (default)
-        'accept_edits': Named file edits are auto-approved
+        'default': Unpermitted tools need approval
+        'auto_approve': Named file edits are auto-approved
     """
     mode = agent.current_session.get('mode', DEFAULT_MODE)
-    if mode in VALID_MODES or mode == 'ulw':
+    if mode in VALID_MODES or mode == FULL_ACCESS_MODE:
         return mode
     return DEFAULT_MODE
 
@@ -414,10 +421,10 @@ def check_approval(agent: 'Agent') -> None:
     """Check if tool needs approval based on current mode.
 
     Mode behavior:
-        'safe': Every unpermitted tool needs approval when live IO is present
-        'accept_edits': Named file-edit tools auto-approved; other unpermitted tools need approval
+        'default': Every unpermitted tool needs approval when live IO is present
+        'auto_approve': Named file-edit tools auto-approved; other unpermitted tools need approval
 
-    The explicit ulw mode bypasses checks only for the local/admin operator.
+    The explicit full_access mode bypasses checks only for the local/admin operator.
 
     Raises:
         ValueError: If tool rejected or blocked by mode
@@ -497,12 +504,12 @@ def check_approval(agent: 'Agent') -> None:
     # Check the explicit unlimited mode (local/admin operator only)
     # =================================================================
     requester_is_operator = _requester_is_operator(agent)
-    if agent.current_session.get('mode') == 'ulw' and requester_is_operator:
+    if agent.current_session.get('mode') == FULL_ACCESS_MODE and requester_is_operator:
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
         if getattr(getattr(agent, 'logger', None), 'console', None):
-            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'ulw mode')
+            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'full_access mode')
         return
 
     # reject_hard was set by a previous tool in this batch — reject remaining
@@ -523,12 +530,12 @@ def check_approval(agent: 'Agent') -> None:
     mode = _get_mode(agent)
 
     # =================================================================
-    # MODE: accept_edits - File edits auto-approved, others need approval
+    # MODE: auto_approve - File edits auto-approved, others need approval
     # =================================================================
-    if mode == 'accept_edits':
+    if mode == AUTO_APPROVE_MODE:
         if tool_name in FILE_EDIT_TOOLS and requester_is_operator:
             if getattr(getattr(agent, 'logger', None), 'console', None):
-                agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
+                agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'auto_approve mode')
             return
         # Every other unpermitted tool falls through to approval logic.
 
@@ -876,7 +883,7 @@ def poll_mode_changes(agent: 'Agent') -> None:
     """Poll for mode_change signals at iteration start.
 
     Checks if client sent mode_change while agent was working.
-    Handles safe, accept_edits, ulw, and legacy plan requests.
+    Handles Default, Auto-approve, Full access, and legacy Plan requests.
     """
     if agent.current_session.get('mode') == 'plan':
         handle_mode_change(agent, 'plan')
@@ -889,15 +896,22 @@ def poll_mode_changes(agent: 'Agent') -> None:
 
     for msg in agent.io.receive_all('mode_change'):
         new_mode = msg.get('mode')
-        if new_mode in VALID_MODES or new_mode == 'plan':
+        if new_mode == 'plan':
             handle_mode_change(agent, new_mode)
-        elif new_mode == 'ulw':
+            continue
+        try:
+            new_mode = legacy_approval_mode_id(new_mode)
+        except ValueError:
+            continue
+        if new_mode in VALID_MODES:
+            handle_mode_change(agent, new_mode)
+        elif new_mode == FULL_ACCESS_MODE:
             if _requester_is_operator(agent):
-                from ..ulw import handle_ulw_mode_change
-                handle_ulw_mode_change(agent, msg.get('turns'))
+                from ..full_access import handle_full_access_mode_change
+                handle_full_access_mode_change(agent, msg.get('turns'))
             else:
                 _set_mode(agent, DEFAULT_MODE)
-                _log(agent, "[yellow]Only the operator can enable ulw mode[/yellow]")
+                _log(agent, "[yellow]Only the operator can enable Full access[/yellow]")
 
 
 @after_iteration
@@ -925,25 +939,30 @@ def handle_mode_change(agent: 'Agent', mode: str) -> None:
     """Handle mode change request from frontend.
 
     Called when frontend sends { type: 'mode_change', mode: '...' }
-    Handles safe and accept_edits. Legacy plan requests fall back to safe so
+    Handles Default and Auto-approve. Legacy Plan requests fall back to Default so
     old frontends cannot leave the backend in a read-only state with no exit.
-    Other modes (e.g., ulw) should be handled by their respective plugins.
+    Other modes (e.g., full_access) should be handled by their respective plugins.
 
     Args:
         agent: Agent instance
-        mode: New mode ('safe', 'accept_edits', or legacy 'plan')
+        mode: New mode (canonical approval mode or legacy 'plan')
     """
     requested_mode = mode
     if mode == 'plan':
         mode = DEFAULT_MODE
+    else:
+        try:
+            mode = legacy_approval_mode_id(mode)
+        except ValueError:
+            return
 
-    if mode == 'accept_edits' and not _requester_is_operator(agent):
+    if mode == AUTO_APPROVE_MODE and not _requester_is_operator(agent):
         _set_mode(agent, DEFAULT_MODE)
-        _log(agent, "[yellow]Only the operator can enable accept_edits mode[/yellow]")
+        _log(agent, "[yellow]Only the operator can enable Auto-approve[/yellow]")
         return
 
     if mode not in VALID_MODES:
-        # Unknown mode - might be handled by another plugin (e.g., ulw)
+        # Unknown mode - might be handled by another plugin (e.g., full_access)
         return
 
     old_mode = _get_mode(agent)

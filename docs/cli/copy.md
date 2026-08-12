@@ -146,7 +146,8 @@ co copy Gmail --force
 | subagents | subagents.py | Sub-agent task delegation |
 | system_reminder | system_reminder.py | Inject contextual reminders into tool results |
 | ui_stream | ui_stream.py | Stream agent output to UI |
-| ulw | ulw.py | Ultra Light Work - autonomous continuous execution |
+| full_access | full_access.py | Full access - autonomous continuous execution |
+| yolo | full_access.py | Shorthand for Full access |
 
 ### Plugins with Prompts
 

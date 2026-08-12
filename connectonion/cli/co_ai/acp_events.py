@@ -17,6 +17,8 @@ from acp.schema import (
     Usage,
 )
 
+from ...core.approval_modes import approval_mode_id
+
 from ...core.acp_wire import map_plan_event, map_tool_event
 
 ACPUpdate = (
@@ -94,9 +96,11 @@ def _assistant(event: Mapping[str, Any]) -> AgentMessageChunk:
 
 
 def _current_mode(event: Mapping[str, Any]) -> CurrentModeUpdate:
-    mode = _required_string(event, "mode")
-    if mode not in {"safe", "accept_edits", "ulw"}:
-        raise ValueError(f"Unsupported Agent mode: {mode!r}")
+    value = _required_string(event, "mode")
+    try:
+        mode = approval_mode_id(value)
+    except ValueError:
+        raise ValueError(f"Unsupported Agent mode: {value!r}") from None
     return CurrentModeUpdate(
         session_update="current_mode_update",
         current_mode_id=mode,

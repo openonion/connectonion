@@ -30,28 +30,28 @@ request ID and the Host-bound session ID, containing the official empty
 `SetSessionModeResponse` or a JSON-RPC error.
 
 `CONNECTED` advertises `session/set_mode` only with an exact
-`SessionModeState`. The persisted IDs remain `safe`, `accept_edits`, and `ulw`.
-`plan` remains a temporary legacy UI alias for Safe and is never serialized as
+`SessionModeState`. The persisted IDs are `default`, `auto_approve`, and `full_access`.
+`plan` remains a local UI workflow mapped to Default and is never serialized as
 an ACP mode.
 
 ### Derive modes from server authority
 
-Safe is always available. Auto (`accept_edits`) is available only to the Host
-operator/admin. ULW is available only to that identity when the Agent factory
+Default is always available. Auto-approve (`auto_approve`) is available only to the Host
+operator/admin. Full access is available only to that identity when the Agent factory
 was explicitly configured with a positive `_yolo_turns` ceiling. The Host
 captures that launch ceiling once and disarms the Agent's automatic first-turn
 activation; the durable session mode, not a constructor side effect, decides
 the prompt policy.
 
-An ACP client cannot select or extend ULW turns because
-`SetSessionModeRequest` has no turns field. Entering ULW initializes the three
+An ACP client cannot select or extend Full access turns because
+`SetSessionModeRequest` has no turns field. Entering Full access initializes the three
 bounded server-owned fields from the captured ceiling. Leaving it removes all
 three before persistence.
 
 ### Serialize prompt claims and policy writes in storage
 
 The JSONL storage lock is the cross-socket and cross-worker commit boundary.
-CONNECT creates an owned, durable Safe snapshot for a new session. INPUT and
+CONNECT creates an owned, durable Default snapshot for a new session. INPUT and
 `session/set_mode` each read the latest record and append their replacement
 while holding the same lock. A `running` or `waiting_approval` record rejects
 the mode request as retryable and prevents a second prompt claim.
@@ -82,19 +82,19 @@ initialization and mode-state derivation both succeed. A failure sends a
 bounded error, logs the private exception on the server, and leaves later
 frames on that socket subject to the unauthenticated gate.
 
-### Make the Host ceiling terminal for each ULW grant
+### Make the Host ceiling terminal for each Full access grant
 
 The captured launch ceiling is also attached to the fresh hosted Agent as a
 Host-only runtime boundary. When that many turns have been consumed, the Host
 may emit the existing checkpoint observation but must immediately exit to
-Safe, remove all bypass fields, and stop. The legacy local-Agent mailbox may
-still extend a locally configured ULW run; it cannot extend a Host grant. A
-client that wants another hosted ULW run must make another durable
+Default, remove all bypass fields, and stop. The legacy local-Agent mailbox may
+still extend a locally configured Full access run; it cannot extend a Host grant. A
+client that wants another hosted Full access run must make another durable
 `session/set_mode` transaction after the prompt is idle.
 
 Before the final Host record is appended, the verified requester is restored
 and the session is normalized against the captured policy. Invalid plugin or
-Agent state is downgraded to Safe and has every ULW bypass field removed. This
+Agent state is downgraded to Default and has every Full access bypass field removed. This
 prevents a terminal `used == turns` snapshot, or any expanded ceiling, from
 stranding the durable session.
 
@@ -111,8 +111,8 @@ input is 400. Internal storage details are logged but never returned.
 
 The Python client applies one caller-supplied deadline to endpoint resolution,
 CONNECT negotiation, PING handling, and the owned ACP response together.
-Successful acknowledgements remove any local ULW bypass fields before
-mirroring Safe or Auto, so the client snapshot cannot retain stale authority.
+Successful acknowledgements remove any local Full access bypass fields before
+mirroring Default or Auto-approve, so the client snapshot cannot retain stale authority.
 The deadline bounds client waiting, not the already-running Host transaction:
 a timeout is an unknown outcome, never proof of rollback. The client keeps its
 old local snapshot and reconnects to read authoritative `CONNECTED` mode state
@@ -126,8 +126,8 @@ and collapse to `-32603 / Unable to run agent` on the wire.
 ### Bound compatibility to the same transaction
 
 Legacy `mode_change` is intercepted by the Host rather than forwarded into the
-Agent mailbox. Its `plan` alias normalizes to Safe for rolling compatibility;
-all other mode, ownership, busy-state, admin, and ULW-ceiling checks are the
+Agent mailbox. Its `plan` alias normalizes to Default for rolling compatibility;
+all other mode, ownership, busy-state, admin, and Full-access-ceiling checks are the
 same as ACP. It emits the existing `mode_changed` observation only after the
 durable commit. The legacy path cannot supply a turn ceiling.
 
@@ -137,8 +137,8 @@ durable commit. The legacy path cannot supply a turn ceiling.
 - A response means the policy is durable, not merely queued in memory.
 - Multiple sockets and workers cannot grant policy while a turn is running.
 - Slow storage cannot stall unrelated WebSocket work on the event loop.
-- Non-admin callers see Safe only; clients cannot manufacture Auto or ULW.
-- A hosted ULW grant ends at its launch ceiling and requires a new transaction.
+- Non-admin callers see Default only; clients cannot manufacture Auto-approve or Full access.
+- A hosted Full access grant ends at its launch ceiling and requires a new transaction.
 - Old clients keep a bounded transition path while React and O Chat migrate.
 - A storage error is visible and leaves the prior policy authoritative.
 

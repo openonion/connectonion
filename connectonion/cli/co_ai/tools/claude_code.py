@@ -2,6 +2,11 @@
 
 import json
 
+from connectonion.core.approval_modes import (
+    AUTO_APPROVE_MODE,
+    DEFAULT_MODE,
+    FULL_ACCESS_MODE,
+)
 from connectonion.useful_tools.claude_code import _run_claude_code
 
 
@@ -39,9 +44,9 @@ def claude_code(
             }
         )
     permission_mode = {
-        "safe": "default",
-        "accept_edits": "acceptEdits",
-        "ulw": "auto",
+        DEFAULT_MODE: "default",
+        AUTO_APPROVE_MODE: "acceptEdits",
+        FULL_ACCESS_MODE: "auto",
     }.get(session.get("mode"), "default")
     return _run_claude_code(
         prompt=prompt,

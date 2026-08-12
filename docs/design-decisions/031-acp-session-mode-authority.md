@@ -7,9 +7,9 @@
 ## Context
 
 ACP can advertise session modes and lets a client request `session/set_mode`.
-ConnectOnion already persists `safe`, `accept_edits`, and `ulw` in the Agent
+ConnectOnion persists `default`, `auto_approve`, and `full_access` in the Agent
 session. Those values are security policy, not presentation preferences:
-`accept_edits` skips file-edit approval and `ulw` skips every tool approval for
+`auto_approve` skips file-edit approval and `full_access` skips every tool approval for
 a bounded number of autonomous turns.
 
 The ACP client owns the user interface, but it must not gain more authority
@@ -19,13 +19,13 @@ approval boundary from DD-030.
 
 ## Decision
 
-### Keep the existing session vocabulary
+### Keep one canonical session vocabulary
 
 ACP IDs are the persisted ConnectOnion IDs:
 
-- `safe`, displayed as **Safe**
-- `accept_edits`, displayed as **Auto**
-- `ulw`, displayed as **ULW**
+- `default`, displayed as **Default**
+- `auto_approve`, displayed as **Auto-approve**
+- `full_access`, displayed as **Full access (YOLO)**
 
 The adapter does not translate a second set of mode names. New sessions store
 an explicit mode, and new/resumed responses return the official
@@ -33,22 +33,22 @@ an explicit mode, and new/resumed responses return the official
 
 ### Treat process launch as the authority ceiling
 
-Safe and Auto are available to a local stdio client. ULW is advertised and
-accepted only if the server was started with `--yolo`. A saved ULW session
+Default and Auto-approve are available to a local stdio client. Full access is advertised and
+accepted only if the server was started with `--yolo`. A saved Full access session
 cannot be resumed by a server without that launch authority. Its saved
 remaining autonomous turns must also be no greater than this process's
 `--yolo-turns` ceiling.
 
-ULW state is valid only when all three bounded fields agree with `mode=ulw`:
-`skip_tool_approval=true`, a positive `ulw_turns`, and a non-negative
-`ulw_turns_used` below that limit. Safe or Auto snapshots containing ULW bypass
+Full access state is valid only when all three bounded fields agree with `mode=full_access`:
+`skip_tool_approval=true`, positive `full_access_turns`, and non-negative
+`full_access_turns_used` below that limit. Default or Auto-approve snapshots containing Full access bypass
 state are rejected. Unknown and malformed persisted modes fail closed before
 the Agent can run.
 
 The normal `enable_yolo` hook is disarmed after ACP constructs the runtime.
 ACP's validated snapshot is the current mode; the launch flag only controls
-whether that snapshot may enter ULW. This prevents a deliberate downgrade to
-Safe or Auto from being silently reversed on the next prompt.
+whether that snapshot may enter Full access. This prevents a deliberate downgrade to
+Default or Auto-approve from being silently reversed on the next prompt.
 
 ### Change mode only at an idle transaction boundary
 
@@ -77,17 +77,17 @@ its checkpoint instead of being announced as usable policy.
 
 ## Consequences
 
-- An ACP UI can present and persist Safe/Auto without a parallel policy model.
-- ULW remains an operator-granted capability; a client request or stored file
+- An ACP UI can present and persist Default/Auto-approve without a parallel policy model.
+- Full access remains an operator-granted capability; a client request or stored file
   cannot manufacture it.
 - Mode changes may return “Session is busy” and be retried after the prompt.
-- Older snapshots without a mode normalize to Safe. Corrupt or over-authorized
+- Older snapshots without a mode normalize to Default. Corrupt or over-authorized
   snapshots require an explicit operator decision instead of silent repair.
 
 ## Rejected alternatives
 
-- **Always advertise ULW:** lets a client escalate beyond process launch.
-- **Silently downgrade saved ULW to Safe:** hides a material policy change and
+- **Always advertise Full access:** lets a client escalate beyond process launch.
+- **Silently downgrade saved Full access to Default:** hides a material policy change and
   rewrites the meaning of a resumable session.
 - **Change mode during a prompt:** creates a race at the approval boundary.
 - **Mutate memory before saving:** can leave the runtime more permissive than

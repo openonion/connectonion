@@ -107,7 +107,7 @@ class TestToolClassification:
     """Test tool classification - DANGEROUS tools need approval."""
 
     def test_main_approval_modes_stay_small(self):
-        assert VALID_MODES == {'safe', 'accept_edits'}
+        assert VALID_MODES == {'default', 'auto_approve'}
 
     def test_dangerous_tools_defined(self):
         """DANGEROUS_TOOLS should contain write/execute tools."""
@@ -632,7 +632,7 @@ class TestApprovalKey:
 class TestUnknownTools:
     """Test unknown tools behavior."""
 
-    @pytest.mark.parametrize("mode", ['safe', 'accept_edits'])
+    @pytest.mark.parametrize("mode", ['default', 'auto_approve'])
     def test_unknown_tool_requests_approval(self, mode):
         """Live unclassified tools require explicit approval in both modes."""
         io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
@@ -681,11 +681,11 @@ class TestUnknownTools:
 
         check_approval(agent)
 
-    def test_unknown_tool_in_ulw_uses_explicit_bypass(self):
-        """ULW remains an explicit authority decision made by another plugin."""
+    def test_unknown_tool_in_full_access_uses_explicit_bypass(self):
+        """Full access remains an explicit authority decision made by another plugin."""
         io = FakeIO()
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'ulw'
+        agent.current_session['mode'] = 'full_access'
         agent.current_session['pending_tool'] = {
             'name': 'my_custom_tool',
             'arguments': {},
@@ -695,11 +695,11 @@ class TestUnknownTools:
 
         assert io.sent == []
 
-    def test_accept_edits_still_allows_named_file_edits(self):
-        """The fail-closed fallback must not redefine accept_edits."""
+    def test_auto_approve_still_allows_named_file_edits(self):
+        """The fail-closed fallback must not redefine auto_approve."""
         io = FakeIO()
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'accept_edits'
+        agent.current_session['mode'] = 'auto_approve'
         agent.current_session['pending_tool'] = {
             'name': 'edit',
             'arguments': {'file_path': 'README.md'},
@@ -712,8 +712,8 @@ class TestUnknownTools:
     @pytest.mark.parametrize(
         ('mode', 'tool_name', 'arguments'),
         [
-            ('ulw', 'third_party_tool', {}),
-            ('accept_edits', 'write', {'file_path': 'owned.txt', 'content': 'no'}),
+            ('full_access', 'third_party_tool', {}),
+            ('auto_approve', 'write', {'file_path': 'owned.txt', 'content': 'no'}),
         ],
     )
     def test_stale_elevated_mode_does_not_bypass_remote_owner_gate(
@@ -783,39 +783,39 @@ class TestPollModeChanges:
         # Should not raise
         poll_mode_changes(agent)
 
-    def test_poll_mode_changes_handles_safe_mode(self):
-        """poll_mode_changes should handle mode_change to safe."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'safe'}])
+    def test_poll_mode_changes_handles_default_mode(self):
+        """poll_mode_changes should handle mode_change to default."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'default'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'accept_edits'
+        agent.current_session['mode'] = 'auto_approve'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
 
-    def test_poll_mode_changes_normalizes_legacy_plan_mode_to_safe(self):
+    def test_poll_mode_changes_normalizes_legacy_plan_mode_to_default(self):
         """Old frontends cannot enter a plan state with no exit tools."""
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'accept_edits'
+        agent.current_session['mode'] = 'auto_approve'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
         assert io.sent == [
-            {'type': 'mode_changed', 'mode': 'safe', 'triggered_by': 'agent'}
+            {'type': 'mode_changed', 'mode': 'default', 'triggered_by': 'agent'}
         ]
 
-    def test_legacy_plan_request_confirms_safe_when_already_safe(self):
+    def test_legacy_plan_request_confirms_default_when_already_default(self):
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
         assert io.sent == [
-            {'type': 'mode_changed', 'mode': 'safe', 'triggered_by': 'agent'}
+            {'type': 'mode_changed', 'mode': 'default', 'triggered_by': 'agent'}
         ]
 
     def test_persisted_plan_session_is_normalized_without_a_new_signal(self):
@@ -825,40 +825,40 @@ class TestPollModeChanges:
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
         assert io.sent == [
-            {'type': 'mode_changed', 'mode': 'safe', 'triggered_by': 'agent'}
+            {'type': 'mode_changed', 'mode': 'default', 'triggered_by': 'agent'}
         ]
 
-    def test_poll_mode_changes_handles_accept_edits_mode(self):
-        """poll_mode_changes should handle mode_change to accept_edits."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'accept_edits'}])
+    def test_poll_mode_changes_handles_auto_approve_mode(self):
+        """poll_mode_changes should handle mode_change to auto_approve."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'auto_approve'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'accept_edits'
+        assert agent.current_session['mode'] == 'auto_approve'
 
-    def test_poll_mode_changes_handles_ulw_mode(self):
-        """poll_mode_changes should handle mode_change to ulw."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'ulw', 'turns': 50}])
+    def test_poll_mode_changes_handles_full_access_mode(self):
+        """poll_mode_changes should handle mode_change to full_access."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'full_access', 'turns': 50}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'ulw'
-        assert agent.current_session['ulw_turns'] == 50
+        assert agent.current_session['mode'] == 'full_access'
+        assert agent.current_session['full_access_turns'] == 50
         assert agent.current_session['skip_tool_approval'] is True
 
-    def test_remote_contact_cannot_use_ulw_to_run_an_unknown_tool(self):
+    def test_remote_contact_cannot_use_full_access_to_run_an_unknown_tool(self):
         """A live caller cannot turn a mode frame into dynamic-tool authority."""
         io = FakeIO(pending_signals=[
-            {'type': 'mode_change', 'mode': 'ulw', 'turns': 50},
+            {'type': 'mode_change', 'mode': 'full_access', 'turns': 50},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
         agent.current_session['requester'] = {
             'address': '0x' + 'e' * 64,
             'level': 'contact',
@@ -873,17 +873,17 @@ class TestPollModeChanges:
         with pytest.raises(ValueError, match="operator's approval"):
             check_approval(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
         assert 'skip_tool_approval' not in agent.current_session
         assert not any(msg.get('type') == 'approval_needed' for msg in io.sent)
 
-    def test_remote_contact_cannot_use_accept_edits_to_write(self):
+    def test_remote_contact_cannot_use_auto_approve_to_write(self):
         """The named edit bypass belongs to the operator, not the socket."""
         io = FakeIO(pending_signals=[
-            {'type': 'mode_change', 'mode': 'accept_edits'},
+            {'type': 'mode_change', 'mode': 'auto_approve'},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
         agent.current_session['requester'] = {
             'address': '0x' + 'e' * 64,
             'level': 'contact',
@@ -898,22 +898,22 @@ class TestPollModeChanges:
         with pytest.raises(ValueError, match="operator's approval"):
             check_approval(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
         assert not any(msg.get('type') == 'approval_needed' for msg in io.sent)
 
     def test_poll_mode_changes_handles_multiple_signals(self):
         """poll_mode_changes should process multiple mode_change signals."""
         io = FakeIO(pending_signals=[
             {'type': 'mode_change', 'mode': 'plan'},
-            {'type': 'mode_change', 'mode': 'accept_edits'},
+            {'type': 'mode_change', 'mode': 'auto_approve'},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
 
         poll_mode_changes(agent)
 
-        # Last mode wins, after the legacy request briefly confirms safe.
-        assert agent.current_session['mode'] == 'accept_edits'
+        # Last mode wins, after the legacy request briefly confirms default.
+        assert agent.current_session['mode'] == 'auto_approve'
 
     def test_poll_mode_changes_ignores_other_message_types(self):
         """poll_mode_changes should only process mode_change messages."""
@@ -922,11 +922,11 @@ class TestPollModeChanges:
             {'type': 'mode_change', 'mode': 'plan'},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
         # Other signal should still be in pending
         assert len(io.pending_signals) == 1
         assert io.pending_signals[0]['type'] == 'other_signal'
@@ -935,12 +935,12 @@ class TestPollModeChanges:
         """poll_mode_changes should ignore invalid mode values."""
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'invalid_mode'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'safe'
+        agent.current_session['mode'] = 'default'
 
         poll_mode_changes(agent)
 
         # Mode unchanged
-        assert agent.current_session['mode'] == 'safe'
+        assert agent.current_session['mode'] == 'default'
 
 
 class TestPluginExport:
@@ -995,7 +995,7 @@ class TestPollInterrupt:
 
     def test_poll_interrupt_no_message_leaves_signal_unset(self):
         """Without an INTERRUPT, poll_interrupt must not stop the loop."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'safe'}])
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'default'}])
         agent = FakeAgent(io=io)
 
         poll_interrupt(agent)

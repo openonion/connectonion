@@ -823,7 +823,9 @@ class RemoteAgent:
                     error["code"], error["message"], error.get("data")
                 )
             for field in (
-                "skip_tool_approval", "ulw_turns", "ulw_turns_used"
+                "skip_tool_approval",
+                "full_access_turns",
+                "full_access_turns_used",
             ):
                 self._current_session.pop(field, None)
             self._current_session["mode"] = mode_id

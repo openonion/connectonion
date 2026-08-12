@@ -2,9 +2,9 @@
 
 `Agent.input(session=…)` rebuilt current_session from four keys — session_id,
 messages, trace, turn — and dropped everything else. Plugins keep their state
-there, so ULW lost `mode` and `skip_tool_approval` on every turn and silently
+there, so Full access lost `mode` and `skip_tool_approval` on every turn and silently
 fell back to Safe: the web client visibly stepped back to "Safe" after a turn
-or two, and over HTTP, where mode_change messages do not exist, ULW never
+or two, and over HTTP, where mode_change messages do not exist, Full access never
 worked at all. #191.
 
 The same drop quietly disabled the approval gate added in #579: the host writes
@@ -34,12 +34,12 @@ class TestInputKeepsWhatItIsGiven:
 
         agent.input("hi", session={
             'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0,
-            'mode': 'ulw', 'ulw_turns': 5, 'ulw_turns_used': 1,
+            'mode': 'full_access', 'full_access_turns': 5, 'full_access_turns_used': 1,
             'skip_tool_approval': True,
         })
 
-        assert agent.current_session.get('mode') == 'ulw'
-        assert agent.current_session.get('ulw_turns') == 5
+        assert agent.current_session.get('mode') == 'full_access'
+        assert agent.current_session.get('full_access_turns') == 5
         assert agent.current_session.get('skip_tool_approval') is True
 
     def test_the_requester_survives_a_restore(self):
@@ -111,15 +111,15 @@ class TestTheClientDoesNotGrantItself:
 
         assert not seen.get('permissions')
 
-    def test_the_servers_own_ulw_state_is_restored(self, tmp_path):
+    def test_the_servers_own_full_access_state_is_restored(self, tmp_path):
         """The point of keeping these at all: state the server set, persisting."""
         seen = self._run(
             tmp_path,
             {'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0},
             stored_session={'session_id': 's1', 'messages': [], 'trace': [],
-                            'turn': 0, 'mode': 'ulw', 'ulw_turns': 5,
+                            'turn': 0, 'mode': 'full_access', 'full_access_turns': 5,
                             'skip_tool_approval': True},
         )
 
-        assert seen.get('mode') == 'ulw'
+        assert seen.get('mode') == 'full_access'
         assert seen.get('skip_tool_approval') is True

@@ -144,12 +144,12 @@ Unknown and dynamically registered tools require operator approval when live IO 
 Three explicit exceptions preserve existing workflows:
 
 - Local library use without `agent.io` stays non-interactive.
-- `accept_edits` auto-approves only the named file-edit tools (`write`, `edit`, and `multi_edit`).
-- `ulw` remains an explicit bypass controlled by its own plugin.
+- `auto_approve` auto-approves only the named file-edit tools (`write`, `edit`, and `multi_edit`).
+- `full_access` remains an explicit bypass controlled by its own plugin.
 
 Only a local/admin operator receives approval dialogs or may enable
-`accept_edits` or `ulw`. In hosted sessions, only the admin operator can enable them.
-A contact, whitelisted caller, or stranger may switch back to `safe`, but cannot
+`auto_approve` or `full_access`. In hosted sessions, only the admin operator can enable them.
+A contact, whitelisted caller, or stranger may switch back to `default`, but cannot
 turn a mode-change frame into file or dynamic-tool authority.
 
 ## Config-Based Auto-Approval

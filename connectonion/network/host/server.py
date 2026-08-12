@@ -332,7 +332,7 @@ def _create_route_handlers(
 
 
 def _host_mode_policy(sample) -> HostModePolicy:
-    """Capture only an explicitly configured positive Agent ULW ceiling."""
+    """Capture only an explicitly configured positive Full access ceiling."""
     turns = getattr(sample, "_yolo_turns", None)
     if (
         isinstance(turns, bool)
@@ -340,7 +340,7 @@ def _host_mode_policy(sample) -> HostModePolicy:
         or turns <= 0
     ):
         turns = None
-    return HostModePolicy(turns)
+    return HostModePolicy(full_access_turns=turns)
 
 
 def resolve_agent_identity(co_dir: Path) -> dict:

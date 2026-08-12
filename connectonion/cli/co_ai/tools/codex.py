@@ -2,6 +2,11 @@
 
 from pathlib import Path
 
+from connectonion.core.approval_modes import (
+    AUTO_APPROVE_MODE,
+    DEFAULT_MODE,
+    FULL_ACCESS_MODE,
+)
 from connectonion.useful_tools import codex as run_codex
 
 
@@ -20,11 +25,11 @@ def codex(
     model-selectable arguments.
     """
     session = getattr(agent, "current_session", {})
-    mode = session.get("mode", "safe")
+    mode = session.get("mode", DEFAULT_MODE)
     sandbox, approval = {
-        "safe": ("read-only", "manual"),
-        "accept_edits": ("workspace-write", "manual"),
-        "ulw": ("workspace-write", "deny"),
+        DEFAULT_MODE: ("read-only", "manual"),
+        AUTO_APPROVE_MODE: ("workspace-write", "manual"),
+        FULL_ACCESS_MODE: ("workspace-write", "deny"),
     }.get(mode, ("read-only", "manual"))
     requester = session.get("requester")
     if requester and requester.get("level") != "admin":

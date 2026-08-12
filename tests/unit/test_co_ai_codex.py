@@ -16,9 +16,9 @@ library_module = importlib.import_module("connectonion.useful_tools.codex")
 @pytest.mark.parametrize(
     ("mode", "sandbox", "approval"),
     [
-        ("safe", "read-only", "manual"),
-        ("accept_edits", "workspace-write", "manual"),
-        ("ulw", "workspace-write", "deny"),
+        ("default", "read-only", "manual"),
+        ("auto_approve", "workspace-write", "manual"),
+        ("full_access", "workspace-write", "deny"),
     ],
 )
 def test_co_ai_mode_owns_the_codex_policy(monkeypatch, mode, sandbox, approval):
@@ -74,7 +74,7 @@ def test_unknown_or_missing_mode_fails_closed_to_manual_read_only(monkeypatch):
     assert all(call["approval"] == "manual" for call in calls)
 
 
-@pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
+@pytest.mark.parametrize("mode", ["default", "auto_approve", "full_access"])
 def test_hosted_contact_is_confined_to_read_only_without_prompts(monkeypatch, mode):
     seen = {}
     monkeypatch.setattr(
@@ -133,8 +133,8 @@ def test_mode_policy_is_reapplied_through_the_resume_protocol(monkeypatch, tmp_p
     )
     monkeypatch.setattr(codex_module, "run_codex", library_module.codex)
 
-    safe = SimpleNamespace(current_session={"mode": "safe"})
-    yolo = SimpleNamespace(current_session={"mode": "ulw"})
+    safe = SimpleNamespace(current_session={"mode": "default"})
+    yolo = SimpleNamespace(current_session={"mode": "full_access"})
     first = codex("inspect", cwd=str(tmp_path), agent=safe)
     resumed = codex(
         "continue",
@@ -162,11 +162,11 @@ def test_outer_approval_does_not_duplicate_codex_action_approval():
     io = SimpleNamespace(send=lambda *_: pytest.fail("outer approval must not prompt"))
     agent = SimpleNamespace(
         current_session={
-            "mode": "safe",
+            "mode": "default",
             "permissions": {
                 "codex": {
                     "allowed": True,
-                    "source": "safe",
+                    "source": "default",
                     "reason": "managed delegation owns inner approval",
                 }
             },

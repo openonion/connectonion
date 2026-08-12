@@ -232,10 +232,10 @@ async def test_acp_cancel_stops_an_active_prompt(tmp_path):
     assert response.stop_reason == "cancelled"
 
 
-def test_acp_approval_input_denies_sensitive_tools_unless_mode_is_explicit_ulw():
+def test_acp_approval_input_denies_sensitive_tools_unless_mode_is_explicit_full_access():
     acp_input = _FailClosedACPInput()
     session = {
-        "mode": "safe",
+        "mode": "default",
         "permissions": {},
         "pending_tool": {
             "name": "bash",
@@ -251,7 +251,7 @@ def test_acp_approval_input_denies_sensitive_tools_unless_mode_is_explicit_ulw()
     with pytest.raises(ValueError, match="Connection closed"):
         check_approval(agent)
 
-    session["mode"] = "ulw"
+    session["mode"] = "full_access"
     check_approval(agent)
 
 

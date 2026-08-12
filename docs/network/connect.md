@@ -609,7 +609,7 @@ const agent = useAgentForHuman(address, { sessionId })
 agent.ui: ChatItem[]           // All events for rendering
 agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
 agent.isProcessing: boolean    // true while agent working
-agent.mode: ApprovalMode       // 'safe' | 'accept_edits' | 'ulw'
+agent.mode: ApprovalMode       // 'default' | 'auto_approve' | 'full_access'
 agent.error: Error | null
 agent.sessionId: string
 
@@ -794,7 +794,7 @@ const agent = useAgentForHuman(address, { sessionId })
 agent.ui: ChatItem[]           // All events for rendering
 agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
 agent.isProcessing: boolean
-agent.mode: ApprovalMode       // 'safe' | 'accept_edits' | 'ulw'
+agent.mode: ApprovalMode       // 'default' | 'auto_approve' | 'full_access'
 
 // Actions
 agent.input(prompt)            // Send message
@@ -818,7 +818,7 @@ type ChatItem =
   | { id, type: 'plan_review', plan_content }
   | { id, type: 'tool_blocked', tool, reason, message, command? }
   | { id, type: 'onboard_required', methods, paymentAmount? }
-  | { id, type: 'ulw_turns_reached', turns_used, max_turns }
+  | { id, type: 'full_access_checkpoint', turns_used, max_turns }
 ```
 
 ### Data Types (Python)

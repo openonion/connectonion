@@ -241,7 +241,7 @@ Authenticate, restore session, and sync conversation. **Always the first message
 {
   "type": "CONNECT",
   "session_id": "550e8400-...",
-  "session": { "messages": [...], "mode": "safe" },
+  "session": { "messages": [...], "mode": "default" },
   "last_msg_id": "ev-9f12...",
   "payload": {
     "to": "0x3d4017c3e843...",
@@ -436,7 +436,7 @@ the signed `payload`; the Host executes that verified copy.
     "method": "session/set_mode",
     "params": {
       "sessionId": "550e8400-...",
-      "modeId": "accept_edits"
+      "modeId": "auto_approve"
     }
   },
   "payload": {
@@ -448,7 +448,7 @@ the signed `payload`; the Host executes that verified copy.
       "method": "session/set_mode",
       "params": {
         "sessionId": "550e8400-...",
-        "modeId": "accept_edits"
+        "modeId": "auto_approve"
       }
     },
     "to": "0x3d4017c3e843...",
@@ -461,9 +461,9 @@ the signed `payload`; the Host executes that verified copy.
 ```
 
 The request is accepted only while the durable session is idle and owned by
-the authenticated caller. `safe` is always available; `accept_edits` and `ulw`
+the authenticated caller. `default` is always available; `auto_approve` and `full_access`
 are identity- and launch-authority-bounded. No client field can supply or extend
-ULW turns. Success is an `ACP_RESPONSE` with an empty result and means the JSONL
+Full access turns. Success is an `ACP_RESPONSE` with an empty result and means the JSONL
 commit completed; busy, policy, ownership, and persistence failures are
 correlated JSON-RPC errors. `@connectonion/react` owns this browser operation;
 O Chat consumes it without constructing protocol frames.
@@ -514,10 +514,11 @@ Response to CONNECT.
     }
   },
   "session_modes": {
-    "currentModeId": "safe",
+    "currentModeId": "default",
     "availableModes": [
-      {"id": "safe", "name": "Safe", "description": "Ask before side effects."},
-      {"id": "accept_edits", "name": "Auto", "description": "Apply edits without asking; other tools still require approval."}
+      {"id": "default", "name": "Default", "description": "Ask before sensitive tool calls."},
+      {"id": "auto_approve", "name": "Auto-approve", "description": "Apply named edits without asking; other sensitive tools still require approval."},
+      {"id": "full_access", "name": "Full access (YOLO)", "description": "Skip tool approval and continue autonomously to the configured checkpoint."}
     ]
   },
   "server_newer": true,

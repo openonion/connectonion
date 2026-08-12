@@ -485,7 +485,7 @@ resp = remote.input("Book a flight")      # -> Response(text, done)
 
 # The Host advertises the modes this identity may select. The setter returns
 # only after the Host has durably committed the new policy.
-remote.set_session_mode("accept_edits")
+remote.set_session_mode("auto_approve")
 print(remote.available_modes)
 
 # Direct tool execution — no LLM (see network/remote-call.md)

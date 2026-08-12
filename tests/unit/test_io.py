@@ -190,22 +190,22 @@ class TestReceiveAll:
     def test_receive_all_with_type_filter(self):
         """receive_all(msg_type) only returns messages of that type."""
         io = WebSocketIO()
-        io.send_to_agent({"type": "mode_change", "mode": "safe"})
+        io.send_to_agent({"type": "mode_change", "mode": "default"})
         io.send_to_agent({"type": "approval", "approved": True})
-        io.send_to_agent({"type": "mode_change", "mode": "ulw"})
+        io.send_to_agent({"type": "mode_change", "mode": "full_access"})
 
         result = io.receive_all("mode_change")
 
         assert len(result) == 2
-        assert result[0] == {"type": "mode_change", "mode": "safe"}
-        assert result[1] == {"type": "mode_change", "mode": "ulw"}
+        assert result[0] == {"type": "mode_change", "mode": "default"}
+        assert result[1] == {"type": "mode_change", "mode": "full_access"}
 
     def test_receive_all_with_type_filter_keeps_others_in_mailbox(self):
         """receive_all(msg_type) keeps non-matching messages in mailbox."""
         io = WebSocketIO()
-        io.send_to_agent({"type": "mode_change", "mode": "safe"})
+        io.send_to_agent({"type": "mode_change", "mode": "default"})
         io.send_to_agent({"type": "approval", "approved": True})
-        io.send_to_agent({"type": "mode_change", "mode": "ulw"})
+        io.send_to_agent({"type": "mode_change", "mode": "full_access"})
 
         io.receive_all("mode_change")
 

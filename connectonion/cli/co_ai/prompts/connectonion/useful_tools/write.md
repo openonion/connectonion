@@ -20,6 +20,6 @@ Overwriting a file you have not read: you cannot know what you are destroying.
 
 ## Approval
 
-In `safe` mode each write is confirmed. In `accept_edits` they land and are
-shown. `ulw` runs unattended for a bounded number of turns. The tool is the same
+In `default` mode each unpermitted write is confirmed. In `auto_approve` they land and are
+shown. `full_access` runs unattended for a bounded number of turns. The tool is the same
 in all three; only the gate moves.

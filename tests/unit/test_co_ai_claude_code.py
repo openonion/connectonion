@@ -19,9 +19,9 @@ claude_library = importlib.import_module("connectonion.useful_tools.claude_code"
 @pytest.mark.parametrize(
     ("mode", "permission_mode"),
     [
-        ("safe", "default"),
-        ("accept_edits", "acceptEdits"),
-        ("ulw", "auto"),
+        ("default", "default"),
+        ("auto_approve", "acceptEdits"),
+        ("full_access", "auto"),
     ],
 )
 def test_co_ai_mode_owns_claude_permission_mode(
@@ -77,7 +77,7 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
     assert all(call["permission_mode"] == "default" for call in calls)
 
 
-@pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
+@pytest.mark.parametrize("mode", ["default", "auto_approve", "full_access"])
 def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
     backend = pytest.fail
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", backend)
@@ -152,7 +152,7 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
             "continue",
             cwd=str(tmp_path),
             session_id="session-old",
-            agent=SimpleNamespace(current_session={"mode": "accept_edits"}),
+            agent=SimpleNamespace(current_session={"mode": "auto_approve"}),
         )
     )
 
@@ -178,11 +178,11 @@ def test_outer_approval_does_not_duplicate_claude_permissions():
     io = SimpleNamespace(send=lambda *_: pytest.fail("outer approval must not prompt"))
     agent = SimpleNamespace(
         current_session={
-            "mode": "safe",
+            "mode": "default",
             "permissions": {
                 "claude_code": {
                     "allowed": True,
-                    "source": "safe",
+                    "source": "default",
                     "reason": "managed delegation owns inner approval",
                 }
             },

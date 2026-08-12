@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from ...project import project_co_dir
+from ...core.approval_modes import DEFAULT_MODE
 from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
 from .session import SessionStorage, session_to_chat_items
@@ -79,7 +80,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
                 agent._yolo_turns = None
             if hasattr(agent, "_yolo_needs_activation"):
                 agent._yolo_needs_activation = False
-            agent._host_ulw_turns_ceiling = mode_policy.ulw_turns
+            agent._host_full_access_turns_ceiling = mode_policy.full_access_turns
 
         result = agent.input(
             prompt, session=session, images=images, files=files
@@ -141,7 +142,7 @@ def _normalized_host_result(
     mode_policy: HostModePolicy,
     is_admin: bool,
 ) -> dict:
-    """Restore verified identity and fail invalid Agent policy state to Safe."""
+    """Restore verified identity and fail invalid Agent policy state to Default."""
     final_session = copy.deepcopy(session)
     if requester is not None:
         final_session["requester"] = copy.deepcopy(requester)
@@ -151,9 +152,9 @@ def _normalized_host_result(
         return mode_policy.normalized(final_session, is_admin=is_admin)
     except ModeTransactionError:
         logger.exception(
-            "Agent produced invalid Host session policy; downgrading to Safe"
+            "Agent produced invalid Host session policy; downgrading to Default"
         )
-        return mode_policy.apply(final_session, "safe", is_admin=is_admin)
+        return mode_policy.apply(final_session, DEFAULT_MODE, is_admin=is_admin)
 
 
 def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
