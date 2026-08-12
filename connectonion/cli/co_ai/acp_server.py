@@ -99,7 +99,10 @@ class _BoundNetworkWorkspace:
     def __init__(self, path: Path, descriptor: int | None) -> None:
         self.path = path
         self._descriptor = descriptor
+        self._closed = False
         stat_result = os.fstat(descriptor) if descriptor is not None else path.stat()
+        if stat_result.st_ino == 0:
+            raise RuntimeError("Network ACP requires a stable workspace identity")
         self._identity = (stat_result.st_dev, stat_result.st_ino)
 
     @property
@@ -110,6 +113,8 @@ class _BoundNetworkWorkspace:
 
     @contextmanager
     def enter(self):
+        if self._closed:
+            raise RuntimeError("Network ACP workspace is closed")
         if self._descriptor is not None and hasattr(os, "fchdir"):
             flags = os.O_RDONLY
             if hasattr(os, "O_DIRECTORY"):
@@ -135,6 +140,21 @@ class _BoundNetworkWorkspace:
             yield
         finally:
             os.chdir(previous_path)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def close(self) -> None:
+        """Release the pinned directory handle once the Host has stopped."""
+
+        if self._closed:
+            return
+        self._closed = True
+        descriptor = self._descriptor
+        self._descriptor = None
+        if descriptor is not None:
+            os.close(descriptor)
 
     def _verify_path_identity(self) -> None:
         try:
@@ -1165,7 +1185,7 @@ class ConnectOnionACPAgent:
                 session, tools = load_snapshot(
                     self._session_co_dir,
                     session_id,
-                    cwd=self._snapshot_cwd(project_dir),
+                    **self._snapshot_location(project_dir),
                 )
             else:
                 session, tools = None, {}
@@ -1269,7 +1289,7 @@ class ConnectOnionACPAgent:
                     self._session_co_dir,
                     session,
                     normalized_tools,
-                    cwd=self._snapshot_cwd(project_dir),
+                    **self._snapshot_location(project_dir),
                 )
             return _SessionRuntime(
                 session_id=session_id,
@@ -1307,7 +1327,7 @@ class ConnectOnionACPAgent:
             self._session_co_dir,
             persistent_session,
             tools,
-            cwd=self._snapshot_cwd(runtime.cwd),
+            **self._snapshot_location(runtime.cwd),
         )
         # os.replace inside save_snapshot is the final fallible commit step.
         # These reference assignments cannot split the durable snapshot from
@@ -1474,7 +1494,7 @@ class ConnectOnionACPAgent:
             self._session_co_dir,
             session,
             tools,
-            cwd=self._snapshot_cwd(runtime.cwd),
+            **self._snapshot_location(runtime.cwd),
         )
         runtime.agent.current_session = agent_session
         runtime.last_good_session = last_good_session
@@ -1733,10 +1753,12 @@ class ConnectOnionACPAgent:
             )
         return self._network_workspace.path
 
-    def _snapshot_cwd(self, cwd: Path) -> Path | str:
-        """Keep network persistence on the virtual path, never a Host path."""
+    def _snapshot_location(self, cwd: Path) -> dict[str, Path | str]:
+        """Keep network persistence on an opaque virtual path."""
 
-        return "/" if self._network_workspace is not None else cwd
+        if self._network_workspace is not None:
+            return {"virtual_cwd": "/"}
+        return {"cwd": cwd}
 
     @staticmethod
     def _prompt_text(prompt: list[Any]) -> str:

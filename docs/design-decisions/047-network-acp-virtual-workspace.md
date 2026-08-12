@@ -28,6 +28,8 @@ the Host accepts connections. On POSIX it keeps an open directory descriptor;
 on platforms without descriptor-relative directory entry it records the
 directory identity and verifies it before and after entry. A later rename,
 symlink, or replacement at the old pathname therefore cannot redirect a turn.
+If the platform or filesystem cannot provide a stable nonzero directory
+identity, network ACP fails closed at startup.
 Every network ACP adapter receives that immutable binding. `session/new` and
 `session/resume` map the exact protocol string `/` to it. Every other value
 fails as invalid parameters before session ownership, MCP startup, or Agent
@@ -37,7 +39,8 @@ The public protocol never returns the real Host path. Traversal spellings,
 symlink aliases, absolute Host paths, and path-like hints in extensible metadata
 cannot select a workspace. `additionalDirectories` remains unsupported and
 fails closed. Metadata is not an authority source. Network snapshots also store
-the virtual root rather than the Host pathname and use the bound directory
+the virtual root as protocol data rather than resolving it through Host path
+semantics, and use the bound directory
 identity as part of their private principal namespace.
 
 The shared ACP lifecycle adapter takes an explicit optional bound

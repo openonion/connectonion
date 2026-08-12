@@ -20,6 +20,7 @@ from acp.interfaces import Client
 from connectonion.cli.co_ai import acp_server
 from connectonion.cli.co_ai.acp_server import (
     ConnectOnionACPAgent,
+    _BoundNetworkWorkspace,
     _FailClosedACPInput,
     capture_network_workspace,
 )
@@ -512,6 +513,15 @@ async def test_acp_adapters_share_one_process_context_lock(tmp_path):
         ("first-end", first_dir.resolve()),
         ("second", second_dir.resolve()),
     ]
+
+
+def test_network_acp_rejects_filesystem_without_stable_directory_identity():
+    class UnstableDirectory:
+        def stat(self):
+            return SimpleNamespace(st_dev=1, st_ino=0)
+
+    with pytest.raises(RuntimeError, match="stable workspace identity"):
+        _BoundNetworkWorkspace(UnstableDirectory(), None)  # type: ignore[arg-type]
 
 
 class _BufferWriter:

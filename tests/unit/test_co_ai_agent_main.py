@@ -212,6 +212,31 @@ def test_network_acp_workspace_is_captured_when_server_starts(monkeypatch, tmp_p
     network_agent = called["acp_agent_factory"](principal)
 
     assert network_agent._network_workspace.path == launch_dir.resolve()
+    assert network_agent._network_workspace.closed is True
+
+
+def test_network_acp_workspace_closes_when_host_raises(monkeypatch, tmp_path):
+    from connectonion.cli.co_ai import acp_server as acp_server_mod
+
+    captured = []
+    real_capture = acp_server_mod.capture_network_workspace
+
+    def capture(path):
+        workspace = real_capture(path)
+        captured.append(workspace)
+        return workspace
+
+    def fail_host(*_args, **_kwargs):
+        raise RuntimeError("host startup failed")
+
+    # start_server imports the function lazily from acp_server.
+    monkeypatch.setattr("connectonion.cli.co_ai.acp_server.capture_network_workspace", capture)
+    monkeypatch.setattr(main_mod, "host", fail_host)
+
+    with pytest.raises(RuntimeError, match="host startup failed"):
+        main_mod.start_server(SimpleNamespace(name="agent"))
+
+    assert captured and captured[0].closed is True
 
 
 def test_network_acp_session_namespace_is_workspace_scoped(monkeypatch, tmp_path):
