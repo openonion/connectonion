@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import threading
 import time
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -18,12 +20,15 @@ from acp.interfaces import Client
 from connectonion.cli.co_ai import acp_server
 from connectonion.cli.co_ai.acp_server import (
     ConnectOnionACPAgent,
+    _BoundNetworkWorkspace,
     _FailClosedACPInput,
+    capture_network_workspace,
 )
 from connectonion.cli.co_ai.acp_transport import (
     _BoundStdoutWriter,
     _StrictNDJSONTransport,
 )
+from connectonion.cli.co_ai.one_shot_sessions import save_snapshot
 from connectonion.useful_plugins.tool_approval import check_approval
 
 
@@ -314,6 +319,209 @@ async def test_acp_rejects_unsupported_session_inputs(tmp_path):
         await acp_agent.new_session(str(tmp_path), mcp_servers=[object()])
     with pytest.raises(RequestError, match="Invalid params"):
         await acp_agent.new_session("relative/path")
+
+
+@pytest.mark.asyncio
+async def test_network_acp_maps_only_virtual_root_to_host_workspace(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    constructed_in: list[Path] = []
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        constructed_in.append(Path.cwd())
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        network_workspace=capture_network_workspace(workspace),
+    )
+
+    session = await acp_agent.new_session(
+        "/",
+        mcp_servers=[],
+        _meta={"cwd": "/tmp", "additionalDirectories": ["/private"]},
+    )
+
+    assert constructed_in == [workspace.resolve()]
+    assert acp_agent._sessions[session.session_id].cwd == workspace.resolve()
+
+
+@pytest.mark.asyncio
+async def test_network_acp_rejects_host_paths_before_agent_construction(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    constructed = 0
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        nonlocal constructed
+        constructed += 1
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        network_workspace=capture_network_workspace(workspace),
+    )
+
+    for cwd in (str(workspace), "/./", "/tmp"):
+        with pytest.raises(RequestError, match="Invalid params") as exc_info:
+            await acp_agent.new_session(cwd, mcp_servers=[])
+        assert str(workspace) not in str(exc_info.value)
+        with pytest.raises(RequestError, match="Invalid params"):
+            await acp_agent.resume_session("copied-session", cwd, mcp_servers=[])
+
+    with pytest.raises(RequestError, match="Invalid params"):
+        await acp_agent.new_session(
+            "/",
+            additional_directories=[str(tmp_path / "other")],
+        )
+
+    assert constructed == 0
+
+
+@pytest.mark.asyncio
+async def test_network_acp_resume_does_not_disclose_saved_host_workspace(tmp_path):
+    old_workspace = tmp_path / "old-private-project"
+    new_workspace = tmp_path / "new-private-project"
+    old_workspace.mkdir()
+    new_workspace.mkdir()
+    session_id = "40c0397c-972b-4133-899b-5ab4cc5c4883"
+    session = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 0,
+        "mode": ":read-only",
+        "plan": [],
+    }
+    save_snapshot(
+        tmp_path / "network-state",
+        session,
+        {},
+        cwd=old_workspace,
+    )
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+        session_co_dir=tmp_path / "network-state",
+        network_workspace=capture_network_workspace(new_workspace),
+    )
+
+    with pytest.raises(RequestError, match="Unable to resume session") as exc_info:
+        await acp_agent.resume_session(session_id, "/", mcp_servers=[])
+
+    error = str(exc_info.value)
+    assert str(old_workspace) not in error
+    assert str(new_workspace) not in error
+
+
+@pytest.mark.asyncio
+async def test_network_acp_workspace_does_not_follow_replaced_launch_path(tmp_path):
+    launch_path = tmp_path / "project"
+    moved_path = tmp_path / "moved-project"
+    replacement = tmp_path / "replacement"
+    launch_path.mkdir()
+    replacement.mkdir()
+    (launch_path / "workspace-marker").write_text("original", encoding="utf-8")
+    (replacement / "workspace-marker").write_text("replacement", encoding="utf-8")
+    workspace = capture_network_workspace(launch_path)
+    launch_path.rename(moved_path)
+    if os.name == "nt":
+        launch_path.mkdir()
+    else:
+        launch_path.symlink_to(replacement, target_is_directory=True)
+    observed: list[str] = []
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        observed.append(Path("workspace-marker").read_text(encoding="utf-8"))
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+        network_workspace=workspace,
+    )
+
+    if hasattr(os, "fchdir"):
+        await acp_agent.new_session("/", mcp_servers=[])
+        assert observed == ["original"]
+    else:
+        with pytest.raises(RequestError, match="Unable to create"):
+            await acp_agent.new_session("/", mcp_servers=[])
+        assert observed == []
+
+
+@pytest.mark.asyncio
+async def test_acp_adapters_share_one_process_context_lock(tmp_path):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_started = threading.Event()
+    release_first = threading.Event()
+    observed: list[tuple[str, Path]] = []
+
+    def first_factory(**_kwargs: Any) -> _FakeAgent:
+        observed.append(("first-start", Path.cwd()))
+        first_started.set()
+        assert release_first.wait(timeout=1)
+        observed.append(("first-end", Path.cwd()))
+        return _FakeAgent()
+
+    def second_factory(**_kwargs: Any) -> _FakeAgent:
+        observed.append(("second", Path.cwd()))
+        return _FakeAgent()
+
+    first = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=first_factory,
+    )
+    second = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=second_factory,
+    )
+
+    first_task = asyncio.create_task(first.new_session(str(first_dir), mcp_servers=[]))
+    await asyncio.wait_for(asyncio.to_thread(first_started.wait), timeout=1)
+    second_task = asyncio.create_task(second.new_session(str(second_dir), mcp_servers=[]))
+    await asyncio.sleep(0.05)
+    assert observed == [("first-start", first_dir.resolve())]
+    release_first.set()
+    await asyncio.gather(first_task, second_task)
+
+    assert observed == [
+        ("first-start", first_dir.resolve()),
+        ("first-end", first_dir.resolve()),
+        ("second", second_dir.resolve()),
+    ]
+
+
+def test_network_acp_rejects_filesystem_without_stable_directory_identity():
+    class UnstableDirectory:
+        def stat(self):
+            return SimpleNamespace(st_dev=1, st_ino=0)
+
+    with pytest.raises(RuntimeError, match="stable workspace identity"):
+        _BoundNetworkWorkspace(UnstableDirectory(), None)  # type: ignore[arg-type]
 
 
 class _BufferWriter:

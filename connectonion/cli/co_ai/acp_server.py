@@ -88,6 +88,110 @@ PermissionRequester = Callable[
 ACP_EVENT_BUFFER_SIZE = 64
 logger = logging.getLogger(__name__)
 
+# cwd and redirect_stdout are process-global, so every ACP adapter in this
+# process must share one lock rather than protecting only itself.
+_PROCESS_CONTEXT_LOCK = threading.RLock()
+
+
+class _BoundNetworkWorkspace:
+    """The exact directory object that existed when the network Host started."""
+
+    def __init__(self, path: Path, descriptor: int | None) -> None:
+        self.path = path
+        self._descriptor = descriptor
+        self._closed = False
+        stat_result = os.fstat(descriptor) if descriptor is not None else path.stat()
+        if stat_result.st_ino == 0:
+            raise RuntimeError("Network ACP requires a stable workspace identity")
+        self._identity = (stat_result.st_dev, stat_result.st_ino)
+
+    @property
+    def namespace_key(self) -> str:
+        """Private namespace input; the caller stores only its digest."""
+
+        return f"{self.path}\0{self._identity[0]}:{self._identity[1]}"
+
+    @contextmanager
+    def enter(self):
+        if self._closed:
+            raise RuntimeError("Network ACP workspace is closed")
+        if self._descriptor is not None and hasattr(os, "fchdir"):
+            flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                flags |= os.O_DIRECTORY
+            if hasattr(os, "O_CLOEXEC"):
+                flags |= os.O_CLOEXEC
+            previous = os.open(".", flags)
+            try:
+                os.fchdir(self._descriptor)
+                yield
+            finally:
+                os.fchdir(previous)
+                os.close(previous)
+            return
+
+        self._verify_path_identity()
+        previous_path = Path.cwd()
+        try:
+            os.chdir(self.path)
+            current = os.stat(".")
+            if (current.st_dev, current.st_ino) != self._identity:
+                raise RuntimeError("Network ACP workspace changed after Host startup")
+            yield
+        finally:
+            os.chdir(previous_path)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def close(self) -> None:
+        """Release the pinned directory handle once the Host has stopped."""
+
+        if self._closed:
+            return
+        self._closed = True
+        descriptor = self._descriptor
+        self._descriptor = None
+        if descriptor is not None:
+            os.close(descriptor)
+
+    def _verify_path_identity(self) -> None:
+        try:
+            current = self.path.stat()
+        except OSError:
+            raise RuntimeError("Network ACP workspace is no longer available") from None
+        if (current.st_dev, current.st_ino) != self._identity:
+            raise RuntimeError("Network ACP workspace changed after Host startup")
+
+
+def capture_network_workspace(path: Path) -> _BoundNetworkWorkspace:
+    """Bind the network workspace to a directory object, not a reusable path."""
+
+    resolved = Path(path).resolve(strict=True)
+    if not resolved.is_dir():
+        raise NotADirectoryError(resolved)
+    if not hasattr(os, "fchdir"):
+        return _BoundNetworkWorkspace(resolved, None)
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(resolved, flags)
+    try:
+        before = resolved.stat()
+        opened = os.fstat(descriptor)
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            raise RuntimeError("Network ACP workspace changed during Host startup")
+        return _BoundNetworkWorkspace(resolved, descriptor)
+    except BaseException:
+        os.close(descriptor)
+        raise
+
 _ACP_PERMISSION_OPTIONS = (
     PermissionOption(
         option_id="allow_once",
@@ -609,6 +713,7 @@ class ConnectOnionACPAgent:
         yolo_turns: int,
         agent_factory: AgentFactory | None = None,
         session_co_dir: Path | None = None,
+        network_workspace: _BoundNetworkWorkspace | None = None,
         allow_mcp: bool = False,
         mcp_connector: MCPConnector | None = None,
     ) -> None:
@@ -618,13 +723,11 @@ class ConnectOnionACPAgent:
         self._yolo_turns = yolo_turns
         self._agent_factory = agent_factory
         self._session_co_dir = Path(session_co_dir or GLOBAL_CO_DIR)
+        self._network_workspace = network_workspace
         self._allow_mcp = allow_mcp
         self._mcp_connector = mcp_connector
         self._client: Client | None = None
         self._sessions: dict[str, _SessionRuntime] = {}
-        # cwd and redirect_stdout are process-global.  ACP request handlers stay
-        # asynchronous, while this lock makes those short global scopes explicit.
-        self._process_context_lock = threading.RLock()
 
     def on_connect(self, client: Client) -> None:
         self._client = client
@@ -666,7 +769,7 @@ class ConnectOnionACPAgent:
         **_kwargs: Any,
     ) -> NewSessionResponse:
         self._validate_session_inputs(additional_directories, mcp_servers)
-        project_dir = self._validate_cwd(cwd)
+        project_dir = self._session_cwd(cwd)
         session_id = new_session_id()
         acp_input = _ACPEventBridge(
             asyncio.get_running_loop(),
@@ -704,7 +807,7 @@ class ConnectOnionACPAgent:
         """Resume one persisted session without replaying its transcript."""
 
         self._validate_session_inputs(additional_directories, mcp_servers)
-        project_dir = self._validate_cwd(cwd)
+        project_dir = self._session_cwd(cwd)
         if session_id in self._sessions:
             raise RequestError(
                 -32000,
@@ -725,10 +828,11 @@ class ConnectOnionACPAgent:
                 mcp_servers or [],
             )
         except SessionSnapshotError as exc:
+            details = None if self._network_workspace is not None else str(exc)
             raise RequestError(
                 -32002,
                 "Unable to resume session",
-                {"details": str(exc)},
+                {"details": details} if details is not None else None,
             ) from None
         except Exception:
             logger.exception("Failed to resume co ai ACP session")
@@ -1081,7 +1185,7 @@ class ConnectOnionACPAgent:
                 session, tools = load_snapshot(
                     self._session_co_dir,
                     session_id,
-                    cwd=project_dir,
+                    **self._snapshot_location(project_dir),
                 )
             else:
                 session, tools = None, {}
@@ -1185,7 +1289,7 @@ class ConnectOnionACPAgent:
                     self._session_co_dir,
                     session,
                     normalized_tools,
-                    cwd=project_dir,
+                    **self._snapshot_location(project_dir),
                 )
             return _SessionRuntime(
                 session_id=session_id,
@@ -1223,7 +1327,7 @@ class ConnectOnionACPAgent:
             self._session_co_dir,
             persistent_session,
             tools,
-            cwd=runtime.cwd,
+            **self._snapshot_location(runtime.cwd),
         )
         # os.replace inside save_snapshot is the final fallible commit step.
         # These reference assignments cannot split the durable snapshot from
@@ -1390,7 +1494,7 @@ class ConnectOnionACPAgent:
             self._session_co_dir,
             session,
             tools,
-            cwd=runtime.cwd,
+            **self._snapshot_location(runtime.cwd),
         )
         runtime.agent.current_session = agent_session
         runtime.last_good_session = last_good_session
@@ -1605,7 +1709,12 @@ class ConnectOnionACPAgent:
 
     @contextmanager
     def _process_context(self, cwd: Path):
-        with self._process_context_lock:
+        with _PROCESS_CONTEXT_LOCK:
+            if self._network_workspace is not None:
+                with self._network_workspace.enter():
+                    with redirect_stdout(sys.stderr):
+                        yield
+                return
             previous_cwd = Path.cwd()
             try:
                 os.chdir(cwd)
@@ -1633,6 +1742,24 @@ class ConnectOnionACPAgent:
             )
         return resolved
 
+    def _session_cwd(self, cwd: str) -> Path:
+        """Resolve local stdio paths or the network-only virtual root."""
+
+        if self._network_workspace is None:
+            return self._validate_cwd(cwd)
+        if cwd != "/":
+            raise RequestError.invalid_params(
+                {"details": "network ACP cwd must be the virtual workspace root /"}
+            )
+        return self._network_workspace.path
+
+    def _snapshot_location(self, cwd: Path) -> dict[str, Path | str]:
+        """Keep network persistence on an opaque virtual path."""
+
+        if self._network_workspace is not None:
+            return {"virtual_cwd": "/"}
+        return {"cwd": cwd}
+
     @staticmethod
     def _prompt_text(prompt: list[Any]) -> str:
         parts: list[str] = []
@@ -1657,6 +1784,7 @@ def create_acp_agent(
     yolo: bool,
     yolo_turns: int,
     session_co_dir: Path | None = None,
+    network_workspace: _BoundNetworkWorkspace | None = None,
     allow_mcp: bool = False,
 ) -> ConnectOnionACPAgent:
     """Build the shared ACP lifecycle adapter for stdio or network transport."""
@@ -1667,6 +1795,7 @@ def create_acp_agent(
         yolo=yolo,
         yolo_turns=yolo_turns,
         session_co_dir=session_co_dir,
+        network_workspace=network_workspace,
         allow_mcp=allow_mcp,
     )
 

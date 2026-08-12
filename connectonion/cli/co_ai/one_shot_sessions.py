@@ -49,6 +49,17 @@ def _resolved_cwd(cwd: Path | str | None = None) -> str:
     return str((Path.cwd() if cwd is None else Path(cwd)).resolve())
 
 
+def _snapshot_cwd(
+    cwd: Path | str | None,
+    virtual_cwd: str | None,
+) -> str:
+    if virtual_cwd is None:
+        return _resolved_cwd(cwd)
+    if cwd is not None or virtual_cwd != "/":
+        raise SessionSnapshotError("Invalid virtual session working directory.")
+    return virtual_cwd
+
+
 class SessionLease:
     """Exclusive OS-backed ownership that can outlive one function call."""
 
@@ -141,6 +152,7 @@ def save_snapshot(
     tool_state: dict[str, Any] | None = None,
     *,
     cwd: Path | str | None = None,
+    virtual_cwd: str | None = None,
 ) -> None:
     """Atomically persist one completed Agent turn."""
     session_id = _canonical_id(session.get("session_id"))
@@ -150,7 +162,7 @@ def save_snapshot(
     _validate_plan_matches_tools(session, tools, session_id)
     payload = {
         "version": SNAPSHOT_VERSION,
-        "cwd": _resolved_cwd(cwd),
+        "cwd": _snapshot_cwd(cwd, virtual_cwd),
         "session": session,
         "tools": tools,
     }
@@ -186,6 +198,7 @@ def load_snapshot(
     session_id: str,
     *,
     cwd: Path | str | None = None,
+    virtual_cwd: str | None = None,
 ) -> tuple[dict, dict]:
     """Load and validate the exact snapshot named by ``session_id``."""
     canonical = _canonical_id(session_id)
@@ -207,10 +220,14 @@ def load_snapshot(
             f"Session {canonical} uses unsupported snapshot version {version}."
         )
     saved_cwd = payload.get("cwd")
-    if not isinstance(saved_cwd, str) or not Path(saved_cwd).is_absolute():
+    if not isinstance(saved_cwd, str):
         raise SessionSnapshotError(f"Session {canonical} has an invalid working directory.")
-    current_cwd = _resolved_cwd(cwd)
-    if os.path.normcase(str(Path(saved_cwd).resolve())) != os.path.normcase(current_cwd):
+    current_cwd = _snapshot_cwd(cwd, virtual_cwd)
+    if virtual_cwd is None:
+        if not Path(saved_cwd).is_absolute():
+            raise SessionSnapshotError(f"Session {canonical} has an invalid working directory.")
+        saved_cwd = str(Path(saved_cwd).resolve())
+    if os.path.normcase(saved_cwd) != os.path.normcase(current_cwd):
         raise SessionSnapshotError(
             f"Session {canonical} belongs to {saved_cwd}; resume it from that directory."
         )

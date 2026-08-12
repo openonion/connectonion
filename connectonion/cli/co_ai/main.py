@@ -59,61 +59,67 @@ def start_server(
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
-    # Use global ~/.co/ for consistent identity across all co ai sessions
-    co_dir = Path.home() / ".co"
-    addr_data = address.load(co_dir)
+    from .acp_server import capture_network_workspace, create_acp_agent
 
-    # Open chat URL after agent successfully starts (2 second delay)
-    if addr_data:
+    network_workspace = capture_network_workspace(Path.cwd())
+    try:
+        # Use global ~/.co/ for consistent identity across all co ai sessions
+        co_dir = Path.home() / ".co"
+        addr_data = address.load(co_dir)
 
-        def open_chat_delayed():
-            time.sleep(2)
-            webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
+        # Open chat URL after agent successfully starts (2 second delay)
+        if addr_data:
 
-        threading.Thread(target=open_chat_delayed, daemon=True).start()
+            def open_chat_delayed():
+                time.sleep(2)
+                webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
 
-    # ACP needs one isolated lifecycle adapter per authenticated connection.
-    # The existing /ws web client remains available during its native-ACP
-    # migration; both doors share the host's signature and trust boundary.
-    from .acp_server import create_acp_agent
+            threading.Thread(target=open_chat_delayed, daemon=True).start()
 
-    acp_model = model or getattr(getattr(agent, "llm", None), "model", None)
-    acp_model = acp_model or "co/claude-opus-4-5"
-    acp_max_iterations = max_iterations if max_iterations is not None else getattr(agent, "max_iterations", 100)
+        # ACP needs one isolated lifecycle adapter per authenticated connection.
+        # The existing /ws web client remains available during its native-ACP
+        # migration; both doors share the host's signature and trust boundary.
+        acp_model = model or getattr(getattr(agent, "llm", None), "model", None)
+        acp_model = acp_model or "co/claude-opus-4-5"
+        acp_max_iterations = max_iterations if max_iterations is not None else getattr(agent, "max_iterations", 100)
 
-    def create_network_acp_agent(principal):
-        # A session ID is a routing value, never a credential. Keep persistent
-        # network sessions in a stable namespace selected only from the
-        # authenticated connection principal so copied IDs cross no boundary.
-        owner = "\0".join(
-            (
-                "v1",
-                principal.recipient,
-                principal.address,
-                principal.origin or "",
-                principal.auth_method,
+        def create_network_acp_agent(principal):
+            # A session ID is a routing value, never a credential. Keep persistent
+            # network sessions in a stable namespace selected only from the
+            # authenticated connection principal so copied IDs cross no boundary.
+            owner = "\0".join(
+                (
+                    "v1",
+                    principal.recipient,
+                    principal.address,
+                    principal.origin or "",
+                    principal.auth_method,
+                    network_workspace.namespace_key,
+                )
             )
-        )
-        owner_id = hashlib.sha256(owner.encode("utf-8")).hexdigest()
-        session_co_dir = co_dir / "acp-principals" / owner_id
-        return create_acp_agent(
-            model=acp_model,
-            max_iterations=acp_max_iterations,
-            # --yolo is an operator ceiling, not authority delegated to every
-            # trusted remote caller. Only the authenticated administrator can
-            # receive the Full access profile on this direct endpoint.
-            yolo=yolo and principal.level == "admin",
-            yolo_turns=yolo_turns,
-            session_co_dir=session_co_dir,
-        )
+            owner_id = hashlib.sha256(owner.encode("utf-8")).hexdigest()
+            session_co_dir = co_dir / "acp-principals" / owner_id
+            return create_acp_agent(
+                model=acp_model,
+                max_iterations=acp_max_iterations,
+                # --yolo is an operator ceiling, not authority delegated to every
+                # trusted remote caller. Only the authenticated administrator can
+                # receive the Full access profile on this direct endpoint.
+                yolo=yolo and principal.level == "admin",
+                yolo_turns=yolo_turns,
+                session_co_dir=session_co_dir,
+                network_workspace=network_workspace,
+            )
 
-    # Start server with same co_dir (relay enabled by default for web chat).
-    # co ai keeps one Agent instance so browser/tool state can persist across
-    # continued inputs in the same local web server.
-    host(
-        agent,
-        port=port,
-        trust="careful",
-        co_dir=co_dir,
-        acp_agent_factory=create_network_acp_agent,
-    )
+        # Start server with same co_dir (relay enabled by default for web chat).
+        # co ai keeps one Agent instance so browser/tool state can persist across
+        # continued inputs in the same local web server.
+        host(
+            agent,
+            port=port,
+            trust="careful",
+            co_dir=co_dir,
+            acp_agent_factory=create_network_acp_agent,
+        )
+    finally:
+        network_workspace.close()

@@ -575,3 +575,29 @@ def test_resume_requires_the_machine_readable_contract(capsys):
 
     assert caught.value.exit_code == 2
     assert "--resume requires --json" in capsys.readouterr().out
+
+
+def test_virtual_session_cwd_is_opaque_protocol_data(tmp_path):
+    session_id = new_session_id()
+    session = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 0,
+        "mode": ":read-only",
+        "plan": [],
+    }
+
+    save_snapshot(tmp_path, session, {}, virtual_cwd="/")
+    payload = json.loads(
+        (tmp_path / "ai" / "sessions" / f"{session_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    restored, tools = load_snapshot(tmp_path, session_id, virtual_cwd="/")
+
+    assert payload["cwd"] == "/"
+    assert restored == session
+    assert tools == {}
+    with pytest.raises(SessionSnapshotError, match="Invalid virtual"):
+        save_snapshot(tmp_path, session, {}, cwd=tmp_path, virtual_cwd="/")

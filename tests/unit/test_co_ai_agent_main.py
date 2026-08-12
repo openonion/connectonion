@@ -185,6 +185,92 @@ def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only
         load_snapshot(other_contact._session_co_dir, session_id, cwd=tmp_path)
 
 
+def test_network_acp_workspace_is_captured_when_server_starts(monkeypatch, tmp_path):
+    launch_dir = tmp_path / "launch"
+    later_dir = tmp_path / "later"
+    launch_dir.mkdir()
+    later_dir.mkdir()
+    agent = SimpleNamespace(name="agent")
+    called = {}
+    monkeypatch.chdir(launch_dir)
+
+    def fake_host(_agent, **kwargs):
+        called.update(kwargs)
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+    main_mod.start_server(agent)
+    monkeypatch.chdir(later_dir)
+
+    principal = ACPPrincipal(
+        address="0xcontact",
+        level="contact",
+        recipient="0xrecipient",
+        origin="https://chat.openonion.ai",
+        auth_method="browser_ticket",
+        authenticated_at=1.0,
+    )
+    network_agent = called["acp_agent_factory"](principal)
+
+    assert network_agent._network_workspace.path == launch_dir.resolve()
+    assert network_agent._network_workspace.closed is True
+
+
+def test_network_acp_workspace_closes_when_host_raises(monkeypatch, tmp_path):
+    from connectonion.cli.co_ai import acp_server as acp_server_mod
+
+    captured = []
+    real_capture = acp_server_mod.capture_network_workspace
+
+    def capture(path):
+        workspace = real_capture(path)
+        captured.append(workspace)
+        return workspace
+
+    def fail_host(*_args, **_kwargs):
+        raise RuntimeError("host startup failed")
+
+    # start_server imports the function lazily from acp_server.
+    monkeypatch.setattr("connectonion.cli.co_ai.acp_server.capture_network_workspace", capture)
+    monkeypatch.setattr(main_mod, "host", fail_host)
+
+    with pytest.raises(RuntimeError, match="host startup failed"):
+        main_mod.start_server(SimpleNamespace(name="agent"))
+
+    assert captured and captured[0].closed is True
+
+
+def test_network_acp_session_namespace_is_workspace_scoped(monkeypatch, tmp_path):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    agent = SimpleNamespace(name="agent")
+    factories = []
+    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
+
+    def fake_host(_agent, **kwargs):
+        factories.append(kwargs["acp_agent_factory"])
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+    principal = ACPPrincipal(
+        address="0xcontact",
+        level="contact",
+        recipient="0xrecipient",
+        origin="https://chat.openonion.ai",
+        auth_method="browser_ticket",
+        authenticated_at=1.0,
+    )
+
+    monkeypatch.chdir(first_dir)
+    main_mod.start_server(agent)
+    monkeypatch.chdir(second_dir)
+    main_mod.start_server(agent)
+
+    first_agent = factories[0](principal)
+    second_agent = factories[1](principal)
+    assert first_agent._session_co_dir != second_agent._session_co_dir
+
+
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):
     """The factory→assembler hop was untested: assemble_prompt(role=) had tests
     and the template's role string had tests, but nothing checked that
