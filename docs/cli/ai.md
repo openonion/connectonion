@@ -22,6 +22,19 @@ co ai
 - Opens `chat.openonion.ai/{your-address}` in your browser
 - You chat with the agent through the web UI
 - Agent runs in your project directory
+- Starts an authenticated ACP v1 WebSocket at `/acp` for compatible clients
+
+The current O Chat release still connects through the authenticated `/ws`
+compatibility transport. The `/acp` endpoint is started now so native ACP
+clients can be validated before the React/O Chat migration. Both endpoints use
+the same ConnectOnion identity, recipient binding, replay protection, and trust
+policy; starting ACP does not make the coding Agent anonymous or public.
+
+Browser ACP connections first exchange a signed request for a short-lived,
+single-use, Origin-bound ticket. Programmatic clients can sign the WebSocket
+upgrade directly. See [Authenticated ACP WebSocket](../network/acp-websocket.md).
+This preview supports direct loopback or TLS/WSS connections only. It does not
+claim end-to-end encryption through an untrusted TLS-terminating relay.
 
 ### One-Shot Mode
 
@@ -65,6 +78,11 @@ Starts a stable ACP v1 agent server over stdio so an ACP-compatible editor or
 CLI can create a session and drive the real `co ai` coding agent. ACP messages
 are newline-delimited JSON-RPC on stdin/stdout; human-readable diagnostics stay
 on stderr.
+
+Use `--acp` when another local process launches `co ai` and owns its stdio.
+Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a
+network endpoint and therefore keeps ConnectOnion authentication and trust in
+front of ACP initialization.
 
 Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
 session reuse its conversation and tool state. The working directory supplied

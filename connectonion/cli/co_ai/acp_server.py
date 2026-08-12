@@ -1650,6 +1650,27 @@ class ConnectOnionACPAgent:
         return "\n\n".join(parts)
 
 
+def create_acp_agent(
+    *,
+    model: str,
+    max_iterations: int,
+    yolo: bool,
+    yolo_turns: int,
+    session_co_dir: Path | None = None,
+    allow_mcp: bool = False,
+) -> ConnectOnionACPAgent:
+    """Build the shared ACP lifecycle adapter for stdio or network transport."""
+
+    return ConnectOnionACPAgent(
+        model=model,
+        max_iterations=max_iterations,
+        yolo=yolo,
+        yolo_turns=yolo_turns,
+        session_co_dir=session_co_dir,
+        allow_mcp=allow_mcp,
+    )
+
+
 async def serve_acp(
     *,
     model: str,
@@ -1661,7 +1682,7 @@ async def serve_acp(
     """Serve ``co ai`` as an ACP v1 Agent until the client closes stdin."""
 
     transport = await open_stdio_transport()
-    agent = ConnectOnionACPAgent(
+    agent = create_acp_agent(
         model=model,
         max_iterations=max_iterations,
         yolo=yolo,

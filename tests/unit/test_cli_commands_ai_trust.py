@@ -44,6 +44,10 @@ def test_handle_ai_calls_start_server(monkeypatch):
     )
 
     assert called["port"] == 1111
+    assert called["model"] == "m"
+    assert called["max_iterations"] == 3
+    assert called["yolo"] is True
+    assert called["yolo_turns"] == 7
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3

@@ -12,8 +12,16 @@ Components under test:
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
+from connectonion.cli.co_ai.one_shot_sessions import (
+    SessionSnapshotError,
+    load_snapshot,
+    save_snapshot,
+)
+from connectonion.network.host.acp_gateway import ACPPrincipal
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 
 
@@ -94,8 +102,14 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     agent = SimpleNamespace(name="agent")
     called = {}
 
-    def fake_host(agent, port, trust, co_dir=None, relay_url=None):
-        called.update({"agent": agent, "port": port, "trust": trust, "relay_url": relay_url})
+    def fake_host(agent, port, trust, co_dir=None, relay_url=None, **kwargs):
+        called.update({
+            "agent": agent,
+            "port": port,
+            "trust": trust,
+            "relay_url": relay_url,
+            **kwargs,
+        })
 
     monkeypatch.setattr(main_mod, "host", fake_host)
 
@@ -105,6 +119,70 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
     assert called["agent"] is agent
+    assert callable(called["acp_agent_factory"])
+
+
+def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only(
+    monkeypatch,
+    tmp_path,
+):
+    agent = SimpleNamespace(name="agent")
+    called = {}
+    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
+
+    def fake_host(_agent, **kwargs):
+        called.update(kwargs)
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+    main_mod.start_server(agent, yolo=True, yolo_turns=7)
+    factory = called["acp_agent_factory"]
+
+    def principal(address, level, *, method="browser_ticket"):
+        return ACPPrincipal(
+            address=address,
+            level=level,
+            recipient="0xrecipient",
+            origin="https://chat.openonion.ai",
+            auth_method=method,
+            authenticated_at=1.0,
+        )
+
+    contact = factory(principal("0xcontact", "contact"))
+    same_contact = factory(principal("0xcontact", "contact"))
+    other_contact = factory(principal("0xother", "contact"))
+    signed_contact = factory(
+        principal("0xcontact", "contact", method="signed_headers")
+    )
+    admin = factory(principal("0xadmin", "admin"))
+
+    assert contact._session_co_dir == same_contact._session_co_dir
+    assert contact._session_co_dir != other_contact._session_co_dir
+    assert contact._session_co_dir != signed_contact._session_co_dir
+    assert contact._session_co_dir.is_relative_to(
+        tmp_path / ".co" / "acp-principals"
+    )
+    assert contact._yolo is False
+    assert admin._yolo is True
+    assert admin._yolo_turns == 7
+
+    session_id = "40c0397c-972b-4133-899b-5ab4cc5c4883"
+    snapshot = {
+        "session_id": session_id,
+        "messages": [],
+        "trace": [],
+        "turn": 0,
+        "mode": ":read-only",
+        "plan": [],
+    }
+    save_snapshot(contact._session_co_dir, snapshot, {}, cwd=tmp_path)
+    loaded, _ = load_snapshot(
+        same_contact._session_co_dir,
+        session_id,
+        cwd=tmp_path,
+    )
+    assert loaded["session_id"] == session_id
+    with pytest.raises(SessionSnapshotError, match="was not found"):
+        load_snapshot(other_contact._session_co_dir, session_id, cwd=tmp_path)
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):

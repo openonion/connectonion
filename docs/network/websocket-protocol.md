@@ -2,6 +2,12 @@
 
 > CONNECT to start or resume, INPUT to message, EXEC to run one tool directly. Session stays alive between executions.
 
+> **Migration note:** this page documents the ConnectOnion compatibility
+> socket at `/ws`; that socket is not ACP. `co ai` now also starts native ACP
+> v1 over the authenticated `/acp` WebSocket. O Chat continues using `/ws`
+> until its React client migration is complete. See
+> [Authenticated ACP WebSocket](acp-websocket.md).
+
 ---
 
 ## Overview
