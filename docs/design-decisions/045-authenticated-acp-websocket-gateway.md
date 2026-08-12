@@ -1,6 +1,6 @@
 # DD-045: Put direct native ACP behind ConnectOnion admission
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-08-12
 
