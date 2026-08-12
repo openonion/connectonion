@@ -364,7 +364,12 @@ class Agent:
             # Save uploaded files to .co/uploads/ and build file path references.
             saved_files = []
             if files:
-                uploads_dir = self.logger.co_dir / "uploads"
+                # Network ACP can bind this private staging root to the
+                # authenticated principal that owns the session. Other Agent
+                # entry points retain the historical project/global .co root.
+                uploads_dir = Path(
+                    getattr(self, "_upload_dir", self.logger.co_dir / "uploads")
+                )
                 uploads_dir.mkdir(parents=True, exist_ok=True)
                 pending_files = []
                 for f in files:

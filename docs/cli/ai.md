@@ -40,6 +40,14 @@ root to the project directory captured when `co ai` started. They cannot select
 another Host path. Local stdio ACP clients continue to provide an existing
 absolute working directory.
 
+Native ACP prompts accept text, PNG/JPEG/GIF/WebP images, and embedded text or
+binary files. Files use the opaque URI form
+`connectonion-upload:/<percent-encoded-filename>`; the URI never names a Host
+path and ordinary resource links are not fetched. Count and decoded-size limits
+come from `host.yaml`, while the direct ACP preview also keeps a one-MiB
+JSON-RPC frame limit. Larger files need a future authenticated streaming upload
+rather than a larger inline WebSocket message.
+
 ### One-Shot Mode
 
 ```bash
@@ -92,6 +100,11 @@ Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
 session reuse its conversation and tool state. The working directory supplied
 by the client must be an existing absolute directory. Additional workspace
 roots are not accepted yet.
+
+The stdio adapter advertises image and embedded-context prompt capabilities
+with the same validated content-block mapping as the network endpoint. Audio is
+not advertised. Invalid MIME types, base64, counts, sizes, or unsafe upload
+names fail before the Agent turn begins.
 
 ACP stdio MCP servers are disabled by default because their configuration can
 launch local processes. An operator can grant that launch authority explicitly:

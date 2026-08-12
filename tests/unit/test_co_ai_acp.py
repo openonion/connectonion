@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import json
 import os
@@ -16,7 +17,15 @@ from typing import Any
 import pytest
 from acp import PROTOCOL_VERSION, RequestError, connect_to_agent, run_agent, text_block
 from acp.interfaces import Client
+from acp.schema import (
+    AudioContentBlock,
+    BlobResourceContents,
+    EmbeddedResourceContentBlock,
+    ImageContentBlock,
+    TextResourceContents,
+)
 
+from connectonion import Agent
 from connectonion.cli.co_ai import acp_server
 from connectonion.cli.co_ai.acp_server import (
     ConnectOnionACPAgent,
@@ -29,7 +38,10 @@ from connectonion.cli.co_ai.acp_transport import (
     _StrictNDJSONTransport,
 )
 from connectonion.cli.co_ai.one_shot_sessions import save_snapshot
+from connectonion.core.llm import LLMResponse
+from connectonion.core.usage import TokenUsage
 from connectonion.useful_plugins.tool_approval import check_approval
+from tests.utils.mock_helpers import MockLLM
 
 
 class _MemoryTransport:
@@ -124,6 +136,28 @@ class _BlockingFakeAgent(_FakeAgent):
         return f"cancelled: {prompt}"
 
 
+class _AttachmentRecordingAgent(_FakeAgent):
+    def __init__(self) -> None:
+        super().__init__()
+        self.inputs: list[dict[str, Any]] = []
+
+    def input(
+        self,
+        prompt: str,
+        session: dict[str, Any] | None = None,
+        images: list[str] | None = None,
+        files: list[dict[str, str]] | None = None,
+    ) -> str:
+        self.inputs.append(
+            {
+                "prompt": prompt,
+                "images": deepcopy(images),
+                "files": deepcopy(files),
+            }
+        )
+        return super().input(prompt, session=session)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_acp_session_state(monkeypatch, tmp_path):
     monkeypatch.setattr(acp_server, "GLOBAL_CO_DIR", tmp_path / "acp-state")
@@ -198,6 +232,400 @@ async def test_acp_reports_its_supported_version_for_any_client_version():
 
     assert older.protocol_version == PROTOCOL_VERSION
     assert newer.protocol_version == PROTOCOL_VERSION
+    assert newer.agent_capabilities.prompt_capabilities.image is True
+    assert newer.agent_capabilities.prompt_capabilities.embedded_context is True
+    assert newer.agent_capabilities.prompt_capabilities.audio is False
+
+
+@pytest.mark.asyncio
+async def test_acp_passes_official_image_and_embedded_file_blocks_to_agent(tmp_path):
+    fake_agent = _AttachmentRecordingAgent()
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: fake_agent,
+        input_limits={"max_file_size": 1, "max_files_per_request": 3},
+    )
+    acp_agent.on_connect(_RecordingClient())
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+
+    response = await acp_agent.prompt(
+        session.session_id,
+        [
+            ImageContentBlock(
+                type="image",
+                data=base64.b64encode(b"image-bytes").decode("ascii"),
+                mime_type="image/png",
+            ),
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=TextResourceContents(
+                    uri="connectonion-upload:/notes%20one.txt",
+                    mime_type="text/plain",
+                    text="hello",
+                ),
+            ),
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/report.bin",
+                    mime_type="application/octet-stream",
+                    blob=base64.b64encode(b"binary").decode("ascii"),
+                ),
+            ),
+            text_block("inspect these"),
+        ],
+    )
+
+    assert response.stop_reason == "end_turn"
+    assert fake_agent.inputs == [
+        {
+            "prompt": "inspect these",
+            "images": [
+                "data:image/png;base64,"
+                + base64.b64encode(b"image-bytes").decode("ascii")
+            ],
+            "files": [
+                {
+                    "name": "notes one.txt",
+                    "data": "data:text/plain;base64,"
+                    + base64.b64encode(b"hello").decode("ascii"),
+                },
+                {
+                    "name": "report.bin",
+                    "data": "data:application/octet-stream;base64,"
+                    + base64.b64encode(b"binary").decode("ascii"),
+                },
+            ],
+        }
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "block",
+    [
+        ImageContentBlock(type="image", data="%%%", mime_type="image/png"),
+        ImageContentBlock(
+            type="image",
+            data=base64.b64encode(b"image").decode("ascii"),
+            mime_type="image/svg+xml",
+        ),
+        AudioContentBlock(
+            type="audio",
+            data=base64.b64encode(b"audio").decode("ascii"),
+            mime_type="audio/wav",
+        ),
+        EmbeddedResourceContentBlock(
+            type="resource",
+            resource=BlobResourceContents(
+                uri="file:///private/secret.txt",
+                blob=base64.b64encode(b"secret").decode("ascii"),
+            ),
+        ),
+        EmbeddedResourceContentBlock(
+            type="resource",
+            resource=BlobResourceContents(
+                uri="connectonion-upload:/..%2Fsecret.txt",
+                blob=base64.b64encode(b"secret").decode("ascii"),
+            ),
+        ),
+        EmbeddedResourceContentBlock(
+            type="resource",
+            resource=BlobResourceContents(
+                uri="connectonion-upload:/CON.txt",
+                blob=base64.b64encode(b"device").decode("ascii"),
+            ),
+        ),
+        EmbeddedResourceContentBlock(
+            type="resource",
+            resource=BlobResourceContents(
+                uri="connectonion-upload:/trailing.",
+                blob=base64.b64encode(b"ambiguous").decode("ascii"),
+            ),
+        ),
+        EmbeddedResourceContentBlock(
+            type="resource",
+            resource=BlobResourceContents(
+                uri="connectonion-upload:/bad%3Aname.txt",
+                blob=base64.b64encode(b"colon").decode("ascii"),
+            ),
+        ),
+    ],
+)
+async def test_acp_rejects_unsafe_attachment_blocks_before_turn_mutation(
+    tmp_path,
+    block,
+):
+    fake_agent = _AttachmentRecordingAgent()
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: fake_agent,
+    )
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+    runtime = acp_agent._sessions[session.session_id]
+    before = deepcopy(runtime.last_good_session)
+
+    with pytest.raises(RequestError, match="Invalid params"):
+        await acp_agent.prompt(session.session_id, [block])
+
+    assert fake_agent.inputs == []
+    assert runtime.last_good_session == before
+
+
+@pytest.mark.asyncio
+async def test_acp_rejects_oversized_or_excess_attachments_before_turn(tmp_path):
+    fake_agent = _AttachmentRecordingAgent()
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: fake_agent,
+        input_limits={
+            "max_file_size": 1 / (1024 * 1024),
+            "max_files_per_request": 1,
+        },
+    )
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+    image = ImageContentBlock(
+        type="image",
+        data=base64.b64encode(b"xx").decode("ascii"),
+        mime_type="image/png",
+    )
+
+    with pytest.raises(RequestError, match="Invalid params"):
+        await acp_agent.prompt(session.session_id, [image])
+
+    one_byte = ImageContentBlock(
+        type="image",
+        data=base64.b64encode(b"x").decode("ascii"),
+        mime_type="image/png",
+    )
+    with pytest.raises(RequestError, match="Invalid params"):
+        await acp_agent.prompt(session.session_id, [one_byte, one_byte])
+
+    assert fake_agent.inputs == []
+
+
+@pytest.mark.parametrize("size", [0, -1, float("nan"), float("inf"), True])
+def test_acp_rejects_invalid_attachment_limits(size):
+    with pytest.raises(ValueError, match="positive numbers"):
+        ConnectOnionACPAgent(
+            model="test",
+            max_iterations=2,
+            yolo=False,
+            yolo_turns=2,
+            agent_factory=lambda **_kwargs: _FakeAgent(),
+            input_limits={"max_file_size": size},
+        )
+
+
+@pytest.mark.parametrize("size", [1e-308, 1e308])
+def test_acp_rejects_attachment_size_limits_outside_byte_range(size):
+    with pytest.raises(ValueError, match="at least one byte"):
+        ConnectOnionACPAgent(
+            model="test",
+            max_iterations=2,
+            yolo=False,
+            yolo_turns=2,
+            agent_factory=lambda **_kwargs: _FakeAgent(),
+            input_limits={"max_file_size": size},
+        )
+
+
+@pytest.mark.parametrize("count", [0, -1, 1.5, True])
+def test_acp_rejects_invalid_attachment_count_limits(count):
+    with pytest.raises(ValueError, match="positive numbers"):
+        ConnectOnionACPAgent(
+            model="test",
+            max_iterations=2,
+            yolo=False,
+            yolo_turns=2,
+            agent_factory=lambda **_kwargs: _FakeAgent(),
+            input_limits={"max_files_per_request": count},
+        )
+
+
+@pytest.mark.asyncio
+async def test_acp_real_agent_uses_existing_image_and_safe_file_path(tmp_path):
+    llm = MockLLM(
+        responses=[
+            LLMResponse(
+                content="received",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+        ]
+    )
+    real_agent = Agent(
+        name="attachments",
+        llm=llm,
+        quiet=True,
+        log=False,
+        co_dir=tmp_path / ".co",
+    )
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: real_agent,
+    )
+    acp_agent.on_connect(_RecordingClient())
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+
+    response = await acp_agent.prompt(
+        session.session_id,
+        [
+            text_block("inspect"),
+            ImageContentBlock(
+                type="image",
+                data=base64.b64encode(b"image").decode("ascii"),
+                mime_type="image/png",
+            ),
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/..%252Fstill-one-name.txt",
+                    mime_type="text/plain",
+                    blob=base64.b64encode(b"file body").decode("ascii"),
+                ),
+            ),
+        ],
+    )
+
+    assert response.stop_reason == "end_turn"
+    saved = list((tmp_path / ".co" / "uploads").iterdir())
+    assert len(saved) == 1
+    assert saved[0].name.endswith("_..%2Fstill-one-name.txt")
+    assert saved[0].read_bytes() == b"file body"
+    user = next(
+        message
+        for message in llm.last_call["messages"]
+        if message["role"] == "user" and not message.get("internal")
+    )
+    assert user["content"] == [
+        {"type": "text", "text": "inspect"},
+        {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64,aW1hZ2U="},
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_network_acp_stages_files_in_the_authenticated_principal_namespace(
+    tmp_path,
+):
+    llm = MockLLM(
+        responses=[
+            LLMResponse(
+                content="received",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+        ]
+    )
+    global_co_dir = tmp_path / "global-co"
+    principal_co_dir = global_co_dir / "acp-principals" / "principal-a"
+    real_agent = Agent(
+        name="attachments",
+        llm=llm,
+        quiet=True,
+        log=False,
+        co_dir=global_co_dir,
+    )
+    workspace = capture_network_workspace(tmp_path)
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: real_agent,
+        session_co_dir=principal_co_dir,
+        network_workspace=workspace,
+    )
+    acp_agent.on_connect(_RecordingClient())
+    try:
+        session = await acp_agent.new_session("/", mcp_servers=[])
+
+        response = await acp_agent.prompt(
+            session.session_id,
+            [
+                EmbeddedResourceContentBlock(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri="connectonion-upload:/private.txt",
+                        mime_type="text/plain",
+                        blob=base64.b64encode(b"principal private").decode("ascii"),
+                    ),
+                )
+            ],
+        )
+
+        assert response.stop_reason == "end_turn"
+        saved = list((principal_co_dir / "uploads").glob("*_private.txt"))
+        assert len(saved) == 1
+        assert saved[0].read_bytes() == b"principal private"
+        assert (principal_co_dir / "uploads").stat().st_mode & 0o777 == 0o700
+        assert not (global_co_dir / "uploads").exists()
+    finally:
+        workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_acp_failed_real_agent_removes_new_upload_before_snapshot_restore(tmp_path):
+    class FailingLLM:
+        model = "failing"
+
+        def complete(self, *_args, **_kwargs):
+            raise RuntimeError("provider failed")
+
+    real_agent = Agent(
+        name="attachments",
+        llm=FailingLLM(),
+        quiet=True,
+        log=False,
+        co_dir=tmp_path / ".co",
+    )
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: real_agent,
+    )
+    acp_agent.on_connect(_RecordingClient())
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+    runtime = acp_agent._sessions[session.session_id]
+    before = deepcopy(runtime.last_good_session)
+
+    with pytest.raises(RequestError, match="co ai prompt failed"):
+        await acp_agent.prompt(
+            session.session_id,
+            [
+                EmbeddedResourceContentBlock(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri="connectonion-upload:/remove-me.txt",
+                        mime_type="text/plain",
+                        blob=base64.b64encode(b"temporary").decode("ascii"),
+                    ),
+                )
+            ],
+        )
+
+    assert list((tmp_path / ".co" / "uploads").glob("*_remove-me.txt")) == []
+    assert runtime.last_good_session == before
+    assert real_agent.current_session == before
 
 
 @pytest.mark.asyncio
