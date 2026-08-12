@@ -147,15 +147,20 @@ class _AttachmentRecordingAgent(_FakeAgent):
         session: dict[str, Any] | None = None,
         images: list[str] | None = None,
         files: list[dict[str, str]] | None = None,
+        _upload_reservation: Any = None,
     ) -> str:
-        self.inputs.append(
-            {
-                "prompt": prompt,
-                "images": deepcopy(images),
-                "files": deepcopy(files),
-            }
-        )
-        return super().input(prompt, session=session)
+        try:
+            self.inputs.append(
+                {
+                    "prompt": prompt,
+                    "images": deepcopy(images),
+                    "files": deepcopy(files),
+                }
+            )
+            return super().input(prompt, session=session)
+        finally:
+            if _upload_reservation is not None:
+                _upload_reservation.release()
 
 
 @pytest.fixture(autouse=True)
@@ -452,6 +457,28 @@ def test_acp_rejects_invalid_attachment_count_limits(count):
         )
 
 
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    [
+        ("max_acp_upload_storage", 0, "positive numbers"),
+        ("max_acp_upload_storage", 1e-308, "at least one byte"),
+        ("max_acp_upload_storage", 1e308, "at least one byte"),
+        ("max_acp_upload_files", 0, "positive numbers"),
+        ("max_acp_upload_files", 1.5, "positive numbers"),
+    ],
+)
+def test_acp_rejects_invalid_principal_storage_limits(key, value, message):
+    with pytest.raises(ValueError, match=message):
+        ConnectOnionACPAgent(
+            model="test",
+            max_iterations=2,
+            yolo=False,
+            yolo_turns=2,
+            agent_factory=lambda **_kwargs: _FakeAgent(),
+            input_limits={key: value},
+        )
+
+
 @pytest.mark.asyncio
 async def test_acp_real_agent_uses_existing_image_and_safe_file_path(tmp_path):
     llm = MockLLM(
@@ -577,6 +604,259 @@ async def test_network_acp_stages_files_in_the_authenticated_principal_namespace
         assert saved[0].read_bytes() == b"principal private"
         assert (principal_co_dir / "uploads").stat().st_mode & 0o777 == 0o700
         assert not (global_co_dir / "uploads").exists()
+    finally:
+        workspace.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {
+            "max_acp_upload_storage": 2 / (1024 * 1024),
+            "max_acp_upload_files": 10,
+        },
+        {
+            "max_acp_upload_storage": 10,
+            "max_acp_upload_files": 2,
+        },
+    ],
+    ids=["bytes", "files"],
+)
+async def test_network_acp_rejects_sequential_prompts_at_principal_storage_quota(
+    tmp_path,
+    limits,
+):
+    llm = MockLLM(
+        responses=[
+            LLMResponse(
+                content="received",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+            for _ in range(2)
+        ]
+    )
+    principal_co_dir = tmp_path / "principal"
+    real_agent = Agent(
+        name="attachments",
+        llm=llm,
+        quiet=True,
+        log=False,
+        co_dir=tmp_path / "global-co",
+    )
+    workspace = capture_network_workspace(tmp_path)
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: real_agent,
+        session_co_dir=principal_co_dir,
+        network_workspace=workspace,
+        input_limits=limits,
+    )
+    acp_agent.on_connect(_RecordingClient())
+    try:
+        session = await acp_agent.new_session("/", mcp_servers=[])
+
+        for index in range(2):
+            response = await acp_agent.prompt(
+                session.session_id,
+                [
+                    EmbeddedResourceContentBlock(
+                        type="resource",
+                        resource=BlobResourceContents(
+                            uri=f"connectonion-upload:/file-{index}.txt",
+                            mime_type="text/plain",
+                            blob=base64.b64encode(b"x").decode("ascii"),
+                        ),
+                    )
+                ],
+            )
+            assert response.stop_reason == "end_turn"
+
+        before = list((principal_co_dir / "uploads").iterdir())
+        with pytest.raises(RequestError, match="Invalid params"):
+            await acp_agent.prompt(
+                session.session_id,
+                [
+                    EmbeddedResourceContentBlock(
+                        type="resource",
+                        resource=BlobResourceContents(
+                            uri="connectonion-upload:/over-quota.txt",
+                            mime_type="text/plain",
+                            blob=base64.b64encode(b"x").decode("ascii"),
+                        ),
+                    )
+                ],
+            )
+
+        assert list((principal_co_dir / "uploads").iterdir()) == before
+        assert len(llm.calls) == 2
+    finally:
+        workspace.close()
+
+
+@pytest.mark.asyncio
+async def test_network_acp_releases_upload_quota_before_model_work(tmp_path):
+    model_started = threading.Event()
+    allow_model_to_finish = threading.Event()
+
+    def wait_in_model(_messages, _tools):
+        model_started.set()
+        assert allow_model_to_finish.wait(timeout=1)
+        return LLMResponse(
+            content="received",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+
+    principal_co_dir = tmp_path / "principal"
+    workspace = capture_network_workspace(tmp_path)
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: Agent(
+            name="attachments",
+            llm=MockLLM(on_complete=wait_in_model),
+            quiet=True,
+            log=False,
+            co_dir=tmp_path / "global-co",
+        ),
+        session_co_dir=principal_co_dir,
+        network_workspace=workspace,
+    )
+    acp_agent.on_connect(_RecordingClient())
+    try:
+        session = await acp_agent.new_session("/", mcp_servers=[])
+        prompt = acp_agent.prompt(
+            session.session_id,
+            [
+                EmbeddedResourceContentBlock(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri="connectonion-upload:/one.txt",
+                        blob=base64.b64encode(b"x").decode("ascii"),
+                    ),
+                )
+            ],
+        )
+        prompt_task = asyncio.create_task(prompt)
+        assert await asyncio.to_thread(model_started.wait, 1)
+
+        parsed = acp_agent._parse_prompt(
+            [
+                EmbeddedResourceContentBlock(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri="connectonion-upload:/two.txt",
+                        blob=base64.b64encode(b"y").decode("ascii"),
+                    ),
+                )
+            ]
+        )
+        reservation = await asyncio.wait_for(
+            asyncio.to_thread(acp_agent._reserve_network_uploads, parsed),
+            timeout=0.5,
+        )
+        assert reservation is not None
+        reservation.release()
+        allow_model_to_finish.set()
+        assert (await prompt_task).stop_reason == "end_turn"
+    finally:
+        allow_model_to_finish.set()
+        workspace.close()
+
+
+def test_network_acp_upload_reservations_are_shared_across_connections(tmp_path):
+    workspace = capture_network_workspace(tmp_path)
+    limits = {
+        "max_acp_upload_storage": 1 / (1024 * 1024),
+        "max_acp_upload_files": 1,
+    }
+    kwargs = {
+        "model": "test",
+        "max_iterations": 2,
+        "yolo": False,
+        "yolo_turns": 2,
+        "agent_factory": lambda **_kwargs: _FakeAgent(),
+        "session_co_dir": tmp_path / "principal",
+        "network_workspace": workspace,
+        "input_limits": limits,
+    }
+    first = ConnectOnionACPAgent(**kwargs)
+    second = ConnectOnionACPAgent(**kwargs)
+    prompt = first._parse_prompt(
+        [
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/one.txt",
+                    blob=base64.b64encode(b"x").decode("ascii"),
+                ),
+            )
+        ]
+    )
+    (tmp_path / "principal" / "uploads").mkdir(parents=True)
+
+    reservation = first._reserve_network_uploads(prompt)
+    result: list[object] = []
+
+    def reserve_second_connection():
+        try:
+            result.append(second._reserve_network_uploads(prompt))
+        except BaseException as exc:
+            result.append(exc)
+
+    contender = threading.Thread(target=reserve_second_connection)
+    contender.start()
+    try:
+        time.sleep(0.05)
+        assert result == []
+        (tmp_path / "principal" / "uploads" / "committed.txt").write_bytes(b"x")
+    finally:
+        assert reservation is not None
+        reservation.release()
+        contender.join(timeout=1)
+        workspace.close()
+
+    assert len(result) == 1
+    assert isinstance(result[0], RequestError)
+
+
+def test_network_acp_upload_quota_rejects_unexpected_entries(tmp_path):
+    workspace = capture_network_workspace(tmp_path)
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+        session_co_dir=tmp_path / "principal",
+        network_workspace=workspace,
+    )
+    prompt = acp_agent._parse_prompt(
+        [
+            EmbeddedResourceContentBlock(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri="connectonion-upload:/one.txt",
+                    blob=base64.b64encode(b"x").decode("ascii"),
+                ),
+            )
+        ]
+    )
+    upload_dir = tmp_path / "principal" / "uploads"
+    upload_dir.mkdir(parents=True)
+    (upload_dir / "unexpected").mkdir()
+    try:
+        with pytest.raises(RequestError, match="Internal error"):
+            acp_agent._reserve_network_uploads(prompt)
     finally:
         workspace.close()
 

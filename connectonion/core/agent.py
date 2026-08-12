@@ -281,7 +281,8 @@ class Agent:
 
     def input(self, prompt: str, max_iterations: Optional[int] = None,
               session: Optional[Dict] = None, images: list[str] | None = None,
-              files: list[dict] | None = None) -> str:
+              files: list[dict] | None = None,
+              _upload_reservation: Any = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
@@ -363,39 +364,46 @@ class Agent:
 
             # Save uploaded files to .co/uploads/ and build file path references.
             saved_files = []
-            if files:
-                # Network ACP can bind this private staging root to the
-                # authenticated principal that owns the session. Other Agent
-                # entry points retain the historical project/global .co root.
-                uploads_dir = Path(
-                    getattr(self, "_upload_dir", self.logger.co_dir / "uploads")
-                )
-                uploads_dir.mkdir(parents=True, exist_ok=True)
-                pending_files = []
-                for f in files:
-                    safe_name = Path(f["name"]).name
-                    file_path = uploads_dir / f"{uuid4().hex}_{safe_name}"
-                    data_url = f["data"]
-                    if "," in data_url:
-                        raw_data = base64.b64decode(data_url.split(",", 1)[1])
-                    else:
-                        raw_data = base64.b64decode(data_url)
-                    pending_files.append((file_path, raw_data))
+            try:
+                if files:
+                    # Network ACP can bind this private staging root to the
+                    # authenticated principal that owns the session. Other Agent
+                    # entry points retain the historical project/global .co root.
+                    uploads_dir = Path(
+                        getattr(self, "_upload_dir", self.logger.co_dir / "uploads")
+                    )
+                    uploads_dir.mkdir(parents=True, exist_ok=True)
+                    pending_files = []
+                    for f in files:
+                        safe_name = Path(f["name"]).name
+                        file_path = uploads_dir / f"{uuid4().hex}_{safe_name}"
+                        data_url = f["data"]
+                        if "," in data_url:
+                            raw_data = base64.b64decode(data_url.split(",", 1)[1])
+                        else:
+                            raw_data = base64.b64decode(data_url)
+                        pending_files.append((file_path, raw_data))
 
-                written_files = []
-                try:
-                    for file_path, raw_data in pending_files:
-                        file_path.write_bytes(raw_data)
-                        written_files.append(file_path)
-                except BaseException:
-                    # write_bytes can create a partial file before raising.
-                    # UUID paths are owned by this turn, so clean every target,
-                    # not only calls that returned successfully.
-                    for file_path, _raw_data in pending_files:
-                        with suppress(Exception):
-                            file_path.unlink(missing_ok=True)
-                    raise
-                saved_files = [str(path.resolve()) for path in written_files]
+                    written_files = []
+                    try:
+                        for file_path, raw_data in pending_files:
+                            file_path.write_bytes(raw_data)
+                            written_files.append(file_path)
+                    except BaseException:
+                        # write_bytes can create a partial file before raising.
+                        # UUID paths are owned by this turn, so clean every target,
+                        # not only calls that returned successfully.
+                        for file_path, _raw_data in pending_files:
+                            with suppress(Exception):
+                                file_path.unlink(missing_ok=True)
+                        raise
+                    saved_files = [str(path.resolve()) for path in written_files]
+
+            finally:
+                # Network ACP holds a principal quota lock only while files are
+                # staged. Model work, approvals, and commits must remain concurrent.
+                if _upload_reservation is not None:
+                    _upload_reservation.release()
 
             if saved_files:
                 self._record_trace({

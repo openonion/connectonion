@@ -46,7 +46,11 @@ binary files. Files use the opaque URI form
 path and ordinary resource links are not fetched. Count and decoded-size limits
 come from `host.yaml`, while the direct ACP preview also keeps a one-MiB
 JSON-RPC frame limit. Larger files need a future authenticated streaming upload
-rather than a larger inline WebSocket message.
+rather than a larger inline WebSocket message. Successful network files are
+retained for resumable sessions under a per-authenticated-principal quota
+(`max_acp_upload_storage`, 100 MiB by default; `max_acp_upload_files`, 100 by
+default). Reaching either cumulative limit fails before the Agent turn without
+writing another file.
 
 ### One-Shot Mode
 

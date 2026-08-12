@@ -204,6 +204,10 @@ max_file_size: 10
 # Maximum number of files in one request
 # Default: 10
 max_files_per_request: 10
+
+# Native ACP files retained for resumable sessions, per authenticated principal
+max_acp_upload_storage: 100      # MB across successful prompts
+max_acp_upload_files: 100        # Files across successful prompts
 ```
 
 **Error Messages:**

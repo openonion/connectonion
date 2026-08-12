@@ -51,6 +51,17 @@ prompt removes files created by that uncommitted turn before restoring the
 last-good ACP snapshot. A successful commit retains them. File paths remain
 internal Agent context and are never returned as network workspace authority.
 
+Successful files remain available because a closed ACP session is resumable and
+its private context can still refer to them. To make that retention bounded,
+the Host enforces an atomic cumulative byte and file-count quota across every
+live connection and session in the authenticated principal namespace. Defaults
+are 100 MiB and 100 files and operators can lower them with
+`max_acp_upload_storage` and `max_acp_upload_files`. Exhaustion fails before the
+Agent turn and does not grow the directory. The cross-process quota lock covers
+only quota admission and physical staging; it is released before model work,
+approval, cancellation, or snapshot commit. Removing a principal namespace is
+the explicit deletion/retention boundary until ACP session deletion is added.
+
 ## Consequences
 
 - React can preserve the browser's typed attachment API while using official

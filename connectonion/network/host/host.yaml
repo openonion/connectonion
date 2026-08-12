@@ -10,6 +10,8 @@ reload: false
 # File upload limits - uncomment to customize
 # max_file_size: 10                 # MB per file (both WebSocket and HTTP)
 # max_files_per_request: 10         # Max number of files in one request
+# max_acp_upload_storage: 100       # MB retained per authenticated ACP principal
+# max_acp_upload_files: 100         # Files retained per authenticated ACP principal
 
 # Auto-approve tool permissions
 # Default permissions for safe read-only commands
