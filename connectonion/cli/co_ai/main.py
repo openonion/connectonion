@@ -56,6 +56,7 @@ def start_server(
     The server will be accessible at:
     - POST http://localhost:{port}/input
     - WS ws://localhost:{port}/ws
+    - ACP WS ws://localhost:{port}/acp
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
@@ -79,8 +80,9 @@ def start_server(
             threading.Thread(target=open_chat_delayed, daemon=True).start()
 
         # ACP needs one isolated lifecycle adapter per authenticated connection.
-        # The existing /ws web client remains available during its native-ACP
-        # migration; both doors share the host's signature and trust boundary.
+        # @connectonion/react selects /acp from exact discovery; /ws remains the
+        # bounded compatibility path only when that descriptor is absent. Both
+        # doors share the host's signature and trust boundary.
         acp_model = model or getattr(getattr(agent, "llm", None), "model", None)
         acp_model = acp_model or "co/claude-opus-4-5"
         acp_max_iterations = max_iterations if max_iterations is not None else getattr(agent, "max_iterations", 100)
