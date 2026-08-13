@@ -33,6 +33,15 @@ def test_exact_cancel_maps_to_the_existing_interrupt_lifecycle():
     ) == {"type": "INTERRUPT"}
 
 
+def test_cancel_keeps_standard_meta_opaque():
+    frame = cancel_frame()
+    frame["message"]["params"]["_meta"] = {"vendor": {"hint": True}}
+
+    assert legacy_interrupt_from_acp_cancel(
+        frame, expected_session_id=SESSION_ID
+    ) == {"type": "INTERRUPT"}
+
+
 @pytest.mark.parametrize(
     "mutate, message",
     [
@@ -42,6 +51,7 @@ def test_exact_cancel_maps_to_the_existing_interrupt_lifecycle():
         (lambda frame: frame["message"].update(id="request-not-notification"), "notification"),
         (lambda frame: frame["message"]["params"].update(sessionId="other"), "another session"),
         (lambda frame: frame["message"]["params"].update(sessionId=7), "string"),
+        (lambda frame: frame["message"]["params"].update(unexpected=True), "fields"),
     ],
 )
 def test_malformed_or_cross_session_cancel_fails_closed(mutate, message):

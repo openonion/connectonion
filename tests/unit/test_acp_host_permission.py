@@ -203,6 +203,16 @@ def test_wrong_request_or_session_cannot_cross_into_the_mailbox():
         lambda frame: frame["message"]["result"]["outcome"].update(
             optionId="manufactured_allow"
         ),
+        lambda frame: frame["message"].update(
+            error={"code": -32603, "message": "contradictory response"}
+        ),
+        lambda frame: frame["message"].update(unexpected="ignored"),
+        lambda frame: frame["message"]["result"].update(
+            unexpected="ignored"
+        ),
+        lambda frame: frame["message"]["result"]["outcome"].update(
+            unexpected="ignored"
+        ),
         lambda frame: frame["message"].update(jsonrpc="1.0"),
         lambda frame: frame["message"].pop("result"),
     ],
@@ -233,6 +243,21 @@ def test_cancelled_response_is_a_hard_rejection():
     assert io.receive_all() == [
         {"approved": False, "scope": "once", "mode": "reject_hard"}
     ]
+
+
+def test_permission_response_keeps_standard_meta_opaque():
+    io = WebSocketIO()
+    event = approval_event()
+    frame = acp_permission_request_frame(event, SESSION_ID)
+    io.register_permission_request(event, SESSION_ID, frame)
+    response = selected_response("allow_once")
+    response["message"]["result"]["_meta"] = {"vendor": {"hint": True}}
+    response["message"]["result"]["outcome"]["_meta"] = {
+        "vendor": {"hint": True}
+    }
+
+    assert io.resolve_acp_permission(response, SESSION_ID) is True
+    assert io.receive_all() == [{"approved": True, "scope": "once"}]
 
 
 def test_legacy_response_is_bound_to_the_current_request_and_consumed_once():
