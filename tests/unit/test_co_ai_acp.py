@@ -116,6 +116,100 @@ class _FakeAgent:
         return f"answer {len(self.prompts)}: {prompt}"
 
 
+class _ServedACPAdapter:
+    def __init__(self) -> None:
+        self.cancelled = False
+        self.closed = False
+
+    def cancel_all(self) -> None:
+        self.cancelled = True
+
+    async def close_all(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_serve_acp_routes_explicit_state_to_sessions_and_agent(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = (tmp_path / "acp-state").resolve()
+    adapter = _ServedACPAdapter()
+    captured = {}
+
+    async def fake_open_stdio_transport():
+        return object()
+
+    def fake_create_acp_agent(**kwargs):
+        captured["adapter_kwargs"] = kwargs
+        return adapter
+
+    def fake_create_runtime_agent(**kwargs):
+        captured["runtime_kwargs"] = kwargs
+        return object()
+
+    async def fake_run_agent(agent, **_kwargs):
+        assert agent is adapter
+        captured["adapter_kwargs"]["agent_factory"](
+            model="test",
+            max_iterations=2,
+            yolo=False,
+            yolo_turns=2,
+            resumable=True,
+        )
+
+    monkeypatch.setattr(acp_server, "open_stdio_transport", fake_open_stdio_transport)
+    monkeypatch.setattr(acp_server, "create_acp_agent", fake_create_acp_agent)
+    monkeypatch.setattr(acp_server, "run_agent", fake_run_agent)
+    monkeypatch.setattr(
+        "connectonion.cli.commands.ai_commands._create_agent",
+        fake_create_runtime_agent,
+    )
+
+    await acp_server.serve_acp(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        state_dir=state_dir,
+    )
+
+    assert captured["adapter_kwargs"]["session_co_dir"] == state_dir
+    assert captured["runtime_kwargs"]["state_dir"] == state_dir
+    assert adapter.cancelled is True
+    assert adapter.closed is True
+
+
+@pytest.mark.asyncio
+async def test_serve_acp_keeps_the_global_default(monkeypatch):
+    adapter = _ServedACPAdapter()
+    captured = {}
+
+    async def fake_open_stdio_transport():
+        return object()
+
+    def fake_create_acp_agent(**kwargs):
+        captured.update(kwargs)
+        return adapter
+
+    async def fake_run_agent(agent, **_kwargs):
+        assert agent is adapter
+
+    monkeypatch.setattr(acp_server, "open_stdio_transport", fake_open_stdio_transport)
+    monkeypatch.setattr(acp_server, "create_acp_agent", fake_create_acp_agent)
+    monkeypatch.setattr(acp_server, "run_agent", fake_run_agent)
+
+    await acp_server.serve_acp(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+    )
+
+    assert captured["session_co_dir"] is None
+    assert captured["agent_factory"] is None
+
+
 class _BlockingFakeAgent(_FakeAgent):
     def __init__(self) -> None:
         super().__init__()

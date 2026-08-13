@@ -71,6 +71,10 @@ turns:
     messages: '[{"role":"system",...}]'
 ```
 
+In a multi-turn session, `tools_called`, `tokens`, and `cost` describe only the
+current turn, bounded by its `user_input` trace entry. `messages` can still
+contain the cumulative conversation needed for replay.
+
 Use cases:
 - **Session replay**: Restore context from saved sessions
 - **Regression testing**: Compare expected vs actual results

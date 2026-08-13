@@ -370,6 +370,11 @@ def ai(
         "--acp-mcp",
         help="Allow ACP clients to launch session-scoped stdio MCP servers",
     ),
+    state_dir: Optional[Path] = typer.Option(
+        None,
+        "--state-dir",
+        help="With --acp, isolate mutable session and eval state",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -384,6 +389,7 @@ def ai(
         resume=resume,
         acp=acp,
         acp_mcp=acp_mcp,
+        state_dir=state_dir,
     )
 
 

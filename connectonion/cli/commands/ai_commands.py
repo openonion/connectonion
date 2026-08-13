@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 from contextlib import nullcontext, redirect_stdout
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -29,6 +30,7 @@ def handle_ai(
     resume: str = None,
     acp: bool = False,
     acp_mcp: bool = False,
+    state_dir: Path | None = None,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -43,6 +45,7 @@ def handle_ai(
         resume: Continue a prior one-shot session ID
         acp: Serve the coding agent over ACP v1 on stdio
         acp_mcp: Allow ACP clients to launch session-scoped stdio MCP servers
+        state_dir: ACP-only root for mutable session, log, and eval state
 
     Examples:
         co ai                                    # Start web server
@@ -54,6 +57,10 @@ def handle_ai(
 
     if acp_mcp and not acp:
         console.print("[red]--acp-mcp requires --acp[/red]")
+        raise typer.Exit(2)
+
+    if state_dir is not None and not acp:
+        console.print("[red]--state-dir requires --acp[/red]")
         raise typer.Exit(2)
 
     if not prompt and (json_output or resume):
@@ -77,6 +84,10 @@ def handle_ai(
     if acp:
         from ..co_ai.acp_server import serve_acp
 
+        prepared_state_dir = (
+            _prepare_acp_state_dir(state_dir) if state_dir is not None else None
+        )
+
         asyncio.run(
             serve_acp(
                 model=model,
@@ -84,6 +95,7 @@ def handle_ai(
                 yolo=yolo,
                 yolo_turns=yolo_turns,
                 allow_mcp=acp_mcp,
+                state_dir=prepared_state_dir,
             )
         )
         return
@@ -103,13 +115,39 @@ def handle_ai(
         )
 
 
-def _create_agent(model, max_iterations, yolo, yolo_turns, *, resumable=False):
+def _prepare_acp_state_dir(state_dir: Path) -> Path:
+    """Create one private root for an isolated ACP process."""
+
+    from ..co_ai.one_shot_sessions import (
+        SessionSnapshotError,
+        prepare_snapshot_storage,
+    )
+
+    selected = Path(state_dir).expanduser()
+    try:
+        prepare_snapshot_storage(selected)
+        return selected.resolve(strict=True)
+    except (OSError, SessionSnapshotError):
+        console.print(f"[red]ACP state directory is unavailable: {selected}[/red]")
+        raise typer.Exit(2) from None
+
+
+def _create_agent(
+    model,
+    max_iterations,
+    yolo,
+    yolo_turns,
+    *,
+    resumable=False,
+    state_dir: Path | None = None,
+):
     from ..co_ai.agent import GLOBAL_CO_DIR, create_agent
 
     return create_agent(
         model=model,
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
+        state_dir=state_dir,
         yolo_turns=yolo_turns if yolo else None,
         background_tools=not resumable,
     )
