@@ -172,13 +172,23 @@ class _StrictNDJSONTransport:
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             return False
         if "method" in message:
+            # Generated ACP models ignore unknown fields, so reject mixed
+            # request/response envelopes before authority-bearing routing.
+            if not set(message).issubset({"jsonrpc", "id", "method", "params"}):
+                return False
             if not isinstance(message["method"], str):
                 return False
             if "id" in message and not cls._is_request_id(message["id"]):
                 return False
-            params = message.get("params")
-            return params is None or isinstance(params, (dict, list))
-        if "id" not in message or (("result" in message) == ("error" in message)):
+            return "params" not in message or isinstance(
+                message["params"], (dict, list)
+            )
+        has_result = "result" in message
+        has_error = "error" in message
+        if "id" not in message or has_result == has_error:
+            return False
+        expected = {"jsonrpc", "id", "result" if has_result else "error"}
+        if set(message) != expected:
             return False
         return cls._is_request_id(message["id"])
 

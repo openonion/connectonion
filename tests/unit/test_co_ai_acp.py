@@ -1602,6 +1602,54 @@ def test_strict_ndjson_rejects_unsupported_correlation_ids(message):
 @pytest.mark.parametrize(
     "message",
     [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/set_mode",
+            "params": {},
+            "result": {},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/set_mode",
+            "params": {},
+            "error": {"code": -32603, "message": "failed"},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/set_mode",
+            "result": {},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {},
+            "params": {},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/set_mode",
+            "params": None,
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/set_mode",
+            "params": {},
+            "extra": True,
+        },
+    ],
+)
+def test_strict_ndjson_rejects_mixed_request_and_response_envelopes(message):
+    assert _StrictNDJSONTransport._is_json_rpc_message(message) is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         {"jsonrpc": "2.0", "id": "request-1", "method": "initialize"},
         {"jsonrpc": "2.0", "id": 1, "result": {}},
         {
