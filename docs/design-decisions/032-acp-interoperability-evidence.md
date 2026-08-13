@@ -34,6 +34,16 @@ production code.
 Both suites are isolated from user state, credentials, and the network. Client
 permission callbacks reject by default.
 
+### Preserve ACP error-code semantics
+
+Wire tests treat an error code as a protocol enum, not an arbitrary server
+number. In particular, ACP reserves `-32000` for `Authentication required`, so
+connection-order violations use standard `-32600 Invalid request`. The one
+ConnectOnion extension in this lifecycle is `-32001` for an already-open or
+busy session, with the owned `sessionId` in bounded error data. This keeps
+retryable session contention distinct from authentication and internal errors
+on both stdio and authenticated WebSocket transports.
+
 ### State the tested version contract
 
 The package supports `agent-client-protocol>=0.12.0,<0.13.0` and negotiates
@@ -57,6 +67,7 @@ as clients that launch ConnectOnion.
 
 - Schema or router drift fails in the official SDK client before release.
 - Framing regressions remain visible instead of being hidden by SDK helpers.
+- Raw lifecycle tests catch standard error codes reused with the wrong meaning.
 - Interoperability claims say exactly which layer and version were exercised.
 - The deterministic fixture is shared by raw and typed subprocess suites.
 - GUI integration can still change independently and must not be overstated.

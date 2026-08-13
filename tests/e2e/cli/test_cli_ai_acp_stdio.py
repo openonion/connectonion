@@ -132,9 +132,9 @@ async def test_acp_subprocess_requires_initialize_before_session(tmp_path):
         )
 
         assert rejected["error"] == {
-            "code": -32000,
-            "message": "Connection is not initialized",
-            "data": None,
+            "code": -32600,
+            "message": "Invalid request",
+            "data": {"details": "Connection is not initialized"},
         }
         assert not (state_root / ".co" / "ai" / "sessions").exists()
 
@@ -178,9 +178,9 @@ async def test_acp_subprocess_requires_initialize_before_session(tmp_path):
         assert initialized["result"]["protocolVersion"] == 1
         assert pre_initialize_output == []
         assert repeated["error"] == {
-            "code": -32000,
-            "message": "Connection is already initialized",
-            "data": None,
+            "code": -32600,
+            "message": "Invalid request",
+            "data": {"details": "Connection is already initialized"},
         }
         assert created["result"]["sessionId"]
         assert prompted["result"]["stopReason"] == "end_turn"

@@ -107,6 +107,10 @@ sent before initialization fail without constructing an Agent or allocating
 session state, and a second `initialize` request on the same connection is
 rejected. Clients may continue with session requests after either rejection
 only when the connection has already completed one successful initialization.
+Connection-order violations return JSON-RPC `-32600`; an already-open or busy
+session returns the ConnectOnion `-32001` conflict code with its `sessionId`.
+ACP `-32000` remains reserved for `Authentication required` and is never used
+for ordinary lifecycle contention.
 
 Use `--acp` when another local process launches `co ai` and owns its stdio.
 Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a

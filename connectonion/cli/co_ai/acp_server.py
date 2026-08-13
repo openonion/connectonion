@@ -101,6 +101,7 @@ PermissionRequester = Callable[
     Awaitable[RequestPermissionResponse],
 ]
 ACP_EVENT_BUFFER_SIZE = 64
+ACP_SESSION_CONFLICT_ERROR_CODE = -32001
 logger = logging.getLogger(__name__)
 
 _UPLOAD_URI_SCHEME = "connectonion-upload"
@@ -862,7 +863,9 @@ class ConnectOnionACPAgent:
 
     def _require_initialized(self) -> None:
         if not self._initialized:
-            raise RequestError(-32000, "Connection is not initialized")
+            raise RequestError.invalid_request(
+                {"details": "Connection is not initialized"}
+            )
 
     async def initialize(
         self,
@@ -873,7 +876,9 @@ class ConnectOnionACPAgent:
     ) -> InitializeResponse:
         del client_capabilities, client_info
         if self._initialized:
-            raise RequestError(-32000, "Connection is already initialized")
+            raise RequestError.invalid_request(
+                {"details": "Connection is already initialized"}
+            )
         # ACP asks an agent to return its latest supported version when it does
         # not support the client's version. The client then decides whether it
         # can continue (v1 initialization, "Version Negotiation").
@@ -952,7 +957,7 @@ class ConnectOnionACPAgent:
         project_dir = self._session_cwd(cwd)
         if session_id in self._sessions:
             raise RequestError(
-                -32000,
+                ACP_SESSION_CONFLICT_ERROR_CODE,
                 "Session is already open",
                 {"sessionId": session_id},
             )
@@ -1013,7 +1018,7 @@ class ConnectOnionACPAgent:
             )
         if runtime.prompt_lock.locked() or runtime.prompt_active.is_set():
             raise RequestError(
-                -32000,
+                ACP_SESSION_CONFLICT_ERROR_CODE,
                 "Session is busy",
                 {"sessionId": session_id},
             )
@@ -1091,7 +1096,7 @@ class ConnectOnionACPAgent:
             )
         if runtime.prompt_lock.locked() or runtime.prompt_active.is_set():
             raise RequestError(
-                -32000,
+                ACP_SESSION_CONFLICT_ERROR_CODE,
                 "Session is busy",
                 {"sessionId": session_id},
             )

@@ -287,16 +287,20 @@ async def test_acp_requires_initialize_before_creating_session(tmp_path):
     with pytest.raises(RequestError) as exc_info:
         await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
-    assert exc_info.value.code == -32000
-    assert "Connection is not initialized" in str(exc_info.value)
+    assert exc_info.value.code == -32600
+    assert exc_info.value.data == {"details": "Connection is not initialized"}
     for operation in (
         lambda: acp_agent.resume_session("missing", str(tmp_path), mcp_servers=[]),
         lambda: acp_agent.set_session_mode("missing", ":read-only"),
         lambda: acp_agent.close_session("missing"),
         lambda: acp_agent.prompt("missing", [text_block("hello")]),
     ):
-        with pytest.raises(RequestError, match="Connection is not initialized"):
+        with pytest.raises(RequestError) as operation_error:
             await operation()
+        assert operation_error.value.code == -32600
+        assert operation_error.value.data == {
+            "details": "Connection is not initialized"
+        }
     await acp_agent.cancel("missing")
     assert constructed == 0
     assert acp_agent._sessions == {}
@@ -319,9 +323,47 @@ async def test_acp_rejects_repeated_initialize_without_resetting_connection(tmp_
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
     assert initialized.protocol_version == PROTOCOL_VERSION
-    assert exc_info.value.code == -32000
-    assert "Connection is already initialized" in str(exc_info.value)
+    assert exc_info.value.code == -32600
+    assert exc_info.value.data == {"details": "Connection is already initialized"}
     assert session.session_id in acp_agent._sessions
+
+
+@pytest.mark.asyncio
+async def test_acp_session_conflicts_never_emit_auth_required(tmp_path):
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+    )
+    await _initialize_agent(acp_agent)
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+
+    with pytest.raises(RequestError) as already_open:
+        await acp_agent.resume_session(
+            session.session_id,
+            str(tmp_path),
+            mcp_servers=[],
+        )
+
+    runtime = acp_agent._sessions[session.session_id]
+    async with runtime.prompt_lock:
+        operations = (
+            lambda: acp_agent.set_session_mode(session.session_id, ":read-only"),
+            lambda: acp_agent.prompt(session.session_id, [text_block("hello")]),
+        )
+        conflict_errors = []
+        for operation in operations:
+            with pytest.raises(RequestError) as conflict:
+                await operation()
+            conflict_errors.append(conflict.value)
+
+    for error in (already_open.value, *conflict_errors):
+        assert error.code == acp_server.ACP_SESSION_CONFLICT_ERROR_CODE == -32001
+        assert error.data == {"sessionId": session.session_id}
+    assert str(already_open.value) == "Session is already open"
+    assert {str(error) for error in conflict_errors} == {"Session is busy"}
 
 
 @pytest.mark.asyncio
