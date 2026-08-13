@@ -38,9 +38,10 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.6.0
+## Current Version: 1.6.1
 
 ### Version History
+- 1.6.1 (**the CLI stops acting as the wrong account**: it refuses an `OPENONION_API_KEY` that belongs to an account this machine does not hold the signing key for — a stray `.env` in the working directory could shadow the real identity in `~/.co/keys.env`, so a command run from the wrong directory silently read that other account's mailbox and spent its credit; now it re-authenticates or fails closed instead. `co outlook read` keeps the URLs in HTML mail rather than stripping `<a href>` down to its link text, which had made per-recipient links unrecoverable; a malformed JWT claim no longer crashes every CLI command.)
 - 1.6.0 (**safer remote agents and a cleaner credential boundary**: host identity and temporary session-status probes are signed consistently; relay profile updates reject stale or conflicting state; Microsoft OAuth credentials and refresh-token rotation stay on the CLI machine instead of being stored by the backend; project invite credentials are private and no shared default invite code is documented; email sending has traceable, tenant-scoped idempotency and resilient provider-error handling; paid mailbox upgrades can preserve the existing address and are charged atomically; portable skills, dependency floors, cross-platform tests, and exact-artifact release verification are hardened for a stable release.)
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
 - 0.0.2 → 0.0.9 (Early production releases)
