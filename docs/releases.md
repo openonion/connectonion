@@ -29,6 +29,12 @@ browser tests. The retired standalone TypeScript SDK is not part of this
 release path. The native endpoint is a direct loopback or TLS/WSS preview; it
 does not claim end-to-end encryption through an untrusted relay.
 
+For real local ACP acceptance, `co ai --acp --state-dir PATH` keeps mutable
+session snapshots, logs, and eval files in one explicit private root without
+moving identity, configuration, skills, or credentials. Turn logs and evals now
+count only the current user-input boundary rather than reusing earlier tools,
+tokens, cost, or evidence from the cumulative conversation.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
