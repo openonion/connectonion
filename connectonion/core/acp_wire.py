@@ -562,13 +562,27 @@ def legacy_approval_response_from_acp(
     if frame.get("sessionId") != expected_session_id:
         raise ValueError("ACP permission response belongs to another session")
     message = _required_mapping(frame, "message")
+    _require_exact_fields(
+        message,
+        {"jsonrpc", "id", "result"},
+        "ACP permission response",
+    )
     if message.get("jsonrpc") != "2.0":
         raise ValueError("ACP response jsonrpc must be '2.0'")
     if message.get("id") != expected_request_id:
         raise ValueError("ACP permission response belongs to another request")
-    result = RequestPermissionResponse.model_validate(
-        _required_mapping(message, "result")
+    raw_result = _required_mapping(message, "result")
+    _require_exact_fields(
+        raw_result, {"outcome", "_meta"}, "ACP permission result"
     )
+    raw_outcome = _required_mapping(raw_result, "outcome")
+    outcome_fields = {"outcome"}
+    if raw_outcome.get("outcome") == "selected":
+        outcome_fields.update({"optionId", "_meta"})
+    _require_exact_fields(
+        raw_outcome, outcome_fields, "ACP permission outcome"
+    )
+    result = RequestPermissionResponse.model_validate(raw_result)
     outcome = result.outcome
     if outcome.outcome == "cancelled":
         return _hard_rejection()
@@ -609,6 +623,9 @@ def legacy_interrupt_from_acp_cancel(
     if message.get("method") != ACP_CANCEL_METHOD:
         raise ValueError("Unsupported ACP client notification method")
     params = _required_mapping(message, "params")
+    _require_exact_fields(
+        params, {"sessionId", "_meta"}, "ACP cancel params"
+    )
     if not isinstance(params.get("sessionId"), str):
         raise ValueError("ACP cancel sessionId must be a string")
     cancel = CancelNotification.model_validate(params)
@@ -782,6 +799,13 @@ def _required_mapping(
     if not isinstance(item, Mapping):
         raise ValueError(f"ACP notification field {field!r} must be an object")
     return item
+
+
+def _require_exact_fields(
+    value: Mapping[str, Any], allowed: set[str], context: str
+) -> None:
+    if not set(value).issubset(allowed):
+        raise ValueError(f"{context} contains unsupported fields")
 
 
 def _required_string(value: Mapping[str, Any], field: str) -> str:

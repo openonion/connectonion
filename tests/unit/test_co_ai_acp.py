@@ -1581,6 +1581,41 @@ async def test_strict_ndjson_returns_errors_and_keeps_reading():
     assert [item["id"] for item in errors] == [None, None]
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"jsonrpc": "2.0", "id": None, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": None, "result": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32603, "message": "failed"},
+        },
+        {"jsonrpc": "2.0", "id": True, "result": {}},
+        {"jsonrpc": "2.0", "id": 1.5, "result": {}},
+    ],
+)
+def test_strict_ndjson_rejects_unsupported_correlation_ids(message):
+    assert _StrictNDJSONTransport._is_json_rpc_message(message) is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"jsonrpc": "2.0", "id": "request-1", "method": "initialize"},
+        {"jsonrpc": "2.0", "id": 1, "result": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": "request-1",
+            "error": {"code": -32603, "message": "failed"},
+        },
+        {"jsonrpc": "2.0", "method": "session/cancel", "params": {}},
+    ],
+)
+def test_strict_ndjson_keeps_supported_ids_and_notifications(message):
+    assert _StrictNDJSONTransport._is_json_rpc_message(message) is True
+
+
 @pytest.mark.asyncio
 async def test_strict_ndjson_accepts_a_frame_larger_than_stream_chunk_limit():
     reader = asyncio.StreamReader(limit=64)
