@@ -73,7 +73,8 @@ class Agent:
         quiet: bool = False,
         plugins: Optional[List[List[EventHandler]]] = None,
         on_events: Optional[List[EventHandler]] = None,
-        co_dir: Optional[Union[str, Path]] = None
+        co_dir: Optional[Union[str, Path]] = None,
+        state_dir: Optional[Union[str, Path]] = None,
     ):
         self.name = name
         self.co_dir = Path(co_dir) if co_dir else Path(".co")
@@ -99,7 +100,12 @@ class Agent:
         if os.getenv('CONNECTONION_LOG'):
             effective_log = Path(os.getenv('CONNECTONION_LOG'))
 
-        self.logger = Logger(agent_name=name, quiet=quiet, log=effective_log, co_dir=co_dir)
+        self.logger = Logger(
+            agent_name=name,
+            quiet=quiet,
+            log=effective_log,
+            co_dir=state_dir if state_dir is not None else co_dir,
+        )
 
         # Initialize event registry
         # Note: before_each_tool/after_each_tool fire for EACH tool
