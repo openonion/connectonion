@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[2]
 AUTHORITATIVE_TEXTS = (
     REPO / "connectonion" / "cli" / "co_ai" / "main.py",
