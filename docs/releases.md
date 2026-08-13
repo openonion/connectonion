@@ -22,6 +22,10 @@ fail-closed discovery; binds the caller to one virtual workspace and private,
 bounded session and attachment storage; and verifies payment onboarding before
 issuing a one-use browser ticket. Permissions, cancellation, modes, thoughts,
 plans, tool activity, reconnect, and resume stay on the shared ACP lifecycle.
+Authority-bearing permission and cancellation payloads reject ambiguous fields
+while preserving standard opaque `_meta`, and stdio now shares the Gateway's
+string-or-integer JSON-RPC correlation-ID rule instead of accepting null or
+boolean IDs.
 
 The supported browser protocol owner is `@connectonion/react`, whose reviewed
 `0.4.2-alpha.2` artifact is pinned by O Chat and exercised in desktop and mobile
