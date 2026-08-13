@@ -1,0 +1,118 @@
+# DD-052: Downward ACP adapters expose bounded child activity
+
+**Status:** Accepted
+
+**Date:** 2026-08-13
+
+## Context
+
+ConnectOnion can act as an ACP client and delegate a coding task to Claude
+Code, Codex, Gemini CLI, or another ACP agent. This is a downward adapter: the
+child is an agent, while the outer ConnectOnion Agent remains responsible for
+the user-visible session, permissions, persistence, and browser transport.
+DD-043's native Claude Code activity stream remains the preferred first
+product slice; this generic edge is an interoperability option, not its release
+gate.
+
+Equal protocol field names do not imply equal authority or privacy. DD-041
+permits Host thoughts only when ConnectOnion persisted application text with
+known provenance. DD-042 makes the outer plan a complete replacement owned by
+the persisted TodoList. An arbitrary child ACP agent controls neither boundary.
+
+Permission labels also need behavioral evidence. A real test of pinned
+`codex-acp@1.1.14` showed that its `read-only` mode uses Codex
+`approvalPolicy=on-request`: under ConnectOnion `deny`, the child executed
+`curl` and reached the network without sending `session/request_permission`.
+The native ConnectOnion Codex tool can request the stricter `untrusted` policy,
+but the adapter's fixed ACP modes cannot.
+
+## Decision
+
+The generic `acp_agent` tool uses the pinned official Python ACP client and
+exact-version named adapter commands. A model may select a named engine. Custom
+argv, approval policy, and workspace root exist only on an operator-created
+`ACPAgent` instance; the public tool schema cannot supply them.
+
+Only the final `agent_message_chunk` text and bounded tool lifecycle metadata
+cross the downward edge. Tool IDs and titles retain correlation, but ordinary
+progress events omit `rawInput` and `rawOutput`. A manual permission card gets
+one bounded JSON input preview so the operator can make an informed decision.
+The final message is capped at 64 KiB, errors at 4 KiB, event text at 512 bytes,
+and one prompt emits at most 2,048 child events. Oversized IDs become stable
+SHA-256-based IDs.
+
+Child `agent_thought_chunk` and `plan` updates are not published as outer
+`thinking` or `plan` events. A third-party thought may contain private model
+reasoning. A child plan is not ConnectOnion's canonical TodoList replacement.
+Nested child transcripts or plans require a later native event contract with
+explicit parent identity, privacy, replay, and rendering semantics.
+
+Named Claude sessions ignore persistent interactive CLI allow rules and
+explicitly select Manual, Auto, or Don't Ask through advertised ACP session
+modes. Gemini likewise must advertise the required mode. Missing modes fail
+closed. Resume reapplies the same policy and never silently creates a fresh
+session after load failure.
+
+Named Codex ACP sessions have a narrower contract at the pinned adapter
+version: only an operator-selected `auto` policy may launch. `manual` and
+`deny` return an error before the process is spawned because the adapter cannot
+enforce them for shell and outbound network actions. Ordinary callers use the
+native `codex` tool instead. `engine_status()` publishes this limitation as
+`supported_approval_modes=["auto"]`; launcher or credential-file presence is
+never presented as proof of a valid or safe provider session.
+
+`co ai` registers a thin wrapper rather than the raw operator constructor. Read
+only and Workspace permission profiles select `manual`; only a valid, bounded
+Full Access grant selects `auto`. Hosted non-admin requesters cannot launch a
+local ACP child. The wrapper receives the same explicit local-session grant as
+the native coding wrappers, but that grant never enters shared remote EXEC
+configuration.
+
+Manual approval waits on a revocable per-tool IO lease and remains inside the
+turn's total deadline. Timeout or interruption revokes the lease so a pending
+approval cannot leave the ACP subprocess alive. The client may select only an
+`allow_once` response; it never converts one prompt into a persistent rule.
+
+The operator also binds a launch workspace root. Model-selected `cwd` values
+may choose only that directory or a resolved descendant; symlink escapes fail
+closed. This constrains working-directory selection, not every engine's
+filesystem syscalls. Strong hostile-code containment still requires an
+operator-provided container or OS sandbox. Custom ACP commands cannot promise
+engine-specific mode enforcement and remain an advanced operator-owned edge.
+
+## Consequences
+
+- Claude Code, Codex, and Gemini share one typed protocol client without
+  replacing the preferred native Claude/Codex tools.
+- Browser tool cards show bounded child activity without copying arbitrary
+  command arguments, file contents, provider output, thoughts, or plans.
+- The generic Codex ACP route remains available for explicit Full Access, while
+  normal approval-aware delegation fails closed onto the native Codex route.
+- A timed-out approval is revoked with the same child turn instead of leaving
+  a blocked worker or live subprocess behind.
+- Re-enabling Codex `manual` or `deny` requires a pinned adapter plus a real
+  conformance test covering file writes, shell commands, and outbound network.
+
+## Rejected alternatives
+
+- **Describe `read-only` as manual approval despite real behavior:** creates a
+  false security promise and leaves an unapproved network path.
+- **Forward every ACP update into the same-named native event:** confuses child
+  state with authoritative outer state and can disclose private reasoning.
+- **Inherit interactive Claude/Codex configuration:** persistent allow rules or
+  approval reviewers can bypass the current ACP client.
+- **Expose command or approval as model arguments:** lets the model select local
+  process execution or weaken policy.
+- **Use unpinned `npx` packages:** executes unreviewed adapter updates.
+- **Silently start a new session after resume failure:** loses continuity while
+  falsely reporting successful delegation.
+
+## Related decisions
+
+- DD-024: subagent system design
+- DD-032: ACP interoperability evidence
+- DD-041: public ACP Host thoughts
+- DD-042: stable ACP session plans
+- DD-043: Claude Code live tool events
+- DD-044: canonical approval and permission-profile vocabulary
+- DD-051: explicit ACP state isolation

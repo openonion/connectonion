@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 import json
 import sys
@@ -28,6 +29,8 @@ from connectonion.useful_tools._acp_agent_client import (
     session_metadata,
 )
 from connectonion.useful_tools.acp_agent import ENGINES, ACPAgent, acp_agent, engine_status
+
+acp_agent_module = importlib.import_module("connectonion.useful_tools.acp_agent")
 
 FAKE_AGENT = textwrap.dedent(
     """
@@ -173,13 +176,68 @@ class TestPublicBoundary:
         assert "approval" not in parameters
         assert "workspace" not in parameters
 
-    def test_codex_manual_and_deny_start_below_workspace_write_authority(self):
-        manual = engine_environment("codex", "manual")
-        deny = engine_environment("codex", "deny")
+    def test_codex_auto_uses_the_adapter_workspace_mode(self):
         automatic = engine_environment("codex", "auto")
-        assert manual["INITIAL_AGENT_MODE"] == deny["INITIAL_AGENT_MODE"] == "read-only"
         assert automatic["INITIAL_AGENT_MODE"] == "agent"
-        assert json.loads(manual["CODEX_CONFIG"])["approvals_reviewer"] == "user"
+        assert json.loads(automatic["CODEX_CONFIG"])["approvals_reviewer"] == "user"
+
+    def test_codex_explicit_api_key_is_the_only_secret_forwarded(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("CODEX_API_KEY", "codex-test-key")
+        monkeypatch.setenv("UNRELATED_SECRET", "must-not-cross")
+
+        environment = engine_environment("codex", "auto")
+
+        assert environment["CODEX_API_KEY"] == "codex-test-key"
+        assert "UNRELATED_SECRET" not in environment
+        assert json.loads(environment["DEFAULT_AUTH_REQUEST"]) == {
+            "methodId": "api-key"
+        }
+
+    def test_codex_explicit_home_is_forwarded_without_starting_auth(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.delenv("CODEX_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        codex_home = tmp_path / "codex"
+        monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+        environment = engine_environment("codex", "auto")
+
+        assert environment["CODEX_HOME"] == str(codex_home)
+        assert "DEFAULT_AUTH_REQUEST" not in environment
+
+    def test_codex_missing_credentials_do_not_start_an_auth_flow(
+        self, monkeypatch
+    ):
+        monkeypatch.delenv("CODEX_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+
+        assert "DEFAULT_AUTH_REQUEST" not in engine_environment("codex", "auto")
+
+    @pytest.mark.parametrize("approval", ["manual", "deny"])
+    def test_codex_modes_the_adapter_cannot_enforce_fail_before_spawn(
+        self, monkeypatch, tmp_path, approval
+    ):
+        spawned = False
+
+        async def forbidden_spawn(*_args, **_kwargs):
+            nonlocal spawned
+            spawned = True
+            raise AssertionError("unsupported Codex policy reached the launcher")
+
+        monkeypatch.setattr(acp_agent_module, "run_agent", forbidden_spawn)
+        output = json.loads(
+            ACPAgent(approval=approval, workspace=tmp_path).acp_agent(
+                "inspect", engine="codex"
+            )
+        )
+
+        assert spawned is False
+        assert "supports only operator-selected 'auto'" in output["error"]
+        assert "native codex tool" in output["error"]
 
     def test_named_engines_enforce_permission_modes(self):
         assert required_mode("codex", "manual") == "read-only"
@@ -518,5 +576,9 @@ class TestEngineStatus:
         assert set(rows) >= {"claude-code", "codex", "gemini"}
         assert rows["claude-code"]["adapter_version"] == "0.66.0"
         assert rows["codex"]["adapter_version"] == "1.1.14"
+        assert rows["codex"]["supported_approval_modes"] == ["auto"]
+        assert rows["claude-code"]["supported_approval_modes"] == [
+            "manual", "auto", "deny"
+        ]
         assert "launcher_available" in rows["gemini"]
         assert "authenticated_hint" in rows["gemini"]

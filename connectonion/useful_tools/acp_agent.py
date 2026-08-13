@@ -26,6 +26,7 @@ class EngineSpec:
     launcher: str
     auth_hint: str
     adapter_version: str | None
+    supported_approval_modes: tuple[str, ...]
 
 
 ENGINES = {
@@ -38,18 +39,21 @@ ENGINES = {
         launcher="npx",
         auth_hint="~/.claude/.credentials.json",
         adapter_version="0.66.0",
+        supported_approval_modes=APPROVAL_MODES,
     ),
     "codex": EngineSpec(
         command=("npx", "--yes", "@agentclientprotocol/codex-acp@1.1.14"),
         launcher="npx",
         auth_hint="~/.codex/auth.json",
         adapter_version="1.1.14",
+        supported_approval_modes=("auto",),
     ),
     "gemini": EngineSpec(
         command=("gemini", "--experimental-acp"),
         launcher="gemini",
         auth_hint="~/.gemini/oauth_creds.json",
         adapter_version=None,
+        supported_approval_modes=APPROVAL_MODES,
     ),
 }
 
@@ -67,6 +71,7 @@ def engine_status() -> str:
             ),
             "auth_check": "credential file presence only",
             "adapter_version": spec.adapter_version,
+            "supported_approval_modes": list(spec.supported_approval_modes),
         })
     return json.dumps({"engines": rows})
 
@@ -126,6 +131,19 @@ class ACPAgent:
                 session_id=session_id,
                 error=f"Unknown engine {selected!r}. Use one of {sorted(ENGINES)}.",
             )
+        if self._command is None:
+            supported = ENGINES[selected].supported_approval_modes
+            if self._approval not in supported:
+                return envelope(
+                    selected,
+                    session_id=session_id,
+                    error=(
+                        f"codex-acp@{ENGINES[selected].adapter_version} supports "
+                        "only operator-selected 'auto'; its manual/deny modes do "
+                        "not gate shell or network actions. Use the native codex "
+                        "tool for approval-aware delegation."
+                    ),
+                )
 
         try:
             workspace = self._workspace

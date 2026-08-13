@@ -8,13 +8,19 @@ from connectonion import Agent
 from connectonion.useful_tools import acp_agent
 
 agent = Agent("lead", tools=[acp_agent])
-agent.input("Ask Codex to inspect the failing tests")
+agent.input("Ask Claude Code over ACP to inspect the failing tests")
 ```
 
 Named engines are `claude-code`, `codex`, and `gemini`. Claude Code and Codex
 use exact-version ACP adapters; Gemini uses its native experimental ACP mode.
 The existing `claude_code` and `codex` tools remain available and are still the
 preferred engine-specific paths.
+
+| Engine | Supported approval policies |
+|---|---|
+| `claude-code` | `manual`, `auto`, `deny` |
+| `codex` | explicit operator-selected `auto` only |
+| `gemini` | `manual`, `auto`, `deny` |
 
 Every result is a JSON envelope:
 
@@ -52,6 +58,15 @@ permission requests. `auto` allows requests inside the named adapter's
 configured workspace mode; it is intended only for an operator-selected,
 isolated workspace.
 
+`codex-acp@1.1.14` is deliberately stricter at the ConnectOnion boundary than
+its own mode list suggests. Its `read-only` mode supplies Codex's `on-request`
+approval policy, which can execute shell and outbound network actions without
+an ACP permission callback. ConnectOnion therefore rejects named Codex ACP
+launches under `manual` or `deny` before starting the adapter. Use the native
+`codex` tool for approval-aware work. An operator who explicitly wants the
+generic Codex ACP route must construct `ACPAgent(approval="auto", ...)` and run
+it in an appropriately isolated workspace.
+
 The process working directory at `ACPAgent` construction becomes its default
 launch root. An operator can bind a narrower root with
 `ACPAgent(workspace=...)`. The model may choose that directory or a descendant
@@ -76,12 +91,22 @@ persisted application thoughts and canonical TodoList state.
 
 ## Readiness
 
-`engine_status()` reports the exact adapter version, launcher availability, and
-a clearly labelled credential-file presence hint. It does not claim that a
-credential is valid or that a provider call will succeed.
+`engine_status()` reports the exact adapter version, launcher availability, a
+clearly labelled credential-file presence hint, and each engine's
+`supported_approval_modes`. It does not claim that a credential is valid or
+that a provider call will succeed.
 
 The named Claude Code and Codex routes require `npx` and their normal local CLI
 authentication. The first run may download the exact pinned adapter version.
 Gemini CLI exposes native ACP modes, but its provider/account availability is
 version- and account-dependent; `engine_status()` is only a local readiness
 hint, not a successful provider smoke test.
+
+## `co ai`
+
+`co ai` registers `acp_agent` with the same operator-owned boundary as its
+native coding tools. Read only and Workspace profiles use inner `manual`; only
+a valid, bounded Full Access grant maps to `auto`. Hosted non-admin requesters
+cannot launch a local ACP child process. Because ordinary profiles cannot
+safely select the current Codex ACP adapter, use `codex` there and keep
+`acp_agent` for Claude Code, Gemini, or another reviewed ACP integration.

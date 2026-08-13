@@ -274,6 +274,21 @@ Codex runs with permission requests denied.
 - Watch Claude's inner tools start and finish as live O Chat cards
 - Receive one stable JSON result for success, timeout, or provider errors
 
+### Delegate through a generic ACP child
+
+`co ai` also exposes `acp_agent` for a task that specifically needs the common
+ACP client edge rather than the preferred native `codex` or `claude_code`
+routes. The tool accepts a named engine, explicit working directory, and
+optional resumable session ID; command, approval, and workspace authority are
+not model arguments.
+
+Read only and Workspace profiles keep the child in manual approval. A valid,
+bounded Full Access grant selects auto. Hosted non-admin requesters cannot
+start a local ACP child. The pinned `codex-acp@1.1.14` route is rejected outside
+Full Access because its manual/read-only mode does not reliably request ACP
+permission for shell or outbound network actions; use the native `codex` tool
+for approval-aware Codex delegation.
+
 ### Delegate to Claude Code
 
 `co ai` can delegate an implementation or investigation while retaining

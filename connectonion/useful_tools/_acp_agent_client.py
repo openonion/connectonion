@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -72,11 +73,23 @@ def validate_inputs(
 def engine_environment(engine: str, approval: str) -> dict[str, str]:
     if engine != "codex":
         return {}
-    return {
+    environment = {
         "INITIAL_AGENT_MODE": "agent" if approval == "auto" else "read-only",
         "CODEX_CONFIG": json.dumps({"approvals_reviewer": "user"}),
         "NO_BROWSER": "1",
     }
+    api_key_name = next(
+        (name for name in ("CODEX_API_KEY", "OPENAI_API_KEY") if os.getenv(name)),
+        None,
+    )
+    if api_key_name is not None:
+        environment[api_key_name] = os.environ[api_key_name]
+        environment["DEFAULT_AUTH_REQUEST"] = json.dumps({"methodId": "api-key"})
+        return environment
+
+    if "CODEX_HOME" in os.environ:
+        environment["CODEX_HOME"] = os.environ["CODEX_HOME"]
+    return environment
 
 
 def session_metadata(engine: str) -> dict[str, Any]:
