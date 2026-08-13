@@ -112,6 +112,21 @@ session reuse its conversation and tool state. The working directory supplied
 by the client must be an existing absolute directory. Additional workspace
 roots are not accepted yet.
 
+Automation and concurrent acceptance tests can give one ACP process a private
+mutable-state root:
+
+```bash
+co ai --acp --state-dir /private/tmp/co-acp-test
+```
+
+This roots that process's durable ACP snapshots, Agent logs, and eval files
+under the selected directory. It does not copy credentials or create another
+ConnectOnion identity: the Agent name and configured provider credentials still
+come from the normal global configuration. On POSIX, the selected directory is
+created or tightened to mode `0700`; a symlink is rejected. The default remains
+`~/.co`, and `--state-dir` without `--acp` exits with an error. This first slice
+does not change web-server or network Host storage semantics.
+
 The stdio adapter advertises image and embedded-context prompt capabilities
 with the same validated content-block mapping as the network endpoint. Audio is
 not advertised. Invalid MIME types, base64, counts, sizes, or unsafe upload
@@ -175,6 +190,7 @@ operator choice at process launch.
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
 | `--acp` | | off | Serve stable ACP v1 over stdin/stdout |
 | `--acp-mcp` | | off | With `--acp`, allow session-scoped stdio MCP launches |
+| `--state-dir` | | `~/.co` | With `--acp`, isolate mutable session, log, and eval state |
 
 ```bash
 co ai --port 9000
@@ -183,6 +199,7 @@ co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
 co ai --acp
 co ai --acp --acp-mcp
+co ai --acp --state-dir /private/tmp/co-acp-test
 ```
 
 ## Full access (`--yolo`)

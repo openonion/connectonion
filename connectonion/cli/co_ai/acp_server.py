@@ -2287,6 +2287,7 @@ def create_acp_agent(
     max_iterations: int,
     yolo: bool,
     yolo_turns: int,
+    agent_factory: AgentFactory | None = None,
     session_co_dir: Path | None = None,
     network_workspace: _BoundNetworkWorkspace | None = None,
     input_limits: Mapping[str, int | float] | None = None,
@@ -2299,6 +2300,7 @@ def create_acp_agent(
         max_iterations=max_iterations,
         yolo=yolo,
         yolo_turns=yolo_turns,
+        agent_factory=agent_factory,
         session_co_dir=session_co_dir,
         network_workspace=network_workspace,
         input_limits=input_limits,
@@ -2313,8 +2315,16 @@ async def serve_acp(
     yolo: bool,
     yolo_turns: int,
     allow_mcp: bool = False,
+    state_dir: Path | None = None,
 ) -> None:
     """Serve ``co ai`` as an ACP v1 Agent until the client closes stdin."""
+
+    agent_factory = None
+    if state_dir is not None:
+        from ..commands.ai_commands import _create_agent
+
+        def agent_factory(**kwargs: Any) -> Any:
+            return _create_agent(**kwargs, state_dir=state_dir)
 
     transport = await open_stdio_transport()
     agent = create_acp_agent(
@@ -2322,6 +2332,8 @@ async def serve_acp(
         max_iterations=max_iterations,
         yolo=yolo,
         yolo_turns=yolo_turns,
+        agent_factory=agent_factory,
+        session_co_dir=state_dir,
         allow_mcp=allow_mcp,
     )
     try:

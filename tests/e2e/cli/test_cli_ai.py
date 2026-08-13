@@ -29,6 +29,7 @@ def test_ai_forwards_yolo_options():
         resume=None,
         acp=False,
         acp_mcp=False,
+        state_dir=None,
     )
 
 
@@ -51,6 +52,7 @@ def test_ai_forwards_json_and_resume_options():
         resume="session-id",
         acp=False,
         acp_mcp=False,
+        state_dir=None,
     )
 
 
@@ -70,7 +72,21 @@ def test_ai_forwards_acp_mode():
         resume=None,
         acp=True,
         acp_mcp=False,
+        state_dir=None,
     )
+
+
+def test_ai_forwards_explicit_acp_state_dir(tmp_path):
+    state_dir = tmp_path / "acp-state"
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(
+            app,
+            ["ai", "--acp", "--state-dir", str(state_dir)],
+        )
+
+    assert result.exit_code == 0
+    assert handler.call_args.kwargs["acp"] is True
+    assert handler.call_args.kwargs["state_dir"] == state_dir
 
 
 def test_ai_forwards_explicit_acp_mcp_authority():
@@ -94,6 +110,16 @@ def test_ai_rejects_acp_mcp_without_acp():
 
     assert result.exit_code == 2
     assert "--acp-mcp requires --acp" in strip_ansi(result.output)
+
+
+def test_ai_rejects_state_dir_without_acp(tmp_path):
+    result = runner.invoke(
+        app,
+        ["ai", "--state-dir", str(tmp_path / "state")],
+    )
+
+    assert result.exit_code == 2
+    assert "--state-dir requires --acp" in strip_ansi(result.output)
 
 
 def test_ai_rejects_non_positive_yolo_turns():
