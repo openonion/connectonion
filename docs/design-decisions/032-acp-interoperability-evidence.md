@@ -50,6 +50,14 @@ dropped without a response. Nested values, types, nullability, enums, and
 results remain validated by the official SDK rather than a copied
 ConnectOnion schema.
 
+The shared classifier distinguishes response candidates before deciding
+whether an error reply is legal. Requests and successful responses keep their
+string/non-boolean-integer correlation IDs. A structurally valid error may use
+`id=null` when its sender could not recover the request ID, and its `error`
+object requires an integer `code`, string `message`, and optional arbitrary
+`data`. A malformed response fails the transport and is never answered; this
+prevents two strict peers from turning one protocol error into a response loop.
+
 ### State the tested version contract
 
 The package supports `agent-client-protocol>=0.12.0,<0.13.0` and negotiates

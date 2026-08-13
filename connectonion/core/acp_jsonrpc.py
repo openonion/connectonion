@@ -64,6 +64,21 @@ def acp_request_id(message: Any) -> str | int | None:
     return request_id if is_acp_request_id(request_id) else None
 
 
+def is_acp_json_rpc_response_candidate(message: Any) -> bool:
+    """Return whether an invalid envelope is recognizably a response.
+
+    A JSON-RPC peer must never answer a response. Keeping this classification
+    separate lets transports fail a malformed response without creating an
+    error-response loop.
+    """
+
+    return (
+        isinstance(message, dict)
+        and "method" not in message
+        and ("result" in message or "error" in message)
+    )
+
+
 def acp_meta_shadows_request_params(message: Any) -> bool:
     """Detect metadata keys that the pinned SDK would promote over ACP fields."""
 
@@ -108,4 +123,24 @@ def is_acp_json_rpc_message(message: Any) -> bool:
     if "id" not in message or has_result == has_error:
         return False
     expected = {"jsonrpc", "id", "result" if has_result else "error"}
-    return set(message) == expected and is_acp_request_id(message["id"])
+    if set(message) != expected:
+        return False
+    if has_result:
+        return is_acp_request_id(message["id"])
+    return (
+        (message["id"] is None or is_acp_request_id(message["id"]))
+        and _is_json_rpc_error_object(message["error"])
+    )
+
+
+def _is_json_rpc_error_object(value: Any) -> bool:
+    if not isinstance(value, dict) or not set(value).issubset(
+        {"code", "message", "data"}
+    ):
+        return False
+    code = value.get("code")
+    return (
+        isinstance(code, int)
+        and not isinstance(code, bool)
+        and isinstance(value.get("message"), str)
+    )

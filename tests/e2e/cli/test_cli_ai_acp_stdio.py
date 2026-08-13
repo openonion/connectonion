@@ -121,6 +121,28 @@ def _isolate_project_lookup(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_acp_subprocess_does_not_answer_its_own_null_id_error(tmp_path):
+    async with _server(tmp_path / "home") as process:
+        assert process.stdin is not None
+        process.stdin.write(b"{not json}\n")
+        await process.stdin.drain()
+        parse_error = await _read_frame(process)
+
+        assert parse_error["id"] is None
+        assert parse_error["error"]["code"] == -32700
+        await _send(process, parse_error)
+
+        initialized, unexpected = await _request(
+            process,
+            1,
+            "initialize",
+            {"protocolVersion": 1, "clientCapabilities": {}},
+        )
+        assert initialized["result"]["protocolVersion"] == 1
+        assert unexpected == []
+
+
+@pytest.mark.asyncio
 async def test_acp_subprocess_requires_initialize_before_session(tmp_path):
     state_root = tmp_path / "home"
     async with _server(state_root) as process:

@@ -41,6 +41,7 @@ from connectonion.cli.co_ai.one_shot_sessions import save_snapshot
 from connectonion.core.acp_jsonrpc import (
     acp_meta_shadows_request_params,
     acp_params_use_protocol_field_names,
+    is_acp_json_rpc_message,
 )
 from connectonion.core.llm import LLMResponse
 from connectonion.core.usage import TokenUsage
@@ -1932,11 +1933,6 @@ def test_wire_name_guard_rejects_unknown_and_duplicate_root_fields():
     [
         {"jsonrpc": "2.0", "id": None, "method": "initialize", "params": {}},
         {"jsonrpc": "2.0", "id": None, "result": {}},
-        {
-            "jsonrpc": "2.0",
-            "id": None,
-            "error": {"code": -32603, "message": "failed"},
-        },
         {"jsonrpc": "2.0", "id": True, "result": {}},
         {"jsonrpc": "2.0", "id": 1.5, "result": {}},
     ],
@@ -2003,11 +1999,83 @@ def test_strict_ndjson_rejects_mixed_request_and_response_envelopes(message):
             "id": "request-1",
             "error": {"code": -32603, "message": "failed"},
         },
+        {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32603, "message": "failed"},
+        },
         {"jsonrpc": "2.0", "method": "session/cancel", "params": {}},
     ],
 )
 def test_strict_ndjson_keeps_supported_ids_and_notifications(message):
     assert _StrictNDJSONTransport._is_json_rpc_message(message) is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        None,
+        [],
+        {},
+        {"code": True, "message": "failed"},
+        {"code": -32603, "message": 42},
+        {"code": -32603, "message": "failed", "extra": True},
+    ],
+)
+def test_strict_ndjson_rejects_malformed_error_response_objects(error):
+    assert not is_acp_json_rpc_message(
+        {"jsonrpc": "2.0", "id": 1, "error": error}
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"jsonrpc": "2.0", "id": None, "result": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "error": {"code": True, "message": "failed"},
+        },
+    ],
+)
+@pytest.mark.asyncio
+async def test_strict_ndjson_does_not_reply_to_a_malformed_response(message):
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    reader.feed_data(json.dumps(message).encode() + b"\n")
+    reader.feed_eof()
+
+    assert await transport.receive() is None
+    assert writer.buffer == b""
+
+
+@pytest.mark.asyncio
+async def test_strict_ndjson_accepts_a_null_id_error_without_replying():
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    message = {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {"code": -32600, "message": "Invalid Request"},
+    }
+    reader.feed_data(json.dumps(message).encode() + b"\n")
+
+    assert await transport.receive() == message
+    assert writer.buffer == b""
+
+
+@pytest.mark.parametrize("data", [None, True, 42, "detail", [], {}, {"x": 1}])
+def test_strict_ndjson_preserves_arbitrary_error_data(data):
+    assert is_acp_json_rpc_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32000, "message": "failed", "data": data},
+        }
+    )
 
 
 @pytest.mark.asyncio

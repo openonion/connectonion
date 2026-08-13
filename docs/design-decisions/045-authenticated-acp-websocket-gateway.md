@@ -71,6 +71,13 @@ order. The pinned SDK continues to own parameter values, nested types, results,
 and extensions such as `_meta`; envelope validation does not replace ACP
 schema validation.
 
+That error reply applies to invalid request candidates, not responses. A
+response has exactly one result or error; the error object has an integer code,
+string message, and optional arbitrary data. An error response may carry a null
+ID when its sender could not identify the request. A malformed response closes
+the transport without a reply, because replying to a response can create a
+protocol loop between strict peers.
+
 One pinned-router compatibility guard runs before both native transports hand
 messages to the SDK. The SDK promotes `_meta` entries to Python handler keyword
 arguments after parsing official fields, so metadata whose key matches an

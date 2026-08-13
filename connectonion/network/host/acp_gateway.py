@@ -39,6 +39,7 @@ from ...core.acp_jsonrpc import (
     acp_params_use_protocol_field_names,
     acp_request_id,
     is_acp_json_rpc_message,
+    is_acp_json_rpc_response_candidate,
     is_acp_request_id,
 )
 from .auth import _authenticate_signed, request_from_http_headers
@@ -263,6 +264,9 @@ class _ACPTransport:
         if self._closed:
             raise ConnectionError("ACP WebSocket transport is closed")
         if not is_acp_json_rpc_message(message):
+            if is_acp_json_rpc_response_candidate(message):
+                await self.close()
+                return
             await self.send(
                 {
                     "jsonrpc": "2.0",

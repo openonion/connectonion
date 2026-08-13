@@ -25,6 +25,7 @@ from connectonion.network.host.acp_gateway import (
     ACPPrincipal,
     ACPTicketRegistry,
     AuthenticatedACPApp,
+    _ACPTransport,
 )
 from connectonion.network.host.auth import sign_http_request
 from connectonion.network.host.session import ActiveSessionRegistry
@@ -234,6 +235,49 @@ def _initialize():
         "method": "initialize",
         "params": {"protocolVersion": PROTOCOL_VERSION},
     }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"jsonrpc": "2.0", "id": None, "result": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "error": {"code": True, "message": "failed"},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "result": {},
+            "params": {},
+        },
+    ],
+)
+@pytest.mark.asyncio
+async def test_websocket_transport_closes_without_replying_to_malformed_response(
+    message,
+):
+    transport = _ACPTransport()
+
+    await transport.feed(message)
+
+    assert await transport.next_outgoing() is None
+
+
+@pytest.mark.asyncio
+async def test_websocket_transport_accepts_a_null_id_error_without_replying():
+    transport = _ACPTransport()
+    message = {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {"code": -32600, "message": "Invalid Request"},
+    }
+
+    await transport.feed(message)
+
+    assert await transport.receive() == message
+    assert transport._to_client.empty()
 
 
 def test_ticket_registry_hashes_binds_and_consumes_once():
@@ -1020,12 +1064,6 @@ async def test_malformed_initialize_never_creates_an_agent(first):
             "method": "session/resume",
             "result": {},
         },
-        {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {},
-            "params": {},
-        },
     ],
 )
 async def test_mixed_post_initialize_envelope_has_no_side_effect(mixed):
@@ -1050,6 +1088,39 @@ async def test_mixed_post_initialize_envelope_has_no_side_effect(mixed):
     assert initialized["result"]["protocolVersion"] == PROTOCOL_VERSION
     assert rejected["error"]["code"] == -32600
     assert not hasattr(agents[0][1], "resumed")
+
+
+@pytest.mark.asyncio
+async def test_malformed_response_after_initialize_is_never_answered():
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+    malformed = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {},
+        "params": {},
+    }
+
+    sent = await _websocket(
+        app,
+        headers=signed,
+        frames=[_initialize(), malformed],
+    )
+
+    responses = [
+        json.loads(item["text"])
+        for item in sent
+        if item["type"] == "websocket.send"
+    ]
+    assert all(item.get("id") != malformed["id"] for item in responses)
+    assert not hasattr(agents[0][1], "resumed")
+    assert agents[0][1].cancelled is True
+    assert agents[0][1].closed is True
 
 
 @pytest.mark.asyncio

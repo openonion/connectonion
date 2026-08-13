@@ -17,6 +17,7 @@ from .acp_jsonrpc import (
     acp_params_use_protocol_field_names,
     acp_request_id,
     is_acp_json_rpc_message,
+    is_acp_json_rpc_response_candidate,
     is_acp_request_id,
 )
 
@@ -64,6 +65,8 @@ class StrictACPTransport:
                 await self._send_error(None, RequestError.parse_error())
                 continue
             if not self._is_json_rpc_message(message):
+                if is_acp_json_rpc_response_candidate(message):
+                    return None
                 request_id = self._request_id(message)
                 await self._send_error(request_id, RequestError.invalid_request())
                 continue

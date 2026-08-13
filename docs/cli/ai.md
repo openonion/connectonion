@@ -121,6 +121,13 @@ aliases and custom root fields receive `InvalidParams`. Put implementation data
 inside `_meta`. The pinned official ACP SDK continues to validate nested method
 data, optional/null values, enums, results, and extension methods.
 
+Error responses use the JSON-RPC `code`, `message`, and optional `data` shape.
+An error may use `id: null` only when the sender could not recover a request ID;
+requests and successful responses still require a string or integer ID. Native
+transports never answer a response. A malformed response closes the connection
+so pending work fails through the existing disconnect path instead of creating
+an error-response loop.
+
 Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
 session reuse its conversation and tool state. The working directory supplied
 by the client must be an existing absolute directory. Additional workspace
