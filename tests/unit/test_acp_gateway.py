@@ -1053,6 +1053,69 @@ async def test_mixed_post_initialize_envelope_has_no_side_effect(mixed):
 
 
 @pytest.mark.asyncio
+async def test_meta_cannot_shadow_websocket_request_parameters():
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+    shadowed = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "session/resume",
+        "params": {
+            "sessionId": "visible-session",
+            "cwd": "/",
+            "_meta": {
+                "session_id": "hidden-session",
+                "cwd": "/hidden",
+            },
+        },
+    }
+
+    sent = await _websocket(
+        app,
+        headers=signed,
+        frames=[_initialize(), shadowed],
+        expected_sends=2,
+    )
+
+    responses = [
+        json.loads(item["text"])
+        for item in sent
+        if item["type"] == "websocket.send"
+    ]
+    rejected = next(item for item in responses if item["id"] == shadowed["id"])
+    assert rejected["error"] == {
+        "code": -32602,
+        "message": "Invalid params",
+        "data": {"details": "ACP _meta cannot override request parameters"},
+    }
+    assert not hasattr(agents[0][1], "resumed")
+
+
+@pytest.mark.asyncio
+async def test_shadowed_initialize_never_creates_an_agent():
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+    first = _initialize()
+    first["params"]["_meta"] = {"protocol_version": 0}
+
+    sent = await _websocket(app, headers=signed, frames=[first])
+
+    assert sent[-1]["type"] == "websocket.close"
+    assert sent[-1]["code"] == 4400
+    assert agents == []
+
+
+@pytest.mark.asyncio
 async def test_non_standard_json_constant_is_rejected_before_agent_creation():
     app, caller, recipient, agents = _app()
     signed = sign_http_request(

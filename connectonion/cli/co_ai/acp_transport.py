@@ -13,6 +13,8 @@ from acp import RequestError, stdio_streams
 from acp.core import DEFAULT_STDIO_BUFFER_LIMIT_BYTES
 
 from ...core.acp_jsonrpc import (
+    ACP_META_SHADOW_ERROR_DETAILS,
+    acp_meta_shadows_request_params,
     acp_request_id,
     is_acp_json_rpc_message,
     is_acp_request_id,
@@ -101,6 +103,15 @@ class _StrictNDJSONTransport:
             if not self._is_json_rpc_message(message):
                 request_id = self._request_id(message)
                 await self._send_error(request_id, RequestError.invalid_request())
+                continue
+            if acp_meta_shadows_request_params(message):
+                if "id" in message:
+                    await self._send_error(
+                        self._request_id(message),
+                        RequestError.invalid_params(
+                            {"details": ACP_META_SHADOW_ERROR_DETAILS}
+                        ),
+                    )
                 continue
             return message
 

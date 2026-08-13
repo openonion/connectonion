@@ -193,6 +193,40 @@ async def test_acp_subprocess_requires_initialize_before_session(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_acp_subprocess_rejects_meta_parameter_shadowing(tmp_path):
+    visible = tmp_path / "visible"
+    hidden = tmp_path / "hidden"
+    visible.mkdir()
+    hidden.mkdir()
+    async with _server(tmp_path / "home") as process:
+        await _initialize(process)
+
+        rejected, _ = await _request(
+            process,
+            2,
+            "session/new",
+            {
+                "cwd": str(visible),
+                "mcpServers": [],
+                "_meta": {"cwd": str(hidden)},
+            },
+        )
+        created, _ = await _request(
+            process,
+            3,
+            "session/new",
+            {"cwd": str(visible), "mcpServers": []},
+        )
+
+        assert rejected["error"] == {
+            "code": -32602,
+            "message": "Invalid params",
+            "data": {"details": "ACP _meta cannot override request parameters"},
+        }
+        assert created["result"]["sessionId"]
+
+
+@pytest.mark.asyncio
 async def test_acp_subprocess_keeps_stdout_protocol_only_and_exits_on_eof(tmp_path):
     async with _server(tmp_path / "home") as process:
         session_id = await _initialize_and_create_session(process, tmp_path)

@@ -34,6 +34,14 @@ production code.
 Both suites are isolated from user state, credentials, and the network. Client
 permission callbacks reject by default.
 
+The pinned Python SDK expands request `_meta` entries into handler keyword
+arguments. Native transports therefore share a narrow pre-router guard: a
+metadata key cannot use the generated Python name of an official request field
+and replace that field after validation. Other metadata remains untouched.
+Requests with a collision receive `InvalidParams`; invalid notifications are
+dropped without a response. This is a compatibility guard around the pinned
+router, not a second ACP parameter validator.
+
 ### State the tested version contract
 
 The package supports `agent-client-protocol>=0.12.0,<0.13.0` and negotiates
@@ -56,6 +64,8 @@ as clients that launch ConnectOnion.
 ## Consequences
 
 - Schema or router drift fails in the official SDK client before release.
+- Raw clients cannot use `_meta` to make executed handler arguments disagree
+  with the visible request fields.
 - Framing regressions remain visible instead of being hidden by SDK helpers.
 - Interoperability claims say exactly which layer and version were exercised.
 - The deterministic fixture is shared by raw and typed subprocess suites.

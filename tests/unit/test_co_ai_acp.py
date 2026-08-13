@@ -38,6 +38,7 @@ from connectonion.cli.co_ai.acp_transport import (
     _StrictNDJSONTransport,
 )
 from connectonion.cli.co_ai.one_shot_sessions import save_snapshot
+from connectonion.core.acp_jsonrpc import acp_meta_shadows_request_params
 from connectonion.core.llm import LLMResponse
 from connectonion.core.usage import TokenUsage
 from connectonion.useful_plugins.tool_approval import check_approval
@@ -1667,6 +1668,119 @@ async def test_strict_ndjson_returns_errors_and_keeps_reading():
     errors = [json.loads(line) for line in writer.buffer.splitlines()]
     assert [item["error"]["code"] for item in errors] == [-32700, -32600]
     assert [item["id"] for item in errors] == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_strict_ndjson_rejects_meta_parameter_shadowing_and_keeps_reading():
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    reader.feed_data(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": "shadowed",
+                "method": "session/resume",
+                "params": {
+                    "sessionId": "visible-session",
+                    "cwd": "/visible",
+                    "_meta": {
+                        "session_id": "hidden-session",
+                        "cwd": "/hidden",
+                    },
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
+    valid = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {"protocolVersion": PROTOCOL_VERSION},
+    }
+    reader.feed_data(json.dumps(valid).encode() + b"\n")
+
+    message = await transport.receive()
+
+    assert message == valid
+    error = json.loads(writer.buffer)
+    assert error == {
+        "jsonrpc": "2.0",
+        "id": "shadowed",
+        "error": {
+            "code": -32602,
+            "message": "Invalid params",
+            "data": {"details": "ACP _meta cannot override request parameters"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_strict_ndjson_drops_shadowed_meta_notification_without_response():
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    reader.feed_data(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {
+                    "sessionId": "visible-session",
+                    "_meta": {"session_id": "hidden-session"},
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
+    valid = {
+        "jsonrpc": "2.0",
+        "method": "session/cancel",
+        "params": {"sessionId": "visible-session", "_meta": {"trace": "ok"}},
+    }
+    reader.feed_data(json.dumps(valid).encode() + b"\n")
+
+    message = await transport.receive()
+
+    assert message == valid
+    assert writer.buffer == b""
+
+
+@pytest.mark.parametrize(
+    ("method", "parameter"),
+    [
+        ("initialize", "protocol_version"),
+        ("session/new", "additional_directories"),
+        ("session/resume", "mcp_servers"),
+        ("session/set_mode", "mode_id"),
+        ("session/prompt", "prompt"),
+        ("session/close", "session_id"),
+        ("session/cancel", "session_id"),
+    ],
+)
+def test_meta_shadow_guard_tracks_pinned_sdk_handler_parameters(method, parameter):
+    assert acp_meta_shadows_request_params(
+        {
+            "method": method,
+            "params": {"_meta": {parameter: "shadowed"}},
+        }
+    )
+
+
+def test_meta_shadow_guard_preserves_unrelated_and_extension_metadata():
+    assert not acp_meta_shadows_request_params(
+        {
+            "method": "session/prompt",
+            "params": {"_meta": {"trace": "kept"}},
+        }
+    )
+    assert not acp_meta_shadows_request_params(
+        {
+            "method": "_connectonion/custom",
+            "params": {"_meta": {"session_id": "extension-owned"}},
+        }
+    )
 
 
 @pytest.mark.parametrize(

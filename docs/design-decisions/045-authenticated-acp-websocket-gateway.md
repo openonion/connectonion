@@ -71,6 +71,15 @@ order. The pinned SDK continues to own method parameters, results, and
 extensions such as `_meta`; envelope validation does not replace ACP schema
 validation.
 
+One pinned-router compatibility guard runs before both native transports hand
+messages to the SDK. The SDK promotes `_meta` entries to Python handler keyword
+arguments after parsing official fields, so metadata whose key matches an
+official generated parameter name could otherwise shadow the visible field.
+Such requests receive `-32602` with fixed public details, while invalid
+notifications are dropped without a response. Unrelated `_meta` entries and
+extension methods remain available. A shadowed first WebSocket `initialize`
+fails the existing pre-Agent admission rule and closes with `4400`.
+
 ### Browsers exchange a signed request for a one-use ticket
 
 Browser JavaScript cannot add `X-Co-*` headers to a WebSocket upgrade. It first
