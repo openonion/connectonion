@@ -6,18 +6,6 @@ Tests cover:
 - _summarize_trace: summarizing tool execution trace
 - Plugin registration with correct events
 """
-"""
-LLM-Note: Tests for eval plugin
-
-What it tests:
-- Eval Plugin functionality
-
-Components under test:
-- Module: eval_plugin
-"""
-
-
-import pytest
 import importlib
 from unittest.mock import Mock, patch
 
@@ -100,6 +88,32 @@ class TestGenerateExpected:
 
             call_args = mock_llm_do.call_args[0][0]
             assert 'tool1, tool2' in call_args
+
+    def test_generate_expected_regenerates_once_for_each_turn(self):
+        """A cumulative session must not reuse the previous turn's expectation."""
+        agent = FakeAgent()
+        agent.current_session.update({
+            'turn': 1,
+            'user_prompt': 'Use Claude Code',
+            'expected': 'Claude Code should run',
+            '_eval_expected': 'Claude Code should run',
+            '_eval_turn': 1,
+            'evaluation': {'passed': True, 'summary': 'Done'},
+        })
+
+        agent.current_session['turn'] = 2
+        agent.current_session['user_prompt'] = 'Use Codex'
+
+        with patch.object(eval_module, 'llm_do') as mock_llm_do:
+            mock_llm_do.return_value = 'Codex should run'
+
+            generate_expected(agent)
+            generate_expected(agent)
+
+            mock_llm_do.assert_called_once()
+            assert agent.current_session['expected'] == 'Codex should run'
+            assert agent.current_session['_eval_turn'] == 2
+            assert 'evaluation' not in agent.current_session
 
 
 class TestSummarizeTrace:
@@ -204,6 +218,45 @@ class TestEvaluateCompletion:
 
             call_args = mock_llm_do.call_args[0][0]
             assert '- search:' in call_args
+
+    def test_evaluate_completion_excludes_tools_from_previous_turns(self):
+        """Only the current turn's canonical trace slice is evaluation evidence."""
+        agent = FakeAgent()
+        agent.current_session.update({
+            'turn': 2,
+            'user_prompt': 'Use Codex once',
+            'expected': 'Codex should run once',
+            '_eval_expected': 'Codex should run once',
+            '_eval_turn': 2,
+            'result': 'CODEX_READ_OK',
+            'trace': [
+                {'type': 'user_input', 'turn': 1, 'content': 'Use Claude Code once'},
+                {
+                    'type': 'tool_result',
+                    'name': 'claude_code',
+                    'status': 'success',
+                    'result': 'CLAUDE_READ_OK',
+                },
+                {'type': 'turn_result', 'turn': 1, 'reason': 'natural'},
+                {'type': 'user_input', 'turn': 2, 'content': 'Use Codex once'},
+                {
+                    'type': 'tool_result',
+                    'name': 'codex',
+                    'status': 'success',
+                    'result': 'CODEX_READ_OK',
+                },
+            ],
+        })
+
+        with patch.object(eval_module, 'llm_do') as mock_llm_do:
+            mock_llm_do.return_value = 'Complete'
+
+            evaluate_completion(agent)
+
+            evaluation_prompt = mock_llm_do.call_args[0][0]
+            assert '- codex: CODEX_READ_OK' in evaluation_prompt
+            assert 'claude_code' not in evaluation_prompt
+            assert 'CLAUDE_READ_OK' not in evaluation_prompt
 
     def test_evaluate_completion_prints_status(self):
         """Test that evaluate_completion prints evaluation status."""
