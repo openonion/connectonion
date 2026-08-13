@@ -61,6 +61,16 @@ coding Agent is constructed. The upgrade response
 carries an `Acp-Connection-Id`; it and every ACP session ID are routing values,
 never credentials.
 
+Native stdio and WebSocket transports apply the same exact JSON-RPC envelope
+classifier before SDK routing. A message cannot be both a request and a
+response, and response envelopes cannot contain request members. Once a valid
+first `initialize` frame is admitted, an invalid later envelope receives
+JSON-RPC `-32600` through the existing bounded outbound queue and is never
+delivered to the Agent. Responses remain correlated by ID rather than arrival
+order. The pinned SDK continues to own method parameters, results, and
+extensions such as `_meta`; envelope validation does not replace ACP schema
+validation.
+
 ### Browsers exchange a signed request for a one-use ticket
 
 Browser JavaScript cannot add `X-Co-*` headers to a WebSocket upgrade. It first
@@ -147,6 +157,8 @@ provenance role after #898 decides it.
   rate-limited, and insecure non-loopback admissions fail before Agent creation.
 - Binary frames are ignored as required by the upstream RFD unless they exceed
   the transport limit. Malformed text and oversized frames close the connection.
+  Syntactically valid JSON with a mixed or otherwise invalid JSON-RPC envelope
+  receives `-32600` after first-frame admission and is not routed to the Agent.
   Each direction has a bounded eight-message queue and applies backpressure
   rather than dropping protocol messages.
 - `initialize` has a bounded deadline. Disconnect and Host shutdown cancel

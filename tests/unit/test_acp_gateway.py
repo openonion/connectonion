@@ -928,7 +928,11 @@ async def test_remote_transport_keeps_resume_route_enabled():
         expected_sends=2,
     )
 
-    responses = [json.loads(item["text"]) for item in sent if item["type"] == "websocket.send"]
+    responses = [
+        json.loads(item["text"])
+        for item in sent
+        if item["type"] == "websocket.send"
+    ]
     assert [response["id"] for response in responses] == [1, 2]
     assert responses[1]["result"] == {}
     assert agents[0][1].resumed == ("saved-session", "/tmp")
@@ -969,6 +973,11 @@ async def test_first_frame_must_initialize_before_agent_creation():
             "method": "initialize",
             "params": {"protocolVersion": "not-an-integer"},
         },
+        {**_initialize(), "result": {"foreign": True}},
+        {
+            **_initialize(),
+            "error": {"code": -32000, "message": "foreign"},
+        },
     ],
 )
 async def test_malformed_initialize_never_creates_an_agent(first):
@@ -985,6 +994,62 @@ async def test_malformed_initialize_never_creates_an_agent(first):
     assert sent[-1]["type"] == "websocket.close"
     assert sent[-1]["code"] == 4400
     assert agents == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mixed",
+    [
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/resume",
+            "params": {"sessionId": "saved-session", "cwd": "/tmp"},
+            "result": {},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/resume",
+            "params": {"sessionId": "saved-session", "cwd": "/tmp"},
+            "error": {"code": -32000, "message": "foreign"},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/resume",
+            "result": {},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {},
+            "params": {},
+        },
+    ],
+)
+async def test_mixed_post_initialize_envelope_has_no_side_effect(mixed):
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+
+    sent = await _websocket(
+        app,
+        headers=signed,
+        frames=[_initialize(), mixed],
+        expected_sends=2,
+    )
+
+    responses = [json.loads(item["text"]) for item in sent if item["type"] == "websocket.send"]
+    initialized = next(item for item in responses if item["id"] == 1)
+    rejected = next(item for item in responses if item["id"] == mixed["id"])
+    assert initialized["result"]["protocolVersion"] == PROTOCOL_VERSION
+    assert rejected["error"]["code"] == -32600
+    assert not hasattr(agents[0][1], "resumed")
 
 
 @pytest.mark.asyncio

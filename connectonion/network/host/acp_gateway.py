@@ -27,11 +27,16 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterable
 from urllib.parse import urlsplit
 
-from acp import PROTOCOL_VERSION
+from acp import PROTOCOL_VERSION, RequestError
 from acp.agent.connection import AgentSideConnection
 from acp.schema import InitializeRequest
 from pydantic import ValidationError
 
+from ...core.acp_jsonrpc import (
+    acp_request_id,
+    is_acp_json_rpc_message,
+    is_acp_request_id,
+)
 from .auth import _authenticate_signed, request_from_http_headers
 from .replay import ReplayProtectionError
 
@@ -253,6 +258,15 @@ class _ACPTransport:
     async def feed(self, message: dict[str, Any]) -> None:
         if self._closed:
             raise ConnectionError("ACP WebSocket transport is closed")
+        if not is_acp_json_rpc_message(message):
+            await self.send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": acp_request_id(message),
+                    "error": RequestError.invalid_request().to_error_obj(),
+                }
+            )
+            return
         await self._to_agent.put(message)
 
     async def next_outgoing(self) -> dict[str, Any] | None:
@@ -963,10 +977,10 @@ class AuthenticatedACPApp:
     def _is_initialize_request(payload: dict[str, Any]) -> bool:
         request_id = payload.get("id")
         envelope_valid = (
-            payload.get("jsonrpc") == "2.0"
+            is_acp_json_rpc_message(payload)
             and payload.get("method") == "initialize"
             and isinstance(payload.get("params"), dict)
-            and (isinstance(request_id, str) or (isinstance(request_id, int) and not isinstance(request_id, bool)))
+            and is_acp_request_id(request_id)
         )
         if not envelope_valid:
             return False

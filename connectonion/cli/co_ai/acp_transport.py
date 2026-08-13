@@ -12,6 +12,12 @@ from typing import Any
 from acp import RequestError, stdio_streams
 from acp.core import DEFAULT_STDIO_BUFFER_LIMIT_BYTES
 
+from ...core.acp_jsonrpc import (
+    acp_request_id,
+    is_acp_json_rpc_message,
+    is_acp_request_id,
+)
+
 
 class _BoundStdoutWriter:
     """Windows writer bound to original stdout with blocking write-all drain."""
@@ -156,41 +162,15 @@ class _StrictNDJSONTransport:
 
     @classmethod
     def _request_id(cls, message: Any) -> str | int | None:
-        if not isinstance(message, dict):
-            return None
-        request_id = message.get("id")
-        return request_id if cls._is_request_id(request_id) else None
+        return acp_request_id(message)
 
     @staticmethod
     def _is_request_id(value: Any) -> bool:
-        return isinstance(value, str) or (
-            isinstance(value, int) and not isinstance(value, bool)
-        )
+        return is_acp_request_id(value)
 
     @classmethod
     def _is_json_rpc_message(cls, message: Any) -> bool:
-        if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
-            return False
-        if "method" in message:
-            # Generated ACP models ignore unknown fields, so reject mixed
-            # request/response envelopes before authority-bearing routing.
-            if not set(message).issubset({"jsonrpc", "id", "method", "params"}):
-                return False
-            if not isinstance(message["method"], str):
-                return False
-            if "id" in message and not cls._is_request_id(message["id"]):
-                return False
-            return "params" not in message or isinstance(
-                message["params"], (dict, list)
-            )
-        has_result = "result" in message
-        has_error = "error" in message
-        if "id" not in message or has_result == has_error:
-            return False
-        expected = {"jsonrpc", "id", "result" if has_result else "error"}
-        if set(message) != expected:
-            return False
-        return cls._is_request_id(message["id"])
+        return is_acp_json_rpc_message(message)
 
 
 def _reject_json_constant(value: str) -> None:

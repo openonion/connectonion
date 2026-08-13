@@ -113,6 +113,11 @@ Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a
 network endpoint and therefore keeps ConnectOnion authentication and trust in
 front of ACP initialization.
 
+The stdio and authenticated WebSocket entry points share exact JSON-RPC
+envelope validation. Mixed request/response envelopes are rejected before ACP
+routing, while method data and extensions such as `_meta` remain validated by
+the pinned official ACP SDK.
+
 Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
 session reuse its conversation and tool state. The working directory supplied
 by the client must be an existing absolute directory. Additional workspace
