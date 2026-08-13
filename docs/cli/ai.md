@@ -102,6 +102,12 @@ CLI can create a session and drive the real `co ai` coding agent. ACP messages
 are newline-delimited JSON-RPC on stdin/stdout; human-readable diagnostics stay
 on stderr.
 
+The first request on each connection must be `initialize`. Session requests
+sent before initialization fail without constructing an Agent or allocating
+session state, and a second `initialize` request on the same connection is
+rejected. Clients may continue with session requests after either rejection
+only when the connection has already completed one successful initialization.
+
 Use `--acp` when another local process launches `co ai` and owns its stdio.
 Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a
 network endpoint and therefore keeps ConnectOnion authentication and trust in

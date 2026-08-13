@@ -263,6 +263,67 @@ def _isolate_acp_session_state(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
 
+async def _initialize_agent(agent: ConnectOnionACPAgent) -> None:
+    await agent.initialize(protocol_version=PROTOCOL_VERSION)
+
+
+@pytest.mark.asyncio
+async def test_acp_requires_initialize_before_creating_session(tmp_path):
+    constructed = 0
+
+    def factory(**_kwargs: Any) -> _FakeAgent:
+        nonlocal constructed
+        constructed += 1
+        return _FakeAgent()
+
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=factory,
+    )
+
+    with pytest.raises(RequestError) as exc_info:
+        await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+
+    assert exc_info.value.code == -32000
+    assert "Connection is not initialized" in str(exc_info.value)
+    for operation in (
+        lambda: acp_agent.resume_session("missing", str(tmp_path), mcp_servers=[]),
+        lambda: acp_agent.set_session_mode("missing", ":read-only"),
+        lambda: acp_agent.close_session("missing"),
+        lambda: acp_agent.prompt("missing", [text_block("hello")]),
+    ):
+        with pytest.raises(RequestError, match="Connection is not initialized"):
+            await operation()
+    await acp_agent.cancel("missing")
+    assert constructed == 0
+    assert acp_agent._sessions == {}
+    assert not (tmp_path / "acp-state" / "ai" / "sessions").exists()
+
+
+@pytest.mark.asyncio
+async def test_acp_rejects_repeated_initialize_without_resetting_connection(tmp_path):
+    acp_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+    )
+
+    initialized = await acp_agent.initialize(protocol_version=PROTOCOL_VERSION)
+    with pytest.raises(RequestError) as exc_info:
+        await acp_agent.initialize(protocol_version=PROTOCOL_VERSION)
+    session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
+
+    assert initialized.protocol_version == PROTOCOL_VERSION
+    assert exc_info.value.code == -32000
+    assert "Connection is already initialized" in str(exc_info.value)
+    assert session.session_id in acp_agent._sessions
+
+
 @pytest.mark.asyncio
 async def test_acp_lifecycle_reuses_agent_and_exits_on_eof(tmp_path, capsys):
     created: list[_FakeAgent] = []
@@ -318,7 +379,14 @@ async def test_acp_lifecycle_reuses_agent_and_exits_on_eof(tmp_path, capsys):
 
 @pytest.mark.asyncio
 async def test_acp_reports_its_supported_version_for_any_client_version():
-    acp_agent = ConnectOnionACPAgent(
+    older_agent = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_kwargs: _FakeAgent(),
+    )
+    newer_agent = ConnectOnionACPAgent(
         model="test",
         max_iterations=2,
         yolo=False,
@@ -326,8 +394,8 @@ async def test_acp_reports_its_supported_version_for_any_client_version():
         agent_factory=lambda **_kwargs: _FakeAgent(),
     )
 
-    older = await acp_agent.initialize(protocol_version=0)
-    newer = await acp_agent.initialize(protocol_version=PROTOCOL_VERSION + 1)
+    older = await older_agent.initialize(protocol_version=0)
+    newer = await newer_agent.initialize(protocol_version=PROTOCOL_VERSION + 1)
 
     assert older.protocol_version == PROTOCOL_VERSION
     assert newer.protocol_version == PROTOCOL_VERSION
@@ -348,6 +416,7 @@ async def test_acp_passes_official_image_and_embedded_file_blocks_to_agent(tmp_p
         input_limits={"max_file_size": 1, "max_files_per_request": 3},
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
     response = await acp_agent.prompt(
@@ -466,6 +535,7 @@ async def test_acp_rejects_unsafe_attachment_blocks_before_turn_mutation(
         yolo_turns=2,
         agent_factory=lambda **_kwargs: fake_agent,
     )
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     runtime = acp_agent._sessions[session.session_id]
     before = deepcopy(runtime.last_good_session)
@@ -491,6 +561,7 @@ async def test_acp_rejects_oversized_or_excess_attachments_before_turn(tmp_path)
             "max_files_per_request": 1,
         },
     )
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     image = ImageContentBlock(
         type="image",
@@ -623,6 +694,7 @@ async def test_acp_real_agent_uses_existing_image_and_safe_file_path(tmp_path):
         agent_factory=lambda **_kwargs: real_agent,
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
     response = await acp_agent.prompt(
@@ -698,6 +770,7 @@ async def test_network_acp_stages_files_in_the_authenticated_principal_namespace
         network_workspace=workspace,
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     try:
         session = await acp_agent.new_session("/", mcp_servers=[])
 
@@ -775,6 +848,7 @@ async def test_network_acp_rejects_sequential_prompts_at_principal_storage_quota
         input_limits=limits,
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     try:
         session = await acp_agent.new_session("/", mcp_servers=[])
 
@@ -849,6 +923,7 @@ async def test_network_acp_releases_upload_quota_before_model_work(tmp_path):
         network_workspace=workspace,
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     try:
         session = await acp_agent.new_session("/", mcp_servers=[])
         prompt = acp_agent.prompt(
@@ -1051,6 +1126,7 @@ async def test_acp_failed_real_agent_removes_new_upload_before_snapshot_restore(
         agent_factory=lambda **_kwargs: real_agent,
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     runtime = acp_agent._sessions[session.session_id]
     before = deepcopy(runtime.last_good_session)
@@ -1085,6 +1161,7 @@ async def test_acp_rejects_unknown_session():
         agent_factory=lambda **_kwargs: _FakeAgent(),
     )
 
+    await _initialize_agent(acp_agent)
     with pytest.raises(RequestError, match="Session not found"):
         await acp_agent.prompt("missing", [text_block("hello")])
 
@@ -1100,6 +1177,7 @@ async def test_acp_cancel_stops_an_active_prompt(tmp_path):
         agent_factory=lambda **_kwargs: fake_agent,
     )
     acp_agent.on_connect(_RecordingClient())
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
         acp_agent.prompt(session.session_id, [text_block("wait")])
@@ -1134,6 +1212,7 @@ async def test_acp_cancel_while_waiting_for_upload_quota_never_starts_agent(tmp_
         **kwargs,
     )
     contender.on_connect(_RecordingClient())
+    await _initialize_agent(contender)
     (principal_co_dir / "uploads").mkdir(parents=True)
     parsed = holder._parse_prompt(
         [
@@ -1203,6 +1282,7 @@ async def test_acp_close_while_waiting_for_upload_quota_never_starts_agent(tmp_p
         **kwargs,
     )
     contender.on_connect(_RecordingClient())
+    await _initialize_agent(contender)
     (principal_co_dir / "uploads").mkdir(parents=True)
     parsed = holder._parse_prompt(
         [
@@ -1306,6 +1386,7 @@ async def test_acp_errors_do_not_echo_agent_exception_details(tmp_path):
         yolo_turns=2,
         agent_factory=lambda **_kwargs: _FailingAgent(),
     )
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
     with pytest.raises(RequestError) as exc_info:
@@ -1325,6 +1406,7 @@ async def test_acp_rejects_unsupported_session_inputs(tmp_path):
         agent_factory=lambda **_kwargs: _FakeAgent(),
     )
 
+    await _initialize_agent(acp_agent)
     with pytest.raises(RequestError, match="Invalid params"):
         await acp_agent.new_session(
             str(tmp_path),
@@ -1355,6 +1437,7 @@ async def test_network_acp_maps_only_virtual_root_to_host_workspace(tmp_path):
         network_workspace=capture_network_workspace(workspace),
     )
 
+    await _initialize_agent(acp_agent)
     session = await acp_agent.new_session(
         "/",
         mcp_servers=[],
@@ -1385,6 +1468,7 @@ async def test_network_acp_rejects_host_paths_before_agent_construction(tmp_path
         network_workspace=capture_network_workspace(workspace),
     )
 
+    await _initialize_agent(acp_agent)
     for cwd in (str(workspace), "/./", "/tmp"):
         with pytest.raises(RequestError, match="Invalid params") as exc_info:
             await acp_agent.new_session(cwd, mcp_servers=[])
@@ -1432,6 +1516,7 @@ async def test_network_acp_resume_does_not_disclose_saved_host_workspace(tmp_pat
         network_workspace=capture_network_workspace(new_workspace),
     )
 
+    await _initialize_agent(acp_agent)
     with pytest.raises(RequestError, match="Unable to resume session") as exc_info:
         await acp_agent.resume_session(session_id, "/", mcp_servers=[])
 
@@ -1470,6 +1555,7 @@ async def test_network_acp_workspace_does_not_follow_replaced_launch_path(tmp_pa
         network_workspace=workspace,
     )
 
+    await _initialize_agent(acp_agent)
     if hasattr(os, "fchdir"):
         await acp_agent.new_session("/", mcp_servers=[])
         assert observed == ["original"]
@@ -1515,6 +1601,8 @@ async def test_acp_adapters_share_one_process_context_lock(tmp_path):
         agent_factory=second_factory,
     )
 
+    await _initialize_agent(first)
+    await _initialize_agent(second)
     first_task = asyncio.create_task(first.new_session(str(first_dir), mcp_servers=[]))
     await asyncio.wait_for(asyncio.to_thread(first_started.wait), timeout=1)
     second_task = asyncio.create_task(second.new_session(str(second_dir), mcp_servers=[]))

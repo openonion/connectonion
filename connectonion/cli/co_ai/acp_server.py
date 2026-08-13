@@ -855,9 +855,14 @@ class ConnectOnionACPAgent:
         self._mcp_connector = mcp_connector
         self._client: Client | None = None
         self._sessions: dict[str, _SessionRuntime] = {}
+        self._initialized = False
 
     def on_connect(self, client: Client) -> None:
         self._client = client
+
+    def _require_initialized(self) -> None:
+        if not self._initialized:
+            raise RequestError(-32000, "Connection is not initialized")
 
     async def initialize(
         self,
@@ -867,11 +872,13 @@ class ConnectOnionACPAgent:
         **_kwargs: Any,
     ) -> InitializeResponse:
         del client_capabilities, client_info
+        if self._initialized:
+            raise RequestError(-32000, "Connection is already initialized")
         # ACP asks an agent to return its latest supported version when it does
         # not support the client's version. The client then decides whether it
         # can continue (v1 initialization, "Version Negotiation").
         selected_version = PROTOCOL_VERSION
-        return InitializeResponse(
+        response = InitializeResponse(
             protocol_version=selected_version,
             agent_capabilities=AgentCapabilities(
                 load_session=False,
@@ -891,6 +898,8 @@ class ConnectOnionACPAgent:
             ),
             auth_methods=[],
         )
+        self._initialized = True
+        return response
 
     async def new_session(
         self,
@@ -899,6 +908,7 @@ class ConnectOnionACPAgent:
         mcp_servers: list[Any] | None = None,
         **_kwargs: Any,
     ) -> NewSessionResponse:
+        self._require_initialized()
         self._validate_session_inputs(additional_directories, mcp_servers)
         project_dir = self._session_cwd(cwd)
         session_id = new_session_id()
@@ -937,6 +947,7 @@ class ConnectOnionACPAgent:
     ) -> ResumeSessionResponse:
         """Resume one persisted session without replaying its transcript."""
 
+        self._require_initialized()
         self._validate_session_inputs(additional_directories, mcp_servers)
         project_dir = self._session_cwd(cwd)
         if session_id in self._sessions:
@@ -982,6 +993,7 @@ class ConnectOnionACPAgent:
     ) -> SetSessionModeResponse:
         """Persist one idle mode change without exceeding launch authority."""
 
+        self._require_initialized()
         runtime = self._sessions.get(session_id)
         if runtime is None:
             raise RequestError(
@@ -1045,6 +1057,7 @@ class ConnectOnionACPAgent:
     ) -> CloseSessionResponse:
         """Close one live runtime and release its exclusive disk lease."""
 
+        self._require_initialized()
         runtime = self._sessions.get(session_id)
         if runtime is None:
             raise RequestError(
@@ -1068,6 +1081,7 @@ class ConnectOnionACPAgent:
         prompt: list[Any],
         **_kwargs: Any,
     ) -> PromptResponse:
+        self._require_initialized()
         runtime = self._sessions.get(session_id)
         if runtime is None:
             raise RequestError(
@@ -1224,6 +1238,8 @@ class ConnectOnionACPAgent:
     async def cancel(self, session_id: str, **_kwargs: Any) -> None:
         """Cooperatively stop the active turn for an ACP session."""
 
+        if not self._initialized:
+            return
         runtime = self._sessions.get(session_id)
         if runtime is not None and runtime.prompt_active.is_set():
             runtime.prompt_cancelled.set()
