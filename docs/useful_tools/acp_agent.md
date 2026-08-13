@@ -98,6 +98,10 @@ that a provider call will succeed.
 
 The named Claude Code and Codex routes require `npx` and their normal local CLI
 authentication. The first run may download the exact pinned adapter version.
+Child processes inherit the ACP SDK's trimmed HOME/PATH/shell baseline, not the
+entire parent environment. Claude additionally receives only an explicitly set
+`CLAUDE_CONFIG_DIR` or `ANTHROPIC_API_KEY`; Codex receives only its selected API
+key or `CODEX_HOME`. Unrelated ambient secrets are not forwarded.
 Gemini CLI exposes native ACP modes, but its provider/account availability is
 version- and account-dependent; `engine_status()` is only a local readiness
 hint, not a successful provider smoke test.

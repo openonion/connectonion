@@ -71,6 +71,12 @@ def validate_inputs(
 
 
 def engine_environment(engine: str, approval: str) -> dict[str, str]:
+    if engine == "claude-code":
+        return {
+            name: os.environ[name]
+            for name in ("CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY")
+            if os.getenv(name)
+        }
     if engine != "codex":
         return {}
     environment = {

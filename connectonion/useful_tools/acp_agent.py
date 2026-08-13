@@ -220,9 +220,6 @@ def _resolve_workspace(workspace: str | Path | None) -> Path:
     return root
 
 
-_DEFAULT_TOOL = ACPAgent()
-
-
 def acp_agent(
     prompt: str,
     engine: str = "",
@@ -232,7 +229,12 @@ def acp_agent(
     agent=None,
 ) -> str:
     """Run a named ACP engine with operator-approved permissions."""
-    return _DEFAULT_TOOL.acp_agent(
+    workspace = (
+        getattr(agent, "_delegation_workspace", Path.cwd())
+        if agent is not None
+        else Path.cwd()
+    )
+    return ACPAgent(workspace=workspace).acp_agent(
         prompt=prompt,
         engine=engine,
         session_id=session_id,

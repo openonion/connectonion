@@ -53,6 +53,12 @@ modes. Gemini likewise must advertise the required mode. Missing modes fail
 closed. Resume reapplies the same policy and never silently creates a fresh
 session after load failure.
 
+The subprocess starts from the ACP SDK's trimmed HOME, PATH, and shell
+environment rather than inheriting every ambient secret. A named Claude child
+adds only an explicitly configured `CLAUDE_CONFIG_DIR` or
+`ANTHROPIC_API_KEY`; a named Codex child adds only its selected API key or
+`CODEX_HOME`. Unrelated environment credentials do not cross this edge.
+
 Named Codex ACP sessions have a narrower contract at the pinned adapter
 version: only an operator-selected `auto` policy may launch. `manual` and
 `deny` return an error before the process is spawned because the adapter cannot
@@ -79,6 +85,9 @@ closed. This constrains working-directory selection, not every engine's
 filesystem syscalls. Strong hostile-code containment still requires an
 operator-provided container or OS sandbox. Custom ACP commands cannot promise
 engine-specific mode enforcement and remain an advanced operator-owned edge.
+The convenience function resolves this root at call time from the Agent's
+operator-bound delegation workspace, or the current directory when no Agent is
+present; it does not retain an import-time working directory as a wider root.
 
 ## Consequences
 

@@ -217,6 +217,63 @@ class TestPublicBoundary:
 
         assert "DEFAULT_AUTH_REQUEST" not in engine_environment("codex", "auto")
 
+    def test_claude_explicit_auth_environment_is_narrowly_forwarded(
+        self, monkeypatch, tmp_path
+    ):
+        config_dir = tmp_path / "claude"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-test-key")
+        monkeypatch.setenv("UNRELATED_SECRET", "must-not-cross")
+
+        assert engine_environment("claude-code", "manual") == {
+            "CLAUDE_CONFIG_DIR": str(config_dir),
+            "ANTHROPIC_API_KEY": "anthropic-test-key",
+        }
+
+    def test_public_tool_binds_the_agents_call_time_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        captured = {}
+
+        class FakeACPAgent:
+            def __init__(self, *, workspace):
+                captured["workspace"] = workspace
+
+            def acp_agent(self, **kwargs):
+                captured.update(kwargs)
+                return "captured"
+
+        monkeypatch.setattr(acp_agent_module, "ACPAgent", FakeACPAgent)
+        agent = SimpleNamespace(_delegation_workspace=tmp_path)
+
+        result = acp_agent_module.acp_agent(
+            "inspect", engine="not-an-engine", agent=agent
+        )
+
+        assert result == "captured"
+        assert captured["workspace"] == tmp_path
+        assert captured["agent"] is agent
+
+    def test_public_tool_without_an_agent_uses_the_call_time_cwd(
+        self, monkeypatch, tmp_path
+    ):
+        captured = {}
+
+        class FakeACPAgent:
+            def __init__(self, *, workspace):
+                captured["workspace"] = workspace
+
+            def acp_agent(self, **_kwargs):
+                return "captured"
+
+        monkeypatch.setattr(acp_agent_module, "ACPAgent", FakeACPAgent)
+        monkeypatch.chdir(tmp_path)
+
+        assert acp_agent_module.acp_agent(
+            "inspect", engine="not-an-engine"
+        ) == "captured"
+        assert captured["workspace"] == tmp_path
+
     @pytest.mark.parametrize("approval", ["manual", "deny"])
     def test_codex_modes_the_adapter_cannot_enforce_fail_before_spawn(
         self, monkeypatch, tmp_path, approval
