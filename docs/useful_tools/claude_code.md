@@ -145,6 +145,10 @@ opt-in:
 pytest -m real_api tests/e2e/real_api/test_real_claude_code.py
 ```
 
+The command skips only when the Claude Code executable is absent. Once the CLI
+is found, a stale login or any other provider error fails the gate; re-authenticate
+and require both tests to pass before treating the integration as release evidence.
+
 ## Difference from the Codex tool
 
 The Codex adapter uses its app-server JSON-RPC protocol for both live inner-step

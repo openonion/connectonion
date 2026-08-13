@@ -13,7 +13,7 @@ import pytest
 
 from connectonion.useful_tools import claude_code
 
-pytestmark = pytest.mark.real_api
+pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
 HAS_CLAUDE = bool(os.environ.get("CLAUDE_CODE_CMD") or shutil.which("claude"))
 REAL_CLAUDE_CONFIG_DIR = (
     os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
@@ -32,17 +32,6 @@ def _use_real_claude_config(monkeypatch):
 def _require_success(result):
     if result["status"] == "completed":
         return
-    error = result["error"].lower()
-    auth_errors = (
-        "authentication",
-        "authenticate",
-        "log in",
-        "login",
-        "api key",
-        "oauth access token has expired",
-    )
-    if any(message in error for message in auth_errors):
-        pytest.skip(result["error"])
     pytest.fail(result["error"])
 
 

@@ -330,6 +330,10 @@ The real-binary smoke test is opt-in because it can use an authenticated model:
 pytest -m real_api tests/e2e/real_api/test_real_claude_code.py
 ```
 
+This is a fail-closed release check: absence of the optional Claude executable
+is a skip, but an installed CLI with stale authentication or a provider error is
+a failure. Both tests must pass before the result counts as live integration evidence.
+
 When a hosted turn is interrupted, both built-in coding adapters cooperatively
 stop their launch process group and discard late session state and UI events.
 This bounds future provider work; filesystem or external effects completed
