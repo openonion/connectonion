@@ -1,4 +1,9 @@
-"""Real pinned-adapter checks for the generic downward ACP edge.
+"""Real provider and ``co ai`` checks for the generic downward ACP edge.
+
+The direct adapter cases verify pinned ACP packages and cross-process resume.
+The command cases verify the shipped Typer entry point, managed outer model,
+tool dispatch, and exact child result for Claude Code and Codex. Command state
+is isolated under pytest's temporary directory.
 
 Run explicitly because these tests invoke authenticated provider CLIs:
 
@@ -11,7 +16,10 @@ import shutil
 import sys
 
 import pytest
+from click.utils import strip_ansi
+from typer.testing import CliRunner
 
+from connectonion.cli.main import app
 from connectonion.useful_tools.acp_agent import ACPAgent
 
 pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
@@ -30,6 +38,7 @@ HAS_GEMINI_ENV_AUTH = bool(
     or os.environ.get("GOOGLE_API_KEY")
     or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 )
+HAS_OPENONION_AUTH = bool(os.environ.get("OPENONION_API_KEY"))
 
 requires_npx = pytest.mark.skipif(not HAS_NPX, reason="npx is not installed")
 
@@ -67,6 +76,85 @@ def _success(output: str) -> dict:
     assert result["session_id"]
     assert result["stop_reason"]
     return result
+
+
+def _co_ai_json(output: str) -> dict:
+    for line in reversed(strip_ansi(output).splitlines()):
+        if line.startswith('{"session_id"'):
+            return json.loads(line)
+    raise AssertionError(f"co ai produced no JSON envelope:\n{output[-1000:]}")
+
+
+@requires_npx
+@pytest.mark.skipif(
+    not HAS_OPENONION_AUTH,
+    reason="co ai managed-model authentication is unavailable",
+)
+@pytest.mark.parametrize(
+    ("engine", "expected"),
+    [
+        pytest.param(
+            "claude-code",
+            "ACP_CLAUDE_CO_AI_OK",
+            marks=pytest.mark.skipif(
+                not HAS_CLAUDE, reason="Claude Code CLI is not installed"
+            ),
+        ),
+        pytest.param(
+            "codex",
+            "ACP_CODEX_CO_AI_OK",
+            marks=pytest.mark.skipif(
+                not HAS_CODEX_AUTH, reason="Codex CLI is not authenticated"
+            ),
+        ),
+    ],
+)
+def test_real_co_ai_delegates_through_acp_agent(
+    tmp_path,
+    monkeypatch,
+    request,
+    engine,
+    expected,
+):
+    """The shipped command reaches each named ACP child and returns its answer."""
+    auth_fixture = {
+        "claude-code": "real_claude_config",
+        "codex": "real_codex_home",
+    }[engine]
+    request.getfixturevalue(auth_fixture)
+    state_dir = tmp_path / "state"
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", state_dir
+    )
+    monkeypatch.chdir(tmp_path)
+    prompt = (
+        "Call acp_agent exactly once. "
+        f"Use engine {engine}, cwd {tmp_path}, timeout 240, and child prompt: "
+        f"Reply exactly {expected}. Do not inspect files, run commands, or call "
+        "tools. After the tool returns, answer exactly with the child result text "
+        "and stop. Do not call claude_code, codex, or any other tool."
+    )
+
+    run = CliRunner().invoke(
+        app,
+        [
+            "ai",
+            prompt,
+            "--model",
+            "co/gemini-3.6-flash",
+            "--json",
+            "--yolo",
+            "--yolo-turns",
+            "1",
+            "--max-iterations",
+            "2",
+        ],
+    )
+
+    assert run.exit_code == 0, run.exception or run.output[-1000:]
+    payload = _co_ai_json(run.output)
+    assert payload["error"] is None
+    assert payload["result"] == expected
 
 
 @requires_npx
