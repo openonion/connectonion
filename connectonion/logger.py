@@ -272,17 +272,25 @@ class Logger:
         if self.eval_data is None:
             self._init_eval_file(user_input)
 
-        # Aggregate from trace
+        # Messages and the session trace stay cumulative across turns.  Eval
+        # metrics do not: the current user_input marker is the canonical turn
+        # boundary, with a whole-trace fallback for legacy session shapes.
         trace = session.get('trace', [])
-        tool_calls = [t for t in trace if t.get('type') == 'tool_result']
-        # Imported here, not at module level: `.core.usage` runs
-        # `connectonion.core.__init__`, which imports Agent, which imports
+        # Imported here, not at module level: importing a `.core` submodule
+        # runs `connectonion.core.__init__`, which imports Agent, which imports
         # Logger from this module -- so `import connectonion.logger` in a
         # process that has not already loaded core died on the cycle. The
         # eager imports used to hide it; #631 removed them.
+        from .core.trace import current_turn_trace
         from .core.usage import totals_from_trace
 
-        total_tokens, total_cost = totals_from_trace(trace)
+        turn_trace = current_turn_trace(trace, session.get('turn'))
+        tool_calls = [
+            entry
+            for entry in turn_trace
+            if entry.get('type') == 'tool_result'
+        ]
+        total_tokens, total_cost = totals_from_trace(turn_trace)
 
         # Build metadata as compact JSON string
         meta = json.dumps({
