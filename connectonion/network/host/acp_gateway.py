@@ -502,7 +502,6 @@ class AuthenticatedACPApp:
                 ],
             },
             origin=origin,
-            extra_headers=[(b"cache-control", b"no-store")],
         )
 
     async def _handle_websocket(
@@ -1055,7 +1054,14 @@ class AuthenticatedACPApp:
         origin: str | None = None,
         extra_headers: list[tuple[bytes, bytes]] | None = None,
     ) -> None:
-        headers = [(b"content-type", b"application/json")]
+        # Every gateway answer is dynamic admission/transport state. In
+        # particular, caching a trust refusal would keep rejecting a caller
+        # after they completed onboarding. DD-045 requires all authorization
+        # responses, not only successful tickets, to be non-cacheable.
+        headers = [
+            (b"content-type", b"application/json"),
+            (b"cache-control", b"no-store"),
+        ]
         if origin is not None and self._origin_allowed(origin):
             headers.extend(self._cors_headers(origin))
         if extra_headers:

@@ -38,7 +38,9 @@ issues the normal origin-bound, one-use browser ticket.
 Verification refusal returns the same generic trust error. Provider failures
 fail closed without exposing provider details. Blocked, malformed, replayed,
 wrong-recipient, wrong-Origin, and rate-limited requests never reach payment
-verification. React never opens `/ws` to finish native onboarding.
+verification. Every gateway response, including a refusal, is `no-store` so a
+completed onboarding cannot remain hidden behind a cached denial. React never
+opens `/ws` to finish native onboarding.
 
 The payment recipient displayed by React is the requested Agent address. The
 same address must match `/info.address` during transport discovery and is the

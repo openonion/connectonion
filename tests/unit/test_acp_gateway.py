@@ -627,7 +627,7 @@ async def test_claimed_native_payment_without_verified_transfer_stays_forbidden(
     trust = _Trust(allow=False, payment_verified=False)
     app, caller, recipient, agents = _app(trust=trust, tickets=tickets)
 
-    status, _, response = await _authorize(
+    status, headers, response = await _authorize(
         app,
         caller,
         recipient,
@@ -635,6 +635,7 @@ async def test_claimed_native_payment_without_verified_transfer_stays_forbidden(
     )
 
     assert status == 403
+    assert headers[b"cache-control"] == b"no-store"
     assert response == {"error": "forbidden: test policy"}
     assert trust.payment_requests[0][:2] == (caller["address"], 999)
     assert tickets._records == {}
