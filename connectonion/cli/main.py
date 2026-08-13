@@ -158,6 +158,7 @@ def _show_help():
     console.print("  [green]email[/green]             Send and read agent email")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
+    console.print("  [green]phone[/green]             Reach yourself on your phone when email is too slow")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
@@ -785,6 +786,37 @@ def telegram_send(
     """Send a Telegram message."""
     from .commands.telegram_commands import handle_telegram_send
     handle_telegram_send(chat, message)
+# Phone command group. The carrier account is ours and billed to us, so the
+# credential never comes down here -- these call oo-api, which holds it.
+phone_app = _typer_app(help="Reach yourself on your phone. Bare 'co phone' shows the number.")
+app.add_typer(phone_app, name="phone")
+
+
+@phone_app.callback(invoke_without_command=True)
+def phone_callback(ctx: typer.Context):
+    """With no subcommand, show the number agents will reach you on."""
+    if ctx.invoked_subcommand is None:
+        from .commands.phone_commands import handle_phone_number
+        handle_phone_number()
+
+
+@phone_app.command("number")
+def phone_number(
+    phone: Optional[str] = typer.Argument(None, help="E.164, e.g. +61435525634. Omit to show the current one."),
+):
+    """Show or set the number your agents reach you on."""
+    from .commands.phone_commands import handle_phone_number
+    handle_phone_number(phone)
+
+
+@phone_app.command("notify")
+def phone_notify(
+    message: str = typer.Argument(..., help="What to tell yourself"),
+    urgent: bool = typer.Option(False, "--urgent", help="Place a call that speaks it, instead of an SMS"),
+):
+    """Send a notification to your own phone."""
+    from .commands.phone_commands import handle_phone_notify
+    handle_phone_notify(message, urgent=urgent)
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
