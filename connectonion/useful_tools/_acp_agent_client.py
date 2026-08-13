@@ -216,16 +216,31 @@ async def run_agent(
             resumed = False
             metadata = session_metadata(engine)
             if session_id:
-                if not initialized.agent_capabilities.load_session:
-                    raise RuntimeError(f"{engine} does not advertise session/load")
                 client.active_session = session_id
-                session = await _before_deadline(
-                    connection.load_session(
-                        str(cwd), session_id, mcp_servers=[], **metadata
-                    ),
-                    startup_deadline,
-                    timeout,
+                session_capabilities = (
+                    initialized.agent_capabilities.session_capabilities
                 )
+                resume_capability = getattr(session_capabilities, "resume", None)
+                if resume_capability is not None:
+                    session = await _before_deadline(
+                        connection.resume_session(
+                            session_id, str(cwd), mcp_servers=[], **metadata
+                        ),
+                        startup_deadline,
+                        timeout,
+                    )
+                elif initialized.agent_capabilities.load_session:
+                    session = await _before_deadline(
+                        connection.load_session(
+                            str(cwd), session_id, mcp_servers=[], **metadata
+                        ),
+                        startup_deadline,
+                        timeout,
+                    )
+                else:
+                    raise RuntimeError(
+                        f"{engine} does not advertise session/resume or session/load"
+                    )
                 active_session = session_id
                 resumed = True
             else:
@@ -574,7 +589,7 @@ class ToolClient:
             self._message_truncated = True
 
     def begin_prompt(self) -> None:
-        """Discard history replayed by session/load before this turn starts."""
+        """Discard updates received before this delegated turn starts."""
         self._reset_message()
         self._message_chunks = 0
         self._tool_titles.clear()

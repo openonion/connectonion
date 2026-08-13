@@ -48,6 +48,12 @@ does not persist its advertised ACP session across these one-process-per-turn
 invocations. A named Gemini turn therefore returns an empty `session_id`, and
 supplying one fails before launch instead of pretending to resume.
 
+For custom ACP agents, continuation follows the capabilities returned by
+`initialize`. The client prefers `sessionCapabilities.resume` because it does
+not need transcript replay, and otherwise uses `loadSession` for compatibility.
+It sends exactly one selected lifecycle request; a failure never triggers a
+fallback request through the other method.
+
 ## Permissions
 
 The public tool uses manual approval. A model can choose only a named engine;

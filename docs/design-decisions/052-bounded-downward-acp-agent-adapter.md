@@ -57,8 +57,12 @@ explicit parent identity, privacy, replay, and rendering semantics.
 Named Claude sessions ignore persistent interactive CLI allow rules and
 explicitly select Manual, Auto, or Don't Ask through advertised ACP session
 modes. Gemini likewise must advertise the required mode. Missing modes fail
-closed. Claude and Codex resume reapply the same policy and never silently
-create a fresh session after load failure.
+closed. For a supplied session ID, the generic client prefers an advertised
+`sessionCapabilities.resume` because it needs continuation without transcript
+replay. It retains `loadSession` as the compatibility path when resume is not
+advertised. Once one method is selected, its failure is final: the client does
+not try the other lifecycle method or silently create a fresh session. Claude
+and Codex continuation reapply the same permission policy on either path.
 
 Gemini CLI 0.55.1 advertises `session/load`, but real new-process conformance
 testing could not load the session created by the preceding process. The named
@@ -135,6 +139,9 @@ present; it does not retain an import-time working directory as a wider root.
 
 - Claude Code, Codex, and Gemini share one typed protocol client without
   replacing the preferred native Claude/Codex tools.
+- A resume-only ACP agent can continue a session, while load-only adapters keep
+  their proven compatibility path and agents advertising both avoid replaying
+  history the outer tool will discard.
 - Browser tool cards show bounded child activity without copying arbitrary
   command arguments, file contents, provider output, thoughts, or plans.
 - The generic Codex ACP route remains available for explicit Full Access, while
@@ -163,6 +170,11 @@ present; it does not retain an import-time working directory as a wider root.
 - **Use unpinned `npx` packages:** executes unreviewed adapter updates.
 - **Silently start a new session after resume failure:** loses continuity while
   falsely reporting successful delegation.
+- **Require `session/load` for every continuation:** rejects agents that expose
+  the narrower ACP `session/resume` capability and asks dual-capability agents
+  to replay history that this adapter deliberately does not consume.
+- **Retry through the other lifecycle method after a request failure:** can
+  duplicate accepted work and hides the selected continuation contract.
 
 ## Related decisions
 

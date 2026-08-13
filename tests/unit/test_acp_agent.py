@@ -139,6 +139,61 @@ FAKE_AGENT = textwrap.dedent(
     """
 )
 
+CAPABILITY_AGENT = textwrap.dedent(
+    """
+    import json
+    import sys
+
+    def send(message):
+        sys.stdout.write(json.dumps(message) + "\\n")
+        sys.stdout.flush()
+
+    mode = sys.argv[1]
+    selected_method = ""
+    for line in sys.stdin:
+        message = json.loads(line)
+        method, message_id = message.get("method"), message.get("id")
+        if method == "initialize":
+            capabilities = {
+                "loadSession": mode in {"load-only", "both", "resume-fails"}
+            }
+            if mode in {"resume-only", "both", "resume-fails"}:
+                capabilities["sessionCapabilities"] = {"resume": {}}
+            elif mode == "null":
+                capabilities["sessionCapabilities"] = None
+            send({"jsonrpc": "2.0", "id": message_id, "result": {
+                "protocolVersion": 1,
+                "agentCapabilities": capabilities,
+                "agentInfo": {"name": "capability-agent", "version": "1"}}})
+        elif method == "session/resume":
+            assert message["params"] == {
+                "sessionId": "sess-known",
+                "cwd": message["params"]["cwd"],
+                "mcpServers": [],
+            }
+            if mode == "resume-fails":
+                send({"jsonrpc": "2.0", "id": message_id,
+                      "error": {"code": -32002, "message": "resume failed"}})
+            else:
+                selected_method = "RESUME"
+                send({"jsonrpc": "2.0", "id": message_id, "result": {}})
+        elif method == "session/load":
+            selected_method = "LOAD"
+            send({"jsonrpc": "2.0", "id": message_id, "result": {}})
+        elif method == "session/prompt":
+            send({"jsonrpc": "2.0", "method": "session/update", "params": {
+                "sessionId": "sess-known",
+                "update": {"sessionUpdate": "agent_message_chunk",
+                           "messageId": "answer-1",
+                           "content": {"type": "text", "text": selected_method}}}})
+            send({"jsonrpc": "2.0", "id": message_id,
+                  "result": {"stopReason": "end_turn"}})
+        else:
+            send({"jsonrpc": "2.0", "id": message_id,
+                  "error": {"code": -32601, "message": method or "response"}})
+    """
+)
+
 
 class RecordingIO:
     def __init__(self, approve: bool = True, cancelled: bool = False) -> None:
@@ -173,6 +228,17 @@ def fake_command(tmp_path):
     script = tmp_path / "fake_acp.py"
     script.write_text(FAKE_AGENT, encoding="utf-8")
     return [sys.executable, str(script)]
+
+
+@pytest.fixture
+def capability_command(tmp_path):
+    script = tmp_path / "capability_acp.py"
+    script.write_text(CAPABILITY_AGENT, encoding="utf-8")
+
+    def command(mode):
+        return [sys.executable, str(script), mode]
+
+    return command
 
 
 def runner(fake_command, *, approval="auto") -> ACPAgent:
@@ -476,6 +542,62 @@ class TestTypedRun:
         assert output["resumed"] is True
         assert output["session_id"] == "sess-known"
         assert output["result"] == "Fixing the tests — done."
+
+    @pytest.mark.parametrize(
+        ("mode", "expected_method"),
+        [
+            ("resume-only", "RESUME"),
+            ("both", "RESUME"),
+            ("load-only", "LOAD"),
+        ],
+    )
+    def test_continuation_selects_one_advertised_method(
+        self, capability_command, mode, expected_method
+    ):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command(mode),
+                name=mode,
+                approval="auto",
+            ).acp_agent("continue", session_id="sess-known")
+        )
+
+        assert output == {
+            "engine": mode,
+            "session_id": "sess-known",
+            "resumed": True,
+            "stop_reason": "end_turn",
+            "result": expected_method,
+        }
+
+    @pytest.mark.parametrize("mode", ["neither", "null"])
+    def test_missing_continuation_capability_fails_before_request(
+        self, capability_command, mode
+    ):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command(mode),
+                name=mode,
+                approval="auto",
+            ).acp_agent("continue", session_id="sess-known")
+        )
+
+        assert output["resumed"] is False
+        assert output["result"] == ""
+        assert "does not advertise session/resume or session/load" in output["error"]
+
+    def test_resume_failure_does_not_fall_back_to_load(self, capability_command):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command("resume-fails"),
+                name="resume-fails",
+                approval="auto",
+            ).acp_agent("continue", session_id="sess-known")
+        )
+
+        assert output["resumed"] is False
+        assert output["result"] == ""
+        assert "resume failed" in output["error"]
 
     def test_child_meta_cannot_shadow_visible_update_session(self, fake_command):
         output = json.loads(runner(fake_command).acp_agent("shadow update"))
