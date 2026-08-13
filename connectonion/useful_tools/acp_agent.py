@@ -24,7 +24,8 @@ from ._acp_agent_client import (
 class EngineSpec:
     command: tuple[str, ...]
     launcher: str
-    auth_hint: str
+    credential_hint: str | None
+    supported_auth: tuple[str, ...]
     adapter_version: str | None
     supported_approval_modes: tuple[str, ...]
     supports_resume: bool
@@ -38,7 +39,8 @@ ENGINES = {
             "@agentclientprotocol/claude-agent-acp@0.66.0",
         ),
         launcher="npx",
-        auth_hint="~/.claude/.credentials.json",
+        credential_hint="~/.claude/.credentials.json",
+        supported_auth=("Claude CLI login", "ANTHROPIC_API_KEY"),
         adapter_version="0.66.0",
         supported_approval_modes=APPROVAL_MODES,
         supports_resume=True,
@@ -46,7 +48,8 @@ ENGINES = {
     "codex": EngineSpec(
         command=("npx", "--yes", "@agentclientprotocol/codex-acp@1.1.14"),
         launcher="npx",
-        auth_hint="~/.codex/auth.json",
+        credential_hint="~/.codex/auth.json",
+        supported_auth=("Codex CLI login", "CODEX_API_KEY", "OPENAI_API_KEY"),
         adapter_version="1.1.14",
         supported_approval_modes=("auto",),
         supports_resume=True,
@@ -54,7 +57,10 @@ ENGINES = {
     "gemini": EngineSpec(
         command=("npx", "--yes", "@google/gemini-cli@0.55.1", "--acp"),
         launcher="npx",
-        auth_hint="~/.gemini/oauth_creds.json",
+        # A generic OAuth file is not a useful readiness signal: Google stopped
+        # serving individual Gemini CLI OAuth accounts on 2026-06-18.
+        credential_hint=None,
+        supported_auth=("Gemini API key", "Vertex AI", "enterprise Code Assist"),
         adapter_version="0.55.1",
         supported_approval_modes=APPROVAL_MODES,
         supports_resume=False,
@@ -70,10 +76,13 @@ def engine_status() -> str:
         rows.append({
             "engine": name,
             "launcher_available": available,
-            "authenticated_hint": (
-                Path(spec.auth_hint).expanduser().is_file() if available else False
+            "credential_file_present": (
+                Path(spec.credential_hint).expanduser().is_file()
+                if available and spec.credential_hint
+                else False
             ),
-            "auth_check": "credential file presence only",
+            "auth_check": "configuration hint only; live request required",
+            "supported_auth": list(spec.supported_auth),
             "adapter_version": spec.adapter_version,
             "supported_approval_modes": list(spec.supported_approval_modes),
             "supports_resume": spec.supports_resume,

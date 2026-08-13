@@ -185,22 +185,6 @@ class TestPublicBoundary:
             "darwin", "/operator", "/accounts/work"
         ) == {"CLAUDE_CONFIG_DIR": "/accounts/work"}
 
-    def test_real_acp_gemini_key_auth_keeps_home_isolated(self):
-        from tests.e2e.real_api.test_real_acp_agent import (
-            _real_gemini_auth_environment,
-        )
-
-        assert _real_gemini_auth_environment("/operator", True) == {}
-
-    def test_real_acp_gemini_oauth_restores_credential_home(self):
-        from tests.e2e.real_api.test_real_acp_agent import (
-            _real_gemini_auth_environment,
-        )
-
-        assert _real_gemini_auth_environment("/operator", False) == {
-            "HOME": "/operator"
-        }
-
     def test_model_can_pick_only_a_named_engine(self):
         parameters = inspect.signature(acp_agent).parameters
         assert "engine" in parameters
@@ -904,4 +888,8 @@ class TestEngineStatus:
             "manual", "auto", "deny"
         ]
         assert "launcher_available" in rows["gemini"]
-        assert "authenticated_hint" in rows["gemini"]
+        assert rows["gemini"]["credential_file_present"] is False
+        assert rows["gemini"]["supported_auth"] == [
+            "Gemini API key", "Vertex AI", "enterprise Code Assist"
+        ]
+        assert "authenticated_hint" not in rows["gemini"]

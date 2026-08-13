@@ -6,6 +6,9 @@ instead of the preferred native `codex` or `claude_code` tools.
 - Pass an explicit `engine`: `claude-code`, `codex`, or `gemini`.
 - Pass the project directory explicitly as `cwd`.
 - Keep the returned `session_id` and pass it back to continue that child.
+- Gemini at the pinned version is one-turn and requires API-key, Vertex, or
+  enterprise Code Assist authentication; do not pass a Gemini `session_id` or
+  rely on retired individual OAuth credentials.
 - Do not wrap this tool in `run_background`; it already owns one bounded child
   process and timeout.
 

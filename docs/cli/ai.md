@@ -289,6 +289,11 @@ Full Access because its manual/read-only mode does not reliably request ACP
 permission for shell or outbound network actions; use the native `codex` tool
 for approval-aware Codex delegation.
 
+The pinned Gemini route is one-turn and requires a Gemini API key, Vertex AI,
+or enterprise Code Assist. Google retired individual Gemini CLI OAuth service
+on June 18, 2026, so an old local OAuth credential file is not a readiness
+signal and cannot make that account path work.
+
 ### Delegate to Claude Code
 
 `co ai` can delegate an implementation or investigation while retaining

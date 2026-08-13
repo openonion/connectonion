@@ -67,6 +67,15 @@ ID and rejects a supplied `session_id` before process launch. A future exact
 pin may enable resume only after the same cross-process test passes; advertised
 capability alone is insufficient.
 
+[Google then stopped serving Gemini CLI requests](https://github.com/google-gemini/gemini-cli/discussions/28017)
+for free, Pro, and Ultra individual OAuth accounts on June 18, 2026. An
+exact-head rerun received the provider's explicit retirement response while the
+same Claude and Codex tests passed. The Gemini route remains available only for
+Google's supported API-key, Vertex, and enterprise Code Assist paths. A legacy
+OAuth file is no longer a readiness signal, and Antigravity is not substituted
+until it exposes a documented ACP entry point that passes the same version,
+permission, environment, and real-provider review.
+
 The subprocess starts from the ACP SDK's trimmed HOME, PATH, and shell
 environment rather than inheriting every ambient secret. A named Claude child
 adds only an explicitly configured `CLAUDE_CONFIG_DIR` or

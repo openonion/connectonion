@@ -30,10 +30,6 @@ HAS_GEMINI_ENV_AUTH = bool(
     or os.environ.get("GOOGLE_API_KEY")
     or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 )
-HAS_GEMINI_AUTH = bool(
-    HAS_GEMINI_ENV_AUTH
-    or os.path.isfile(os.path.expanduser("~/.gemini/oauth_creds.json"))
-)
 
 requires_npx = pytest.mark.skipif(not HAS_NPX, reason="npx is not installed")
 
@@ -63,21 +59,6 @@ def _real_claude_auth_environment(
     if platform == "darwin":
         return {"HOME": home}
     return {"CLAUDE_CONFIG_DIR": os.path.join(home, ".claude")}
-
-
-def _real_gemini_auth_environment(
-    home: str, has_explicit_auth: bool
-) -> dict[str, str]:
-    return {} if has_explicit_auth else {"HOME": home}
-
-
-@pytest.fixture
-def real_gemini_auth(monkeypatch):
-    """OAuth-only tests expose Gemini's real credential home."""
-    for key, value in _real_gemini_auth_environment(
-        REAL_PROVIDER_HOME, HAS_GEMINI_ENV_AUTH
-    ).items():
-        monkeypatch.setenv(key, value)
 
 
 def _success(output: str) -> dict:
@@ -141,8 +122,11 @@ def test_real_claude_acp_manual_turn_and_resume(tmp_path, real_claude_config):
 
 
 @requires_npx
-@pytest.mark.skipif(not HAS_GEMINI_AUTH, reason="Gemini CLI is not authenticated")
-def test_real_gemini_acp_manual_turn(tmp_path, real_gemini_auth):
+@pytest.mark.skipif(
+    not HAS_GEMINI_ENV_AUTH,
+    reason="Gemini API-key or Vertex authentication is not configured",
+)
+def test_real_gemini_acp_manual_turn(tmp_path):
     tool = ACPAgent(approval="manual", workspace=tmp_path)
     result = json.loads(
         tool.acp_agent(

@@ -23,6 +23,12 @@ preferred engine-specific paths.
 | `codex` | explicit operator-selected `auto` only | yes |
 | `gemini` | `manual`, `auto`, `deny` | no at pinned `0.55.1` |
 
+[Google stopped serving Gemini CLI requests](https://github.com/google-gemini/gemini-cli/discussions/28017)
+for free, Pro, and Ultra individual OAuth accounts on June 18, 2026. The named
+Gemini route therefore requires a Gemini API key, Vertex AI, or an enterprise
+Code Assist account. A legacy `~/.gemini/oauth_creds.json` file is not treated
+as proof of readiness.
+
 Every result is a JSON envelope:
 
 ```json
@@ -98,10 +104,13 @@ persisted application thoughts and canonical TodoList state.
 
 ## Readiness
 
-`engine_status()` reports the exact adapter version, launcher availability, a
-clearly labelled credential-file presence hint, and each engine's
-`supported_approval_modes` and `supports_resume` capability. It does not claim
-that a credential is valid or that a provider call will succeed.
+`engine_status()` reports the exact adapter version, launcher availability,
+supported authentication choices, a conservatively labelled credential-file
+hint, and each engine's `supported_approval_modes` and `supports_resume`
+capability. It does not claim that a credential is valid or that a provider call
+will succeed. Gemini intentionally reports no generic credential-file hint,
+because an individual OAuth file can exist after that account path has been
+retired.
 
 The named Claude Code, Codex, and Gemini routes require `npx` and their normal
 local CLI authentication. The first run may download the exact pinned package.
@@ -112,8 +121,9 @@ key or `CODEX_HOME`; Gemini receives only explicitly configured Gemini API-key
 or Vertex authentication variables and cannot open a browser login from a
 child turn. Unrelated ambient secrets are not forwarded. Gemini CLI exposes
 native ACP modes, but its provider/account availability is version- and
-account-dependent; `engine_status()` is only a local readiness hint, not a
-successful provider smoke test.
+account-dependent. Individual OAuth is no longer served; API-key, Vertex, and
+enterprise Code Assist remain the supported routes. `engine_status()` is only a
+local readiness hint, not a successful provider smoke test.
 
 ## `co ai`
 
