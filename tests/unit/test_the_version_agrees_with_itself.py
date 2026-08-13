@@ -77,14 +77,37 @@ def _versioning_md_version() -> str:
     return match.group(1)
 
 
+def _typescript_literal(text: str, name: str) -> str | None:
+    """Read one literal from the docs site's exported version constants."""
+    match = re.search(
+        rf"^\s*export\s+const\s+{re.escape(name)}"
+        r"(?:\s*:\s*[^=\n]+)?\s*=\s*'([^'\n]+)'",
+        text,
+        re.MULTILINE,
+    )
+    return match.group(1) if match else None
+
+
 def _docs_site_version() -> str:
     text = DOCS_SITE.read_text(encoding='utf-8')
     name = "PREVIEW_VERSION" if re.search(r"[a-zA-Z]", connectonion.__version__) else "STABLE_VERSION"
-    match = re.search(rf"{name}\s*=\s*'([^']+)'", text)
-    if not match:
-        match = re.search(r"VERSION\s*=\s*'([^']+)'", text)
-    assert match, f"{DOCS_SITE} has no {name} or VERSION"
-    return match.group(1)
+    value = _typescript_literal(text, name)
+    if value is None:
+        value = _typescript_literal(text, "VERSION")
+    assert value is not None, f"{DOCS_SITE} has no {name} or VERSION"
+    return value
+
+
+class TestTheDocsVersionDeclarationParser:
+    def test_it_accepts_a_typed_preview_constant(self):
+        text = "export const PREVIEW_VERSION: string | null = '1.7.0a1'"
+
+        assert _typescript_literal(text, "PREVIEW_VERSION") == "1.7.0a1"
+
+    def test_plain_version_does_not_match_a_longer_identifier(self):
+        text = "export const STABLE_VERSION = '1.6.0'"
+
+        assert _typescript_literal(text, "VERSION") is None
 
 
 def test_pyproject_and_the_package_agree():
