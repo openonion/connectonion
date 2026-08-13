@@ -477,9 +477,12 @@ class TestRelaySupervisorResilience:
         from connectonion.network.host.server import _create_relay_lifespan
 
         calls = {"connect": 0}
+        second_attempt = asyncio.Event()
 
         async def boom(*args, **kwargs):
             calls["connect"] += 1
+            if calls["connect"] == 2:
+                second_attempt.set()
             raise OSError("simulated network blip")
 
         monkeypatch.setattr(relay_module, "connect", boom)
@@ -491,8 +494,10 @@ class TestRelaySupervisorResilience:
         )
 
         await on_startup()
-        await asyncio.sleep(1.3)   # initial attempt + at least one retry after the 1s backoff
-        await on_shutdown()
+        try:
+            await asyncio.wait_for(second_attempt.wait(), timeout=5)
+        finally:
+            await on_shutdown()
 
         assert calls["connect"] >= 2, (
             "supervisor died after the first error instead of reconnecting"
