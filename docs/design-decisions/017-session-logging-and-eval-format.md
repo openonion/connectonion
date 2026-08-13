@@ -61,10 +61,16 @@ turns:
 - No second user input within a turn
 - Second user input = next turn
 
-The stored session and message history remain cumulative, but evaluation is
-turn-local. An evaluator uses the current turn's `user_input` trace boundary,
-tool results, final response, expected outcome, and verdict. Earlier turns are
-conversation context, not evidence that the current request passed or failed.
+The stored session, trace, and message history remain cumulative, but
+evaluation and per-turn metrics are turn-local. The matching `user_input`
+trace entry is the canonical boundary. Evaluation evidence, `tools_called`,
+tokens, and cost come only from entries at or after that boundary. Earlier
+turns remain conversation context; they are neither evidence that the current
+request passed nor work and usage that the current turn can claim again.
+
+Legacy or hand-built sessions may not have `user_input` turn markers. They keep
+their historical whole-trace behavior rather than losing all metrics. New Agent
+sessions always write the marker.
 
 ## Field Reference
 
@@ -73,9 +79,9 @@ conversation context, not evidence that the current request passed or failed.
 | `input` | string | User input for this turn |
 | `model` | string | LLM model used |
 | `duration_ms` | int | How long the turn took |
-| `tokens` | int | Total tokens used |
-| `cost` | float | Cost in USD |
-| `tools_called` | list | Tools that were called |
+| `tokens` | int | Tokens used in this turn |
+| `cost` | float | Cost in USD for this turn |
+| `tools_called` | list | Tools called in this turn |
 | `result` | string | Agent's final response |
 | `messages` | JSON string | Message context window |
 | `eval` | object | Optional expectations |
@@ -123,3 +129,5 @@ messages = json.loads(turn['messages'])
 - **Pure YAML** - Prompts break format (colons, quotes)
 - **Multi-line JSON** - Unnecessary complexity
 - **Separate message files** - Too complex
+- **Cumulative trace for each turn** - Double-counts earlier tools, tokens, and cost
+- **Subtract the previous YAML entry** - Saved files are output, not the runtime source of truth

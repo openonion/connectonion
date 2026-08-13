@@ -35,6 +35,7 @@ from ..core.approval_modes import (
     legacy_permission_profile_id,
 )
 from ..core.events import after_user_input, on_complete
+from ..core.trace import current_turn_trace
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -164,18 +165,6 @@ def _prepare_turn_state(agent: 'Agent') -> None:
     session['_eval_turn'] = turn
 
 
-def _current_turn_trace(agent: 'Agent') -> List[Dict]:
-    """Return the canonical trace slice that belongs to the current turn."""
-    trace = agent.current_session.get('trace', [])
-    turn = agent.current_session.get('turn')
-    for index in range(len(trace) - 1, -1, -1):
-        entry = trace[index]
-        if entry.get('type') == 'user_input' and entry.get('turn') == turn:
-            return trace[index:]
-    # Hand-built and legacy session shapes may not contain turn markers.
-    return trace
-
-
 @on_complete
 def evaluate_completion(agent: 'Agent') -> None:
     """Evaluate if the task completed correctly.
@@ -201,7 +190,10 @@ def evaluate_completion(agent: 'Agent') -> None:
     if not user_prompt:
         return
 
-    trace = _current_turn_trace(agent)
+    trace = current_turn_trace(
+        agent.current_session.get('trace', []),
+        agent.current_session.get('turn'),
+    )
     actions_summary = _summarize_trace(trace)
     result = agent.current_session.get('result', 'No response generated.')
 
