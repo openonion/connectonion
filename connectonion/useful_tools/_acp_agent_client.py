@@ -359,6 +359,7 @@ class ToolClient:
         self.approval = approval
         self.active_session = ""
         self._messages: list[str] = []
+        self._message_id: str | None = None
         self._message_bytes = 0
         self._message_chunks = 0
         self._message_truncated = False
@@ -395,7 +396,7 @@ class ToolClient:
                 return
             if isinstance(update, AgentMessageChunk):
                 if isinstance(update.content, TextContentBlock):
-                    self._append_message(update.content.text)
+                    self._append_message(update.content.text, update.message_id)
                 return
             if isinstance(update, ToolCallStart):
                 self._forward_tool_start(update)
@@ -518,9 +519,14 @@ class ToolClient:
             text = _bounded_text(text, remaining) + _TRUNCATED_SUFFIX
         return text
 
-    def _append_message(self, text: str) -> None:
+    def _append_message(self, text: str, message_id: str | None) -> None:
         if not text:
             return
+        if message_id is not None:
+            bounded_id = _event_id(message_id)
+            if bounded_id != self._message_id:
+                self._reset_message()
+                self._message_id = bounded_id
         if self._message_chunks >= _MESSAGE_CHUNK_LIMIT:
             self._message_truncated = True
             return
@@ -538,14 +544,18 @@ class ToolClient:
 
     def begin_prompt(self) -> None:
         """Discard history replayed by session/load before this turn starts."""
-        self._messages.clear()
-        self._message_bytes = 0
+        self._reset_message()
         self._message_chunks = 0
-        self._message_truncated = False
         self._tool_titles.clear()
         self._event_count = 0
         self._events_disabled = False
         self._in_prompt = True
+
+    def _reset_message(self) -> None:
+        self._messages.clear()
+        self._message_id = None
+        self._message_bytes = 0
+        self._message_truncated = False
 
     def end_prompt(self) -> None:
         self._in_prompt = False

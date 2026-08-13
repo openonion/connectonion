@@ -585,6 +585,31 @@ class TestPermissionBoundary:
 
 
 class TestDisclosureBounds:
+    @pytest.mark.asyncio
+    async def test_result_keeps_only_the_final_agent_message(self):
+        client = ToolClient(None, "deny")
+        client.begin_prompt()
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                message_id="startup-notice",
+                content=TextContentBlock(
+                    type="text", text="Skill descriptions were shortened.\n\n"
+                ),
+            ),
+        )
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                message_id="final-answer",
+                content=TextContentBlock(type="text", text="ACP_CODEX_OK"),
+            ),
+        )
+
+        assert client.message_text() == "ACP_CODEX_OK"
+
     def test_error_envelope_is_bounded(self):
         output = json.loads(
             acp_client.envelope("custom", error="x" * 100_000)
@@ -605,6 +630,49 @@ class TestDisclosureBounds:
         result = client.message_text()
         assert result.endswith("... (ACP result truncated at 64 KiB)")
         assert len(result.encode("utf-8")) <= 64 * 1024
+
+    @pytest.mark.asyncio
+    async def test_oversized_message_ids_are_not_retained(self):
+        client = ToolClient(None, "deny")
+        client.begin_prompt()
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                message_id="x" * 10_000,
+                content=TextContentBlock(type="text", text="answer"),
+            ),
+        )
+
+        assert client._message_id.startswith("acp-")
+        assert len(client._message_id) == 68
+
+    @pytest.mark.asyncio
+    async def test_new_message_ids_do_not_reset_the_turn_chunk_limit(self):
+        client = ToolClient(None, "deny")
+        client.begin_prompt()
+        client._message_chunks = acp_client._MESSAGE_CHUNK_LIMIT - 1
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                message_id="notice",
+                content=TextContentBlock(type="text", text="notice"),
+            ),
+        )
+        await client.session_update(
+            "sess",
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                message_id="answer",
+                content=TextContentBlock(type="text", text="final"),
+            ),
+        )
+
+        assert "final" not in client.message_text()
+        assert client.message_text().endswith(
+            "... (ACP result truncated at 64 KiB)"
+        )
 
     @pytest.mark.asyncio
     async def test_oversized_tool_ids_are_not_retained_as_internal_keys(self):

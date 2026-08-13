@@ -99,7 +99,7 @@ def test_real_codex_acp_auto_turn_and_resume(tmp_path, real_codex_home):
             timeout=180,
         )
     )
-    assert "ACP_CODEX_FIRST_23" in first["result"]
+    assert first["result"].strip() == "ACP_CODEX_FIRST_23"
 
     second = _success(
         tool.acp_agent(
@@ -111,7 +111,7 @@ def test_real_codex_acp_auto_turn_and_resume(tmp_path, real_codex_home):
     )
     assert second["resumed"] is True
     assert second["session_id"] == first["session_id"]
-    assert "ACP_CODEX_RESUME_23" in second["result"]
+    assert second["result"].strip() == "ACP_CODEX_RESUME_23"
 
 
 @requires_npx
@@ -125,7 +125,7 @@ def test_real_claude_acp_manual_turn_and_resume(tmp_path, real_claude_config):
             timeout=180,
         )
     )
-    assert "ACP_CLAUDE_FIRST_31" in first["result"]
+    assert first["result"].strip() == "ACP_CLAUDE_FIRST_31"
 
     second = _success(
         tool.acp_agent(
@@ -137,7 +137,7 @@ def test_real_claude_acp_manual_turn_and_resume(tmp_path, real_claude_config):
     )
     assert second["resumed"] is True
     assert second["session_id"] == first["session_id"]
-    assert "ACP_CLAUDE_RESUME_31" in second["result"]
+    assert second["result"].strip() == "ACP_CLAUDE_RESUME_31"
 
 
 @requires_npx
@@ -153,4 +153,4 @@ def test_real_gemini_acp_manual_turn(tmp_path, real_gemini_auth):
     assert result["session_id"] == ""
     assert result["resumed"] is False
     assert result["stop_reason"]
-    assert "ACP_GEMINI_ONE_TURN_OK" in result["result"]
+    assert result["result"].strip() == "ACP_GEMINI_ONE_TURN_OK"

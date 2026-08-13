@@ -88,7 +88,9 @@ is required.
 
 The tool streams bounded child tool start/completion cards with stable IDs.
 Normal progress cards omit raw inputs and outputs; a manual approval card gets
-a bounded input preview. The final result is capped at 64 KiB.
+a bounded input preview. If the child emits multiple ACP messages during one
+turn, startup notices remain separate and only the last `messageId` becomes the
+result. The final result is capped at 64 KiB.
 
 Child ACP thoughts and plans are deliberately not published as outer session
 thoughts or plans. Their privacy and ownership differ from ConnectOnion's

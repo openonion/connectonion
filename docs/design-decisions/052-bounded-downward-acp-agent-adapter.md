@@ -40,6 +40,10 @@ Only the final `agent_message_chunk` text and bounded tool lifecycle metadata
 cross the downward edge. Tool IDs and titles retain correlation, but ordinary
 progress events omit `rawInput` and `rawOutput`. A manual permission card gets
 one bounded JSON input preview so the operator can make an informed decision.
+When an agent starts a new ACP `messageId`, the client discards text from the
+previous message, such as a startup notice, so the result envelope contains the
+final message rather than a concatenated transcript. Oversized message IDs are
+reduced to the same stable bounded identifiers used for tool correlation.
 The final message is capped at 64 KiB, errors at 4 KiB, event text at 512 bytes,
 and one prompt emits at most 2,048 child events. Oversized IDs become stable
 SHA-256-based IDs.
