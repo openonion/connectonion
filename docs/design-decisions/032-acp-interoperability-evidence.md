@@ -40,10 +40,15 @@ pre-router rule: a metadata key cannot use the generated Python name of an
 official request or implemented callback field and replace that field after
 validation. Native stdio/WebSocket apply it before Agent routing; the generic
 `acp_agent` child process uses the shared strict stdio transport before
-`ToolClient` callback routing. Other metadata remains untouched. Requests with
-a collision receive `InvalidParams`; invalid notifications are dropped without
-a response. This is a compatibility guard around the pinned router, not a
-second ACP parameter validator.
+`ToolClient` callback routing. Other metadata remains untouched. The same
+pinned-model registry derives each routed method's top-level wire names from
+explicit Pydantic aliases. This keeps Python construction names such as
+`session_id` and `mode_id` from becoming a second ACP dialect, and rejects
+custom root fields that ACP requires callers to place under `_meta`. Requests
+with either violation receive `InvalidParams`; invalid notifications are
+dropped without a response. Nested values, types, nullability, enums, and
+results remain validated by the official SDK rather than a copied
+ConnectOnion schema.
 
 ### State the tested version contract
 
@@ -69,6 +74,8 @@ as clients that launch ConnectOnion.
 - Schema or router drift fails in the official SDK client before release.
 - Raw clients cannot use `_meta` to make executed handler arguments disagree
   with the visible request fields.
+- Raw clients must use the pinned ACP wire aliases for routed top-level params;
+  Python SDK field names are never accepted as protocol spellings.
 - Framing regressions remain visible instead of being hidden by SDK helpers.
 - Interoperability claims say exactly which layer and version were exercised.
 - The deterministic fixture is shared by raw and typed subprocess suites.

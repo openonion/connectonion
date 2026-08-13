@@ -96,6 +96,14 @@ FAKE_AGENT = textwrap.dedent(
                                      "content": {"type": "text",
                                                  "text": "SHADOWED"}},
                           "_meta": {"session_id": active_session}}})
+            if text == "python alias update":
+                send({"jsonrpc": "2.0", "method": "session/update",
+                      "params": {
+                          "session_id": active_session,
+                          "update": {"sessionUpdate": "agent_message_chunk",
+                                     "messageId": "answer-1",
+                                     "content": {"type": "text",
+                                                 "text": "PYTHON_ALIAS"}}}})
             update({"sessionUpdate": "tool_call", "toolCallId": "call-1",
                     "title": "Run pytest", "kind": "execute",
                     "status": "pending", "rawInput": {"command": "pytest"}})
@@ -110,6 +118,9 @@ FAKE_AGENT = textwrap.dedent(
             if text == "shadow permission":
                 permission_params["sessionId"] = "visible-wrong-session"
                 permission_params["_meta"] = {"session_id": active_session}
+            if text == "python alias permission":
+                del permission_params["sessionId"]
+                permission_params["session_id"] = active_session
             send({"jsonrpc": "2.0", "id": permission_id,
                   "method": "session/request_permission",
                   "params": permission_params})
@@ -471,6 +482,13 @@ class TestTypedRun:
 
         assert output["result"] == "Fixing the tests — done."
 
+    def test_child_python_alias_update_is_not_dispatched(self, fake_command):
+        output = json.loads(
+            runner(fake_command).acp_agent("python alias update")
+        )
+
+        assert output["result"] == "Fixing the tests — done."
+
     def test_failed_resume_does_not_silently_start_another_session(
         self, fake_command
     ):
@@ -526,6 +544,16 @@ class TestPermissionBoundary:
         io = RecordingIO(approve=True)
         runner(fake_command, approval="manual").acp_agent(
             "shadow permission", agent=FakeAgent(io)
+        )
+
+        assert io.approvals == []
+        result = next(event for event in io.events if event["type"] == "tool_result")
+        assert result["status"] == "failed"
+
+    def test_child_python_alias_permission_is_not_dispatched(self, fake_command):
+        io = RecordingIO(approve=True)
+        runner(fake_command, approval="manual").acp_agent(
+            "python alias permission", agent=FakeAgent(io)
         )
 
         assert io.approvals == []

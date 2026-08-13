@@ -115,8 +115,11 @@ front of ACP initialization.
 
 The stdio and authenticated WebSocket entry points share exact JSON-RPC
 envelope validation. Mixed request/response envelopes are rejected before ACP
-routing, while method data and extensions such as `_meta` remain validated by
-the pinned official ACP SDK.
+routing. Routed top-level params must use pinned ACP wire names such as
+`protocolVersion`, `sessionId`, `modeId`, and `mcpServers`; Python construction
+aliases and custom root fields receive `InvalidParams`. Put implementation data
+inside `_meta`. The pinned official ACP SDK continues to validate nested method
+data, optional/null values, enums, results, and extension methods.
 
 Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
 session reuse its conversation and tool state. The working directory supplied

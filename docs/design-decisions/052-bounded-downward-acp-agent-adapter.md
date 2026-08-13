@@ -114,6 +114,13 @@ visible `sessionId`, permission options, tool call, or update delivered to
 notifications are dropped. Unrelated metadata remains an ACP extension and is
 not interpreted as authority.
 
+That shared guard also derives top-level callback wire keys from the pinned
+models. A child must send `sessionId` and `toolCall`, not the Python-only
+`session_id` or `tool_call` names that generated models accept for local
+construction. Non-schema root fields are rejected; opaque `_meta`, nested ACP
+validation, optional/null values, and underscore extension methods remain
+owned by the official protocol layers.
+
 The operator also binds a launch workspace root. Model-selected `cwd` values
 may choose only that directory or a resolved descendant; symlink escapes fail
 closed. This constrains working-directory selection, not every engine's
@@ -138,6 +145,8 @@ present; it does not retain an import-time working directory as a wider root.
   a blocked worker or live subprocess behind.
 - A child cannot use `_meta` to make the session or permission callback checked
   by `ToolClient` disagree with its visible ACP fields.
+- A child cannot reach `ToolClient` through a Python-specific wire alias or an
+  ignored custom root parameter.
 - Re-enabling Codex `manual` or `deny` requires a pinned adapter plus a real
   conformance test covering file writes, shell commands, and outbound network.
 

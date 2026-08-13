@@ -38,7 +38,10 @@ from connectonion.cli.co_ai.acp_transport import (
     _StrictNDJSONTransport,
 )
 from connectonion.cli.co_ai.one_shot_sessions import save_snapshot
-from connectonion.core.acp_jsonrpc import acp_meta_shadows_request_params
+from connectonion.core.acp_jsonrpc import (
+    acp_meta_shadows_request_params,
+    acp_params_use_protocol_field_names,
+)
 from connectonion.core.llm import LLMResponse
 from connectonion.core.usage import TokenUsage
 from connectonion.useful_plugins.tool_approval import check_approval
@@ -1747,6 +1750,76 @@ async def test_strict_ndjson_drops_shadowed_meta_notification_without_response()
     assert writer.buffer == b""
 
 
+@pytest.mark.asyncio
+async def test_strict_ndjson_rejects_python_field_aliases_and_keeps_reading():
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    reader.feed_data(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": "python-alias",
+                "method": "session/resume",
+                "params": {
+                    "session_id": "non-standard-session",
+                    "cwd": "/workspace",
+                    "mcp_servers": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
+    valid = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {"protocolVersion": PROTOCOL_VERSION},
+    }
+    reader.feed_data(json.dumps(valid).encode() + b"\n")
+
+    message = await transport.receive()
+
+    assert message == valid
+    assert json.loads(writer.buffer) == {
+        "jsonrpc": "2.0",
+        "id": "python-alias",
+        "error": {
+            "code": -32602,
+            "message": "Invalid params",
+            "data": {"details": "ACP params must use protocol field names"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_strict_ndjson_drops_python_alias_notification_without_response():
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    reader.feed_data(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {"session_id": "non-standard-session"},
+            }
+        ).encode()
+        + b"\n"
+    )
+    valid = {
+        "jsonrpc": "2.0",
+        "method": "session/cancel",
+        "params": {"sessionId": "standard-session"},
+    }
+    reader.feed_data(json.dumps(valid).encode() + b"\n")
+
+    message = await transport.receive()
+
+    assert message == valid
+    assert writer.buffer == b""
+
+
 @pytest.mark.parametrize(
     ("method", "parameter"),
     [
@@ -1781,6 +1854,75 @@ def test_meta_shadow_guard_preserves_unrelated_and_extension_metadata():
         {
             "method": "_connectonion/custom",
             "params": {"_meta": {"session_id": "extension-owned"}},
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("method", "python_name", "wire_name"),
+    [
+        ("initialize", "protocol_version", "protocolVersion"),
+        ("session/new", "mcp_servers", "mcpServers"),
+        ("session/resume", "additional_directories", "additionalDirectories"),
+        ("session/set_mode", "mode_id", "modeId"),
+        ("session/prompt", "session_id", "sessionId"),
+        ("session/close", "session_id", "sessionId"),
+        ("session/cancel", "session_id", "sessionId"),
+        ("session/update", "session_id", "sessionId"),
+        ("session/request_permission", "tool_call", "toolCall"),
+    ],
+)
+def test_wire_name_guard_tracks_pinned_sdk_aliases(
+    method, python_name, wire_name
+):
+    assert not acp_params_use_protocol_field_names(
+        {"method": method, "params": {python_name: "non-standard"}}
+    )
+    assert acp_params_use_protocol_field_names(
+        {"method": method, "params": {wire_name: "standard"}}
+    )
+
+
+def test_wire_name_guard_preserves_standard_meta_nulls_and_extensions():
+    assert acp_params_use_protocol_field_names(
+        {
+            "method": "session/resume",
+            "params": {
+                "sessionId": "session",
+                "cwd": "/workspace",
+                "additionalDirectories": None,
+                "mcpServers": None,
+                "_meta": {"traceparent": "opaque"},
+            },
+        }
+    )
+    assert acp_params_use_protocol_field_names(
+        {
+            "method": "_connectonion/custom",
+            "params": {"session_id": "extension-owned"},
+        }
+    )
+
+
+def test_wire_name_guard_rejects_unknown_and_duplicate_root_fields():
+    assert not acp_params_use_protocol_field_names(
+        {
+            "method": "session/set_mode",
+            "params": {
+                "sessionId": "session",
+                "modeId": "read-only",
+                "mode_id": "full-access",
+            },
+        }
+    )
+    assert not acp_params_use_protocol_field_names(
+        {
+            "method": "session/prompt",
+            "params": {
+                "sessionId": "session",
+                "prompt": [],
+                "customRootField": True,
+            },
         }
     )
 
@@ -1878,7 +2020,10 @@ async def test_strict_ndjson_accepts_a_frame_larger_than_stream_chunk_limit():
         "jsonrpc": "2.0",
         "id": 1,
         "method": "session/prompt",
-        "params": {"text": large_text},
+        "params": {
+            "sessionId": "session",
+            "prompt": [{"type": "text", "text": large_text}],
+        },
     }
     reader.feed_data(json.dumps(frame).encode() + b"\n")
 

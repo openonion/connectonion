@@ -67,9 +67,9 @@ response, and response envelopes cannot contain request members. Once a valid
 first `initialize` frame is admitted, an invalid later envelope receives
 JSON-RPC `-32600` through the existing bounded outbound queue and is never
 delivered to the Agent. Responses remain correlated by ID rather than arrival
-order. The pinned SDK continues to own method parameters, results, and
-extensions such as `_meta`; envelope validation does not replace ACP schema
-validation.
+order. The pinned SDK continues to own parameter values, nested types, results,
+and extensions such as `_meta`; envelope validation does not replace ACP
+schema validation.
 
 One pinned-router compatibility guard runs before both native transports hand
 messages to the SDK. The SDK promotes `_meta` entries to Python handler keyword
@@ -79,6 +79,16 @@ Such requests receive `-32602` with fixed public details, while invalid
 notifications are dropped without a response. Unrelated `_meta` entries and
 extension methods remain available. A shadowed first WebSocket `initialize`
 fails the existing pre-Agent admission rule and closes with `4400`.
+
+The guard also derives permitted top-level wire keys from explicit aliases on
+those pinned request models. Raw JSON must therefore say `protocolVersion`,
+`sessionId`, `modeId`, and `mcpServers`, never their Python-only construction
+names. Alias/name duplicates and custom root fields receive the same fixed
+`-32602` request error or notification drop. Standard optional/null values and
+arbitrary content inside `_meta` remain available; underscore extension
+methods retain their own raw payload namespace. The first WebSocket gate
+applies this rule before Agent construction, while React already emits the
+standard camelCase forms and needs no compatibility conversion.
 
 ### Browsers exchange a signed request for a one-use ticket
 

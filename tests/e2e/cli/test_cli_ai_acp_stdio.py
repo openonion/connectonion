@@ -227,6 +227,34 @@ async def test_acp_subprocess_rejects_meta_parameter_shadowing(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_acp_subprocess_rejects_python_wire_aliases(tmp_path):
+    async with _server(tmp_path / "home") as process:
+        rejected, _ = await _request(
+            process,
+            1,
+            "initialize",
+            {
+                "protocol_version": acp_package.PROTOCOL_VERSION,
+                "client_capabilities": {},
+            },
+        )
+        await _initialize(process)
+        created, _ = await _request(
+            process,
+            3,
+            "session/new",
+            {"cwd": str(tmp_path), "mcpServers": []},
+        )
+
+        assert rejected["error"] == {
+            "code": -32602,
+            "message": "Invalid params",
+            "data": {"details": "ACP params must use protocol field names"},
+        }
+        assert created["result"]["sessionId"]
+
+
+@pytest.mark.asyncio
 async def test_acp_subprocess_keeps_stdout_protocol_only_and_exits_on_eof(tmp_path):
     async with _server(tmp_path / "home") as process:
         session_id = await _initialize_and_create_session(process, tmp_path)

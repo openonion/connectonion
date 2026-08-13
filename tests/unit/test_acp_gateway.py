@@ -1116,6 +1116,73 @@ async def test_shadowed_initialize_never_creates_an_agent():
 
 
 @pytest.mark.asyncio
+async def test_python_alias_initialize_never_creates_an_agent():
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+    first = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": PROTOCOL_VERSION,
+            "client_capabilities": {},
+        },
+    }
+
+    sent = await _websocket(app, headers=signed, frames=[first])
+
+    assert sent[-1]["type"] == "websocket.close"
+    assert sent[-1]["code"] == 4400
+    assert agents == []
+
+
+@pytest.mark.asyncio
+async def test_python_alias_resume_has_no_websocket_side_effect():
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+    non_standard = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "session/resume",
+        "params": {
+            "session_id": "saved-session",
+            "cwd": "/",
+            "mcp_servers": [],
+        },
+    }
+
+    sent = await _websocket(
+        app,
+        headers=signed,
+        frames=[_initialize(), non_standard],
+        expected_sends=2,
+    )
+
+    responses = [
+        json.loads(item["text"])
+        for item in sent
+        if item["type"] == "websocket.send"
+    ]
+    rejected = next(item for item in responses if item["id"] == 2)
+    assert rejected["error"] == {
+        "code": -32602,
+        "message": "Invalid params",
+        "data": {"details": "ACP params must use protocol field names"},
+    }
+    assert not hasattr(agents[0][1], "resumed")
+
+
+@pytest.mark.asyncio
 async def test_non_standard_json_constant_is_rejected_before_agent_creation():
     app, caller, recipient, agents = _app()
     signed = sign_http_request(
