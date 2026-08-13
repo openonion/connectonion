@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -32,10 +33,12 @@ ORIGIN = "https://chat.openonion.ai"
 
 
 class _Trust:
-    def __init__(self, *, allow=True, level="contact"):
+    def __init__(self, *, allow=True, level="contact", payment_verified=False):
         self.allow = allow
         self.level = level
+        self.payment_verified = payment_verified
         self.requests = []
+        self.payment_requests = []
 
     def should_allow(self, address, request):
         self.requests.append((address, request))
@@ -46,6 +49,10 @@ class _Trust:
 
     def get_level(self, _address):
         return self.level
+
+    def verify_payment(self, caller, amount):
+        self.payment_requests.append((caller, amount, threading.get_ident()))
+        return self.payment_verified
 
 
 class _Replay:
@@ -589,6 +596,95 @@ async def test_verified_principal_admission_is_rate_limited():
     assert second[0] == 429
     assert second[2] == {"error": "too many ACP admission attempts"}
     assert agents == []
+
+
+@pytest.mark.asyncio
+async def test_native_payment_onboarding_verifies_transfer_off_the_event_loop():
+    trust = _Trust(allow=False, payment_verified=True)
+    app, caller, recipient, agents = _app(trust=trust)
+    event_loop_thread = threading.get_ident()
+
+    status, headers, response = await _authorize(
+        app,
+        caller,
+        recipient,
+        body=b'{"payment":10}',
+    )
+
+    assert status == 201
+    assert headers[b"cache-control"] == b"no-store"
+    assert response["protocols"][0] == "acp"
+    assert len(trust.payment_requests) == 1
+    payment_caller, payment_amount, worker_thread = trust.payment_requests[0]
+    assert (payment_caller, payment_amount) == (caller["address"], 10)
+    assert worker_thread != event_loop_thread
+    assert agents == []
+
+
+@pytest.mark.asyncio
+async def test_claimed_native_payment_without_verified_transfer_stays_forbidden():
+    tickets = ACPTicketRegistry()
+    trust = _Trust(allow=False, payment_verified=False)
+    app, caller, recipient, agents = _app(trust=trust, tickets=tickets)
+
+    status, headers, response = await _authorize(
+        app,
+        caller,
+        recipient,
+        body=b'{"payment":999}',
+    )
+
+    assert status == 403
+    assert headers[b"cache-control"] == b"no-store"
+    assert response == {"error": "forbidden: test policy"}
+    assert trust.payment_requests[0][:2] == (caller["address"], 999)
+    assert tickets._records == {}
+    assert agents == []
+
+
+@pytest.mark.asyncio
+async def test_native_payment_provider_failure_is_generic_and_issues_no_ticket():
+    tickets = ACPTicketRegistry()
+    trust = _Trust(allow=False)
+    trust.verify_payment = Mock(side_effect=RuntimeError("private provider detail"))
+    app, caller, recipient, agents = _app(trust=trust, tickets=tickets)
+
+    status, _, response = await _authorize(
+        app,
+        caller,
+        recipient,
+        body=b'{"payment":10}',
+    )
+
+    assert status == 503
+    assert response == {"error": "misconfigured: payment verification unavailable"}
+    assert "private provider detail" not in response["error"]
+    assert tickets._records == {}
+    assert agents == []
+
+
+@pytest.mark.asyncio
+async def test_rejected_signed_attempts_are_limited_before_payment_verification():
+    limiter = ACPAdmissionRateLimiter(limit=1)
+    trust = _Trust(allow=False, payment_verified=False)
+    caller = address.generate()
+    recipient = address.generate()
+    app = AuthenticatedACPApp(
+        lambda _principal: _Agent(),
+        trust_agent=trust,
+        recipient_address=recipient["address"],
+        replay_check=_Replay(),
+        allowed_origins=[ORIGIN],
+        rate_limiter=limiter,
+    )
+
+    first = await _authorize(app, caller, recipient, body=b'{"payment":10}')
+    second = await _authorize(app, caller, recipient, body=b'{"payment":10}')
+
+    assert first[0] == 403
+    assert second[0] == 429
+    assert second[2] == {"error": "too many ACP admission attempts"}
+    assert len(trust.payment_requests) == 1
 
 
 @pytest.mark.asyncio
