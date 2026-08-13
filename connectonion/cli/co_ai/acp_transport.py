@@ -154,14 +154,18 @@ class _StrictNDJSONTransport:
             chunks.append(exc.partial)
             return b"".join(chunks)
 
-    @staticmethod
-    def _request_id(message: Any) -> str | int | None:
+    @classmethod
+    def _request_id(cls, message: Any) -> str | int | None:
         if not isinstance(message, dict):
             return None
         request_id = message.get("id")
-        if isinstance(request_id, bool):
-            return None
-        return request_id if isinstance(request_id, (str, int)) else None
+        return request_id if cls._is_request_id(request_id) else None
+
+    @staticmethod
+    def _is_request_id(value: Any) -> bool:
+        return isinstance(value, str) or (
+            isinstance(value, int) and not isinstance(value, bool)
+        )
 
     @classmethod
     def _is_json_rpc_message(cls, message: Any) -> bool:
@@ -170,13 +174,13 @@ class _StrictNDJSONTransport:
         if "method" in message:
             if not isinstance(message["method"], str):
                 return False
-            if "id" in message and cls._request_id(message) != message.get("id"):
+            if "id" in message and not cls._is_request_id(message["id"]):
                 return False
             params = message.get("params")
             return params is None or isinstance(params, (dict, list))
         if "id" not in message or (("result" in message) == ("error" in message)):
             return False
-        return cls._request_id(message) == message.get("id")
+        return cls._is_request_id(message["id"])
 
 
 def _reject_json_constant(value: str) -> None:
