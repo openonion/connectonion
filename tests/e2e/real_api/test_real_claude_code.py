@@ -8,6 +8,7 @@ Run with an installed/authenticated CLI:
 import json
 import os
 import shutil
+import sys
 
 import pytest
 
@@ -15,18 +16,32 @@ from connectonion.useful_tools import claude_code
 
 pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
 HAS_CLAUDE = bool(os.environ.get("CLAUDE_CODE_CMD") or shutil.which("claude"))
-REAL_CLAUDE_CONFIG_DIR = (
-    os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-)
+REAL_CLAUDE_HOME = os.path.expanduser("~")
+REAL_CLAUDE_CONFIG_DIR = os.environ.get("CLAUDE_CONFIG_DIR")
 requires_claude = pytest.mark.skipif(
     not HAS_CLAUDE, reason="Claude Code CLI is not installed"
 )
 
 
+def _real_claude_auth_environment(
+    platform: str, home: str, configured_dir: str | None
+) -> dict[str, str]:
+    if configured_dir:
+        return {"CLAUDE_CONFIG_DIR": configured_dir}
+    if platform == "darwin":
+        return {"HOME": home}
+    return {"CLAUDE_CONFIG_DIR": os.path.join(home, ".claude")}
+
+
 @pytest.fixture(autouse=True)
-def _use_real_claude_config(monkeypatch):
-    """Opt-in real tests use Claude's config without exposing the whole HOME."""
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", REAL_CLAUDE_CONFIG_DIR)
+def _use_real_claude_auth(monkeypatch):
+    """Opt-in real tests expose only the platform's real Claude auth source."""
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    environment = _real_claude_auth_environment(
+        sys.platform, REAL_CLAUDE_HOME, REAL_CLAUDE_CONFIG_DIR
+    )
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
 
 
 def _require_success(result):

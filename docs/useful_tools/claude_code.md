@@ -148,6 +148,9 @@ pytest -m real_api tests/e2e/real_api/test_real_claude_code.py
 The command skips only when the Claude Code executable is absent. Once the CLI
 is found, a stale login or any other provider error fails the gate; re-authenticate
 and require both tests to pass before treating the integration as release evidence.
+The opt-in test preserves an explicit `CLAUDE_CONFIG_DIR`; otherwise it uses the
+native macOS Keychain login or the platform's isolated Claude credential directory.
+It never copies or prints credential contents.
 
 ## Difference from the Codex tool
 
