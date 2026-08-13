@@ -342,3 +342,49 @@ async def test_acp_subprocess_sets_and_resumes_the_official_mode_state(tmp_path)
         )
         assert resumed["result"]["modes"]["currentModeId"] == ":workspace"
         assert notifications == []
+
+
+@pytest.mark.asyncio
+async def test_acp_subprocess_rejects_a_mixed_envelope_without_changing_mode(
+    tmp_path,
+):
+    state_root = tmp_path / "home"
+    async with _server(state_root) as first:
+        session_id = await _initialize_and_create_session(first, tmp_path)
+        await _send(
+            first,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/set_mode",
+                "params": {
+                    "sessionId": session_id,
+                    "modeId": ":workspace",
+                },
+                "result": {},
+            },
+        )
+
+        rejected = await _read_frame(first)
+        assert rejected["id"] == 3
+        assert rejected["error"]["code"] == -32600
+
+        closed, _ = await _request(
+            first,
+            4,
+            "session/close",
+            {"sessionId": session_id},
+        )
+        assert closed["result"] == {}
+
+    async with _server(state_root) as second:
+        await _initialize(second)
+        resumed, notifications = await _request(
+            second,
+            2,
+            "session/resume",
+            {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
+        )
+
+        assert resumed["result"]["modes"]["currentModeId"] == ":read-only"
+        assert notifications == []
