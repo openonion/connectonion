@@ -700,9 +700,11 @@ async def test_resume_rejects_full_access_budget_above_current_launch_ceiling(
         yolo_turns=4,
     )
 
-    with pytest.raises(RequestError, match="Unable to resume session"):
+    with pytest.raises(RequestError, match="Internal error") as error:
         await server.resume_session(session_id, str(project), mcp_servers=[])
 
+    assert error.value.code == -32603
+    assert error.value.data == {"details": "Unable to restore session state"}
     with session_lock(state_dir, session_id):
         pass
 
@@ -750,8 +752,10 @@ async def test_resume_rejects_unknown_or_over_authorized_mode_state(
         yolo=yolo,
     )
 
-    with pytest.raises(RequestError, match="Unable to resume session"):
+    with pytest.raises(RequestError, match="Internal error") as error:
         await server.resume_session(session_id, str(project), mcp_servers=[])
 
+    assert error.value.code == -32603
+    assert error.value.data == {"details": "Unable to restore session state"}
     with session_lock(state_dir, session_id):
         pass

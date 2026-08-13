@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -24,6 +25,18 @@ class SessionSnapshotError(ValueError):
     """A one-shot session cannot be safely saved or resumed."""
 
 
+class InvalidSessionIdError(SessionSnapshotError):
+    """A session ID is not a canonical UUID."""
+
+
+class SessionNotFoundError(SessionSnapshotError):
+    """A valid session ID has no stored snapshot."""
+
+
+class SessionLeaseConflictError(SessionSnapshotError):
+    """Another process currently owns a session lease."""
+
+
 @dataclass(frozen=True)
 class SnapshotStorageLimits:
     """Hard bounds for one authenticated principal's durable ACP snapshots."""
@@ -42,10 +55,14 @@ def _canonical_id(session_id: str) -> str:
     try:
         parsed = uuid.UUID(session_id)
     except (AttributeError, TypeError, ValueError):
-        raise SessionSnapshotError("Provide a valid session ID from a previous run.") from None
+        raise InvalidSessionIdError(
+            "Provide a valid session ID from a previous run."
+        ) from None
     canonical = str(parsed)
     if session_id != canonical:
-        raise SessionSnapshotError("Provide a valid session ID from a previous run.")
+        raise InvalidSessionIdError(
+            "Provide a valid session ID from a previous run."
+        )
     return canonical
 
 
@@ -118,7 +135,15 @@ def acquire_session_lease(
         flags |= os.O_NOFOLLOW
     try:
         descriptor = os.open(lock_path, flags, 0o600)
-    except OSError:
+    except OSError as exc:
+        if (
+            exclusive_create
+            and exc.errno == errno.EEXIST
+            and _is_regular_lock_path(lock_path)
+        ):
+            raise SessionLeaseConflictError(
+                f"Session {canonical} is already running in another process."
+            ) from None
         raise SessionSnapshotError(
             f"Session {canonical} lock is unavailable."
         ) from None
@@ -155,14 +180,36 @@ def acquire_session_lease(
             import fcntl
 
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except OSError as exc:
         handle.close()
         if exclusive_create:
             _unlink_created_lock(lock_path, opened_identity)
+        if _is_lock_conflict(exc):
+            raise SessionLeaseConflictError(
+                f"Session {canonical} is already running in another process."
+            ) from None
         raise SessionSnapshotError(
-            f"Session {canonical} is already running in another process."
+            f"Session {canonical} lock is unavailable."
         ) from None
     return SessionLease(canonical, handle)
+
+
+def _is_lock_conflict(error: OSError) -> bool:
+    conflict_errnos = {errno.EACCES, errno.EAGAIN}
+    if hasattr(errno, "EDEADLK"):
+        conflict_errnos.add(errno.EDEADLK)
+    return (
+        isinstance(error, BlockingIOError)
+        or error.errno in conflict_errnos
+        or getattr(error, "winerror", None) in {32, 33, 36}
+    )
+
+
+def _is_regular_lock_path(path: Path) -> bool:
+    try:
+        return stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        return False
 
 
 def _unlink_created_lock(
@@ -367,7 +414,9 @@ def load_snapshot(
                 )
             )
             if target_bytes is None:
-                raise SessionSnapshotError(f"Session {canonical} was not found.")
+                raise SessionNotFoundError(
+                    f"Session {canonical} was not found."
+                )
             if (
                 stored_sessions > storage_limits.max_sessions
                 or stored_bytes > storage_limits.max_total_bytes
@@ -635,7 +684,9 @@ def _read_snapshot(
     try:
         before = path.lstat()
     except FileNotFoundError:
-        raise SessionSnapshotError(f"Session {session_id} was not found.") from None
+        raise SessionNotFoundError(
+            f"Session {session_id} was not found."
+        ) from None
     except OSError:
         raise SessionSnapshotError(f"Session {session_id} is unreadable.") from None
     if not stat.S_ISREG(before.st_mode):

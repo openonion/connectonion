@@ -81,7 +81,10 @@ from .acp_events import (
 from .acp_transport import open_stdio_transport
 from .agent import GLOBAL_CO_DIR
 from .one_shot_sessions import (
+    InvalidSessionIdError,
     SessionLease,
+    SessionLeaseConflictError,
+    SessionNotFoundError,
     SessionSnapshotError,
     SnapshotStorageLimits,
     acquire_bounded_new_session_lease,
@@ -974,12 +977,25 @@ class ConnectOnionACPAgent:
                 True,
                 mcp_servers or [],
             )
-        except SessionSnapshotError as exc:
-            details = None if self._network_workspace is not None else str(exc)
+        except InvalidSessionIdError:
+            raise RequestError.invalid_params(
+                {"details": "Session ID must be a canonical UUID"}
+            ) from None
+        except SessionNotFoundError:
             raise RequestError(
                 -32002,
-                "Unable to resume session",
-                {"details": details} if details is not None else None,
+                "Session not found",
+                {"sessionId": session_id},
+            ) from None
+        except SessionLeaseConflictError:
+            raise RequestError(
+                ACP_SESSION_CONFLICT_ERROR_CODE,
+                "Session is busy",
+                {"sessionId": session_id},
+            ) from None
+        except SessionSnapshotError:
+            raise RequestError.internal_error(
+                {"details": "Unable to restore session state"}
             ) from None
         except Exception:
             logger.exception("Failed to resume co ai ACP session")

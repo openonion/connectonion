@@ -261,13 +261,15 @@ async def test_locked_resume_is_rejected_before_connecting_mcp(tmp_path):
     )
 
     await contender.initialize(protocol_version=PROTOCOL_VERSION)
-    with pytest.raises(RequestError, match="Unable to resume"):
+    with pytest.raises(RequestError, match="Session is busy") as conflict:
         await contender.resume_session(
             created.session_id,
             str(tmp_path),
             mcp_servers=[_server_spec()],
         )
 
+    assert conflict.value.code == acp_server.ACP_SESSION_CONFLICT_ERROR_CODE
+    assert conflict.value.data == {"sessionId": created.session_id}
     assert connected is False
     await owner.close_session(created.session_id)
 

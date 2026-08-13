@@ -652,7 +652,7 @@ def test_failed_bounded_admission_does_not_consume_a_session_slot(
 
     with monkeypatch.context() as failure:
         failure.setattr(fcntl, "flock", fail_session_lease)
-        with pytest.raises(SessionSnapshotError, match="already running"):
+        with pytest.raises(SessionSnapshotError, match="lock is unavailable"):
             acquire_bounded_new_session_lease(
                 tmp_path,
                 failed_id,

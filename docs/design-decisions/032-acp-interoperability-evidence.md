@@ -44,6 +44,11 @@ busy session, with the owned `sessionId` in bounded error data. This keeps
 retryable session contention distinct from authentication and internal errors
 on both stdio and authenticated WebSocket transports.
 
+Resume error tests classify the storage boundary without matching presentation
+strings: invalid IDs use `-32602`, absent valid sessions use `-32002`, held
+leases reuse `-32001`, and corrupt or unavailable state uses `-32603`. Only
+fixed details and the caller-owned `sessionId` cross the wire.
+
 ### State the tested version contract
 
 The package supports `agent-client-protocol>=0.12.0,<0.13.0` and negotiates

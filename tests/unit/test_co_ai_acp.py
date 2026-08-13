@@ -1559,9 +1559,11 @@ async def test_network_acp_resume_does_not_disclose_saved_host_workspace(tmp_pat
     )
 
     await _initialize_agent(acp_agent)
-    with pytest.raises(RequestError, match="Unable to resume session") as exc_info:
+    with pytest.raises(RequestError, match="Internal error") as exc_info:
         await acp_agent.resume_session(session_id, "/", mcp_servers=[])
 
+    assert exc_info.value.code == -32603
+    assert exc_info.value.data == {"details": "Unable to restore session state"}
     error = str(exc_info.value)
     assert str(old_workspace) not in error
     assert str(new_workspace) not in error

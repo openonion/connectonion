@@ -314,7 +314,11 @@ async def test_acp_subprocess_lease_blocks_a_second_process_until_close(tmp_path
             "session/resume",
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
-        assert rejected["error"]["code"] == -32002
+        assert rejected["error"] == {
+            "code": -32001,
+            "message": "Session is busy",
+            "data": {"sessionId": session_id},
+        }
 
         closed, _ = await _request(
             owner,

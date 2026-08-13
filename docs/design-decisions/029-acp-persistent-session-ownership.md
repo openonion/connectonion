@@ -20,6 +20,12 @@ directory before constructing an Agent or granting it filesystem tools. The
 lease remains held across every prompt until `session/close`, stdio EOF, or
 failed runtime construction. Lock files are private regular files and symbolic
 links are not followed where the operating system supports that guarantee.
+Resume failures preserve the distinction required at the ACP boundary: an
+invalid canonical ID is invalid parameters, an absent snapshot is resource not
+found, a held lease is the shared session-conflict extension, and every other
+integrity, workspace, quota, or storage failure is internal error. Wire error
+data is fixed and bounded; raw exception text and Host paths never reach a
+network peer.
 The current tool contract accepts only TodoList items with string `content` and
 `active_form` fields plus a known `status`; unknown tools or malformed items
 fail before Agent construction.
@@ -78,6 +84,8 @@ Only one process or runtime can own a session ID at a time. Explicit close and
 normal EOF make it immediately resumable elsewhere without deleting its
 snapshot. A worker that ignores cooperative interruption can delay close: this
 is preferable to releasing a lease while that worker can still mutate state.
+Lease contention is reported as retryable session conflict rather than missing
+state, so a client retains the valid session identity while waiting for release.
 Because commit is non-cancellable once started, a client that disconnects at
 that boundary must resume before deciding whether to retry its prompt.
 

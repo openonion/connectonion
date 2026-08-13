@@ -338,12 +338,14 @@ async def test_runtime_lease_blocks_a_second_server_until_close(
     contender = await _initialized_server(state_dir, lambda **_: _PersistentFakeAgent())
     session = await owner.new_session(str(project), mcp_servers=[])
 
-    with pytest.raises(RequestError, match="Unable to resume session"):
+    with pytest.raises(RequestError, match="Session is busy") as conflict:
         await contender.resume_session(
             session.session_id,
             str(project),
             mcp_servers=[],
         )
+    assert conflict.value.code == acp_server.ACP_SESSION_CONFLICT_ERROR_CODE
+    assert conflict.value.data == {"sessionId": session.session_id}
 
     await owner.close_session(session.session_id)
     await contender.resume_session(session.session_id, str(project), mcp_servers=[])
@@ -515,9 +517,11 @@ async def test_network_unknown_resume_does_not_create_a_durable_lock_file(
     )
     unknown = "cfb44753-f6da-47b3-9281-a0e9f664dd3c"
     try:
-        with pytest.raises(RequestError, match="Unable to resume"):
+        with pytest.raises(RequestError, match="Session not found") as error:
             await server.resume_session(unknown, "/", mcp_servers=[])
 
+        assert error.value.code == -32002
+        assert error.value.data == {"sessionId": unknown}
         assert list((state_dir / "ai" / "sessions").glob("*.lock")) == []
     finally:
         workspace.close()
@@ -593,9 +597,11 @@ async def test_resume_rejects_wrong_cwd_before_agent_construction(
         lambda **_: constructed.append(True) or _PersistentFakeAgent(),
     )
 
-    with pytest.raises(RequestError):
+    with pytest.raises(RequestError, match="Internal error") as error:
         await server.resume_session(session_id, str(other), mcp_servers=[])
 
+    assert error.value.code == -32603
+    assert error.value.data == {"details": "Unable to restore session state"}
     assert constructed == []
     with session_lock(state_dir, session_id):
         pass
@@ -604,13 +610,20 @@ async def test_resume_rejects_wrong_cwd_before_agent_construction(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "snapshot",
-    ["missing", "corrupt", "old-version", "malformed-tool"],
+    ("snapshot", "expected_code", "expected_message"),
+    [
+        ("missing", -32002, "Session not found"),
+        ("corrupt", -32603, "Internal error"),
+        ("old-version", -32603, "Internal error"),
+        ("malformed-tool", -32603, "Internal error"),
+    ],
 )
 async def test_resume_rejects_unusable_snapshots_before_agent_construction(
     tmp_path,
     monkeypatch,
     snapshot,
+    expected_code,
+    expected_message,
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
@@ -643,12 +656,42 @@ async def test_resume_rejects_unusable_snapshots_before_agent_construction(
         lambda **_: constructed.append(True) or _PersistentFakeAgent(),
     )
 
-    with pytest.raises(RequestError, match="Unable to resume session"):
+    with pytest.raises(RequestError, match=expected_message) as error:
         await server.resume_session(session_id, str(project), mcp_servers=[])
 
+    assert error.value.code == expected_code
+    assert error.value.data == (
+        {"sessionId": session_id}
+        if snapshot == "missing"
+        else {"details": "Unable to restore session state"}
+    )
     assert constructed == []
     with session_lock(state_dir, session_id):
         pass
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_invalid_session_id_as_invalid_params(
+    tmp_path,
+    monkeypatch,
+):
+    project = _project(tmp_path, monkeypatch)
+    state_dir = tmp_path / "state"
+    constructed = []
+    server = await _initialized_server(
+        state_dir,
+        lambda **_: constructed.append(True) or _PersistentFakeAgent(),
+    )
+
+    with pytest.raises(RequestError, match="Invalid params") as error:
+        await server.resume_session("not-a-uuid", str(project), mcp_servers=[])
+
+    assert error.value.code == -32602
+    assert error.value.data == {
+        "details": "Session ID must be a canonical UUID"
+    }
+    assert constructed == []
+    assert not state_dir.exists()
 
 
 @pytest.mark.asyncio
@@ -1047,12 +1090,14 @@ async def test_cancelled_commit_and_eof_wait_for_the_atomic_writer(
 
     assert not prompting.done()
     assert not eof_cleanup.done()
-    with pytest.raises(RequestError, match="Unable to resume session"):
+    with pytest.raises(RequestError, match="Session is busy") as conflict:
         await contender.resume_session(
             session.session_id,
             str(project),
             mcp_servers=[],
         )
+    assert conflict.value.code == acp_server.ACP_SESSION_CONFLICT_ERROR_CODE
+    assert conflict.value.data == {"sessionId": session.session_id}
 
     allow_save.set()
     with pytest.raises(asyncio.CancelledError):

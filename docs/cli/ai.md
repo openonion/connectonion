@@ -111,6 +111,9 @@ Connection-order violations return JSON-RPC `-32600`; an already-open or busy
 session returns the ConnectOnion `-32001` conflict code with its `sessionId`.
 ACP `-32000` remains reserved for `Authentication required` and is never used
 for ordinary lifecycle contention.
+Resume further distinguishes invalid session IDs (`-32602`), absent snapshots
+(`-32002`), and unusable private state (`-32603`). Authenticated network errors
+never include Host paths or raw snapshot exceptions.
 
 Use `--acp` when another local process launches `co ai` and owns its stdio.
 Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a
