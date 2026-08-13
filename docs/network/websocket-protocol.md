@@ -2,6 +2,12 @@
 
 > CONNECT to start or resume, INPUT to message, EXEC to run one tool directly. Session stays alive between executions.
 
+> **Migration note:** this page documents the ConnectOnion compatibility
+> socket at `/ws`; that socket is not ACP. `co ai` now also starts native ACP
+> v1 over the authenticated `/acp` WebSocket. O Chat continues using `/ws`
+> until its React client migration is complete. See
+> [Authenticated ACP WebSocket](acp-websocket.md).
+
 ---
 
 ## Overview
@@ -241,7 +247,7 @@ Authenticate, restore session, and sync conversation. **Always the first message
 {
   "type": "CONNECT",
   "session_id": "550e8400-...",
-  "session": { "messages": [...], "mode": "safe" },
+  "session": { "messages": [...], "mode": "default" },
   "last_msg_id": "ev-9f12...",
   "payload": {
     "to": "0x3d4017c3e843...",
@@ -422,9 +428,10 @@ response or `cancelled` fails closed. Optional rejection feedback belongs at
 
 #### ACP_REQUEST (`session/set_mode`)
 
-An authenticated client selects one Host-advertised session mode with the exact
-ACP v1.19 request. On a signed-command connection the complete request is also
-the signed `payload`; the Host executes that verified copy.
+An authenticated client selects one Host-advertised permission profile with
+the exact ACP v1.19 request. The ACP method retains its standard
+`session/set_mode` name. On a signed-command connection the complete request is
+also the signed `payload`; the Host executes that verified copy.
 
 ```json
 {
@@ -436,7 +443,7 @@ the signed `payload`; the Host executes that verified copy.
     "method": "session/set_mode",
     "params": {
       "sessionId": "550e8400-...",
-      "modeId": "accept_edits"
+      "modeId": ":workspace"
     }
   },
   "payload": {
@@ -448,7 +455,7 @@ the signed `payload`; the Host executes that verified copy.
       "method": "session/set_mode",
       "params": {
         "sessionId": "550e8400-...",
-        "modeId": "accept_edits"
+        "modeId": ":workspace"
       }
     },
     "to": "0x3d4017c3e843...",
@@ -461,12 +468,14 @@ the signed `payload`; the Host executes that verified copy.
 ```
 
 The request is accepted only while the durable session is idle and owned by
-the authenticated caller. `safe` is always available; `accept_edits` and `ulw`
-are identity- and launch-authority-bounded. No client field can supply or extend
-ULW turns. Success is an `ACP_RESPONSE` with an empty result and means the JSONL
-commit completed; busy, policy, ownership, and persistence failures are
-correlated JSON-RPC errors. `@connectonion/react` owns this browser operation;
-O Chat consumes it without constructing protocol frames.
+the authenticated caller. `:read-only` is always available; `:workspace` and
+`:danger-full-access` are identity- and launch-authority-bounded. No client
+field can supply or extend Full access turns. Success is an `ACP_RESPONSE` with
+an empty result and means the JSONL commit completed; busy, policy, ownership,
+and persistence failures are correlated JSON-RPC errors.
+`@connectonion/react` owns this browser operation; O Chat consumes it without
+constructing protocol frames. Default and Plan are separate client
+collaboration modes and do not appear in this Host permission list.
 
 #### ONBOARD_SUBMIT
 
@@ -514,10 +523,11 @@ Response to CONNECT.
     }
   },
   "session_modes": {
-    "currentModeId": "safe",
+    "currentModeId": ":read-only",
     "availableModes": [
-      {"id": "safe", "name": "Safe", "description": "Ask before side effects."},
-      {"id": "accept_edits", "name": "Auto", "description": "Apply edits without asking; other tools still require approval."}
+      {"id": ":read-only", "name": "Read only", "description": "Read freely; ask before edits, commands, or broader access."},
+      {"id": ":workspace", "name": "Auto", "description": "Edit the workspace automatically; broader actions still ask."},
+      {"id": ":danger-full-access", "name": "Full access", "description": "Run without approval prompts within the Host launch ceiling."}
     ]
   },
   "server_newer": true,

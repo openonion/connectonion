@@ -320,6 +320,7 @@ class TestHandleHttpRouting:
         body = json.loads(sent[1]["body"])
         assert body["name"] == "test"
         assert body["trust"] == "careful"
+        assert dict(sent[0]["headers"])[b"cache-control"] == b"no-store"
 
     async def test_sessions_list_endpoint(self):
         """GET /sessions returns session list."""

@@ -38,7 +38,7 @@ def mode_frame(mode: str, session_id: str = SESSION_ID) -> dict:
     }
 
 
-@pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
+@pytest.mark.parametrize("mode", [":read-only", ":workspace", ":danger-full-access"])
 def test_host_serializes_exact_acp_mode_updates(mode):
     event = {"type": "mode_changed", "mode": mode}
     original = deepcopy(event)
@@ -49,7 +49,7 @@ def test_host_serializes_exact_acp_mode_updates(mode):
 
 @pytest.mark.parametrize("mode", ["plan", "future", "", None, 1])
 def test_host_rejects_non_authoritative_output_modes(mode):
-    with pytest.raises(ValueError, match="Unsupported ACP session mode"):
+    with pytest.raises(ValueError, match="Unsupported permission profile"):
         acp_notification_frame(
             {"type": "mode_changed", "mode": mode}, SESSION_ID
         )
@@ -57,12 +57,12 @@ def test_host_rejects_non_authoritative_output_modes(mode):
 
 def test_python_decoder_binds_mode_to_the_active_session():
     assert legacy_stream_event_from_acp(
-        mode_frame("accept_edits"), expected_session_id=SESSION_ID
-    ) == {"type": "mode_changed", "mode": "accept_edits"}
+        mode_frame(":workspace"), expected_session_id=SESSION_ID
+    ) == {"type": "mode_changed", "mode": ":workspace"}
 
     with pytest.raises(ValueError, match="another session"):
         legacy_stream_event_from_acp(
-            mode_frame("ulw", "other-session"),
+            mode_frame(":danger-full-access", "other-session"),
             expected_session_id=SESSION_ID,
         )
 
@@ -71,20 +71,20 @@ def test_python_remote_agent_deduplicates_acp_and_legacy_mode_output():
     agent = RemoteAgent("0xabc")
     agent._current_session = {
         "session_id": SESSION_ID,
-        "mode": "safe",
+        "mode": ":read-only",
         "turn": 4,
     }
 
-    agent._handle_stream_event(mode_frame("ulw"))
+    agent._handle_stream_event(mode_frame(":danger-full-access"))
     agent._handle_stream_event({
         "type": "mode_changed",
-        "mode": "ulw",
+        "mode": ":danger-full-access",
         "session_id": SESSION_ID,
     })
 
     assert agent.current_session == {
         "session_id": SESSION_ID,
-        "mode": "ulw",
+        "mode": ":danger-full-access",
         "turn": 4,
     }
     assert agent.ui == []
@@ -93,22 +93,22 @@ def test_python_remote_agent_deduplicates_acp_and_legacy_mode_output():
 @pytest.mark.parametrize(
     "event",
     [
-        mode_frame("ulw", "other-session"),
+        mode_frame(":danger-full-access", "other-session"),
         {"type": "mode_changed", "mode": "future"},
         {
             "type": "mode_changed",
-            "mode": "ulw",
+            "mode": ":danger-full-access",
             "session_id": "other-session",
         },
     ],
 )
 def test_python_remote_agent_ignores_unowned_or_unknown_modes(event):
     agent = RemoteAgent("0xabc")
-    agent._current_session = {"session_id": SESSION_ID, "mode": "safe"}
+    agent._current_session = {"session_id": SESSION_ID, "mode": ":read-only"}
 
     agent._handle_stream_event(event)
 
-    assert agent.current_session["mode"] == "safe"
+    assert agent.current_session["mode"] == ":read-only"
 
 
 @pytest.mark.asyncio
@@ -119,7 +119,7 @@ async def test_host_dual_writes_mode_in_order():
     async def send(message):
         sent.append(message)
 
-    io.send({"type": "mode_changed", "mode": "accept_edits"})
+    io.send({"type": "mode_changed", "mode": ":workspace"})
     io.mark_agent_done()
 
     await asyncio.wait_for(
@@ -140,9 +140,9 @@ async def test_host_dual_writes_mode_in_order():
         "ACP_NOTIFICATION",
         "mode_changed",
     ]
-    assert sent[0] == mode_frame("accept_edits")
+    assert sent[0] == mode_frame(":workspace")
     assert sent[1]["type"] == "mode_changed"
-    assert sent[1]["mode"] == "accept_edits"
+    assert sent[1]["mode"] == ":workspace"
     assert sent[1]["session_id"] == SESSION_ID
 
 

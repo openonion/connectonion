@@ -26,6 +26,7 @@ from connectonion.cli.co_ai import acp_mcp, acp_server
 from connectonion.cli.co_ai.acp_mcp import (
     MAX_MCP_ARGUMENT_BYTES,
     MAX_MCP_RESULT_BYTES,
+    MCP_CONNECT_TIMEOUT_SECONDS,
     MCPConfigError,
     MCPPool,
     MCPTool,
@@ -96,6 +97,10 @@ def _server_spec() -> McpServerStdio:
         args=[],
         env=[EnvVariable(name="EXPLICIT", value="yes")],
     )
+
+
+def test_mcp_cold_start_timeout_remains_bounded_with_import_headroom():
+    assert MCP_CONNECT_TIMEOUT_SECONDS == 30.0
 
 
 async def _assert_process_reaped(pid: int, message: str) -> None:

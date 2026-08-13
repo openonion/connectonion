@@ -1,17 +1,17 @@
-# ulw
+# full_access
 
-Ultra Light Work — let the agent run unattended for a bounded number of turns,
+Full Access — let the agent run unattended for a bounded number of turns,
 then stop and ask.
 
 ## The bound is the point
 
 Autonomy without a stopping condition is how an agent spends an hour going the
-wrong way. ULW grants a **turn budget**: the agent works without per-tool
+wrong way. Full access grants a **turn budget**: the agent works without per-tool
 approval until the budget is spent, then pauses and reports, and the user
 decides whether to extend it.
 
 ```
-mode: ulw, turns: 20
+mode: full_access, turns: 20
 ```
 
 The remaining count is part of session state, so a client can show it and a
@@ -25,7 +25,7 @@ agent is allowed to do, only how often it stops to confirm doing it.
 ## What it does not change
 
 The permission patterns. A tool that was never permitted is still not permitted;
-ULW removes the prompt, not the rule.
+Full access removes the prompt, not the rule.
 
 ## When to use it
 

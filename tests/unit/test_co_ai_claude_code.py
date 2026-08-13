@@ -14,14 +14,15 @@ claude_wrapper = importlib.import_module(
     "connectonion.cli.co_ai.tools.claude_code"
 )
 claude_library = importlib.import_module("connectonion.useful_tools.claude_code")
+OLD_SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
 @pytest.mark.parametrize(
     ("mode", "permission_mode"),
     [
-        ("safe", "default"),
-        ("accept_edits", "acceptEdits"),
-        ("ulw", "auto"),
+        (":read-only", "default"),
+        (":workspace", "acceptEdits"),
+        (":danger-full-access", "auto"),
     ],
 )
 def test_co_ai_mode_owns_claude_permission_mode(
@@ -34,7 +35,14 @@ def test_co_ai_mode_owns_claude_permission_mode(
         return '{"provider":"claude_code","session_id":"s"}'
 
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", fake_claude_code)
-    agent = SimpleNamespace(current_session={"mode": mode})
+    session = {"mode": mode}
+    if mode == ":danger-full-access":
+        session.update({
+            "skip_tool_approval": True,
+            "full_access_turns": 10,
+            "full_access_turns_used": 0,
+        })
+    agent = SimpleNamespace(current_session=session, _delegation_workspace=tmp_path)
 
     result = claude_code(
         "fix it",
@@ -54,6 +62,7 @@ def test_co_ai_mode_owns_claude_permission_mode(
         "model": "sonnet",
         "timeout": 42,
         "agent": agent,
+        "workspace": tmp_path,
     }
 
 
@@ -77,7 +86,25 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
     assert all(call["permission_mode"] == "default" for call in calls)
 
 
-@pytest.mark.parametrize("mode", ["safe", "accept_edits", "ulw"])
+def test_full_access_label_without_bounded_grant_uses_provider_default(
+    monkeypatch, tmp_path
+):
+    seen = {}
+    monkeypatch.setattr(
+        claude_wrapper,
+        "_run_claude_code",
+        lambda **kwargs: seen.update(kwargs) or "result",
+    )
+
+    assert claude_code(
+        "inspect",
+        cwd=str(tmp_path),
+        agent=SimpleNamespace(current_session={"mode": ":danger-full-access"}),
+    ) == "result"
+    assert seen["permission_mode"] == "default"
+
+
+@pytest.mark.parametrize("mode", [":read-only", ":workspace", ":danger-full-access"])
 def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
     backend = pytest.fail
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", backend)
@@ -134,14 +161,14 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
     def fake_run(argv, **kwargs):
         calls.append((argv, kwargs))
         return SimpleNamespace(
-            stdout=json.dumps(
-                {
-                    "result": "continued",
-                    "session_id": "session-old",
-                    "is_error": False,
-                }
-            ),
+            payload={
+                "type": "result",
+                "result": "continued",
+                "session_id": OLD_SESSION,
+                "is_error": False,
+            },
             stderr="",
+            invalid_output="",
             returncode=0,
         )
 
@@ -151,17 +178,20 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
         claude_code(
             "continue",
             cwd=str(tmp_path),
-            session_id="session-old",
-            agent=SimpleNamespace(current_session={"mode": "accept_edits"}),
+            session_id=OLD_SESSION,
+            agent=SimpleNamespace(
+                current_session={"mode": ":workspace"},
+                _delegation_workspace=tmp_path,
+            ),
         )
     )
 
     argv = calls[0][0]
     assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
-    assert argv[argv.index("--resume") + 1] == "session-old"
+    assert argv[argv.index("--resume") + 1] == OLD_SESSION
     assert calls[0][1]["cwd"] == str(tmp_path.resolve())
     assert result["resumed"] is True
-    assert result["session_id"] == "session-old"
+    assert result["session_id"] == OLD_SESSION
 
 
 def test_structured_library_failure_passes_through(monkeypatch, tmp_path):
@@ -178,11 +208,11 @@ def test_outer_approval_does_not_duplicate_claude_permissions():
     io = SimpleNamespace(send=lambda *_: pytest.fail("outer approval must not prompt"))
     agent = SimpleNamespace(
         current_session={
-            "mode": "safe",
+            "mode": ":read-only",
             "permissions": {
                 "claude_code": {
                     "allowed": True,
-                    "source": "safe",
+                    "source": "default",
                     "reason": "managed delegation owns inner approval",
                 }
             },

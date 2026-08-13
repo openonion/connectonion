@@ -29,7 +29,7 @@ class ACPTestAgent:
         self.current_session["trace"].append(event)
         self.io.send(event)
 
-    def input(self, prompt: str, session=None) -> str:
+    def input(self, prompt: str, session=None, images=None, files=None) -> str:
         if session is not None:
             self.current_session = dict(session)
             self.current_session["messages"] = list(session["messages"])
@@ -42,6 +42,13 @@ class ACPTestAgent:
             return result
         if prompt == "environment":
             result = f"secret inherited: {'ACP_TEST_SECRET' in os.environ}"
+            self._finish("natural")
+            return result
+        if prompt == "attachments":
+            result = (
+                f"attachments: images={images!r}, "
+                f"files={[(item['name'], item['data']) for item in files or []]!r}"
+            )
             self._finish("natural")
             return result
         if prompt == "approval":

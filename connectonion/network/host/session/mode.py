@@ -2,9 +2,9 @@
 Purpose: Durable, authority-bounded Host session mode transactions
 LLM-Note:
   Dependencies: imports from [core.acp_wire, .storage, copy, dataclasses, time] | imported by [host/ws_router/connect.py, host/ws_router/session.py, host/http_router.py] | tested by [tests/unit/test_acp_host_set_mode.py]
-  Data flow: CONNECT -> ensure_host_mode_session() appends an owned Safe snapshot when needed -> CONNECTED advertises policy.state() | ACP/legacy setter -> commit_host_session_mode() checks process-local busy state -> storage.atomic_update() rechecks durable owner/status and appends a detached policy copy -> caller acknowledges and updates conn
+  Data flow: CONNECT -> ensure_host_mode_session() appends an owned :read-only snapshot when needed -> CONNECTED advertises policy.state() | ACP/legacy setter -> commit_host_session_mode() checks process-local busy state -> storage.atomic_update() rechecks durable owner/status and appends a detached policy copy -> caller acknowledges and updates conn
   State/Effects: appends Session records through SessionStorage.atomic_update; never mutates caller or stored dictionaries before commit
-  Integration: HostModePolicy captures the launch-time ULW ceiling and derives identity-bounded mode lists; ModeTransactionError carries owned JSON-RPC errors
+  Integration: HostModePolicy captures the launch-time Full access ceiling and derives identity-bounded mode lists; ModeTransactionError carries owned JSON-RPC errors
   Errors: missing/wrong owner=-32002, busy=-32000 retryable, invalid/unavailable=-32602; storage exceptions deliberately propagate for -32603 mapping at the carrier boundary
 """
 
@@ -15,12 +15,27 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ....core.acp_wire import acp_session_mode_state, session_mode_id
+from ....core.acp_wire import acp_session_mode_state
+from ....core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+    migrate_legacy_full_access_fields,
+)
 from .storage import Session, SessionStorage, session_owner
 
-_ULW_FIELDS = ("skip_tool_approval", "ulw_turns", "ulw_turns_used")
+_FULL_ACCESS_FIELDS = (
+    "skip_tool_approval",
+    "full_access_turns",
+    "full_access_turns_used",
+)
 SERVER_OWNED_SESSION_KEYS = (
-    "mode", *_ULW_FIELDS, "permissions", "approval", "requester"
+    "mode",
+    *_FULL_ACCESS_FIELDS,
+    "permissions",
+    "approval",
+    "requester",
 )
 
 
@@ -40,74 +55,93 @@ class ModeTransactionError(Exception):
 
 
 @dataclass(frozen=True)
-class HostModePolicy:
-    """Available Host modes below identity and Agent launch authority."""
+class HostPermissionPolicy:
+    """Available Codex-style profiles below Host launch authority."""
 
-    ulw_turns: int | None = None
+    full_access_turns: int | None = None
 
     def __post_init__(self) -> None:
-        if self.ulw_turns is not None and (
-            isinstance(self.ulw_turns, bool)
-            or not isinstance(self.ulw_turns, int)
-            or self.ulw_turns <= 0
+        if self.full_access_turns is not None and (
+            isinstance(self.full_access_turns, bool)
+            or not isinstance(self.full_access_turns, int)
+            or self.full_access_turns <= 0
         ):
-            raise ValueError("ULW launch ceiling must be a positive integer")
+            raise ValueError("Full access launch ceiling must be a positive integer")
 
-    def available_mode_ids(self, *, is_admin: bool) -> tuple[str, ...]:
+    def available_profile_ids(self, *, is_admin: bool) -> tuple[str, ...]:
         if not is_admin:
-            return ("safe",)
-        if self.ulw_turns is None:
-            return ("safe", "accept_edits")
-        return ("safe", "accept_edits", "ulw")
+            return (READ_ONLY_PERMISSION_PROFILE,)
+        if self.full_access_turns is None:
+            return (READ_ONLY_PERMISSION_PROFILE, WORKSPACE_PERMISSION_PROFILE)
+        return (
+            READ_ONLY_PERMISSION_PROFILE,
+            WORKSPACE_PERMISSION_PROFILE,
+            DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+        )
+
+    # Compatibility for callers compiled against the previous draft API.
+    def available_mode_ids(self, *, is_admin: bool) -> tuple[str, ...]:
+        return self.available_profile_ids(is_admin=is_admin)
 
     def state(self, session: dict, *, is_admin: bool) -> dict[str, Any]:
         normalized = self.normalized(session, is_admin=is_admin)
         return acp_session_mode_state(
-            normalized["mode"], self.available_mode_ids(is_admin=is_admin)
+            normalized["mode"],
+            self.available_profile_ids(is_admin=is_admin),
         )
 
     def normalized(self, session: dict, *, is_admin: bool) -> dict:
         """Return a detached validated snapshot or fail closed."""
         normalized = copy.deepcopy(session)
-        mode = normalized.get("mode", "safe")
+        migrate_legacy_full_access_fields(normalized)
+        raw_profile = normalized.get(
+            "permission_profile", normalized.get("mode", READ_ONLY_PERMISSION_PROFILE)
+        )
         try:
-            mode = session_mode_id(mode)
+            profile = legacy_permission_profile_id(raw_profile)
         except ValueError as exc:
             raise ModeTransactionError(-32602, str(exc)) from None
-        if mode not in self.available_mode_ids(is_admin=is_admin):
-            raise ModeTransactionError(-32602, "Session mode is not available")
-        if mode == "ulw":
-            self._validate_ulw(normalized)
-        elif any(field in normalized for field in _ULW_FIELDS):
+        if profile not in self.available_profile_ids(is_admin=is_admin):
             raise ModeTransactionError(
-                -32602, "Session has ULW authority outside ULW mode"
+                -32602, "Permission profile is not available"
             )
-        normalized["mode"] = mode
+        if profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
+            self._validate_full_access(normalized)
+        elif any(field in normalized for field in _FULL_ACCESS_FIELDS):
+            raise ModeTransactionError(
+                -32602,
+                "Session has Full access authority outside the Full access profile",
+            )
+        normalized["mode"] = profile
+        normalized.pop("permission_profile", None)
         return normalized
 
-    def apply(self, session: dict, mode_id: Any, *, is_admin: bool) -> dict:
-        """Apply one validated mode to a detached copy."""
+    def apply(self, session: dict, profile_id: Any, *, is_admin: bool) -> dict:
+        """Apply one validated permission profile to a detached copy."""
         try:
-            mode = session_mode_id(mode_id)
+            profile = legacy_permission_profile_id(profile_id)
         except ValueError as exc:
             raise ModeTransactionError(-32602, str(exc)) from None
-        if mode not in self.available_mode_ids(is_admin=is_admin):
-            raise ModeTransactionError(-32602, "Session mode is not available")
+        if profile not in self.available_profile_ids(is_admin=is_admin):
+            raise ModeTransactionError(
+                -32602, "Permission profile is not available"
+            )
         changed = copy.deepcopy(session)
-        for field in _ULW_FIELDS:
+        for field in _FULL_ACCESS_FIELDS:
             changed.pop(field, None)
-        changed["mode"] = mode
-        if mode == "ulw":
-            changed["ulw_turns"] = self.ulw_turns
-            changed["ulw_turns_used"] = 0
+        changed["mode"] = profile
+        changed.pop("permission_profile", None)
+        if profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
+            changed["full_access_turns"] = self.full_access_turns
+            changed["full_access_turns_used"] = 0
             changed["skip_tool_approval"] = True
         return self.normalized(changed, is_admin=is_admin)
 
-    def _validate_ulw(self, session: dict) -> None:
-        turns = session.get("ulw_turns")
-        used = session.get("ulw_turns_used")
+    def _validate_full_access(self, session: dict) -> None:
+        turns = session.get("full_access_turns")
+        used = session.get("full_access_turns_used")
         if (
-            self.ulw_turns is None
+            self.full_access_turns is None
             or isinstance(turns, bool)
             or not isinstance(turns, int)
             or turns <= 0
@@ -115,10 +149,10 @@ class HostModePolicy:
             or not isinstance(used, int)
             or used < 0
             or used >= turns
-            or turns - used > self.ulw_turns
+            or turns - used > self.full_access_turns
             or session.get("skip_tool_approval") is not True
         ):
-            raise ModeTransactionError(-32602, "Session has invalid ULW state")
+            raise ModeTransactionError(-32602, "Session has invalid Full access state")
 
 
 def ensure_host_mode_session(
@@ -127,10 +161,10 @@ def ensure_host_mode_session(
     *,
     requester: dict,
     result_ttl: int,
-    policy: HostModePolicy,
+    policy: HostPermissionPolicy,
     is_admin: bool,
 ) -> Session:
-    """Persist an owned Safe snapshot before a Host session's first prompt."""
+    """Persist an owned read-only snapshot before a Host session's first prompt."""
     owner = requester.get("address")
     if not isinstance(owner, str) or not owner:
         raise ValueError("requester address is required")
@@ -167,7 +201,7 @@ def commit_host_session_mode(
     session_id: str,
     owner: str,
     mode_id: Any,
-    policy: HostModePolicy,
+    policy: HostPermissionPolicy,
     is_admin: bool,
 ) -> Session:
     """Commit one idle policy change under the cross-worker storage lock."""
@@ -209,7 +243,7 @@ def claim_host_prompt(
     client_session: dict,
     *,
     requester: dict | None,
-    policy: HostModePolicy | None,
+    policy: HostPermissionPolicy | None,
     is_admin: bool,
 ) -> tuple[Session, bool]:
     """Atomically claim an idle session and return its prepared prompt state."""
@@ -264,9 +298,13 @@ def _fresh_session(session_id: str, requester: dict) -> dict:
         "messages": [],
         "trace": [],
         "turn": 0,
-        "mode": "safe",
+        "mode": READ_ONLY_PERMISSION_PROFILE,
         "requester": copy.deepcopy(requester),
     }
+
+
+# One release-window source alias.  New code should use HostPermissionPolicy.
+HostModePolicy = HostPermissionPolicy
 
 
 def _not_found() -> ModeTransactionError:

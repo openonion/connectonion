@@ -144,13 +144,13 @@ def test_thought_and_assistant_messages_keep_their_message_ids():
 def test_mode_change_maps_to_the_exact_current_mode_update():
     update = map_agent_event({
         "type": "mode_changed",
-        "mode": "accept_edits",
+        "mode": ":workspace",
         "triggered_by": "agent",
     }).updates[0]
 
     assert isinstance(update, CurrentModeUpdate)
     assert dumped(update) == {
-        "currentModeId": "accept_edits",
+        "currentModeId": ":workspace",
         "sessionUpdate": "current_mode_update",
     }
 

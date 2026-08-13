@@ -126,7 +126,7 @@ TURN START
 | Event | Best for |
 |-------|----------|
 | `before_iteration` | Poll IO for mode changes, initialize iteration state |
-| `after_iteration` | Checkpoints, decide whether to continue (e.g., ULW mode) |
+| `after_iteration` | Checkpoints, decide whether to continue (e.g., Full access mode) |
 
 ---
 

@@ -26,9 +26,15 @@ Usage:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict
+from typing import TYPE_CHECKING, Dict, List
+
 from pydantic import BaseModel
-from ..core.events import on_complete, after_user_input
+
+from ..core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+)
+from ..core.events import after_user_input, on_complete
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -99,6 +105,8 @@ def generate_expected(agent: 'Agent') -> None:
 
     Skips if already set or no user prompt.
     """
+    _prepare_turn_state(agent)
+
     user_prompt = agent.current_session.get('user_prompt', '')
     if not user_prompt:
         return
@@ -114,7 +122,9 @@ def generate_expected(agent: 'Agent') -> None:
     # Losing the expectation costs the score and nothing else, which is why
     # this one call earns a catch that most do not.
     try:
-        agent.current_session['expected'] = _generate_expected(agent)
+        expected = _generate_expected(agent)
+        agent.current_session['expected'] = expected
+        agent.current_session['_eval_expected'] = expected
     except Exception as exc:
         agent.logger.print(f"[dim]/expected unavailable ({exc})[/dim]")
 
@@ -135,6 +145,37 @@ def _summarize_trace(trace: List[Dict]) -> str:
     return "\n".join(actions) if actions else "No tools were used."
 
 
+def _prepare_turn_state(agent: 'Agent') -> None:
+    """Keep transient eval values scoped to the current Agent turn.
+
+    Sessions are cumulative, so ``expected`` and ``evaluation`` otherwise
+    survive into the next user input.  Preserve a value another plugin wrote
+    for this turn, but discard the value last produced by this plugin.
+    """
+    session = agent.current_session
+    turn = session.get('turn')
+    if session.get('_eval_turn') == turn:
+        return
+
+    previous_expected = session.get('expected')
+    if previous_expected == session.get('_eval_expected'):
+        session.pop('expected', None)
+    session.pop('evaluation', None)
+    session['_eval_turn'] = turn
+
+
+def _current_turn_trace(agent: 'Agent') -> List[Dict]:
+    """Return the canonical trace slice that belongs to the current turn."""
+    trace = agent.current_session.get('trace', [])
+    turn = agent.current_session.get('turn')
+    for index in range(len(trace) - 1, -1, -1):
+        entry = trace[index]
+        if entry.get('type') == 'user_input' and entry.get('turn') == turn:
+            return trace[index:]
+    # Hand-built and legacy session shapes may not contain turn markers.
+    return trace
+
+
 @on_complete
 def evaluate_completion(agent: 'Agent') -> None:
     """Evaluate if the task completed correctly.
@@ -142,19 +183,25 @@ def evaluate_completion(agent: 'Agent') -> None:
     Generates expected outcome (if not set) and evaluates AFTER task completes.
     This avoids blocking the main workflow.
 
-    Skips evaluation in ULW mode since the agent is still working autonomously.
+    Skips evaluation in Full access mode since the agent is still working autonomously.
     """
     import uuid
 
-    # Skip eval in ULW mode - agent is still working, not done yet
-    if agent.current_session.get('mode') == 'ulw':
+    # Skip eval in Full access mode - agent is still working, not done yet
+    try:
+        profile = legacy_permission_profile_id(agent.current_session.get('mode'))
+    except ValueError:
+        profile = None
+    if profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
         return
+
+    _prepare_turn_state(agent)
 
     user_prompt = agent.current_session.get('user_prompt', '')
     if not user_prompt:
         return
 
-    trace = agent.current_session.get('trace', [])
+    trace = _current_turn_trace(agent)
     actions_summary = _summarize_trace(trace)
     result = agent.current_session.get('result', 'No response generated.')
 
@@ -163,6 +210,7 @@ def evaluate_completion(agent: 'Agent') -> None:
     if not expected:
         expected = _generate_expected(agent)
         agent.current_session['expected'] = expected
+    agent.current_session['_eval_expected'] = expected
 
     # Build prompt based on whether expected is available
     if expected:

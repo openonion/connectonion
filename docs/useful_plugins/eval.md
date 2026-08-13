@@ -25,7 +25,10 @@ The plugin hooks into two lifecycle events:
 
 ### Why `on_complete`?
 
-The evaluation needs to see the **entire execution** - all iterations, all tool calls, and the final response.
+The evaluation needs to see the **entire current turn** - all iterations and
+tool calls after the current `user_input`, plus that turn's final response. A
+continued session keeps earlier messages and trace entries for conversation
+context, but they are not evaluation evidence for the new request.
 
 ```
 User Input
@@ -63,8 +66,11 @@ agent = Agent("assistant", tools=[search], plugins=[re_act, eval])
 ## Session Data
 
 The plugin stores:
-- `agent.current_session['expected']` - Expected outcome
-- `agent.current_session['evaluation']` - Evaluation result
+- `agent.current_session['expected']` - Expected outcome for the current turn
+- `agent.current_session['evaluation']` - Evaluation result for the current turn
+
+Both values are refreshed when a new turn starts. This prevents a tool used in
+an earlier request from causing a false pass or failure in a later request.
 
 ## When to Use
 

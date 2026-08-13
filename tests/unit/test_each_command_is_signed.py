@@ -102,7 +102,7 @@ def test_v1_host_can_read_a_v2_input(keys):
 def test_server_executes_the_signed_copy_not_tampered_top_level(keys):
     agent = RemoteAgent("0x" + "12" * 20, keys=keys)
     frame = agent._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {"path": "ok"}}
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {"path": "ok"}}
     )
     frame["tool"] = "bash"
     frame["args"] = {"command": "bad"}
@@ -110,14 +110,14 @@ def test_server_executes_the_signed_copy_not_tampered_top_level(keys):
     payload, error = auth.authenticated_command_payload(frame, keys["address"])
 
     assert error is None
-    assert payload["tool"] == "safe"
+    assert payload["tool"] == "default"
     assert payload["args"] == {"path": "ok"}
 
 
 def test_command_is_bound_to_connection_owner(keys):
     other = address.generate()
     frame = RemoteAgent("0x" + "12" * 20, keys=keys)._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}}
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {}}
     )
 
     payload, error = auth.authenticated_command_payload(frame, other["address"])
@@ -128,7 +128,7 @@ def test_command_is_bound_to_connection_owner(keys):
 
 def test_command_signature_cannot_be_replayed(keys):
     frame = RemoteAgent("0x" + "12" * 20, keys=keys)._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}}
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {}}
     )
 
     assert auth.authenticated_command_payload(frame, keys["address"])[1] is None
@@ -140,7 +140,7 @@ def test_command_signature_cannot_be_replayed(keys):
 def test_command_is_bound_to_recipient(keys):
     recipient = "0x" + "12" * 20
     frame = RemoteAgent(recipient, keys=keys)._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}},
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {}},
         is_direct=True,
     )
 
@@ -155,7 +155,7 @@ def test_command_is_bound_to_recipient(keys):
 def test_command_without_recipient_is_rejected(keys):
     recipient = "0x" + "12" * 20
     frame = RemoteAgent(recipient, keys=keys)._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}}
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {}}
     )
     payload = dict(frame["payload"])
     payload.pop("to")
@@ -272,7 +272,7 @@ async def test_v2_session_uses_the_injected_replay_guard(keys, monkeypatch):
     agent = RemoteAgent("0x" + "12" * 20, keys=keys)
     connect = {"type": "CONNECT", "from": keys["address"]}
     signed = agent._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {}}
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {}}
     )
     claimed = []
     ran = []
@@ -324,7 +324,7 @@ async def test_v2_session_executes_the_verified_payload(keys, monkeypatch):
     agent = RemoteAgent("0x" + "12" * 20, keys=keys)
     connect = {"type": "CONNECT", "from": keys["address"]}
     signed = agent._build_command_message(
-        {"type": "EXEC", "exec_id": "e1", "tool": "safe", "args": {"value": 1}}
+        {"type": "EXEC", "exec_id": "e1", "tool": "default", "args": {"value": 1}}
     )
     signed["tool"] = "tampered"
     ran = []
@@ -333,7 +333,7 @@ async def test_v2_session_executes_the_verified_payload(keys, monkeypatch):
         [connect, signed], monkeypatch, signed_commands=True, ran=ran
     )
 
-    assert ran[0][0]["tool"] == "safe"
+    assert ran[0][0]["tool"] == "default"
     assert ran[0][1] == keys["address"]
 
 
@@ -344,9 +344,9 @@ async def test_v2_session_passes_only_verified_acp_mode_request(keys, monkeypatc
     agent = RemoteAgent("0x" + "12" * 20, keys=keys)
     connect = {"type": "CONNECT", "from": keys["address"]}
     signed = agent._build_command_message(
-        acp_set_mode_request_frame("request-1", "s1", "safe")
+        acp_set_mode_request_frame("request-1", "s1", ":read-only")
     )
-    signed["message"]["params"]["modeId"] = "ulw"
+    signed["message"]["params"]["modeId"] = ":danger-full-access"
     handled = []
 
     async def fake_mode(data, *_args):
@@ -358,7 +358,7 @@ async def test_v2_session_passes_only_verified_acp_mode_request(keys, monkeypatc
         [connect, signed], monkeypatch, signed_commands=True, ran=[]
     )
 
-    assert handled[0]["message"]["params"]["modeId"] == "safe"
+    assert handled[0]["message"]["params"]["modeId"] == ":read-only"
 
 
 @pytest.mark.asyncio
@@ -366,7 +366,7 @@ async def test_v2_session_rejects_unsigned_acp_mode_request(keys, monkeypatch):
     from connectonion.network.host.ws_router import session
 
     connect = {"type": "CONNECT", "from": keys["address"]}
-    unsigned = acp_set_mode_request_frame("request-1", "s1", "safe")
+    unsigned = acp_set_mode_request_frame("request-1", "s1", ":read-only")
     handled = []
 
     async def fake_mode(data, *_args):

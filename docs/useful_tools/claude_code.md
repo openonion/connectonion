@@ -9,10 +9,11 @@ agent = Agent("lead", tools=[claude_code])
 agent.input("Ask Claude Code to review this repository")
 ```
 
-The adapter uses Claude Code's headless JSON interface. It does not add an SDK
-dependency, and provider-specific parsing stays outside the ConnectOnion Agent
-loop. It accepts both the documented single result object and Claude Code
-versions that wrap the result as the final item of a JSON event array.
+The adapter uses Claude Code's documented headless `stream-json` interface. It
+keeps one normal ConnectOnion tool call around the delegated turn while
+forwarding Claude's inner tool starts and results through the Agent's live IO.
+Provider-specific parsing stays outside the ConnectOnion Agent loop, and the
+final return value remains one stable JSON envelope.
 
 The default `claude_code` function tool always starts Claude Code in its manual
 permission mode. Permission policy is deliberately not a tool argument, so the
@@ -25,18 +26,18 @@ import json
 
 from connectonion import ClaudeCode
 
-claude = ClaudeCode(permission_mode="plan")
+claude = ClaudeCode(permission_mode="plan", workspace="./my-project")
 
 first = json.loads(claude.claude_code(
     "Find the failing test",
-    cwd="./my-project",
+    cwd=".",
 ))
 
-editor = ClaudeCode(permission_mode="acceptEdits")
+editor = ClaudeCode(permission_mode="acceptEdits", workspace="./my-project")
 second = json.loads(editor.claude_code(
     "Now implement the fix",
     session_id=first["session_id"],
-    cwd="./my-project",
+    cwd=".",
 ))
 ```
 
@@ -60,6 +61,25 @@ Missing binaries, invalid arguments, timeouts, authentication errors, malformed
 output, and non-zero exits use the same envelope with `status` set to `error` or
 `timeout`.
 
+## Live tool activity
+
+When the function receives its injected `agent` argument, every Claude Code
+`tool_use` becomes an ordinary live ConnectOnion tool card such as
+`Claude Code › Bash` or `Claude Code › Read`. The matching `tool_result`
+completes or fails that same card. This works automatically in `co ai` web chat;
+callers do not need a second protocol or a separate Claude UI.
+
+The forwarded event also carries `provider=claude_code`, the Claude session ID,
+and any parent tool-use ID. Current clients can render a flat card immediately;
+future clients can use the parent ID for nested sub-agent presentation. Tool
+arguments and results are bounded before they reach live IO, and common
+credential-shaped argument keys are redacted. Provider-controlled IDs, names,
+event counts, stream lines, and active tool state are bounded as well.
+
+Only tool activity is forwarded in this release. Claude's intermediate text is
+not added to the parent transcript, so the final answer still has one owner:
+the enclosing ConnectOnion agent.
+
 ## Permissions
 
 The public `claude_code(...)` function always maps to Claude Code's current
@@ -69,7 +89,7 @@ tool reaches the Agent:
 ```python
 from connectonion import Agent, ClaudeCode
 
-claude = ClaudeCode(permission_mode="acceptEdits")
+claude = ClaudeCode(permission_mode="acceptEdits", workspace="./my-project")
 agent = Agent("lead", tools=[claude])
 ```
 
@@ -82,9 +102,27 @@ directory, model, and timeout fields. Supported constructor modes are
 in operator-written code running inside an isolated environment; a model can
 never select it through the tool schema.
 
-The tool does not use Claude Code's `--bare` mode by default. This preserves the
-user's normal Claude Code authentication and project instructions such as
-`CLAUDE.md`.
+Headless Claude Code cannot open its own interactive permission prompt inside
+O Chat. The adapter uses Claude's `--safe-mode`, which disables `CLAUDE.md`,
+skills, plugins, hooks, MCP servers, custom commands and agents, and related
+customizations. This preserves installed authentication but prevents ordinary
+user, project, and local configuration from raising this delegated turn's
+authority. Include relevant project instructions in the delegated prompt.
+Admin-managed policy still applies and may be stricter. Actions allowed by the
+operator-bound mode can run and appear as live cards; an unmatched permission
+request fails closed.
+
+The subprocess receives only a small process/locale environment and
+Claude-specific authentication variables. Unrelated API keys and cloud/GitHub
+credentials from the parent process are not copied into Claude's environment.
+
+The operator-bound workspace becomes the launch root. A model may choose that
+directory or a resolved descendant; paths and symlinks outside it fail closed.
+This is not an operating-system sandbox, so run hostile tasks inside a
+container or other OS isolation boundary.
+
+Pass back only the canonical UUID returned in `session_id`. Fuzzy Claude CLI
+session search is intentionally unavailable through this tool.
 
 ## Installation and testing
 
@@ -109,8 +147,8 @@ pytest -m real_api tests/e2e/real_api/test_real_claude_code.py
 
 ## Difference from the Codex tool
 
-The Codex adapter uses its app-server JSON-RPC protocol for live inner-step
-events and per-action approval callbacks. Claude Code's adapter intentionally
-uses one documented headless JSON subprocess per turn. It provides native
-session resume and an explicit baseline permission mode, but does not claim live
-approval-card streaming.
+The Codex adapter uses its app-server JSON-RPC protocol for both live inner-step
+events and per-action approval callbacks. Claude Code uses its documented
+`stream-json` subprocess contract for live inner tool cards and session resume.
+It does not yet translate Claude's unmatched permission requests into
+ConnectOnion approval cards.

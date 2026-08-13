@@ -61,8 +61,8 @@ remaining collision.
 
 MCP annotations never grant authority. Exported MCP callables enter the normal
 ConnectOnion tool registry and the fail-closed policy established by DD-030 and
-the unclassified-tool decision. Safe and Accept Edits modes request ACP
-operator permission before an MCP side effect. Only explicit ULW authority can
+the unclassified-tool decision. Read only and Auto profiles request ACP
+operator permission before an MCP side effect. Only explicit Full access authority can
 bypass that prompt.
 
 An MCP "allow for this session" grant is scoped to the exact live MCP pool.

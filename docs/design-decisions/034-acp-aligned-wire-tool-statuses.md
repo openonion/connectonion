@@ -70,9 +70,9 @@ unknown terminal status as an error so a newer server cannot be presented as
 successful by accident. oo-chat needs no direct change because it renders the
 React package's normalized ChatItems.
 
-The Codex adapter now emits `in_progress`, `completed`, and `failed`. The
-Claude Code JSON adapter has no intermediate activity stream, so its final
-result envelope is outside this IO event contract.
+The Codex adapter emits `in_progress`, `completed`, and `failed`. Under DD-043,
+the Claude Code stream adapter emits the same statuses for its inner tool
+activity; its final result envelope remains outside this IO event contract.
 
 ## Rejected alternatives
 

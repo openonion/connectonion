@@ -61,6 +61,11 @@ turns:
 - No second user input within a turn
 - Second user input = next turn
 
+The stored session and message history remain cumulative, but evaluation is
+turn-local. An evaluator uses the current turn's `user_input` trace boundary,
+tool results, final response, expected outcome, and verdict. Earlier turns are
+conversation context, not evidence that the current request passed or failed.
+
 ## Field Reference
 
 | Field | Type | Description |

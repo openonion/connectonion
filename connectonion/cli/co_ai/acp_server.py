@@ -9,17 +9,24 @@ requests that reuse ConnectOnion's existing approval policy.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import concurrent.futures
 import copy
 import logging
+import math
 import os
+import re
+import stat
 import sys
 import threading
+import unicodedata
 from collections import deque
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
+from urllib.parse import unquote_to_bytes, urlsplit
 from uuid import uuid4
 
 from acp import (
@@ -33,11 +40,15 @@ from acp import (
 from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
+    BlobResourceContents,
     ClientCapabilities,
     CloseSessionResponse,
     CurrentModeUpdate,
+    EmbeddedResourceContentBlock,
+    ImageContentBlock,
     Implementation,
     PermissionOption,
+    PromptCapabilities,
     RequestPermissionResponse,
     ResourceContentBlock,
     ResumeSessionResponse,
@@ -48,10 +59,19 @@ from acp.schema import (
     SessionResumeCapabilities,
     SetSessionModeResponse,
     TextContentBlock,
+    TextResourceContents,
     ToolCallUpdate,
 )
 
 from ..._version import __version__
+from ...core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    PERMISSION_PROFILE_IDS,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+    migrate_legacy_full_access_fields,
+)
 from ...network.io.base import IO
 from .acp_events import (
     STREAMED_AGENT_EVENT_TYPES,
@@ -63,8 +83,11 @@ from .agent import GLOBAL_CO_DIR
 from .one_shot_sessions import (
     SessionLease,
     SessionSnapshotError,
+    SnapshotStorageLimits,
+    acquire_bounded_new_session_lease,
     acquire_session_lease,
     capture_tool_state,
+    discard_unpublished_session,
     load_snapshot,
     new_session_id,
     restore_tool_state,
@@ -79,6 +102,146 @@ PermissionRequester = Callable[
 ]
 ACP_EVENT_BUFFER_SIZE = 64
 logger = logging.getLogger(__name__)
+
+_UPLOAD_URI_SCHEME = "connectonion-upload"
+_MIME_TYPE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"
+)
+_IMAGE_MIME_TYPES = frozenset(
+    {"image/gif", "image/jpeg", "image/png", "image/webp"}
+)
+_UNSAFE_FILENAME_CHARACTER = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')
+_WINDOWS_DEVICE_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CLOCK$"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
+
+# cwd and redirect_stdout are process-global, so every ACP adapter in this
+# process must share one lock rather than protecting only itself.
+_PROCESS_CONTEXT_LOCK = threading.RLock()
+
+
+@dataclass(frozen=True)
+class _PromptInput:
+    text: str
+    images: tuple[str, ...] = ()
+    files: tuple[dict[str, str], ...] = ()
+    file_bytes: int = 0
+
+
+class _UploadQuotaReservation:
+    """Cross-process file lock held through one upload transaction."""
+
+    def __init__(self, handle: Any) -> None:
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        if handle is None:
+            return
+        self._handle = None
+        handle.close()
+
+
+class _BoundNetworkWorkspace:
+    """The exact directory object that existed when the network Host started."""
+
+    def __init__(self, path: Path, descriptor: int | None) -> None:
+        self.path = path
+        self._descriptor = descriptor
+        self._closed = False
+        stat_result = os.fstat(descriptor) if descriptor is not None else path.stat()
+        if stat_result.st_ino == 0:
+            raise RuntimeError("Network ACP requires a stable workspace identity")
+        self._identity = (stat_result.st_dev, stat_result.st_ino)
+
+    @property
+    def namespace_key(self) -> str:
+        """Private namespace input; the caller stores only its digest."""
+
+        return f"{self.path}\0{self._identity[0]}:{self._identity[1]}"
+
+    @contextmanager
+    def enter(self):
+        if self._closed:
+            raise RuntimeError("Network ACP workspace is closed")
+        if self._descriptor is not None and hasattr(os, "fchdir"):
+            flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                flags |= os.O_DIRECTORY
+            if hasattr(os, "O_CLOEXEC"):
+                flags |= os.O_CLOEXEC
+            previous = os.open(".", flags)
+            try:
+                os.fchdir(self._descriptor)
+                yield
+            finally:
+                os.fchdir(previous)
+                os.close(previous)
+            return
+
+        self._verify_path_identity()
+        previous_path = Path.cwd()
+        try:
+            os.chdir(self.path)
+            current = os.stat(".")
+            if (current.st_dev, current.st_ino) != self._identity:
+                raise RuntimeError("Network ACP workspace changed after Host startup")
+            yield
+        finally:
+            os.chdir(previous_path)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def close(self) -> None:
+        """Release the pinned directory handle once the Host has stopped."""
+
+        if self._closed:
+            return
+        self._closed = True
+        descriptor = self._descriptor
+        self._descriptor = None
+        if descriptor is not None:
+            os.close(descriptor)
+
+    def _verify_path_identity(self) -> None:
+        try:
+            current = self.path.stat()
+        except OSError:
+            raise RuntimeError("Network ACP workspace is no longer available") from None
+        if (current.st_dev, current.st_ino) != self._identity:
+            raise RuntimeError("Network ACP workspace changed after Host startup")
+
+
+def capture_network_workspace(path: Path) -> _BoundNetworkWorkspace:
+    """Bind the network workspace to a directory object, not a reusable path."""
+
+    resolved = Path(path).resolve(strict=True)
+    if not resolved.is_dir():
+        raise NotADirectoryError(resolved)
+    if not hasattr(os, "fchdir"):
+        return _BoundNetworkWorkspace(resolved, None)
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(resolved, flags)
+    try:
+        before = resolved.stat()
+        opened = os.fstat(descriptor)
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            raise RuntimeError("Network ACP workspace changed during Host startup")
+        return _BoundNetworkWorkspace(resolved, descriptor)
+    except BaseException:
+        os.close(descriptor)
+        raise
 
 _ACP_PERMISSION_OPTIONS = (
     PermissionOption(
@@ -100,23 +263,27 @@ _ACP_PERMISSION_OPTIONS = (
 
 _ACP_SESSION_MODES = (
     SessionMode(
-        id="safe",
-        name="Safe",
-        description="Ask before tools with side effects.",
+        id=READ_ONLY_PERMISSION_PROFILE,
+        name="Read only",
+        description="Read freely; ask before edits, commands, or broader access.",
     ),
     SessionMode(
-        id="accept_edits",
+        id=WORKSPACE_PERMISSION_PROFILE,
         name="Auto",
-        description="Apply file edits automatically; ask before other risky tools.",
+        description="Edit the workspace automatically; broader actions still ask.",
     ),
     SessionMode(
-        id="ulw",
-        name="ULW",
+        id=DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+        name="Full access",
         description="Run autonomously within the launch-time turn budget.",
     ),
 )
-_ACP_MODE_IDS = frozenset(mode.id for mode in _ACP_SESSION_MODES)
-_ULW_STATE_KEYS = ("skip_tool_approval", "ulw_turns", "ulw_turns_used")
+_ACP_MODE_IDS = PERMISSION_PROFILE_IDS
+_FULL_ACCESS_STATE_KEYS = (
+    "skip_tool_approval",
+    "full_access_turns",
+    "full_access_turns_used",
+)
 
 
 class _FailClosedACPInput(IO):
@@ -580,6 +747,7 @@ class _SessionRuntime:
     mcp_pool: Any | None = None
     prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     prompt_active: threading.Event = field(default_factory=threading.Event)
+    prompt_cancelled: threading.Event = field(default_factory=threading.Event)
     closing: threading.Event = field(default_factory=threading.Event)
     active_operation: asyncio.Task[Any] | None = None
     close_task: asyncio.Task[None] | None = None
@@ -597,6 +765,8 @@ class ConnectOnionACPAgent:
         yolo_turns: int,
         agent_factory: AgentFactory | None = None,
         session_co_dir: Path | None = None,
+        network_workspace: _BoundNetworkWorkspace | None = None,
+        input_limits: Mapping[str, int | float] | None = None,
         allow_mcp: bool = False,
         mcp_connector: MCPConnector | None = None,
     ) -> None:
@@ -606,13 +776,85 @@ class ConnectOnionACPAgent:
         self._yolo_turns = yolo_turns
         self._agent_factory = agent_factory
         self._session_co_dir = Path(session_co_dir or GLOBAL_CO_DIR)
+        self._network_workspace = network_workspace
+        from ...network.host.config import DEFAULT_FILE_LIMITS
+
+        limits = dict(DEFAULT_FILE_LIMITS)
+        if input_limits is not None:
+            limits.update(input_limits)
+        max_size_mb = limits.get("max_file_size")
+        max_count = limits.get("max_files_per_request")
+        max_storage_mb = limits.get("max_acp_upload_storage")
+        max_stored_files = limits.get("max_acp_upload_files")
+        max_sessions = limits.get("max_acp_sessions")
+        max_session_storage_mb = limits.get("max_acp_session_storage")
+        max_snapshot_mb = limits.get("max_acp_snapshot_size")
+        if (
+            isinstance(max_size_mb, bool)
+            or not isinstance(max_size_mb, (int, float))
+            or not math.isfinite(max_size_mb)
+            or max_size_mb <= 0
+            or isinstance(max_count, bool)
+            or not isinstance(max_count, int)
+            or max_count <= 0
+            or isinstance(max_storage_mb, bool)
+            or not isinstance(max_storage_mb, (int, float))
+            or not math.isfinite(max_storage_mb)
+            or max_storage_mb <= 0
+            or isinstance(max_stored_files, bool)
+            or not isinstance(max_stored_files, int)
+            or max_stored_files <= 0
+            or isinstance(max_sessions, bool)
+            or not isinstance(max_sessions, int)
+            or max_sessions <= 0
+            or isinstance(max_session_storage_mb, bool)
+            or not isinstance(max_session_storage_mb, (int, float))
+            or not math.isfinite(max_session_storage_mb)
+            or max_session_storage_mb <= 0
+            or isinstance(max_snapshot_mb, bool)
+            or not isinstance(max_snapshot_mb, (int, float))
+            or not math.isfinite(max_snapshot_mb)
+            or max_snapshot_mb <= 0
+        ):
+            raise ValueError("ACP storage and attachment limits must be positive numbers")
+        max_attachment_bytes = max_size_mb * 1024 * 1024
+        if not math.isfinite(max_attachment_bytes) or max_attachment_bytes < 1:
+            raise ValueError("ACP attachment size limit must be at least one byte")
+        self._max_attachment_bytes = int(max_attachment_bytes)
+        self._max_attachments = max_count
+        max_upload_storage_bytes = max_storage_mb * 1024 * 1024
+        if (
+            not math.isfinite(max_upload_storage_bytes)
+            or max_upload_storage_bytes < 1
+        ):
+            raise ValueError("ACP upload storage limit must be at least one byte")
+        self._max_upload_storage_bytes = int(max_upload_storage_bytes)
+        self._max_upload_files = max_stored_files
+        max_session_storage_bytes = max_session_storage_mb * 1024 * 1024
+        max_snapshot_bytes = max_snapshot_mb * 1024 * 1024
+        if (
+            not math.isfinite(max_session_storage_bytes)
+            or max_session_storage_bytes < 1
+            or not math.isfinite(max_snapshot_bytes)
+            or max_snapshot_bytes < 1
+            or max_snapshot_bytes > max_session_storage_bytes
+        ):
+            raise ValueError(
+                "ACP session storage limits must be at least one byte and consistent"
+            )
+        self._snapshot_storage_limits = (
+            SnapshotStorageLimits(
+                max_sessions=max_sessions,
+                max_total_bytes=int(max_session_storage_bytes),
+                max_snapshot_bytes=int(max_snapshot_bytes),
+            )
+            if network_workspace is not None
+            else None
+        )
         self._allow_mcp = allow_mcp
         self._mcp_connector = mcp_connector
         self._client: Client | None = None
         self._sessions: dict[str, _SessionRuntime] = {}
-        # cwd and redirect_stdout are process-global.  ACP request handlers stay
-        # asynchronous, while this lock makes those short global scopes explicit.
-        self._process_context_lock = threading.RLock()
 
     def on_connect(self, client: Client) -> None:
         self._client = client
@@ -633,6 +875,10 @@ class ConnectOnionACPAgent:
             protocol_version=selected_version,
             agent_capabilities=AgentCapabilities(
                 load_session=False,
+                prompt_capabilities=PromptCapabilities(
+                    image=True,
+                    embedded_context=True,
+                ),
                 session_capabilities=SessionCapabilities(
                     resume=SessionResumeCapabilities(),
                     close=SessionCloseCapabilities(),
@@ -654,7 +900,7 @@ class ConnectOnionACPAgent:
         **_kwargs: Any,
     ) -> NewSessionResponse:
         self._validate_session_inputs(additional_directories, mcp_servers)
-        project_dir = self._validate_cwd(cwd)
+        project_dir = self._session_cwd(cwd)
         session_id = new_session_id()
         acp_input = _ACPEventBridge(
             asyncio.get_running_loop(),
@@ -692,7 +938,7 @@ class ConnectOnionACPAgent:
         """Resume one persisted session without replaying its transcript."""
 
         self._validate_session_inputs(additional_directories, mcp_servers)
-        project_dir = self._validate_cwd(cwd)
+        project_dir = self._session_cwd(cwd)
         if session_id in self._sessions:
             raise RequestError(
                 -32000,
@@ -713,10 +959,11 @@ class ConnectOnionACPAgent:
                 mcp_servers or [],
             )
         except SessionSnapshotError as exc:
+            details = None if self._network_workspace is not None else str(exc)
             raise RequestError(
                 -32002,
                 "Unable to resume session",
-                {"details": str(exc)},
+                {"details": details} if details is not None else None,
             ) from None
         except Exception:
             logger.exception("Failed to resume co ai ACP session")
@@ -742,13 +989,15 @@ class ConnectOnionACPAgent:
                 "Session not found",
                 {"sessionId": session_id},
             )
-        if mode_id not in _ACP_MODE_IDS:
+        try:
+            mode_id = legacy_permission_profile_id(mode_id)
+        except ValueError:
             raise RequestError.invalid_params(
                 {"details": "Unsupported session mode"}
-            )
-        if mode_id == "ulw" and not self._yolo:
+            ) from None
+        if mode_id == DANGER_FULL_ACCESS_PERMISSION_PROFILE and not self._yolo:
             raise RequestError.invalid_params(
-                {"details": "ULW mode was not authorized when ACP started"}
+                {"details": "Full access mode was not authorized when ACP started"}
             )
         if runtime.prompt_lock.locked() or runtime.prompt_active.is_set():
             raise RequestError(
@@ -833,7 +1082,7 @@ class ConnectOnionACPAgent:
                 {"sessionId": session_id},
             )
 
-        prompt_text = self._prompt_text(prompt)
+        prompt_input = self._parse_prompt(prompt)
         async with runtime.prompt_lock:
             if (
                 runtime.closing.is_set()
@@ -848,17 +1097,48 @@ class ConnectOnionACPAgent:
                 raise RequestError.internal_error(
                     {"details": "ACP client connection is not available"}
                 )
-            generation, generation_io = runtime.acp_input.begin_turn()
-            runtime.agent.io = generation_io
+            runtime.prompt_cancelled.clear()
             runtime.prompt_active.set()
-            worker = asyncio.create_task(
-                asyncio.to_thread(
-                    self._run_prompt_generation,
-                    runtime,
-                    generation,
-                    prompt_text,
+            try:
+                upload_reservation = await self._acquire_network_upload_reservation(
+                    prompt_input
                 )
-            )
+            except BaseException:
+                runtime.prompt_active.clear()
+                raise
+            if runtime.prompt_cancelled.is_set() or runtime.closing.is_set():
+                if upload_reservation is not None:
+                    upload_reservation.release()
+                runtime.prompt_active.clear()
+                return PromptResponse(stop_reason="cancelled")
+            generation: _TurnGeneration | None = None
+            try:
+                trace_start = self._trace_length(runtime.agent)
+                generation, generation_io = runtime.acp_input.begin_turn()
+                if runtime.prompt_cancelled.is_set() or runtime.closing.is_set():
+                    runtime.acp_input.retire_turn(generation)
+                    if upload_reservation is not None:
+                        upload_reservation.release()
+                    runtime.prompt_active.clear()
+                    return PromptResponse(stop_reason="cancelled")
+                runtime.agent.io = generation_io
+                worker = asyncio.create_task(
+                    asyncio.to_thread(
+                        self._run_prompt_generation,
+                        runtime,
+                        generation,
+                        prompt_input,
+                        trace_start,
+                        upload_reservation,
+                    )
+                )
+            except BaseException:
+                if generation is not None:
+                    runtime.acp_input.retire_turn(generation)
+                runtime.prompt_active.clear()
+                if upload_reservation is not None:
+                    upload_reservation.release()
+                raise
             operation: asyncio.Task[Any] | None = worker
             commit: asyncio.Task[Any] | None = None
             runtime.active_operation = worker
@@ -896,6 +1176,7 @@ class ConnectOnionACPAgent:
                             current_mode_update,
                         )
                 else:
+                    self._remove_failed_turn_uploads(runtime.agent, trace_start)
                     operation = asyncio.create_task(
                         asyncio.to_thread(self._restore_runtime, runtime)
                     )
@@ -914,6 +1195,7 @@ class ConnectOnionACPAgent:
                 # the successful transaction back. Before that point, restore
                 # the previous checkpoint.
                 if commit is None or not self._task_succeeded(commit):
+                    self._remove_failed_turn_uploads(runtime.agent, trace_start)
                     await self._restore_after_failure(runtime)
                 runtime.active_operation = None
                 raise
@@ -922,6 +1204,8 @@ class ConnectOnionACPAgent:
                 runtime.acp_input.retire_turn(generation)
                 if operation is not None:
                     await self._settle_owned_task(operation)
+                if commit is None or not self._task_succeeded(commit):
+                    self._remove_failed_turn_uploads(runtime.agent, trace_start)
                 await self._restore_after_failure(runtime)
                 runtime.active_operation = None
                 logger.exception("co ai ACP prompt failed for session %s", session_id)
@@ -929,6 +1213,9 @@ class ConnectOnionACPAgent:
                     -32603,
                     "co ai prompt failed",
                 ) from None
+            finally:
+                if upload_reservation is not None:
+                    upload_reservation.release()
             return PromptResponse(
                 stop_reason=terminal.stop_reason,
                 usage=terminal.usage,
@@ -939,6 +1226,7 @@ class ConnectOnionACPAgent:
 
         runtime = self._sessions.get(session_id)
         if runtime is not None and runtime.prompt_active.is_set():
+            runtime.prompt_cancelled.set()
             runtime.acp_input.interrupt()
 
     async def _request_permission(
@@ -979,22 +1267,6 @@ class ConnectOnionACPAgent:
         for close_task in close_tasks:
             await self._settle_owned_task(close_task)
 
-    async def _construct_runtime(
-        self,
-        constructor: Callable[..., _SessionRuntime],
-        *args: Any,
-    ) -> _SessionRuntime:
-        """Finish threaded construction even if its ACP request is cancelled."""
-
-        construction = asyncio.create_task(asyncio.to_thread(constructor, *args))
-        try:
-            return await asyncio.shield(construction)
-        except asyncio.CancelledError:
-            await self._settle_owned_task(construction)
-            if self._task_succeeded(construction):
-                construction.result().session_lease.close()
-            raise
-
     async def _construct_session_runtime(
         self,
         project_dir: Path,
@@ -1013,20 +1285,33 @@ class ConnectOnionACPAgent:
         mcp_pool = None
         try:
             mcp_pool = await self._connect_mcp_servers(mcp_servers, project_dir)
-            runtime = await self._construct_runtime(
-                self._open_session_runtime,
-                project_dir,
-                acp_input,
-                session_id,
-                list(mcp_pool.tools) if mcp_pool is not None else [],
-                ownership,
+            construction = asyncio.create_task(
+                asyncio.to_thread(
+                    self._open_session_runtime,
+                    project_dir,
+                    acp_input,
+                    session_id,
+                    list(mcp_pool.tools) if mcp_pool is not None else [],
+                    ownership,
+                )
             )
+            try:
+                runtime = await asyncio.shield(construction)
+            except asyncio.CancelledError:
+                await self._settle_owned_task(construction)
+                raise
         except BaseException:
             try:
                 if mcp_pool is not None:
                     await mcp_pool.close()
             finally:
-                ownership.lease.close()
+                if not resume and self._snapshot_storage_limits is not None:
+                    await self._settle_unpublished_session_cleanup(
+                        session_id,
+                        ownership.lease,
+                    )
+                else:
+                    ownership.lease.close()
             raise
         runtime.mcp_pool = mcp_pool
         return runtime
@@ -1052,7 +1337,14 @@ class ConnectOnionACPAgent:
         except asyncio.CancelledError:
             await self._settle_owned_task(acquisition)
             if self._task_succeeded(acquisition):
-                acquisition.result().lease.close()
+                ownership = acquisition.result()
+                if not resume and self._snapshot_storage_limits is not None:
+                    await self._settle_unpublished_session_cleanup(
+                        session_id,
+                        ownership.lease,
+                    )
+                else:
+                    ownership.lease.close()
             raise
 
     def _load_owned_session(
@@ -1061,19 +1353,52 @@ class ConnectOnionACPAgent:
         session_id: str,
         resume: bool,
     ) -> _SessionOwnership:
-        lease = acquire_session_lease(self._session_co_dir, session_id)
+        # A remote caller can supply arbitrary resume IDs. Confirm a bounded,
+        # existing snapshot before creating its per-session lease file, then
+        # reload after acquiring ownership so a live writer cannot race resume.
+        # New network sessions reserve their lease under the principal quota
+        # lock so simultaneous admissions cannot make every contender fail.
+        if resume and self._snapshot_storage_limits is not None:
+            load_snapshot(
+                self._session_co_dir,
+                session_id,
+                **self._snapshot_location(project_dir),
+                storage_limits=self._snapshot_storage_limits,
+            )
+        if not resume and self._snapshot_storage_limits is not None:
+            lease = acquire_bounded_new_session_lease(
+                self._session_co_dir,
+                session_id,
+                self._snapshot_storage_limits,
+            )
+        else:
+            lease = acquire_session_lease(self._session_co_dir, session_id)
         try:
             if resume:
                 session, tools = load_snapshot(
                     self._session_co_dir,
                     session_id,
-                    cwd=project_dir,
+                    **self._snapshot_location(project_dir),
+                    storage_limits=self._snapshot_storage_limits,
                 )
             else:
                 session, tools = None, {}
             return _SessionOwnership(lease, session, tools)
         except BaseException:
-            lease.close()
+            if not resume and self._snapshot_storage_limits is not None:
+                try:
+                    discard_unpublished_session(
+                        self._session_co_dir,
+                        session_id,
+                        lease,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Unable to remove failed ACP session admission",
+                        exc_info=True,
+                    )
+            else:
+                lease.close()
             raise
 
     async def _connect_mcp_servers(
@@ -1130,6 +1455,14 @@ class ConnectOnionACPAgent:
                 yolo_turns=self._yolo_turns,
                 resumable=True,
             )
+        if self._network_workspace is not None:
+            # Keep files from one authenticated network principal in the same
+            # private namespace as that principal's durable ACP sessions.
+            private_upload_dir = self._session_co_dir / "uploads"
+            private_upload_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if os.name != "nt":
+                os.chmod(private_upload_dir, 0o700)
+            agent._upload_dir = private_upload_dir
         # A missing IO currently means "skip approvals". Keep construction
         # fail-closed; live ACP sessions install their generation-bound bridge.
         agent.io = acp_input or _FailClosedACPInput()
@@ -1159,7 +1492,7 @@ class ConnectOnionACPAgent:
                 session = self._normalized_session_mode(session)
             if hasattr(agent, "_yolo_turns"):
                 # In ACP, --yolo is an authority ceiling rather than a request
-                # to re-arm ULW before every input. The persisted session below
+                # to re-arm Full access before every input. The persisted session below
                 # already carries the exact current mode and bounded budget.
                 agent._yolo_turns = None
             if hasattr(agent, "_yolo_needs_activation"):
@@ -1171,7 +1504,8 @@ class ConnectOnionACPAgent:
                     self._session_co_dir,
                     session,
                     normalized_tools,
-                    cwd=project_dir,
+                    **self._snapshot_location(project_dir),
+                    storage_limits=self._snapshot_storage_limits,
                 )
             return _SessionRuntime(
                 session_id=session_id,
@@ -1209,7 +1543,8 @@ class ConnectOnionACPAgent:
             self._session_co_dir,
             persistent_session,
             tools,
-            cwd=runtime.cwd,
+            **self._snapshot_location(runtime.cwd),
+            storage_limits=self._snapshot_storage_limits,
         )
         # os.replace inside save_snapshot is the final fallible commit step.
         # These reference assignments cannot split the durable snapshot from
@@ -1290,11 +1625,11 @@ class ConnectOnionACPAgent:
             }],
             "trace": [],
             "turn": 0,
-            "mode": "safe",
+            "mode": READ_ONLY_PERMISSION_PROFILE,
             "plan": [],
         }
         if self._yolo:
-            self._apply_mode(session, "ulw")
+            self._apply_mode(session, DANGER_FULL_ACCESS_PERMISSION_PROFILE)
         return self._normalized_session_mode(session)
 
     def _session_mode_state(self, runtime: _SessionRuntime) -> SessionModeState:
@@ -1311,16 +1646,20 @@ class ConnectOnionACPAgent:
         """Validate persisted authority-bearing mode state fail closed."""
 
         normalized = copy.deepcopy(session)
-        mode = normalized.get("mode", "safe")
-        if not isinstance(mode, str) or mode not in _ACP_MODE_IDS:
+        migrate_legacy_full_access_fields(normalized)
+        try:
+            mode = legacy_permission_profile_id(
+                normalized.get("mode", READ_ONLY_PERMISSION_PROFILE)
+            )
+        except ValueError:
             raise SessionSnapshotError("Session has an unsupported mode.")
-        if mode == "ulw":
+        if mode == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
             if not self._yolo:
                 raise SessionSnapshotError(
-                    "Session requires ULW launch authority."
+                    "Session requires Full access launch authority."
                 )
-            turns = normalized.get("ulw_turns")
-            turns_used = normalized.get("ulw_turns_used")
+            turns = normalized.get("full_access_turns")
+            turns_used = normalized.get("full_access_turns_used")
             if (
                 isinstance(turns, bool)
                 or not isinstance(turns, int)
@@ -1335,21 +1674,21 @@ class ConnectOnionACPAgent:
                 or turns - turns_used > self._yolo_turns
                 or normalized.get("skip_tool_approval") is not True
             ):
-                raise SessionSnapshotError("Session has invalid ULW state.")
-        elif any(key in normalized for key in _ULW_STATE_KEYS):
+                raise SessionSnapshotError("Session has invalid Full access state.")
+        elif any(key in normalized for key in _FULL_ACCESS_STATE_KEYS):
             raise SessionSnapshotError(
-                "Session has ULW authority outside ULW mode."
+                "Session has Full access authority outside Full access mode."
             )
         normalized["mode"] = mode
         return normalized
 
     def _apply_mode(self, session: dict[str, Any], mode: str) -> None:
-        for key in _ULW_STATE_KEYS:
+        for key in _FULL_ACCESS_STATE_KEYS:
             session.pop(key, None)
         session["mode"] = mode
-        if mode == "ulw":
-            session["ulw_turns"] = self._yolo_turns
-            session["ulw_turns_used"] = 0
+        if mode == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
+            session["full_access_turns"] = self._yolo_turns
+            session["full_access_turns_used"] = 0
             session["skip_tool_approval"] = True
 
     def _commit_mode(self, runtime: _SessionRuntime, mode: str) -> None:
@@ -1372,7 +1711,8 @@ class ConnectOnionACPAgent:
             self._session_co_dir,
             session,
             tools,
-            cwd=runtime.cwd,
+            **self._snapshot_location(runtime.cwd),
+            storage_limits=self._snapshot_storage_limits,
         )
         runtime.agent.current_session = agent_session
         runtime.last_good_session = last_good_session
@@ -1410,13 +1750,14 @@ class ConnectOnionACPAgent:
         self,
         runtime: _SessionRuntime,
         generation: _TurnGeneration,
-        prompt: str,
+        prompt: _PromptInput,
+        trace_start: int,
+        upload_reservation: _UploadQuotaReservation | None,
     ) -> None:
         result = None
         error = None
-        trace_start = self._trace_length(runtime.agent)
         try:
-            result = self._run_prompt(runtime, prompt)
+            result = self._run_prompt(runtime, prompt, upload_reservation)
         except BaseException as exc:
             error = exc
         finally:
@@ -1532,6 +1873,33 @@ class ConnectOnionACPAgent:
             task.result()
         return cancelled
 
+    async def _settle_unpublished_session_cleanup(
+        self,
+        session_id: str,
+        lease: SessionLease,
+    ) -> None:
+        """Finish blocking unpublished-state cleanup without stalling the loop."""
+
+        cleanup = asyncio.create_task(
+            asyncio.to_thread(
+                discard_unpublished_session,
+                self._session_co_dir,
+                session_id,
+                lease,
+            )
+        )
+        await self._settle_owned_task(cleanup)
+        if cleanup.cancelled() or cleanup.exception() is None:
+            return
+        error = cleanup.exception()
+        assert error is not None
+        # Preserve the request's original failure or cancellation. An orphaned
+        # canonical lease ID still consumes quota and therefore fails closed.
+        logger.warning(
+            "Unable to remove unpublished ACP session state",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+
     @staticmethod
     def _task_succeeded(task: asyncio.Task[Any]) -> bool:
         return task.done() and not task.cancelled() and task.exception() is None
@@ -1571,23 +1939,159 @@ class ConnectOnionACPAgent:
                 return entry
         return None
 
-    def _run_prompt(self, runtime: _SessionRuntime, prompt: str) -> Any:
+    def _run_prompt(
+        self,
+        runtime: _SessionRuntime,
+        prompt: _PromptInput,
+        upload_reservation: _UploadQuotaReservation | None,
+    ) -> Any:
         try:
             session = runtime.session_for_next_prompt
             runtime.session_for_next_prompt = None
+            attachments: dict[str, Any] = {}
+            if prompt.images:
+                attachments["images"] = list(prompt.images)
+            if prompt.files:
+                attachments["files"] = [dict(file) for file in prompt.files]
+            if upload_reservation is not None:
+                attachments["_upload_reservation"] = upload_reservation
             with self._process_context(runtime.cwd):
                 if session is None:
-                    return runtime.agent.input(prompt)
+                    return runtime.agent.input(prompt.text, **attachments)
                 return runtime.agent.input(
-                    prompt,
+                    prompt.text,
                     session=copy.deepcopy(session),
+                    **attachments,
                 )
         finally:
             runtime.prompt_active.clear()
 
+    @staticmethod
+    def _remove_failed_turn_uploads(agent: Any, trace_start: int) -> None:
+        """Remove files written by an ACP turn that will be rolled back."""
+
+        session = getattr(agent, "current_session", None)
+        trace = session.get("trace") if isinstance(session, dict) else None
+        agent_logger = getattr(agent, "logger", None)
+        logger_co_dir = getattr(agent_logger, "co_dir", None)
+        upload_dir_value = getattr(agent, "_upload_dir", None)
+        if upload_dir_value is None and logger_co_dir is not None:
+            upload_dir_value = Path(logger_co_dir) / "uploads"
+        if not isinstance(trace, list) or upload_dir_value is None:
+            return
+        upload_dir = Path(upload_dir_value).resolve()
+        for event in trace[trace_start:]:
+            if not isinstance(event, dict) or event.get("type") != "files_received":
+                continue
+            for item in event.get("files", []):
+                path_value = item.get("path") if isinstance(item, dict) else None
+                if not isinstance(path_value, str):
+                    continue
+                path = Path(path_value)
+                try:
+                    if path.parent.resolve() == upload_dir:
+                        path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning(
+                        "Unable to remove rolled-back ACP upload %s",
+                        path.name,
+                    )
+
+    def _reserve_network_uploads(
+        self,
+        prompt: _PromptInput,
+    ) -> _UploadQuotaReservation | None:
+        """Atomically bound retained files across this principal's sessions."""
+
+        if self._network_workspace is None or not prompt.files:
+            return None
+        upload_dir = self._session_co_dir / "uploads"
+        flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_path = self._session_co_dir / "uploads.lock"
+        try:
+            descriptor = os.open(lock_path, flags, 0o600)
+        except OSError:
+            raise RequestError.internal_error(
+                {"details": "ACP upload storage is unavailable"}
+            ) from None
+        try:
+            handle = os.fdopen(descriptor, "a+b")
+            descriptor = -1
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise OSError("ACP upload lock is not a regular file")
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o600)
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            stored_bytes = 0
+            stored_files = 0
+            for entry in os.scandir(upload_dir):
+                try:
+                    entry_stat = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    # Failed-turn rollback can only reduce quota usage. If it
+                    # removes an entry returned by scandir, skip that stale view.
+                    continue
+                if not stat.S_ISREG(entry_stat.st_mode):
+                    raise OSError("unexpected ACP upload entry")
+                stored_bytes += entry_stat.st_size
+                stored_files += 1
+            requested_files = len(prompt.files)
+            if (
+                stored_bytes + prompt.file_bytes > self._max_upload_storage_bytes
+                or stored_files + requested_files > self._max_upload_files
+            ):
+                raise RequestError.invalid_params(
+                    {"details": "ACP upload storage quota exceeded"}
+                )
+            return _UploadQuotaReservation(handle)
+        except BaseException as exc:
+            if descriptor >= 0:
+                os.close(descriptor)
+            else:
+                handle.close()
+            if isinstance(exc, OSError):
+                raise RequestError.internal_error(
+                    {"details": "ACP upload storage is unavailable"}
+                ) from None
+            raise
+
+    async def _acquire_network_upload_reservation(
+        self,
+        prompt: _PromptInput,
+    ) -> _UploadQuotaReservation | None:
+        """Wait for the cross-process quota lock without blocking the event loop."""
+
+        acquisition = asyncio.create_task(
+            asyncio.to_thread(self._reserve_network_uploads, prompt)
+        )
+        try:
+            return await asyncio.shield(acquisition)
+        except asyncio.CancelledError:
+            await self._settle_owned_task(acquisition)
+            if self._task_succeeded(acquisition):
+                reservation = acquisition.result()
+                if reservation is not None:
+                    reservation.release()
+            raise
+
     @contextmanager
     def _process_context(self, cwd: Path):
-        with self._process_context_lock:
+        with _PROCESS_CONTEXT_LOCK:
+            if self._network_workspace is not None:
+                with self._network_workspace.enter():
+                    with redirect_stdout(sys.stderr):
+                        yield
+                return
             previous_cwd = Path.cwd()
             try:
                 os.chdir(cwd)
@@ -1615,12 +2119,65 @@ class ConnectOnionACPAgent:
             )
         return resolved
 
-    @staticmethod
-    def _prompt_text(prompt: list[Any]) -> str:
+    def _session_cwd(self, cwd: str) -> Path:
+        """Resolve local stdio paths or the network-only virtual root."""
+
+        if self._network_workspace is None:
+            return self._validate_cwd(cwd)
+        if cwd != "/":
+            raise RequestError.invalid_params(
+                {"details": "network ACP cwd must be the virtual workspace root /"}
+            )
+        return self._network_workspace.path
+
+    def _snapshot_location(self, cwd: Path) -> dict[str, Path | str]:
+        """Keep network persistence on an opaque virtual path."""
+
+        if self._network_workspace is not None:
+            return {"virtual_cwd": "/"}
+        return {"cwd": cwd}
+
+    def _parse_prompt(self, prompt: list[Any]) -> _PromptInput:
         parts: list[str] = []
+        images: list[str] = []
+        files: list[dict[str, str]] = []
+        file_bytes = 0
         for block in prompt:
             if isinstance(block, TextContentBlock):
                 parts.append(block.text)
+                continue
+            if isinstance(block, ImageContentBlock):
+                self._check_attachment_count(len(images) + len(files) + 1)
+                mime_type = self._image_mime_type(block.mime_type)
+                data, _decoded_size = self._decode_attachment(block.data, "image")
+                images.append(f"data:{mime_type};base64,{data}")
+                continue
+            if isinstance(block, EmbeddedResourceContentBlock):
+                self._check_attachment_count(len(images) + len(files) + 1)
+                resource = block.resource
+                name = self._upload_name(resource.uri)
+                mime_type = self._resource_mime_type(resource.mime_type)
+                if isinstance(resource, TextResourceContents):
+                    raw_data = resource.text.encode("utf-8")
+                    self._check_attachment_size(len(raw_data), "file")
+                    encoded = base64.b64encode(raw_data).decode("ascii")
+                    decoded_size = len(raw_data)
+                elif isinstance(resource, BlobResourceContents):
+                    encoded, decoded_size = self._decode_attachment(
+                        resource.blob,
+                        "file",
+                    )
+                else:  # The official discriminated model should make this unreachable.
+                    raise RequestError.invalid_params(
+                        {"details": "Unsupported ACP embedded resource"}
+                    )
+                files.append(
+                    {
+                        "name": name,
+                        "data": f"data:{mime_type};base64,{encoded}",
+                    }
+                )
+                file_bytes += decoded_size
                 continue
             if isinstance(block, ResourceContentBlock):
                 label = block.title or block.name
@@ -1629,7 +2186,124 @@ class ConnectOnionACPAgent:
             raise RequestError.invalid_params(
                 {"details": f"Unsupported ACP content block: {type(block).__name__}"}
             )
-        return "\n\n".join(parts)
+        return _PromptInput(
+            text="\n\n".join(parts),
+            images=tuple(images),
+            files=tuple(files),
+            file_bytes=file_bytes,
+        )
+
+    def _check_attachment_count(self, count: int) -> None:
+        if count > self._max_attachments:
+            raise RequestError.invalid_params(
+                {"details": "Too many ACP prompt attachments"}
+            )
+
+    def _decode_attachment(self, value: str, kind: str) -> tuple[str, int]:
+        encoded_limit = ((self._max_attachment_bytes + 2) // 3) * 4
+        if len(value) > encoded_limit:
+            raise RequestError.invalid_params(
+                {"details": f"ACP {kind} exceeds the configured size limit"}
+            )
+        try:
+            decoded = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError):
+            raise RequestError.invalid_params(
+                {"details": f"ACP {kind} is not valid base64"}
+            ) from None
+        self._check_attachment_size(len(decoded), kind)
+        return value, len(decoded)
+
+    def _check_attachment_size(self, size: int, kind: str) -> None:
+        if size > self._max_attachment_bytes:
+            raise RequestError.invalid_params(
+                {"details": f"ACP {kind} exceeds the configured size limit"}
+            )
+
+    @staticmethod
+    def _image_mime_type(value: str) -> str:
+        mime_type = value.lower()
+        if mime_type not in _IMAGE_MIME_TYPES:
+            raise RequestError.invalid_params(
+                {"details": "Unsupported ACP image MIME type"}
+            )
+        return mime_type
+
+    @staticmethod
+    def _resource_mime_type(value: str | None) -> str:
+        mime_type = (value or "application/octet-stream").lower()
+        if len(mime_type) > 127 or _MIME_TYPE.fullmatch(mime_type) is None:
+            raise RequestError.invalid_params(
+                {"details": "Unsupported ACP file MIME type"}
+            )
+        return mime_type
+
+    @staticmethod
+    def _upload_name(uri: str) -> str:
+        parsed = urlsplit(uri)
+        if (
+            parsed.scheme != _UPLOAD_URI_SCHEME
+            or parsed.netloc
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.startswith("/")
+            or parsed.path == "/"
+        ):
+            raise RequestError.invalid_params(
+                {"details": "ACP file must use a connectonion-upload URI"}
+            )
+        encoded_name = parsed.path[1:]
+        if re.search(r"%(?![0-9A-Fa-f]{2})", encoded_name):
+            raise RequestError.invalid_params(
+                {"details": "ACP upload filename is malformed"}
+            )
+        try:
+            name = unquote_to_bytes(encoded_name).decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            raise RequestError.invalid_params(
+                {"details": "ACP upload filename is not valid UTF-8"}
+            ) from None
+        if (
+            not name
+            or name in {".", ".."}
+            or name[-1] in {" ", "."}
+            or _UNSAFE_FILENAME_CHARACTER.search(name) is not None
+            or any(
+                unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+                for character in name
+            )
+            or name.split(".", 1)[0].upper() in _WINDOWS_DEVICE_NAMES
+            or len(name.encode("utf-8")) > 255
+        ):
+            raise RequestError.invalid_params(
+                {"details": "ACP upload filename is unsafe"}
+            )
+        return name
+
+
+def create_acp_agent(
+    *,
+    model: str,
+    max_iterations: int,
+    yolo: bool,
+    yolo_turns: int,
+    session_co_dir: Path | None = None,
+    network_workspace: _BoundNetworkWorkspace | None = None,
+    input_limits: Mapping[str, int | float] | None = None,
+    allow_mcp: bool = False,
+) -> ConnectOnionACPAgent:
+    """Build the shared ACP lifecycle adapter for stdio or network transport."""
+
+    return ConnectOnionACPAgent(
+        model=model,
+        max_iterations=max_iterations,
+        yolo=yolo,
+        yolo_turns=yolo_turns,
+        session_co_dir=session_co_dir,
+        network_workspace=network_workspace,
+        input_limits=input_limits,
+        allow_mcp=allow_mcp,
+    )
 
 
 async def serve_acp(
@@ -1643,7 +2317,7 @@ async def serve_acp(
     """Serve ``co ai`` as an ACP v1 Agent until the client closes stdin."""
 
     transport = await open_stdio_transport()
-    agent = ConnectOnionACPAgent(
+    agent = create_acp_agent(
         model=model,
         max_iterations=max_iterations,
         yolo=yolo,
