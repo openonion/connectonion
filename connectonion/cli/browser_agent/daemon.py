@@ -1,11 +1,11 @@
 """
 Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI requests to it over the platform transport (POSIX Unix socket / Windows named pipe), arbitrating concurrent agents through per-tab ownership.
 LLM-Note:
-  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.agent (resolve_api_key, build_browser_agent), browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: client sends wire-v1 JSON {v,caller,account,tab,line} (or a legacy plain line) → page verbs stay shared; model-backed `do` runs only when both public account addresses are present and equal (legacy/missing/mismatched payer data fails closed) → reply includes process exit code (2 usage, 3 unknown tab, 4 busy, 5 payer mismatch)
   State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds the endpoint at default_sock_path() via `transport` — POSIX: a raw AF_UNIX socket (unchanged); Windows: a native named pipe (multiprocessing.connection) with an HMAC authkey — under a lifetime OS lock (transport.lock_path: fcntl.flock POSIX / msvcrt Windows, released by the OS on any death, so simultaneous cold-starts can't both bind) and records its owner pid in transport.pid_path so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes the listener (POSIX also unlinks the socket) + pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the endpoint) when browser._context_is_alive() goes false or _launch_failed()
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
-  Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
+  Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` no longer runs here — the NL agent is a CLIENT (cli/browser_agent/nl_client.py) that sends one ordinary verb per tool call, so its model latency holds nothing and other callers interleave between its steps (#933); the trade-off is that a `do` run is no longer atomic, which is what makes the per-tab claim load-bearing rather than advisory | tab lifecycle/status verbs never launch Chrome
   Errors: dispatch/handler exceptions are caught at the request boundary in serve() and returned to THAT client (never unwind the loop and kill the shared browser) | a client that vanishes mid-reply is logged to ~/.co/browser.log, not fatal | bind race with a second daemon → loser exits
 """
 
@@ -27,7 +27,7 @@ from connectonion.useful_tools.browser_tools import BrowserAutomation
 from connectonion.useful_tools.browser_tools.browser import (
     driver_stealth_status, installed_browser_path,
 )
-from .agent import resolve_api_key, build_browser_agent
+# The NL agent moved to the client (#933); nothing here builds one any more.
 from . import transport
 
 
@@ -638,15 +638,23 @@ class BrowserDaemon:
         return True, f"Closed tab {_tab_label(key)}. {message}"
 
     def _run_nl(self, command: str) -> tuple:
-        """Hand the command to the NL agent driving the same live browser."""
-        api_key = resolve_api_key()
-        if not api_key:
-            return False, "Browser agent requires authentication. Run: co auth"
-        try:
-            result = build_browser_agent(self.browser, api_key).input(command)
-        except Exception as exc:
-            return False, f"{type(exc).__name__}: {exc}"
-        return True, _stringify(result)
+        """`do` is a client-side agent now; this daemon no longer runs the loop.
+
+        It used to: `.input(command)` ran up to 200 steps -- each one an LLM call
+        -- inside this single request, and serve() is serial, so no other caller
+        was served for the whole run. Three sessions were starved for ~40 minutes
+        by one such run while the browser sat idle (#933).
+
+        The verb still exists here only to tell an old client where the agent
+        went. A new client never sends `do` over the wire; it runs the loop in
+        its own process and sends the individual verbs.
+        """
+        return False, (
+            "`do` now runs in the calling process, not in the browser daemon, so "
+            "one agent run no longer blocks every other session (#933).\n"
+            "This client is older than the daemon it is talking to. Upgrade it:  "
+            "pip install -U connectonion"
+        )
 
     def serve(self):
         self._bind()

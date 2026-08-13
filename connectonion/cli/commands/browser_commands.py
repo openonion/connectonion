@@ -103,7 +103,17 @@ def handle_browser(args, headless: bool = False) -> int:
     if args[0] in ("help", "--list", "list"):  # after -t extraction: `-t x help` is still help
         print(USAGE + "\n\nFunctions:\n" + list_functions())
         return 0
-    code = send(shlex.join(args), headless=headless, tab=tab)
+    if args[0] == "do":
+        # The agent loop runs HERE, not in the daemon. Inside the daemon it was
+        # one request for the whole run -- up to 200 steps, each waiting on the
+        # model -- and serve() is serial, so nothing else was served until it
+        # finished (#933). Out here, each of its tool calls is an ordinary
+        # request the daemon can slot between other callers' work.
+        from ..browser_agent.nl_client import run as run_nl_agent
+
+        code = run_nl_agent(" ".join(args[1:]), tab=tab, headless=headless)
+    else:
+        code = send(shlex.join(args), headless=headless, tab=tab)
     if code == 0 and sys.stdout.isatty():
         print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)
     return code

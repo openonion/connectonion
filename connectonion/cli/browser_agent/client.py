@@ -181,6 +181,38 @@ def _ensure_browser_ready(line: str) -> bool:
     return True
 
 
+def run_verb(line: str, headless: bool = False, tab: str = None) -> str:
+    """Send one verb and return the daemon's reply text instead of printing it.
+
+    This is what makes the NL agent a *client* of the daemon rather than a
+    resident of it (#933). The agent needs each tool result back as a string to
+    feed its next turn; `send()` prints and returns an exit code, which is right
+    for a shell caller and useless to a caller that has to read the answer.
+
+    One request per tool call is the whole point: each is a short queue slot, so
+    other sessions interleave between the agent's steps instead of waiting out
+    its entire run.
+    """
+    # send() is the one place that knows the envelope, the transport, the
+    # cold-start provisioning and the old-daemon diagnostics. Reimplementing
+    # that here would mean two wire clients, and the one that drifts is the one
+    # nobody tests. So call it and capture what it writes.
+    #
+    # redirect_std*, not a patched builtins.print: patching the builtin would
+    # also swallow output from anything else running in this process, and the
+    # agent's own UI stream is running in it.
+    import contextlib
+    import io
+
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        exit_code = send(line, headless=headless, tab=tab)
+    body = out.getvalue().strip() or err.getvalue().strip()
+    if exit_code != 0 and not body:
+        body = f"command failed with exit code {exit_code}"
+    return body
+
+
 def send(line: str, headless: bool = False, tab: str = None,
          _provisioned: bool = False) -> int:
     """Send one request; print the reply; return the process exit code.

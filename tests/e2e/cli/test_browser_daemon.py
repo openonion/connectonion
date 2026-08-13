@@ -238,26 +238,28 @@ def test_dispatch_empty(tmp_path):
     assert ok == 2
 
 
-def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
-    """`do` must go to the NL agent, not function dispatch."""
-    captured = {}
+def test_dispatch_do_tells_an_old_client_where_the_agent_went(tmp_path, monkeypatch):
+    """`do` over the wire is an upgrade prompt now, not an agent run.
 
-    class FakeAgent:
-        def input(self, command):
-            captured["command"] = command
-            return "agent says hi"
+    This test used to assert the opposite -- that dispatch built an Agent and
+    ran its loop right here. That is the #933 defect: the loop held the single
+    execution lane for its whole run, up to 200 model calls, while every other
+    caller waited and the browser sat idle.
 
-    monkeypatch.setattr(d, "resolve_api_key", lambda: "key")
-    monkeypatch.setattr(d, "build_browser_agent", lambda browser, key: FakeAgent())
+    A current client never sends `do`; it runs the loop in its own process and
+    sends the individual verbs. Only an older client still sends it, so the
+    reply's job is to say so rather than to fail obscurely.
+    """
     monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
 
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch(_env(
         "do find the cheapest flight", account="0xsame-account"
     ))
-    assert ok is True
-    assert payload == "agent says hi"
-    assert captured["command"] == "find the cheapest flight"
+    assert ok is False
+    assert "runs in the calling process" in payload
+    assert "pip install -U connectonion" in payload, (
+        "an old client has to be told what to do about it")
 
 
 # ---- status + tab accountability ----------------------------------------
@@ -575,7 +577,14 @@ def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypat
     assert daemon.browser.calls == [("go_to", "example.com")]
 
 
-def test_do_runs_when_caller_and_daemon_accounts_match(tmp_path, monkeypatch):
+def test_do_passes_the_payer_check_before_reaching_the_agent(tmp_path, monkeypatch):
+    """A matching payer still gets past the billing gate.
+
+    What lies beyond it changed with #933 -- the daemon answers with the
+    upgrade notice instead of running a loop -- but the gate itself must keep
+    letting a matching account through, or the mismatch tests below would pass
+    for the wrong reason.
+    """
     daemon = make_daemon(str(tmp_path / "s.sock"))
     daemon._run_nl = Mock(return_value=(True, "done"))
     monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
@@ -1224,3 +1233,126 @@ def test_duration_parsing():
     assert d._parse_duration("90") == 90
     assert d._parse_duration("") == 0
     assert d._parse_duration("garbage") == 0
+
+
+
+# ---- #933: a long `do` must not hold the lane for its whole agent loop -----
+
+def _tool_call(name, arguments):
+    from connectonion.core.llm import ToolCall
+
+    return ToolCall(name=name, arguments=arguments, id=f"call_{name}")
+
+
+def _llm_response(content=None, tool_calls=()):
+    from connectonion.core.llm import LLMResponse
+    from connectonion.core.usage import TokenUsage
+
+    # A real usage object: the console logs every response and reads fields off
+    # it, so None here fails in the logger rather than in the code under test.
+    return LLMResponse(content=content, tool_calls=list(tool_calls),
+                       raw_response=None, usage=TokenUsage())
+
+def test_a_running_do_does_not_block_another_clients_verb(short_sock, monkeypatch):
+    """The property the #933 fix has to deliver.
+
+    `do` used to run its whole agent loop -- up to 200 steps, each an LLM call
+    -- inside ONE daemon request. serve() is strictly serial, so no other caller
+    was served until the entire run finished; three sessions were starved for
+    ~40 minutes by one run while the browser itself sat idle.
+
+    So this drives the real `do` entry point with a model that is slow and a
+    tool call that is real, and asserts that an ordinary verb from a second
+    caller completes *while the agent is still thinking*. It is the thinking
+    time that used to be stolen, so that is the moment the second client has to
+    get through.
+
+    Before the fix the loop runs inside the daemon and the second client cannot
+    be answered at all; the assertion below is what fails.
+    """
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    daemon = make_daemon(short_sock)
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(short_sock)
+
+    c.send("tab open agenttab --who runner --for 'long run'", headless=True)
+    c.send("tab open peertab --who peer --for 'ordinary verb'", headless=True)
+
+    thinking = threading.Event()
+    release = threading.Event()
+    calls = {"n": 0}
+
+    class SlowModel:
+        """One tool call, then a long think, then finish.
+
+        The pause stands in for model latency, which is where a real run spends
+        nearly all of its time and holds nothing it needs.
+        """
+        model = "fake"
+
+        def complete(self, messages, tools=None, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _llm_response(tool_calls=[_tool_call("get_current_url", {})])
+            thinking.set()
+            release.wait(timeout=30)
+            return _llm_response(content="finished")
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: SlowModel())
+    # Both sides of the payer check, and both places the key is resolved: the
+    # daemon path reads one, the client path the other, and this test must reach
+    # the agent loop down whichever path the code takes.
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xpayer")
+    monkeypatch.setattr(d, "_daemon_account", lambda: "0xpayer")
+    monkeypatch.setattr("connectonion.cli.browser_agent.agent.resolve_api_key",
+                        lambda: "test-key")
+    # nl_client did `from .agent import resolve_api_key`, so it holds its own
+    # binding and patching the source module alone would miss it. Guarded
+    # because the module does not exist before the fix, which is the state this
+    # test has to be able to run in.
+    try:
+        monkeypatch.setattr(
+            "connectonion.cli.browser_agent.nl_client.resolve_api_key",
+            lambda: "test-key")
+    except (ImportError, AttributeError, ModuleNotFoundError):
+        pass
+
+    agent_done = threading.Event()
+
+    def run_agent():
+        # Through the CLI entry point, NOT by importing the new module: the
+        # question is what `co browser do` does, and a test that reaches past
+        # the dispatcher into the new implementation passes before the fix as
+        # happily as after it -- which is no test at all.
+        from connectonion.cli.commands.browser_commands import handle_browser
+
+        try:
+            handle_browser(["-t", "agenttab", "do", "look at the page"],
+                           headless=True)
+        finally:
+            agent_done.set()
+
+    threading.Thread(target=run_agent, daemon=True).start()
+
+    assert thinking.wait(timeout=20), (
+        "the agent never reached its thinking phase; the run did not start")
+
+    # THE assertion: a different caller, a different tab, an ordinary verb,
+    # served while the agent above is mid-run.
+    served = {}
+
+    def peer():
+        served["code"] = c.send("go_to example.com", headless=True, tab="peertab")
+
+    t = threading.Thread(target=peer, daemon=True)
+    t.start()
+    t.join(timeout=10)
+
+    blocked = t.is_alive()
+    release.set()
+    agent_done.wait(timeout=20)
+
+    assert not blocked, (
+        "a second client was not served while a `do` was mid-run -- the agent "
+        "loop is still holding the single execution lane for its whole run")
+    assert served.get("code") == 0

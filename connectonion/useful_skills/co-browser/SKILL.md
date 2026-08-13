@@ -38,6 +38,17 @@ works but gets **no contention protection**.
 
 **One task = one tab.** Before touching the browser, see what's already happening:
 
+> **`do` is interruptible, so its tab claim is what protects it.**
+> A `do` run is no longer one indivisible daemon request: the agent runs in
+> your process and sends each browser action separately, which is what stops
+> one run from blocking every other session. The cost is that another caller
+> **can act on the same page between the agent's steps**.
+>
+> The tab claim is what prevents that, so it went from good manners to
+> load-bearing. **A `do` that must not be interleaved has to hold its own
+> tab** — `-t <name>` on the `do` itself, not just on the verbs around it.
+> On the shared `main` tab, assume someone else may touch the page mid-run.
+
 ```bash
 co browser status      # browser state, headless flag, last command, the board
 co browser tab ls      # every tab: who owns it, purpose, last command (--json for scripting)
