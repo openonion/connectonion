@@ -47,7 +47,9 @@ The Agent therefore accepts a separate Logger state directory. An isolated ACP
 Agent keeps its normal global `co_dir` for name and configuration while Logger
 and eval output use `PATH`. Provider credentials keep their existing
 environment and global-config lookup; no key, token, skill, or identity file is
-copied into the state directory.
+copied into the state directory. The explicit state root also takes precedence
+over the implicit `CONNECTONION_LOG` file override, so process environment
+cannot make an isolated CLI run write its ordinary log elsewhere.
 
 ## Security boundary
 

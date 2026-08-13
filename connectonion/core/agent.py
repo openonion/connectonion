@@ -95,9 +95,11 @@ class Agent:
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
 
         # Initialize logger (unified: terminal + file + YAML evals)
-        # Environment variable override (highest priority)
+        # Environment override stays highest priority for the legacy path. An
+        # explicit state root is an isolation boundary, so hidden process state
+        # must not redirect its file log outside that root.
         effective_log = log
-        if os.getenv('CONNECTONION_LOG'):
+        if state_dir is None and os.getenv('CONNECTONION_LOG'):
             effective_log = Path(os.getenv('CONNECTONION_LOG'))
 
         self.logger = Logger(
