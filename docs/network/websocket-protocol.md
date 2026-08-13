@@ -4,8 +4,9 @@
 
 > **Migration note:** this page documents the ConnectOnion compatibility
 > socket at `/ws`; that socket is not ACP. `co ai` now also starts native ACP
-> v1 over the authenticated `/acp` WebSocket. O Chat continues using `/ws`
-> until its React client migration is complete. See
+> v1 over the authenticated `/acp` WebSocket. The published React Alpha.2
+> package and O Chat select `/acp` when the Host advertises the exact supported
+> descriptor; `/ws` remains the fallback only when that descriptor is absent. See
 > [Authenticated ACP WebSocket](acp-websocket.md).
 
 ---

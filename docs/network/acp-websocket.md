@@ -5,10 +5,11 @@ transport at `/ws`. ACP owns the coding-agent conversation. ConnectOnion still
 owns who may open it.
 
 The upstream remote transport is still an Active ACP RFD. This is the first
-direct remote-ACP preview slice. The current O Chat release still
-uses `/ws`; moving `@connectonion/react` and O Chat to native ACP is tracked
-separately. Starting `/acp` by default does not bypass the existing trust gate
-and does not make a local coding agent public by itself.
+direct remote-ACP preview slice. `@connectonion/react@0.4.2-alpha.2` owns the
+browser protocol boundary, and O Chat pins it: an exact supported discovery
+descriptor selects `/acp`, while a Host that omits the descriptor keeps the
+bounded `/ws` compatibility path. Starting `/acp` by default does not bypass
+the existing trust gate and does not make a local coding agent public by itself.
 
 ## Security boundary
 
@@ -59,8 +60,8 @@ v1 behavior as `co ai --acp` on stdio.
 
 ## Browser flow
 
-Browsers cannot set custom headers on a WebSocket upgrade, so the future
-React/O Chat native-ACP client will use a two-step admission flow:
+Browsers cannot set custom headers on a WebSocket upgrade, so the React/O Chat
+native-ACP client uses a two-step admission flow:
 
 1. Sign and `POST` a JSON object to `/acp/authorize` using the same `X-Co-*`
    headers. The exact browser Origin must be allowlisted.
@@ -153,10 +154,13 @@ TLS protects a direct connection; a relay that terminates TLS can read it.
 Signed `_meta` does not change that. Relay ACP remains blocked on the secure
 channel design and review gates in issue #898.
 
-The legacy `/ws` protocol remains available during the frontend migration. It
-continues to carry CONNECT/INPUT/EXEC and compatibility ACP envelopes; it is
-not itself an ACP connection. See [WebSocket Protocol](websocket-protocol.md)
-and [DD-045](../design-decisions/045-authenticated-acp-websocket-gateway.md).
+The legacy `/ws` protocol remains a bounded compatibility fallback for Hosts
+that do not advertise the exact native descriptor. It continues to carry
+CONNECT/INPUT/EXEC and compatibility ACP envelopes; it is not itself an ACP
+connection. Once React selects native ACP, later admission or transport failure
+fails closed instead of downgrading to `/ws`. See
+[WebSocket Protocol](websocket-protocol.md) and
+[DD-045](../design-decisions/045-authenticated-acp-websocket-gateway.md).
 
 Frames are UTF-8 JSON-RPC text with a 1 MiB maximum. Ordinary binary frames are
 ignored per the upstream RFD; malformed text and oversized frames close the
