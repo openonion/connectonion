@@ -121,6 +121,78 @@ def _isolate_project_lookup(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_acp_subprocess_requires_initialize_before_session(tmp_path):
+    state_root = tmp_path / "home"
+    async with _server(state_root) as process:
+        rejected, _ = await _request(
+            process,
+            1,
+            "session/new",
+            {"cwd": str(tmp_path), "mcpServers": []},
+        )
+
+        assert rejected["error"] == {
+            "code": -32000,
+            "message": "Connection is not initialized",
+            "data": None,
+        }
+        assert not (state_root / ".co" / "ai" / "sessions").exists()
+
+        await _send(
+            process,
+            {
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {"sessionId": "missing"},
+            },
+        )
+
+        initialized, pre_initialize_output = await _request(
+            process,
+            2,
+            "initialize",
+            {"protocolVersion": 1, "clientCapabilities": {}},
+        )
+        repeated, _ = await _request(
+            process,
+            3,
+            "initialize",
+            {"protocolVersion": 1, "clientCapabilities": {}},
+        )
+        created, _ = await _request(
+            process,
+            4,
+            "session/new",
+            {"cwd": str(tmp_path), "mcpServers": []},
+        )
+        prompted, prompt_notifications = await _request(
+            process,
+            5,
+            "session/prompt",
+            {
+                "sessionId": created["result"]["sessionId"],
+                "prompt": [{"type": "text", "text": "after initialize"}],
+            },
+        )
+
+        assert initialized["result"]["protocolVersion"] == 1
+        assert pre_initialize_output == []
+        assert repeated["error"] == {
+            "code": -32000,
+            "message": "Connection is already initialized",
+            "data": None,
+        }
+        assert created["result"]["sessionId"]
+        assert prompted["result"]["stopReason"] == "end_turn"
+        assert [item["method"] for item in prompt_notifications] == [
+            "session/update"
+        ]
+        assert prompt_notifications[0]["params"]["update"]["content"]["text"] == (
+            "answer: after initialize"
+        )
+
+
+@pytest.mark.asyncio
 async def test_acp_subprocess_keeps_stdout_protocol_only_and_exits_on_eof(tmp_path):
     async with _server(tmp_path / "home") as process:
         session_id = await _initialize_and_create_session(process, tmp_path)
@@ -341,4 +413,50 @@ async def test_acp_subprocess_sets_and_resumes_the_official_mode_state(tmp_path)
             {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
         )
         assert resumed["result"]["modes"]["currentModeId"] == ":workspace"
+        assert notifications == []
+
+
+@pytest.mark.asyncio
+async def test_acp_subprocess_rejects_a_mixed_envelope_without_changing_mode(
+    tmp_path,
+):
+    state_root = tmp_path / "home"
+    async with _server(state_root) as first:
+        session_id = await _initialize_and_create_session(first, tmp_path)
+        await _send(
+            first,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/set_mode",
+                "params": {
+                    "sessionId": session_id,
+                    "modeId": ":workspace",
+                },
+                "result": {},
+            },
+        )
+
+        rejected = await _read_frame(first)
+        assert rejected["id"] == 3
+        assert rejected["error"]["code"] == -32600
+
+        closed, _ = await _request(
+            first,
+            4,
+            "session/close",
+            {"sessionId": session_id},
+        )
+        assert closed["result"] == {}
+
+    async with _server(state_root) as second:
+        await _initialize(second)
+        resumed, notifications = await _request(
+            second,
+            2,
+            "session/resume",
+            {"sessionId": session_id, "cwd": str(tmp_path), "mcpServers": []},
+        )
+
+        assert resumed["result"]["modes"]["currentModeId"] == ":read-only"
         assert notifications == []

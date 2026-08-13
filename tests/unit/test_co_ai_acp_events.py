@@ -10,7 +10,7 @@ from typing import Any, Callable
 from uuid import UUID, uuid4
 
 import pytest
-from acp import RequestError, text_block
+from acp import PROTOCOL_VERSION, RequestError, text_block
 from acp.schema import (
     AgentMessageChunk,
     AgentPlanUpdate,
@@ -281,14 +281,16 @@ def _isolate_acp_session_state(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
 
-def _server(agent: _ScriptedAgent) -> ConnectOnionACPAgent:
-    return ConnectOnionACPAgent(
+async def _initialized_server(agent: _ScriptedAgent) -> ConnectOnionACPAgent:
+    server = ConnectOnionACPAgent(
         model="test",
         max_iterations=2,
         yolo=False,
         yolo_turns=2,
         agent_factory=lambda **_kwargs: agent,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
+    return server
 
 
 @pytest.mark.asyncio
@@ -336,7 +338,7 @@ async def test_multi_tool_stream_is_ordered_and_prompt_response_is_terminal(tmp_
         return "finished"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
@@ -412,6 +414,7 @@ async def test_real_agent_streams_structured_tool_events_through_acp(tmp_path):
         agent_factory=lambda **_kwargs: agent,
     )
     acp_agent.on_connect(client)
+    await acp_agent.initialize(protocol_version=PROTOCOL_VERSION)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
     response = await acp_agent.prompt(
@@ -458,7 +461,7 @@ async def test_prompt_waits_until_the_last_session_update_is_drained(tmp_path):
         return "done"
 
     client = BlockingClient()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
@@ -518,7 +521,7 @@ async def test_parallel_event_detachment_preserves_entry_order(monkeypatch, tmp_
         return "done"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
@@ -569,7 +572,7 @@ async def test_terminal_barrier_waits_for_an_event_already_being_detached(
         return "done"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
@@ -621,7 +624,7 @@ async def test_slow_client_applies_bounded_backpressure_to_agent_events(tmp_path
         return "done"
 
     client = BlockingClient()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
@@ -677,7 +680,7 @@ async def test_cancelling_slow_client_wakes_backpressured_producer(tmp_path):
         return f"{prompt} answer"
 
     client = BlockingOnceClient()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     first = asyncio.create_task(
@@ -739,7 +742,7 @@ async def test_protocol_cancel_wakes_backpressured_producer(tmp_path):
         return "cancelled"
 
     client = BlockingClient()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
@@ -775,7 +778,7 @@ async def test_cancel_after_natural_terminal_keeps_final_assistant(tmp_path):
         return "completed answer"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
@@ -846,7 +849,7 @@ async def test_cancelled_generation_bounds_forged_completion_events(tmp_path):
         return "cancelled"
 
     client = BlockingClient()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
@@ -892,7 +895,7 @@ async def test_forged_terminal_cannot_override_canonical_turn_outcome(tmp_path):
         return "cancelled"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
@@ -947,7 +950,7 @@ async def test_slow_detachment_does_not_block_event_loop_retirement(
         })
         return "done"
 
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(_Client())
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     prompt_task = asyncio.create_task(
@@ -1002,6 +1005,7 @@ async def test_different_sessions_keep_their_event_streams_isolated(tmp_path):
     )
     client = _Client()
     acp_agent.on_connect(client)
+    await acp_agent.initialize(protocol_version=PROTOCOL_VERSION)
     first = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     second = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
@@ -1044,7 +1048,7 @@ async def test_same_session_rejects_an_overlapping_prompt(tmp_path):
         })
         return "cancelled"
 
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(_Client())
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     active = asyncio.create_task(
@@ -1086,7 +1090,7 @@ async def test_cancelling_prompt_task_retires_worker_and_allows_next_turn(tmp_pa
         return "second answer"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     first = asyncio.create_task(
@@ -1126,7 +1130,7 @@ async def test_max_iterations_returns_the_protocol_stop_reason(tmp_path):
         return "Task incomplete: iteration limit reached."
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 
@@ -1182,7 +1186,7 @@ async def test_cancelled_generation_drops_late_events_from_the_next_turn(tmp_pat
         return "second answer"
 
     client = _Client()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
     first = asyncio.create_task(
@@ -1248,7 +1252,7 @@ async def test_session_update_failure_interrupts_and_retires_the_generation(tmp_
         return "recovered"
 
     client = FailingClient()
-    acp_agent = _server(_ScriptedAgent(script))
+    acp_agent = await _initialized_server(_ScriptedAgent(script))
     acp_agent.on_connect(client)
     session = await acp_agent.new_session(str(tmp_path), mcp_servers=[])
 

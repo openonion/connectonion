@@ -12,7 +12,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from acp import RequestError, text_block
+from acp import PROTOCOL_VERSION, RequestError, text_block
 from acp.schema import CloseSessionResponse, ResumeSessionResponse
 
 from connectonion.cli.co_ai import acp_server
@@ -152,11 +152,11 @@ class _GateAgent(_PersistentFakeAgent):
         return super().input(prompt, session=session)
 
 
-def _server(
+async def _initialized_server(
     state_dir,
     factory,
 ) -> ConnectOnionACPAgent:
-    return ConnectOnionACPAgent(
+    server = ConnectOnionACPAgent(
         model="test",
         max_iterations=2,
         yolo=False,
@@ -164,9 +164,11 @@ def _server(
         agent_factory=factory,
         session_co_dir=state_dir,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
+    return server
 
 
-def _network_server(state_dir, project, factory, **limits):
+async def _initialized_network_server(state_dir, project, factory, **limits):
     workspace = capture_network_workspace(project)
     server = ConnectOnionACPAgent(
         model="test",
@@ -178,6 +180,7 @@ def _network_server(state_dir, project, factory, **limits):
         network_workspace=workspace,
         input_limits=limits,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     return server, workspace
 
 
@@ -227,7 +230,14 @@ def test_session_lease_rejects_a_symlink_lock_without_touching_target(tmp_path):
 
 @pytest.mark.asyncio
 async def test_initialize_advertises_resume_and_close_but_not_load(tmp_path):
-    server = _server(tmp_path / "state", lambda **_: _PersistentFakeAgent())
+    server = ConnectOnionACPAgent(
+        model="test",
+        max_iterations=2,
+        yolo=False,
+        yolo_turns=2,
+        agent_factory=lambda **_: _PersistentFakeAgent(),
+        session_co_dir=tmp_path / "state",
+    )
 
     initialized = await server.initialize(protocol_version=1)
 
@@ -244,7 +254,7 @@ async def test_new_session_persists_canonical_snapshot_and_holds_lease(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _PersistentFakeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _PersistentFakeAgent())
 
     created = await server.new_session(str(project), mcp_servers=[])
 
@@ -293,7 +303,7 @@ async def test_resume_restores_session_and_tool_state_without_replay(
         created_with.append(kwargs)
         return agent
 
-    server = _server(state_dir, factory)
+    server = await _initialized_server(state_dir, factory)
     client = _Client()
     server.on_connect(client)
 
@@ -324,8 +334,8 @@ async def test_runtime_lease_blocks_a_second_server_until_close(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    owner = _server(state_dir, lambda **_: _PersistentFakeAgent())
-    contender = _server(state_dir, lambda **_: _PersistentFakeAgent())
+    owner = await _initialized_server(state_dir, lambda **_: _PersistentFakeAgent())
+    contender = await _initialized_server(state_dir, lambda **_: _PersistentFakeAgent())
     session = await owner.new_session(str(project), mcp_servers=[])
 
     with pytest.raises(RequestError, match="Unable to resume session"):
@@ -347,13 +357,13 @@ async def test_network_session_count_quota_is_shared_across_connections(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "principal"
-    first, first_workspace = _network_server(
+    first, first_workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
         max_acp_sessions=1,
     )
-    second, second_workspace = _network_server(
+    second, second_workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
@@ -382,13 +392,13 @@ async def test_concurrent_network_admission_fills_last_slot_once(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "principal"
-    first, first_workspace = _network_server(
+    first, first_workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
         max_acp_sessions=1,
     )
-    second, second_workspace = _network_server(
+    second, second_workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
@@ -421,7 +431,7 @@ async def test_cancelled_network_admission_removes_provisional_lease(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "principal"
-    server, workspace = _network_server(
+    server, workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
@@ -462,7 +472,7 @@ async def test_network_prompt_snapshot_quota_rolls_back_disk_and_runtime(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "principal"
     agent = _PersistentFakeAgent()
-    server, workspace = _network_server(
+    server, workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: agent,
@@ -498,7 +508,7 @@ async def test_network_unknown_resume_does_not_create_a_durable_lock_file(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "principal"
-    server, workspace = _network_server(
+    server, workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
@@ -520,7 +530,7 @@ async def test_cancelled_network_new_session_removes_unpublished_snapshot_and_le
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "principal"
-    server, workspace = _network_server(
+    server, workspace = await _initialized_network_server(
         state_dir,
         project,
         lambda **_: _PersistentFakeAgent(),
@@ -578,7 +588,7 @@ async def test_resume_rejects_wrong_cwd_before_agent_construction(
         "turn": 0,
     })
     constructed = []
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: constructed.append(True) or _PersistentFakeAgent(),
     )
@@ -628,7 +638,7 @@ async def test_resume_rejects_unusable_snapshots_before_agent_construction(
             encoding="utf-8",
         )
     constructed = []
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: constructed.append(True) or _PersistentFakeAgent(),
     )
@@ -658,7 +668,7 @@ async def test_cancelled_runtime_construction_settles_and_releases_lease(
             "trace": [],
             "turn": 0,
         })
-    server = _server(state_dir, lambda **_: _PersistentFakeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _PersistentFakeAgent())
     real_open = server._open_session_runtime
     started = threading.Event()
     release = threading.Event()
@@ -699,7 +709,7 @@ async def test_successful_turns_commit_in_order(tmp_path, monkeypatch):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _PersistentFakeAgent(["natural", "max_iterations"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
 
@@ -735,7 +745,7 @@ async def test_unsuccessful_turn_rolls_back_disk_and_runtime(
     state_dir = tmp_path / "state"
     action = "natural" if failure == "update" else failure
     agent = _PersistentFakeAgent([action, "natural"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     client = _Client(fail_updates=failure == "update")
     server.on_connect(client)
     session = await server.new_session(str(project), mcp_servers=[])
@@ -774,7 +784,7 @@ async def test_persistence_failure_restores_last_good_state(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _PersistentFakeAgent(["natural"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
     before, _ = load_snapshot(state_dir, session.session_id)
@@ -802,7 +812,7 @@ async def test_atomic_replace_is_the_last_fallible_commit_step(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _PersistentFakeAgent(["natural"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
     real_save = acp_server.save_snapshot
@@ -840,7 +850,7 @@ async def test_commit_uses_explicit_cwd_without_a_fallible_context_exit(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _PersistentFakeAgent()
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     session = await server.new_session(str(project), mcp_servers=[])
     runtime = server._sessions[session.session_id]
     runtime.agent.current_session = copy.deepcopy(runtime.last_good_session)
@@ -879,7 +889,9 @@ async def test_failed_rollback_quarantines_runtime_and_releases_lease(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _PersistentFakeAgent(["natural"]))
+    server = await _initialized_server(
+        state_dir, lambda **_: _PersistentFakeAgent(["natural"])
+    )
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
 
@@ -908,7 +920,7 @@ async def test_close_interrupts_active_prompt_then_releases_ownership(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _PersistentFakeAgent(["block"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
     prompt = asyncio.create_task(
@@ -934,7 +946,7 @@ async def test_repeated_prompt_cancellation_cannot_release_a_live_worker(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _GateAgent(["natural"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
     before, _ = load_snapshot(state_dir, session.session_id)
@@ -973,7 +985,7 @@ async def test_cancelled_close_still_finishes_before_releasing_ownership(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _GateAgent(["block"])
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
     prompting = asyncio.create_task(
@@ -1006,8 +1018,10 @@ async def test_cancelled_commit_and_eof_wait_for_the_atomic_writer(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _PersistentFakeAgent(["natural"]))
-    contender = _server(state_dir, lambda **_: _PersistentFakeAgent())
+    server = await _initialized_server(
+        state_dir, lambda **_: _PersistentFakeAgent(["natural"])
+    )
+    contender = await _initialized_server(state_dir, lambda **_: _PersistentFakeAgent())
     server.on_connect(_Client())
     session = await server.new_session(str(project), mcp_servers=[])
     real_save = acp_server.save_snapshot

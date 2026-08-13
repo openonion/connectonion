@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from acp import RequestError, text_block
+from acp import PROTOCOL_VERSION, RequestError, text_block
 from acp.schema import (
     EnvVariable,
     McpServerStdio,
@@ -132,6 +132,7 @@ async def test_mcp_is_rejected_before_connect_without_launch_authority(tmp_path)
         mcp_connector=connector,
     )
 
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     with pytest.raises(RequestError, match="Invalid params"):
         await server.new_session(str(tmp_path), mcp_servers=[_server_spec()])
 
@@ -161,6 +162,7 @@ async def test_authorized_mcp_tools_are_session_scoped_and_closed(tmp_path):
         mcp_connector=connector,
     )
 
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     session = await server.new_session(str(tmp_path), mcp_servers=[_server_spec()])
 
     assert connection["servers"] == [_server_spec()]
@@ -194,6 +196,7 @@ async def test_runtime_construction_failure_closes_connected_mcp_pool(tmp_path):
         mcp_connector=connector,
     )
 
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     with pytest.raises(RequestError, match="Unable to create"):
         await server.new_session(str(tmp_path), mcp_servers=[_server_spec()])
 
@@ -220,6 +223,7 @@ async def test_existing_tool_name_collision_closes_connected_mcp_pool(tmp_path):
         mcp_connector=connector,
     )
 
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     with pytest.raises(RequestError, match="Unable to create"):
         await server.new_session(str(tmp_path), mcp_servers=[_server_spec()])
 
@@ -236,6 +240,7 @@ async def test_locked_resume_is_rejected_before_connecting_mcp(tmp_path):
         agent_factory=lambda **_kwargs: _Agent(),
         session_co_dir=tmp_path / "state",
     )
+    await owner.initialize(protocol_version=PROTOCOL_VERSION)
     created = await owner.new_session(str(tmp_path), mcp_servers=[])
     connected = False
 
@@ -255,6 +260,7 @@ async def test_locked_resume_is_rejected_before_connecting_mcp(tmp_path):
         mcp_connector=connector,
     )
 
+    await contender.initialize(protocol_version=PROTOCOL_VERSION)
     with pytest.raises(RequestError, match="Unable to resume"):
         await contender.resume_session(
             created.session_id,
@@ -560,6 +566,7 @@ async def test_acp_session_teardown_reaps_real_mcp_process(tmp_path, cleanup):
         session_co_dir=tmp_path / "state",
         allow_mcp=True,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     created = await server.new_session(str(tmp_path), mcp_servers=[spec])
     pid = int(pid_file.read_text(encoding="utf-8"))
 
@@ -626,6 +633,7 @@ async def test_resume_reconnects_mcp_without_persisting_launch_data(tmp_path):
         session_co_dir=tmp_path / "state",
         allow_mcp=True,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     first = await server.new_session(str(tmp_path), mcp_servers=[spec])
     first_runtime = server._sessions[first.session_id]
     first_tool = next(
@@ -754,6 +762,7 @@ async def test_real_mcp_side_effect_waits_for_acp_permission(
         allow_mcp=True,
     )
     server.on_connect(client)  # type: ignore[arg-type]
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     session = await server.new_session(str(project), mcp_servers=[spec])
 
     response = await server.prompt(session.session_id, [text_block("write")])
@@ -843,6 +852,7 @@ async def test_mcp_session_approval_is_not_reused_after_resume(
     )
     first_client = ApprovalClient("allow_session")
     server.on_connect(first_client)  # type: ignore[arg-type]
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     first_spec = McpServerStdio(
         name="context",
         command=sys.executable,
@@ -958,6 +968,7 @@ async def test_operator_mcp_permission_remains_configured_after_resume(
         allow_mcp=True,
     )
     server.on_connect(Client())  # type: ignore[arg-type]
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     created = await server.new_session(str(project), mcp_servers=[spec])
 
     first_response = await server.prompt(created.session_id, [text_block("write")])
@@ -1029,6 +1040,7 @@ async def test_failed_restore_reaps_mcp_process_before_releasing_session(
         allow_mcp=True,
     )
     server.on_connect(Client())  # type: ignore[arg-type]
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
     created = await server.new_session(str(project), mcp_servers=[spec])
     runtime = server._sessions[created.session_id]
     pid = int(pid_file.read_text(encoding="utf-8"))

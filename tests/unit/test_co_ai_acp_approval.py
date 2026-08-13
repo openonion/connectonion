@@ -7,7 +7,7 @@ from collections import deque
 from typing import Any
 
 import pytest
-from acp import RequestError, text_block
+from acp import PROTOCOL_VERSION, RequestError, text_block
 from acp.schema import PermissionOption, RequestPermissionResponse, ToolCallUpdate
 
 from connectonion import Agent
@@ -132,8 +132,8 @@ def _agent(
     )
 
 
-def _server(state_dir, factory) -> ConnectOnionACPAgent:
-    return ConnectOnionACPAgent(
+async def _initialized_server(state_dir, factory) -> ConnectOnionACPAgent:
+    server = ConnectOnionACPAgent(
         model="test",
         max_iterations=4,
         yolo=False,
@@ -141,6 +141,8 @@ def _server(state_dir, factory) -> ConnectOnionACPAgent:
         agent_factory=factory,
         session_co_dir=state_dir,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
+    return server
 
 
 def _project(tmp_path, monkeypatch):
@@ -162,7 +164,7 @@ async def test_allow_once_uses_exact_acp_schema_without_persisting_grant(
     project = _project(tmp_path, monkeypatch)
     executed: list[str] = []
     client = _ApprovalClient(_selected("allow_once"))
-    server = _server(
+    server = await _initialized_server(
         tmp_path / "state",
         lambda **_: _agent(project, executed, ["same-call-id"]),
     )
@@ -212,7 +214,7 @@ async def test_allow_session_commits_once_and_survives_resume(
     state_dir = tmp_path / "state"
     first_executed: list[str] = []
     first_client = _ApprovalClient(_selected("allow_session"))
-    first = _server(
+    first = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, first_executed, ["call-1"]),
     )
@@ -229,7 +231,7 @@ async def test_allow_session_commits_once_and_survives_resume(
 
     resumed_executed: list[str] = []
     resumed_client = _ApprovalClient(RuntimeError("must not ask again"))
-    resumed = _server(
+    resumed = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, resumed_executed, ["call-3"]),
     )
@@ -264,7 +266,7 @@ async def test_cancelled_unknown_and_reject_outcomes_execute_no_tool(
     project = _project(tmp_path, monkeypatch)
     executed: list[str] = []
     client = _ApprovalClient(decision)
-    server = _server(
+    server = await _initialized_server(
         tmp_path / "state",
         lambda **_: _agent(project, executed, ["call-reject"]),
     )
@@ -288,7 +290,7 @@ async def test_permission_transport_failure_rolls_back_without_private_details(
     state_dir = tmp_path / "state"
     executed: list[str] = []
     client = _ApprovalClient(RuntimeError("private transport marker"))
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, executed, ["call-fail"]),
     )
@@ -315,7 +317,7 @@ async def test_session_grant_rolls_back_when_atomic_persistence_fails(
     state_dir = tmp_path / "state"
     executed: list[str] = []
     client = _ApprovalClient(_selected("allow_session"))
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, executed, ["call-save-fail"]),
     )
@@ -347,7 +349,7 @@ async def test_session_grant_rolls_back_when_a_later_acp_update_fails(
     state_dir = tmp_path / "state"
     executed: list[str] = []
     client = _FailAfterSessionGrantClient()
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, executed, ["call-update-fail"]),
     )
@@ -374,7 +376,7 @@ async def test_cancel_while_permission_is_pending_is_bounded_and_fail_closed(
     project = _project(tmp_path, monkeypatch)
     executed: list[str] = []
     client = _BlockingApprovalClient()
-    server = _server(
+    server = await _initialized_server(
         tmp_path / "state",
         lambda **_: _agent(project, executed, ["call-blocked"]),
     )
@@ -402,7 +404,7 @@ async def test_close_while_permission_is_pending_waits_then_releases_lease(
     state_dir = tmp_path / "state"
     executed: list[str] = []
     client = _BlockingApprovalClient()
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, executed, ["call-close"]),
     )
@@ -432,7 +434,7 @@ async def test_eof_cleanup_while_permission_is_pending_releases_lease(
     state_dir = tmp_path / "state"
     executed: list[str] = []
     client = _BlockingApprovalClient()
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _agent(project, executed, ["call-eof"]),
     )
@@ -480,7 +482,7 @@ async def test_identical_tool_ids_in_two_sessions_cannot_cross_decisions(
             return RequestPermissionResponse.model_validate(_selected(option))
 
     client = SessionClient()
-    server = _server(tmp_path / "state", factory)
+    server = await _initialized_server(tmp_path / "state", factory)
     server.on_connect(client)
     first = await server.new_session(str(project), mcp_servers=[])
     second = await server.new_session(str(project), mcp_servers=[])

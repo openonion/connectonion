@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 import pytest
-from acp import RequestError, text_block
+from acp import PROTOCOL_VERSION, RequestError, text_block
 from acp.schema import CurrentModeUpdate, SetSessionModeResponse
 
 from connectonion import Agent
@@ -115,14 +115,14 @@ class _ModeAgent:
         return prompt
 
 
-def _server(
+async def _initialized_server(
     state_dir,
     factory,
     *,
     yolo: bool = False,
     yolo_turns: int = 7,
 ) -> ConnectOnionACPAgent:
-    return ConnectOnionACPAgent(
+    server = ConnectOnionACPAgent(
         model="test",
         max_iterations=2,
         yolo=yolo,
@@ -130,6 +130,8 @@ def _server(
         agent_factory=factory,
         session_co_dir=state_dir,
     )
+    await server.initialize(protocol_version=PROTOCOL_VERSION)
+    return server
 
 
 def _project(tmp_path, monkeypatch):
@@ -155,7 +157,7 @@ async def test_new_default_session_returns_exact_modes_and_persists_default(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _ModeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _ModeAgent())
 
     created = await server.new_session(str(project), mcp_servers=[])
 
@@ -189,7 +191,7 @@ async def test_yolo_launch_advertises_and_persists_bounded_full_access(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _ModeAgent(),
         yolo=True,
@@ -219,7 +221,7 @@ async def test_idle_auto_change_commits_memory_disk_and_resume(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    first = _server(state_dir, lambda **_: _ModeAgent())
+    first = await _initialized_server(state_dir, lambda **_: _ModeAgent())
     created = await first.new_session(str(project), mcp_servers=[])
 
     changed = await first.set_session_mode(created.session_id, ":workspace")
@@ -232,7 +234,7 @@ async def test_idle_auto_change_commits_memory_disk_and_resume(
     assert stored["mode"] == ":workspace"
     await first.close_session(created.session_id)
 
-    resumed_server = _server(state_dir, lambda **_: _ModeAgent())
+    resumed_server = await _initialized_server(state_dir, lambda **_: _ModeAgent())
     resumed = await resumed_server.resume_session(
         created.session_id,
         str(project),
@@ -249,7 +251,7 @@ async def test_unknown_and_unauthorized_full_access_do_not_mutate_session(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _ModeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _ModeAgent())
     created = await server.new_session(str(project), mcp_servers=[])
 
     for mode in ("future", ":danger-full-access"):
@@ -270,7 +272,7 @@ async def test_authorized_full_access_upgrade_and_downgrade_clean_bypass_state(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _ModeAgent(),
         yolo=True,
@@ -334,7 +336,7 @@ async def test_auto_mode_drives_the_existing_tool_approval_policy(
             co_dir=project / ".co",
         )
 
-    server = _server(state_dir, factory)
+    server = await _initialized_server(state_dir, factory)
     server.on_connect(_Client())
     created = await server.new_session(str(project), mcp_servers=[])
     await server.set_session_mode(created.session_id, ":workspace")
@@ -386,7 +388,7 @@ async def test_default_downgrade_disarms_real_agent_full_access_activation(
         return agent
 
     client = _Client()
-    server = _server(state_dir, factory, yolo=True, yolo_turns=7)
+    server = await _initialized_server(state_dir, factory, yolo=True, yolo_turns=7)
     server.on_connect(client)
     created = await server.new_session(str(project), mcp_servers=[])
     runtime = server._sessions[created.session_id]
@@ -411,7 +413,7 @@ async def test_busy_prompt_rejects_mode_change_without_policy_race(
 ):
     project = _project(tmp_path, monkeypatch)
     agent = _ModeAgent(block=True)
-    server = _server(tmp_path / "state", lambda **_: agent)
+    server = await _initialized_server(tmp_path / "state", lambda **_: agent)
     server.on_connect(_Client())
     created = await server.new_session(str(project), mcp_servers=[])
     prompting = asyncio.create_task(
@@ -437,7 +439,7 @@ async def test_persistence_failure_leaves_mode_unchanged_without_private_details
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _ModeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _ModeAgent())
     created = await server.new_session(str(project), mcp_servers=[])
 
     def fail_save(*_args: Any, **_kwargs: Any) -> None:
@@ -465,7 +467,7 @@ async def test_internal_mode_update_is_published_only_after_commit(
     state_dir = tmp_path / "state"
     agent = _ModeAgent(internal_mode=":workspace")
     client = _Client()
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(client)
     created = await server.new_session(str(project), mcp_servers=[])
 
@@ -491,7 +493,7 @@ async def test_failed_prompt_commit_does_not_publish_internal_mode(
     state_dir = tmp_path / "state"
     agent = _ModeAgent(internal_mode=":workspace")
     client = _Client()
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(client)
     created = await server.new_session(str(project), mcp_servers=[])
 
@@ -518,7 +520,7 @@ async def test_mode_notification_failure_cannot_roll_back_durable_commit(
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
     agent = _ModeAgent(internal_mode=":workspace")
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(_Client(fail_mode_update=True))
     created = await server.new_session(str(project), mcp_servers=[])
     runtime = server._sessions[created.session_id]
@@ -546,7 +548,7 @@ async def test_cancelled_mode_notification_quarantines_committed_runtime(
     state_dir = tmp_path / "state"
     agent = _ModeAgent(internal_mode=":workspace")
     client = _BlockingModeClient()
-    server = _server(state_dir, lambda **_: agent)
+    server = await _initialized_server(state_dir, lambda **_: agent)
     server.on_connect(client)
     created = await server.new_session(str(project), mcp_servers=[])
     prompting = asyncio.create_task(
@@ -574,7 +576,7 @@ async def test_cancelled_mode_request_settles_atomic_commit(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _ModeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _ModeAgent())
     created = await server.new_session(str(project), mcp_servers=[])
     real_save = acp_server.save_snapshot
     started = threading.Event()
@@ -608,7 +610,7 @@ async def test_close_waits_for_mode_commit_then_releases_lease(
 ):
     project = _project(tmp_path, monkeypatch)
     state_dir = tmp_path / "state"
-    server = _server(state_dir, lambda **_: _ModeAgent())
+    server = await _initialized_server(state_dir, lambda **_: _ModeAgent())
     created = await server.new_session(str(project), mcp_servers=[])
     real_save = acp_server.save_snapshot
     started = threading.Event()
@@ -656,7 +658,7 @@ async def test_resume_preserves_committed_full_access_budget_without_reset(
         "skip_tool_approval": True,
     }
     save_snapshot(state_dir, saved, {}, cwd=project)
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _ModeAgent(),
         yolo=True,
@@ -691,7 +693,7 @@ async def test_resume_rejects_full_access_budget_above_current_launch_ceiling(
         "skip_tool_approval": True,
     }
     save_snapshot(state_dir, saved, {}, cwd=project)
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _ModeAgent(),
         yolo=True,
@@ -742,7 +744,7 @@ async def test_resume_rejects_unknown_or_over_authorized_mode_state(
         **mode_state,
     }
     save_snapshot(state_dir, saved, {}, cwd=project)
-    server = _server(
+    server = await _initialized_server(
         state_dir,
         lambda **_: _ModeAgent(),
         yolo=yolo,
