@@ -30,6 +30,9 @@ DEFAULT_FILE_LIMITS = {
     "max_files_per_request": 10,               # Max files in one request
     "max_acp_upload_storage": 100,             # MB retained per ACP principal
     "max_acp_upload_files": 100,               # Files retained per ACP principal
+    "max_acp_sessions": 100,                   # Durable sessions per ACP principal
+    "max_acp_session_storage": 100,            # MB of snapshots per ACP principal
+    "max_acp_snapshot_size": 32,               # MB in one ACP session snapshot
 }
 
 
