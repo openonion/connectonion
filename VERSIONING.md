@@ -47,6 +47,10 @@ marked as pre-releases on PyPI and GitHub.
 
 ### Version History
 - 1.7.0a1 (**the first 1.7 preview**: audience-scoped HTTP routes let an agent expose visibly public, contacts-only, and admin-only endpoints beside its existing WebSocket transport; ACP gains resumable sessions, ordered updates, official SDK conformance, tool approvals, MCP tools, and stable agent messages; Telegram messaging and safer attachment handling arrive; and billed operations now fail closed when ambient credentials belong to a different account. This is an opt-in preview; 1.6.0 remains the stable recommendation.)
+- 1.6.4 (**`co gmail` reads malformed or unexpected HTML mail defensively** instead of letting one ordinary message break inbox listing.)
+- 1.6.3 (**`co status` names the account commands actually use** and the source of each credential; billed boundaries refuse an inherited key that belongs to another project.)
+- 1.6.2 (**an agent reads its own project trust configuration**: project discovery stops at the repository and home boundaries instead of silently treating global `~/.co` state as project state.)
+- 1.6.1 (**the CLI fails closed instead of acting as the wrong account** when a working-directory `.env` shadows this machine's identity; Outlook HTML reads retain their links and malformed tokens no longer crash every command.)
 - 1.6.0 (**safer remote agents and a cleaner credential boundary**: host identity and temporary session-status probes are signed consistently; relay profile updates reject stale or conflicting state; Microsoft OAuth credentials and refresh-token rotation stay on the CLI machine instead of being stored by the backend; project invite credentials are private and no shared default invite code is documented; email sending has traceable, tenant-scoped idempotency and resilient provider-error handling; paid mailbox upgrades can preserve the existing address and are charged atomically; portable skills, dependency floors, cross-platform tests, and exact-artifact release verification are hardened for a stable release.)
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
 - 0.0.2 → 0.0.9 (Early production releases)

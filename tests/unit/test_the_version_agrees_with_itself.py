@@ -77,14 +77,58 @@ def _versioning_md_version() -> str:
     return match.group(1)
 
 
+def _typescript_string_constant(text: str, name: str) -> str:
+    """Read one exported string constant from the docs' checked TS contract."""
+    uncommented = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    uncommented = re.sub(r"//[^\n]*", "", uncommented)
+    match = re.search(
+        rf"^[ \t]*export[ \t]+const[ \t]+{re.escape(name)}\b"
+        rf"(?:[ \t]*:[^=\n]+)?[ \t]*=[ \t]*'([^'\n]+)'[ \t]*;?[ \t]*$",
+        uncommented,
+        re.MULTILINE,
+    )
+    assert match, f"docs-site has no string value for {name}"
+    return match.group(1)
+
+
 def _docs_site_version() -> str:
     text = DOCS_SITE.read_text(encoding='utf-8')
     name = "PREVIEW_VERSION" if re.search(r"[a-zA-Z]", connectonion.__version__) else "STABLE_VERSION"
-    match = re.search(rf"{name}\s*=\s*'([^']+)'", text)
-    if not match:
-        match = re.search(r"VERSION\s*=\s*'([^']+)'", text)
-    assert match, f"{DOCS_SITE} has no {name} or VERSION"
-    return match.group(1)
+    return _typescript_string_constant(text, name)
+
+
+@pytest.mark.parametrize(
+    ("source", "name", "expected"),
+    [
+        ("export const STABLE_VERSION = '1.2.3'", "STABLE_VERSION", "1.2.3"),
+        (
+            "export const PREVIEW_VERSION: string | null = '1.2.4a1'",
+            "PREVIEW_VERSION",
+            "1.2.4a1",
+        ),
+    ],
+)
+def test_docs_channel_parser_accepts_the_checked_typescript_contract(
+    source, name, expected
+):
+    assert _typescript_string_constant(source, name) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "export const VERSION = '1.2.3'",
+        "export const PREVIEW_VERSION: string | null = null\n"
+        "export const VERSION = '1.2.3'",
+        "// export const PREVIEW_VERSION: string | null = '1.2.4a1'\n"
+        "export const PREVIEW_VERSION: string | null = null",
+        "/*\nexport const PREVIEW_VERSION = '1.2.4a1'\n*/\n"
+        "export const PREVIEW_VERSION: string | null = null",
+    ],
+)
+def test_docs_channel_parser_does_not_fall_back_to_stable(source):
+    with pytest.raises(AssertionError, match="PREVIEW_VERSION"):
+        _typescript_string_constant(source, "PREVIEW_VERSION")
 
 
 def test_pyproject_and_the_package_agree():
