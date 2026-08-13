@@ -157,6 +157,50 @@ def runner(fake_command, *, approval="auto") -> ACPAgent:
 
 
 class TestPublicBoundary:
+    def test_real_acp_claude_uses_macos_keychain_context(self):
+        from tests.e2e.real_api.test_real_acp_agent import (
+            _real_claude_auth_environment,
+        )
+
+        assert _real_claude_auth_environment("darwin", "/operator", None) == {
+            "HOME": "/operator"
+        }
+
+    @pytest.mark.parametrize("platform", ["linux", "win32"])
+    def test_real_acp_claude_uses_file_auth_off_macos(self, platform):
+        from tests.e2e.real_api.test_real_acp_agent import (
+            _real_claude_auth_environment,
+        )
+
+        assert _real_claude_auth_environment(platform, "/operator", None) == {
+            "CLAUDE_CONFIG_DIR": "/operator/.claude"
+        }
+
+    def test_real_acp_claude_explicit_config_wins(self):
+        from tests.e2e.real_api.test_real_acp_agent import (
+            _real_claude_auth_environment,
+        )
+
+        assert _real_claude_auth_environment(
+            "darwin", "/operator", "/accounts/work"
+        ) == {"CLAUDE_CONFIG_DIR": "/accounts/work"}
+
+    def test_real_acp_gemini_key_auth_keeps_home_isolated(self):
+        from tests.e2e.real_api.test_real_acp_agent import (
+            _real_gemini_auth_environment,
+        )
+
+        assert _real_gemini_auth_environment("/operator", True) == {}
+
+    def test_real_acp_gemini_oauth_restores_credential_home(self):
+        from tests.e2e.real_api.test_real_acp_agent import (
+            _real_gemini_auth_environment,
+        )
+
+        assert _real_gemini_auth_environment("/operator", False) == {
+            "HOME": "/operator"
+        }
+
     def test_model_can_pick_only_a_named_engine(self):
         parameters = inspect.signature(acp_agent).parameters
         assert "engine" in parameters
@@ -168,6 +212,14 @@ class TestPublicBoundary:
         codex = " ".join(ENGINES["codex"].command)
         assert "@agentclientprotocol/claude-agent-acp@0.66.0" in claude
         assert "@agentclientprotocol/codex-acp@1.1.14" in codex
+
+    def test_gemini_cli_is_an_exact_version_pin_on_the_current_acp_flag(self):
+        assert ENGINES["gemini"].command == (
+            "npx",
+            "--yes",
+            "@google/gemini-cli@0.55.1",
+            "--acp",
+        )
 
     def test_custom_command_and_approval_are_operator_owned(self, fake_command):
         configured = ACPAgent(command=fake_command, name="private", approval="deny")
@@ -228,6 +280,28 @@ class TestPublicBoundary:
         assert engine_environment("claude-code", "manual") == {
             "CLAUDE_CONFIG_DIR": str(config_dir),
             "ANTHROPIC_API_KEY": "anthropic-test-key",
+        }
+
+    def test_gemini_explicit_auth_environment_is_narrowly_forwarded(
+        self, monkeypatch, tmp_path
+    ):
+        credentials = tmp_path / "vertex-service-account.json"
+        selected = {
+            "GEMINI_API_KEY": "gemini-test-key",
+            "GOOGLE_API_KEY": "vertex-test-key",
+            "GOOGLE_GENAI_USE_VERTEXAI": "true",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "GOOGLE_CLOUD_PROJECT_ID": "test-project-alias",
+            "GOOGLE_CLOUD_LOCATION": "australia-southeast1",
+            "GOOGLE_APPLICATION_CREDENTIALS": str(credentials),
+        }
+        for name, value in selected.items():
+            monkeypatch.setenv(name, value)
+        monkeypatch.setenv("UNRELATED_SECRET", "must-not-cross")
+
+        assert engine_environment("gemini", "manual") == {
+            "NO_BROWSER": "1",
+            **selected,
         }
 
     def test_public_tool_binds_the_agents_call_time_workspace(
@@ -295,6 +369,54 @@ class TestPublicBoundary:
         assert spawned is False
         assert "supports only operator-selected 'auto'" in output["error"]
         assert "native codex tool" in output["error"]
+
+    def test_named_gemini_resume_fails_before_spawn(self, monkeypatch, tmp_path):
+        spawned = False
+
+        async def forbidden_spawn(*_args, **_kwargs):
+            nonlocal spawned
+            spawned = True
+            raise AssertionError("unsupported Gemini resume reached the launcher")
+
+        monkeypatch.setattr(acp_agent_module, "run_agent", forbidden_spawn)
+        output = json.loads(
+            ACPAgent(approval="manual", workspace=tmp_path).acp_agent(
+                "continue", engine="gemini", session_id="ephemeral-session"
+            )
+        )
+
+        assert spawned is False
+        assert output["session_id"] == "ephemeral-session"
+        assert "does not persist ACP sessions across child processes" in output["error"]
+        assert "without session_id" in output["error"]
+
+    def test_named_gemini_does_not_return_an_unusable_session_id(
+        self, monkeypatch, tmp_path
+    ):
+        async def fake_run_agent(*_args, **_kwargs):
+            return {
+                "session_id": "child-process-only",
+                "resumed": False,
+                "stop_reason": "end_turn",
+                "result": "GEMINI_OK",
+            }
+
+        monkeypatch.setattr(acp_agent_module, "run_agent", fake_run_agent)
+        monkeypatch.setattr(acp_agent_module.shutil, "which", lambda _name: "/npx")
+
+        output = json.loads(
+            ACPAgent(approval="manual", workspace=tmp_path).acp_agent(
+                "hi", engine="gemini"
+            )
+        )
+
+        assert output == {
+            "engine": "gemini",
+            "session_id": "",
+            "resumed": False,
+            "stop_reason": "end_turn",
+            "result": "GEMINI_OK",
+        }
 
     def test_named_engines_enforce_permission_modes(self):
         assert required_mode("codex", "manual") == "read-only"
@@ -563,6 +685,78 @@ class TestDisclosureBounds:
 
 
 class TestFailures:
+    def test_gemini_auth_startup_fails_fast_without_opening_login(
+        self, monkeypatch, tmp_path
+    ):
+        script = tmp_path / "gemini_auth_hang.py"
+        script.write_text(
+            "import sys, time\n"
+            "sys.stderr.write('Authentication required\\n')\n"
+            "sys.stderr.flush()\n"
+            "time.sleep(60)\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(acp_client, "_STARTUP_LIMIT", 0.1)
+        started = time.monotonic()
+
+        output = json.loads(
+            ACPAgent(
+                command=[sys.executable, str(script)],
+                name="gemini",
+                approval="manual",
+                workspace=tmp_path,
+            ).acp_agent("hi", engine="gemini", timeout=10)
+        )
+
+        assert "Authentication required" in output["error"]
+        assert time.monotonic() - started < 4
+
+    def test_gemini_auth_session_start_uses_the_same_bounded_gate(
+        self, monkeypatch, tmp_path
+    ):
+        script = tmp_path / "gemini_session_auth_hang.py"
+        script.write_text(
+            textwrap.dedent(
+                """
+                import json
+                import sys
+                import time
+
+                for line in sys.stdin:
+                    message = json.loads(line)
+                    if message.get("method") == "initialize":
+                        sys.stdout.write(json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": message["id"],
+                            "result": {
+                                "protocolVersion": 1,
+                                "agentCapabilities": {"loadSession": True},
+                            },
+                        }) + "\\n")
+                        sys.stdout.flush()
+                    elif message.get("method") == "session/new":
+                        sys.stderr.write("Authentication required\\n")
+                        sys.stderr.flush()
+                        time.sleep(60)
+                """
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(acp_client, "_STARTUP_LIMIT", 0.1)
+        started = time.monotonic()
+
+        output = json.loads(
+            ACPAgent(
+                command=[sys.executable, str(script)],
+                name="gemini",
+                approval="manual",
+                workspace=tmp_path,
+            ).acp_agent("hi", engine="gemini", timeout=10)
+        )
+
+        assert "Authentication required" in output["error"]
+        assert time.monotonic() - started < 4
+
     def test_unknown_engine(self):
         output = json.loads(acp_agent("hi", engine="not-an-engine"))
         assert "Unknown engine" in output["error"]
@@ -633,6 +827,10 @@ class TestEngineStatus:
         assert set(rows) >= {"claude-code", "codex", "gemini"}
         assert rows["claude-code"]["adapter_version"] == "0.66.0"
         assert rows["codex"]["adapter_version"] == "1.1.14"
+        assert rows["gemini"]["adapter_version"] == "0.55.1"
+        assert rows["claude-code"]["supports_resume"] is True
+        assert rows["codex"]["supports_resume"] is True
+        assert rows["gemini"]["supports_resume"] is False
         assert rows["codex"]["supported_approval_modes"] == ["auto"]
         assert rows["claude-code"]["supported_approval_modes"] == [
             "manual", "auto", "deny"

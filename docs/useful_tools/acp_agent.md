@@ -12,15 +12,16 @@ agent.input("Ask Claude Code over ACP to inspect the failing tests")
 ```
 
 Named engines are `claude-code`, `codex`, and `gemini`. Claude Code and Codex
-use exact-version ACP adapters; Gemini uses its native experimental ACP mode.
+use exact-version ACP adapters; Gemini uses exact `@google/gemini-cli@0.55.1`
+through its current native `--acp` mode.
 The existing `claude_code` and `codex` tools remain available and are still the
 preferred engine-specific paths.
 
-| Engine | Supported approval policies |
-|---|---|
-| `claude-code` | `manual`, `auto`, `deny` |
-| `codex` | explicit operator-selected `auto` only |
-| `gemini` | `manual`, `auto`, `deny` |
+| Engine | Supported approval policies | Cross-process resume |
+|---|---|---|
+| `claude-code` | `manual`, `auto`, `deny` | yes |
+| `codex` | explicit operator-selected `auto` only | yes |
+| `gemini` | `manual`, `auto`, `deny` | no at pinned `0.55.1` |
 
 Every result is a JSON envelope:
 
@@ -34,8 +35,12 @@ Every result is a JSON envelope:
 }
 ```
 
-Pass the returned `session_id` to resume the same engine session. A failed
-resume returns an error; it never silently starts a different conversation.
+For Claude Code and Codex, pass the returned `session_id` to resume the same
+engine session. A failed resume returns an error; it never silently starts a
+different conversation. Real conformance testing found that Gemini CLI 0.55.1
+does not persist its advertised ACP session across these one-process-per-turn
+invocations. A named Gemini turn therefore returns an empty `session_id`, and
+supplying one fails before launch instead of pretending to resume.
 
 ## Permissions
 
@@ -93,18 +98,20 @@ persisted application thoughts and canonical TodoList state.
 
 `engine_status()` reports the exact adapter version, launcher availability, a
 clearly labelled credential-file presence hint, and each engine's
-`supported_approval_modes`. It does not claim that a credential is valid or
-that a provider call will succeed.
+`supported_approval_modes` and `supports_resume` capability. It does not claim
+that a credential is valid or that a provider call will succeed.
 
-The named Claude Code and Codex routes require `npx` and their normal local CLI
-authentication. The first run may download the exact pinned adapter version.
+The named Claude Code, Codex, and Gemini routes require `npx` and their normal
+local CLI authentication. The first run may download the exact pinned package.
 Child processes inherit the ACP SDK's trimmed HOME/PATH/shell baseline, not the
 entire parent environment. Claude additionally receives only an explicitly set
 `CLAUDE_CONFIG_DIR` or `ANTHROPIC_API_KEY`; Codex receives only its selected API
-key or `CODEX_HOME`. Unrelated ambient secrets are not forwarded.
-Gemini CLI exposes native ACP modes, but its provider/account availability is
-version- and account-dependent; `engine_status()` is only a local readiness
-hint, not a successful provider smoke test.
+key or `CODEX_HOME`; Gemini receives only explicitly configured Gemini API-key
+or Vertex authentication variables and cannot open a browser login from a
+child turn. Unrelated ambient secrets are not forwarded. Gemini CLI exposes
+native ACP modes, but its provider/account availability is version- and
+account-dependent; `engine_status()` is only a local readiness hint, not a
+successful provider smoke test.
 
 ## `co ai`
 

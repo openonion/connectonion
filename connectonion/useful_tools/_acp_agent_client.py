@@ -41,7 +41,17 @@ _SESSION_ID_LIMIT = 512
 _PATH_LIMIT = 4096
 _ENGINE_LIMIT = 64
 _TIMEOUT_LIMIT = 3600
+_STARTUP_LIMIT = 120.0
 _TRUNCATED_SUFFIX = "\n... (ACP result truncated at 64 KiB)"
+_GEMINI_ENV_VARS = (
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_CLOUD_PROJECT_ID",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+)
 
 
 def validate_inputs(
@@ -77,6 +87,14 @@ def engine_environment(engine: str, approval: str) -> dict[str, str]:
             for name in ("CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY")
             if os.getenv(name)
         }
+    if engine == "gemini":
+        environment = {
+            name: os.environ[name]
+            for name in _GEMINI_ENV_VARS
+            if os.getenv(name)
+        }
+        environment["NO_BROWSER"] = "1"
+        return environment
     if engine != "codex":
         return {}
     environment = {
@@ -127,10 +145,17 @@ async def run_agent(
     client: "ToolClient",
     environment: dict[str, str],
 ) -> dict[str, Any]:
-    deadline = asyncio.get_running_loop().time() + timeout
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    startup_deadline = (
+        min(deadline, loop.time() + _STARTUP_LIMIT)
+        if engine == "gemini"
+        else deadline
+    )
     stderr_task: asyncio.Task | None = None
     failure: Exception | None = None
     result: dict[str, Any] | None = None
+    stderr_signals = {"authentication": False}
 
     try:
         async with acp.spawn_agent_process(
@@ -143,7 +168,9 @@ async def run_agent(
             observers=[client.observe_stream],
         ) as (connection, process):
             if process.stderr is not None:
-                stderr_task = asyncio.create_task(_drain_stderr(process.stderr))
+                stderr_task = asyncio.create_task(
+                    _drain_stderr(process.stderr, stderr_signals)
+                )
             initialized = await _before_deadline(
                 connection.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
@@ -152,7 +179,7 @@ async def run_agent(
                         name="connectonion", title="ConnectOnion", version=__version__
                     ),
                 ),
-                deadline,
+                startup_deadline,
                 timeout,
             )
             resumed = False
@@ -165,7 +192,7 @@ async def run_agent(
                     connection.load_session(
                         str(cwd), session_id, mcp_servers=[], **metadata
                     ),
-                    deadline,
+                    startup_deadline,
                     timeout,
                 )
                 active_session = session_id
@@ -173,7 +200,7 @@ async def run_agent(
             else:
                 session = await _before_deadline(
                     connection.new_session(str(cwd), mcp_servers=[], **metadata),
-                    deadline,
+                    startup_deadline,
                     timeout,
                 )
                 active_session = _session_id(session.session_id)
@@ -184,10 +211,10 @@ async def run_agent(
                 client.approval,
                 active_session,
                 session.modes,
-                deadline,
+                startup_deadline,
                 timeout,
             )
-            await client.drain_updates(deadline, timeout)
+            await client.drain_updates(startup_deadline, timeout)
             client.begin_prompt()
             try:
                 response = await _prompt_until_done(
@@ -214,7 +241,17 @@ async def run_agent(
         await _finish_stderr(stderr_task)
 
     if failure is not None:
-        message = str(failure) or failure.__class__.__name__
+        if (
+            engine == "gemini"
+            and isinstance(failure, TimeoutError)
+            and stderr_signals["authentication"]
+        ):
+            message = (
+                "Authentication required; configure Gemini CLI before using "
+                "ACP (interactive login is disabled)."
+            )
+        else:
+            message = str(failure) or failure.__class__.__name__
         raise RuntimeError(message) from failure
     assert result is not None
     return result
@@ -289,9 +326,16 @@ async def _cancel(connection, session_id: str) -> None:
         await asyncio.wait_for(connection.cancel(session_id), timeout=1)
 
 
-async def _drain_stderr(reader: asyncio.StreamReader) -> None:
-    while await reader.read(8192):
-        pass
+async def _drain_stderr(
+    reader: asyncio.StreamReader, signals: dict[str, bool]
+) -> None:
+    while chunk := await reader.read(8192):
+        lowered = chunk.lower()
+        if any(
+            marker in lowered
+            for marker in (b"authentication", b"credential", b"oauth", b"api key")
+        ):
+            signals["authentication"] = True
 
 
 async def _finish_stderr(task: asyncio.Task | None) -> None:

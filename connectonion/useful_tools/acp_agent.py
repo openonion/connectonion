@@ -27,6 +27,7 @@ class EngineSpec:
     auth_hint: str
     adapter_version: str | None
     supported_approval_modes: tuple[str, ...]
+    supports_resume: bool
 
 
 ENGINES = {
@@ -40,6 +41,7 @@ ENGINES = {
         auth_hint="~/.claude/.credentials.json",
         adapter_version="0.66.0",
         supported_approval_modes=APPROVAL_MODES,
+        supports_resume=True,
     ),
     "codex": EngineSpec(
         command=("npx", "--yes", "@agentclientprotocol/codex-acp@1.1.14"),
@@ -47,13 +49,15 @@ ENGINES = {
         auth_hint="~/.codex/auth.json",
         adapter_version="1.1.14",
         supported_approval_modes=("auto",),
+        supports_resume=True,
     ),
     "gemini": EngineSpec(
-        command=("gemini", "--experimental-acp"),
-        launcher="gemini",
+        command=("npx", "--yes", "@google/gemini-cli@0.55.1", "--acp"),
+        launcher="npx",
         auth_hint="~/.gemini/oauth_creds.json",
-        adapter_version=None,
+        adapter_version="0.55.1",
         supported_approval_modes=APPROVAL_MODES,
+        supports_resume=False,
     ),
 }
 
@@ -72,6 +76,7 @@ def engine_status() -> str:
             "auth_check": "credential file presence only",
             "adapter_version": spec.adapter_version,
             "supported_approval_modes": list(spec.supported_approval_modes),
+            "supports_resume": spec.supports_resume,
         })
     return json.dumps({"engines": rows})
 
@@ -132,7 +137,8 @@ class ACPAgent:
                 error=f"Unknown engine {selected!r}. Use one of {sorted(ENGINES)}.",
             )
         if self._command is None:
-            supported = ENGINES[selected].supported_approval_modes
+            spec = ENGINES[selected]
+            supported = spec.supported_approval_modes
             if self._approval not in supported:
                 return envelope(
                     selected,
@@ -142,6 +148,16 @@ class ACPAgent:
                         "only operator-selected 'auto'; its manual/deny modes do "
                         "not gate shell or network actions. Use the native codex "
                         "tool for approval-aware delegation."
+                    ),
+                )
+            if session_id and not spec.supports_resume:
+                return envelope(
+                    selected,
+                    session_id=session_id,
+                    error=(
+                        f"@google/gemini-cli@{spec.adapter_version} does not "
+                        "persist ACP sessions across child processes; start a "
+                        "new Gemini turn without session_id."
                     ),
                 )
 
@@ -194,6 +210,8 @@ class ACPAgent:
                 session_id=session_id,
                 error=f"ACP {selected}: {exc}",
             )
+        if self._command is None and not ENGINES[selected].supports_resume:
+            result["session_id"] = ""
         return envelope(selected, **result)
 
     def _resolve_engine(self, engine: str) -> tuple[str, tuple[str, ...] | None]:

@@ -29,9 +29,12 @@ but the adapter's fixed ACP modes cannot.
 ## Decision
 
 The generic `acp_agent` tool uses the pinned official Python ACP client and
-exact-version named adapter commands. A model may select a named engine. Custom
-argv, approval policy, and workspace root exist only on an operator-created
-`ACPAgent` instance; the public tool schema cannot supply them.
+exact-version Claude, Codex, and Gemini CLI commands. Gemini uses
+`@google/gemini-cli@0.55.1` through its current native `--acp` route rather
+than an operator's potentially stale global binary. A model may select a named
+engine. Custom argv, approval policy, and workspace root exist only on an
+operator-created `ACPAgent` instance; the public tool schema cannot supply
+them.
 
 Only the final `agent_message_chunk` text and bounded tool lifecycle metadata
 cross the downward edge. Tool IDs and titles retain correlation, but ordinary
@@ -50,14 +53,25 @@ explicit parent identity, privacy, replay, and rendering semantics.
 Named Claude sessions ignore persistent interactive CLI allow rules and
 explicitly select Manual, Auto, or Don't Ask through advertised ACP session
 modes. Gemini likewise must advertise the required mode. Missing modes fail
-closed. Resume reapplies the same policy and never silently creates a fresh
-session after load failure.
+closed. Claude and Codex resume reapply the same policy and never silently
+create a fresh session after load failure.
+
+Gemini CLI 0.55.1 advertises `session/load`, but real new-process conformance
+testing could not load the session created by the preceding process. The named
+Gemini route is therefore explicitly one-turn: it returns no resumable session
+ID and rejects a supplied `session_id` before process launch. A future exact
+pin may enable resume only after the same cross-process test passes; advertised
+capability alone is insufficient.
 
 The subprocess starts from the ACP SDK's trimmed HOME, PATH, and shell
 environment rather than inheriting every ambient secret. A named Claude child
 adds only an explicitly configured `CLAUDE_CONFIG_DIR` or
 `ANTHROPIC_API_KEY`; a named Codex child adds only its selected API key or
-`CODEX_HOME`. Unrelated environment credentials do not cross this edge.
+`CODEX_HOME`. A named Gemini child adds only the documented Gemini API-key or
+Vertex authentication variables explicitly present in the operator
+environment and disables browser launch. Stale or missing credentials fail the
+turn instead of turning a child task into an interactive login flow. Unrelated
+environment credentials do not cross this edge.
 
 Named Codex ACP sessions have a narrower contract at the pinned adapter
 version: only an operator-selected `auto` policy may launch. `manual` and
@@ -97,6 +111,8 @@ present; it does not retain an import-time working directory as a wider root.
   command arguments, file contents, provider output, thoughts, or plans.
 - The generic Codex ACP route remains available for explicit Full Access, while
   normal approval-aware delegation fails closed onto the native Codex route.
+- Gemini remains useful for bounded one-turn delegation without exposing an
+  ephemeral process-local ID as durable state.
 - A timed-out approval is revoked with the same child turn instead of leaving
   a blocked worker or live subprocess behind.
 - Re-enabling Codex `manual` or `deny` requires a pinned adapter plus a real

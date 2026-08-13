@@ -8,6 +8,7 @@ Run explicitly because these tests invoke authenticated provider CLIs:
 import json
 import os
 import shutil
+import sys
 
 import pytest
 
@@ -22,8 +23,16 @@ HAS_CODEX_AUTH = bool(
     or os.path.isfile(os.path.join(REAL_CODEX_HOME, "auth.json"))
 )
 HAS_CLAUDE = bool(os.environ.get("CLAUDE_CODE_CMD") or shutil.which("claude"))
-REAL_CLAUDE_CONFIG_DIR = (
-    os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+REAL_PROVIDER_HOME = os.path.expanduser("~")
+REAL_CLAUDE_CONFIG_DIR = os.environ.get("CLAUDE_CONFIG_DIR")
+HAS_GEMINI_ENV_AUTH = bool(
+    os.environ.get("GEMINI_API_KEY")
+    or os.environ.get("GOOGLE_API_KEY")
+    or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+)
+HAS_GEMINI_AUTH = bool(
+    HAS_GEMINI_ENV_AUTH
+    or os.path.isfile(os.path.expanduser("~/.gemini/oauth_creds.json"))
 )
 
 requires_npx = pytest.mark.skipif(not HAS_NPX, reason="npx is not installed")
@@ -37,8 +46,38 @@ def real_codex_home(monkeypatch):
 
 @pytest.fixture
 def real_claude_config(monkeypatch):
-    """Opt-in Claude tests may read CLI auth without exposing the whole HOME."""
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", REAL_CLAUDE_CONFIG_DIR)
+    """Opt-in tests expose only the platform's native Claude auth source."""
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    environment = _real_claude_auth_environment(
+        sys.platform, REAL_PROVIDER_HOME, REAL_CLAUDE_CONFIG_DIR
+    )
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+
+
+def _real_claude_auth_environment(
+    platform: str, home: str, configured_dir: str | None
+) -> dict[str, str]:
+    if configured_dir:
+        return {"CLAUDE_CONFIG_DIR": configured_dir}
+    if platform == "darwin":
+        return {"HOME": home}
+    return {"CLAUDE_CONFIG_DIR": os.path.join(home, ".claude")}
+
+
+def _real_gemini_auth_environment(
+    home: str, has_explicit_auth: bool
+) -> dict[str, str]:
+    return {} if has_explicit_auth else {"HOME": home}
+
+
+@pytest.fixture
+def real_gemini_auth(monkeypatch):
+    """OAuth-only tests expose Gemini's real credential home."""
+    for key, value in _real_gemini_auth_environment(
+        REAL_PROVIDER_HOME, HAS_GEMINI_ENV_AUTH
+    ).items():
+        monkeypatch.setenv(key, value)
 
 
 def _success(output: str) -> dict:
@@ -99,3 +138,19 @@ def test_real_claude_acp_manual_turn_and_resume(tmp_path, real_claude_config):
     assert second["resumed"] is True
     assert second["session_id"] == first["session_id"]
     assert "ACP_CLAUDE_RESUME_31" in second["result"]
+
+
+@requires_npx
+@pytest.mark.skipif(not HAS_GEMINI_AUTH, reason="Gemini CLI is not authenticated")
+def test_real_gemini_acp_manual_turn(tmp_path, real_gemini_auth):
+    tool = ACPAgent(approval="manual", workspace=tmp_path)
+    result = json.loads(
+        tool.acp_agent(
+            "Reply exactly ACP_GEMINI_ONE_TURN_OK.", engine="gemini", timeout=180
+        )
+    )
+    assert "error" not in result, result.get("error")
+    assert result["session_id"] == ""
+    assert result["resumed"] is False
+    assert result["stop_reason"]
+    assert "ACP_GEMINI_ONE_TURN_OK" in result["result"]
