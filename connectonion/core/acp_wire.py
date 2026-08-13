@@ -33,6 +33,14 @@ from acp.schema import (
 )
 from acp.schema import PlanEntry as ACPPlanEntry
 
+from .approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    PERMISSION_PROFILE_IDS,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    legacy_permission_profile_id,
+    permission_profile_id,
+)
 from .wire_events import normalize_wire_event
 
 ACP_FRAME_TYPE = "ACP_NOTIFICATION"
@@ -43,23 +51,23 @@ ACP_SESSION_UPDATE_METHOD = "session/update"
 ACP_PERMISSION_METHOD = "session/request_permission"
 ACP_CANCEL_METHOD = "session/cancel"
 ACP_SET_SESSION_MODE_METHOD = "session/set_mode"
-ACP_SESSION_MODE_IDS = frozenset({"safe", "accept_edits", "ulw"})
+ACP_SESSION_MODE_IDS = PERMISSION_PROFILE_IDS
 
 ACP_SESSION_MODES = {
-    "safe": SessionMode(
-        id="safe",
-        name="Safe",
-        description="Ask before side effects.",
+    READ_ONLY_PERMISSION_PROFILE: SessionMode(
+        id=READ_ONLY_PERMISSION_PROFILE,
+        name="Read only",
+        description="Read freely; ask before edits, commands, or broader access.",
     ),
-    "accept_edits": SessionMode(
-        id="accept_edits",
+    WORKSPACE_PERMISSION_PROFILE: SessionMode(
+        id=WORKSPACE_PERMISSION_PROFILE,
         name="Auto",
-        description="Apply edits without asking; other tools still require approval.",
+        description="Edit the workspace automatically; broader actions still ask.",
     ),
-    "ulw": SessionMode(
-        id="ulw",
-        name="ULW",
-        description="Run without tool approvals within the Host launch ceiling.",
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE: SessionMode(
+        id=DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+        name="Full access",
+        description="Run without approval prompts within the Host launch ceiling.",
     ),
 }
 
@@ -179,11 +187,9 @@ def map_plan_event(event: Mapping[str, Any]) -> AgentPlanUpdate | None:
 
 
 def session_mode_id(value: Any) -> str:
-    """Return one persisted server mode ID or reject it without coercion."""
+    """Return one canonical permission profile carried by ACP session mode."""
 
-    if not isinstance(value, str) or value not in ACP_SESSION_MODE_IDS:
-        raise ValueError(f"Unsupported ACP session mode: {value!r}")
-    return value
+    return permission_profile_id(value)
 
 
 def acp_session_mode_state(
@@ -281,7 +287,10 @@ def acp_set_mode_request(
         raise ACPSessionMismatchError(
             "ACP mode request belongs to another session"
         )
-    return request_id, session_mode_id(parsed.mode_id)
+    # A rolling-upgrade client may still send an old mode ID. Normalize it at
+    # this one compatibility boundary; all committed and emitted state is
+    # canonical.
+    return request_id, legacy_permission_profile_id(parsed.mode_id)
 
 
 def host_session_mode_state(connected: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -302,18 +311,25 @@ def host_session_mode_state(connected: Mapping[str, Any]) -> dict[str, Any] | No
         return None
     try:
         state = SessionModeState.model_validate(raw_state)
-        current = session_mode_id(state.current_mode_id)
+        current = legacy_permission_profile_id(state.current_mode_id)
         seen: set[str] = set()
+        available: list[SessionMode] = []
         for mode in state.available_modes:
-            mode_id = session_mode_id(mode.id)
+            mode_id = legacy_permission_profile_id(mode.id)
             if mode_id in seen or not mode.name:
                 return None
             seen.add(mode_id)
+            canonical = ACP_SESSION_MODES[mode_id].model_copy(deep=True)
+            available.append(canonical)
         if current not in seen:
             return None
     except (TypeError, ValueError):
         return None
-    return state.model_dump(
+    normalized = SessionModeState(
+        current_mode_id=current,
+        available_modes=available,
+    )
+    return normalized.model_dump(
         mode="json",
         by_alias=True,
         exclude_none=True,
@@ -546,13 +562,27 @@ def legacy_approval_response_from_acp(
     if frame.get("sessionId") != expected_session_id:
         raise ValueError("ACP permission response belongs to another session")
     message = _required_mapping(frame, "message")
+    _require_exact_fields(
+        message,
+        {"jsonrpc", "id", "result"},
+        "ACP permission response",
+    )
     if message.get("jsonrpc") != "2.0":
         raise ValueError("ACP response jsonrpc must be '2.0'")
     if message.get("id") != expected_request_id:
         raise ValueError("ACP permission response belongs to another request")
-    result = RequestPermissionResponse.model_validate(
-        _required_mapping(message, "result")
+    raw_result = _required_mapping(message, "result")
+    _require_exact_fields(
+        raw_result, {"outcome", "_meta"}, "ACP permission result"
     )
+    raw_outcome = _required_mapping(raw_result, "outcome")
+    outcome_fields = {"outcome"}
+    if raw_outcome.get("outcome") == "selected":
+        outcome_fields.update({"optionId", "_meta"})
+    _require_exact_fields(
+        raw_outcome, outcome_fields, "ACP permission outcome"
+    )
+    result = RequestPermissionResponse.model_validate(raw_result)
     outcome = result.outcome
     if outcome.outcome == "cancelled":
         return _hard_rejection()
@@ -593,6 +623,9 @@ def legacy_interrupt_from_acp_cancel(
     if message.get("method") != ACP_CANCEL_METHOD:
         raise ValueError("Unsupported ACP client notification method")
     params = _required_mapping(message, "params")
+    _require_exact_fields(
+        params, {"sessionId", "_meta"}, "ACP cancel params"
+    )
     if not isinstance(params.get("sessionId"), str):
         raise ValueError("ACP cancel sessionId must be a string")
     cancel = CancelNotification.model_validate(params)
@@ -643,7 +676,7 @@ def legacy_stream_event_from_acp(
             raise ValueError("ACP mode update belongs to another session")
         return {
             "type": "mode_changed",
-            "mode": session_mode_id(update.get("currentModeId")),
+            "mode": legacy_permission_profile_id(update.get("currentModeId")),
         }
     return _legacy_tool_event(update)
 
@@ -766,6 +799,13 @@ def _required_mapping(
     if not isinstance(item, Mapping):
         raise ValueError(f"ACP notification field {field!r} must be an object")
     return item
+
+
+def _require_exact_fields(
+    value: Mapping[str, Any], allowed: set[str], context: str
+) -> None:
+    if not set(value).issubset(allowed):
+        raise ValueError(f"{context} contains unsupported fields")
 
 
 def _required_string(value: Mapping[str, Any], field: str) -> str:

@@ -20,12 +20,12 @@ the frontend.
 
 ## Permission boundary
 
-The current co ai mode determines Codex's policy. Safe Mode starts read-only
-and asks if Codex requests more permission. Accept Edits allows workspace
+The current co ai permission profile determines Codex's policy. Read only
+starts read-only and asks if Codex requests more permission. Auto allows workspace
 writes while retaining approval for untrusted commands and requests outside
-that sandbox. Explicit YOLO/ULW runs
-without prompts inside the workspace sandbox. The tool reapplies the current
-policy when resuming and never silently selects danger-full-access.
+that sandbox. Full access runs without prompts using Codex's
+`danger-full-access` sandbox. The tool reapplies the current policy when
+resuming.
 
 ## Example
 

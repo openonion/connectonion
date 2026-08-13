@@ -471,7 +471,7 @@ When `stop_signal` is set:
 **Use cases:**
 - User rejects a tool execution (hard reject)
 - Plugin decides to pause and wait for user input
-- ULW mode checkpoint reached
+- Full access mode checkpoint reached
 
 The value stored in `stop_signal` is used as the tool result message, so the LLM understands what happened.
 

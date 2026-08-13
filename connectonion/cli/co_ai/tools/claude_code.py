@@ -1,7 +1,15 @@
 """Expose Claude Code to co ai without exposing its permission policy."""
 
 import json
+from pathlib import Path
 
+from connectonion.core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    has_valid_full_access_grant,
+    legacy_permission_profile_id,
+)
 from connectonion.useful_tools.claude_code import _run_claude_code
 
 
@@ -38,11 +46,22 @@ def claude_code(
                 "total_cost_usd": None,
             }
         )
+    try:
+        profile = legacy_permission_profile_id(
+            session.get("mode", READ_ONLY_PERMISSION_PROFILE)
+        )
+    except ValueError:
+        profile = READ_ONLY_PERMISSION_PROFILE
+    if (
+        profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE
+        and not has_valid_full_access_grant(session)
+    ):
+        profile = READ_ONLY_PERMISSION_PROFILE
     permission_mode = {
-        "safe": "default",
-        "accept_edits": "acceptEdits",
-        "ulw": "auto",
-    }.get(session.get("mode"), "default")
+        READ_ONLY_PERMISSION_PROFILE: "default",
+        WORKSPACE_PERMISSION_PROFILE: "acceptEdits",
+        DANGER_FULL_ACCESS_PERMISSION_PROFILE: "auto",
+    }[profile]
     return _run_claude_code(
         prompt=prompt,
         session_id=session_id,
@@ -51,4 +70,9 @@ def claude_code(
         model=model,
         timeout=timeout,
         agent=agent,
+        workspace=(
+            getattr(agent, "_delegation_workspace", Path.cwd())
+            if agent is not None
+            else None
+        ),
     )

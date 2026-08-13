@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import sys
 from asyncio.subprocess import Process
@@ -15,7 +16,10 @@ import acp
 import pytest
 from acp.schema import (
     AgentMessageChunk,
+    BlobResourceContents,
     ClientCapabilities,
+    EmbeddedResourceContentBlock,
+    ImageContentBlock,
     Implementation,
     PermissionOption,
     RequestPermissionResponse,
@@ -140,10 +144,14 @@ async def test_official_sdk_validates_lifecycle_content_mode_and_resume(tmp_path
             capabilities = initialized.agent_capabilities.session_capabilities
             assert capabilities.resume is not None
             assert capabilities.close is not None
+            prompt_capabilities = initialized.agent_capabilities.prompt_capabilities
+            assert prompt_capabilities.image is True
+            assert prompt_capabilities.embedded_context is True
+            assert prompt_capabilities.audio is False
 
             created = await agent.new_session(str(tmp_path), mcp_servers=[])
-            assert created.modes.current_mode_id == "safe"
-            await agent.set_session_mode(created.session_id, "accept_edits")
+            assert created.modes.current_mode_id == ":read-only"
+            await agent.set_session_mode(created.session_id, ":workspace")
             prompted = await agent.prompt(
                 created.session_id,
                 [
@@ -168,13 +176,43 @@ async def test_official_sdk_validates_lifecycle_content_mode_and_resume(tmp_path
                 "(file:///workspace/docs/api.md)"
             ]
 
+            attached = await agent.prompt(
+                created.session_id,
+                [
+                    acp.text_block("attachments"),
+                    ImageContentBlock(
+                        type="image",
+                        data=base64.b64encode(b"image").decode("ascii"),
+                        mime_type="image/png",
+                    ),
+                    EmbeddedResourceContentBlock(
+                        type="resource",
+                        resource=BlobResourceContents(
+                            uri="connectonion-upload:/notes.txt",
+                            mime_type="text/plain",
+                            blob=base64.b64encode(b"notes").decode("ascii"),
+                        ),
+                    ),
+                ],
+            )
+            assert attached.stop_reason == "end_turn"
+            assert [
+                update.content.text
+                for session_id, update in client.updates
+                if session_id == created.session_id
+                and isinstance(update, AgentMessageChunk)
+            ][-1] == (
+                "attachments: images=['data:image/png;base64,aW1hZ2U='], "
+                "files=[('notes.txt', 'data:text/plain;base64,bm90ZXM=')]"
+            )
+
             await agent.close_session(created.session_id)
             resumed = await agent.resume_session(
                 created.session_id,
                 str(tmp_path),
                 mcp_servers=[],
             )
-            assert resumed.modes.current_mode_id == "accept_edits"
+            assert resumed.modes.current_mode_id == ":workspace"
             await agent.close_session(created.session_id)
             assert process.returncode is None
 

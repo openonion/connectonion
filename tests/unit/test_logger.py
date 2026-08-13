@@ -390,6 +390,88 @@ class TestEvalLogging:
         assert data["turns"][0]["input"] == "turn 1"
         assert data["turns"][1]["input"] == "turn 2"
 
+    def test_log_turn_scopes_tools_and_usage_to_current_trace_boundary(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A cumulative session must not bill or credit an earlier turn twice."""
+        monkeypatch.chdir(tmp_path)
+
+        logger = Logger("test-agent", quiet=True)
+        logger.start_session()
+
+        turn_one_trace = [
+            {'type': 'user_input', 'turn': 1, 'content': 'Use Claude Code'},
+            {
+                'type': 'llm_result',
+                'usage': {
+                    'input_tokens': 100,
+                    'output_tokens': 50,
+                    'cost': 0.01,
+                },
+            },
+            {
+                'type': 'tool_result',
+                'name': 'claude_code',
+                'args': {'prompt': 'read README'},
+            },
+            {'type': 'turn_result', 'turn': 1, 'reason': 'natural'},
+        ]
+        turn_two_trace = [
+            *turn_one_trace,
+            {'type': 'user_input', 'turn': 2, 'content': 'Use Codex'},
+            {
+                'type': 'llm_result',
+                'usage': {
+                    'input_tokens': 20,
+                    'output_tokens': 5,
+                    'cost': 0.002,
+                },
+            },
+            {
+                'type': 'tool_result',
+                'name': 'codex',
+                'args': {'prompt': 'read README'},
+            },
+            {'type': 'turn_result', 'turn': 2, 'reason': 'natural'},
+        ]
+
+        logger.log_turn(
+            "Use Claude Code",
+            "CLAUDE_READ_OK",
+            100,
+            {'turn': 1, 'trace': turn_one_trace, 'messages': []},
+            "gpt-5",
+        )
+        logger.log_turn(
+            "Use Codex",
+            "CODEX_READ_OK",
+            200,
+            {'turn': 2, 'trace': turn_two_trace, 'messages': []},
+            "gpt-5",
+        )
+
+        with open(logger.eval_file) as f:
+            data = yaml.safe_load(f)
+
+        first_turn, second_turn = data['turns']
+        assert first_turn['tools_called'] == [
+            "claude_code(prompt='read README')",
+        ]
+        assert json.loads(first_turn['meta'])['tokens'] == 150
+        assert json.loads(first_turn['meta'])['cost'] == 0.01
+        assert second_turn['tools_called'] == [
+            "codex(prompt='read README')",
+        ]
+        assert json.loads(second_turn['meta'])['tokens'] == 25
+        assert json.loads(second_turn['meta'])['cost'] == 0.002
+
+        with open(logger.eval_dir / 'run_1.yaml') as f:
+            latest_run = yaml.safe_load(f)
+        assert latest_run['tokens'] == 25
+        assert latest_run['cost'] == 0.002
+
     def test_log_turn_without_start_session(self, tmp_path, monkeypatch):
         """Test log_turn does nothing if enable_sessions is False."""
         monkeypatch.chdir(tmp_path)

@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from ..logger import Logger
 from ..prompts import load_system_prompt
+from .approval_modes import normalize_runtime_approval_session
 from .events import EventHandler
 from .interrupt import run_interruptible
 from .llm import LLM, TokenUsage, create_llm
@@ -72,7 +73,8 @@ class Agent:
         quiet: bool = False,
         plugins: Optional[List[List[EventHandler]]] = None,
         on_events: Optional[List[EventHandler]] = None,
-        co_dir: Optional[Union[str, Path]] = None
+        co_dir: Optional[Union[str, Path]] = None,
+        state_dir: Optional[Union[str, Path]] = None,
     ):
         self.name = name
         self.co_dir = Path(co_dir) if co_dir else Path(".co")
@@ -93,12 +95,19 @@ class Agent:
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
 
         # Initialize logger (unified: terminal + file + YAML evals)
-        # Environment variable override (highest priority)
+        # Environment override stays highest priority for the legacy path. An
+        # explicit state root is an isolation boundary, so hidden process state
+        # must not redirect its file log outside that root.
         effective_log = log
-        if os.getenv('CONNECTONION_LOG'):
+        if state_dir is None and os.getenv('CONNECTONION_LOG'):
             effective_log = Path(os.getenv('CONNECTONION_LOG'))
 
-        self.logger = Logger(agent_name=name, quiet=quiet, log=effective_log, co_dir=co_dir)
+        self.logger = Logger(
+            agent_name=name,
+            quiet=quiet,
+            log=effective_log,
+            co_dir=state_dir if state_dir is not None else co_dir,
+        )
 
         # Initialize event registry
         # Note: before_each_tool/after_each_tool fire for EACH tool
@@ -280,7 +289,8 @@ class Agent:
 
     def input(self, prompt: str, max_iterations: Optional[int] = None,
               session: Optional[Dict] = None, images: list[str] | None = None,
-              files: list[dict] | None = None) -> str:
+              files: list[dict] | None = None,
+              _upload_reservation: Any = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
@@ -303,16 +313,16 @@ class Agent:
         logger_session_id = None
         if session is not None:
             # Everything the caller passed, not four chosen keys. Plugins keep
-            # their state here — ULW's mode and turn budget, the approval gate's
+            # their state here — Full access's mode and turn budget, the approval gate's
             # requester — and rebuilding from a whitelist silently dropped all of
-            # it: ULW fell back to Safe after a turn, and the approval gate saw
+            # it: Full access fell back to Default after a turn, and the approval gate saw
             # every requester as unknown. #191.
             #
             # Which of these keys a client is allowed to state is decided before
             # this point, in input_handler: a session arriving over the wire has
             # the server-owned ones stripped and re-applied from what the server
             # stored. Here we only restore what we were handed.
-            self.current_session = dict(session)
+            self.current_session = normalize_runtime_approval_session(session)
             self.current_session['session_id'] = session.get('session_id')
             self.current_session['messages'] = list(session.get('messages', []))
             self.current_session['trace'] = list(session.get('trace', []))
@@ -362,34 +372,46 @@ class Agent:
 
             # Save uploaded files to .co/uploads/ and build file path references.
             saved_files = []
-            if files:
-                uploads_dir = self.logger.co_dir / "uploads"
-                uploads_dir.mkdir(parents=True, exist_ok=True)
-                pending_files = []
-                for f in files:
-                    safe_name = Path(f["name"]).name
-                    file_path = uploads_dir / f"{uuid4().hex}_{safe_name}"
-                    data_url = f["data"]
-                    if "," in data_url:
-                        raw_data = base64.b64decode(data_url.split(",", 1)[1])
-                    else:
-                        raw_data = base64.b64decode(data_url)
-                    pending_files.append((file_path, raw_data))
+            try:
+                if files:
+                    # Network ACP can bind this private staging root to the
+                    # authenticated principal that owns the session. Other Agent
+                    # entry points retain the historical project/global .co root.
+                    uploads_dir = Path(
+                        getattr(self, "_upload_dir", self.logger.co_dir / "uploads")
+                    )
+                    uploads_dir.mkdir(parents=True, exist_ok=True)
+                    pending_files = []
+                    for f in files:
+                        safe_name = Path(f["name"]).name
+                        file_path = uploads_dir / f"{uuid4().hex}_{safe_name}"
+                        data_url = f["data"]
+                        if "," in data_url:
+                            raw_data = base64.b64decode(data_url.split(",", 1)[1])
+                        else:
+                            raw_data = base64.b64decode(data_url)
+                        pending_files.append((file_path, raw_data))
 
-                written_files = []
-                try:
-                    for file_path, raw_data in pending_files:
-                        file_path.write_bytes(raw_data)
-                        written_files.append(file_path)
-                except BaseException:
-                    # write_bytes can create a partial file before raising.
-                    # UUID paths are owned by this turn, so clean every target,
-                    # not only calls that returned successfully.
-                    for file_path, _raw_data in pending_files:
-                        with suppress(Exception):
-                            file_path.unlink(missing_ok=True)
-                    raise
-                saved_files = [str(path.resolve()) for path in written_files]
+                    written_files = []
+                    try:
+                        for file_path, raw_data in pending_files:
+                            file_path.write_bytes(raw_data)
+                            written_files.append(file_path)
+                    except BaseException:
+                        # write_bytes can create a partial file before raising.
+                        # UUID paths are owned by this turn, so clean every target,
+                        # not only calls that returned successfully.
+                        for file_path, _raw_data in pending_files:
+                            with suppress(Exception):
+                                file_path.unlink(missing_ok=True)
+                        raise
+                    saved_files = [str(path.resolve()) for path in written_files]
+
+            finally:
+                # Network ACP holds a principal quota lock only while files are
+                # staged. Model work, approvals, and commits must remain concurrent.
+                if _upload_reservation is not None:
+                    _upload_reservation.release()
 
             if saved_files:
                 self._record_trace({

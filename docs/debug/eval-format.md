@@ -43,6 +43,9 @@ turns:
 ```
 
 The `meta` field is a compact JSON string containing tokens, cost, duration, and timestamp.
+For a continued Agent session, each turn's `tools_called`, tokens, and cost come
+only from trace entries beginning at that turn's matching `user_input` marker.
+The full message history remains cumulative so the run can still be replayed.
 
 ## Run YAML Format
 
@@ -69,7 +72,7 @@ messages: |
 - `system_prompt`: The agent's system prompt (easy to access)
 - `model`: Which model was used
 - `cwd`: Working directory (for re-execution)
-- `tokens`, `cost`, `duration_ms`: Performance metrics
+- `tokens`, `cost`, `duration_ms`: Performance metrics for this turn
 - `messages`: Full message history as multi-line JSON (API format)
 
 ## Design Rationale

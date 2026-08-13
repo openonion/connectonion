@@ -117,6 +117,7 @@ def create_agent(
     yolo_turns: int | None = None,
     role: str | None = "coding",
     background_tools: bool = True,
+    state_dir: Path | None = None,
 ) -> Agent:
     """Build the co-ai agent.
 
@@ -182,7 +183,9 @@ def create_agent(
         model=model,
         max_iterations=max_iterations,
         co_dir=co_dir,
+        state_dir=state_dir,
     )
+    agent._delegation_workspace = Path.cwd().resolve()
     # This browser helper blocks on stdin, which is wrong for co ai's websocket
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.
     agent.tools.remove("wait_for_manual_login")

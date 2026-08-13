@@ -62,7 +62,7 @@ def test_pending_interrupt_prevents_step_from_starting():
 
 
 def test_interrupt_abandons_slow_step_and_preserves_other_messages():
-    io = MailboxIO([{"type": "mode_change", "mode": "safe"}])
+    io = MailboxIO([{"type": "mode_change", "mode": "default"}])
     started = threading.Event()
     release = threading.Event()
 
@@ -84,7 +84,7 @@ def test_interrupt_abandons_slow_step_and_preserves_other_messages():
     assert result is None
     assert interrupted is True
     assert elapsed < 0.3
-    assert io.receive_all() == [{"type": "mode_change", "mode": "safe"}]
+    assert io.receive_all() == [{"type": "mode_change", "mode": "default"}]
 
 
 def test_completed_step_wins_same_poll_window():
@@ -222,7 +222,7 @@ def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
         log=False,
         quiet=True,
     )
-    old_session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
+    old_session = {"messages": [], "trace": [], "iteration": 1, "mode": "default"}
     agent.current_session = old_session
     agent.io = WebSocketIO()
 
@@ -241,7 +241,7 @@ def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
     )
 
     assert trace["status"] == "interrupted"
-    new_session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
+    new_session = {"messages": [], "trace": [], "iteration": 1, "mode": "default"}
     agent.current_session = new_session
     next_reply = {"type": "ask_user_response", "answer": "next turn"}
     agent.io.send_to_agent(next_reply)
@@ -299,11 +299,12 @@ def test_interrupt_stops_provider_process_before_late_write(
         log=False,
         quiet=True,
     )
+    agent._delegation_workspace = tmp_path
     agent.current_session = {
         "messages": [],
         "trace": [],
         "iteration": 1,
-        "mode": "safe",
+        "mode": "default",
     }
     agent.io = WebSocketIO()
 
@@ -427,7 +428,7 @@ def test_interruptible_io_makes_request_approval_an_interrupted_tool():
 
 def test_completed_agent_tool_commits_its_session_snapshot():
     def change_mode(agent) -> str:
-        agent.current_session["mode"] = "accept_edits"
+        agent.current_session["mode"] = ":workspace"
         agent.tools.remove("victim")
         return "changed"
 
@@ -438,7 +439,7 @@ def test_completed_agent_tool_commits_its_session_snapshot():
         "snapshot-commit", llm=MockLLM(), tools=[change_mode, victim],
         log=False, quiet=True,
     )
-    session = {"messages": [], "trace": [], "iteration": 1, "mode": "safe"}
+    session = {"messages": [], "trace": [], "iteration": 1, "mode": "default"}
     agent.current_session = session
     agent.io = WebSocketIO()
 
@@ -449,7 +450,7 @@ def test_completed_agent_tool_commits_its_session_snapshot():
 
     assert trace["status"] == "success"
     assert agent.current_session is session
-    assert session["mode"] == "accept_edits"
+    assert session["mode"] == ":workspace"
     assert "victim" not in agent.tools
 
 
