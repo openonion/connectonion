@@ -13,14 +13,21 @@ site, and GitHub marks them as pre-releases rather than latest releases.
 
 ## Current channels
 
-- Stable: `1.6.0`
+- Stable: `1.6.4`
 - Preview candidate: `1.7.0a2`
 
-The second alpha completes the Host side of the browser-facing ACP session
-contract: bound permission identity, negotiated cancellation, authoritative
-mode state and transactions, public thoughts, and canonical TodoList plans.
-The supported browser consumer is `@connectonion/react`; the retired standalone
-TypeScript SDK is not part of this release path.
+The second alpha delivers the first end-to-end native browser ACP slice. The
+Host exposes an authenticated `/acp` WebSocket selected through explicit,
+fail-closed discovery; binds the caller to one virtual workspace and private,
+bounded session and attachment storage; and verifies payment onboarding before
+issuing a one-use browser ticket. Permissions, cancellation, modes, thoughts,
+plans, tool activity, reconnect, and resume stay on the shared ACP lifecycle.
+
+The supported browser protocol owner is `@connectonion/react`, whose reviewed
+`0.4.2-alpha.2` artifact is pinned by O Chat and exercised in desktop and mobile
+browser tests. The retired standalone TypeScript SDK is not part of this
+release path. The native endpoint is a direct loopback or TLS/WSS preview; it
+does not claim end-to-end encryption through an untrusted relay.
 
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 

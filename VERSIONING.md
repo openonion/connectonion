@@ -39,15 +39,19 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-Stable users remain on 1.6.0 while the 1.7.0 feature train is exercised through
+Stable users remain on 1.6.4 while the 1.7.0 feature train is exercised through
 alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
 ## Current Version: 1.7.0a2
 
 ### Version History
-- 1.7.0a2 (**ACP becomes a coherent browser-facing session contract**: authenticated Host permission requests retain their bound identity; negotiated cancellation, authoritative mode updates, and durable mode transactions round-trip through the Host; persisted public thoughts and canonical TodoList plans cross ACP as stable session updates; and Codex app-server refreshes managed authentication before launch. This remains an opt-in alpha while React, O Chat, browser, and real-provider integration are exercised; 1.6.0 remains the stable recommendation.)
+- 1.7.0a2 (**native browser ACP works through the reviewed product boundary**: the Host exposes an authenticated `/acp` WebSocket through explicit, fail-closed discovery; binds each caller to one virtual workspace and private, bounded session and attachment storage; verifies payment onboarding before issuing a one-use browser ticket; and carries permissions, cancellation, modes, public thoughts, canonical plans, tool activity, reconnect, and resume through the shared ACP lifecycle. Claude Code delegation streams bounded live tool events, and the canonical collaboration/permission vocabulary aligns with Codex without weakening Host authority. The published `@connectonion/react@0.4.2-alpha.2` artifact owns browser protocol state and O Chat pins and exercises it directly; the retired standalone TypeScript SDK is not on the release path. Direct loopback or TLS/WSS is preview scope, not relay end-to-end encryption. This remains opt-in; 1.6.4 remains the stable recommendation.)
 - 1.7.0a1 (**the first 1.7 preview**: audience-scoped HTTP routes let an agent expose visibly public, contacts-only, and admin-only endpoints beside its existing WebSocket transport; ACP gains resumable sessions, ordered updates, official SDK conformance, tool approvals, MCP tools, and stable agent messages; Telegram messaging and safer attachment handling arrive; and billed operations now fail closed when ambient credentials belong to a different account. This is an opt-in preview; 1.6.0 remains the stable recommendation.)
+- 1.6.4 (**`co gmail` reads malformed or unexpected HTML mail defensively** instead of letting one ordinary message break inbox listing.)
+- 1.6.3 (**`co status` names the account commands actually use** and the source of each credential; billed boundaries refuse an inherited key that belongs to another project.)
+- 1.6.2 (**an agent reads its own project trust configuration**: project discovery stops at the repository and home boundaries instead of silently treating global `~/.co` state as project state.)
+- 1.6.1 (**the CLI fails closed instead of acting as the wrong account** when a working-directory `.env` shadows this machine's identity; Outlook HTML reads retain their links and malformed tokens no longer crash every command.)
 - 1.6.0 (**safer remote agents and a cleaner credential boundary**: host identity and temporary session-status probes are signed consistently; relay profile updates reject stale or conflicting state; Microsoft OAuth credentials and refresh-token rotation stay on the CLI machine instead of being stored by the backend; project invite credentials are private and no shared default invite code is documented; email sending has traceable, tenant-scoped idempotency and resilient provider-error handling; paid mailbox upgrades can preserve the existing address and are charged atomically; portable skills, dependency floors, cross-platform tests, and exact-artifact release verification are hardened for a stable release.)
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
 - 0.0.2 → 0.0.9 (Early production releases)

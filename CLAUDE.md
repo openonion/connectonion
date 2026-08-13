@@ -407,14 +407,13 @@ behaviour and is always loaded; a role is appended on top.
 
 ## Version Numbering Strategy
 
-**Current Version:** 1.2.1 (Production Ready)
+**Current candidate:** 1.7.0a2 (Preview). **Stable:** 1.6.4.
 
-**Strategy:** Semantic versioning with specific rollover rules
-- Increment PATCH: 1.2.1 → 1.2.2 → ... → 1.2.9
-- At .10, roll to MINOR: 0.4.10 → 0.5.0
-- At .10.0, roll to MAJOR: 0.10.0 → 1.0.0
-
-**Update Checklist:** See `VERSIONING.md` for complete steps (update `pyproject.toml`, `__init__.py`, create git tag, update CHANGELOG.md)
+Use SemVer with PEP 440 preview suffixes. Patch numbers do not roll over, and a
+whole-number release is earned by completed end-to-end evidence rather than by
+a counter. See `VERSIONING.md` for the authoritative rules and checklist. A
+release updates `_version.py`, `pyproject.toml`, `VERSIONING.md`, `uv.lock`, and
+the matching docs-site channel, then publishes only from the reviewed exact tag.
 
 ## Philosophy & Principles
 

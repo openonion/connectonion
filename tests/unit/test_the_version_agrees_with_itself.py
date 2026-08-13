@@ -100,7 +100,7 @@ def _docs_site_version() -> str:
 @pytest.mark.parametrize(
     ("source", "name", "expected"),
     [
-        ("export const STABLE_VERSION = '1.6.0'", "STABLE_VERSION", "1.6.0"),
+        ("export const STABLE_VERSION = '1.6.4'", "STABLE_VERSION", "1.6.4"),
         (
             "export const PREVIEW_VERSION: string | null = '1.7.0a2'",
             "PREVIEW_VERSION",
@@ -117,9 +117,9 @@ def test_docs_channel_parser_accepts_the_checked_typescript_contract(
 @pytest.mark.parametrize(
     "source",
     [
-        "export const VERSION = '1.6.0'",
+        "export const VERSION = '1.6.4'",
         "export const PREVIEW_VERSION: string | null = null\n"
-        "export const VERSION = '1.6.0'",
+        "export const VERSION = '1.6.4'",
         "// export const PREVIEW_VERSION: string | null = '1.7.0a2'\n"
         "export const PREVIEW_VERSION: string | null = null",
         "/*\nexport const PREVIEW_VERSION = '1.7.0a2'\n*/\n"

@@ -1,6 +1,6 @@
 # DD-046: Select native ACP through explicit transport discovery
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-08-12
 
