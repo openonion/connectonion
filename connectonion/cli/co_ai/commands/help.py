@@ -26,8 +26,8 @@ Help command for OO CLI.
 """
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.panel import Panel
 
 console = Console()
 
@@ -72,7 +72,7 @@ oo -y "task"                      # Auto-approve file changes
 **Interaction:** `ask_user`, `confirm`
 **Skills:** `skill` (auto-invoked when relevant)
 **Background:** `run_background`, `task_output`, `kill_task`
-**Delegation:** `codex` (explicit cwd, resumable session)
+**Delegation:** `codex` (preferred native route), `acp_agent` (generic ACP child)
 
 ## Skills
 

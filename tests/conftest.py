@@ -311,6 +311,10 @@ def pytest_addoption(parser):
     )
 
 
+def _needs_environment_api_key(item):
+    return "real_api" in item.keywords and "provider_cli" not in item.keywords
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-mark tests by folder and skip real_api if keys are missing."""
 
@@ -340,7 +344,7 @@ def pytest_collection_modifyitems(config, items):
             reason="API keys not found. Copy tests/.env.example to tests/.env and add your keys."
         )
         for item in items:
-            if "real_api" in item.keywords:
+            if _needs_environment_api_key(item):
                 item.add_marker(skip_marker)
 
 

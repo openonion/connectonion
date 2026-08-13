@@ -31,14 +31,18 @@ def test_managed_delegation_permissions_are_explicit(tmp_path):
 
     agent_mod.grant_managed_delegation_permissions(agent)
 
-    assert set(agent.current_session['permissions']) == {'codex', 'claude_code'}
+    assert set(agent.current_session['permissions']) == {
+        'codex', 'claude_code', 'acp_agent'
+    }
     assert all(
         permission['allowed'] is True
         and permission['source'] == 'safe'
         for permission in agent.current_session['permissions'].values()
     )
     shared_exec_permissions = load_permission_patterns(tmp_path / '.co')
-    assert not {'codex', 'claude_code'} & set(shared_exec_permissions)
+    assert not {'codex', 'claude_code', 'acp_agent'} & set(
+        shared_exec_permissions
+    )
 
 
 def test_create_coding_agent(monkeypatch, tmp_path):
@@ -79,6 +83,12 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "timeout",
     }
     assert claude_schema["required"] == ["prompt", "cwd"]
+    assert "acp_agent" in agent.tools._tools
+    acp_schema = agent.tools.get("acp_agent").to_function_schema()["parameters"]
+    assert set(acp_schema["properties"]) == {
+        "prompt", "engine", "session_id", "cwd", "timeout"
+    }
+    assert acp_schema["required"] == ["prompt", "engine", "cwd"]
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
     # The browser is driven through the `co browser` CLI, so no in-process
