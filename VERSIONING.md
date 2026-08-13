@@ -38,9 +38,10 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.6.3
+## Current Version: 1.6.4
 
 ### Version History
+- 1.6.4 (**`co gmail` reads HTML mail without falling over**: a message whose HTML body was not the shape the parser assumed used to raise instead of being read, so a normal marketing or newsletter email could break an inbox listing. It now parses defensively and shows you the mail.)
 - 1.6.3 (**`co status` names the account it is actually using**: the credential panel reports the identity the commands will bill and read as, says which file each key came from — including the home dotenv, which it used to mislabel — and describes project and global identities in the same words, so an operator diagnosing "why is this the wrong account" gets an answer instead of a guess.)
 - 1.6.2 (**an agent reads its own trust list, not the machine's**: `project_root()` walked up looking for a `.co/` with no upper bound, so a command run from anywhere under `$HOME` outside a project resolved to `$HOME` and read the global `~/.co` — trust lists included — as if it were that project's config. It now stops at the repository boundary and at `$HOME`, so `trust: strict` cannot silently degrade and a blocklisted address cannot read back as a stranger. The global `~/.co` is still used where it is genuinely global.)
 - 1.6.1 (**the CLI stops acting as the wrong account**: it refuses an `OPENONION_API_KEY` that belongs to an account this machine does not hold the signing key for — a stray `.env` in the working directory could shadow the real identity in `~/.co/keys.env`, so a command run from the wrong directory silently read that other account's mailbox and spent its credit; now it re-authenticates or fails closed instead. `co outlook read` keeps the URLs in HTML mail rather than stripping `<a href>` down to its link text, which had made per-recipient links unrecoverable; a malformed JWT claim no longer crashes every CLI command.)
