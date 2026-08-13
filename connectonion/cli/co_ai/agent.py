@@ -55,6 +55,7 @@ from .prompts.assembler import assemble_prompt
 from .skills import skill
 from .tools import (
     FileTools,
+    acp_agent,
     ask_user,
     claude_code,
     codex,
@@ -77,7 +78,7 @@ def grant_managed_delegation_permissions(agent: Agent) -> None:
     shared defaults would also expose the wrappers to direct remote EXEC.
     """
     permissions = agent.current_session.setdefault('permissions', {})
-    for tool_name in ('codex', 'claude_code'):
+    for tool_name in ('codex', 'claude_code', 'acp_agent'):
         permissions.setdefault(tool_name, {
             'allowed': True,
             'source': 'safe',
@@ -142,6 +143,7 @@ def create_agent(
         # the planner model as another set of permission switches.
         codex,
         claude_code,
+        acp_agent,
     ]
 
     base_prompt = assemble_prompt(

@@ -39,6 +39,18 @@ moving identity, configuration, skills, or credentials. Turn logs and evals now
 count only the current user-input boundary rather than reusing earlier tools,
 tokens, cost, or evidence from the cumulative conversation.
 
+The candidate also includes the bounded downward `acp_agent` adapter used by
+`co ai` to delegate one turn through ACP to an exact-version Claude Code,
+Codex, or Gemini child. Process commands, approval policy, and workspace roots
+remain operator-owned; child thoughts and plans do not become the outer
+session's canonical state. Claude Code and Codex pass real first-turn and
+cross-process resume tests plus exact `co ai` handoffs. The pinned Codex ACP
+route is Full-Access-only because its read-only mode cannot reliably gate shell
+or outbound network work; approval-aware callers continue to use the native
+`codex` tool. The pinned Gemini route is one-turn and requires API-key, Vertex,
+or enterprise Code Assist authentication because individual OAuth service has
+been retired.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
