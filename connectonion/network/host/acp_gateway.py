@@ -463,7 +463,7 @@ class AuthenticatedACPApp:
             await self._send_json(send, 400, {"error": "Invalid payment"}, origin=origin)
             return
 
-        principal, error, status = self._admit_signed(
+        principal, error, status = await self._admit_signed(
             scope,
             method="POST",
             path=ACP_AUTHORIZE_PATH,
@@ -560,7 +560,7 @@ class AuthenticatedACPApp:
                     }
                 )
                 return
-            principal, error, status = self._admit_websocket(scope)
+            principal, error, status = await self._admit_websocket(scope)
             if error:
                 close_code = 4403 if status == 403 else 4429 if status == 429 else 4401
                 await send(
@@ -697,7 +697,7 @@ class AuthenticatedACPApp:
                 else:
                     self._active_principals.pop(principal_key, None)
 
-    def _admit_websocket(
+    async def _admit_websocket(
         self,
         scope: dict,
     ) -> tuple[ACPPrincipal | None, str | None, int]:
@@ -716,7 +716,7 @@ class AuthenticatedACPApp:
                 return None, "Invalid or expired ACP ticket", 401
             return replace(principal, auth_method="browser_ticket"), None, 200
 
-        return self._admit_signed(
+        return await self._admit_signed(
             scope,
             method="GET",
             path=ACP_PATH,
@@ -725,7 +725,7 @@ class AuthenticatedACPApp:
             request_data={"prompt": "Open an ACP WebSocket connection"},
         )
 
-    def _admit_signed(
+    async def _admit_signed(
         self,
         scope: dict,
         *,
@@ -755,21 +755,13 @@ class AuthenticatedACPApp:
         except ReplayProtectionError:
             return None, "misconfigured: replay protection unavailable", 503
 
-        if caller not in self._whitelist:
-            try:
-                decision = self._trust_agent.should_allow(caller, request_data)
-            except (OSError, UnicodeDecodeError) as exc:
-                return None, f"misconfigured: {exc}", 503
-            if not decision.allow:
-                return None, f"forbidden: {decision.reason}", 403
-
-        try:
-            level = "admin" if self._trust_agent.is_admin(caller) else self._trust_agent.get_level(caller)
-        except (OSError, UnicodeDecodeError) as exc:
-            return None, f"misconfigured: {exc}", 503
+        # Count every verified, replay-safe attempt before trust evaluation or
+        # payment-provider IO. Previously only successful admissions reached
+        # the limiter, so an authenticated stranger could create unbounded
+        # rejected policy/payment work while never consuming a slot.
         principal = ACPPrincipal(
             address=caller,
-            level=level,
+            level="",
             recipient=self._recipient_address,
             origin=origin,
             auth_method="signed_headers",
@@ -777,7 +769,43 @@ class AuthenticatedACPApp:
         )
         if not self._rate_limiter.allow(principal):
             return None, "too many ACP admission attempts", 429
-        return principal, None, 200
+
+        if caller not in self._whitelist:
+            try:
+                decision = self._trust_agent.should_allow(caller, request_data)
+            except (OSError, UnicodeDecodeError) as exc:
+                return None, f"misconfigured: {exc}", 503
+            if not decision.allow:
+                payment = request_data.get("payment", 0)
+                if _payment_is_valid(payment) and payment > 0:
+                    # A number in the signed body is still only a claim. The
+                    # existing verifier resolves the operator's configured
+                    # minimum and confirms a real recent transfer from this
+                    # authenticated caller to this Host before promotion. It
+                    # performs bounded network IO, so keep it off the ASGI loop.
+                    try:
+                        paid = await asyncio.to_thread(
+                            self._trust_agent.verify_payment,
+                            caller,
+                            payment,
+                        )
+                    except Exception:
+                        logger.exception("ACP payment verification failed")
+                        return None, "misconfigured: payment verification unavailable", 503
+                    if not paid:
+                        return None, f"forbidden: {decision.reason}", 403
+                else:
+                    return None, f"forbidden: {decision.reason}", 403
+
+        try:
+            level = "admin" if self._trust_agent.is_admin(caller) else self._trust_agent.get_level(caller)
+        except (OSError, UnicodeDecodeError) as exc:
+            return None, f"misconfigured: {exc}", 503
+        return replace(
+            principal,
+            level=level,
+            authenticated_at=time.time(),
+        ), None, 200
 
     async def _pump_inbound(
         self,

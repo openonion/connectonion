@@ -85,6 +85,15 @@ transport limitations; it does not replace ConnectOnion identity or trust.
 The preflight accepts only the documented signing headers and supports Private
 Network Access when an HTTPS page reaches a loopback Agent.
 
+When the Host advertises onboarding, the same signed authorization body may
+carry an invite code or payment claim. An invite is checked against the Host's
+configured codes. A payment claim never grants access by itself: the Host
+resolves its configured price and verifies a recent transfer from the signed
+caller to the Agent address before it promotes the caller and issues a ticket.
+This bounded provider check runs outside the ASGI event loop. Rejected
+onboarding remains on this native path and never falls back to `/ws`. See
+[DD-050](../design-decisions/050-verified-native-acp-payment-onboarding.md).
+
 Before admission, an ACP-enabled Host advertises the transport in its public
 `/info` response:
 
