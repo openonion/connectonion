@@ -35,12 +35,15 @@ Both suites are isolated from user state, credentials, and the network. Client
 permission callbacks reject by default.
 
 The pinned Python SDK expands request `_meta` entries into handler keyword
-arguments. Native transports therefore share a narrow pre-router guard: a
-metadata key cannot use the generated Python name of an official request field
-and replace that field after validation. Other metadata remains untouched.
-Requests with a collision receive `InvalidParams`; invalid notifications are
-dropped without a response. This is a compatibility guard around the pinned
-router, not a second ACP parameter validator.
+arguments. Every ConnectOnion-owned router therefore uses the same narrow
+pre-router rule: a metadata key cannot use the generated Python name of an
+official request or implemented callback field and replace that field after
+validation. Native stdio/WebSocket apply it before Agent routing; the generic
+`acp_agent` child process uses the shared strict stdio transport before
+`ToolClient` callback routing. Other metadata remains untouched. Requests with
+a collision receive `InvalidParams`; invalid notifications are dropped without
+a response. This is a compatibility guard around the pinned router, not a
+second ACP parameter validator.
 
 ### State the tested version contract
 

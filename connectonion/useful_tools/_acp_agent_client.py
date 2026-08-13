@@ -6,11 +6,12 @@ import asyncio
 import hashlib
 import json
 import os
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 import acp
+from acp.client.connection import ClientSideConnection
 from acp.schema import (
     AgentMessageChunk,
     AllowedOutcome,
@@ -26,6 +27,7 @@ from acp.schema import (
 )
 
 from .._version import __version__
+from ..core.acp_transport import StrictACPTransport
 
 APPROVAL_MODES = ("manual", "auto", "deny")
 _STDIO_LIMIT = 10 * 1024 * 1024
@@ -135,6 +137,38 @@ def required_mode(engine: str, approval: str) -> str | None:
     return None
 
 
+@asynccontextmanager
+async def _spawn_guarded_agent_process(
+    command: tuple[str, ...],
+    cwd: Path,
+    client: "ToolClient",
+    environment: dict[str, str],
+):
+    """Put child callbacks through the same strict boundary as native ACP."""
+
+    async with acp.spawn_stdio_transport(
+        command[0],
+        *command[1:],
+        env=environment,
+        cwd=cwd,
+        limit=_STDIO_LIMIT,
+        shutdown_timeout=2.0,
+    ) as (reader, writer, process):
+        connection = ClientSideConnection(
+            client,
+            StrictACPTransport(
+                reader,
+                writer,
+                max_frame_bytes=_STDIO_LIMIT,
+            ),
+            observers=[client.observe_stream],
+        )
+        try:
+            yield connection, process
+        finally:
+            await connection.close()
+
+
 async def run_agent(
     command: tuple[str, ...],
     engine: str,
@@ -158,14 +192,11 @@ async def run_agent(
     stderr_signals = {"authentication": False}
 
     try:
-        async with acp.spawn_agent_process(
+        async with _spawn_guarded_agent_process(
+            command,
+            cwd,
             client,
-            command[0],
-            *command[1:],
-            env=environment,
-            cwd=cwd,
-            transport_kwargs={"limit": _STDIO_LIMIT, "shutdown_timeout": 2.0},
-            observers=[client.observe_stream],
+            environment,
         ) as (connection, process):
             if process.stderr is not None:
                 stderr_task = asyncio.create_task(

@@ -106,6 +106,14 @@ turn's total deadline. Timeout or interruption revokes the lease so a pending
 approval cannot leave the ACP subprocess alive. The client may select only an
 `allow_once` response; it never converts one prompt into a persistent rule.
 
+The child process uses ConnectOnion's strict ACP stdio transport before the
+pinned SDK client router. The SDK otherwise promotes `_meta` entries over typed
+callback arguments after validation. Metadata cannot therefore replace the
+visible `sessionId`, permission options, tool call, or update delivered to
+`ToolClient`; shadowed requests receive `InvalidParams`, and shadowed
+notifications are dropped. Unrelated metadata remains an ACP extension and is
+not interpreted as authority.
+
 The operator also binds a launch workspace root. Model-selected `cwd` values
 may choose only that directory or a resolved descendant; symlink escapes fail
 closed. This constrains working-directory selection, not every engine's
@@ -128,6 +136,8 @@ present; it does not retain an import-time working directory as a wider root.
   ephemeral process-local ID as durable state.
 - A timed-out approval is revoked with the same child turn instead of leaving
   a blocked worker or live subprocess behind.
+- A child cannot use `_meta` to make the session or permission callback checked
+  by `ToolClient` disagree with its visible ACP fields.
 - Re-enabling Codex `manual` or `deny` requires a pinned adapter plus a real
   conformance test covering file writes, shell commands, and outbound network.
 

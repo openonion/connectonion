@@ -1757,6 +1757,8 @@ async def test_strict_ndjson_drops_shadowed_meta_notification_without_response()
         ("session/prompt", "prompt"),
         ("session/close", "session_id"),
         ("session/cancel", "session_id"),
+        ("session/update", "update"),
+        ("session/request_permission", "options"),
     ],
 )
 def test_meta_shadow_guard_tracks_pinned_sdk_handler_parameters(method, parameter):

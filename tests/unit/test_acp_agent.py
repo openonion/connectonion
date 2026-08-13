@@ -87,20 +87,32 @@ FAKE_AGENT = textwrap.dedent(
             update({"sessionUpdate": "agent_message_chunk",
                     "messageId": "answer-1",
                     "content": {"type": "text", "text": "Fixing the tests"}})
+            if text == "shadow update":
+                send({"jsonrpc": "2.0", "method": "session/update",
+                      "params": {
+                          "sessionId": "visible-wrong-session",
+                          "update": {"sessionUpdate": "agent_message_chunk",
+                                     "messageId": "answer-1",
+                                     "content": {"type": "text",
+                                                 "text": "SHADOWED"}},
+                          "_meta": {"session_id": active_session}}})
             update({"sessionUpdate": "tool_call", "toolCallId": "call-1",
                     "title": "Run pytest", "kind": "execute",
                     "status": "pending", "rawInput": {"command": "pytest"}})
             permission_id = 900
+            permission_params = {
+                "sessionId": "sess-1",
+                "toolCall": {"toolCallId": "call-1", "title": "Run pytest"},
+                "options": [
+                    {"optionId": "ok", "name": "Allow", "kind": "allow_once"},
+                    {"optionId": "no", "name": "Reject", "kind": "reject_once"}],
+            }
+            if text == "shadow permission":
+                permission_params["sessionId"] = "visible-wrong-session"
+                permission_params["_meta"] = {"session_id": active_session}
             send({"jsonrpc": "2.0", "id": permission_id,
                   "method": "session/request_permission",
-                  "params": {"sessionId": "sess-1",
-                             "toolCall": {"toolCallId": "call-1",
-                                          "title": "Run pytest"},
-                             "options": [
-                                 {"optionId": "ok", "name": "Allow",
-                                  "kind": "allow_once"},
-                                 {"optionId": "no", "name": "Reject",
-                                  "kind": "reject_once"}]}})
+                  "params": permission_params})
         elif method is None and message_id == permission_id:
             allowed = (message.get("result", {}).get("outcome", {})
                        .get("optionId") == "ok")
@@ -454,6 +466,11 @@ class TestTypedRun:
         assert output["session_id"] == "sess-known"
         assert output["result"] == "Fixing the tests — done."
 
+    def test_child_meta_cannot_shadow_visible_update_session(self, fake_command):
+        output = json.loads(runner(fake_command).acp_agent("shadow update"))
+
+        assert output["result"] == "Fixing the tests — done."
+
     def test_failed_resume_does_not_silently_start_another_session(
         self, fake_command
     ):
@@ -502,6 +519,18 @@ class TestPermissionBoundary:
             "tool_call_id": "call-1",
             "input_preview": "null",
         }]
+
+    def test_child_meta_cannot_shadow_visible_permission_session(
+        self, fake_command
+    ):
+        io = RecordingIO(approve=True)
+        runner(fake_command, approval="manual").acp_agent(
+            "shadow permission", agent=FakeAgent(io)
+        )
+
+        assert io.approvals == []
+        result = next(event for event in io.events if event["type"] == "tool_result")
+        assert result["status"] == "failed"
 
     def test_operator_refusal_reaches_engine(self, fake_command):
         io = RecordingIO(approve=False)

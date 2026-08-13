@@ -9,28 +9,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from acp import AGENT_METHODS
+from acp import AGENT_METHODS, CLIENT_METHODS
 from acp.schema import (
     CancelNotification,
     CloseSessionRequest,
     InitializeRequest,
     NewSessionRequest,
     PromptRequest,
+    RequestPermissionRequest,
     ResumeSessionRequest,
+    SessionNotification,
     SetSessionModeRequest,
 )
 
-_AGENT_REQUEST_PARAM_NAMES = {
-    AGENT_METHODS[method]: frozenset(model.model_fields) - {"field_meta"}
-    for method, model in (
-        ("initialize", InitializeRequest),
-        ("session_new", NewSessionRequest),
-        ("session_resume", ResumeSessionRequest),
-        ("session_set_mode", SetSessionModeRequest),
-        ("session_prompt", PromptRequest),
-        ("session_close", CloseSessionRequest),
-        ("session_cancel", CancelNotification),
-    )
+_ROUTED_PARAM_NAMES = {
+    method: frozenset(model.model_fields) - {"field_meta"}
+    for method, model in {
+        AGENT_METHODS["initialize"]: InitializeRequest,
+        AGENT_METHODS["session_new"]: NewSessionRequest,
+        AGENT_METHODS["session_resume"]: ResumeSessionRequest,
+        AGENT_METHODS["session_set_mode"]: SetSessionModeRequest,
+        AGENT_METHODS["session_prompt"]: PromptRequest,
+        AGENT_METHODS["session_close"]: CloseSessionRequest,
+        AGENT_METHODS["session_cancel"]: CancelNotification,
+        CLIENT_METHODS["session_update"]: SessionNotification,
+        CLIENT_METHODS["session_request_permission"]: RequestPermissionRequest,
+    }.items()
 }
 ACP_META_SHADOW_ERROR_DETAILS = "ACP _meta cannot override request parameters"
 
@@ -55,7 +59,7 @@ def acp_meta_shadows_request_params(message: Any) -> bool:
 
     if not isinstance(message, dict):
         return False
-    reserved = _AGENT_REQUEST_PARAM_NAMES.get(message.get("method"))
+    reserved = _ROUTED_PARAM_NAMES.get(message.get("method"))
     params = message.get("params")
     if reserved is None or not isinstance(params, dict):
         return False
