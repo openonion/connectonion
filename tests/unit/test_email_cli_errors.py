@@ -3,7 +3,9 @@
 import importlib
 from unittest.mock import MagicMock
 
+import pytest
 import requests
+import typer
 
 from connectonion.cli.commands import email_commands
 
@@ -22,7 +24,8 @@ def test_sent_list_explains_an_old_backend(monkeypatch, capsys):
         get_emails, "get_sent", lambda **kwargs: (_ for _ in ()).throw(_http_error(404))
     )
 
-    email_commands.handle_email_sent(last=0)
+    with pytest.raises(typer.Exit):
+        email_commands.handle_email_sent(last=0)
 
     output = capsys.readouterr().out
     assert "not available on this backend yet" in output
@@ -38,7 +41,8 @@ def test_sent_read_hides_transport_tracebacks(monkeypatch, capsys):
         lambda **kwargs: (_ for _ in ()).throw(requests.ConnectionError("secret host detail")),
     )
 
-    email_commands.handle_email_sent_read("7")
+    with pytest.raises(typer.Exit):
+        email_commands.handle_email_sent_read("7")
 
     output = capsys.readouterr().out
     assert "Could not reach the email service" in output
@@ -55,7 +59,8 @@ def test_send_does_not_call_a_non_retryable_key_safe(monkeypatch, capsys):
         "retryable": False,
     })
 
-    email_commands.handle_email_send("to@example.com", "subject", "body")
+    with pytest.raises(typer.Exit):
+        email_commands.handle_email_send("to@example.com", "subject", "body")
 
     output = capsys.readouterr().out
     assert "provider retry window expired" in output
