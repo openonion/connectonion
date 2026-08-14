@@ -52,7 +52,10 @@ For custom ACP agents, continuation follows the capabilities returned by
 `initialize`. The client prefers `sessionCapabilities.resume` because it does
 not need transcript replay, and otherwise uses `loadSession` for compatibility.
 It sends exactly one selected lifecycle request; a failure never triggers a
-fallback request through the other method.
+fallback request through the other method. An explicitly null
+`agentCapabilities` value means that no optional capability was advertised, so
+continuation fails with the same capability error before sending a lifecycle
+request.
 
 This adapter implements ACP protocol major version 1. If an agent selects a
 different major during `initialize`, the tool reports the incompatibility and

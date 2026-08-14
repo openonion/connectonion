@@ -13,6 +13,7 @@ from typing import Any
 import acp
 from acp.client.connection import ClientSideConnection
 from acp.schema import (
+    AgentCapabilities,
     AgentMessageChunk,
     AllowedOutcome,
     ClientCapabilities,
@@ -219,13 +220,14 @@ async def run_agent(
                     f"{initialized.protocol_version}; client supports "
                     f"{acp.PROTOCOL_VERSION}"
                 )
+            agent_capabilities = (
+                initialized.agent_capabilities or AgentCapabilities()
+            )
             resumed = False
             metadata = session_metadata(engine)
             if session_id:
                 client.active_session = session_id
-                session_capabilities = (
-                    initialized.agent_capabilities.session_capabilities
-                )
+                session_capabilities = agent_capabilities.session_capabilities
                 resume_capability = getattr(session_capabilities, "resume", None)
                 if resume_capability is not None:
                     session = await _before_deadline(
@@ -235,7 +237,7 @@ async def run_agent(
                         startup_deadline,
                         timeout,
                     )
-                elif initialized.agent_capabilities.load_session:
+                elif agent_capabilities.load_session:
                     session = await _before_deadline(
                         connection.load_session(
                             str(cwd), session_id, mcp_servers=[], **metadata

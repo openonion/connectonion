@@ -165,7 +165,9 @@ CAPABILITY_AGENT = textwrap.dedent(
                 capabilities["sessionCapabilities"] = None
             send({"jsonrpc": "2.0", "id": message_id, "result": {
                 "protocolVersion": 2 if mode == "version-two" else 1,
-                "agentCapabilities": capabilities,
+                "agentCapabilities": (
+                    None if mode == "agent-null" else capabilities
+                ),
                 "agentInfo": {"name": "capability-agent", "version": "1"}}})
         elif method == "session/new":
             selected_method = "NEW"
@@ -576,7 +578,7 @@ class TestTypedRun:
             "result": expected_method,
         }
 
-    @pytest.mark.parametrize("mode", ["neither", "null"])
+    @pytest.mark.parametrize("mode", ["neither", "null", "agent-null"])
     def test_missing_continuation_capability_fails_before_request(
         self, capability_command, mode
     ):

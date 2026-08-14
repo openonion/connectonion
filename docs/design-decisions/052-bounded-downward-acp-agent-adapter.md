@@ -65,7 +65,10 @@ ID, the generic client prefers an advertised
 replay. It retains `loadSession` as the compatibility path when resume is not
 advertised. Once one method is selected, its failure is final: the client does
 not try the other lifecycle method or silently create a fresh session. Claude
-and Codex continuation reapply the same permission policy on either path.
+and Codex continuation reapply the same permission policy on either path. The
+typed schema permits `agentCapabilities: null`; the client treats that as an
+empty capability set and fails continuation before a lifecycle request instead
+of leaking an internal attribute error or guessing an unsupported method.
 
 Gemini CLI 0.55.1 advertises `session/load`, but real new-process conformance
 testing could not load the session created by the preceding process. The named
@@ -183,6 +186,9 @@ present; it does not retain an import-time working directory as a wider root.
 - **Keep sending v1 messages after an agent selects another major:** confuses a
   well-typed version value with an agreed protocol and can execute under the
   wrong wire semantics.
+- **Reject or guess around a null agent capability object:** the pinned schema
+  permits null. Treating it as no optional capabilities preserves negotiation;
+  blindly trying a lifecycle method does not.
 
 ## Related decisions
 
