@@ -135,6 +135,23 @@ def test_a_webhook_url_never_comes_back_in_the_result(monkeypatch):
     assert result["channel"] == "webhook"
 
 
+def test_a_successful_webhook_post_does_not_echo_the_url_either(monkeypatch):
+    """The failure path redacts it; so must the success path. A result gets
+    logged, printed, and repeated back by an agent — success is the case that
+    happens most often."""
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setattr(
+        discord.requests, "post",
+        lambda url, json, headers, timeout: FakeResponse(204, raises=True),
+    )
+
+    result = send_discord(WEBHOOK, "1.6.0 is out")
+
+    assert result["success"] is True
+    assert "abcSECRETtoken" not in str(result)
+    assert result["channel"] == "webhook"
+
+
 def test_a_transport_error_does_not_leak_the_webhook(monkeypatch):
     monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 

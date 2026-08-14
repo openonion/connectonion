@@ -13,8 +13,6 @@ import os
 import requests
 
 
-API = "https://discord.com/api/v10"
-
 # Discord caps a message at 2000 characters and rejects the whole thing above
 # it, so a long release note fails at the API rather than being truncated.
 MAX_MESSAGE = 2000
@@ -55,7 +53,7 @@ def send_discord(channel: str, message: str) -> dict[str, object]:
         return _failure(channel, NO_TOKEN)
 
     return _post(
-        f"{API}/channels/{channel}/messages",
+        f"https://discord.com/api/v10/channels/{channel}/messages",
         {"content": message},
         headers={"Authorization": f"Bot {token}"},
         channel=channel,
@@ -86,7 +84,7 @@ def _post(url, payload, *, headers, channel, token=None) -> dict[str, object]:
 def _read(response, *, channel, token) -> dict[str, object]:
     """Discord's own reason, kept — 50109 and "unknown channel" need different fixes."""
     if response.status_code in (200, 204):
-        return {"success": True, "message_id": _message_id(response), "channel": channel}
+        return {"success": True, "message_id": _message_id(response), "channel": _safe(channel)}
 
     try:
         body = response.json()
