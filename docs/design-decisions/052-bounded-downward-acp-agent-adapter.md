@@ -57,7 +57,10 @@ explicit parent identity, privacy, replay, and rendering semantics.
 Named Claude sessions ignore persistent interactive CLI allow rules and
 explicitly select Manual, Auto, or Don't Ask through advertised ACP session
 modes. Gemini likewise must advertise the required mode. Missing modes fail
-closed. For a supplied session ID, the generic client prefers an advertised
+closed. After `initialize`, the generic client requires the agent-selected
+protocol version to equal the v1 major it implements; an unsupported selection
+closes the child before any session lifecycle request. For a supplied session
+ID, the generic client prefers an advertised
 `sessionCapabilities.resume` because it needs continuation without transcript
 replay. It retains `loadSession` as the compatibility path when resume is not
 advertised. Once one method is selected, its failure is final: the client does
@@ -142,6 +145,8 @@ present; it does not retain an import-time working directory as a wider root.
 - A resume-only ACP agent can continue a session, while load-only adapters keep
   their proven compatibility path and agents advertising both avoid replaying
   history the outer tool will discard.
+- An agent selecting an unsupported protocol major cannot receive a v1 session
+  or prompt request after initialization.
 - Browser tool cards show bounded child activity without copying arbitrary
   command arguments, file contents, provider output, thoughts, or plans.
 - The generic Codex ACP route remains available for explicit Full Access, while
@@ -175,6 +180,9 @@ present; it does not retain an import-time working directory as a wider root.
   to replay history that this adapter deliberately does not consume.
 - **Retry through the other lifecycle method after a request failure:** can
   duplicate accepted work and hides the selected continuation contract.
+- **Keep sending v1 messages after an agent selects another major:** confuses a
+  well-typed version value with an agreed protocol and can execute under the
+  wrong wire semantics.
 
 ## Related decisions
 

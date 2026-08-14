@@ -213,6 +213,12 @@ async def run_agent(
                 startup_deadline,
                 timeout,
             )
+            if initialized.protocol_version != acp.PROTOCOL_VERSION:
+                raise RuntimeError(
+                    f"{engine} selected unsupported ACP protocol version "
+                    f"{initialized.protocol_version}; client supports "
+                    f"{acp.PROTOCOL_VERSION}"
+                )
             resumed = False
             metadata = session_metadata(engine)
             if session_id:

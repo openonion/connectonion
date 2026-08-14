@@ -155,16 +155,22 @@ CAPABILITY_AGENT = textwrap.dedent(
         method, message_id = message.get("method"), message.get("id")
         if method == "initialize":
             capabilities = {
-                "loadSession": mode in {"load-only", "both", "resume-fails"}
+                "loadSession": mode in {
+                    "load-only", "both", "resume-fails", "version-two"
+                }
             }
             if mode in {"resume-only", "both", "resume-fails"}:
                 capabilities["sessionCapabilities"] = {"resume": {}}
             elif mode == "null":
                 capabilities["sessionCapabilities"] = None
             send({"jsonrpc": "2.0", "id": message_id, "result": {
-                "protocolVersion": 1,
+                "protocolVersion": 2 if mode == "version-two" else 1,
                 "agentCapabilities": capabilities,
                 "agentInfo": {"name": "capability-agent", "version": "1"}}})
+        elif method == "session/new":
+            selected_method = "NEW"
+            send({"jsonrpc": "2.0", "id": message_id,
+                  "result": {"sessionId": "sess-known"}})
         elif method == "session/resume":
             assert message["params"] == {
                 "sessionId": "sess-known",
@@ -598,6 +604,23 @@ class TestTypedRun:
         assert output["resumed"] is False
         assert output["result"] == ""
         assert "resume failed" in output["error"]
+
+    def test_incompatible_protocol_version_stops_before_session(
+        self, capability_command
+    ):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command("version-two"),
+                name="version-two",
+                approval="auto",
+            ).acp_agent("continue")
+        )
+
+        assert output["session_id"] == ""
+        assert output["resumed"] is False
+        assert output["result"] == ""
+        assert "selected unsupported ACP protocol version 2" in output["error"]
+        assert "client supports 1" in output["error"]
 
     def test_child_meta_cannot_shadow_visible_update_session(self, fake_command):
         output = json.loads(runner(fake_command).acp_agent("shadow update"))

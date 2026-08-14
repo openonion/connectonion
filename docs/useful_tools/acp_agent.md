@@ -54,6 +54,10 @@ not need transcript replay, and otherwise uses `loadSession` for compatibility.
 It sends exactly one selected lifecycle request; a failure never triggers a
 fallback request through the other method.
 
+This adapter implements ACP protocol major version 1. If an agent selects a
+different major during `initialize`, the tool reports the incompatibility and
+closes the child before creating or resuming a session.
+
 ## Permissions
 
 The public tool uses manual approval. A model can choose only a named engine;
