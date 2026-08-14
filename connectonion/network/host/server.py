@@ -1171,15 +1171,22 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     from .ws_router.dashboard import ensure_dashboard
     ensure_dashboard(agent_metadata)
 
+    # The storage directory is the project boundary available to create_app().
+    # Resolve it before trust construction so authorization and replay state
+    # cannot land in different projects when custom storage is supplied.
+    storage_path = getattr(storage, "path", None)
+    replay_dir = Path(storage_path).parent if storage_path else project_co_dir()
+
     # Create TrustAgent instance
     if isinstance(trust, TrustAgent):
         trust_agent = trust
     else:
-        trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
+        trust_agent = TrustAgent(
+            trust if isinstance(trust, str) else "careful",
+            co_dir=replay_dir,
+        )
 
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
-    storage_path = getattr(storage, "path", None)
-    replay_dir = Path(storage_path).parent if storage_path else project_co_dir()
     replay_store = SignatureReplayStore(replay_dir / "replay.sqlite3")
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent,

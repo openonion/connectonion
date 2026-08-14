@@ -7,6 +7,7 @@ which surfaced to O Chat as ``Agent error: misconfigured``.
 """
 
 import os
+from unittest.mock import MagicMock
 
 from connectonion.network.trust import TrustAgent
 
@@ -70,3 +71,36 @@ def test_explicit_host_directory_wins_over_the_startup_working_directory(
 
     assert not decision.allow
     assert decision.reason == "Denied by fast rules"
+
+
+def test_create_app_binds_trust_beside_custom_storage(tmp_path, monkeypatch):
+    """External ASGI hosting keeps trust and replay state in one project."""
+    from connectonion.network.host import server
+    from connectonion.network.host.session.storage import SessionStorage
+
+    launcher = tmp_path / "launcher"
+    launcher.mkdir()
+    hosted_co_dir = tmp_path / "hosted" / ".co"
+    hosted_co_dir.mkdir(parents=True)
+    monkeypatch.chdir(launcher)
+
+    captured = {}
+    real_trust_agent = server.TrustAgent
+
+    class CapturingTrustAgent(real_trust_agent):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            captured["co_dir"] = self._co_dir
+
+    monkeypatch.setattr(server, "TrustAgent", CapturingTrustAgent)
+
+    def create_agent():
+        agent = MagicMock()
+        agent.name = "test-agent"
+        agent.tools.names.return_value = []
+        return agent
+
+    storage = SessionStorage(hosted_co_dir / "session_results.jsonl")
+    server.create_app(create_agent, storage=storage, trust="open")
+
+    assert captured["co_dir"] == hosted_co_dir.resolve()
