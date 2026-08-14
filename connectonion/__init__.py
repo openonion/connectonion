@@ -60,7 +60,7 @@ for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
 # because accessing any one of them imports the others and hides the gap.
 _SUBMODULES = ("address", "console", "core", "debug", "derive", "logger",
                "network", "prompts", "tui", "useful_events_handlers",
-               "useful_plugins", "useful_tools")
+               "useful_plugins", "useful_tools", "plugins")
 
 _FROM = {
     **{name: ".core" for name in (
@@ -77,6 +77,7 @@ _FROM = {
     "transcribe": ".transcribe",
     "load_system_prompt": ".prompts",
     **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
+    **{name: ".plugins" for name in ("CodexPlugin", "ClaudeCodePlugin", "PermissionMode")},
     **{name: ".useful_tools" for name in (
         "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
         "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
@@ -156,6 +157,9 @@ __all__ = [
     "replay",
     "xray_replay",
     "auto_debug_exception",
+    "CodexPlugin",
+    "ClaudeCodePlugin",
+    "PermissionMode",
     # Email tools
     "send_email",
     "get_emails",
