@@ -312,6 +312,39 @@ The rsync carries the project tree and **excludes `.co/`**, with one exception:
 A change you make over ssh survives the next deploy, as long as it is not a file the
 sync owns.
 
+### The agent runs as itself, not as you
+
+Your project `.env` names *you*. `co init` puts `AGENT_ADDRESS`, `AGENT_EMAIL`,
+`IS_EMAIL_ACTIVE` and `OPENONION_API_KEY` there on purpose, so the project runs on
+your account while you are developing it.
+
+On the server those four are wrong, and not inertly so: `AGENT_EMAIL` overrides the
+mailbox the agent derives from its own address, and `OPENONION_API_KEY` decides whose
+credits every model call spends. So the deploy **withholds them** and substitutes the
+agent's own, authenticated from the key the server holds:
+
+```
+myagent → prod (co@1.2.3.4)
+  …
+  writing secrets … (5 keys)
+  account 0xcf1619cb4c… — the agent's own
+```
+
+Everything else in `.env` — your Gemini key, your database URL — travels unchanged.
+
+`--own-identity` mints the key on the machine, so this laptop cannot authenticate as
+that agent and no account is written. The deploy says so and the agent has no access
+to `co/*` models until you run `co auth` in `/srv/<agent>`:
+
+```
+  run co auth in /srv/myagent to give it one; co/* models need it
+```
+
+That is deliberate. An agent with no account fails visibly on its first model call;
+an agent quietly spending its author's credits does not fail at all — and the spend
+cannot be separated afterwards, because usage records carry no column naming the
+machine that made the call.
+
 ### https and the hostname
 
 A server created by `co server new` gets a DNS record of its own, and the deploy

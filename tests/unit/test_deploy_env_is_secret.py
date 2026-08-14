@@ -68,10 +68,12 @@ def test_local_config_path_is_rewritten_for_the_server():
     verbatim it points at a directory that cannot exist on Linux, and the OAuth
     tools that build their keys.env path from it fail there."""
     out = dts._env_for_server({"AGENT_CONFIG_PATH": "/Users/someone/.co",
-                               "OPENONION_API_KEY": "jwt"}, "myagent")
+                               "GEMINI_API_KEY": "AIza"}, "myagent")
 
     assert out["AGENT_CONFIG_PATH"] == f"{dts.SRV}/myagent/.co"
-    assert out["OPENONION_API_KEY"] == "jwt"
+    # Everything that is not identity passes through untouched. The identity
+    # keys are withheld deliberately — see test_a_deploy_runs_as_the_agent.py.
+    assert out["GEMINI_API_KEY"] == "AIza"
 
 
 def test_a_project_without_config_path_gains_nothing():
