@@ -12,7 +12,9 @@ from acp.core import DEFAULT_STDIO_BUFFER_LIMIT_BYTES
 
 from .acp_jsonrpc import (
     ACP_META_SHADOW_ERROR_DETAILS,
+    ACP_PROTOCOL_VERSION_ERROR_DETAILS,
     ACP_WIRE_PARAM_ERROR_DETAILS,
+    acp_initialize_protocol_version_is_valid,
     acp_meta_shadows_request_params,
     acp_params_use_protocol_field_names,
     acp_request_id,
@@ -85,6 +87,15 @@ class StrictACPTransport:
                         self._request_id(message),
                         RequestError.invalid_params(
                             {"details": ACP_WIRE_PARAM_ERROR_DETAILS}
+                        ),
+                    )
+                continue
+            if not acp_initialize_protocol_version_is_valid(message):
+                if "id" in message:
+                    await self._send_error(
+                        self._request_id(message),
+                        RequestError.invalid_params(
+                            {"details": ACP_PROTOCOL_VERSION_ERROR_DETAILS}
                         ),
                     )
                 continue

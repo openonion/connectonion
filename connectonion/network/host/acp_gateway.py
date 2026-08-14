@@ -35,6 +35,7 @@ from pydantic import ValidationError
 from ...core.acp_jsonrpc import (
     ACP_META_SHADOW_ERROR_DETAILS,
     ACP_WIRE_PARAM_ERROR_DETAILS,
+    acp_initialize_protocol_version_is_valid,
     acp_meta_shadows_request_params,
     acp_params_use_protocol_field_names,
     acp_request_id,
@@ -1012,18 +1013,12 @@ class AuthenticatedACPApp:
             is_acp_json_rpc_message(payload)
             and not acp_meta_shadows_request_params(payload)
             and acp_params_use_protocol_field_names(payload)
+            and acp_initialize_protocol_version_is_valid(payload)
             and payload.get("method") == "initialize"
             and isinstance(payload.get("params"), dict)
             and is_acp_request_id(request_id)
         )
         if not envelope_valid:
-            return False
-        protocol_version = payload["params"].get("protocolVersion")
-        if (
-            isinstance(protocol_version, bool)
-            or not isinstance(protocol_version, int)
-            or not 0 <= protocol_version <= 65535
-        ):
             return False
         try:
             InitializeRequest.model_validate(payload["params"])

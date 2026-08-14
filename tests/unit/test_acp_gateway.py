@@ -1017,6 +1017,36 @@ async def test_first_frame_must_initialize_before_agent_creation():
             "method": "initialize",
             "params": {"protocolVersion": "not-an-integer"},
         },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "1"},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": True},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": 1.0},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": -1},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": 65536},
+        },
         {**_initialize(), "result": {"foreign": True}},
         {
             **_initialize(),

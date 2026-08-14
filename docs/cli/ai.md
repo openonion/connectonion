@@ -105,8 +105,9 @@ on stderr.
 The first request on each connection must be `initialize`. Session requests
 sent before initialization fail without constructing an Agent or allocating
 session state, and a second `initialize` request on the same connection is
-rejected. Clients may continue with session requests after either rejection
-only when the connection has already completed one successful initialization.
+rejected. Clients may continue with session requests after those lifecycle-order
+rejections only when the connection has already completed one successful
+initialization.
 
 Use `--acp` when another local process launches `co ai` and owns its stdio.
 Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a
@@ -119,7 +120,11 @@ routing. Routed top-level params must use pinned ACP wire names such as
 `protocolVersion`, `sessionId`, `modeId`, and `mcpServers`; Python construction
 aliases and custom root fields receive `InvalidParams`. Put implementation data
 inside `_meta`. The pinned official ACP SDK continues to validate nested method
-data, optional/null values, enums, results, and extension methods.
+data, optional/null values, enums, results, and extension methods. One shared
+pre-router rule keeps version negotiation syntactic: `protocolVersion` must be
+a JSON integer from 0 through 65535. Strings, booleans, floats, and out-of-range
+integers receive `InvalidParams` before SDK coercion; stdio then keeps reading so
+the client can send a corrected initialize request.
 
 Error responses use the JSON-RPC `code`, `message`, and optional `data` shape.
 An error may use `id: null` only when the sender could not recover a request ID;

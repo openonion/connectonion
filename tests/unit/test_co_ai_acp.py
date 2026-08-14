@@ -1675,6 +1675,65 @@ async def test_strict_ndjson_returns_errors_and_keeps_reading():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_version", ["1", True, 1.0, -1, 65536])
+async def test_strict_ndjson_rejects_invalid_initialize_version_and_keeps_reading(
+    invalid_version,
+):
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    invalid = {
+        "jsonrpc": "2.0",
+        "id": "invalid-version",
+        "method": "initialize",
+        "params": {"protocolVersion": invalid_version},
+    }
+    valid = {
+        "jsonrpc": "2.0",
+        "id": "valid-version",
+        "method": "initialize",
+        "params": {"protocolVersion": PROTOCOL_VERSION},
+    }
+    reader.feed_data(json.dumps(invalid).encode() + b"\n")
+    reader.feed_data(json.dumps(valid).encode() + b"\n")
+
+    message = await transport.receive()
+
+    assert message == valid
+    assert json.loads(writer.buffer) == {
+        "jsonrpc": "2.0",
+        "id": "invalid-version",
+        "error": {
+            "code": -32602,
+            "message": "Invalid params",
+            "data": {
+                "details": "ACP protocolVersion must be a JSON integer from 0 to 65535"
+            },
+        },
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("protocol_version", [0, 65535])
+async def test_strict_ndjson_preserves_schema_valid_initialize_versions(
+    protocol_version,
+):
+    reader = asyncio.StreamReader()
+    writer = _BufferWriter()
+    transport = _StrictNDJSONTransport(reader, writer)  # type: ignore[arg-type]
+    message = {
+        "jsonrpc": "2.0",
+        "id": "version-boundary",
+        "method": "initialize",
+        "params": {"protocolVersion": protocol_version},
+    }
+    reader.feed_data(json.dumps(message).encode() + b"\n")
+
+    assert await transport.receive() == message
+    assert writer.buffer == b""
+
+
+@pytest.mark.asyncio
 async def test_strict_ndjson_rejects_meta_parameter_shadowing_and_keeps_reading():
     reader = asyncio.StreamReader()
     writer = _BufferWriter()

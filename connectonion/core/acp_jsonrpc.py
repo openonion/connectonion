@@ -47,6 +47,9 @@ _ROUTED_WIRE_PARAM_NAMES = {
 }
 ACP_META_SHADOW_ERROR_DETAILS = "ACP _meta cannot override request parameters"
 ACP_WIRE_PARAM_ERROR_DETAILS = "ACP params must use protocol field names"
+ACP_PROTOCOL_VERSION_ERROR_DETAILS = (
+    "ACP protocolVersion must be a JSON integer from 0 to 65535"
+)
 
 
 def is_acp_request_id(value: Any) -> bool:
@@ -102,6 +105,18 @@ def acp_params_use_protocol_field_names(message: Any) -> bool:
     if allowed is None or not isinstance(params, dict):
         return True
     return set(params).issubset(allowed)
+
+
+def acp_initialize_protocol_version_is_valid(message: Any) -> bool:
+    """Validate the raw initialize version before SDK type coercion."""
+
+    if not isinstance(message, dict) or message.get("method") != "initialize":
+        return True
+    params = message.get("params")
+    if not isinstance(params, dict) or "protocolVersion" not in params:
+        return True
+    protocol_version = params["protocolVersion"]
+    return type(protocol_version) is int and 0 <= protocol_version <= 65535
 
 
 def is_acp_json_rpc_message(message: Any) -> bool:
