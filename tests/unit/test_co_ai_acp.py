@@ -1675,7 +1675,7 @@ async def test_strict_ndjson_returns_errors_and_keeps_reading():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalid_version", ["1", True, 1.0, -1, 65536])
+@pytest.mark.parametrize("invalid_version", [True, 1.0, -1, 65536])
 async def test_strict_ndjson_rejects_invalid_initialize_version_and_keeps_reading(
     invalid_version,
 ):
@@ -1707,15 +1707,15 @@ async def test_strict_ndjson_rejects_invalid_initialize_version_and_keeps_readin
             "code": -32602,
             "message": "Invalid params",
             "data": {
-                "details": "ACP protocolVersion must be a JSON integer from 0 to 65535"
+                "details": "ACP protocolVersion must be a legacy string or JSON integer from 0 to 65535"
             },
         },
     }
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("protocol_version", [0, 65535])
-async def test_strict_ndjson_preserves_schema_valid_initialize_versions(
+@pytest.mark.parametrize("protocol_version", [0, 65535, "1", "2024-11-05"])
+async def test_strict_ndjson_preserves_compatible_initialize_versions(
     protocol_version,
 ):
     reader = asyncio.StreamReader()

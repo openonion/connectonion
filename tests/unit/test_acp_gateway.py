@@ -1015,18 +1015,6 @@ async def test_first_frame_must_initialize_before_agent_creation():
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
-            "params": {"protocolVersion": "not-an-integer"},
-        },
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {"protocolVersion": "1"},
-        },
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
             "params": {"protocolVersion": True},
         },
         {
@@ -1068,6 +1056,32 @@ async def test_malformed_initialize_never_creates_an_agent(first):
     assert sent[-1]["type"] == "websocket.close"
     assert sent[-1]["code"] == 4400
     assert agents == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("protocol_version", ["1", "2024-11-05"])
+async def test_legacy_string_initialize_reaches_sdk_compatibility(
+    protocol_version,
+):
+    app, caller, recipient, agents = _app()
+    signed = sign_http_request(
+        caller,
+        "GET",
+        ACP_PATH,
+        recipient_address=recipient["address"],
+    )
+    initialize = _initialize()
+    initialize["params"]["protocolVersion"] = protocol_version
+
+    sent = await _websocket(app, headers=signed, frames=[initialize])
+
+    initialized = next(
+        json.loads(item["text"])
+        for item in sent
+        if item["type"] == "websocket.send"
+    )
+    assert initialized["result"]["protocolVersion"] == PROTOCOL_VERSION
+    assert len(agents) == 1
 
 
 @pytest.mark.asyncio

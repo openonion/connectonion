@@ -46,11 +46,12 @@ explicit Pydantic aliases. This keeps Python construction names such as
 `session_id` and `mode_id` from becoming a second ACP dialect, and rejects
 custom root fields that ACP requires callers to place under `_meta`. Requests
 with either violation receive `InvalidParams`; invalid notifications are
-dropped without a response. The same boundary validates raw initialize
-`protocolVersion` as an integer in the SDK's published range because the pinned
-model otherwise coerces strings, booleans, and integral floats. Other nested
-values, types, nullability, enums, and results remain validated by the official
-SDK rather than a copied ConnectOnion schema.
+dropped without a response. The same boundary preserves the official SDK's
+legacy string `protocolVersion` compatibility while requiring raw numeric
+versions to be exact integers in the published range. This rejects Python-only
+boolean and integral-float coercion without breaking older editor clients. Other
+nested values, types, nullability, enums, and results remain validated by the
+official SDK rather than a copied ConnectOnion schema.
 
 The shared classifier distinguishes response candidates before deciding
 whether an error reply is legal. Requests and successful responses keep their

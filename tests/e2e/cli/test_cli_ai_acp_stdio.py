@@ -143,7 +143,7 @@ async def test_acp_subprocess_does_not_answer_its_own_null_id_error(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalid_version", ["1", True, 1.0, -1, 65536])
+@pytest.mark.parametrize("invalid_version", [True, 1.0, -1, 65536])
 async def test_acp_subprocess_rejects_invalid_initialize_version_and_recovers(
     tmp_path, invalid_version
 ):
@@ -165,15 +165,15 @@ async def test_acp_subprocess_rejects_invalid_initialize_version_and_recovers(
             "code": -32602,
             "message": "Invalid params",
             "data": {
-                "details": "ACP protocolVersion must be a JSON integer from 0 to 65535"
+                "details": "ACP protocolVersion must be a legacy string or JSON integer from 0 to 65535"
             },
         }
         assert initialized["result"]["protocolVersion"] == 1
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("protocol_version", [0, 65535])
-async def test_acp_subprocess_negotiates_schema_valid_initialize_versions(
+@pytest.mark.parametrize("protocol_version", [0, 65535, "1", "2024-11-05"])
+async def test_acp_subprocess_negotiates_compatible_initialize_versions(
     tmp_path, protocol_version
 ):
     async with _server(tmp_path / "home") as process:

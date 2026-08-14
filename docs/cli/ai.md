@@ -121,10 +121,11 @@ routing. Routed top-level params must use pinned ACP wire names such as
 aliases and custom root fields receive `InvalidParams`. Put implementation data
 inside `_meta`. The pinned official ACP SDK continues to validate nested method
 data, optional/null values, enums, results, and extension methods. One shared
-pre-router rule keeps version negotiation syntactic: `protocolVersion` must be
-a JSON integer from 0 through 65535. Strings, booleans, floats, and out-of-range
-integers receive `InvalidParams` before SDK coercion; stdio then keeps reading so
-the client can send a corrected initialize request.
+pre-router rule keeps its documented version compatibility consistent across
+transports: legacy strings reach the SDK negotiation path, while exact JSON
+integers must be from 0 through 65535. Booleans, floats, and out-of-range raw
+integers receive `InvalidParams` before Python coercion; stdio then keeps reading
+so the client can send a corrected initialize request.
 
 Error responses use the JSON-RPC `code`, `message`, and optional `data` shape.
 An error may use `id: null` only when the sender could not recover a request ID;

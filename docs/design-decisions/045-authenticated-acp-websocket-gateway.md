@@ -56,8 +56,9 @@ local.
 The first JSON-RPC text frame must be a JSON-RPC 2.0 request with a non-boolean
 string/integer ID, method `initialize`, and parameters accepted by the pinned
 official ACP SDK. Binary frames before it are ignored as required by the RFD.
-`protocolVersion` must be a raw JSON integer in the SDK's published range before
-a coding Agent is constructed. The upgrade response
+Raw numeric `protocolVersion` values must be JSON integers in the SDK's
+published range before a coding Agent is constructed; official legacy string
+compatibility is preserved. The upgrade response
 carries an `Acp-Connection-Id`; it and every ACP session ID are routing values,
 never credentials.
 
@@ -67,11 +68,11 @@ response, and response envelopes cannot contain request members. Once a valid
 first `initialize` frame is admitted, an invalid later envelope receives
 JSON-RPC `-32600` through the existing bounded outbound queue and is never
 delivered to the Agent. Responses remain correlated by ID rather than arrival
-order. A shared initialize guard rejects string, boolean, float, or out-of-range
-versions before the pinned SDK can coerce them; schema-valid integers still
-reach normal ACP version negotiation. The SDK continues to own other parameter
-values, nested types, results, and extensions such as `_meta`; boundary
-validation does not replace ACP schema validation.
+order. A shared initialize guard rejects boolean, float, or out-of-range raw
+integer versions before the pinned Python SDK can coerce them. Legacy strings
+and schema-valid integers still reach normal ACP version negotiation. The SDK
+continues to own other parameter values, nested types, results, and extensions
+such as `_meta`; boundary validation does not replace ACP schema validation.
 
 That error reply applies to invalid request candidates, not responses. A
 response has exactly one result or error; the error object has an integer code,
