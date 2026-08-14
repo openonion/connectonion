@@ -39,13 +39,14 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-Stable users remain on 1.6.0 while the 1.7.0 feature train is exercised through
+Stable users remain on 1.6.4 while the 1.7.0 feature train is exercised through
 alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Current Version: 1.7.0a1
+## Current Version: 1.7.0a2
 
 ### Version History
+- 1.7.0a2 (**native browser ACP and bounded coding-agent delegation work through reviewed product boundaries**: the Host exposes an authenticated `/acp` WebSocket through explicit, fail-closed discovery; binds each caller to one virtual workspace and private, bounded session and attachment storage; verifies payment onboarding before issuing a one-use browser ticket; and carries permissions, cancellation, modes, public thoughts, canonical plans, tool activity, reconnect, and resume through the shared ACP lifecycle. Authority-bearing permission and cancellation payloads reject ambiguous fields while preserving standard opaque `_meta`, and stdio shares the Gateway's string-or-integer JSON-RPC correlation-ID rule. Claude Code delegation streams bounded live tool events, and the canonical collaboration/permission vocabulary aligns with Codex without weakening Host authority. The generic `acp_agent` downward adapter uses the official typed ACP client and exact-version Claude Code, Codex, and Gemini routes while keeping argv, approval policy, workspace authority, child thoughts, and child plans outside the model-owned boundary; Claude and Codex passed real resume and `co ai` handoff tests, pinned Codex ACP is Full-Access-only because its read-only mode cannot gate shell/network work, and pinned Gemini is one-turn with API-key, Vertex, or enterprise authentication because individual OAuth is retired. First-class `CodexPlugin` and `ClaudeCodePlugin` wrappers preserve operator-owned workspace and permission policy, persist one correlated provider lifecycle, and nest bounded child activity under that parent invocation for live and replayed sessions. Local stdio ACP acceptance can select a private `--state-dir` that isolates snapshots, logs, and evals without redirecting identity, configuration, skills, or credentials; logging and evaluation evidence are scoped to the current turn instead of claiming cumulative history again. The refreshed `@connectonion/react@0.4.2-alpha.3` candidate owns browser protocol state and maps each provider invocation to one nested card for O Chat; neither package is public until its protected preview workflow completes, and the retired standalone TypeScript SDK is not on the release path. `/info` discovery is always `Cache-Control: no-store`, including legacy fallback, and long-running hosts bind trust state to their startup project instead of following a tool into another or deleted working directory. Direct loopback or TLS/WSS is preview scope, not relay end-to-end encryption. This remains opt-in; 1.6.4 remains the stable recommendation.)
 - 1.7.0a1 (**the first 1.7 preview**: audience-scoped HTTP routes let an agent expose visibly public, contacts-only, and admin-only endpoints beside its existing WebSocket transport; ACP gains resumable sessions, ordered updates, official SDK conformance, tool approvals, MCP tools, and stable agent messages; Telegram messaging and safer attachment handling arrive; and billed operations now fail closed when ambient credentials belong to a different account. This is an opt-in preview; 1.6.0 remains the stable recommendation.)
 - 1.6.4 (**`co gmail` reads malformed or unexpected HTML mail defensively** instead of letting one ordinary message break inbox listing.)
 - 1.6.3 (**`co status` names the account commands actually use** and the source of each credential; billed boundaries refuse an inherited key that belongs to another project.)
@@ -117,30 +118,35 @@ When releasing a new version:
 - [ ] Update `version` in `pyproject.toml`
 - [ ] Update `## Current Version:` and add the release line in this file
 - [ ] Refresh `uv.lock`
+- [ ] Keep the one PyPI `Development Status` classifier aligned with the phase:
+      Alpha for `aN`, Beta for `bN`/`rcN`, and Production/Stable for a final
 - [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
 - [ ] Draft or substantially update a Design Journal post for a feature-train
       launch, first beta, first RC, stable release, or material architecture or
       workflow decision. Maintenance-only patches need release notes unless
       they contain a reusable design lesson.
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
-- [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
-- [ ] Create git tag: `git tag vX.Y.Z`
-- [ ] Push commits: `git push`
-- [ ] Push tag: `git push origin vX.Y.Z`
 - [ ] Remove artifacts from older releases: `rm -rf dist/`
 - [ ] Build package: `python -m build`
 - [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
-- [ ] Upload only the two artifacts just validated: `python -m twine upload dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
+- [ ] Review and merge the exact version commit, then create and push its immutable
+      `vX.Y.Z` tag. Do not upload from a workstation in the normal release path.
+- [ ] Let `.github/workflows/release.yml` rerun the full matrix, build once,
+      publish through PyPI Trusted Publishing, install the public package,
+      compare public artifacts byte-for-byte, and create the GitHub Release.
+- [ ] Confirm previews are GitHub Prereleases rather than Latest, normal pip
+      installs remain on stable, and `--pre` plus an exact pin install preview.
 - [ ] After PyPI and the GitHub Release are visible, publish the docs-site
       version state and Design Journal. Verify the canonical URL, social and
       structured metadata, sitemap, AI-readable indexes, internal links, and
       mobile layout.
 
-Replace `X.Y.Z` with the version being released. Do not upload the whole dist
-directory with a wildcard: build does not remove older artifacts, so that can
-mix a previous release into the current upload. PyPI uploads are not an atomic
-transaction; one file can succeed before a stale or duplicate file fails.
+Replace `X.Y.Z` with the complete canonical version, including `aN`, `bN`, or
+`rcN`. Manual workflow dispatch may retry an existing reviewed tag; it is not
+an arbitrary-branch release path. This procedure has no workstation publication
+path. Recovery must preserve the reviewed tag and artifacts and be implemented
+as a separate reviewed workflow change, not an ad hoc second registry writer.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to

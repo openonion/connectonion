@@ -24,8 +24,8 @@ The skill walks through 6 steps automatically:
    that an unpublished artifact is available
 5. **Design Journal** — records the problem, alternatives, decision, tradeoffs,
    and evidence for a meaningful release or architecture change
-6. **Release** — bumps version, commits, tags, pushes, publishes the package,
-   then publishes the prepared docs
+6. **Release** — validates the candidate, opens a release PR, tags its reviewed
+   merge commit, waits for Trusted Publishing, then publishes the prepared docs
 
 ## What It Does In Detail
 
@@ -75,8 +75,12 @@ git log --oneline -5  # recent context
 - Detects current version from `__init__.py`, `pyproject.toml`, or `setup.py`
 - Reads `VERSIONING.md` for rollover rules if present
 - Updates all files containing the version string
-- Commits, tags, and pushes
-- Builds with `python -m build` and uploads with `twine`
+- Builds with `python -m build` and validates only the exact artifacts with
+  `python -m twine check`
+- Opens a release PR and waits for review and merge
+- Tags `<reviewed-merge-commit>` and pushes the immutable version tag
+- Waits for `.github/workflows/release.yml` to publish through PyPI Trusted
+  Publishing and verify the public artifacts
 - Publishes the verified docs-site version state and Design Journal after the
   public package and GitHub Release exist
 
@@ -94,7 +98,9 @@ tools:
   - Bash(python *)
   - Bash(pytest *)
   - Bash(pip *)
-  - Bash(twine *)
+  - Bash(python -m twine check *)
+  - Bash(gh pr *)
+  - Bash(gh run *)
   - Bash(npm *)
   - Bash(cat *)
   - Bash(grep *)

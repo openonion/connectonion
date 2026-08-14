@@ -131,15 +131,17 @@ co status                             # Show project status
 
 ### Building & Publishing
 ```bash
-# Build package
-python setup.py sdist bdist_wheel
+# Validate the exact candidate locally (see VERSIONING.md)
+python -m build
+python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl
 
-# Publish to PyPI
-twine upload dist/*
-
-# Version update (see VERSIONING.md)
-# Current: 0.4.1
-# Strategy: increment PATCH (0.4.1 → 0.4.2), roll to MINOR at .10 (0.4.10 → 0.5.0)
+# Normal publication is tag-driven and uses PyPI Trusted Publishing.
+# Merge the reviewed version commit, tag that immutable commit, push the tag,
+# then wait for the pinned release workflow. Never publish from a workstation.
+git fetch origin
+git tag -a vX.Y.Z <reviewed-merge-commit> -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+gh run list --workflow release.yml --limit 1
 ```
 
 ## Project Structure
@@ -385,14 +387,13 @@ git push
 
 ## Version Numbering Strategy
 
-**Current Version:** 0.4.1 (Production Ready)
+**Current candidate:** 1.7.0a2 (Preview). **Stable:** 1.6.4.
 
-**Strategy:** Semantic versioning with specific rollover rules
-- Increment PATCH: 0.4.1 → 0.4.2 → ... → 0.4.9
-- At .10, roll to MINOR: 0.4.10 → 0.5.0
-- At .10.0, roll to MAJOR: 0.10.0 → 1.0.0
-
-**Update Checklist:** See `VERSIONING.md` for complete steps (update `setup.py`, `__init__.py`, create git tag, update CHANGELOG.md)
+Use SemVer with PEP 440 preview suffixes. Patch numbers do not roll over, and a
+whole-number release is earned by completed end-to-end evidence rather than by
+a counter. See `VERSIONING.md` for the authoritative rules and checklist. A
+release updates `_version.py`, `pyproject.toml`, `VERSIONING.md`, `uv.lock`, and
+the matching docs-site channel, then publishes only from the reviewed exact tag.
 
 ## Philosophy & Principles
 

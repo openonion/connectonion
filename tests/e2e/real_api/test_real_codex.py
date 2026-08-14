@@ -24,7 +24,7 @@ import pytest
 
 from connectonion.useful_tools import codex
 
-pytestmark = pytest.mark.real_api
+pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
 
 HAS_CODEX = bool(os.environ.get("CODEX_CMD") or shutil.which("codex"))
 REAL_CODEX_HOME = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")

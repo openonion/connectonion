@@ -24,11 +24,14 @@ co ai
 - Agent runs in your project directory
 - Starts an authenticated ACP v1 WebSocket at `/acp` for compatible clients
 
-The current O Chat release still connects through the authenticated `/ws`
-compatibility transport. The `/acp` endpoint is started now so native ACP
-clients can be validated before the React/O Chat migration. Both endpoints use
-the same ConnectOnion identity, recipient binding, replay protection, and trust
-policy; starting ACP does not make the coding Agent anonymous or public.
+The published `@connectonion/react@0.4.2-alpha.2` package owns browser transport
+selection, and O Chat pins it. An exact supported discovery descriptor selects
+authenticated `/acp`;
+a Host that omits the descriptor keeps the bounded `/ws` compatibility path.
+After React selects native ACP, admission or transport failure fails closed
+instead of silently downgrading. Both endpoints use the same ConnectOnion
+identity, recipient binding, replay protection, and trust policy; starting ACP
+does not make the coding Agent anonymous or public.
 
 Browser ACP connections first exchange a signed request for a short-lived,
 single-use, Origin-bound ticket. Programmatic clients can sign the WebSocket
@@ -352,6 +355,13 @@ The real-binary smoke test is opt-in because it can use an authenticated model:
 ```bash
 pytest -m real_api tests/e2e/real_api/test_real_claude_code.py
 ```
+
+This is a fail-closed release check: absence of the optional Claude executable
+is a skip, but an installed CLI with stale authentication or a provider error is
+a failure. Both tests must pass before the result counts as live integration evidence.
+The test respects an explicit `CLAUDE_CONFIG_DIR`; without one it selects the
+native macOS Keychain login or the platform's isolated Claude credential directory,
+without copying or printing credential contents.
 
 When a hosted turn is interrupted, both built-in coding adapters cooperatively
 stop their launch process group and discard late session state and UI events.

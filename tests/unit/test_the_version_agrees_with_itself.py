@@ -163,6 +163,27 @@ def test_uv_lock_names_the_version_being_shipped():
     )
 
 
+def test_pypi_development_status_matches_the_release_phase():
+    """Registry metadata must not call an opt-in preview production-stable."""
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    classifiers = re.findall(
+        r'"(Development Status :: [^"]+)"',
+        pyproject,
+    )
+    version = connectonion.__version__
+    if re.search(r"a\d+$", version):
+        expected = "Development Status :: 3 - Alpha"
+    elif re.search(r"(?:b|rc)\d+$", version):
+        # Trove does not define a separate release-candidate classifier.
+        expected = "Development Status :: 4 - Beta"
+    else:
+        expected = "Development Status :: 5 - Production/Stable"
+
+    assert classifiers == [expected], (
+        f"{version} must carry exactly {expected!r}, got {classifiers!r}"
+    )
+
+
 @pytest.mark.skipif(not DOCS_SITE.exists(),
                     reason=f"docs-site is a separate repo; not checked out at {DOCS_SITE}")
 def test_the_docs_site_advertises_the_version_that_exists():

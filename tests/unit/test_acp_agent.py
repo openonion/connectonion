@@ -794,7 +794,9 @@ class TestFailures:
             ),
             encoding="utf-8",
         )
-        monkeypatch.setattr(acp_client, "_STARTUP_LIMIT", 0.1)
+        # Keep the whole initialize + session/new budget bounded without making
+        # process startup speed decide whether session/new is sent at all.
+        monkeypatch.setattr(acp_client, "_STARTUP_LIMIT", 1.0)
         started = time.monotonic()
 
         output = json.loads(

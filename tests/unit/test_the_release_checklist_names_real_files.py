@@ -33,9 +33,16 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[2]
 VERSIONING = REPO / "VERSIONING.md"
+RELEASE_GUIDANCE = (
+    REPO / "AGENTS.md",
+    REPO / "CLAUDE.md",
+    REPO / "connectonion" / "useful_skills" / "ship-feature" / "SKILL.md",
+    REPO / "docs" / "features" / "skills.md",
+    REPO / "docs" / "useful_skills" / "ship-feature.md",
+    REPO / "docs" / "useful_plugins" / "skills.md",
+)
 
 
 def _release_sections() -> str:
@@ -136,17 +143,34 @@ class TestReleaseArtifactsCannotMixVersions:
 
         assert sections.index("rm -rf dist/") < sections.index("python -m build")
 
-    def test_artifacts_are_checked_before_upload(self):
+    def test_artifacts_are_checked_before_the_tag_workflow(self):
         sections = _release_sections()
 
-        assert sections.index("python -m twine check") < sections.index("python -m twine upload")
+        assert sections.index("python -m twine check") < sections.index(
+            ".github/workflows/release.yml"
+        )
 
-    def test_upload_is_limited_to_the_current_version(self):
+    def test_normal_publication_is_limited_to_the_reviewed_tag_workflow(self):
         sections = _release_sections()
 
+        assert "python -m twine upload" not in sections
         assert "twine upload dist/*" not in sections
+        assert ".github/workflows/release.yml" in sections
         assert "dist/connectonion-X.Y.Z.tar.gz" in sections
         assert "dist/connectonion-X.Y.Z-py3-none-any.whl" in sections
+
+
+class TestEveryOperationalReleaseGuideUsesTrustedPublishing:
+    @pytest.mark.parametrize("guide", RELEASE_GUIDANCE, ids=lambda path: path.name)
+    def test_workstation_upload_cannot_return(self, guide):
+        text = guide.read_text(encoding="utf-8")
+
+        assert not re.search(r"\btwine\s+upload\b", text, re.IGNORECASE), (
+            f"{guide.relative_to(REPO)} bypasses the exact-tag release workflow"
+        )
+        assert ".github/workflows/release.yml" in text or "release.yml" in text
+        assert "Trusted Publishing" in text
+        assert "<reviewed-merge-commit>" in text
 
 
 class TestTheReleaseDecisionIsPublished:
