@@ -22,6 +22,7 @@ import yaml
 from dotenv import dotenv_values
 from rich.console import Console
 
+from .env_inheritance import is_operator_identity
 from .server_commands import SSH_TIMEOUT_SECONDS, derived_agent_identity, load_server
 
 console = Console()
@@ -640,7 +641,55 @@ RSYNC_FILTERS = [
 ]
 
 
-def _env_for_server(env_vars: dict, agent: str) -> dict:
+def _agent_account(agent_identity: dict) -> Optional[dict]:
+    """Authenticate as the agent, so the server bills the agent.
+
+    `/api/v1/auth` creates an account for any key that authenticates, so this
+    both mints a token and, on a first deploy, opens the agent's account. The
+    email comes from the response rather than being computed here: the backend
+    is authoritative about the mailbox it actually routes, and the local
+    fallback format has not always agreed with it.
+    """
+    import time
+
+    import requests
+    from nacl.signing import SigningKey
+
+    from ...backend import backend_url
+
+    public_key = agent_identity["address"]
+    timestamp = int(time.time())
+    message = f"ConnectOnion-Auth-{public_key}-{timestamp}"
+    signature = SigningKey(agent_identity["key_bytes"]).sign(
+        message.encode()).signature.hex()
+
+    try:
+        response = requests.post(
+            f"{backend_url()}/api/v1/auth",
+            json={"public_key": public_key, "signature": signature,
+                  "message": message},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException:
+        return None
+    if response.status_code != 200:
+        return None
+
+    data = response.json()
+    token = data.get("token")
+    if not token:
+        return None
+    email = ((data.get("user") or {}).get("email") or {}).get("address")
+    return {
+        "OPENONION_API_KEY": token,
+        "AGENT_ADDRESS": public_key,
+        "AGENT_EMAIL": email or f"{public_key[:10]}@mail.openonion.ai",
+        "IS_EMAIL_ACTIVE": "true",
+    }
+
+
+def _env_for_server(env_vars: dict, agent: str,
+                    agent_account: Optional[dict] = None) -> dict:
     """The project's `.env`, corrected for the machine it is going to.
 
     `AGENT_CONFIG_PATH` is written by `co init` as an absolute path to the
@@ -649,14 +698,24 @@ def _env_for_server(env_vars: dict, agent: str) -> dict:
     and `google_calendar.py` all build their `keys.env` path from it — so those
     tools fail there rather than falling back. The Cloud path already rewrites
     it to `/app/.co`; this is the same correction for `/srv/<agent>/.co`.
+
+    The identity lines are dropped for a different reason: they are true of the
+    developer, and `co init` puts them there on purpose so the project runs as
+    its author locally. The server has its own key, so shipping them makes the
+    deployed agent send mail as its author and bill its author's account, with
+    nothing failing. `agent_account` is the replacement, derived from the key
+    the server will actually hold.
     """
-    out = dict(env_vars)
+    out = {k: v for k, v in env_vars.items() if not is_operator_identity(k)}
     if out.get("AGENT_CONFIG_PATH"):
         out["AGENT_CONFIG_PATH"] = f"{SRV}/{agent}/.co"
+    if agent_account:
+        out.update(agent_account)
     return out
 
 
-def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
+def _sync_env(target: str, agent: str, project_dir: Path,
+              agent_account: Optional[dict] = None) -> bool:
     """Write the project's secrets where systemd can read them and nobody else.
 
     Sent over ssh rather than rsync, to a path outside the rsync root: the file
@@ -665,10 +724,9 @@ def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
     key that was rotated on the server.
     """
     env_path = project_dir / ".env"
-    if not env_path.exists():
-        return True
-
-    env_vars = _env_for_server(dotenv_values(env_path), agent)
+    env_vars = _env_for_server(
+        dotenv_values(env_path) if env_path.exists() else {},
+        agent, agent_account)
 
     # A newline inside a value would end the KEY=VALUE line and turn the rest
     # into junk entries. Say so rather than write a file that looks fine.
@@ -1023,7 +1081,23 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
         return False
     if not _sync_code(target, agent, project_dir):
         return False
-    if not _sync_env(target, agent, project_dir):
+
+    # The account the agent runs on. Derived identities can be authenticated
+    # from here, because this machine holds the key the server was given; an
+    # `--own-identity` agent cannot be, by construction, so say what is missing
+    # rather than fall back to the operator's account — which is the bug this
+    # replaces, and it is silent.
+    agent_account = _agent_account(agent_identity) if agent_identity else None
+    if agent_account:
+        console.print(f"  [dim]account {agent_account['AGENT_EMAIL']} — "
+                      f"the agent's own[/dim]")
+    elif agent_identity:
+        console.print("[yellow]  could not authenticate as the agent — "
+                      "deploying without an account[/yellow]")
+    if not agent_account:
+        console.print(f"[dim]  run [cyan]co auth[/cyan] in {SRV}/{agent} to give "
+                      f"it one; co/* models need it[/dim]")
+    if not _sync_env(target, agent, project_dir, agent_account):
         return False
     if not _install_deps_if_changed(target, agent, project_dir, skill_requirements):
         return False

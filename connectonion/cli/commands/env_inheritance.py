@@ -41,3 +41,25 @@ def describes_this_machine(key: str) -> bool:
     return key in MACHINE_LOCAL_KEYS
 
 
+# Who the agent is and who pays for it. `co init` and `co create` copy these
+# from ~/.co/keys.env deliberately: a project you are developing should run as
+# you, on your account, without a second setup step. That is right on a laptop.
+#
+# It is wrong on a server. A deployed agent has its own key in .co/keys/, so
+# these lines describe someone else — and they are not inert. AGENT_EMAIL
+# overrides the mailbox the agent derives from its own address, and
+# OPENONION_API_KEY decides which account every model call is billed to. The
+# agent ends up cryptographically itself and financially its author, with
+# nothing reporting an error. AGENT_ADDRESS sets nothing (address.load() reads
+# the keypair) but a stale value there is what people read when they want to
+# know who an agent is, so it travels with the other three rather than being
+# left behind to contradict them.
+AGENT_IDENTITY_KEYS = ('AGENT_ADDRESS', 'AGENT_EMAIL', 'IS_EMAIL_ACTIVE',
+                       'OPENONION_API_KEY')
+
+
+def is_operator_identity(key: str) -> bool:
+    """Whether this entry names the operator rather than the agent that runs it."""
+    return key in AGENT_IDENTITY_KEYS
+
+
