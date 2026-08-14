@@ -337,6 +337,7 @@ def execute_single_tool(
     original_tools = None
     tool_tools = None
     invoke_func = tool_func
+    tool_agent = agent
     original_instance = None
     tool_instance = None
 
