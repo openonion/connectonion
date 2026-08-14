@@ -225,6 +225,15 @@ async def run_agent(
                     f"{client.raw_protocol_version}; client supports "
                     f"{acp.PROTOCOL_VERSION}"
                 )
+            if (
+                client.raw_load_session is not None
+                and type(client.raw_load_session) is not bool
+            ):
+                raise RuntimeError(
+                    f"{engine} returned ACP loadSession as "
+                    f"{type(client.raw_load_session).__name__}; "
+                    "expected boolean or null"
+                )
             agent_capabilities = (
                 initialized.agent_capabilities or AgentCapabilities()
             )
@@ -430,6 +439,7 @@ class ToolClient:
         self._updates_handled = 0
         self._initialize_request_id: str | int | None = None
         self.raw_protocol_version: Any = None
+        self.raw_load_session: Any = None
 
     def observe_stream(self, event) -> None:
         """Count updates before their independently scheduled callbacks run."""
@@ -445,6 +455,9 @@ class ToolClient:
             result = message.get("result")
             if isinstance(result, dict):
                 self.raw_protocol_version = result.get("protocolVersion")
+                capabilities = result.get("agentCapabilities")
+                if isinstance(capabilities, dict):
+                    self.raw_load_session = capabilities.get("loadSession")
         if direction == "incoming" and message.get("method") == "session/update":
             self._updates_seen += 1
 

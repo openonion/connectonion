@@ -70,7 +70,10 @@ not try the other lifecycle method or silently create a fresh session. Claude
 and Codex continuation reapply the same permission policy on either path. The
 typed schema permits `agentCapabilities: null`; the client treats that as an
 empty capability set and fails continuation before a lifecycle request instead
-of leaking an internal attribute error or guessing an unsupported method.
+of leaking an internal attribute error or guessing an unsupported method. The
+legacy `loadSession` field is consumed only when its correlated raw value is a
+JSON boolean; null and omission remain unadvertised, while strings and numbers
+fail before lifecycle instead of becoming truthy through schema coercion.
 
 Gemini CLI 0.55.1 advertises `session/load`, but real new-process conformance
 testing could not load the session created by the preceding process. The named
@@ -191,6 +194,8 @@ present; it does not retain an import-time working directory as a wider root.
 - **Trust only the SDK's coerced protocol-version field:** accepts strings and
   booleans as v1. Making every ACP model globally strict or copying the full
   initialize schema would widen this focused compatibility fix unnecessarily.
+- **Trust a coerced `loadSession` capability:** a string or number can become
+  true and trigger a lifecycle request the peer did not validly advertise.
 - **Reject or guess around a null agent capability object:** the pinned schema
   permits null. Treating it as no optional capabilities preserves negotiation;
   blindly trying a lifecycle method does not.

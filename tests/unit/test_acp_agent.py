@@ -154,11 +154,17 @@ CAPABILITY_AGENT = textwrap.dedent(
         message = json.loads(line)
         method, message_id = message.get("method"), message.get("id")
         if method == "initialize":
-            capabilities = {
-                "loadSession": mode in {
+            if mode == "load-string":
+                load_session = "true"
+            elif mode == "load-int":
+                load_session = 1
+            elif mode == "load-null":
+                load_session = None
+            else:
+                load_session = mode in {
                     "load-only", "both", "resume-fails", "version-two"
                 }
-            }
+            capabilities = {"loadSession": load_session}
             if mode in {"resume-only", "both", "resume-fails"}:
                 capabilities["sessionCapabilities"] = {"resume": {}}
             elif mode == "null":
@@ -679,6 +685,83 @@ class TestTypedRun:
         assert client.raw_protocol_version is None
         client.observe_stream(matching)
         assert client.raw_protocol_version == "1"
+
+    @pytest.mark.parametrize(
+        ("mode", "wire_type"),
+        [("load-string", "str"), ("load-int", "int")],
+    )
+    def test_coerced_load_capability_stops_before_lifecycle(
+        self, capability_command, mode, wire_type
+    ):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command(mode),
+                name=mode,
+                approval="auto",
+            ).acp_agent("continue", session_id="sess-known")
+        )
+
+        assert output["resumed"] is False
+        assert output["result"] == ""
+        assert (
+            f"returned ACP loadSession as {wire_type}; expected boolean or null"
+            in output["error"]
+        )
+
+    def test_null_load_capability_is_not_advertised(self, capability_command):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command("load-null"),
+                name="load-null",
+                approval="auto",
+            ).acp_agent("continue", session_id="sess-known")
+        )
+
+        assert output["resumed"] is False
+        assert output["result"] == ""
+        assert "does not advertise session/resume or session/load" in output["error"]
+
+    def test_raw_load_capability_uses_initialize_request_id(self):
+        client = ToolClient(None, "deny")
+        client.observe_stream(
+            SimpleNamespace(
+                direction=SimpleNamespace(value="outgoing"),
+                message={
+                    "jsonrpc": "2.0",
+                    "id": "init-8",
+                    "method": "initialize",
+                },
+            )
+        )
+        client.observe_stream(
+            SimpleNamespace(
+                direction=SimpleNamespace(value="incoming"),
+                message={
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "result": {
+                        "protocolVersion": 1,
+                        "agentCapabilities": {"loadSession": 1},
+                    },
+                },
+            )
+        )
+        assert client.raw_load_session is None
+
+        client.observe_stream(
+            SimpleNamespace(
+                direction=SimpleNamespace(value="incoming"),
+                message={
+                    "jsonrpc": "2.0",
+                    "id": "init-8",
+                    "result": {
+                        "protocolVersion": 1,
+                        "agentCapabilities": {"loadSession": "true"},
+                    },
+                },
+            )
+        )
+        assert client.raw_load_session == "true"
 
     def test_child_meta_cannot_shadow_visible_update_session(self, fake_command):
         output = json.loads(runner(fake_command).acp_agent("shadow update"))

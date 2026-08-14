@@ -55,7 +55,8 @@ It sends exactly one selected lifecycle request; a failure never triggers a
 fallback request through the other method. An explicitly null
 `agentCapabilities` value means that no optional capability was advertised, so
 continuation fails with the same capability error before sending a lifecycle
-request.
+request. The legacy `loadSession` flag must be a JSON boolean or null; strings
+and numbers fail initialization instead of being coerced into a capability.
 
 This adapter implements ACP protocol major version 1. The initialize response
 must carry `protocolVersion` as a JSON integer, not a string or boolean. An
