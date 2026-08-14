@@ -15,6 +15,8 @@ Create or improve browser automation skills for logged-in web apps. Use this whe
 
 The core pattern is: **save context -> analyze DOM/CSS -> write skill-local JS extraction -> verify same item by hash -> click/type with generic browser tools -> screenshot/context verify**.
 
+Designing the *command surface* of a `co <thing>` CLI and its SKILL.md, rather than a browser workflow on top of one? That is the sibling skill `cli-skill-design`.
+
 ## Architecture Rule
 
 Do not add site-specific Python to the core browser tool.
