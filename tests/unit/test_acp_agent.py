@@ -163,8 +163,16 @@ CAPABILITY_AGENT = textwrap.dedent(
                 capabilities["sessionCapabilities"] = {"resume": {}}
             elif mode == "null":
                 capabilities["sessionCapabilities"] = None
+            if mode == "version-string":
+                protocol_version = "1"
+            elif mode == "version-bool":
+                protocol_version = True
+            elif mode == "version-two":
+                protocol_version = 2
+            else:
+                protocol_version = 1
             send({"jsonrpc": "2.0", "id": message_id, "result": {
-                "protocolVersion": 2 if mode == "version-two" else 1,
+                "protocolVersion": protocol_version,
                 "agentCapabilities": (
                     None if mode == "agent-null" else capabilities
                 ),
@@ -623,6 +631,54 @@ class TestTypedRun:
         assert output["result"] == ""
         assert "selected unsupported ACP protocol version 2" in output["error"]
         assert "client supports 1" in output["error"]
+
+    @pytest.mark.parametrize(
+        ("mode", "wire_type"),
+        [("version-string", "str"), ("version-bool", "bool")],
+    )
+    def test_coerced_protocol_version_stops_before_session(
+        self, capability_command, mode, wire_type
+    ):
+        output = json.loads(
+            ACPAgent(
+                command=capability_command(mode),
+                name=mode,
+                approval="auto",
+            ).acp_agent("continue")
+        )
+
+        assert output["session_id"] == ""
+        assert output["resumed"] is False
+        assert output["result"] == ""
+        assert (
+            f"returned ACP protocolVersion as {wire_type}; expected integer"
+            in output["error"]
+        )
+
+    def test_raw_protocol_version_uses_initialize_request_id(self):
+        client = ToolClient(None, "deny")
+        outgoing = SimpleNamespace(
+            direction=SimpleNamespace(value="outgoing"),
+            message={"jsonrpc": "2.0", "id": "init-7", "method": "initialize"},
+        )
+        unrelated = SimpleNamespace(
+            direction=SimpleNamespace(value="incoming"),
+            message={"jsonrpc": "2.0", "id": 0, "result": {"protocolVersion": True}},
+        )
+        matching = SimpleNamespace(
+            direction=SimpleNamespace(value="incoming"),
+            message={
+                "jsonrpc": "2.0",
+                "id": "init-7",
+                "result": {"protocolVersion": "1"},
+            },
+        )
+
+        client.observe_stream(outgoing)
+        client.observe_stream(unrelated)
+        assert client.raw_protocol_version is None
+        client.observe_stream(matching)
+        assert client.raw_protocol_version == "1"
 
     def test_child_meta_cannot_shadow_visible_update_session(self, fake_command):
         output = json.loads(runner(fake_command).acp_agent("shadow update"))

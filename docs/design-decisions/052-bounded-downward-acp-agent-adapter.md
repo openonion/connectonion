@@ -58,9 +58,11 @@ Named Claude sessions ignore persistent interactive CLI allow rules and
 explicitly select Manual, Auto, or Don't Ask through advertised ACP session
 modes. Gemini likewise must advertise the required mode. Missing modes fail
 closed. After `initialize`, the generic client requires the agent-selected
-protocol version to equal the v1 major it implements; an unsupported selection
-closes the child before any session lifecycle request. For a supplied session
-ID, the generic client prefers an advertised
+protocol version to be a JSON integer equal to the v1 major it implements. It
+observes the raw response correlated to the actual initialize request ID so a
+schema library cannot quietly coerce `"1"` or `true` into version 1. An invalid
+type or unsupported selection closes the child before any session lifecycle
+request. For a supplied session ID, the generic client prefers an advertised
 `sessionCapabilities.resume` because it needs continuation without transcript
 replay. It retains `loadSession` as the compatibility path when resume is not
 advertised. Once one method is selected, its failure is final: the client does
@@ -186,6 +188,9 @@ present; it does not retain an import-time working directory as a wider root.
 - **Keep sending v1 messages after an agent selects another major:** confuses a
   well-typed version value with an agreed protocol and can execute under the
   wrong wire semantics.
+- **Trust only the SDK's coerced protocol-version field:** accepts strings and
+  booleans as v1. Making every ACP model globally strict or copying the full
+  initialize schema would widen this focused compatibility fix unnecessarily.
 - **Reject or guess around a null agent capability object:** the pinned schema
   permits null. Treating it as no optional capabilities preserves negotiation;
   blindly trying a lifecycle method does not.

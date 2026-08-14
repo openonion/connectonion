@@ -214,10 +214,15 @@ async def run_agent(
                 startup_deadline,
                 timeout,
             )
-            if initialized.protocol_version != acp.PROTOCOL_VERSION:
+            if type(client.raw_protocol_version) is not int:
+                raise RuntimeError(
+                    f"{engine} returned ACP protocolVersion as "
+                    f"{type(client.raw_protocol_version).__name__}; expected integer"
+                )
+            if client.raw_protocol_version != acp.PROTOCOL_VERSION:
                 raise RuntimeError(
                     f"{engine} selected unsupported ACP protocol version "
-                    f"{initialized.protocol_version}; client supports "
+                    f"{client.raw_protocol_version}; client supports "
                     f"{acp.PROTOCOL_VERSION}"
                 )
             agent_capabilities = (
@@ -423,13 +428,24 @@ class ToolClient:
         self._in_prompt = False
         self._updates_seen = 0
         self._updates_handled = 0
+        self._initialize_request_id: str | int | None = None
+        self.raw_protocol_version: Any = None
 
     def observe_stream(self, event) -> None:
         """Count updates before their independently scheduled callbacks run."""
-        if (
-            getattr(event.direction, "value", "") == "incoming"
-            and event.message.get("method") == "session/update"
+        direction = getattr(event.direction, "value", "")
+        message = event.message
+        if direction == "outgoing" and message.get("method") == "initialize":
+            self._initialize_request_id = message.get("id")
+        elif (
+            direction == "incoming"
+            and self._initialize_request_id is not None
+            and message.get("id") == self._initialize_request_id
         ):
+            result = message.get("result")
+            if isinstance(result, dict):
+                self.raw_protocol_version = result.get("protocolVersion")
+        if direction == "incoming" and message.get("method") == "session/update":
             self._updates_seen += 1
 
     async def drain_updates(self, deadline: float, timeout: int) -> None:

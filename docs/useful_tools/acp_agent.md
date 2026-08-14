@@ -57,9 +57,10 @@ fallback request through the other method. An explicitly null
 continuation fails with the same capability error before sending a lifecycle
 request.
 
-This adapter implements ACP protocol major version 1. If an agent selects a
-different major during `initialize`, the tool reports the incompatibility and
-closes the child before creating or resuming a session.
+This adapter implements ACP protocol major version 1. The initialize response
+must carry `protocolVersion` as a JSON integer, not a string or boolean. An
+invalid type or different major closes the child before creating or resuming a
+session.
 
 ## Permissions
 
