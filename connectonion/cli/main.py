@@ -705,10 +705,18 @@ def email_send(
         "--idempotency-key",
         help="Reuse a failed send's key to retry without sending twice",
     ),
+    from_address: Optional[str] = typer.Option(
+        None,
+        "--from",
+        help="Send as one of your owned addresses (server checks ownership)",
+    ),
 ):
     """Send an email from the agent's address."""
     from .commands.email_commands import handle_email_send
-    handle_email_send(to, subject, message, idempotency_key=idempotency_key)
+    handle_email_send(
+        to, subject, message,
+        idempotency_key=idempotency_key, from_address=from_address,
+    )
 
 
 @email_app.command("inbox")

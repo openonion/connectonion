@@ -44,13 +44,19 @@ def _err(response) -> str:
     return response.text.strip() or f"HTTP {response.status_code}"
 
 
-def handle_email_send(to: str, subject: str, message: str, idempotency_key: str = None):
+def handle_email_send(
+    to: str, subject: str, message: str,
+    idempotency_key: str = None, from_address: str = None,
+):
     """Send an email from the agent's address."""
     if not _require_auth():
         return
 
     from ...useful_tools.send_email import send_email
-    result = send_email(to, subject, message, idempotency_key=idempotency_key)
+    result = send_email(
+        to, subject, message,
+        idempotency_key=idempotency_key, from_address=from_address,
+    )
 
     if result.get("success"):
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
