@@ -11,6 +11,7 @@ LLM-Note:
 import os
 
 import requests
+import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -27,11 +28,11 @@ def _print_no_auth():
 
 
 def _require_auth() -> bool:
-    """Ensure OPENONION_API_KEY (and the .env it lives next to) are loaded. Returns False if missing."""
+    """Ensure OPENONION_API_KEY (and the .env it lives next to) are loaded. Exits 1 if missing."""
     if load_api_key():
         return True
     _print_no_auth()
-    return False
+    raise typer.Exit(1)
 
 
 def _err(response) -> str:
@@ -63,6 +64,7 @@ def handle_email_send(to: str, subject: str, message: str, idempotency_key: str 
             console.print(f"  Safe retry key: {result['idempotency_key']}")
             console.print("  [dim]Retry the same command with --idempotency-key <key>[/dim]")
         console.print()
+        raise typer.Exit(1)
 
 
 def handle_email_inbox(last: int = 10, unread: bool = False):
@@ -119,10 +121,10 @@ def handle_email_sent(last: int = 10, to: str = None):
         else:
             status = response.status_code if response is not None else "unknown"
             console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
-        return
+        raise typer.Exit(1)
     except requests.RequestException:
         console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
-        return
+        raise typer.Exit(1)
 
     if not emails:
         scope = f" to {to}" if to else ""
@@ -168,15 +170,15 @@ def handle_email_sent_read(email_id: str):
         else:
             status = response.status_code if response is not None else "unknown"
             console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
-        return
+        raise typer.Exit(1)
     except requests.RequestException:
         console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
-        return
+        raise typer.Exit(1)
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
         console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail.[/yellow]\n")
-        return
+        raise typer.Exit(1)
 
     header = (
         f"[cyan]To:[/cyan]         {match.get('to', '')}\n"
@@ -204,7 +206,7 @@ def handle_email_read(email_id: str):
 
     if not match:
         console.print(f"\n[yellow]No email with id {email_id} in your recent inbox.[/yellow]\n")
-        return
+        raise typer.Exit(1)
 
     header = (
         f"[cyan]From:[/cyan]    {match.get('from', '')}\n"
@@ -225,7 +227,7 @@ def handle_email_name(name: str, buy: bool = False):
     token = load_api_key()
     if not token:
         _print_no_auth()
-        return
+        raise typer.Exit(1)
 
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -233,7 +235,7 @@ def handle_email_name(name: str, buy: bool = False):
         r = requests.get(f"{backend_url()}/api/v1/email/check-name", params={"name": name}, headers=headers, timeout=10)
         if not r.ok:
             console.print(f"\n[red]✗ {_err(r)}[/red]\n")
-            return
+            raise typer.Exit(1)
         data = r.json()
         if data.get("available"):
             console.print(f"\n[green]✓ {data['email']} is available[/green] — [bold]${data['price']:.2f}[/bold] one-time, from credits")
@@ -245,7 +247,7 @@ def handle_email_name(name: str, buy: bool = False):
     r = requests.post(f"{backend_url()}/api/v1/email/purchase-name", json={"name": name}, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
-        return
+        raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
     console.print(f"  Your address: [cyan]{data['email']}[/cyan]\n")
@@ -261,7 +263,7 @@ def handle_email_upgrade(
     token = load_api_key()
     if not token:
         _print_no_auth()
-        return
+        raise typer.Exit(1)
 
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"tier": tier}
@@ -275,7 +277,7 @@ def handle_email_upgrade(
     r = requests.post(f"{backend_url()}/api/v1/email/upgrade", json=payload, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
-        return
+        raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
     console.print(f"  Address: [cyan]{data['email_address']}[/cyan]")
