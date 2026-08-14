@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Callable
 
 
-def list_file(list_name: str) -> Path:
+def list_file(list_name: str, co_dir: Path = None) -> Path:
     """Where one of this agent's trust lists lives — beside its identity.
 
     These used to sit in a single ~/.co/ shared by every agent on the machine,
@@ -31,7 +31,7 @@ def list_file(list_name: str) -> Path:
     `admins.txt` was moved for exactly this reason. These three are the rest of
     the same list, and whitelist is the one that grants.
     """
-    return _project_co_dir() / f"{list_name}.txt"
+    return (Path(co_dir) if co_dir else _project_co_dir()) / f"{list_name}.txt"
 
 
 # One line per list per process. The entries in the old global file are not read
@@ -41,7 +41,7 @@ def list_file(list_name: str) -> Path:
 _announced_legacy = set()
 
 
-def _mention_a_legacy_list(list_name: str) -> None:
+def _mention_a_legacy_list(list_name: str, co_dir: Path = None) -> None:
     legacy = Path.home() / ".co" / f"{list_name}.txt"
     if list_name in _announced_legacy or not legacy.exists():
         return
@@ -50,7 +50,7 @@ def _mention_a_legacy_list(list_name: str) -> None:
         return
     print(f"[trust] {legacy} is no longer read — these lists now live beside "
           f"each agent, in its own .co/. Copy the lines you still want into "
-          f"{list_file(list_name)}.")
+          f"{list_file(list_name, co_dir)}.")
 
 
 # The `.co/` that belongs to this agent. A blocked address read from the wrong
@@ -69,7 +69,7 @@ def _admins_file(co_dir: Path = None) -> Path:
     return (Path(co_dir) if co_dir else _project_co_dir()) / "admins.txt"
 
 
-def _check_list(list_name: str, agent_id: str) -> bool:
+def _check_list(list_name: str, agent_id: str, co_dir: Path = None) -> bool:
     """Check if agent_id is in a list file. Supports `*` wildcards.
 
     A line matches the whole identifier, not part of it. `trusted-*` used to be
@@ -82,9 +82,9 @@ def _check_list(list_name: str, agent_id: str) -> bool:
     but an admin pastes what a UI showed them, and `block("0xABCDEF…")` that
     silently blocks nobody is worse than one that errors — it reported success.
     """
-    list_path = list_file(list_name)
+    list_path = list_file(list_name, co_dir)
     if not list_path.exists():
-        _mention_a_legacy_list(list_name)
+        _mention_a_legacy_list(list_name, co_dir)
         return False
     # An unreadable file is not an empty file.
     #
@@ -162,14 +162,14 @@ def check_blocklist(agent_id: str) -> str:
     return f"{agent_id} is not blocked"
 
 
-def is_whitelisted(agent_id: str) -> bool:
+def is_whitelisted(agent_id: str, co_dir: Path = None) -> bool:
     """Check if agent is whitelisted. Returns bool for fast rules."""
-    return _check_list("whitelist", agent_id)
+    return _check_list("whitelist", agent_id, co_dir)
 
 
-def is_blocked(agent_id: str) -> bool:
+def is_blocked(agent_id: str, co_dir: Path = None) -> bool:
     """Check if agent is blocked. Returns bool for fast rules."""
-    return _check_list("blocklist", agent_id)
+    return _check_list("blocklist", agent_id, co_dir)
 
 
 def test_capability(agent_id: str, test: str, expected: str) -> str:
@@ -201,13 +201,13 @@ def verify_agent(agent_id: str, agent_info: str = "") -> str:
     return f"Verifying agent: {agent_id}. Info: {agent_info}"
 
 
-def _add_to_list(list_name: str, client_id: str) -> bool:
+def _add_to_list(list_name: str, client_id: str, co_dir: Path = None) -> bool:
     """Add client_id to a list file."""
-    list_path = list_file(list_name)
+    list_path = list_file(list_name, co_dir)
     list_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Check if already in list
-    if _check_list(list_name, client_id):
+    if _check_list(list_name, client_id, co_dir):
         return True
 
     # Append to file
@@ -216,9 +216,9 @@ def _add_to_list(list_name: str, client_id: str) -> bool:
     return True
 
 
-def _remove_from_list(list_name: str, client_id: str) -> bool:
+def _remove_from_list(list_name: str, client_id: str, co_dir: Path = None) -> bool:
     """Remove client_id from a list file."""
-    list_path = list_file(list_name)
+    list_path = list_file(list_name, co_dir)
     if not list_path.exists():
         return True
 
@@ -269,69 +269,69 @@ def verify_payment(client_id: str, amount: float, required_amount: float) -> str
 
 # === Promotion ===
 
-def promote_to_contact(client_id: str) -> str:
+def promote_to_contact(client_id: str, co_dir: Path = None) -> str:
     """Stranger → Contact"""
-    _add_to_list("contacts", client_id)
+    _add_to_list("contacts", client_id, co_dir)
     return f"{client_id} promoted to contact."
 
 
-def promote_to_whitelist(client_id: str) -> str:
+def promote_to_whitelist(client_id: str, co_dir: Path = None) -> str:
     """Contact → Whitelist"""
-    _add_to_list("whitelist", client_id)
+    _add_to_list("whitelist", client_id, co_dir)
     return f"{client_id} promoted to whitelist."
 
 
 # === Demotion ===
 
-def demote_to_contact(client_id: str) -> str:
+def demote_to_contact(client_id: str, co_dir: Path = None) -> str:
     """Whitelist → Contact"""
-    _remove_from_list("whitelist", client_id)
-    _add_to_list("contacts", client_id)
+    _remove_from_list("whitelist", client_id, co_dir)
+    _add_to_list("contacts", client_id, co_dir)
     return f"{client_id} demoted to contact."
 
 
-def demote_to_stranger(client_id: str) -> str:
+def demote_to_stranger(client_id: str, co_dir: Path = None) -> str:
     """Contact → Stranger"""
-    _remove_from_list("contacts", client_id)
-    _remove_from_list("whitelist", client_id)
+    _remove_from_list("contacts", client_id, co_dir)
+    _remove_from_list("whitelist", client_id, co_dir)
     return f"{client_id} demoted to stranger."
 
 
 # === Blocking ===
 
-def block(client_id: str, reason: str = "") -> str:
+def block(client_id: str, reason: str = "", co_dir: Path = None) -> str:
     """Add to blocklist."""
-    _add_to_list("blocklist", client_id)
+    _add_to_list("blocklist", client_id, co_dir)
     return f"{client_id} blocked. Reason: {reason}"
 
 
-def unblock(client_id: str) -> str:
+def unblock(client_id: str, co_dir: Path = None) -> str:
     """Remove from blocklist."""
-    _remove_from_list("blocklist", client_id)
+    _remove_from_list("blocklist", client_id, co_dir)
     return f"{client_id} unblocked."
 
 
 # === Queries ===
 
-def get_level(client_id: str) -> str:
+def get_level(client_id: str, co_dir: Path = None) -> str:
     """Returns: stranger, contact, whitelist, or blocked."""
-    if is_blocked(client_id):
+    if is_blocked(client_id, co_dir):
         return "blocked"
-    if is_whitelisted(client_id):
+    if is_whitelisted(client_id, co_dir):
         return "whitelist"
-    if _check_list("contacts", client_id):
+    if _check_list("contacts", client_id, co_dir):
         return "contact"
     return "stranger"
 
 
-def is_contact(client_id: str) -> bool:
+def is_contact(client_id: str, co_dir: Path = None) -> bool:
     """Check if client is a contact."""
-    return _check_list("contacts", client_id)
+    return _check_list("contacts", client_id, co_dir)
 
 
-def is_stranger(client_id: str) -> bool:
+def is_stranger(client_id: str, co_dir: Path = None) -> bool:
     """Check if client is a stranger (not contact, whitelist, or blocked)."""
-    return get_level(client_id) == "stranger"
+    return get_level(client_id, co_dir) == "stranger"
 
 
 def get_trust_verification_tools() -> List[Callable]:
