@@ -63,6 +63,12 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             'kind': entry.get('kind'),
         }
 
+    if entry_type == 'provider_invocation':
+        return {
+            key: value for key, value in entry.items()
+            if key not in {'ts'}
+        }
+
     # tool_executor.py records two trace entries per tool: 'tool_call' (placeholder before
     # execute, no result) then 'tool_result' (final state, has status/result/timing_ms).
     # Emit one ChatItem per tool from the 'tool_result' so we don't double-render. Match
@@ -77,7 +83,7 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
         ui_status = (
             'done' if raw in ('success', 'done', 'completed') else 'error'
         )
-        return {
+        item = {
             'id': entry.get('tool_id') or f"tool-{idx}",
             'type': 'tool_call',
             'name': name,
@@ -86,6 +92,10 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             'result': entry.get('result'),
             'timing_ms': entry.get('timing_ms'),
         }
+        for key in ('provider', 'invocationId', 'parentToolCallId'):
+            if key in entry:
+                item[key] = entry[key]
+        return item
 
     return None
 
@@ -158,4 +168,53 @@ def session_to_chat_items(session: dict) -> list[dict]:
             if item_ui:
                 items_ui.append(item_ui)
 
-    return items_ui
+    return _nest_provider_invocations(items_ui)
+
+
+def _nest_provider_invocations(items: list[dict]) -> list[dict]:
+    """Rebuild the same single provider card produced by the live mapper."""
+    invocations: dict[str, dict] = {}
+    parent_ids: set[str] = set()
+    for item in items:
+        if item.get('type') != 'provider_invocation':
+            continue
+        invocation_id = item.get('invocationId') or item.get('id')
+        parent_id = item.get('parentToolCallId')
+        if not isinstance(invocation_id, str) or not isinstance(parent_id, str):
+            continue
+        parent_ids.add(parent_id)
+        existing = invocations.get(invocation_id)
+        if existing is None:
+            existing = {**item, 'id': invocation_id, 'activities': []}
+            invocations[invocation_id] = existing
+        else:
+            activities = existing['activities']
+            existing.update(item)
+            existing['id'] = invocation_id
+            existing['activities'] = activities
+
+    if not invocations:
+        return items
+
+    output: list[dict] = []
+    emitted: set[str] = set()
+    for item in items:
+        invocation_id = item.get('invocationId')
+        parent_id = item.get('parentToolCallId')
+        if item.get('type') == 'provider_invocation' and invocation_id in invocations:
+            if invocation_id not in emitted:
+                output.append(invocations[invocation_id])
+                emitted.add(invocation_id)
+            continue
+        if (
+            item.get('type') == 'tool_call'
+            and isinstance(parent_id, str)
+            and isinstance(invocation_id, str)
+            and invocation_id in invocations
+        ):
+            invocations[invocation_id]['activities'].append(item)
+            continue
+        if item.get('type') == 'tool_call' and item.get('id') in parent_ids:
+            continue
+        output.append(item)
+    return output

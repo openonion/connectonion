@@ -2,6 +2,9 @@
 
 Plugins are reusable event handlers. Package capabilities and reuse them across agents.
 
+Configured lifecycle plugins can also install tools while keeping operator
+state out of the model schema. See [Coding-agent plugins](coding-agent-plugins.md).
+
 ## Quick Start
 
 ```python
@@ -65,6 +68,7 @@ agent = Agent("a", plugins=[re_act, logger])
 | `yolo` | Familiar shorthand for Full access | [yolo.md](../useful_plugins/yolo.md) |
 | `gmail_plugin` | Gmail OAuth flow | [gmail_plugin.md](../useful_plugins/gmail_plugin.md) |
 | `calendar_plugin` | Google Calendar OAuth flow | [calendar_plugin.md](../useful_plugins/calendar_plugin.md) |
+| `CodexPlugin` / `ClaudeCodePlugin` | Bounded coding-agent delegation with live child activity | [coding-agent-plugins.md](coding-agent-plugins.md) |
 
 ```python
 from connectonion.useful_plugins import skills, re_act, eval, image_result_formatter, tool_approval

@@ -1,9 +1,9 @@
 # Codex tool ↔ frontend integration contract
 
-**TL;DR — oo-chat needs no component changes.** The backend `codex` tool
-converts Codex's steps into the events the SDK already renders. The SDK accepts
-both historical and ACP-aligned lifecycle statuses during rolling upgrades.
-This note records the research behind that and the exact contract.
+**Historical note.** The backend `codex` tool originally flattened Codex steps
+into generic tool cards. Alpha.2 keeps those events as the compatibility
+fallback and additionally emits the parented provider-invocation contract
+described in [Coding-agent plugins](concepts/coding-agent-plugins.md).
 
 ## How the `codex` tool drives Codex
 
@@ -27,7 +27,7 @@ app-server wins on every axis for a Python framework: one dependency, official
 protocol, our own client, and it still gives session/resume, live streaming, and
 interactive approval requests when the selected Codex policy requires them.
 
-## The frontend contract (why no frontend change is needed)
+## The original generic frontend contract
 
 The connection layer bundled in `@connectonion/react`
 (`connectonion-react/src/connect/chat-item-mapper.ts`) maps a **fixed set of
@@ -48,9 +48,10 @@ Key points:
 - **ACP-aligned live status**: provider events use `in_progress`, `completed`,
   and `failed`. The SDK also accepts the historical success/failure values;
   canonical session traces keep their existing statuses.
-- **No custom event type.** An earlier draft emitted `io.log("codex_event", …)`,
-  which matched nothing in the mapper and would not render — that was the bug to
-  fix. The fix is emitting the native `tool_call` / `tool_result` vocabulary.
+- **Generic compatibility remains.** `tool_call` / `tool_result` are still
+  emitted, now with optional provider-invocation correlation fields. Clients
+  that understand `provider_invocation` nest them; older clients render them
+  as ordinary cards.
 - **Approval is already wired.** When Codex requests permission,
   `agent.io.request_approval` sends `approval_needed`
   and blocks for the user's answer over the same channel oo-chat already uses for
@@ -61,12 +62,9 @@ Key points:
 
 ## What the frontend team should know
 
-- Nothing to implement to make Codex render. Codex's inner command runs and file
-  edits show up as ordinary tool cards; its permission prompts as ordinary
-  approval cards.
-- Optional polish (not required): a Codex-specific icon/label on tool cards whose
-  origin is the codex tool. This is cosmetic — the generic tool-card rendering
-  already works.
+- The React package owns normalization and child correlation. O Chat consumes
+  its typed `provider_invocation` item and renders the shared coding-agent card.
+- Generic tool cards remain the rolling-upgrade fallback.
 
 ## Validation
 

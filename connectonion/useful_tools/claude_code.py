@@ -354,7 +354,17 @@ class _ClaudeStreamForwarder:
     """Translate Claude stream-json messages into native live tool events."""
 
     def __init__(self, agent) -> None:
+        self._agent = agent
         self._io = getattr(agent, "io", None) if agent is not None else None
+        session = getattr(agent, "current_session", None)
+        self._parent_tool_call_id = (
+            session.get("_active_tool_call_id") if isinstance(session, dict) else None
+        )
+        self._correlation = (
+            {"invocationId": f"claude_code:{self._parent_tool_call_id}",
+             "parentToolCallId": self._parent_tool_call_id}
+            if self._parent_tool_call_id else {}
+        )
         self._tools: dict[str, dict[str, Any]] = {}
         self._event_count = 0
 
@@ -394,6 +404,7 @@ class _ClaudeStreamForwarder:
                 provider="claude_code",
                 child_session_id=metadata["session_id"],
                 parent_tool_id=metadata["parent_tool_id"],
+                **self._correlation,
             )
             self._tools[tool_id] = metadata
 
@@ -418,6 +429,7 @@ class _ClaudeStreamForwarder:
                 provider="claude_code",
                 child_session_id=metadata["session_id"],
                 parent_tool_id=metadata["parent_tool_id"],
+                **self._correlation,
             )
             self._tools.pop(tool_id, None)
 
@@ -431,13 +443,18 @@ class _ClaudeStreamForwarder:
             provider="claude_code",
             child_session_id=metadata["session_id"],
             parent_tool_id=metadata["parent_tool_id"],
+            **self._correlation,
         )
 
     def _emit(self, event_type: str, **fields: Any) -> None:
         if self._event_count >= _MAX_LIVE_EVENTS:
             return
         self._event_count += 1
-        self._io.log(event_type, **fields)
+        record = getattr(self._agent, "_record_trace", None)
+        if callable(record) and isinstance(getattr(self._agent, "current_session", None), dict):
+            record({"type": event_type, **fields})
+        else:
+            self._io.log(event_type, **fields)
 
 
 def _content_blocks(event: dict[str, Any]) -> list[dict[str, Any]]:

@@ -17,6 +17,7 @@
 ├── vibe-coding-guide.md   # Coding-assistant workflow and prompts
 ├── cli/                   # CLI commands documentation
 ├── concepts/              # Core concepts (agents, tools, trust)
+│   └── coding-agent-plugins.md # Codex/Claude delegation and live invocation contract
 ├── debug/                 # Debugging and @xray documentation
 ├── design-decisions/      # Why things are built this way
 ├── integrations/          # Third-party integrations

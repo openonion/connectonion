@@ -198,14 +198,37 @@ def _forward_ui(agent, event):
     if agent is None or getattr(agent, "io", None) is None:
         return
     kind = event.get("kind", "")
+    parent_id = _active_parent_tool_call_id(agent)
+    correlation = ({"invocationId": f"codex:{parent_id}",
+                    "parentToolCallId": parent_id} if parent_id else {})
     if kind == "tool_start":
-        agent.io.log("tool_call", tool_id=event.get("id", ""),
-                     name=event.get("name", "codex"), args={},
-                     status="in_progress")
+        _emit_provider_event(agent, "tool_call", tool_id=event.get("id", ""),
+                             name=event.get("name", "codex"), args={},
+                             status="in_progress", provider="codex",
+                             **correlation)
     elif kind == "tool_end":
-        agent.io.log("tool_result", tool_id=event.get("id", ""),
-                     status="failed" if event.get("failed") else "completed",
-                     result=event.get("name", ""))
+        _emit_provider_event(agent, "tool_result", tool_id=event.get("id", ""),
+                             name=event.get("name", "codex"), args={},
+                             status="failed" if event.get("failed") else "completed",
+                             result=event.get("name", ""), provider="codex",
+                             **correlation)
+
+
+def _active_parent_tool_call_id(agent):
+    session = getattr(agent, "current_session", None)
+    value = session.get("_active_tool_call_id") if isinstance(session, dict) else None
+    return value if isinstance(value, str) and value else None
+
+
+def _emit_provider_event(agent, event_type, **fields):
+    record = getattr(agent, "_record_trace", None)
+    if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
+        record({"type": event_type, **fields})
+    else:
+        if event_type == "tool_result":
+            fields.pop("name", None)
+            fields.pop("args", None)
+        agent.io.log(event_type, **fields)
 
 
 def _approval_allowed(method, params, approval, agent):

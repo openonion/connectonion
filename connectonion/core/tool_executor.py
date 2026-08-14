@@ -337,6 +337,7 @@ def execute_single_tool(
     original_tools = None
     tool_tools = None
     invoke_func = tool_func
+    tool_agent = agent
     original_instance = None
     tool_instance = None
 
@@ -443,6 +444,7 @@ def execute_single_tool(
             except BaseException as error:
                 return False, error
 
+        tool_agent.current_session['_active_tool_call_id'] = tool_id
         outcome, interrupted = run_interruptible(
             capture_tool_outcome,
             poll_io,
@@ -470,6 +472,7 @@ def execute_single_tool(
                 if instance is tool_instance:
                     tool_tools._instances[name] = original_instance
 
+        tool_agent.current_session.pop('_active_tool_call_id', None)
         if tool_session is not None:
             original_session.clear()
             original_session.update(tool_session)
@@ -546,6 +549,10 @@ def execute_single_tool(
         # after_tool fires later, after the LLM tool message is added.
 
     finally:
+        if getattr(agent, 'current_session', None):
+            agent.current_session.pop('_active_tool_call_id', None)
+        if tool_session is not None:
+            tool_session.pop('_active_tool_call_id', None)
         if tool_io:
             tool_io.cancel()
         # No `tool_args.pop('agent')` here any more: nothing was ever put in.
