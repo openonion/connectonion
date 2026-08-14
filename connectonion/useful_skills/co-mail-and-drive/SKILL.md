@@ -8,8 +8,9 @@ description: Read and send mail from the user's own Gmail or Outlook account, se
 The user's own mail and files, from the shell. One authorization, then plain commands.
 
 **Read the output, not just the exit code.** `co gmail`, `co outlook` and `co gdrive`
-exit `1` when they fail — but every `co email` failure prints `❌` and still exits `0`.
-Never use `co email ... && next_step` as your only success check.
+exit `1` when they fail — but every `co email` failure prints `❌` and still exits `0`
+(#1012 tracks fixing that). Never use `co email ... && next_step` as your only
+success check.
 
 ## First: which mailbox does the user mean?
 
