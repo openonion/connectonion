@@ -1013,7 +1013,10 @@ def host(
     if isinstance(trust, TrustAgent):
         trust_agent = trust
     else:
-        trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
+        trust_agent = TrustAgent(
+            trust if isinstance(trust, str) else "careful",
+            co_dir=co_dir,
+        )
 
     # Load the permission whitelist that gates direct execution (WS EXEC).
     # Same list the LLM approval flow reads: template safe defaults + this

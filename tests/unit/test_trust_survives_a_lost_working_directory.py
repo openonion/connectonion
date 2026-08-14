@@ -51,3 +51,22 @@ def test_authorization_does_not_follow_a_tool_into_another_project(tmp_path,
 
     assert not decision.allow
     assert decision.reason == "Denied by fast rules"
+
+
+def test_explicit_host_directory_wins_over_the_startup_working_directory(
+        tmp_path, monkeypatch):
+    hosted = tmp_path / "hosted"
+    hosted_co_dir = hosted / ".co"
+    hosted_co_dir.mkdir(parents=True)
+    blocked = "0x" + "c" * 64
+    (hosted_co_dir / "blocklist.txt").write_text(blocked + "\n")
+
+    launcher = tmp_path / "launcher"
+    launcher.mkdir()
+    monkeypatch.chdir(launcher)
+    trust = TrustAgent("open", co_dir=hosted_co_dir)
+
+    decision = trust.should_allow(blocked, {"prompt": "hello"})
+
+    assert not decision.allow
+    assert decision.reason == "Denied by fast rules"
