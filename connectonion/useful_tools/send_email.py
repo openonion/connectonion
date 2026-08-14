@@ -27,6 +27,7 @@ def send_email(
     subject: str,
     message: str,
     idempotency_key: Optional[str] = None,
+    from_address: Optional[str] = None,
 ) -> Dict:
     """Send an email using the agent's email address.
 
@@ -37,6 +38,9 @@ def send_email(
         idempotency_key: Reuse the key from a failed result to retry without
             sending the same email twice while the provider retry window is
             still active. A new key is generated when omitted.
+        from_address: Send as one of this account's owned addresses instead of
+            the default. The server verifies ownership and answers 403 for an
+            address this account does not hold.
 
     Returns:
         dict: Success status and details
@@ -103,6 +107,8 @@ def send_email(
         # backend's decision, and nothing here influences it.
         "body": message
     }
+    if from_address:
+        payload["from_address"] = from_address
     
     # Send email via backend API
     endpoint = f"{backend_url()}/api/v1/email/send"
