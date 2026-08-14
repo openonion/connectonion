@@ -30,6 +30,7 @@ from .todo_list import TodoList
 from .slash_command import SlashCommand
 from .ask_user import ask_user
 from .telegram import send_telegram
+from .discord import send_discord
 
 # Claude Code-style file tools
 from .file_tools import (
@@ -78,6 +79,7 @@ __all__ = [
     "SlashCommand",
     "ask_user",
     "send_telegram",
+    "send_discord",
     # Claude Code-style file tools
     "FileTools",
     "read_file",

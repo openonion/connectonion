@@ -158,6 +158,7 @@ def _show_help():
     console.print("  [green]email[/green]             Send and read agent email")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
+    console.print("  [green]discord[/green]           Post to Discord, as your bot or via a webhook")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
@@ -779,6 +780,22 @@ def email_upgrade(
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
+# Discord command group. The bot is the user's own application, so the token
+# lives in their keys.env -- same as Telegram. A webhook URL needs no token.
+discord_app = _typer_app(help="Post a message to Discord, as your bot or through a webhook.")
+app.add_typer(discord_app, name="discord")
+
+
+@discord_app.command("send")
+def discord_send(
+    channel: str = typer.Argument(..., help="Channel id, or a webhook URL"),
+    message: str = typer.Argument(..., help="The text to post (max 2000 chars)"),
+):
+    """Post a message to Discord."""
+    from .commands.discord_commands import handle_discord_send
+    handle_discord_send(channel, message)
+
+
 telegram_app = _typer_app(help="Send a message from your Telegram bot.")
 app.add_typer(telegram_app, name="telegram")
 
