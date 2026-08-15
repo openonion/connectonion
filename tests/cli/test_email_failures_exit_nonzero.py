@@ -62,15 +62,27 @@ def test_an_empty_inbox_is_not_a_failure():
         email_commands.handle_email_inbox()
 
 
-def test_inbox_rejects_more_than_the_backend_can_return_before_calling_it():
+def test_inbox_rejects_more_than_one_backend_page_before_calling_it():
     with patch.object(_get_module, "get_emails") as get_emails:
-        result = runner.invoke(app, ["email", "inbox", "--last", "101"])
+        result = runner.invoke(app, ["email", "inbox", "--last", "1001"])
 
     assert result.exit_code == 2
     output = strip_ansi(result.output)
     assert "--last" in output
-    assert "1<=x<=100" in output
+    assert "1<=x<=1000" in output
     get_emails.assert_not_called()
+
+
+def test_inbox_forwards_the_page_size_and_offset():
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(_get_module, "get_emails", return_value=[]) as get_emails:
+        result = runner.invoke(
+            app,
+            ["email", "inbox", "--last", "1000", "--offset", "2000"],
+        )
+
+    assert result.exit_code == 0
+    get_emails.assert_called_once_with(last=1000, offset=2000)
 
 
 def test_a_successful_send_does_not_raise():

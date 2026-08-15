@@ -4,9 +4,9 @@ LLM-Note:
   Dependencies: imports from [requests, typing, backend, credentials] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/unit/test_credentials.py, tests/test_real_email.py]
   Data flow: Agent calls a mailbox function → require_ambient_api_key() checks the already-loaded environment token against the canonical project identity → request to the configured backend → normalized result
   State/Effects: reads the ambient token and local identity keys | makes HTTP GET/POST requests | no local caching | mark_read()/mark_unread() modify server-side read status
-  Integration: exposes get_emails(last, unread), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?last=N&unread=true, PUT /api/v1/email/s/mark-read
-  Performance: one HTTP request per call | no pagination (uses 'last' param, received range 1..100) | synchronous blocking | no local cache
-  Errors: received limits outside 1..100 raise ValueError before auth/network | missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
+  Integration: exposes get_emails(last, unread, offset), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?limit=N&offset=N, PUT /api/v1/email/s/mark-read
+  Performance: one HTTP request per call | received pages contain 1..1000 messages and offset selects older pages | synchronous blocking | no local cache
+  Errors: invalid received page sizes or offsets raise ValueError before auth/network | missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
 """
 
 from typing import Dict, List, Union
@@ -17,15 +17,16 @@ from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 
 MIN_RECEIVED_EMAILS = 1
-MAX_RECEIVED_EMAILS = 100
+MAX_RECEIVED_EMAILS = 1000
 
 
-def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
+def get_emails(last: int = 10, unread: bool = False, offset: int = 0) -> List[Dict]:
     """Get emails sent to the agent's address.
 
     Args:
-        last: Number of emails to retrieve (default: 10, range: 1..100)
+        last: Number of emails to retrieve (default: 10, range: 1..1000)
         unread: Only get unread emails (default: False)
+        offset: Number of newer emails to skip (default: 0)
 
     Returns:
         List of email dictionaries containing:
@@ -46,6 +47,9 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
             f"{MAX_RECEIVED_EMAILS} for received email"
         )
 
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("offset must be a non-negative integer")
+
     token = require_ambient_api_key()
 
     # Fetch emails from backend API
@@ -58,6 +62,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
 
     params = {
         "limit": last,
+        "offset": offset,
         "unread_only": unread
     }
 
@@ -72,6 +77,11 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
     response.raise_for_status()
 
     data = response.json()
+    if offset and data.get("offset") != offset:
+        raise RuntimeError(
+            "This backend does not support received email pagination yet; "
+            "upgrade the backend before using offset"
+        )
     emails = data.get("emails", [])
 
     # Ensure consistent format
