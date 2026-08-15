@@ -10,23 +10,22 @@ exits 0. Asking for a specific email that does not exist is one — the command
 did not deliver what was asked.
 """
 
-import sys
+from importlib import import_module
 from unittest.mock import patch
 
 import pytest
 import typer
+from click.utils import strip_ansi
 from typer.testing import CliRunner
 
+# The package __init__ re-exports the functions under the same names as their
+# modules, so a dotted patch target resolves to the function. Import the real
+# modules explicitly so collection never depends on another test's import order.
 from connectonion.cli.commands import email_commands
 from connectonion.cli.main import app
-# The package __init__ re-exports the functions under the same names as their
-# modules, so a dotted patch target resolves to the function; go through
-# sys.modules to reach the real modules the handlers import from.
-import connectonion.useful_tools.send_email
-import connectonion.useful_tools.get_emails
 
-_send_module = sys.modules["connectonion.useful_tools.send_email"]
-_get_module = sys.modules["connectonion.useful_tools.get_emails"]
+_send_module = import_module("connectonion.useful_tools.send_email")
+_get_module = import_module("connectonion.useful_tools.get_emails")
 runner = CliRunner()
 
 
@@ -66,8 +65,9 @@ def test_inbox_rejects_more_than_one_backend_page_before_calling_it():
         result = runner.invoke(app, ["email", "inbox", "--last", "1001"])
 
     assert result.exit_code == 2
-    assert "--last" in result.output
-    assert "1000" in result.output
+    output = strip_ansi(result.output)
+    assert "--last" in output
+    assert "1000" in output
     get_emails.assert_not_called()
 
 
