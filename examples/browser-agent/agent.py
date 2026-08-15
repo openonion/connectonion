@@ -2,7 +2,7 @@
 Purpose: Main entry point for natural language browser automation agent
 LLM-Note:
   Dependencies: imports from [pathlib, dotenv, connectonion.Agent, web_automation.WebAutomation] | imported by [README.md examples] | tested by [tests/test_all.py]
-  Data flow: receives natural language command string from __main__ → agent.input() routes to LLM (gemini-2.5-flash) → LLM calls web.* tools → returns execution result string
+  Data flow: receives natural language command string from __main__ → agent.input() routes to LLM (gemini-3.7-flash) → LLM calls web.* tools → returns execution result string
   State/Effects: creates global web=WebAutomation() instance | loads .env with OPENONION_API_KEY | reads prompt.md system instructions | web tools mutate browser state (open/navigate/click/close)
   Integration: exposes agent.input(str) → str API | uses ConnectOnion Agent with tools=web (all WebAutomation methods become callable tools) | max_iterations=20 for complex multi-step workflows
   Performance: agent orchestrates sequential tool calls based on LLM decisions | browser operations are synchronous (blocking) | screenshot I/O writes to screenshots/ folder
@@ -27,7 +27,7 @@ web = WebAutomation(use_chrome_profile=True)
 # ui_stream sends real-time activity events to connected UI clients via WebSocket
 agent = Agent(
     name="browser_agent",
-    model="co/gemini-3.5-flash",
+    model="co/gemini-3.7-flash",
     system_prompt=Path(__file__).parent / "prompts" / "agent.md",
     tools=web,
     plugins=[image_result_formatter, ui_stream],  # Vision + real-time streaming

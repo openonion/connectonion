@@ -464,8 +464,6 @@ agent = Agent("bot", model="claude-opus-4")
 
 # Google Gemini
 agent = Agent("bot", model="gemini-3.7-flash")
-agent = Agent("bot", model="gemini-3.7-flash")
-agent = Agent("bot", model="gemini-2.5-flash")
 ```
 
 ### Managed Keys (After `co auth`)
@@ -593,7 +591,7 @@ Token usage is automatically shown in console logs after each LLM call:
 Cost tracking works with all supported providers:
 - OpenAI (gpt-4o, gpt-4o-mini, o1, o3-mini, o4-mini)
 - Anthropic Claude (claude-sonnet-4, claude-opus-4, claude-3-5-sonnet, claude-3-5-haiku)
-- Google Gemini (gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-2.5-pro, gemini-2.5-pro, gemini-2.5-flash)
+- Google Gemini (gemini-3.7-flash and other gemini-* names)
 
 Models not in the pricing table fall back to default pricing estimates ($1/M input, $3/M output).
 

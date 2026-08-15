@@ -10,8 +10,8 @@ Key components:
 
 Architecture:
 - Each sub-agent config includes: description, tools, model, max_iterations
-- "explore": Fast codebase exploration (gemini-2.5-flash, glob/grep/read)
-- "plan": Implementation planning (gemini-2.5-pro, glob/grep/read)
+- "explore": Fast codebase exploration (gemini-3.7-flash, glob/grep/read)
+- "plan": Implementation planning (gemini-3.7-flash, glob/grep/read)
 - System prompts loaded from co_ai/prompts/agents/{type}.md
 - Falls back to description if prompt file not found
 """

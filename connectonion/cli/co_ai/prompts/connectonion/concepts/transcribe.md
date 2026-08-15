@@ -12,7 +12,7 @@ text = transcribe("meeting.mp3")
 print(text)
 
 # With your own Gemini API key
-text = transcribe("meeting.mp3", model="gemini-3.5-flash")
+text = transcribe("meeting.mp3", model="gemini-3.7-flash")
 ```
 
 That's it! One function for audio-to-text.
@@ -114,8 +114,7 @@ transcribe("audio.mp3", model="co/gemini-3.7-flash")
 transcribe("audio.mp3", model="co/gemini-3.7-flash")
 
 # Your own Gemini API key (set GEMINI_API_KEY)
-transcribe("audio.mp3", model="gemini-3.5-flash")
-transcribe("audio.mp3", model="gemini-2.5-flash")
+transcribe("audio.mp3", model="gemini-3.7-flash")
 ```
 
 ## Error Handling

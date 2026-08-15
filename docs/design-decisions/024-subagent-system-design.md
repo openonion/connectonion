@@ -59,7 +59,7 @@ def create_explore_agent():
         system_prompt="""
         You are an exploration agent...
         """,
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.7-flash",
         max_iterations=15,
     )
 ```
@@ -84,7 +84,7 @@ def create_explore_agent():
 {
   "name": "explore",
   "description": "Fast codebase exploration",
-  "model": "co/gemini-2.5-flash",
+  "model": "co/gemini-3.7-flash",
   "max_iterations": 15,
   "tools": ["glob", "grep", "read_file"],
   "system_prompt_file": "prompts/explore.txt"
@@ -110,7 +110,7 @@ def create_explore_agent():
 [explore]
 name = "explore"
 description = "Fast codebase exploration"
-model = "co/gemini-2.5-flash"
+model = "co/gemini-3.7-flash"
 max_iterations = 15
 tools = ["glob", "grep", "read_file"]
 
@@ -139,7 +139,7 @@ You are an exploration agent...
 ---
 name: explore
 description: Fast agent for exploring codebases
-model: co/gemini-2.5-flash
+model: co/gemini-3.7-flash
 max_iterations: 15
 tools:
   - glob
@@ -212,7 +212,7 @@ class SubAgentDefinition:
     """Sub-agent configuration and prompt."""
     name: str               # Unique identifier
     description: str        # One-line description
-    model: str             # LLM model (e.g., "co/gemini-2.5-flash")
+    model: str             # LLM model (e.g., "co/gemini-3.7-flash")
     max_iterations: int    # Max iteration limit
     tools: List[str]       # Tool names ["glob", "grep", "read_file"]
     system_prompt: str     # Full markdown body
@@ -393,7 +393,7 @@ Easy to add new fields without breaking changes:
 ```yaml
 # Current
 name: explore
-model: co/gemini-2.5-flash
+model: co/gemini-3.7-flash
 max_iterations: 15
 tools: [glob, grep, read_file]
 
@@ -418,7 +418,7 @@ Easy to test in isolation:
 def test_parse_explore_definition():
     definition = parse_subagent_file("subagents/explore.md")
     assert definition.name == "explore"
-    assert definition.model == "co/gemini-2.5-flash"
+    assert definition.model == "co/gemini-3.7-flash"
     assert "glob" in definition.tools
 
 # Integration test
@@ -443,7 +443,7 @@ Before (Python):
 ```python
 # subagents/explore.py
 EXPLORE_CONFIG = {
-    "model": "co/gemini-2.5-flash",
+    "model": "co/gemini-3.7-flash",
     "max_iterations": 15,
 }
 EXPLORE_PROMPT = "You are an explorer..."
@@ -453,7 +453,7 @@ After (Markdown):
 ```markdown
 ---
 name: explore
-model: co/gemini-2.5-flash
+model: co/gemini-3.7-flash
 max_iterations: 15
 ---
 
