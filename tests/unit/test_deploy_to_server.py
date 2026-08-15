@@ -110,6 +110,22 @@ class TestSyncNeverTouchesState:
         assert ("--exclude", ".venv/") in pairs
         assert ("--exclude", ".git/") in pairs
 
+    def test_rsync_honours_the_projects_gitignore(self, project):
+        (project / ".gitignore").write_text("work/\n")
+
+        with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
+            dts._sync_code("user@host", "myagent", project)
+
+        argv = self._rsync_argv(run)
+        assert "--exclude-from" in argv
+        assert str(project / ".gitignore") in argv
+
+    def test_a_project_without_gitignore_needs_no_fake_filter_file(self, project):
+        with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
+            dts._sync_code("user@host", "myagent", project)
+
+        assert "--exclude-from" not in self._rsync_argv(run)
+
     def test_setup_never_writes_inside_the_state_directory(self, project):
         """ensure(setup) may create .co/ but must not write files into it.
 
