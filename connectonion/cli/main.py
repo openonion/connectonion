@@ -704,14 +704,18 @@ def email_send(
 @email_app.command("inbox")
 def email_inbox(
     last: int = typer.Option(
-        10, "--last", "-n", min=1, max=100,
-        help="How many emails to show (1-100)",
+        10, "--last", "-n", min=1, max=1000,
+        help="How many emails to show in this page (1-1000)",
+    ),
+    offset: int = typer.Option(
+        0, "--offset", min=0,
+        help="Skip this many newer emails",
     ),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
 ):
     """List recent received emails."""
     from .commands.email_commands import handle_email_inbox
-    handle_email_inbox(last=last, unread=unread)
+    handle_email_inbox(last=last, offset=offset, unread=unread)
 
 
 @email_app.command("read")

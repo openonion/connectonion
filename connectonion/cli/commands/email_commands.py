@@ -85,13 +85,13 @@ def handle_email_send(
         raise typer.Exit(1)
 
 
-def handle_email_inbox(last: int = 10, unread: bool = False):
+def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
     """List recent emails received at the agent's address."""
     if not _require_auth():
         return
 
     from ...useful_tools.get_emails import get_emails
-    emails = get_emails(last=last)
+    emails = get_emails(last=last, offset=offset)
     if unread:
         # The /received endpoint ignores the unread param, so filter here to keep the flag honest.
         emails = [e for e in emails if not e.get("read")]
@@ -219,7 +219,7 @@ def handle_email_read(email_id: str):
         return
 
     from ...useful_tools.get_emails import get_emails, mark_read
-    emails = get_emails(last=100)
+    emails = get_emails(last=1000)
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
