@@ -36,6 +36,7 @@ from pathlib import Path
 
 from connectonion import Agent, TodoList, bash
 from connectonion.core.events import after_user_input
+from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
     auto_compact,
     enable_yolo,
@@ -112,7 +113,7 @@ def agent_name(co_dir: Path = Path(".co")) -> str:
 
 
 def create_agent(
-    model: str = "co/gemini-3.6-flash",
+    model: str = DEFAULT_MODEL,
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
     yolo_turns: int | None = None,

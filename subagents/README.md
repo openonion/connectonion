@@ -12,7 +12,7 @@ Create a `.md` file in `subagents/`:
 ---
 name: explore
 description: Fast agent for exploring codebases
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 15
 tools:
   - glob
@@ -43,7 +43,7 @@ result = task("Find all API endpoints", "explore")
 ---
 name: explore                          # Required: unique identifier
 description: Fast codebase exploration  # Required: one-line description
-model: co/gemini-3.6-flash             # Required: LLM model
+model: co/gemini-3.7-flash             # Required: LLM model
 max_iterations: 15                      # Required: max iteration limit
 tools:                                  # Required: list of tool names
   - glob
@@ -70,7 +70,7 @@ Everything after `---` is the system prompt sent to the agent.
 class SubAgentDefinition:
     name: str               # "explore"
     description: str        # "Fast codebase exploration"
-    model: str             # "co/gemini-3.6-flash"
+    model: str             # "co/gemini-3.7-flash"
     max_iterations: int    # 15
     tools: List[str]       # ["glob", "grep", "read_file"]
     system_prompt: str     # Full markdown body
@@ -126,7 +126,7 @@ Fast, cheap exploration agent using Flash model:
 ```yaml
 ---
 name: explore
-model: co/gemini-3.6-flash  # 100x cheaper than Opus
+model: co/gemini-3.7-flash  # 100x cheaper than Opus
 max_iterations: 15
 tools: [glob, grep, read_file]
 read_only: true
@@ -140,7 +140,7 @@ Smart planning agent using Pro model:
 ```yaml
 ---
 name: plan
-model: co/gemini-3.6-flash    # Smart but still 6x cheaper than Opus
+model: co/gemini-3.7-flash    # Smart but still 6x cheaper than Opus
 max_iterations: 10
 tools: [glob, grep, read_file]
 read_only: true

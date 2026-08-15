@@ -187,7 +187,7 @@ class ToolCall:
 
 
 # Import TokenUsage from usage module
-from .usage import TokenUsage, calculate_cost
+from .usage import DEFAULT_MODEL, TokenUsage, calculate_cost
 from ..backend import backend_url
 from .exceptions import (
     InsufficientCreditsError,
@@ -614,7 +614,7 @@ class GeminiLLM(LLM):
 
     # gemini-2.0-flash-exp was the default and Google has retired it: a bare
     # GeminiLLM(api_key=...) answered 404 for every call.
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.6-flash", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.7-flash", **kwargs):
         import openai
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
@@ -1027,6 +1027,7 @@ MODEL_REGISTRY = {
     "claude-3-7-sonnet-20250219": "anthropic",
     
     # Google Gemini models
+    "gemini-3.7-flash": "google",
     "gemini-3.6-flash": "google",
     "gemini-3.5-flash": "google",
     "gemini-3-pro-image-preview": "google",
@@ -1052,7 +1053,7 @@ MODEL_REGISTRY = {
 class OpenOnionLLM(LLM):
     """OpenOnion managed keys LLM implementation using OpenAI-compatible API."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "co/gemini-3.6-flash", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = DEFAULT_MODEL, **kwargs):
         # For co/ models, api_key is actually the auth token
         # Framework auto-loads .env, so OPENONION_API_KEY will be in environment
         import openai

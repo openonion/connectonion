@@ -42,7 +42,7 @@ Agent(
     name="my_bot",                        # Required: agent identifier
     tools=[func1, func2],                 # Optional: functions agent can call
     system_prompt="You are helpful",      # Optional: personality/behavior
-    model="co/gemini-3.6-flash",            # Optional: LLM model (default: co/gemini-3.6-flash)
+    model="co/gemini-3.7-flash",            # Optional: LLM model (default: co/gemini-3.7-flash)
     max_iterations=100,                   # Optional: how many tool calls allowed (default: 100)
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
@@ -448,7 +448,7 @@ See [max_iterations.md](max_iterations.md) for detailed guide.
 
 ### Supported Providers
 
-Default model is `co/gemini-3.6-flash`. You can use:
+Default model is `co/gemini-3.7-flash`. You can use:
 
 ```python
 # OpenAI models
@@ -463,8 +463,8 @@ agent = Agent("bot", model="claude-haiku-4-5")
 agent = Agent("bot", model="claude-opus-4")
 
 # Google Gemini
-agent = Agent("bot", model="gemini-3.6-flash")
-agent = Agent("bot", model="gemini-3.6-flash")
+agent = Agent("bot", model="gemini-3.7-flash")
+agent = Agent("bot", model="gemini-3.7-flash")
 agent = Agent("bot", model="gemini-2.5-flash")
 ```
 
@@ -593,7 +593,7 @@ Token usage is automatically shown in console logs after each LLM call:
 Cost tracking works with all supported providers:
 - OpenAI (gpt-4o, gpt-4o-mini, o1, o3-mini, o4-mini)
 - Anthropic Claude (claude-sonnet-4, claude-opus-4, claude-3-5-sonnet, claude-3-5-haiku)
-- Google Gemini (gemini-3.6-flash, gemini-3.5-flash, gemini-2.5-pro, gemini-2.5-pro, gemini-2.5-flash)
+- Google Gemini (gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-2.5-pro, gemini-2.5-pro, gemini-2.5-flash)
 
 Models not in the pricing table fall back to default pricing estimates ($1/M input, $3/M output).
 
@@ -895,7 +895,7 @@ import pytest
 @pytest.mark.real_api
 def test_real_agent():
     """Requires OPENONION_API_KEY or GEMINI_API_KEY in environment."""
-    agent = Agent("test", tools=[search], model="co/gemini-3.6-flash")
+    agent = Agent("test", tools=[search], model="co/gemini-3.7-flash")
     result = agent.input("Search for Python")
     assert "Python" in result
 

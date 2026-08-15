@@ -23,7 +23,7 @@ Usage:
     >>> text = transcribe("meeting.mp3", prompt="Technical AI discussion, speakers: Aaron, Lisa")
 
     # Different model
-    >>> text = transcribe("meeting.mp3", model="co/gemini-3.6-flash")
+    >>> text = transcribe("meeting.mp3", model="co/gemini-3.7-flash")
 
 Supported formats: WAV, MP3, AIFF, AAC, OGG, FLAC
 Token cost: 32 tokens per second of audio (1 minute = 1,920 tokens)
@@ -37,6 +37,7 @@ from typing import Optional
 import httpx
 from connectonion.backend import backend_url
 from connectonion.credentials import require_ambient_api_key
+from connectonion.core.usage import DEFAULT_MODEL
 
 
 # MIME type mapping for audio formats
@@ -82,7 +83,7 @@ def _get_api_key(model: str) -> str:
 def transcribe(
     audio: str,
     prompt: Optional[str] = None,
-    model: str = "co/gemini-3.6-flash",
+    model: str = DEFAULT_MODEL,
     timestamps: bool = False,
 ) -> str:
     """
@@ -92,7 +93,7 @@ def transcribe(
         audio: Path to audio file (WAV, MP3, AIFF, AAC, OGG, FLAC)
         prompt: Optional context hints for better accuracy
                 (e.g., "Technical AI discussion, speakers: Aaron, Lisa")
-        model: Model to use (default: co/gemini-3.6-flash)
+        model: Model to use (default: co/gemini-3.7-flash)
         timestamps: If True, include timestamps in output
 
     Returns:

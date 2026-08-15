@@ -431,7 +431,7 @@ the matching docs-site channel, then publishes only from the reviewed exact tag.
 - Example:
   ```python
   try:
-      agent = Agent("my_agent", model="co/gemini-3.6-flash")
+      agent = Agent("my_agent", model="co/gemini-3.7-flash")
       response = agent.input("Hello")
   except InsufficientCreditsError as e:
       print(f"Need ${e.shortfall:.4f} more credits")

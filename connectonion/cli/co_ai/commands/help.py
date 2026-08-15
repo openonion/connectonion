@@ -57,7 +57,7 @@ oo "fix the bug in auth.py"
 oo
 
 # With options
-oo -m co/gemini-3.6-flash "task"   # Use different model
+oo -m co/gemini-3.7-flash "task"   # Use different model
 oo -y "task"                      # Auto-approve file changes
 ```
 

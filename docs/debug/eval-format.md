@@ -22,7 +22,7 @@ name: say_hello_to_alice
 created: '2025-12-25 11:56:26'
 updated: '2025-12-25 11:56:56'
 runs: 2
-model: gemini-3.6-flash
+model: gemini-3.7-flash
 turns:
 - input: Say hello to Alice
   run: 2

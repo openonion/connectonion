@@ -98,7 +98,7 @@ def _record_trace(self, entry: dict):
 {
   type: "llm_call",
   id: "uuid-1",
-  model: "gemini-3.6-flash",
+  model: "gemini-3.7-flash",
   iteration: 1,
   status: "running",
   ts: 1234567890
@@ -119,7 +119,7 @@ def _record_trace(self, entry: dict):
 {
   type: "llm_result",
   id: "uuid-1",
-  model: "gemini-3.6-flash",
+  model: "gemini-3.7-flash",
   duration_ms: 1500,
   tool_calls_count: 1,
   iteration: 1,

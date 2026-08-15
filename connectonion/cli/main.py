@@ -33,6 +33,7 @@ from rich.console import Console
 # the OpenAI and Anthropic SDKs before the CLI had parsed an argument, which
 # is what every command handler being imported inside its function was for.
 from .._version import __version__
+from ..core.usage import DEFAULT_MODEL
 
 # Load both env files for all CLI commands. keys.env stays first — that is
 # already the CLI's effective precedence, since commands that load .env do so
@@ -347,7 +348,7 @@ def call(
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
-    model: str = typer.Option("co/gemini-3.6-flash", "--model", "-m", help="Model to use"),
+    model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
     yolo: bool = typer.Option(False, "--yolo", help="Skip approvals and keep working autonomously"),
     yolo_turns: int = typer.Option(

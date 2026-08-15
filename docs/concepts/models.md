@@ -84,8 +84,8 @@ agent = Agent("assistant", model="co/gemini-2.5-pro")  # Managed
 agent = Agent("assistant", model="gemini-2.5-pro")     # Your key
 
 # Newest Flash workhorse - frontier intelligence built for speed
-agent = Agent("assistant", model="co/gemini-3.6-flash")  # Managed
-agent = Agent("assistant", model="gemini-3.6-flash")     # Your key
+agent = Agent("assistant", model="co/gemini-3.7-flash")  # Managed
+agent = Agent("assistant", model="gemini-3.7-flash")     # Your key
 
 # Fastest Gemini 3 model
 agent = Agent("assistant", model="co/gemini-3.5-flash")  # Managed
@@ -178,7 +178,8 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-3.6-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-3.7-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-3.6-flash | Google | Previous default, fast Gemini | ✅ |
 | gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 | mistral-large-latest | Mistral | High performance European model | ✅ |
@@ -194,6 +195,7 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | gpt-4o | 128K tokens |
 | o4-mini | 128K tokens |
 | **Google** | |
+| gemini-3.7-flash | 1M tokens |
 | gemini-3.6-flash | 1M tokens |
 | gemini-2.5-pro | 1M tokens |
 | gemini-3.5-flash | 1M tokens |
@@ -222,7 +224,8 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-3.6-flash | $1.50 | $7.50 | **Default model** - newest fast Gemini |
+| gemini-3.7-flash | $0.75 | $3.75 | **Default model** - intro pricing through 2026-12-31, then $1.50/$7.50 |
+| gemini-3.6-flash | $1.50 | $7.50 | Previous default, fast Gemini |
 | gemini-3.5-flash | $1.50 | $9.00 | Previous fast Gemini |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
 | gemini-2.5-pro | $1.25 | $10.00 | Strong multimodal model for agents |

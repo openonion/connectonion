@@ -14,6 +14,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from ..core.usage import DEFAULT_MODEL
+
 COMMENT_MARKER = "<!-- connectonion-pr-review -->"
 MAX_COMMENT_BYTES = 60_000
 MAX_GITHUB_RESPONSE_BYTES = 5_000_000
@@ -430,7 +432,7 @@ def main() -> int:
         pr_number = resolve_pr_number(
             os.getenv("CO_ACTION_PR_NUMBER"), os.getenv("GITHUB_EVENT_PATH")
         )
-        model = os.getenv("CO_ACTION_MODEL", "co/gemini-3.6-flash").strip()
+        model = os.getenv("CO_ACTION_MODEL", DEFAULT_MODEL).strip()
         if not model:
             raise ActionError("Provide a model name.")
         token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")

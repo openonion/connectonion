@@ -15,7 +15,7 @@ Compaction strategy:
 - Replaces old messages with single summary message
 
 Summarization:
-- Uses fast model: co/gemini-3.6-flash
+- Uses fast model: co/gemini-3.7-flash
 - Prompt asks for concise summary preserving key decisions/facts
 - Summary becomes new "assistant" message in conversation
 - Reduces token count while maintaining continuity
@@ -164,7 +164,7 @@ Keep the summary under 1000 words but preserve all critical technical details.""
 
     summary = llm_do(
         summary_prompt,
-        model="co/gemini-3.6-flash",  # Fast model for summarization
+        model="co/gemini-3.7-flash",  # Fast model for summarization
     )
 
     # Create compacted messages

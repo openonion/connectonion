@@ -27,7 +27,7 @@ from .provider_messages import messages_for_provider
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
-from .usage import get_context_limit, turn_usage_from_trace
+from .usage import DEFAULT_MODEL, get_context_limit, turn_usage_from_trace
 from .wire_events import normalize_wire_event
 
 
@@ -67,7 +67,7 @@ class Agent:
         tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "co/gemini-3.6-flash",
+        model: str = DEFAULT_MODEL,
         max_iterations: int = 100,
         log: Optional[Union[bool, str, Path]] = None,
         quiet: bool = False,

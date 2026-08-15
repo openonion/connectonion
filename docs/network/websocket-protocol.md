@@ -684,7 +684,7 @@ managed-key agents. Sent once, right after `CONNECTED`.
   "session_id": "550e8400-...",
   "name": "my-agent",
   "address": "0x3d4017c3...",
-  "model": "co/gemini-3.6-flash",
+  "model": "co/gemini-3.7-flash",
   "tools": ["search", "shell"],
   "skills": [
     {"name": "co-browser", "description": "drive a browser", "location": "project"},

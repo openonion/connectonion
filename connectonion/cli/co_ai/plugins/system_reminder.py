@@ -195,7 +195,7 @@ def detect_intent(agent: 'Agent') -> None:
     try:
         analysis = llm_do(
             INTENT_PROMPT.format(user_prompt=user_prompt),
-            model=getattr(agent, "model", None) or "co/gemini-3.6-flash",
+            model=getattr(agent, "model", None) or "co/gemini-3.7-flash",
             output=IntentAnalysis,
             temperature=0,
         )

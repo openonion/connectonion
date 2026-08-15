@@ -41,13 +41,13 @@
 │  │   "explore": {                                                │  │
 │  │     "description": "Fast codebase exploration",               │  │
 │  │     "tools": [FileTools],  # glob, grep, read_file only      │  │
-│  │     "model": "co/gemini-3.6-flash",  # Fast & cheap          │  │
+│  │     "model": "co/gemini-3.7-flash",  # Fast & cheap          │  │
 │  │     "max_iterations": 15,                                     │  │
 │  │   },                                                          │  │
 │  │   "plan": {                                                   │  │
 │  │     "description": "Design implementation plans",             │  │
 │  │     "tools": [FileTools],  # Read-only                       │  │
-│  │     "model": "co/gemini-3.6-flash",  # Smart                   │  │
+│  │     "model": "co/gemini-3.7-flash",  # Smart                   │  │
 │  │     "max_iterations": 10,                                     │  │
 │  │   },                                                          │  │
 │  │ }                                                             │  │
@@ -84,7 +84,7 @@
 │  │   └────────────────────────────────────────────────────────┘  │  │
 │  │                                                               │  │
 │  │ Tools: [glob, grep, read_file]  # Read-only                  │  │
-│  │ Model: co/gemini-3.6-flash                                    │  │
+│  │ Model: co/gemini-3.7-flash                                    │  │
 │  │ Plugins: []  # None                                           │  │
 │  │ Max Iterations: 15                                            │  │
 │  │ Session: FRESH - no memory of parent conversation            │  │
@@ -297,14 +297,14 @@ Main Agent (co/claude-opus-4-5)
 ├─ Context: 200k tokens
 └─ Use case: Complex reasoning, code generation
 
-Explore Sub-Agent (co/gemini-3.6-flash)
+Explore Sub-Agent (co/gemini-3.7-flash)
 ├─ Input cost: $0.15 / 1M tokens  (100x cheaper!)
 ├─ Output cost: $0.60 / 1M tokens  (125x cheaper!)
 ├─ Speed: ~2000 tokens/sec  (4x faster!)
 ├─ Context: 1M tokens
 └─ Use case: Fast file finding, simple searches
 
-Plan Sub-Agent (co/gemini-3.6-flash)
+Plan Sub-Agent (co/gemini-3.7-flash)
 ├─ Input cost: $2.50 / 1M tokens  (6x cheaper)
 ├─ Output cost: $10 / 1M tokens   (7.5x cheaper)
 ├─ Speed: ~1000 tokens/sec  (2x faster)

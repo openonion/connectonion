@@ -171,13 +171,13 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-4o")
 response = llm_do("Hello", model="co/claude-sonnet-4-5")
-response = llm_do("Hello", model="co/gemini-3.6-flash")
+response = llm_do("Hello", model="co/gemini-3.7-flash")
 ```
 
 **Available models:**
 - OpenAI: `co/gpt-4o`, `co/gpt-4o-mini`, `co/o4-mini`
 - Anthropic: `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- Google: `co/gemini-3.6-flash` (default), `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Google: `co/gemini-3.7-flash` (default), `co/gemini-3.6-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 - And more...
 
 **Benefits:**
