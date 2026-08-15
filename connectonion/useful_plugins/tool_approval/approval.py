@@ -555,7 +555,7 @@ def check_approval(agent: 'Agent') -> None:
     # No requester recorded means the session did not arrive through the host —
     # a local `co ai` run — and behaves as before.
     requester = agent.current_session.get('requester')
-    if requester and requester.get('level') not in {'contact', 'whitelisted', 'admin'}:
+    if requester and requester.get('level') not in {'contact', 'whitelist', 'admin'}:
         raise ValueError(
             f"{tool_name} needs approval from an authenticated contact or "
             f"admin. This requester is {requester.get('level', 'unknown')}."

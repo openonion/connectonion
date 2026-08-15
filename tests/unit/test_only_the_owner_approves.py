@@ -1,7 +1,7 @@
 """Who is allowed to answer an approval prompt.
 
 The host knows exactly who is on the socket: CONNECT is signed, and the trust
-layer classifies the caller as admin / whitelisted / contact / blocked before
+layer classifies the caller as admin / whitelist / contact / blocked before
 the session exists. That answer was computed and dropped — `approval.py` had
 zero references to the requester.
 
@@ -50,7 +50,7 @@ DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
 
 class TestAuthenticatedUsersCanApproveTheirOwnWork:
 
-    @pytest.mark.parametrize("level", ['contact', 'whitelisted', 'admin'])
+    @pytest.mark.parametrize("level", ['contact', 'whitelist', 'admin'])
     def test_a_contact_or_admin_is_shown_the_dialog(self, level):
         io = FakeIO(responses=[{'approved': True}])
         agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
@@ -220,6 +220,25 @@ class TestTheLevelTheHostActuallyComputes:
         requester = self._resolve('0x' + '2' * 64, tmp_path)
 
         assert requester['level'] != 'admin'
+
+    def test_the_real_whitelist_level_can_approve(self, tmp_path, monkeypatch):
+        from connectonion.network.trust import TrustAgent
+
+        address = '0x' + '3' * 64
+        (tmp_path / '.co').mkdir()
+        monkeypatch.chdir(tmp_path)
+        trust = TrustAgent('careful')
+        trust.promote_to_whitelist(address)
+
+        requester = self._resolve(address, tmp_path)
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester=requester)
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert requester['level'] == 'whitelist'
+        assert io.sent[0]['type'] == 'approval_needed'
 
 
 class TestFreshInviteJourney:
