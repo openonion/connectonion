@@ -6,6 +6,7 @@ from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
+from connectonion.core.usage import DEFAULT_MODEL
 
 runner = CliRunner()
 
@@ -21,7 +22,7 @@ def test_ai_forwards_yolo_options():
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model="co/gemini-3.6-flash",
+        model=DEFAULT_MODEL,
         max_iterations=100,
         yolo=True,
         yolo_turns=4,
@@ -44,7 +45,7 @@ def test_ai_forwards_json_and_resume_options():
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model="co/gemini-3.6-flash",
+        model=DEFAULT_MODEL,
         max_iterations=100,
         yolo=False,
         yolo_turns=100,
@@ -64,7 +65,7 @@ def test_ai_forwards_acp_mode():
     handler.assert_called_once_with(
         prompt=None,
         port=8000,
-        model="co/gemini-3.6-flash",
+        model=DEFAULT_MODEL,
         max_iterations=100,
         yolo=False,
         yolo_turns=100,
