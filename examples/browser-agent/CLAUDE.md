@@ -18,7 +18,7 @@ This is a **natural language browser automation agent** built with ConnectOnion 
 
 2. **Agent Layer** (`agent.py`):
    - ConnectOnion Agent orchestrates tool calls
-   - Natural language understanding via LLM (gemini-2.5-flash by default)
+   - Natural language understanding via LLM (gemini-3.7-flash by default)
    - System prompt defines agent personality (`prompt.md`)
    - Interactive CLI and automated task modes
 
@@ -170,7 +170,7 @@ From global CLAUDE.md: Try-except is sometimes over-engineering. Only catch exce
 
 ### Model Selection
 
-- Default: `gemini-2.5-flash` (fast, cost-effective)
+- Default: `gemini-3.7-flash` (fast, cost-effective)
 - For complex HTML analysis: `co/gpt-4o` (higher accuracy)
 - For testing: `co/o4-mini` (cheapest option)
 - All models use ConnectOnion managed keys (`co/` prefix)

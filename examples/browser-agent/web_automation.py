@@ -561,7 +561,7 @@ def analyze_page(html_content: str, question: str) -> str:
     """Ask a question about page content using AI."""
     return llm_do(
         f"Based on this HTML content, {question}\n\n {html_content}",
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.7-flash",
         temperature=0.3
     )
 
@@ -584,7 +584,7 @@ def smart_fill_form(fields: List[FormField], user_info: str) -> Dict[str, str]:
     result = llm_do(
         prompt,
         output=FormData,
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.7-flash",
         temperature=0.7
     )
 

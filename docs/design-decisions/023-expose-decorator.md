@@ -113,7 +113,7 @@ room = connect("0xGameRoom")
 player = Agent(
     "poker-player",
     tools=[room.tools],        # exposed functions become remote tools
-    model="co/gemini-2.5-pro"
+    model="co/gemini-3.7-flash"
 )
 player.input("It's your turn. Check the game state and make a bid.")
 # → LLM sees get_state, make_bid as available tools

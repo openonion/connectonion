@@ -31,7 +31,7 @@ def main() -> int:
             continue
         verdict = llm_do(
             RUBRIC + "\n---\n" + path.read_text(),
-            model="co/gemini-2.5-flash",
+            model="co/gemini-3.7-flash",
         ).strip()
         print(f"{name}: {verdict}")
         if not verdict.startswith("STORY"):

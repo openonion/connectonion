@@ -12,7 +12,7 @@ Key components:
 
 Architecture:
 - Dual-trigger system: Intent detection on user input + reminder injection after tools
-- Uses llm_do with gemini-2.5-flash for fast intent analysis (structured output)
+- Uses llm_do with gemini-3.7-flash for fast intent analysis (structured output)
 - Stores detected intent in agent.current_session['intent'] as {ack, is_build}
 - Reminder files in prompts/system-reminders/ directory with YAML frontmatter
 - Only injects reminders when intent matches (build tasks) or tool usage matches

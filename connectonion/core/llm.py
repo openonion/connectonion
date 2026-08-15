@@ -1264,7 +1264,7 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     """Factory function to create the appropriate LLM based on model name.
     
     Args:
-        model: The model name (e.g., "o4-mini", "claude-sonnet-4-20250514", "gemini-2.5-pro")
+        model: The model name (e.g., "o4-mini", "claude-sonnet-4-20250514", "gemini-3.7-flash")
         api_key: Optional API key to override environment variable
         **kwargs: Additional arguments to pass to the LLM constructor
     
