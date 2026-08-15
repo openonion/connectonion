@@ -521,7 +521,6 @@ class Outlook:
             )
             if name in {"", ".", ".."}:
                 name = "attachment"
-            path = destination / name
             data = base64.b64decode(content, validate=True)
             flags = (
                 os.O_WRONLY
@@ -530,17 +529,24 @@ class Outlook:
                 | getattr(os, "O_BINARY", 0)
                 | getattr(os, "O_NOFOLLOW", 0)
             )
-            try:
-                descriptor_number = os.open(path, flags, 0o600)
-            except FileExistsError as exc:
-                raise FileExistsError(f"Refusing to overwrite existing attachment: {path}") from exc
+            original = destination / name
+            stem = original.stem
+            suffix = original.suffix
+            attempt = 0
+            while True:
+                candidate = original if attempt == 0 else destination / f"{stem}-{attempt}{suffix}"
+                try:
+                    descriptor_number = os.open(candidate, flags, 0o600)
+                    break
+                except FileExistsError:
+                    attempt += 1
             try:
                 with os.fdopen(descriptor_number, "wb") as handle:
                     handle.write(data)
             except Exception:
-                path.unlink(missing_ok=True)
+                candidate.unlink(missing_ok=True)
                 raise
-            saved.append(str(path))
+            saved.append(str(candidate))
         return saved
 
     # === Sending ===

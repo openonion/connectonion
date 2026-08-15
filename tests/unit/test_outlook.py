@@ -901,6 +901,24 @@ class TestDownloadAttachments:
         assert (tmp_path / "out" / "cover.jpg").read_bytes() == b"pixels"
         assert saved == [str(tmp_path / "out" / "cover.jpg")]
 
+    def test_preserves_duplicate_attachment_names(self, monkeypatch, tmp_path):
+        import base64
+
+        encoded = lambda value: base64.b64encode(value).decode()
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover.jpg", "contentBytes": encoded(b"first")},
+            {"name": "cover.jpg", "contentBytes": encoded(b"second")},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert saved == [
+            str(tmp_path / "out" / "cover.jpg"),
+            str(tmp_path / "out" / "cover-1.jpg"),
+        ]
+        assert (tmp_path / "out" / "cover.jpg").read_bytes() == b"first"
+        assert (tmp_path / "out" / "cover-1.jpg").read_bytes() == b"second"
+
     def test_sender_cannot_escape_the_directory_with_a_relative_name(self, monkeypatch, tmp_path):
         """A sender names the attachment '../../owned.txt'; it must stay put."""
         import base64
@@ -914,7 +932,7 @@ class TestDownloadAttachments:
         assert (tmp_path / "out" / "owned.txt").exists()
         assert not (tmp_path.parent / "owned.txt").exists()
 
-    def test_refuses_to_overwrite_an_existing_file(self, monkeypatch, tmp_path):
+    def test_preserves_an_existing_file(self, monkeypatch, tmp_path):
         import base64
 
         out_dir = tmp_path / "out"
@@ -925,10 +943,11 @@ class TestDownloadAttachments:
             {"name": "pyproject.toml", "contentBytes": base64.b64encode(b"replace me").decode()},
         ])
 
-        with pytest.raises(FileExistsError, match="Refusing to overwrite"):
-            outlook.download_attachments("msg-id", out_dir)
+        saved = outlook.download_attachments("msg-id", out_dir)
 
         assert existing.read_bytes() == b"keep me"
+        assert saved == [str(out_dir / "pyproject-1.toml")]
+        assert (out_dir / "pyproject-1.toml").read_bytes() == b"replace me"
 
     def test_refuses_to_follow_an_existing_symlink(self, monkeypatch, tmp_path):
         import base64
