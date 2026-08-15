@@ -16,6 +16,7 @@ Components under test:
 
 
 import pytest
+import subprocess
 import tempfile
 import platform
 from pathlib import Path
@@ -67,11 +68,29 @@ class TestShellRun:
             result = shell.run("pwd")
             assert tmpdir in result
 
-    def test_run_timeout(self):
-        """Test that timeout returns error message."""
+    def test_run_timeout_raises(self, monkeypatch):
+        """A killed command is an error boundary, not successful tool output."""
+        def expired(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", expired)
         shell = Shell()
-        result = shell.run("sleep 5", timeout=1)
-        assert "timed out" in result
+        with pytest.raises(subprocess.TimeoutExpired):
+            shell.run("long-running-agent", timeout=1)
+
+    def test_run_honours_a_long_timeout(self, monkeypatch):
+        """Agent-sized timeouts must reach subprocess.run unchanged."""
+        seen = {}
+
+        def completed(*args, **kwargs):
+            seen["timeout"] = kwargs["timeout"]
+            return subprocess.CompletedProcess(args[0], 0, stdout="done", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", completed)
+
+        shell = Shell()
+        assert shell.run("long-running-agent", timeout=7200) == "done"
+        assert seen["timeout"] == 7200
 
 
 class TestShellRunInDir:
@@ -90,6 +109,18 @@ class TestShellRunInDir:
         with tempfile.TemporaryDirectory() as tmpdir:
             shell.run_in_dir("touch test_file.txt", tmpdir)
             assert (Path(tmpdir) / "test_file.txt").exists()
+
+    def test_run_in_dir_honours_a_long_timeout(self, monkeypatch, tmp_path):
+        seen = {}
+
+        def completed(*args, **kwargs):
+            seen["timeout"] = kwargs["timeout"]
+            return subprocess.CompletedProcess(args[0], 0, stdout="done", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", completed)
+
+        assert Shell().run_in_dir("long-running-agent", str(tmp_path), timeout=7200) == "done"
+        assert seen["timeout"] == 7200
 
 
 class TestShellIntegration:
@@ -202,10 +233,26 @@ class TestBashWithCwd:
 class TestBashWithTimeout:
     """Tests for bash timeout handling."""
 
-    def test_bash_timeout_returns_error(self):
-        """Test that timeout returns error message."""
-        result = bash("sleep 5", "Sleep command", timeout=1)
-        assert "timed out" in result
+    def test_bash_timeout_raises(self, monkeypatch):
+        """The tool executor must be able to distinguish timeout from success."""
+        def expired(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", expired)
+        with pytest.raises(subprocess.TimeoutExpired):
+            bash("long-running-agent", "Long-running command", timeout=1)
+
+    def test_bash_honours_a_long_timeout(self, monkeypatch):
+        seen = {}
+
+        def completed(*args, **kwargs):
+            seen["timeout"] = kwargs["timeout"]
+            return subprocess.CompletedProcess(args[0], 0, stdout="done", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", completed)
+
+        assert bash("long-running-agent", timeout=7200) == "done"
+        assert seen["timeout"] == 7200
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
