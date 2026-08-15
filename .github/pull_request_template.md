@@ -32,16 +32,20 @@ A PR that says *"I didn't test the Windows path and I'm unsure the retry logic i
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Documentation update
 
-## Design Journal Impact
+## Dev Blog (required)
 
-- [ ] Release notes only — maintenance change with no reusable design lesson
-- [ ] Update an existing Design Journal post
-- [ ] Add a new Design Journal post for a feature train, phase promotion, stable release, or material design decision
-- [ ] Not applicable
+**Every PR ships a dev-blog post in the same diff** — a file added or updated under `docs/blog/`. This is enforced by CI (`blog-gate`): a PR that touches no `docs/blog/` file fails the check. The posts sync to the docs site, so writing it here is what keeps the site current without anyone asking.
 
-Link the draft or explain the choice:
+What the post is: a short Design Journal piece telling the **story** of this change — the problem as someone actually hit it, a turn or complication, what the fix teaches, what was measured. Written for a reader who could stop reading at any point.
+What it is not: a changelog entry, a list of commits, or marketing copy.
 
->
+The gate reviews the writing, not just the file: a post without a narrative arc — a changelog wearing prose — fails the check, with the model's one concrete fix in the error. A merged PR means its story was worth reading.
+
+Blog file in this PR:
+
+> docs/blog/YYYY-MM-DD-<slug>.md
+
+Genuinely trivial change (typo, lockfile, CI plumbing)? A maintainer can apply the `no-blog` label to waive the gate — that is the maintainer's call, not the author's.
 
 ## Changes Made
 - List the main changes
@@ -80,7 +84,7 @@ from connectonion import Agent
 - [ ] I have read every line of this diff and can defend each change
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
-- [ ] I have handled the Design Journal impact described above
+- [ ] This PR ships its dev-blog post under docs/blog/ (or a maintainer applied `no-blog`)
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged and published
 

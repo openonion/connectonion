@@ -1,0 +1,64 @@
+name: blog-gate
+
+# Every PR ships a dev-blog post under docs/blog/ in the same diff.
+# The posts sync to the docs site, so the gate is what keeps the site
+# current without a human having to ask each time.
+#
+# Waiver: a maintainer applies the `no-blog` label for genuinely trivial
+# changes (typo, lockfile, CI plumbing). The label is the maintainer's
+# call, not the author's.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  blog-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a docs/blog/ file in the diff (or the no-blog label)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh api "repos/$REPO/pulls/$PR" --jq '.labels[].name' | grep -qx "no-blog"; then
+            echo "no-blog label present — gate waived by a maintainer."
+            exit 0
+          fi
+          if gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' | grep -q "^docs/blog/"; then
+            echo "dev-blog post found in the diff."
+            exit 0
+          fi
+          echo "::error::This PR ships no dev-blog post."
+          echo ""
+          echo "Every PR adds or updates a file under docs/blog/ in the same diff:"
+          echo "  docs/blog/$(date -u +%F)-<slug>.md"
+          echo ""
+          echo "Write a short Design Journal piece — the problem as a user or AI hit it,"
+          echo "what the fix teaches, what was measured. A story, not a changelog."
+          echo ""
+          echo "Genuinely trivial change? Ask a maintainer to apply the 'no-blog' label."
+          exit 1
+
+      - name: Checkout PR head for the blog files
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: The post must read like a story, not a changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
+        run: |
+          if [ -z "$OPENONION_API_KEY" ]; then
+            # Fork PRs get no secrets; the existence gate above still applied.
+            echo "no model credential in this context — quality check skipped."
+            exit 0
+          fi
+          pip -q install connectonion
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' \
+            | grep "^docs/blog/" \
+            | xargs python3 .github/scripts/check_blog_story.py
