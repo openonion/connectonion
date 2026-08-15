@@ -92,11 +92,9 @@ MODEL_PRICING = {
     # Standard paid tier, per million tokens: input $1.50, output $7.50,
     # context-cached input $0.15 (Google pricing page, checked 2026-08-08).
     "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
-    # 3.7 Flash: introductory rate published by Google through 2026-12-31
-    # (standard pricing from 2027-01-01 is input $1.50 / output $7.50). Cached
-    # follows the common 25% rule; not yet reconciled against real backend
-    # charges.
-    "gemini-3.7-flash": {"input": 0.75, "output": 3.75, "cached": 0.1875},
+    # 3.7 Flash introductory rates through 2026-12-31: input $0.75, output
+    # $3.75, cached input $0.075 per million. Standard rates double in 2027.
+    "gemini-3.7-flash": {"input": 0.75, "output": 3.75, "cached": 0.075},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     # Solved from real charges, two calls: (in=4, total=28, $0.000074) and
     # (in=2006, total=2101, $0.001288) give input 0.50 / output 3.00 and both

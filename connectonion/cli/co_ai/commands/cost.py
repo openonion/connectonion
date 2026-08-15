@@ -99,7 +99,10 @@ def cmd_cost(args: str = "") -> str:
         # they are. billed_tokens, not the sum of the two rows above it: the cost
         # comes from the server and covers reasoning tokens those fields never
         # name, so the sum would be 29x off the cost in the same table.
-        table.add_row("Last Call", f"{last_usage.input_tokens:,} in · "
+        cached = last_usage.cached_tokens
+        uncached = max(0, last_usage.input_tokens - cached)
+        table.add_row("Last Call", f"{uncached:,} new · "
+                                   f"{cached:,} cached · "
                                    f"{last_usage.output_tokens:,} out · "
                                    f"{last_usage.billed_tokens:,} billed")
 

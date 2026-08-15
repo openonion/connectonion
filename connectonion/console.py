@@ -565,8 +565,8 @@ class Console:
         total_tokens = usage.billed_tokens
         tokens_str = f"{total_tokens/1000:.1f}k tok" if total_tokens >= 1000 else f"{total_tokens} tok"
         cached = getattr(usage, 'cached_tokens', 0)
-        if cached:
-            tokens_str = f"{tokens_str} ({cached} cached)"
+        uncached = max(0, usage.input_tokens - cached)
+        tokens_str = f"{tokens_str} ({uncached} new · {cached} cached)"
 
         # Format cost. A `~` when the model is not in the pricing table, because
         # the figure is then a generic fallback rather than a looked-up price —

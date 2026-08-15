@@ -34,9 +34,10 @@ import pytest
 from connectonion.core.llm import OpenOnionLLM
 
 
-def _response(cost_usd=None, prompt=3, completion=9, total=114):
+def _response(cost_usd=None, prompt=3, completion=9, total=114, cached=0):
     usage = SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion,
-                            total_tokens=total, prompt_tokens_details=None)
+                            total_tokens=total,
+                            prompt_tokens_details=SimpleNamespace(cached_tokens=cached))
     if cost_usd is not None:
         usage.cost_usd = cost_usd
     message = SimpleNamespace(content="hi", tool_calls=None)
@@ -82,6 +83,15 @@ class TestTheServersFigureWins:
 
         assert result.usage.input_tokens == 3
         assert result.usage.output_tokens == 9
+
+    def test_cached_prompt_tokens_reach_the_trace_contract(self, llm):
+        result = _complete(
+            llm,
+            _response(cost_usd=0.000837, prompt=100, cached=80),
+        )
+
+        assert result.usage.input_tokens == 100
+        assert result.usage.cached_tokens == 80
 
 
 class TestWithoutOneNothingChanges:
