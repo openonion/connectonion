@@ -149,7 +149,8 @@ co email sent read 12
 
 Received inbox pages accept `-n/--last` from 1 through 1000. Use `--offset` to
 skip newer rows and continue through older mail; for example, page through
-offsets 0, 1000, 2000 until the command returns no rows.
+offsets 0, 1000, 2000 until the command returns no rows. A full page prints the
+exact next-page command; use it as shown instead of calculating the offset.
 
 It is a smaller surface than Gmail/Outlook, and the differences bite:
 

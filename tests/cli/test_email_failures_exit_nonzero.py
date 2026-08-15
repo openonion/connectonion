@@ -83,6 +83,28 @@ def test_inbox_forwards_the_page_size_and_offset():
     get_emails.assert_called_once_with(last=1000, offset=2000)
 
 
+def test_a_full_inbox_page_prints_the_exact_next_page_command():
+    emails = [
+        {
+            "id": str(index),
+            "from": "sender@example.com",
+            "subject": "subject",
+            "timestamp": "2026-08-15T10:00:00",
+            "read": True,
+        }
+        for index in range(2)
+    ]
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(_get_module, "get_emails", return_value=emails):
+        result = runner.invoke(
+            app,
+            ["email", "inbox", "--last", "2", "--offset", "4"],
+        )
+
+    assert result.exit_code == 0
+    assert "co email inbox --last 2 --offset 6" in result.output
+
+
 def test_a_successful_send_does_not_raise():
     ok = {"success": True, "message_id": "m1", "from": "x@mail.openonion.ai"}
     with patch.object(email_commands, "load_api_key", return_value="tok"), \

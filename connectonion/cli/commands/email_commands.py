@@ -92,6 +92,7 @@ def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
 
     from ...useful_tools.get_emails import get_emails
     emails = get_emails(last=last, offset=offset)
+    page_is_full = len(emails) == last
     if unread:
         # The /received endpoint ignores the unread param, so filter here to keep the flag honest.
         emails = [e for e in emails if not e.get("read")]
@@ -118,7 +119,14 @@ def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
 
     console.print()
     console.print(table)
-    console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]\n")
+    console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]")
+    if page_is_full:
+        next_offset = offset + last
+        console.print(
+            "[dim]Next page:[/dim] "
+            f"[bold]co email inbox --last {last} --offset {next_offset}[/bold]"
+        )
+    console.print()
 
 
 def handle_email_sent(last: int = 10, to: str = None):
