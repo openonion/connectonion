@@ -1,7 +1,7 @@
 """Normalize public IO events without rewriting canonical session traces.
 
 ConnectOnion keeps its historical trace statuses for persistence and evals, but
-uses ACP's four-state tool lifecycle on the live wire.  Provider adapters and
+uses OIP's four-state tool lifecycle on the live wire. Provider adapters and
 protocol bridges therefore share one vocabulary while old trace files remain
 readable and stable.
 """
@@ -27,7 +27,7 @@ _TOOL_RESULT_STATUSES = {
 
 
 def normalize_wire_event(event: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a detached event with ACP-shaped tool lifecycle statuses.
+    """Return a detached event with OIP tool lifecycle statuses.
 
     Only tool lifecycle statuses change.  Event names, IDs, fields, and the
     canonical object supplied by the caller stay untouched so this can sit at

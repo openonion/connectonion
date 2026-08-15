@@ -1,8 +1,8 @@
 """
 Purpose: Durable, authority-bounded Host session mode transactions
 LLM-Note:
-  Dependencies: imports from [core.acp_wire, .storage, copy, dataclasses, time] | imported by [host/ws_router/connect.py, host/ws_router/session.py, host/http_router.py] | tested by [tests/unit/test_acp_host_set_mode.py]
-  Data flow: CONNECT -> ensure_host_mode_session() appends an owned :read-only snapshot when needed -> CONNECTED advertises policy.state() | ACP/legacy setter -> commit_host_session_mode() checks process-local busy state -> storage.atomic_update() rechecks durable owner/status and appends a detached policy copy -> caller acknowledges and updates conn
+  Dependencies: imports from [core.approval_modes, .storage, copy, dataclasses, time] | imported by [host/ws_router/connect.py, host/ws_router/session.py, host/http_router.py]
+  Data flow: CONNECT -> ensure_host_mode_session() appends an owned :read-only snapshot when needed -> CONNECTED advertises policy.state() | OIP mode setter -> commit_host_session_mode() checks process-local busy state -> storage.atomic_update() rechecks durable owner/status and appends a detached policy copy -> caller acknowledges and updates conn
   State/Effects: appends Session records through SessionStorage.atomic_update; never mutates caller or stored dictionaries before commit
   Integration: HostModePolicy captures the launch-time Full access ceiling and derives identity-bounded mode lists; ModeTransactionError carries owned JSON-RPC errors
   Errors: missing/wrong owner=-32002, busy=-32000 retryable, invalid/unavailable=-32602; storage exceptions deliberately propagate for -32603 mapping at the carrier boundary
@@ -15,7 +15,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ....core.acp_wire import acp_session_mode_state
 from ....core.approval_modes import (
     DANGER_FULL_ACCESS_PERMISSION_PROFILE,
     READ_ONLY_PERMISSION_PROFILE,
@@ -85,10 +84,18 @@ class HostPermissionPolicy:
 
     def state(self, session: dict, *, is_admin: bool) -> dict[str, Any]:
         normalized = self.normalized(session, is_admin=is_admin)
-        return acp_session_mode_state(
-            normalized["mode"],
-            self.available_profile_ids(is_admin=is_admin),
-        )
+        available = self.available_profile_ids(is_admin=is_admin)
+        names = {
+            READ_ONLY_PERMISSION_PROFILE: "Read only",
+            WORKSPACE_PERMISSION_PROFILE: "Auto",
+            DANGER_FULL_ACCESS_PERMISSION_PROFILE: "Full access",
+        }
+        return {
+            "currentModeId": normalized["mode"],
+            "availableModes": [
+                {"id": mode_id, "name": names[mode_id]} for mode_id in available
+            ],
+        }
 
     def normalized(self, session: dict, *, is_admin: bool) -> dict:
         """Return a detached validated snapshot or fail closed."""

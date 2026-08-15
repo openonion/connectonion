@@ -3,7 +3,7 @@ Purpose: Orchestrate AI agent execution with LLM calls, tool execution, and auto
 LLM-Note:
   Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, logger.py, tool_executor.py, tool_registry.py, wire_events.py] | imported by [__init__.py, debug_agent/__init__.py] | tested by [tests/unit/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py, tests/unit/test_wire_events.py]
   Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/evals/{name}.yaml → returns final response: str
-  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py | streams a detached ACP-status-normalized copy without changing canonical trace statuses
+  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py | streams a detached OIP-normalized copy without changing canonical trace statuses
   Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps eval logging | trust enforcement moved to host() for network access control
   Performance: max_iterations=100 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry
@@ -374,7 +374,7 @@ class Agent:
             saved_files = []
             try:
                 if files:
-                    # Network ACP can bind this private staging root to the
+                    # A hosted OIP session can bind this private staging root to the
                     # authenticated principal that owns the session. Other Agent
                     # entry points retain the historical project/global .co root.
                     uploads_dir = Path(
@@ -408,7 +408,7 @@ class Agent:
                     saved_files = [str(path.resolve()) for path in written_files]
 
             finally:
-                # Network ACP holds a principal quota lock only while files are
+                # Hosted input holds a principal quota lock only while files are
                 # staged. Model work, approvals, and commits must remain concurrent.
                 if _upload_reservation is not None:
                     _upload_reservation.release()

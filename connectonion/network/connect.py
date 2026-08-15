@@ -1,12 +1,12 @@
 """
 Purpose: Python client for remote ConnectOnion agents — signed transport, acknowledged Host permission profiles, streaming UI events, and onboarding.
 LLM-Note:
-  Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign), ..core.acp_wire] | imported by [network/__init__.py, connectonion/__init__.py] | tested by [test_connect.py, test_each_command_is_signed.py, test_acp_host_set_mode.py]
-  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_permission_profile() validates Host SessionModeState, sends signed ACP_REQUEST, and waits for its exact ACP_RESPONSE before changing local authority
+  Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign)] | imported by [network/__init__.py, connectonion/__init__.py]
+  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_permission_profile() validates Host mode state, sends signed OIP mode_change, and waits for mode_changed
   State/Effects: mutates current session/modes/UI/status only from authenticated carrier responses; opens outbound sockets; signs deep-detached command payloads; endpoint resolution may query relay and candidate /info endpoints
-  Integration: exposes connect(), RemoteAgent, Response, ExecResult, ACPModeError; RemoteAgent provides input/call/set_permission_profile sync+async actions and read-only state; set_session_mode is deprecated
+  Integration: exposes connect(), RemoteAgent, Response, ExecResult, PermissionModeError; RemoteAgent provides input/call/set_permission_profile sync+async actions and read-only state; set_session_mode is deprecated
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
-  Errors: raises ConnectionError on transport/auth failure, ACPModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
+  Errors: raises ConnectionError on transport/auth failure, PermissionModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.
 
@@ -32,14 +32,7 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 from .. import address as addr
-from ..core.acp_wire import (
-    acp_set_mode_request_frame,
-    acp_set_mode_response,
-    host_session_mode_state,
-    legacy_stream_event_from_acp,
-    session_mode_id,
-)
-from ..core.approval_modes import legacy_permission_profile_id
+from ..core.approval_modes import legacy_permission_profile_id, permission_profile_id
 
 
 def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
@@ -250,7 +243,7 @@ class ExecResult:
         return re.findall(r'data:image/[a-z]+;base64,[A-Za-z0-9+/=]+', self.text)
 
 
-class ACPModeError(ConnectionError):
+class PermissionModeError(ConnectionError):
     """An acknowledged Host session-mode policy rejection."""
 
     def __init__(self, code: int, message: str, data: Any = None):
@@ -350,7 +343,7 @@ class RemoteAgent:
         self, profile_id: str, timeout: float = 30.0
     ) -> None:
         """Commit a permission profile, or time out with outcome unknown."""
-        profile_id = session_mode_id(profile_id)
+        profile_id = permission_profile_id(profile_id)
         if (
             isinstance(timeout, bool)
             or not isinstance(timeout, (int, float))
@@ -386,8 +379,6 @@ class RemoteAgent:
 
         await self._try_resolve_endpoint()
         connection, is_direct = await self._open_best_connection(websockets)
-        request_id = str(uuid.uuid4())
-
         async with connection as ws:
             await ws.send(json.dumps(self._build_connect_message(is_direct)))
             state = await self._wait_for_mode_connected(ws)
@@ -398,15 +389,12 @@ class RemoteAgent:
                 raise ValueError(
                     f"Permission profile is not available: {profile_id}"
                 )
-            session_id = self._current_session["session_id"]
-            request = acp_set_mode_request_frame(
-                request_id, session_id, profile_id
-            )
+            request = {"type": "mode_change", "mode": profile_id}
             await ws.send(json.dumps(
                 self._build_command_message(request, is_direct)
             ))
             await self._wait_for_mode_response(
-                ws, request_id, session_id, profile_id
+                ws, profile_id
             )
 
     def input(
@@ -813,7 +801,7 @@ class RemoteAgent:
                 state = self._consume_connected_mode_state(event)
                 if state is None:
                     raise ConnectionError(
-                        "Host does not support acknowledged ACP session modes"
+                        "Host does not support acknowledged OIP permission profiles"
                     )
                 return state
             if event_type == "PING":
@@ -824,7 +812,7 @@ class RemoteAgent:
                 )
 
     async def _wait_for_mode_response(
-        self, ws, request_id: str, session_id: str, profile_id: str,
+        self, ws, profile_id: str,
     ) -> None:
         while True:
             event = json.loads(await ws.recv())
@@ -836,19 +824,11 @@ class RemoteAgent:
                 raise ConnectionError(
                     event.get("message", "Session mode change failed")
                 )
-            if event_type != "ACP_RESPONSE":
+            if event_type != "mode_changed":
                 self._handle_stream_event(event)
                 continue
-            response = acp_set_mode_response(
-                event,
-                expected_request_id=request_id,
-                expected_session_id=session_id,
-            )
-            if "error" in response:
-                error = response["error"]
-                raise ACPModeError(
-                    error["code"], error["message"], error.get("data")
-                )
+            if permission_profile_id(event.get("mode")) != profile_id:
+                raise PermissionModeError(-32602, "Host acknowledged another profile")
             for field in (
                 "skip_tool_approval",
                 "full_access_turns",
@@ -866,7 +846,9 @@ class RemoteAgent:
             self._current_session = {"session_id": sid}
         elif sid and self._current_session:
             self._current_session["session_id"] = sid
-        state = host_session_mode_state(event)
+        state = event.get("session_modes")
+        if not isinstance(state, dict):
+            state = None
         if state is None:
             self._available_permission_profiles = []
             return None
@@ -1002,19 +984,6 @@ class RemoteAgent:
 
     def _handle_stream_event(self, event: Dict[str, Any]) -> None:
         """Handle streaming event and update UI."""
-        try:
-            session_id = (
-                self._current_session.get("session_id")
-                if isinstance(self._current_session, dict)
-                else None
-            )
-            acp_event = legacy_stream_event_from_acp(
-                event, expected_session_id=session_id
-            )
-        except (TypeError, ValueError):
-            return
-        if acp_event is not None:
-            event = acp_event
         event_type = event.get("type")
 
         if event_type == "tool_call":

@@ -189,7 +189,6 @@ class WebSocketIO(IO):
         self,
         event: Dict[str, Any],
         session_id: str,
-        acp_frame: Dict[str, Any] | None,
     ) -> bool:
         """Bind one replayable approval event to this session's live mailbox."""
 
@@ -200,49 +199,12 @@ class WebSocketIO(IO):
             "request_id": request_id,
             "session_id": session_id,
             "tool_call_id": event.get("tool_call_id"),
-            "acp": acp_frame is not None,
         }
         with self._client_condition:
             if self._pending_permission is None:
                 self._pending_permission = pending
                 return True
             return self._pending_permission == pending
-
-    def resolve_acp_permission(
-        self, frame: Dict[str, Any], session_id: str
-    ) -> bool:
-        """Consume one matching ACP response and enqueue a fail-closed decision."""
-
-        message = frame.get("message")
-        response_id = message.get("id") if isinstance(message, dict) else None
-        with self._client_condition:
-            pending = self._pending_permission
-            if (
-                pending is None
-                or not pending["acp"]
-                or pending["session_id"] != session_id
-                or frame.get("sessionId") != session_id
-                or response_id != pending["request_id"]
-            ):
-                return False
-            self._pending_permission = None
-
-        from ...core.acp_wire import legacy_approval_response_from_acp
-
-        try:
-            response = legacy_approval_response_from_acp(
-                frame,
-                expected_session_id=session_id,
-                expected_request_id=pending["request_id"],
-            )
-        except (TypeError, ValueError):
-            response = {
-                "approved": False,
-                "scope": "once",
-                "mode": "reject_hard",
-            }
-        self.send_to_agent(response)
-        return True
 
     def resolve_legacy_permission(self, response: Dict[str, Any]) -> bool:
         """Bind a rolling-upgrade legacy answer to the one pending request."""

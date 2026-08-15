@@ -12,17 +12,9 @@ Components under test:
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
 from connectonion import CodexPlugin
-from connectonion.cli.co_ai.one_shot_sessions import (
-    SessionSnapshotError,
-    load_snapshot,
-    save_snapshot,
-)
-from connectonion.network.host.acp_gateway import ACPPrincipal
 from connectonion.useful_plugins import eval as eval_plugin
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 
@@ -34,7 +26,7 @@ def test_managed_delegation_permissions_are_explicit(tmp_path):
     agent_mod.grant_managed_delegation_permissions(agent)
 
     assert set(agent.current_session['permissions']) == {
-        'codex', 'claude_code', 'acp_agent'
+        'codex', 'claude_code'
     }
     assert all(
         permission['allowed'] is True
@@ -42,7 +34,7 @@ def test_managed_delegation_permissions_are_explicit(tmp_path):
         for permission in agent.current_session['permissions'].values()
     )
     shared_exec_permissions = load_permission_patterns(tmp_path / '.co')
-    assert not {'codex', 'claude_code', 'acp_agent'} & set(
+    assert not {'codex', 'claude_code'} & set(
         shared_exec_permissions
     )
 
@@ -91,12 +83,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "timeout",
     }
     assert claude_schema["required"] == ["prompt", "cwd"]
-    assert "acp_agent" in agent.tools._tools
-    acp_schema = agent.tools.get("acp_agent").to_function_schema()["parameters"]
-    assert set(acp_schema["properties"]) == {
-        "prompt", "engine", "session_id", "cwd", "timeout"
-    }
-    assert acp_schema["required"] == ["prompt", "engine", "cwd"]
+    assert "acp_agent" not in agent.tools._tools
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
     # The browser is driven through the `co browser` CLI, so no in-process
@@ -172,6 +159,7 @@ def test_start_server_hosts_provided_agent(monkeypatch):
         })
 
     monkeypatch.setattr(main_mod, "host", fake_host)
+    monkeypatch.setattr(main_mod, "_ensure_invite_code", lambda _co_dir: None)
 
     main_mod.start_server(agent, port=1234)
 
@@ -179,176 +167,7 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
     assert called["agent"] is agent
-    assert callable(called["acp_agent_factory"])
-
-
-def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only(
-    monkeypatch,
-    tmp_path,
-):
-    agent = SimpleNamespace(name="agent")
-    called = {}
-    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
-    global_co_dir = tmp_path / ".co"
-    global_co_dir.mkdir()
-    (global_co_dir / "host.yaml").write_text(
-        "max_file_size: 2\n"
-        "max_files_per_request: 4\n"
-        "max_acp_upload_storage: 20\n"
-        "max_acp_upload_files: 40\n"
-        "max_acp_sessions: 12\n"
-        "max_acp_session_storage: 24\n"
-        "max_acp_snapshot_size: 6\n",
-        encoding="utf-8",
-    )
-
-    def fake_host(_agent, **kwargs):
-        called.update(kwargs)
-
-    monkeypatch.setattr(main_mod, "host", fake_host)
-    main_mod.start_server(agent, yolo=True, yolo_turns=7)
-    factory = called["acp_agent_factory"]
-
-    def principal(address, level, *, method="browser_ticket"):
-        return ACPPrincipal(
-            address=address,
-            level=level,
-            recipient="0xrecipient",
-            origin="https://chat.openonion.ai",
-            auth_method=method,
-            authenticated_at=1.0,
-        )
-
-    contact = factory(principal("0xcontact", "contact"))
-    same_contact = factory(principal("0xcontact", "contact"))
-    other_contact = factory(principal("0xother", "contact"))
-    signed_contact = factory(
-        principal("0xcontact", "contact", method="signed_headers")
-    )
-    admin = factory(principal("0xadmin", "admin"))
-
-    assert contact._session_co_dir == same_contact._session_co_dir
-    assert contact._session_co_dir != other_contact._session_co_dir
-    assert contact._session_co_dir != signed_contact._session_co_dir
-    assert contact._session_co_dir.is_relative_to(
-        tmp_path / ".co" / "acp-principals"
-    )
-    assert contact._yolo is False
-    assert contact._max_attachment_bytes == 2 * 1024 * 1024
-    assert contact._max_attachments == 4
-    assert contact._max_upload_storage_bytes == 20 * 1024 * 1024
-    assert contact._max_upload_files == 40
-    assert contact._snapshot_storage_limits.max_sessions == 12
-    assert contact._snapshot_storage_limits.max_total_bytes == 24 * 1024 * 1024
-    assert contact._snapshot_storage_limits.max_snapshot_bytes == 6 * 1024 * 1024
-    assert contact._snapshot_storage_limits is not same_contact._snapshot_storage_limits
-    assert admin._yolo is True
-    assert admin._yolo_turns == 7
-
-    session_id = "40c0397c-972b-4133-899b-5ab4cc5c4883"
-    snapshot = {
-        "session_id": session_id,
-        "messages": [],
-        "trace": [],
-        "turn": 0,
-        "mode": ":read-only",
-        "plan": [],
-    }
-    save_snapshot(contact._session_co_dir, snapshot, {}, cwd=tmp_path)
-    loaded, _ = load_snapshot(
-        same_contact._session_co_dir,
-        session_id,
-        cwd=tmp_path,
-    )
-    assert loaded["session_id"] == session_id
-    with pytest.raises(SessionSnapshotError, match="was not found"):
-        load_snapshot(other_contact._session_co_dir, session_id, cwd=tmp_path)
-
-
-def test_network_acp_workspace_is_captured_when_server_starts(monkeypatch, tmp_path):
-    launch_dir = tmp_path / "launch"
-    later_dir = tmp_path / "later"
-    launch_dir.mkdir()
-    later_dir.mkdir()
-    agent = SimpleNamespace(name="agent")
-    called = {}
-    monkeypatch.chdir(launch_dir)
-
-    def fake_host(_agent, **kwargs):
-        called.update(kwargs)
-
-    monkeypatch.setattr(main_mod, "host", fake_host)
-    main_mod.start_server(agent)
-    monkeypatch.chdir(later_dir)
-
-    principal = ACPPrincipal(
-        address="0xcontact",
-        level="contact",
-        recipient="0xrecipient",
-        origin="https://chat.openonion.ai",
-        auth_method="browser_ticket",
-        authenticated_at=1.0,
-    )
-    network_agent = called["acp_agent_factory"](principal)
-
-    assert network_agent._network_workspace.path == launch_dir.resolve()
-    assert network_agent._network_workspace.closed is True
-
-
-def test_network_acp_workspace_closes_when_host_raises(monkeypatch, tmp_path):
-    from connectonion.cli.co_ai import acp_server as acp_server_mod
-
-    captured = []
-    real_capture = acp_server_mod.capture_network_workspace
-
-    def capture(path):
-        workspace = real_capture(path)
-        captured.append(workspace)
-        return workspace
-
-    def fail_host(*_args, **_kwargs):
-        raise RuntimeError("host startup failed")
-
-    # start_server imports the function lazily from acp_server.
-    monkeypatch.setattr("connectonion.cli.co_ai.acp_server.capture_network_workspace", capture)
-    monkeypatch.setattr(main_mod, "host", fail_host)
-
-    with pytest.raises(RuntimeError, match="host startup failed"):
-        main_mod.start_server(SimpleNamespace(name="agent"))
-
-    assert captured and captured[0].closed is True
-
-
-def test_network_acp_session_namespace_is_workspace_scoped(monkeypatch, tmp_path):
-    first_dir = tmp_path / "first"
-    second_dir = tmp_path / "second"
-    first_dir.mkdir()
-    second_dir.mkdir()
-    agent = SimpleNamespace(name="agent")
-    factories = []
-    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
-
-    def fake_host(_agent, **kwargs):
-        factories.append(kwargs["acp_agent_factory"])
-
-    monkeypatch.setattr(main_mod, "host", fake_host)
-    principal = ACPPrincipal(
-        address="0xcontact",
-        level="contact",
-        recipient="0xrecipient",
-        origin="https://chat.openonion.ai",
-        auth_method="browser_ticket",
-        authenticated_at=1.0,
-    )
-
-    monkeypatch.chdir(first_dir)
-    main_mod.start_server(agent)
-    monkeypatch.chdir(second_dir)
-    main_mod.start_server(agent)
-
-    first_agent = factories[0](principal)
-    second_agent = factories[1](principal)
-    assert first_agent._session_co_dir != second_agent._session_co_dir
+    assert "acp_agent_factory" not in called
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):

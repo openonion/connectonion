@@ -369,19 +369,6 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
-    acp: bool = typer.Option(
-        False, "--acp", help="Serve co ai as an ACP v1 agent over stdio"
-    ),
-    acp_mcp: bool = typer.Option(
-        False,
-        "--acp-mcp",
-        help="Allow ACP clients to launch session-scoped stdio MCP servers",
-    ),
-    state_dir: Optional[Path] = typer.Option(
-        None,
-        "--state-dir",
-        help="With --acp, isolate mutable session and eval state",
-    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -395,9 +382,6 @@ def ai(
         evaluate=evaluate,
         json_output=json_output,
         resume=resume,
-        acp=acp,
-        acp_mcp=acp_mcp,
-        state_dir=state_dir,
     )
 
 

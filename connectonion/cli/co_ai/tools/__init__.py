@@ -17,7 +17,6 @@ Key exports:
 Note: All file tools re-exported from connectonion.useful_tools.file_tools (single source of truth).
 """
 
-from connectonion.cli.co_ai.tools.acp_agent import acp_agent
 from connectonion.cli.co_ai.tools.background import (
     kill_task,
     run_background,
@@ -40,7 +39,6 @@ __all__ = [
     # Interaction tools
     "ask_user",
     "claude_code",
-    "acp_agent",
     "load_guide",
     # Utility classes
     "TodoList",

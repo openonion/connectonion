@@ -14,11 +14,6 @@ import uuid
 
 from rich.console import Console
 
-from ....core.acp_wire import (
-    ACP_CANCEL_METHOD,
-    ACP_SCHEMA_VERSION,
-    ACP_SET_SESSION_MODE_METHOD,
-)
 from ...trust.ws_admin import get_onboard_requirements
 from .agent_io import resume_forwarding
 
@@ -219,14 +214,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "type": "CONNECTED",
         "session_id": session_id,
         "status": status,
-        "carrier_capabilities": {
-            "acp": {
-                "schema": ACP_SCHEMA_VERSION,
-                "client_notifications": [ACP_CANCEL_METHOD],
-                **({"client_requests": [ACP_SET_SESSION_MODE_METHOD]}
-                   if mode_state is not None else {}),
-            }
-        },
+        "protocol": {"name": "oip", "version": "0.1"},
     }
     if mode_state is not None:
         connected_msg["session_modes"] = mode_state

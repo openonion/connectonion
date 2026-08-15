@@ -9,8 +9,6 @@ Components under test:
 - Module: cli_commands_ai_trust
 """
 
-import os
-
 import pytest
 import typer
 
@@ -106,26 +104,6 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
     assert capsys.readouterr().out.endswith("done\n")
 
 
-def test_handle_ai_prepares_private_acp_state_dir(tmp_path, monkeypatch):
-    selected = tmp_path / "isolated" / "acp-state"
-    called = {}
-
-    async def fake_serve_acp(**kwargs):
-        called.update(kwargs)
-
-    monkeypatch.setattr(
-        "connectonion.cli.co_ai.acp_server.serve_acp",
-        fake_serve_acp,
-    )
-
-    ai_mod.handle_ai(acp=True, state_dir=selected)
-
-    assert called["state_dir"] == selected.resolve()
-    assert selected.is_dir()
-    if os.name != "nt":
-        assert selected.stat().st_mode & 0o777 == 0o700
-
-
 def test_isolated_agent_keeps_global_config_and_redirects_only_state(
     tmp_path,
     monkeypatch,
@@ -153,31 +131,6 @@ def test_isolated_agent_keeps_global_config_and_redirects_only_state(
 
     assert created["co_dir"] == GLOBAL_CO_DIR
     assert created["state_dir"] == state_dir
-
-
-@pytest.mark.skipif(os.name == "nt", reason="Windows symlink creation needs privileges")
-def test_handle_ai_rejects_a_symlink_state_dir(tmp_path, monkeypatch, capsys):
-    target = tmp_path / "target"
-    target.mkdir()
-    selected = tmp_path / "state"
-    selected.symlink_to(target, target_is_directory=True)
-    served = False
-
-    async def fake_serve_acp(**_kwargs):
-        nonlocal served
-        served = True
-
-    monkeypatch.setattr(
-        "connectonion.cli.co_ai.acp_server.serve_acp",
-        fake_serve_acp,
-    )
-
-    with pytest.raises(typer.Exit) as caught:
-        ai_mod.handle_ai(acp=True, state_dir=selected)
-
-    assert caught.value.exit_code == 2
-    assert served is False
-    assert "state directory is unavailable" in capsys.readouterr().out
 
 
 def test_handle_ai_reports_a_provider_failure_without_a_traceback(monkeypatch, capsys):

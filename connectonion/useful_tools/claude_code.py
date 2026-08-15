@@ -16,8 +16,6 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
 
-from acp import default_environment
-
 PERMISSION_MODES = (
     "default",
     "manual",
@@ -704,7 +702,14 @@ def _start_process(argv: list[str], cwd: str):
 
 
 def _claude_environment() -> dict[str, str]:
-    environment = default_environment()
+    # Keep the child usable without forwarding the caller's full environment.
+    # Claude Code needs executable discovery and a home/config root; provider
+    # credentials and platform variables are added from the explicit allowlist.
+    environment = {
+        key: value
+        for key in ("PATH", "HOME", "SHELL")
+        if (value := os.environ.get(key)) and not value.startswith("()")
+    }
     for key in _CLAUDE_ENVIRONMENT_KEYS:
         value = os.environ.get(key)
         if value and not value.startswith("()"):

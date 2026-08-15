@@ -26,7 +26,7 @@ class SessionSnapshotError(ValueError):
 
 @dataclass(frozen=True)
 class SnapshotStorageLimits:
-    """Hard bounds for one authenticated principal's durable ACP snapshots."""
+    """Hard bounds for durable one-shot session snapshots."""
 
     max_sessions: int
     max_total_bytes: int
@@ -291,7 +291,7 @@ def save_snapshot(
     directory = prepare_snapshot_storage(co_dir)
     if len(encoded) > storage_limits.max_snapshot_bytes:
         logger.warning(
-            "ACP session snapshot exceeds quota: bytes=%d/%d",
+            "Session snapshot exceeds quota: bytes=%d/%d",
             len(encoded),
             storage_limits.max_snapshot_bytes,
         )
@@ -312,7 +312,7 @@ def save_snapshot(
             or candidate_bytes > storage_limits.max_total_bytes
         ):
             logger.warning(
-                "ACP session storage quota exceeded: sessions=%d/%d bytes=%d/%d",
+                "Session storage quota exceeded: sessions=%d/%d bytes=%d/%d",
                 candidate_sessions,
                 storage_limits.max_sessions,
                 candidate_bytes,
@@ -540,7 +540,7 @@ def _snapshot_storage_usage(
                 stored_session_ids.add(session_id)
                 if len(stored_session_ids) > max_sessions:
                     logger.warning(
-                        "ACP session storage quota exceeded during scan: "
+                        "Session storage quota exceeded during scan: "
                         "sessions>%d",
                         max_sessions,
                     )
@@ -549,7 +549,7 @@ def _snapshot_storage_usage(
                     stored_bytes += entry_stat.st_size
                     if stored_bytes > max_total_bytes:
                         logger.warning(
-                            "ACP session storage quota exceeded during scan: "
+                            "Session storage quota exceeded during scan: "
                             "bytes>%d",
                             max_total_bytes,
                         )
@@ -594,7 +594,7 @@ def acquire_bounded_new_session_lease(
             or stored_bytes >= storage_limits.max_total_bytes
         ):
             logger.warning(
-                "ACP session storage quota exceeded during admission: "
+                "Session storage quota exceeded during admission: "
                 "sessions=%d/%d bytes=%d/%d",
                 stored_sessions,
                 storage_limits.max_sessions,
