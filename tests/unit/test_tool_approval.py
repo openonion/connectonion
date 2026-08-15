@@ -733,11 +733,11 @@ class TestUnknownTools:
             (':workspace', 'write', {'file_path': 'owned.txt', 'content': 'no'}),
         ],
     )
-    def test_stale_elevated_mode_does_not_bypass_remote_owner_gate(
+    def test_stale_elevated_mode_falls_back_to_contact_approval(
         self, mode, tool_name, arguments
     ):
-        """The approval hook defends even if before_iteration was skipped."""
-        io = FakeIO()
+        """A stale profile cannot bypass the actor's ordinary approval dialog."""
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = mode
         agent.current_session['requester'] = {
@@ -749,10 +749,9 @@ class TestUnknownTools:
             'arguments': arguments,
         }
 
-        with pytest.raises(ValueError, match="operator's approval"):
-            check_approval(agent)
+        check_approval(agent)
 
-        assert io.sent == []
+        assert [event['type'] for event in io.sent] == ['approval_needed']
 
 
 class TestSessionState:
@@ -869,11 +868,11 @@ class TestPollModeChanges:
         assert agent.current_session['full_access_turns'] == 50
         assert agent.current_session['skip_tool_approval'] is True
 
-    def test_remote_contact_cannot_use_full_access_to_run_an_unknown_tool(self):
-        """A live caller cannot turn a mode frame into dynamic-tool authority."""
+    def test_remote_contact_full_access_request_falls_back_to_approval(self):
+        """A contact cannot activate Full access but can approve their own call."""
         io = FakeIO(pending_signals=[
             {'type': 'mode_change', 'mode': ':danger-full-access', 'turns': 50},
-        ])
+        ], responses=[{'approved': True, 'scope': 'once'}])
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = ':read-only'
         agent.current_session['requester'] = {
@@ -887,18 +886,17 @@ class TestPollModeChanges:
             'arguments': {},
         }
 
-        with pytest.raises(ValueError, match="operator's approval"):
-            check_approval(agent)
+        check_approval(agent)
 
         assert agent.current_session['mode'] == ':read-only'
         assert 'skip_tool_approval' not in agent.current_session
-        assert not any(msg.get('type') == 'approval_needed' for msg in io.sent)
+        assert [msg['type'] for msg in io.sent].count('approval_needed') == 1
 
-    def test_remote_contact_cannot_use_workspace_profile_to_write(self):
-        """The named edit bypass belongs to the operator, not the socket."""
+    def test_remote_contact_workspace_request_falls_back_to_approval(self):
+        """The edit bypass stays operator-only; a contact receives a dialog."""
         io = FakeIO(pending_signals=[
             {'type': 'mode_change', 'mode': ':workspace'},
-        ])
+        ], responses=[{'approved': True, 'scope': 'once'}])
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = ':read-only'
         agent.current_session['requester'] = {
@@ -912,11 +910,10 @@ class TestPollModeChanges:
             'arguments': {'file_path': 'owned.txt', 'content': 'no'},
         }
 
-        with pytest.raises(ValueError, match="operator's approval"):
-            check_approval(agent)
+        check_approval(agent)
 
         assert agent.current_session['mode'] == ':read-only'
-        assert not any(msg.get('type') == 'approval_needed' for msg in io.sent)
+        assert [msg['type'] for msg in io.sent].count('approval_needed') == 1
 
     def test_poll_mode_changes_handles_multiple_signals(self):
         """poll_mode_changes should process multiple mode_change signals."""
