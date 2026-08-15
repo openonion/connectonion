@@ -268,12 +268,12 @@ way, into Claude Code and Codex. **Limit:** we read the `tools:` key, not Claude
 Code's `allowed-tools`, so a skill's auto-approvals do not carry across — issue #967.
 Say "reads the same SKILL.md files", never "runs identically".
 
-**Codex runs as a subprocess, today.** ConnectOnion spawns `codex app-server` and
-speaks OpenAI's native JSON-RPC over stdio from its own Python client, no Node adapter
-(`useful_tools/codex.py`). Sandbox levels read-only / workspace-write /
-danger-full-access; per-action approvals route to the human through the existing
-approval card. **Limit:** requires the `codex` binary. **There is no Claude Code
-equivalent** — Claude is available only as a model provider.
+**Codex and Claude Code are native provider adapters.** ConnectOnion spawns
+`codex app-server` and speaks OpenAI's native JSON-RPC over stdio from its own
+Python client; the Claude Code adapter speaks the CLI's stream-json lifecycle.
+Both normalize their child activity into OIP rather than adding another browser
+protocol. Sandbox/permission policy remains operator-owned and approvals use the
+existing card. **Limit:** each adapter requires its provider CLI and local auth.
 
 **Nine model providers**, all implementing both tool calling and structured output
 through each provider's native mechanism: OpenAI, Anthropic, Gemini, Groq, Grok,

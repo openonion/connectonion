@@ -10,9 +10,9 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
-- Stable patch target: `1.6.8`
-- Preview target: `1.7.0a5`
-- Browser client target: `@connectonion/react@0.4.2-alpha.4`
+- Stable release: `1.6.9`
+- Preview target: `1.7.0a7`
+- Browser client: `@connectonion/react@0.4.2-alpha.7`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
 Host serves the authenticated `/ws` connection; `@connectonion/react` owns the
@@ -20,16 +20,18 @@ browser client; O Chat consumes the exact React prerelease. Codex and Claude
 Code remain native backend provider adapters and publish their normalized
 activity through OIP.
 
-Alpha 5 removes the abandoned alternate transport, generic coding-agent edge,
-SDK dependency, CLI flags, gateway, exports, tests, fixtures, and product docs.
-It also includes owner onboarding that mints one private invite on a fresh
-installation and reveals it only through an explicit `co keys --reveal` action.
+Alpha 7 makes explicit Codex requests deterministic: natural-language verbs,
+`/codex`, delegation language, and Chinese requests route through the native
+Codex adapter before the model chooses a tool. `open Codex` creates or resumes
+the provider session without inventing a prompt, and an OIP-visible guard blocks
+direct Codex launches through shell tools without affecting ordinary shell text.
+The browser continues to use OIP 0.1 and the same shared Work Room card.
 
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
 python -m pip install --pre --upgrade connectonion
-python -m pip install connectonion==1.7.0a5
+python -m pip install connectonion==1.7.0a7
 ```
 
 ## Design Journal

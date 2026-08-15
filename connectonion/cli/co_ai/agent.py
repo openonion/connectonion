@@ -50,7 +50,7 @@ from connectonion.useful_plugins import (
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
 from .context import load_project_context
-from .plugins import system_reminder
+from .plugins import native_coding_agent_routing, system_reminder
 from .prompts.assembler import assemble_prompt
 from .skills import skill
 from .tools import (
@@ -162,6 +162,7 @@ def create_agent(
     # back into an image the model and the user can actually see.
     plugins = [
         codex_plugin,
+        native_coding_agent_routing,
         skills_plugin,
         subagents,
         *extra_plugins,

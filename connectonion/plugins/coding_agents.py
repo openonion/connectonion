@@ -173,14 +173,14 @@ class CodexPlugin(_CodingAgentPlugin):
 
     def codex(
         self,
-        prompt: str,
+        prompt: str = "",
         cwd: str = "",
         session_id: str = "",
         model: str = "",
         timeout: int = 600,
         agent=None,
     ) -> str:
-        """Run or resume Codex inside the operator-configured workspace."""
+        """Run, open, or resume Codex inside the operator-configured workspace."""
         working_directory, error = self._cwd(cwd)
         if error:
             return json.dumps({"provider": "codex", "session_id": session_id, "error": error})

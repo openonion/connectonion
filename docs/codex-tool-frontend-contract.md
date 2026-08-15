@@ -27,6 +27,11 @@ app-server wins on every axis for a Python framework: one dependency, official
 protocol, our own client, and it still gives session/resume, live streaming, and
 interactive approval requests when the selected Codex policy requires them.
 
+An empty `prompt` performs `initialize` plus `thread/start` or `thread/resume`
+and returns the provider session ID without `account/read` or `turn/start`.
+There is no invented prompt and no model work. A later call supplies that ID and
+the user's real prompt to begin the first turn.
+
 ## The original generic frontend contract
 
 The connection layer bundled in `@connectonion/react`
@@ -59,11 +64,18 @@ Key points:
   approval cards with zero new code. The response is encoded per method: current
   command/file requests use `accept`/`decline`, permissions requests grant only
   the requested profile, and legacy methods retain their legacy decision shape.
+- **Raw CLI fallback is not a provider path.** `co ai` rejects an executable
+  Codex command in bash/shell/background wrappers before approval or spawning.
+  A tool error names `codex()` as the next action, while unrelated commands that
+  only mention the word continue normally.
 
 ## What the frontend team should know
 
 - The React package owns normalization and child correlation. O Chat consumes
   its typed `provider_invocation` item and renders the shared coding-agent card.
+- O Chat opens the shared Work Room for that invocation. Chat, activity, files,
+  approval, Stop, failure, completion, and return-to-parent are OIP views of the
+  same provider lifecycle, not another provider transport.
 - Generic tool cards remain the rolling-upgrade fallback.
 
 ## Validation

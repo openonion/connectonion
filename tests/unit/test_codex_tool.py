@@ -111,6 +111,35 @@ def _run(**kwargs):
 
 
 class TestCodexRun:
+    def test_open_without_prompt_creates_thread_without_starting_a_turn(self):
+        result = _run(prompt="", cwd=".", approval="auto", agent=_Agent(_IO()))
+
+        assert result["session_id"] == "thread-1"
+        assert result["opened"] is True
+        assert result["exit_code"] == 0
+        assert "refresh_account" not in FakeServer.last.calls
+        assert not any(
+            isinstance(call, tuple) and call[0] == "run_turn"
+            for call in FakeServer.last.calls
+        )
+
+    def test_open_existing_session_without_prompt_resumes_without_turn(self):
+        result = _run(
+            prompt="",
+            session_id="prev",
+            cwd=".",
+            approval="auto",
+            agent=_Agent(_IO()),
+        )
+
+        assert result["session_id"] == "prev"
+        assert result["resumed"] is True
+        assert result["opened"] is True
+        assert not any(
+            isinstance(call, tuple) and call[0] == "run_turn"
+            for call in FakeServer.last.calls
+        )
+
     def test_new_thread_accumulates_message(self):
         agent = _Agent(_IO(approve=True))
         result = _run(prompt="fix", cwd=".", approval="auto", agent=agent)

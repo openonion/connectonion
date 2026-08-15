@@ -4,7 +4,8 @@
 
 **Date:** 2026-08-15
 
-**Related:** [Issue #1045](https://github.com/openonion/connectonion/issues/1045)
+**Related:** [Issue #1045](https://github.com/openonion/connectonion/issues/1045),
+[Issue #1052](https://github.com/openonion/connectonion/issues/1052)
 
 ## Context
 
@@ -25,6 +26,13 @@ installed CLI using its native lifecycle, keeps workspace and approval policy
 operator-owned, and publishes normalized provider, tool, approval, plan, and
 result events through OIP. There is no generic third coding-agent adapter.
 
+Provider intent is also an execution boundary, not prompt style. Explicit
+Codex run/use/start/open intent routes to `codex()`. A deterministic interceptor
+rejects executable Codex commands hidden in shell chains and background/package
+wrappers before approval or process creation, while leaving searches and prose
+mentions alone. Opening without a task starts the provider thread but no model
+turn, so the Work Room can be real without fabricating work.
+
 The removed protocol SDK, gateway, transport discovery, CLI flags, generic tool,
 tests, fixtures, exports, dependencies, and product documentation do not remain
 as compatibility paths. An older client or Host must upgrade as a matched preview
@@ -40,6 +48,8 @@ pair.
   exact O Chat pin, and real browser acceptance as one release unit;
 - adding another provider means adding a native adapter and OIP event mapping,
   not another browser transport.
+- the generic shell remains useful, but it cannot silently downgrade an
+  explicit provider delegation into one opaque command/result.
 
 ## Evidence required for release
 
@@ -48,3 +58,5 @@ pair.
 3. O Chat browser onboarding with one verification form.
 4. A normal prompt and a real Codex delegation with Host logs and screenshots.
 5. Equivalent Claude Code acceptance whenever that adapter changes.
+6. Routing evaluations, raw-launch false-positive tests, and an open-without-turn
+   app-server test whenever provider routing changes.

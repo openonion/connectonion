@@ -132,6 +132,11 @@ def test_public_signature_matches_the_provider_contract(tmp_path):
         ]
 
 
+def test_codex_prompt_is_optional_so_open_does_not_invent_a_task(tmp_path):
+    signature = inspect.signature(CodexPlugin(workspace=tmp_path).codex)
+    assert signature.parameters["prompt"].default == ""
+
+
 def test_replay_reconstructs_one_parent_card_with_nested_activity():
     session = {
         "messages": [{"role": "user", "content": "fix it"}],
