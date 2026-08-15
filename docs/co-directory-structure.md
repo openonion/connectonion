@@ -126,7 +126,7 @@ Detailed per-session logs for eval and replay, one file per unique first input:
 ```yaml
 # evals/what_is_2_2.yaml
 agent: assistant
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 started_at: "2025-01-15T10:30:00Z"
 turns:
   - input: "What is 2+2?"

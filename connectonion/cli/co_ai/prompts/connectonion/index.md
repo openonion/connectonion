@@ -18,7 +18,7 @@ agent = Agent(
     name="my_bot",                        # Required: identifier
     tools=[func1, func2],                 # Functions or class instances
     system_prompt="You are helpful",      # String or file path
-    model="co/gemini-3.6-flash",            # Default model
+    model="co/gemini-3.7-flash",            # Default model
     max_iterations=10,                    # Tool call limit per task
     plugins=[plugin1, plugin2],           # Event handlers
 )

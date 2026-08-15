@@ -92,6 +92,11 @@ MODEL_PRICING = {
     # Standard paid tier, per million tokens: input $1.50, output $7.50,
     # context-cached input $0.15 (Google pricing page, checked 2026-08-08).
     "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
+    # 3.7 Flash: introductory rate published by Google through 2026-12-31
+    # (standard pricing from 2027-01-01 is input $1.50 / output $7.50). Cached
+    # follows the common 25% rule; not yet reconciled against real backend
+    # charges.
+    "gemini-3.7-flash": {"input": 0.75, "output": 3.75, "cached": 0.1875},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     # Solved from real charges, two calls: (in=4, total=28, $0.000074) and
     # (in=2006, total=2101, $0.001288) give input 0.50 / output 3.00 and both
@@ -125,6 +130,7 @@ MODEL_CONTEXT_LIMITS = {
     "claude-3-7-sonnet": 200000,
 
     # Gemini
+    "gemini-3.7-flash": 1000000,
     "gemini-3.6-flash": 1000000,
     "gemini-3.5-flash": 1000000,
     # Without this row it took the 128,000 default, so `% ctx` read 7.8x high and
@@ -144,6 +150,13 @@ MODEL_CONTEXT_LIMITS = {
 DEFAULT_PRICING = {"input": 1.00, "output": 3.00, "cached": 0.50}
 DEFAULT_CONTEXT_LIMIT = 128000
 
+# The model every entry point uses when the user configures nothing. One
+# constant, imported by Agent, llm_do, transcribe, and the CLI — because
+# "what is the default model" was previously answered by separate literals
+# that drifted apart. The previous default stays on FREE_MANAGED_MODELS
+# below as the rollback (issue #1002).
+DEFAULT_MODEL = "co/gemini-3.7-flash"
+
 # Which managed models a free account can call. The backend refuses the rest
 # with error='paid_account_required': "Your free $5 credits work with
 # Google-routed models."
@@ -155,6 +168,7 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/gemini-3.7-flash",
     "co/gemini-3.6-flash",
     "co/gemini-3.5-flash",
     "co/gemini-2.5-pro",

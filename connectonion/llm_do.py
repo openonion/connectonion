@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [typing, pathlib, pydantic, dotenv, prompts.py, llm.py] | imported by [debug_explainer/explain_context.py, user code, examples] | tested by [tests/unit/test_llm_do.py, tests/e2e/real_api/]
   Data flow: user calls llm_do(input, output, system_prompt, model, api_key, **kwargs) → validates input non-empty → loads system_prompt via load_system_prompt() → builds messages [system, user] → calls create_llm(model, api_key) factory → calls llm.complete(messages, **kwargs) OR llm.structured_complete(messages, output, **kwargs) → returns string OR Pydantic model instance
   State/Effects: loads .env via dotenv.load_dotenv() | reads system_prompt files if Path provided | makes one LLM API request | no caching or persistence | stateless
-  Integration: exposes llm_do(input, output, system_prompt, model, api_key, **kwargs) | default model="co/gemini-3.6-flash" (managed keys) | default temperature=0.1 | supports all create_llm() providers | **kwargs pass through to provider (max_tokens, temperature, etc.)
+  Integration: exposes llm_do(input, output, system_prompt, model, api_key, **kwargs) | default model="co/gemini-3.7-flash" (managed keys) | default temperature=0.1 | supports all create_llm() providers | **kwargs pass through to provider (max_tokens, temperature, etc.)
   Performance: minimal overhead (no agent loop, no tool calling, no conversation history) | one LLM call per invocation | no caching | synchronous blocking
   Errors: raises ValueError if input empty | provider errors from create_llm() and llm.complete() bubble up | Pydantic ValidationError if structured output doesn't match schema
 
@@ -43,7 +43,7 @@ Key Design Decisions
 -------------------
 - **Stateless**: No conversation history, each call is independent
 - **Simple API**: Minimal parameters, sensible defaults
-- **Default Model**: Uses "co/gemini-3.6-flash" (ConnectOnion managed keys) for zero-setup
+- **Default Model**: Uses "co/gemini-3.7-flash" (ConnectOnion managed keys) for zero-setup
 - **Structured Output**: Native Pydantic support via provider-specific APIs
 - **Flexible Parameters**: **kwargs pass through to underlying LLM (temperature, max_tokens, etc.)
 
@@ -95,7 +95,7 @@ All providers from llm.py module:
    - Structured output via response_schema
    - Good balance of speed and quality
 
-4. **ConnectOnion**: co/gemini-3.6-flash (DEFAULT), co/gpt-5
+4. **ConnectOnion**: co/gemini-3.7-flash (DEFAULT), co/gpt-5
    - Managed API keys (no env vars needed!)
    - Proxies to OpenAI with usage tracking
    - Requires: run `co auth` first
@@ -134,7 +134,7 @@ Parameters
 - input (str): The text/question to send to the LLM
 - output (Type[BaseModel], optional): Pydantic model for structured output
 - system_prompt (str | Path, optional): System instructions (inline or file path)
-- model (str): Model name (default: "co/gemini-3.6-flash")
+- model (str): Model name (default: "co/gemini-3.7-flash")
 - temperature (float): Sampling temperature (default: 0.1 for consistency)
 - api_key (str, optional): Override API key (uses env vars by default)
 - **kwargs: Additional parameters passed to LLM (max_tokens, top_p, etc.)
@@ -223,6 +223,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from .prompts import load_system_prompt
 from .core.llm import create_llm
+from .core.usage import DEFAULT_MODEL
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -231,7 +232,7 @@ def llm_do(
     input: str,
     output: Optional[Type[T]] = None,
     system_prompt: Optional[Union[str, Path]] = None,
-    model: str = "co/gemini-3.6-flash",
+    model: str = DEFAULT_MODEL,
     api_key: Optional[str] = None,
     **kwargs
 ) -> Union[str, T]:
@@ -242,13 +243,13 @@ def llm_do(
     - OpenAI: "o4-mini", "o3-mini"
     - Anthropic: "claude-sonnet-4-20250514", "claude-opus-4-20250514"
     - Google: "gemini-2.5-pro", "gemini-2.5-flash"
-    - ConnectOnion Managed: "co/gemini-3.6-flash", "co/gpt-5" (no API keys needed!)
+    - ConnectOnion Managed: "co/gemini-3.7-flash", "co/gpt-5" (no API keys needed!)
 
     Args:
         input: The input text/question to send to the LLM
         output: Optional Pydantic model class for structured output
         system_prompt: Optional system prompt (string or file path)
-        model: Model name (default: "co/gemini-3.6-flash")
+        model: Model name (default: "co/gemini-3.7-flash")
         api_key: Optional API key (uses environment variable if not provided)
         **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
@@ -261,7 +262,7 @@ def llm_do(
         >>> print(answer)  # "4"
 
         >>> # With ConnectOnion managed keys (no API key needed!)
-        >>> answer = llm_do("What's 2+2?", model="co/gemini-3.6-flash")
+        >>> answer = llm_do("What's 2+2?", model="co/gemini-3.7-flash")
 
         >>> # With Claude
         >>> answer = llm_do("Explain quantum physics", model="claude-sonnet-4-20250514")

@@ -48,9 +48,11 @@ class TestTheListIsUsable:
         assert all(m.startswith("co/") for m in MANAGED_MODELS)
 
     def test_the_default_model_is_offered(self):
-        # co/gemini-3.6-flash is what a new project is created with, so it has
-        # to be one of the names the same flow tells the user about.
-        assert "co/gemini-3.6-flash" in MANAGED_MODELS
+        # The default is what a new project is created with, so it has to be
+        # one of the names the same flow tells the user about.
+        from connectonion.core.usage import DEFAULT_MODEL
+
+        assert DEFAULT_MODEL in MANAGED_MODELS
 
     def test_there_is_only_one_copy_of_the_list(self):
         """Both call sites must render the tuple, not their own literal."""

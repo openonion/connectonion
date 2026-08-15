@@ -644,7 +644,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gemini-3.6-flash'  # Prefixed models for managed keys
+            'model': 'co/gemini-3.7-flash'  # Prefixed models for managed keys
         }
     }
 
@@ -659,8 +659,8 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.6-flash
-# Available models: co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
+MODEL=co/gemini-3.7-flash
+# Available models: co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
 # With purchased credits: co/gpt-5, co/o4-mini, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
@@ -676,7 +676,7 @@ MODEL=co/gemini-3.6-flash
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.6-flash
+MODEL=co/gemini-3.7-flash
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -703,7 +703,7 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
     Args:
         description: What the agent should do
         api_key: API key or token for LLM
-        model: Optional model to use (e.g., "co/gemini-3.6-flash")
+        model: Optional model to use (e.g., "co/gemini-3.7-flash")
         loading_animation: Optional LoadingAnimation instance to update
 
     Returns:
@@ -719,8 +719,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...core.llm import create_llm
 
-            # Use the model specified or default to co/gemini-3.6-flash
-            llm_model = model if model else "co/gemini-3.6-flash"
+            # Use the model specified or default to co/gemini-3.7-flash
+            llm_model = model if model else "co/gemini-3.7-flash"
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -805,7 +805,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{model if model and model.startswith('co/') else 'co/gemini-3.6-flash'}",
+    model="{model if model and model.startswith('co/') else 'co/gemini-3.7-flash'}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",

@@ -108,7 +108,7 @@ class TrustAgent:
     """
 
     def __init__(self, trust: str = "careful", *, api_key: str = None,
-                 model: str = "co/gemini-3.6-flash", co_dir: Path = None):
+                 model: str = "co/gemini-3.7-flash", co_dir: Path = None):
         """
         Create a TrustAgent.
 

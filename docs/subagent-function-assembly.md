@@ -84,7 +84,7 @@ Agent(
     tools=[FileTools(permission="read")],  # ← Class instance
     plugins=[],
     system_prompt="# Explore Agent...",
-    model="co/gemini-3.6-flash",
+    model="co/gemini-3.7-flash",
     max_iterations=15
 )
                 ↓
