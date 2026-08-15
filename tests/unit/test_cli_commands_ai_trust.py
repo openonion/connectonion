@@ -42,6 +42,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
         max_iterations=3,
         yolo=True,
         yolo_turns=7,
+        evaluate=True,
     )
 
     assert called["port"] == 1111

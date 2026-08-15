@@ -37,6 +37,19 @@ def _expired(storage, n=10):
                              created=past - 1000, expires=past))
 
 
+def _append_while_compactor_has_the_lock(storage, session):
+    """Model an append after the compactor's read without waiting 30 seconds.
+
+    The size guard is deliberately a second defence beyond the lock. Calling
+    ``save`` here from the same thread cannot model another process: it waits
+    for the lock held by ``compact`` until the production timeout expires.
+    Appending the same JSONL payload directly isolates the guard this test is
+    about and keeps three tests from each paying that 30-second timeout.
+    """
+    with storage.path.open("a", encoding="utf-8") as stream:
+        stream.write(session.model_dump_json() + "\n")
+
+
 class TestAWriteDuringCompactionSurvives:
 
     def test_a_session_saved_mid_compaction_is_not_lost(self, storage, monkeypatch):
@@ -49,8 +62,11 @@ class TestAWriteDuringCompactionSurvives:
 
         def read_then_someone_writes():
             records = original()
-            storage.save(Session(session_id="mid", status="done", prompt="a real turn",
-                                 created=now, expires=now + 3600))
+            _append_while_compactor_has_the_lock(
+                storage,
+                Session(session_id="mid", status="done", prompt="a real turn",
+                        created=now, expires=now + 3600),
+            )
             return records
 
         monkeypatch.setattr(storage, '_latest_by_id', read_then_someone_writes)
@@ -70,8 +86,11 @@ class TestAWriteDuringCompactionSurvives:
 
         def read_then_someone_writes():
             records = original()
-            storage.save(Session(session_id="mid", status="done", prompt="p",
-                                 created=now, expires=now + 3600))
+            _append_while_compactor_has_the_lock(
+                storage,
+                Session(session_id="mid", status="done", prompt="p",
+                        created=now, expires=now + 3600),
+            )
             return records
 
         monkeypatch.setattr(storage, '_latest_by_id', read_then_someone_writes)
@@ -123,8 +142,11 @@ class TestStartupDoesNotHingeOnIt:
 
         def read_then_someone_writes():
             records = original()
-            storage.save(Session(session_id="mid", status="done", prompt="p",
-                                 created=now, expires=now + 3600))
+            _append_while_compactor_has_the_lock(
+                storage,
+                Session(session_id="mid", status="done", prompt="p",
+                        created=now, expires=now + 3600),
+            )
             return records
 
         monkeypatch.setattr(storage, '_latest_by_id', read_then_someone_writes)

@@ -33,7 +33,7 @@ print(f"  ConnectOnion: {'✓' if has_co_auth else '✗'}")
 
 # Test 1: Simple string response with default model
 print("\n" + "=" * 70)
-print("Test 1: Simple string response with default model (co/gemini-3.6-flash)")
+print("Test 1: Simple string response with default model (co/gemini-3.7-flash)")
 print("=" * 70)
 
 if has_co_auth:
@@ -47,15 +47,15 @@ if has_co_auth:
 else:
     print("⊘ Skipped - No ConnectOnion auth (run 'co auth')")
 
-# Test 2: With ConnectOnion managed keys - co/gemini-3.6-flash
+# Test 2: With ConnectOnion managed keys - co/gemini-3.7-flash
 print("\n" + "=" * 70)
-print("Test 2: With ConnectOnion managed keys (co/gemini-3.6-flash)")
+print("Test 2: With ConnectOnion managed keys (co/gemini-3.7-flash)")
 print("=" * 70)
 
 if has_co_auth:
     try:
-        answer = llm_do("What's 2+2?", model="co/gemini-3.6-flash")
-        print(f"✓ co/gemini-3.6-flash works")
+        answer = llm_do("What's 2+2?", model="co/gemini-3.7-flash")
+        print(f"✓ co/gemini-3.7-flash works")
         print(f"  Answer: {answer}")
     except Exception as e:
         print(f"✗ Error: {e}")
@@ -135,7 +135,7 @@ elif has_co_auth:
         result = llm_do(
             "I love this! Best thing ever!",
             output=Analysis,
-            model="co/gemini-3.6-flash"  # Use managed keys
+            model="co/gemini-3.7-flash"  # Use managed keys
         )
         print(f"✓ Structured output works (with managed keys)")
         print(f"  Sentiment: {result.sentiment}")
@@ -179,7 +179,7 @@ print("=" * 70)
 
 tests_run = sum([
     has_co_auth,  # Test 1: default model
-    has_co_auth,  # Test 2: co/gemini-3.6-flash
+    has_co_auth,  # Test 2: co/gemini-3.7-flash
     has_anthropic,  # Test 3: Claude
     has_gemini,  # Test 4: Gemini
     # Test 5 skipped (Ollama)
@@ -189,7 +189,7 @@ tests_run = sum([
 
 print(f"\nTests run: {tests_run}/7 (Ollama skipped)")
 print(f"\nDefault model configuration:")
-print(f"  llm_do default: co/gemini-3.6-flash")
+print(f"  llm_do default: co/gemini-3.7-flash")
 print(f"  Requires: ConnectOnion auth ('co auth')")
 print(f"\nOverride examples:")
 print(f"  llm_do('Hello', model='o4-mini', api_key='sk-...')")

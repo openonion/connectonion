@@ -147,7 +147,6 @@ def start_server(
         def open_chat_delayed():
             time.sleep(2)
             webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
-
         threading.Thread(target=open_chat_delayed, daemon=True).start()
 
     # The first-party browser speaks OIP over /ws. Native Codex and Claude Code

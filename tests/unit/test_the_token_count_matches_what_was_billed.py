@@ -1,6 +1,6 @@
 """The token count printed next to a cost cannot be reconciled with it.
 
-Measured against the real backend on `co/gemini-3.6-flash`:
+Measured against the real backend on `co/gemini-3.7-flash`:
 
     prompt: 17   completion: 3   total: 243   cost_usd: 0.00172
     what we display:  20 tok · $0.0017
@@ -70,7 +70,7 @@ class TestTheCallLineShowsTheBilledTokens:
         (test_the_run_summary_counts_the_run.py reads the same stream)."""
         from connectonion.console import Console
 
-        Console().log_llm_response("co/gemini-3.6-flash", 1200.0, 0, usage)
+        Console().log_llm_response("co/gemini-3.7-flash", 1200.0, 0, usage)
         return capsys.readouterr().err
 
     def test_it_prints_the_server_total(self, capsys):

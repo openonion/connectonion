@@ -27,7 +27,7 @@ bash(command, description, cwd=".", timeout=120)
 | `command` | str | required | Bash command to run |
 | `description` | str | required | What the command does (shown to user, not passed to shell) |
 | `cwd` | str | `"."` | Working directory |
-| `timeout` | int | `120` | Seconds before timeout (max 600) |
+| `timeout` | int | `120` | Seconds before timeout; caller-provided values are honored |
 
 Returns stdout + stderr as a string.
 
@@ -46,7 +46,7 @@ bash("npm install", "Install packages", cwd="/path/to/project")
 bash("pytest", "Run tests", cwd="./my-module")
 
 # With longer timeout
-bash("npm run build", "Build project", timeout=300)
+bash("co ai 'complete the browser workflow'", "Run sub-agent", timeout=7200)
 ```
 
 ## Direct Call (without agent)
@@ -96,6 +96,8 @@ agent.input("read main.py, fix the import error, then run python main.py to veri
 - Output is truncated at 10,000 characters to prevent token overflow
 - stdout and stderr are merged in the returned string
 - Non-zero exit codes are included in the output (`Exit code: 1`)
+- A timeout raises `subprocess.TimeoutExpired`; agent tool execution records it
+  as an error, so an orchestrator cannot mistake a killed command for success
 - Windows is not supported — use [Shell](shell.md) for cross-platform
 
 ## See Also

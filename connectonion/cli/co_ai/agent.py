@@ -174,7 +174,6 @@ def create_agent(
         image_result_formatter,
         runtime_input,
     ]
-
     agent = Agent(
         name=agent_name(co_dir),
         tools=tools,

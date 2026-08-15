@@ -46,8 +46,8 @@ print(f"\nAgent default model: {agent_model_default}")
 print(f"llm_do default model: {llm_do_model_default}")
 
 # Expected values
-expected_agent = "co/gemini-3.6-flash"
-expected_llm_do = "co/gemini-3.6-flash"
+expected_agent = "co/gemini-3.7-flash"
+expected_llm_do = "co/gemini-3.7-flash"
 
 if agent_model_default == expected_agent:
     print(f"✓ Agent default is correct: {expected_agent}")
@@ -67,10 +67,10 @@ print("=" * 60)
 print("\n1. With ConnectOnion managed keys (requires 'co auth'):")
 print("   from connectonion import llm_do, Agent")
 print("   ")
-print("   # Simple call - uses co/gemini-3.6-flash")
+print("   # Simple call - uses co/gemini-3.7-flash")
 print("   answer = llm_do('What is 2+2?')")
 print("   ")
-print("   # Agent - uses co/gemini-3.6-flash")
+print("   # Agent - uses co/gemini-3.7-flash")
 print("   agent = Agent('assistant', tools=[...])")
 print("   result = agent.input('Analyze this data')")
 
@@ -80,8 +80,8 @@ print("   answer = llm_do('Hello', model='o4-mini', api_key='sk-...')")
 print("   agent = Agent('name', model='claude-sonnet-4-20250514', api_key='sk-ant-...')")
 
 print("\n3. Backend supported models:")
-print("   - co/gemini-3.6-flash ✓")
-print("   - co/gemini-3.6-flash ✓")
+print("   - co/gemini-3.7-flash ✓")
+print("   - co/gemini-3.7-flash ✓")
 
 # Test 3: Try to use with override (if OpenAI key available)
 if has_openai:
