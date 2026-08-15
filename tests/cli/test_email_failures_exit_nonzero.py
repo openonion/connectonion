@@ -53,6 +53,30 @@ def test_reading_a_missing_email_exits_nonzero():
     assert exc_info.value.exit_code == 1
 
 
+def test_reading_preserves_unread_state_by_default(capsys):
+    email = {"id": "7", "from": "a@b.com", "subject": "Hi",
+             "timestamp": "now", "message": "body"}
+    with patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(_get_module, "get_emails", return_value=[email]), \
+         patch.object(_get_module, "mark_read") as mark_read:
+        email_commands.handle_email_read("7")
+
+    mark_read.assert_not_called()
+    assert "Unread state unchanged" in capsys.readouterr().out
+
+
+def test_explicit_mark_read_mutates_the_agent_mailbox(capsys):
+    email = {"id": "7", "from": "a@b.com", "subject": "Hi",
+             "timestamp": "now", "message": "body"}
+    with patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(_get_module, "get_emails", return_value=[email]), \
+         patch.object(_get_module, "mark_read") as mark_read:
+        email_commands.handle_email_read("7", mark_read=True)
+
+    mark_read.assert_called_once_with("7")
+    assert "Marked read" in capsys.readouterr().out
+
+
 def test_an_empty_inbox_is_not_a_failure():
     """Listing nothing is an answer, not an error — must NOT raise."""
     with patch.object(email_commands, "load_api_key", return_value="tok"), \

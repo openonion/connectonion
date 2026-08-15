@@ -60,9 +60,11 @@ A green ● marks unread.
 ```bash
 co gmail read 3                    # by listing number
 co gmail read 18f2c9d0a1b2c3d4     # by full message id
+co gmail read 3 --mark-read         # explicitly consume it
 ```
 
-Prints headers in a panel and the body below it, then marks the email read
+Prints headers in a panel and the body below it. Unread state is preserved by
+default; `--mark-read` opts into changing it
 (only when your token carries `gmail.modify` — a read-only token skips it).
 
 ### `co gmail reply <#> <message>` — Reply

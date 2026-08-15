@@ -248,6 +248,44 @@ class TestHandleOutlookInbox:
         assert "no unread emails" in capsys.readouterr().out
 
 
+class TestHandleOutlookRead:
+    """Opening a message preserves unread state unless --mark-read was chosen."""
+
+    def _outlook_mock(self):
+        outlook = MagicMock()
+        outlook.get_email_body.return_value = (
+            "From: alice@example.com\nSubject: Hello\n--- Email Body ---\nThe body text"
+        )
+        return outlook
+
+    def test_default_read_is_non_destructive(self, capsys):
+        outlook = self._outlook_mock()
+        with patch.dict(os.environ, CONNECTED_CONTACT_ENV, clear=False), \
+             patch.object(outlook_commands, "_outlook", return_value=outlook):
+            outlook_commands.handle_outlook_read("msg-123")
+
+        outlook.mark_read.assert_not_called()
+        assert "Unread state unchanged" in capsys.readouterr().out
+
+    def test_explicit_mark_read_mutates_with_write_scope(self, capsys):
+        outlook = self._outlook_mock()
+        with patch.dict(os.environ, CONNECTED_CONTACT_ENV, clear=False), \
+             patch.object(outlook_commands, "_outlook", return_value=outlook):
+            outlook_commands.handle_outlook_read("msg-123", mark_read=True)
+
+        outlook.mark_read.assert_called_once_with("msg-123")
+        assert "Marked read" in capsys.readouterr().out
+
+    def test_explicit_mark_read_explains_missing_scope(self, capsys):
+        outlook = self._outlook_mock()
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False), \
+             patch.object(outlook_commands, "_outlook", return_value=outlook):
+            outlook_commands.handle_outlook_read("msg-123", mark_read=True)
+
+        outlook.mark_read.assert_not_called()
+        assert "co auth microsoft" in capsys.readouterr().out
+
+
 class TestHandleOutlookSend:
     """handle_outlook_send sends via the Outlook tool."""
 

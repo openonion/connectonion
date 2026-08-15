@@ -292,7 +292,7 @@ class TestResolveEmailId:
 
 
 class TestHandleGmailRead:
-    """Read shows the body and only marks read when the scope allows it."""
+    """Read is non-destructive unless both the flag and scope allow mutation."""
 
     def _gmail_mock(self):
         gmail = MagicMock()
@@ -329,7 +329,7 @@ class TestHandleGmailRead:
 
         with patch.dict(os.environ, CONNECTED_ENV, clear=False):
             with patch.object(gmail_commands, "_gmail", return_value=gmail):
-                handle_gmail_read("18f2c9d0a1b2c3d4")
+                handle_gmail_read("18f2c9d0a1b2c3d4", mark_read=True)
 
         gmail.mark_read.assert_called_once_with("18f2c9d0a1b2c3d4")
         assert "Marked read" in plain(capsys.readouterr().out)
@@ -340,10 +340,22 @@ class TestHandleGmailRead:
 
         with patch.dict(os.environ, READONLY_ENV, clear=False):
             with patch.object(gmail_commands, "_gmail", return_value=gmail):
+                handle_gmail_read("18f2c9d0a1b2c3d4", mark_read=True)
+
+        gmail.mark_read.assert_not_called()
+        output = plain(capsys.readouterr().out)
+        assert "Marked read" not in output
+        assert "co auth google" in output
+
+    def test_default_read_preserves_unread_state_even_with_modify_scope(self, capsys):
+        gmail = self._gmail_mock()
+
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(gmail_commands, "_gmail", return_value=gmail):
                 handle_gmail_read("18f2c9d0a1b2c3d4")
 
         gmail.mark_read.assert_not_called()
-        assert "Marked read" not in plain(capsys.readouterr().out)
+        assert "Unread state unchanged" in plain(capsys.readouterr().out)
 
     def test_resolves_listing_number_through_cache(self, capsys):
         gmail_commands.INBOX_CACHE.parent.mkdir(parents=True, exist_ok=True)
