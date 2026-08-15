@@ -74,8 +74,11 @@ def _print_listing(gmail, emails: list, title: str):
     INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}), encoding="utf-8")
 
     if not console.is_terminal:
-        # Scripts and agents get the untruncated format with full message ids.
+        # Scripts and agents get the untruncated format with full message ids —
+        # and the same next-step tip: piped callers are exactly the AI audience
+        # the tip exists for.
         console.print(gmail._format_dicts(emails), markup=False, highlight=False)
+        print("Read one with: co gmail read <#>")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -130,7 +133,7 @@ def handle_gmail_read(email_id: str):
     gmail = _gmail()
     resolved = _resolve_email_id(gmail, email_id)
     if not resolved:
-        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co gmail to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co gmail, then co gmail read <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     body = gmail.get_email_body(resolved)
@@ -161,7 +164,7 @@ def handle_gmail_reply(email_id: str, message: str):
     gmail = _gmail()
     resolved = _resolve_email_id(gmail, email_id)
     if not resolved:
-        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co gmail to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co gmail, then co gmail reply <#> <message>.[/yellow]\n")
         raise typer.Exit(1)
 
     gmail.reply(resolved, message)

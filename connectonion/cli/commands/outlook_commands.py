@@ -65,8 +65,11 @@ def _print_listing(outlook, emails: list, title: str):
     INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}), encoding="utf-8")
 
     if not console.is_terminal:
-        # Scripts and agents get the untruncated format with full message ids.
+        # Scripts and agents get the untruncated format with full message ids —
+        # and the same next-step tip: piped callers are exactly the AI audience
+        # the tip exists for.
         console.print(outlook._format_dicts(emails), markup=False, highlight=False)
+        print("Read one with: co outlook read <#>")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -186,7 +189,7 @@ def handle_outlook_read(email_id: str):
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
     if not resolved:
-        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook read <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     body = outlook.get_email_body(resolved)
@@ -214,7 +217,7 @@ def handle_outlook_download(email_id: str, out_dir: str = "."):
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
     if not resolved:
-        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook download <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     saved = outlook.download_attachments(resolved, out_dir)
@@ -237,7 +240,7 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None):
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
     if not resolved:
-        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook reply <#> <message>.[/yellow]\n")
         raise typer.Exit(1)
 
     outlook.reply(resolved, message, send_at=send_at)
@@ -330,10 +333,12 @@ def handle_outlook_scheduled():
     INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(scheduled, 1)}), encoding="utf-8")
 
     if not console.is_terminal:
-        # Scripts and agents get one plain line per email with the full id.
+        # Scripts and agents get one plain line per email with the full id —
+        # and the same next-step tip as the terminal table.
         for email in scheduled:
             console.print(f"{email['send_at']}  {email['to']}  {email['subject']}  {email['id']}",
                           markup=False, highlight=False)
+        print("Cancel one with: co outlook cancel <#>")
         return
 
     table = Table(title="⏰ Outlook — scheduled sends", show_header=True, header_style="bold cyan")
@@ -355,7 +360,7 @@ def handle_outlook_cancel(email_id: str):
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
     if not resolved:
-        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook scheduled first.[/yellow]\n")
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook scheduled, then co outlook cancel <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     outlook.cancel_scheduled(resolved)

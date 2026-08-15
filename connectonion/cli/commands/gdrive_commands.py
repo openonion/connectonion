@@ -92,6 +92,9 @@ def _print_listing(files: list, title: str):
         # silently turns tab-separated output into something cut -f can't read.
         for item in files:
             print(f"{item['name']}\t{item['type']}\t{item['size']}\t{item['id']}")
+        # Same next-step tip as the terminal table: piped callers are exactly
+        # the AI audience the tip exists for.
+        print("Download one with: co gdrive get <#>")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -148,7 +151,7 @@ def handle_gdrive_get(file_id: str, dest: str = "."):
     drive = _gdrive()
     resolved = _resolve_file_id(file_id)
     if not resolved:
-        console.print(f"\n[yellow]No file #{file_id} in your last listing — run co gdrive to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No file #{file_id} in your last listing — run co gdrive, then co gdrive get <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     console.print(drive.download(resolved, dest=dest).replace("Downloaded to", "\n[green]✓ Downloaded[/green]"))
@@ -174,7 +177,7 @@ def handle_gdrive_rm(file_id: str):
     drive = _gdrive()
     resolved = _resolve_file_id(file_id)
     if not resolved:
-        console.print(f"\n[yellow]No file #{file_id} in your last listing — run co gdrive to refresh.[/yellow]\n")
+        console.print(f"\n[yellow]No file #{file_id} in your last listing — run co gdrive, then co gdrive rm <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     drive.delete(resolved)

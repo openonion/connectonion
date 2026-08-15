@@ -7,10 +7,9 @@ description: Read and send mail from the user's own Gmail or Outlook account, se
 
 The user's own mail and files, from the shell. One authorization, then plain commands.
 
-**Read the output, not just the exit code.** `co gmail`, `co outlook` and `co gdrive`
-exit `1` when they fail — but every `co email` failure prints `❌` and still exits `0`
-(#1012 tracks fixing that). Never use `co email ... && next_step` as your only
-success check.
+**Read the output, not just the exit code.** All four surfaces — `co gmail`,
+`co outlook`, `co email` and `co gdrive` — exit `1` when they fail (#1012 fixed
+the `co email` exception). The output still carries the recovery step; read it.
 
 ## First: which mailbox does the user mean?
 
@@ -121,9 +120,9 @@ co gdrive list -n 100 | cut -f4     # name<TAB>type<TAB>size<TAB>id
 co outlook contact list | cut -f2   # name<TAB>email<TAB>id
 ```
 
-Never parse a truncated table column; take IDs from the piped output. Note the
-piped form drops the "Read one with: co gmail read <#>" tip — the row numbers are
-still what `read` wants.
+Never parse a truncated table column; take IDs from the piped output. The piped
+form keeps the "Read one with: co gmail read <#>" tip (#1011) — the row numbers
+are still what `read` wants.
 
 Two more, for Drive specifically:
 
@@ -141,6 +140,8 @@ co email                       # bare command = inbox
 co email inbox -n 20 -u
 co email read 41               # the id in the # column, not the row position
 co email send bob@example.com "Subject" "Body"
+co email send bob@example.com "Subject" "Body" --from aaron@openonion.ai
+co email addresses             # every address this account owns; default marked
 co email sent -n 20 --to bob@example.com
 co email sent read 12
 ```
@@ -151,32 +152,30 @@ It is a smaller surface than Gmail/Outlook, and the differences bite:
   send a new one with the subject you want.
 - **`read` takes the id printed in the `#` column** (a server id), not "row 3", and
   only finds it among the last 100 received.
-- **Failures exit `0`.** Not authenticated, send rejected, unknown id — all print an
-  error and return success. Read the text.
-- A failed send that is safe to retry prints an idempotency key; retry with
-  `co email send ... --idempotency-key <key>` so a send that actually went out is
-  not duplicated.
+- A failed send that is safe to retry prints the **full retry command**
+  (`co email send ... --idempotency-key <key>`) — run it as printed so a send
+  that actually went out is not duplicated.
 - `co email sent` can answer "Sent mail is not available on this backend yet" —
   that is the deployment, not your command.
 - `-u/--unread` is filtered locally after fetching `-n` emails, so
   `co email inbox -n 10 -u` means "unread among the last 10", not "the last 10 unread".
 
+**Choosing the sender.** The account can own several addresses. `co email addresses`
+lists them (piped: `address<TAB>default`) and marks the default; `--from` on
+`co email send` picks one. Sending as an address the account does not own is a
+guarded failure: the server answers 403, nothing is sent, and the message ends with
+`See your addresses: co email addresses`. An account with no owned addresses gets an
+empty listing (exit `0`) and the pointer `co email name <name>` to claim one.
+
 Account admin: `co email name aaron` checks a custom address (`--buy` claims it,
 from credits) and `co email upgrade plus|pro` raises the quota.
-
-**One sender, today.** The agent sends from the single `AGENT_EMAIL` address set at
-`co auth` time. There is no `--from` / `from_address` flag on any command — the
-multi-address work (oo-api#148/#150, connectonion#1007) is not shipped as of
-v1.6.5. When it lands, this section gains a sender-selection step; until then, "send
-from another address" is not something this CLI can do.
 
 ## Exit codes and what to do about them
 
 | exit | Meaning | What to do |
 |---|---|---|
-| `0`, clean output | success | continue |
-| `0`, `❌` on stdout | a `co email` failure — the only surface that fails with 0 | read the text; it names the cause |
-| `1` | guarded failure: account not connected, scope missing, unknown listing number, attachment missing/too large | the message names the fix (`co auth google`, re-list, correct the path) |
+| `0`, clean output | success — including legitimately empty listings | continue |
+| `1` | guarded failure: account not connected, scope missing, unknown listing number, rejected send, unowned `--from` address, attachment missing/too large | the message names the fix (`co auth google`, `co email addresses`, re-list, correct the path) |
 | `2` | usage error: unknown subcommand, missing or bad argument | fix the syntax; the error names the argument, `--help` lists the rest |
 
 The printed messages carry the current recovery step — trust them over this table.
@@ -203,5 +202,5 @@ it themselves**, do not try to drive that flow.
 - [ ] Exact text shown to the user before any send
 - [ ] Numbers used from the listing printed immediately before the action
 - [ ] IDs taken from piped output, never from a truncated table column
-- [ ] `co email` results judged by their text, not their exit code
+- [ ] `--from` address taken from `co email addresses`, never guessed
 - [ ] Empty search reported as "no match", not as "does not exist"
