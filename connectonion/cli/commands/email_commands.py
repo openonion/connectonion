@@ -4,11 +4,12 @@ LLM-Note:
   Dependencies: imports from [rich.console, rich.table, rich.panel, .project_cmd_lib.load_api_key, ...useful_tools.send_email.send_email, ...useful_tools.get_emails.get_emails/mark_read] | imported by [cli/main.py via handle_email_*()] | hits the configured backend through the engine tools at [/api/v1/email/*]
   Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread) → Rich table | handle_email_read() → get_emails() → find by id → print body → mark_read(id)
   State/Effects: no local state | network calls happen inside the engine tools | mark_read() flips server-side read status | writes to stdout via rich.Console
-  Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read() for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py | requires prior 'co auth'
+  Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read(), handle_email_addresses() for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py | requires prior 'co auth'
   Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
 """
 
 import os
+import shlex
 
 import requests
 import typer
@@ -61,14 +62,25 @@ def handle_email_send(
     if result.get("success"):
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
         console.print(f"  From:       {result.get('from', '')}")
-        console.print(f"  Message ID: {result.get('message_id', '')}\n")
+        console.print(f"  Message ID: {result.get('message_id', '')}")
+        console.print("\n[dim]See it in your sent mail:[/dim] [bold]co email sent[/bold]\n")
     else:
-        console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}")
+        error = result.get("error", "Unknown error")
+        console.print(f"\n❌ [bold red]Failed:[/bold red] {error}")
         if result.get("request_id"):
             console.print(f"  Request ID: {result['request_id']}")
         if result.get("retryable") and result.get("idempotency_key"):
-            console.print(f"  Safe retry key: {result['idempotency_key']}")
-            console.print("  [dim]Retry the same command with --idempotency-key <key>[/dim]")
+            # The full command, restated — "the same command" is not in the
+            # output, so an agent reading only this output could not retry.
+            retry = ["co", "email", "send", shlex.quote(to), shlex.quote(subject), shlex.quote(message)]
+            if from_address:
+                retry += ["--from", shlex.quote(from_address)]
+            retry += ["--idempotency-key", shlex.quote(result["idempotency_key"])]
+            # Plain print, not console.print: Rich wraps at the console width,
+            # and a line-broken command is no longer copy-pasteable.
+            print("  Retry safely with: " + " ".join(retry))
+        if "not one of this account's email addresses" in error:
+            console.print("  See your addresses: [bold]co email addresses[/bold]")
         console.print()
         raise typer.Exit(1)
 
@@ -183,7 +195,7 @@ def handle_email_sent_read(email_id: str):
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
-        console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail.[/yellow]\n")
+        console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail — run co email sent, then co email sent read <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     header = (
@@ -211,7 +223,7 @@ def handle_email_read(email_id: str):
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
-        console.print(f"\n[yellow]No email with id {email_id} in your recent inbox.[/yellow]\n")
+        console.print(f"\n[yellow]No email with id {email_id} in your recent inbox — run co email inbox, then co email read <#>.[/yellow]\n")
         raise typer.Exit(1)
 
     header = (
@@ -226,6 +238,53 @@ def handle_email_read(email_id: str):
     console.print()
 
     mark_read(str(email_id))
+
+
+def handle_email_addresses():
+    """List every email address this account owns, marking the default sender."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+
+    r = requests.get(
+        f"{backend_url()}/api/v1/email/addresses",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    addresses = r.json().get("addresses", [])
+    if not addresses:
+        console.print("\n[cyan]Addresses:[/cyan] none owned yet")
+        console.print("\n[dim]Get one with:[/dim] [bold]co email name <name>[/bold]\n")
+        return
+
+    if not console.is_terminal:
+        # Scripts and agents get tab-separated rows: address, default flag.
+        # Plain print, not console.print: Rich expands \t into spaces.
+        for a in addresses:
+            print(f"{a['address']}\t{'default' if a.get('is_default') else ''}")
+        print('Send as one with: co email send <to> "<subject>" "<body>" --from <address>')
+        return
+
+    table = Table(title="📧 Your addresses", show_header=True, header_style="bold cyan")
+    table.add_column("Address")
+    table.add_column("Default")
+    table.add_column("Since")
+
+    for a in addresses:
+        table.add_row(
+            str(a["address"]),
+            "[green]✓[/green]" if a.get("is_default") else "",
+            str(a.get("created_at") or "")[:10],
+        )
+
+    console.print()
+    console.print(table)
+    console.print('\n[dim]Send as one with:[/dim] [bold]co email send <to> "<subject>" "<body>" --from <address>[/bold]\n')
 
 
 def handle_email_name(name: str, buy: bool = False):
