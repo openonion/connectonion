@@ -553,28 +553,29 @@ def check_approval(agent: 'Agent') -> None:
         return
 
     # =================================================================
-    # The dialog belongs to the operator, not to whoever is connected
+    # The dialog belongs to the authenticated user of this session
     # =================================================================
-    # Placed here, at the one line that is about to prompt — not earlier. An
-    # earlier check refused `read_file` for a contact, which gates access
-    # rather than approval and makes the agent useless to the people it was
-    # shared with. Only a call that would have opened the dialog is affected.
+    # An invite grants normal agent use. A contact therefore needs to be able
+    # to approve the edits and commands required by their own request. Admin is
+    # reserved for control-plane operations; those remain separately guarded
+    # by the signed /admin and /superadmin routes and by the control-file check
+    # above.
     #
-    # The host knows who is on this socket: CONNECT is signed and the trust
-    # layer classified them before the session existed. That answer used to be
-    # dropped, so a contact saw the owner's "Allow" button and an invite code
-    # carried command execution.
+    # The host derives this level from the signed CONNECT identity on every
+    # turn. It is server-owned session state, so a client cannot promote itself
+    # by editing the session JSON. Unknown, blocked, and stranger levels still
+    # fail closed here as defence in depth, even though the trust gate should
+    # stop them before a session begins.
     #
-    # No requester recorded means the session did not arrive through the host —
-    # a local `co ai` run — and behaves as before.
+    # No requester recorded means the session is local (`co ai`) and behaves as
+    # before.
     requester = agent.current_session.get('requester')
-    if requester and requester.get('level') != 'admin':
+    user_levels = {'contact', 'whitelist', 'whitelisted', 'admin'}
+    if requester and requester.get('level') not in user_levels:
         raise ValueError(
-            f"{tool_name} needs the operator's approval, and you are "
-            f"{requester.get('level', 'not the operator')}. Only they can "
-            f"answer that prompt. Ask them to allow it in .co/host.yaml under "
-            f"`permissions` — the entry for this call is "
-            f"`{_permission_line(pending)}`."
+            f"{tool_name} needs approval from an authenticated contact, and "
+            f"you are {requester.get('level', 'unknown')}. Ask the agent owner "
+            "for an invite or access."
         )
 
     # Get approval key for this tool

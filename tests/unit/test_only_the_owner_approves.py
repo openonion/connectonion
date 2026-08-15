@@ -5,13 +5,9 @@ layer classifies the caller as admin / whitelisted / contact / blocked before
 the session exists. That answer was computed and dropped — `approval.py` had
 zero references to the requester.
 
-So the dialog went to whoever was connected. A contact — anyone who typed the
-invite code — was shown the owner's dialog and could click "Allow". An invite
-code carried command execution.
-
-The dialog is the operator's. Anyone else gets a refusal that names what the
-operator would have to pre-authorise, which is a thing they can paste into a
-message and ask for.
+An invite is the normal B2B user grant. Its contact may use the agent and
+approve work in their own authenticated session. Admin remains the control-
+plane role; it is not required for ordinary agent work.
 """
 
 import pytest
@@ -51,50 +47,31 @@ DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
                                            'description': 'clean'}}
 
 
-class TestOnlyAnAdminIsAsked:
+class TestAuthenticatedUsersApproveTheirOwnWork:
 
-    @pytest.mark.parametrize("level", ['contact', 'whitelisted', 'stranger'])
-    def test_a_non_admin_is_not_shown_the_dialog(self, level):
-        io = FakeIO()
+    @pytest.mark.parametrize("level", ['contact', 'whitelist', 'whitelisted', 'admin'])
+    def test_an_authenticated_user_is_shown_the_dialog(self, level):
+        io = FakeIO(responses=[{'approved': True}])
         agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
                                             'level': level})
-        agent.current_session['pending_tool'] = DANGEROUS
-
-        with pytest.raises(ValueError):
-            check_approval(agent)
-
-        assert io.sent == [], (
-            f"a {level} was offered the operator's approval dialog and could "
-            "have clicked Allow"
-        )
-
-    def test_the_refusal_names_what_to_ask_for(self):
-        """The requester cannot fix this themselves, so tell them what to ask.
-
-        A refusal that just says no turns into a message to the operator
-        saying 'it did not work', which costs a round trip to learn nothing.
-        """
-        agent = FakeAgent(io=FakeIO(), requester={'address': '0x' + 'e' * 64,
-                                                  'level': 'contact'})
-        agent.current_session['pending_tool'] = DANGEROUS
-
-        with pytest.raises(ValueError) as exc:
-            check_approval(agent)
-
-        message = str(exc.value)
-        assert 'host.yaml' in message
-        assert 'bash' in message
-
-    def test_an_admin_is_still_asked(self):
-        io = FakeIO(responses=[{'approved': True}])
-        agent = FakeAgent(io=io, requester={'address': '0x' + 'f' * 64,
-                                            'level': 'admin'})
         agent.current_session['pending_tool'] = DANGEROUS
 
         check_approval(agent)
 
         assert len(io.sent) == 1
         assert io.sent[0]['type'] == 'approval_needed'
+
+    @pytest.mark.parametrize("level", ['stranger', 'blocked', 'unknown'])
+    def test_a_non_user_is_not_shown_the_dialog(self, level):
+        io = FakeIO()
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': level})
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        with pytest.raises(ValueError, match='authenticated contact'):
+            check_approval(agent)
+
+        assert io.sent == []
 
     def test_a_safe_tool_is_unaffected_for_everyone(self):
         """This gates approval, not access. A contact may still use the agent."""
