@@ -215,7 +215,7 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
 
 # The only keys worth rescuing from a frontmatter YAML refuses to parse.
 #
-# Deliberately not `tools:`. test_one_reader_for_skill_frontmatter records why
+# Deliberately not `tools:` or `allowed-tools:`. The frontmatter tests record why
 # the strict reader won: "neither invents a reading of a file that has a syntax
 # error in it", and `tools:` is fed to _grant_skill_permissions — guessing it
 # from a file that does not parse would widen an agent's permissions on the
@@ -436,22 +436,24 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         # Say what it costs, which is no longer "everything". _read_frontmatter
         # rescues name and description from a file YAML rejects, so these skills
         # work — reporting them as unreadable teaches people to stop reading the
-        # doctor. What is genuinely lost is `tools:`, which is not rescued because
+        # doctor. What is genuinely lost is a tool permission declaration, which
+        # is not rescued because
         # it grants permissions, so a file that declares one is the real problem:
         # the declaration does nothing and the author cannot tell.
         recovered = _read_frontmatter(yaml_text)
-        # `tools:` only. `allowed-tools:` is another tool's key and _tool_patterns
-        # never reads it, so it is ignored whether or not the YAML parses —
-        # blaming the bad quoting for that would be a false claim, and most of
-        # these files declare allowed-tools rather than tools.
+        # Neither permission spelling is recovered from malformed YAML. A
+        # line-based guess must never widen what the agent may do.
         declares_tools = any(
-            line.split(':', 1)[0].strip() == 'tools'
+            line.split(':', 1)[0].strip() in {'tools', 'allowed-tools'}
             for line in yaml_text.splitlines()
             if ':' in line and not line.startswith((' ', '\t'))
         )
         if declares_tools:
+            survived = ('; name and description were still read'
+                        if recovered.get('description') else '')
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
-                    f'— its tools: declaration is being ignored')
+                    f'— its tools/allowed-tools permission declaration is being '
+                    f'ignored{survived}')
         if recovered.get('description'):
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— name and description were still read')
@@ -485,7 +487,7 @@ def skills_that_will_not_travel(co_dir: Optional[Path] = None,
 # =============================================================================
 
 def _tool_patterns(frontmatter: dict) -> list:
-    """The `tools:` declaration as a list of patterns.
+    """The `tools:` or Claude Code `allowed-tools:` declaration as a list.
 
     YAML gives a string for `tools: read_file` and a list for `tools: [a, b]`.
     The caller does `for pattern in patterns`, so the scalar form walked the
@@ -493,13 +495,21 @@ def _tool_patterns(frontmatter: dict) -> list:
     Nothing was granted that should not have been -- no single character matches
     a tool name -- but the author's declaration did nothing at all.
     """
-    declared = frontmatter.get('tools')
+    # Our native spelling is authoritative when both appear. This lets an
+    # author narrow imported Claude permissions without editing that metadata.
+    is_claude_alias = 'tools' not in frontmatter
+    declared = (frontmatter.get('allowed-tools') if is_claude_alias
+                else frontmatter.get('tools'))
     if declared is None:
         # No key at all, or `tools:` with nothing after it -- a null in YAML,
         # which the caller's `for pattern in patterns` used to trip over. That
         # runs when the skill is invoked, so it took the user's turn with it.
         return []
     if isinstance(declared, str):
+        # Claude Code commonly serialises several tools as one comma-separated
+        # YAML scalar: `allowed-tools: Read, Edit, Bash(git *)`.
+        if is_claude_alias:
+            return [pattern.strip() for pattern in declared.split(',') if pattern.strip()]
         return [declared]
     return list(declared)
 

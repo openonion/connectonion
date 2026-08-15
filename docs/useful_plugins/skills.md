@@ -53,6 +53,10 @@ Create a well-formatted git commit for staged changes.
 
 User types: `/commit` → git commands auto-approved → commit created → permissions cleared.
 
+Skills imported from Claude Code may use `allowed-tools` instead of `tools`.
+Both YAML lists and Claude's comma-separated form are supported. If a file
+declares both keys, ConnectOnion's native `tools` value takes precedence.
+
 ## Creating Skills
 
 ### Project-level (`.co/skills/`)

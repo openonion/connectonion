@@ -116,14 +116,8 @@ class TestABrokenFileWithoutToolsSaysWhatSurvived:
         assert frontmatter["description"].startswith("Rework the outline")
 
 
-class TestAllowedToolsIsNotOurKey:
-    """`allowed-tools:` belongs to another tool and _tool_patterns never reads it.
-
-    The first version of this message counted it, so a file declaring only
-    `allowed-tools` was told its tools were being ignored *because of* the bad
-    quoting. They are ignored either way — most of the real files on this machine
-    declare exactly that, so the wrong claim would have been the common case.
-    """
+class TestClaudeAllowedTools:
+    """Claude permissions work when valid and fail closed when YAML is invalid."""
 
     ALLOWED_TOOLS_ONLY = """---
 allowed-tools: Read, Edit, Glob
@@ -133,12 +127,12 @@ description: Rework the outline: from the pain.
 # Outline
 """
 
-    def test_it_does_not_blame_the_quoting_for_them(self, tmp_path):
+    def test_bad_yaml_reports_that_permissions_were_lost(self, tmp_path):
         reason = _why_the_skill_cannot_be_read(
             _write(tmp_path, self.ALLOWED_TOOLS_ONLY)
         )
 
-        assert "ignored" not in reason
+        assert "permission declaration is being ignored" in reason
 
     def test_it_says_what_did_survive(self, tmp_path):
         reason = _why_the_skill_cannot_be_read(
@@ -147,11 +141,18 @@ description: Rework the outline: from the pain.
 
         assert "description" in reason
 
-    def test_the_loader_never_grants_from_allowed_tools(self, tmp_path):
-        """Even in a well-formed file, so the message is right to ignore it."""
+    def test_comma_separated_allowed_tools_are_individual_patterns(self, tmp_path):
         from connectonion.useful_plugins.skills import _tool_patterns
 
-        assert _tool_patterns({"allowed-tools": "Read, Edit"}) == []
+        assert _tool_patterns({"allowed-tools": "Read, Edit, Bash(git *)"}) == [
+            "Read", "Edit", "Bash(git *)",
+        ]
+
+    def test_native_tools_override_the_imported_alias(self):
+        from connectonion.useful_plugins.skills import _tool_patterns
+
+        frontmatter = {"tools": ["read_file"], "allowed-tools": ["write"]}
+        assert _tool_patterns(frontmatter) == ["read_file"]
 
 
 class TestTheGenuinelyUnreadableStaysUnreadable:

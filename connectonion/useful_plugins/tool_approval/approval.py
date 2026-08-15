@@ -359,7 +359,9 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
         True if tool matches pattern
     """
     # Pattern: "tool_name" - matches tool name only
-    if pattern == tool_name:
+    # Claude Code frontmatter uses title-cased names such as `Edit`; native
+    # ConnectOnion tools are lower-case. The spelling differs, the tool does not.
+    if pattern.lower() == tool_name.lower():
         return True
 
     # Pattern: "Bash(command pattern)" - matches bash commands

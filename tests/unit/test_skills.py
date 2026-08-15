@@ -259,6 +259,7 @@ class TestPatternMatching:
         # Simple tool name
         assert matches_permission_pattern('read_file', {}, 'read_file') == True
         assert matches_permission_pattern('write', {}, 'read_file') == False
+        assert matches_permission_pattern('edit', {}, 'Edit') == True
 
         # Bash patterns
         assert matches_permission_pattern('bash', {'command': 'git status'}, 'Bash(git status)') == True
@@ -268,6 +269,21 @@ class TestPatternMatching:
 
 class TestSkillInvocation:
     """Tests for skill invocation via /command."""
+
+    @patch.object(skills_module, '_load_skill')
+    def test_claude_allowed_tools_grant_turn_scoped_permissions(self, mock_load):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [{'role': 'user', 'content': '/commit'}]
+        mock_load.return_value = {
+            'frontmatter': {'allowed-tools': 'read_file, Bash(git status)'},
+            'instructions': 'Create a git commit',
+        }
+
+        handle_skill_invocation(agent)
+
+        assert 'read_file' in agent.current_session['permissions']
+        assert 'Bash(git status)' in agent.current_session['permissions']
+        assert '_permission_snapshot' in agent.current_session
 
     @patch.object(skills_module, '_load_skill')
     def test_handle_skill_invocation_detects_slash_command(self, mock_load):
