@@ -13,9 +13,17 @@ Components under test:
 from types import SimpleNamespace
 from pathlib import Path
 
+import pytest
+
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
 from connectonion.useful_plugins import eval as eval_plugin
+
+
+@pytest.fixture(autouse=True)
+def avoid_real_global_owner_setup(monkeypatch):
+    """Server tests exercise hosting without writing to the developer's home."""
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", lambda _co_dir: False)
 
 
 def test_create_coding_agent(monkeypatch, tmp_path):
@@ -91,6 +99,32 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
     assert called["agent"] is agent
+
+
+def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
+    agent = SimpleNamespace(name="agent")
+    printed = []
+    prepared = []
+    secret = "NEVER-PRINT-THIS2"
+
+    def prepare(co_dir):
+        prepared.append(co_dir)
+        return True
+
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", prepare)
+    monkeypatch.setattr(main_mod, "host", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "connectonion.cli.commands.project_cmd_lib.console.print",
+        lambda message: printed.append(message),
+    )
+    monkeypatch.setenv("CO_INVITE_CODE", secret)
+
+    main_mod.start_server(agent)
+
+    assert prepared == [Path.home() / ".co"]
+    output = " ".join(printed)
+    assert "co keys --reveal" in output
+    assert secret not in output
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):

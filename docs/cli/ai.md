@@ -23,6 +23,18 @@ co ai
 - You chat with the agent through the web UI
 - Agent runs in your project directory
 
+On its first web-server start, `co ai` creates a private owner invite in
+`~/.co/keys.env`. The code is never printed in startup logs. When you are ready
+to connect your own client, reveal it intentionally:
+
+```bash
+co keys --reveal
+```
+
+Restarting `co ai` keeps the same invite, so clients already given the code are
+not locked out. An explicit `CO_INVITE_CODE` in the current project or process
+continues to take precedence.
+
 ### One-Shot Mode
 
 ```bash

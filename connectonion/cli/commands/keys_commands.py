@@ -14,7 +14,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from dotenv import load_dotenv
+
+from .status_commands import _selected_credential_values
 
 console = Console()
 
@@ -50,28 +51,30 @@ def _find_co_dir() -> Path:
     return None
 
 
-def _load_env_vars() -> dict:
-    """Load all relevant env vars from .env files."""
-    # Load global first, then local (local overrides)
-    global_env = Path.home() / ".co" / "keys.env"
-    if global_env.exists():
-        load_dotenv(global_env, override=False)
-
-    local_env = Path(".env")
-    if local_env.exists():
-        load_dotenv(local_env, override=True)
-
-    return {
-        "OPENONION_API_KEY": os.getenv("OPENONION_API_KEY"),
-        "AGENT_ADDRESS": os.getenv("AGENT_ADDRESS"),
-        "AGENT_EMAIL": os.getenv("AGENT_EMAIL"),
-        "GOOGLE_EMAIL": os.getenv("GOOGLE_EMAIL"),
-        "GOOGLE_ACCESS_TOKEN": os.getenv("GOOGLE_ACCESS_TOKEN"),
-        "GOOGLE_REFRESH_TOKEN": os.getenv("GOOGLE_REFRESH_TOKEN"),
-        "MICROSOFT_EMAIL": os.getenv("MICROSOFT_EMAIL"),
-        "MICROSOFT_ACCESS_TOKEN": os.getenv("MICROSOFT_ACCESS_TOKEN"),
-        "MICROSOFT_REFRESH_TOKEN": os.getenv("MICROSOFT_REFRESH_TOKEN"),
-    }
+def _load_env_vars(
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: dict[str, str] | None = None,
+) -> dict[str, str | None]:
+    """Select credentials without mutating the process environment."""
+    names = (
+        "OPENONION_API_KEY",
+        "CO_INVITE_CODE",
+        "GOOGLE_EMAIL",
+        "GOOGLE_ACCESS_TOKEN",
+        "GOOGLE_REFRESH_TOKEN",
+        "MICROSOFT_EMAIL",
+        "MICROSOFT_ACCESS_TOKEN",
+        "MICROSOFT_REFRESH_TOKEN",
+        "TELEGRAM_BOT_TOKEN",
+    )
+    return _selected_credential_values(
+        names,
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
+    )
 
 
 def _mask(value: str, show: int = 8, secret: bool = False) -> str:
@@ -185,6 +188,13 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
         sec_table.add_row("API Key", api_key if reveal else _mask(api_key))
     else:
         sec_table.add_row("API Key", "[dim]not set — run 'co auth'[/dim]")
+
+    owner_invite = env_vars.get("CO_INVITE_CODE")
+    if owner_invite:
+        sec_table.add_row(
+            "Owner Invite",
+            owner_invite if reveal else _mask(owner_invite, secret=True),
+        )
 
     console.print(Panel(sec_table, title="[bold]Secrets[/bold]", border_style="yellow"))
 
@@ -324,4 +334,3 @@ def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
     else:
         console.print("[dim]Each line goes in ~/.ssh/authorized_keys on that server only.[/dim]")
         console.print("[dim]Use [bold]--write[/bold] to cache the private halves under ~/.co/ssh/.[/dim]\n")
-

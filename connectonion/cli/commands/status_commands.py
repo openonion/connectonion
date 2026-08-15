@@ -79,7 +79,10 @@ def _is_configured(value: object) -> bool:
     )
 
 
-def _read_credential_file(path: Path) -> dict[str, str]:
+def _read_credential_file(
+    path: Path,
+    supported_names: set[str] | None = None,
+) -> dict[str, str]:
     """Read supported key entries without mutating ``os.environ``."""
     if not path.is_file():
         return {}
@@ -87,7 +90,11 @@ def _read_credential_file(path: Path) -> dict[str, str]:
         values = dotenv_values(path, interpolate=False)
     except (OSError, UnicodeError):
         return {}
-    supported = {name for name, _provider in CREDENTIAL_ENV_VARS} | _OAUTH_ENV_VARS
+    supported = (
+        {name for name, _provider in CREDENTIAL_ENV_VARS} | _OAUTH_ENV_VARS
+        if supported_names is None
+        else supported_names
+    )
     return {
         name: str(value)
         for name, value in values.items()
@@ -100,6 +107,7 @@ def _credential_sources(
     project_dir: Path | None = None,
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
+    supported_names: set[str] | None = None,
 ) -> tuple[tuple[str, Mapping[str, str]], ...]:
     """Return supported credential values grouped by privacy-safe source."""
     project_dir = (
@@ -113,9 +121,42 @@ def _credential_sources(
 
     return (
         ("process environment", environ),
-        (project_source, _read_credential_file(project_dir / ".env")),
-        ("~/.co/keys.env", _read_credential_file(home / ".co" / "keys.env")),
+        (
+            project_source,
+            _read_credential_file(project_dir / ".env", supported_names),
+        ),
+        (
+            "~/.co/keys.env",
+            _read_credential_file(home / ".co" / "keys.env", supported_names),
+        ),
     )
+
+
+def _selected_credential_values(
+    names: tuple[str, ...],
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str | None]:
+    """Select the first configured value from the canonical source inventory."""
+    sources = _credential_sources(
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
+        supported_names=set(names),
+    )
+    return {
+        name: next(
+            (
+                str(values[name])
+                for _source, values in sources
+                if _is_configured(values.get(name))
+            ),
+            None,
+        )
+        for name in names
+    }
 
 
 def _short_account(account: str) -> str:
