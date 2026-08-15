@@ -22,7 +22,7 @@ co ai
 - Opens `chat.openonion.ai/{your-address}` in your browser
 - You chat with the agent through the web UI
 - Agent runs in your project directory
-- Starts an authenticated ACP v1 WebSocket at `/acp` for compatible clients
+- Serves OIP 0.1 over the authenticated `/ws` connection
 
 On its first web-server start, `co ai` creates a private owner invite in
 `~/.co/keys.env`. The code is never printed in startup logs. When you are ready
@@ -36,43 +36,12 @@ Restarting `co ai` keeps the same invite, so clients already given the code are
 not locked out. An explicit `CO_INVITE_CODE` in the current project or process
 continues to take precedence.
 
-The published `@connectonion/react@0.4.2-alpha.2` package owns browser transport
-selection, and O Chat pins it. An exact supported discovery descriptor selects
-authenticated `/acp`;
-a Host that omits the descriptor keeps the bounded `/ws` compatibility path.
-After React selects native ACP, admission or transport failure fails closed
-instead of silently downgrading. Both endpoints use the same ConnectOnion
-identity, recipient binding, replay protection, and trust policy; starting ACP
-does not make the coding Agent anonymous or public.
-
-Browser ACP connections first exchange a signed request for a short-lived,
-single-use, Origin-bound ticket. Programmatic clients can sign the WebSocket
-upgrade directly. See [Authenticated ACP WebSocket](../network/acp-websocket.md).
-This preview supports direct loopback or TLS/WSS connections only. It does not
-claim end-to-end encryption through an untrusted TLS-terminating relay.
-Network clients send `/` as their ACP workspace; the Host maps that virtual
-root to the project directory captured when `co ai` started. They cannot select
-another Host path. Local stdio ACP clients continue to provide an existing
-absolute working directory.
-
-Native ACP prompts accept text, PNG/JPEG/GIF/WebP images, and embedded text or
-binary files. Files use the opaque URI form
-`connectonion-upload:/<percent-encoded-filename>`; the URI never names a Host
-path and ordinary resource links are not fetched. Count and decoded-size limits
-come from `host.yaml`, while the direct ACP preview also keeps a one-MiB
-JSON-RPC frame limit. Larger files need a future authenticated streaming upload
-rather than a larger inline WebSocket message. Successful network files are
-retained for resumable sessions under a per-authenticated-principal quota
-(`max_acp_upload_storage`, 100 MiB by default; `max_acp_upload_files`, 100 by
-default). Reaching either cumulative limit fails before the Agent turn without
-writing another file.
-
-Durable native-network ACP sessions have a separate authenticated-principal
-quota: 100 snapshots, 100 MiB total serialized state, and 32 MiB for one
-snapshot by default. Operators can lower these with `max_acp_sessions`,
-`max_acp_session_storage`, and `max_acp_snapshot_size`. Quota exhaustion keeps
-the previous resumable snapshot unchanged; it never truncates conversation
-state. Local stdio ACP is not charged to a remote principal quota.
+The published `@connectonion/react` package owns the browser OIP client, browser
+identity, onboarding, reconnect, approvals, and session normalization. O Chat
+pins one exact preview version. The Host advertises OIP 0.1 in `CONNECTED`; an
+explicit unsupported descriptor fails clearly instead of selecting another
+transport. Identity, recipient binding, replay protection, and trust policy
+remain ConnectOnion Host responsibilities.
 
 ### One-Shot Mode
 
@@ -106,98 +75,6 @@ Use foreground shell commands when the next subprocess must retain their result.
 On Windows, snapshot files rely on the current user's profile-directory ACLs;
 POSIX systems additionally enforce `0700` directories and `0600` files.
 
-### ACP Agent Mode
-
-```bash
-co ai --acp
-```
-
-Starts a stable ACP v1 agent server over stdio so an ACP-compatible editor or
-CLI can create a session and drive the real `co ai` coding agent. ACP messages
-are newline-delimited JSON-RPC on stdin/stdout; human-readable diagnostics stay
-on stderr.
-
-The first request on each connection must be `initialize`. Session requests
-sent before initialization fail without constructing an Agent or allocating
-session state, and a second `initialize` request on the same connection is
-rejected. Clients may continue with session requests after either rejection
-only when the connection has already completed one successful initialization.
-
-Use `--acp` when another local process launches `co ai` and owns its stdio.
-Default web-server mode also exposes authenticated ACP v1 at `/acp`; it is a
-network endpoint and therefore keeps ConnectOnion authentication and trust in
-front of ACP initialization.
-
-Each ACP session owns one in-memory `co ai` Agent, so later prompts in that
-session reuse its conversation and tool state. The working directory supplied
-by the client must be an existing absolute directory. Additional workspace
-roots are not accepted yet.
-
-Automation and concurrent acceptance tests can give one ACP process a private
-mutable-state root:
-
-```bash
-co ai --acp --state-dir /private/tmp/co-acp-test
-```
-
-This roots that process's durable ACP snapshots, Agent logs, and eval files
-under the selected directory. It does not copy credentials or create another
-ConnectOnion identity: the Agent name and configured provider credentials still
-come from the normal global configuration. On POSIX, the selected directory is
-created or tightened to mode `0700`; a symlink is rejected. The default remains
-`~/.co`, and `--state-dir` without `--acp` exits with an error. This first slice
-does not change web-server or network Host storage semantics.
-
-The stdio adapter advertises image and embedded-context prompt capabilities
-with the same validated content-block mapping as the network endpoint. Audio is
-not advertised. Invalid MIME types, base64, counts, sizes, or unsafe upload
-names fail before the Agent turn begins.
-
-ACP stdio MCP servers are disabled by default because their configuration can
-launch local processes. An operator can grant that launch authority explicitly:
-
-```bash
-co ai --acp --acp-mcp
-```
-
-With that flag, `session/new` and `session/resume` may provide up to eight
-stdio MCP servers with absolute executable paths. HTTP, SSE, and ACP-transport
-MCP servers are rejected. Each server runs in the session cwd with the MCP
-SDK's safe environment baseline plus only the environment entries explicitly
-provided for that server; the complete parent environment is not copied.
-
-MCP commands, arguments, environment values, and discovered tools are not
-persisted. A resumed session must provide its complete MCP list again. Closing
-the session, client EOF, or partial startup failure reaps every owned process.
-Discovery is bounded to 128 tools and 32 pages, schemas and results are bounded
-to 64 KiB, tool-call arguments are bounded to 64 KiB, and calls have a
-60-second read timeout.
-
-Remote tool names and annotations are not trusted as permissions. MCP tools
-receive collision-resistant `mcp__...` names and pass through the ordinary
-ConnectOnion approval hook. Read only and Auto profiles ask the ACP operator
-when an action is outside their policy; explicit Full access remains the only
-approval bypass.
-"Allow for this session" lasts only for the current open MCP process pool.
-Client-granted MCP approvals are not persisted, so resume asks again even when
-the client supplies the same server and tool names. Explicit operator rules in
-`.co/host.yaml` remain durable configuration.
-
-ACP session updates preserve the Agent's event order: thinking, tool starts,
-tool results, and the terminal assistant response are emitted through one FIFO
-consumer per session. Tool arguments and supported JSON-native results remain
-structured in ACP `rawInput`/`rawOutput`; every result also carries text content
-for compatibility. Turn usage and stop reasons come from the Agent's structured
-terminal record, not display text. `session/cancel` and client EOF cooperatively
-stop the active turn, and late events from that retired turn are not forwarded
-into a later prompt.
-
-ConnectOnion currently receives one complete response from the model provider,
-so the terminal assistant message is one ACP chunk rather than a live token
-stream. Client-mediated approval is generation-scoped and fails closed on
-cancelled, unknown, or disconnected outcomes. `--yolo` remains an explicit
-operator choice at process launch.
-
 ## Options
 
 | Option | Short | Default | Description |
@@ -210,9 +87,6 @@ operator choice at process launch.
 | `--eval` | | off | Debug a task with two extra model calls that score completion |
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
-| `--acp` | | off | Serve stable ACP v1 over stdin/stdout |
-| `--acp-mcp` | | off | With `--acp`, allow session-scoped stdio MCP launches |
-| `--state-dir` | | `~/.co` | With `--acp`, isolate mutable session, log, and eval state |
 
 ```bash
 co ai --port 9000
@@ -220,9 +94,6 @@ co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
 co ai --eval "Check whether this agent really completed the task"
-co ai --acp
-co ai --acp --acp-mcp
-co ai --acp --state-dir /private/tmp/co-acp-test
 ```
 
 ## Full access (`--yolo`)
@@ -296,26 +167,6 @@ Codex runs with permission requests denied.
 - Continue the same Claude Code session by passing back its `session_id`
 - Watch Claude's inner tools start and finish as live O Chat cards
 - Receive one stable JSON result for success, timeout, or provider errors
-
-### Delegate through a generic ACP child
-
-`co ai` also exposes `acp_agent` for a task that specifically needs the common
-ACP client edge rather than the preferred native `codex` or `claude_code`
-routes. The tool accepts a named engine, explicit working directory, and
-optional resumable session ID; command, approval, and workspace authority are
-not model arguments.
-
-Read only and Workspace profiles keep the child in manual approval. A valid,
-bounded Full Access grant selects auto. Hosted non-admin requesters cannot
-start a local ACP child. The pinned `codex-acp@1.1.14` route is rejected outside
-Full Access because its manual/read-only mode does not reliably request ACP
-permission for shell or outbound network actions; use the native `codex` tool
-for approval-aware Codex delegation.
-
-The pinned Gemini route is one-turn and requires a Gemini API key, Vertex AI,
-or enterprise Code Assist. Google retired individual Gemini CLI OAuth service
-on June 18, 2026, so an old local OAuth credential file is not a readiness
-signal and cannot make that account path work.
 
 ### Delegate to Claude Code
 

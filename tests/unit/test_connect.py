@@ -234,7 +234,7 @@ class TestUIEventTransformation:
         assert agent.ui[0]["status"] == "error"
 
     @pytest.mark.parametrize("status", ["failed", "not_found", "interrupted"])
-    def test_handle_acp_failure_statuses_as_errors(self, status):
+    def test_handle_provider_failure_statuses_as_errors(self, status):
         agent = RemoteAgent("0x123")
         agent._handle_stream_event(
             {"type": "tool_call", "tool_id": "tc1", "name": "search"}

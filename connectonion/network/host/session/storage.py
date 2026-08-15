@@ -1,7 +1,7 @@
 """
 Purpose: Persistent session storage for hosted agent requests with TTL expiry
 LLM-Note:
-  Dependencies: imports from [pydantic, pathlib, json, os, threading, time] | imported by [host/http_router.py, host/server.py, host/ws_router/, host/session/] | tested by [test_session_storage.py, test_acp_host_set_mode.py]
+  Dependencies: imports from [pydantic, pathlib, json, os, threading, time] | imported by [host/http_router.py, host/server.py, host/ws_router/, host/session/] | tested by [test_session_storage.py, test_host_session_mode.py]
   Data flow: save() appends under the file lock | atomic_update() locks, reads detached latest, validates replacement, and appends if changed | get() reads newest matching valid line | compact() replaces under the same lock
   State/Effects: append-only JSONL plus sibling lock file; thread-local depth permits same-thread nested operations while OS locks serialize threads/processes
   Integration: atomic_update is the durable boundary shared by prompt claims and Host policy transactions

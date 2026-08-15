@@ -42,8 +42,8 @@ When activated, Full access:
 3. pauses at the Host-owned turn ceiling; and
 4. lets the operator continue locally, switch modes, or stop.
 
-The canonical permission profile request is the ACP `session/set_mode`
-transaction with `modeId: ":danger-full-access"`. Older clients may send this
+The canonical permission profile request is the OIP `mode_change` frame with
+`mode: ":danger-full-access"`. Older clients may send this
 compatibility frame:
 
 ```json

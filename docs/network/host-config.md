@@ -205,14 +205,6 @@ max_file_size: 10
 # Default: 10
 max_files_per_request: 10
 
-# Native ACP files retained for resumable sessions, per authenticated principal
-max_acp_upload_storage: 100      # MB across successful prompts
-max_acp_upload_files: 100        # Files across successful prompts
-
-# Durable native ACP snapshots, per authenticated principal
-max_acp_sessions: 100            # Number of resumable snapshots
-max_acp_session_storage: 100     # MB across serialized snapshots
-max_acp_snapshot_size: 32        # MB in one durable snapshot
 ```
 
 **Error Messages:**

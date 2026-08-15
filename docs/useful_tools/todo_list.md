@@ -62,7 +62,7 @@ todo.add("Update docs", "Updating docs")
 todo.add("Fix production", "Fixing production", priority="high")
 ```
 
-Priority uses the ACP values `high`, `medium`, or `low`. Existing calls default
+Priority uses the OIP values `high`, `medium`, or `low`. Existing calls default
 to `medium`.
 
 ### start(content)
@@ -135,10 +135,9 @@ todo.clear()
 ## Hosted plan state
 
 When an Agent invokes TodoList, every successful state change also updates the
-canonical session `plan` and streams one complete replacement. The stable ACP
-notification is followed by the legacy `type: "plan"` event during rollout.
+canonical session `plan` and streams one complete OIP replacement.
 `@connectonion/react` exposes the normalized list as `plan`; O Chat renders it
-without parsing ACP.
+without constructing protocol frames.
 
 Hosted calls are transactional: TodoList changes happen on a detached fork and
 Agent-owned plan/session events remain buffered until the tool succeeds. An
