@@ -495,14 +495,15 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         return f'SKILL.md frontmatter is not valid YAML{where}: {detail}'
 
     frontmatter = _read_frontmatter(yaml_text)
-    if 'allowed-tools' in frontmatter and 'tools' not in frontmatter:
-        return ('Claude Code allowed-tools permissions are not auto-approved by '
-                'ConnectOnion 1.6.9; review the tool names and add tools: if intended')
     skill_name = frontmatter.get('name') or skill_md.parent.name
     try:
         parse_skill_requirements(frontmatter, str(skill_name))
     except SkillManifestError as exc:
         return str(exc)
+
+    if 'allowed-tools' in frontmatter and 'tools' not in frontmatter:
+        return ('Claude Code allowed-tools permissions are not auto-approved by '
+                'ConnectOnion 1.6.9; review the tool names and add tools: if intended')
 
     return None
 

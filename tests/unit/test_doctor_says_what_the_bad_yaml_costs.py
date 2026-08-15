@@ -169,6 +169,22 @@ allowed-tools: Bash(git status) Read
         assert "allowed-tools" in reason
         assert "not auto-approve" in reason
 
+    def test_manifest_errors_are_not_hidden_by_the_compatibility_warning(self, tmp_path):
+        skill = _write(tmp_path, """---
+name: broken-requirements
+description: A skill with two problems
+allowed-tools: Read
+requirements: definitely-not-a-mapping
+---
+
+# Helper
+""")
+
+        reason = _why_the_skill_cannot_be_read(skill)
+
+        assert "requirements" in reason
+        assert "allowed-tools" not in reason
+
     def test_invoking_the_skill_warns_once(self, tmp_path, monkeypatch):
         import importlib
 
