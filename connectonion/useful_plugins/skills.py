@@ -421,8 +421,14 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
     if not match:
         return None
 
-    import yaml
     yaml_text = match.group(1)
+    top_level_keys = {
+        line.split(':', 1)[0].strip()
+        for line in yaml_text.splitlines()
+        if ':' in line and not line.startswith((' ', '\t'))
+    }
+
+    import yaml
     try:
         yaml.safe_load(yaml_text)
     except yaml.YAMLError as e:
@@ -440,24 +446,26 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         # it grants permissions, so a file that declares one is the real problem:
         # the declaration does nothing and the author cannot tell.
         recovered = _read_frontmatter(yaml_text)
-        # `tools:` only. `allowed-tools:` is another tool's key and _tool_patterns
-        # never reads it, so it is ignored whether or not the YAML parses —
-        # blaming the bad quoting for that would be a false claim, and most of
-        # these files declare allowed-tools rather than tools.
-        declares_tools = any(
-            line.split(':', 1)[0].strip() == 'tools'
-            for line in yaml_text.splitlines()
-            if ':' in line and not line.startswith((' ', '\t'))
-        )
+        # ConnectOnion's `tools:` is lost specifically because YAML cannot read
+        # it. Claude Code's `allowed-tools:` is unsupported even in valid YAML,
+        # so name that compatibility problem without blaming the parse failure.
+        declares_tools = 'tools' in top_level_keys
         if declares_tools:
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— its tools: declaration is being ignored')
+        if 'allowed-tools' in top_level_keys:
+            return (f'SKILL.md frontmatter is not valid YAML{where}: {detail}; '
+                    'allowed-tools is a Claude Code key and ConnectOnion does '
+                    'not grant it — add a tools: list for ConnectOnion permissions')
         if recovered.get('description'):
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— name and description were still read')
         return f'SKILL.md frontmatter is not valid YAML{where}: {detail}'
 
     frontmatter = _read_frontmatter(yaml_text)
+    if 'allowed-tools' in frontmatter:
+        return ('declares Claude Code allowed-tools, which ConnectOnion does not '
+                'grant — add a tools: list for ConnectOnion permissions')
     skill_name = frontmatter.get('name') or skill_md.parent.name
     try:
         parse_skill_requirements(frontmatter, str(skill_name))
@@ -502,6 +510,31 @@ def _tool_patterns(frontmatter: dict) -> list:
     if isinstance(declared, str):
         return [declared]
     return list(declared)
+
+
+def _warn_unsupported_allowed_tools(agent: 'Agent', skill_name: str,
+                                    frontmatter: dict) -> None:
+    """Name Claude's ignored permission key once per agent session.
+
+    Treating ``allowed-tools`` as ``tools`` would silently widen authority and
+    the two tool vocabularies are not identical. The skill instructions remain
+    portable; only the auto-approval declaration needs an explicit ConnectOnion
+    ``tools:`` list.
+    """
+    if 'allowed-tools' not in frontmatter:
+        return
+
+    warnings = agent.current_session.setdefault('_skill_warnings', {})
+    warning_key = f'{skill_name}:allowed-tools'
+    if warnings.get(warning_key):
+        return
+
+    agent.logger.print(
+        f"[yellow]⚠ Skill '{skill_name}' declares Claude Code allowed-tools; "
+        "ConnectOnion does not grant it. Add a tools: list for ConnectOnion "
+        "permissions.[/yellow]"
+    )
+    warnings[warning_key] = True
 
 
 def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str]) -> None:
@@ -663,6 +696,7 @@ def handle_skill_invocation(agent: 'Agent') -> None:
 
     frontmatter = skill['frontmatter']
     instructions = skill['instructions']
+    _warn_unsupported_allowed_tools(agent, skill_name, frontmatter)
 
     from ..skill_preflight import format_preflight_report, preflight_skills
 

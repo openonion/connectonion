@@ -116,14 +116,8 @@ class TestABrokenFileWithoutToolsSaysWhatSurvived:
         assert frontmatter["description"].startswith("Rework the outline")
 
 
-class TestAllowedToolsIsNotOurKey:
-    """`allowed-tools:` belongs to another tool and _tool_patterns never reads it.
-
-    The first version of this message counted it, so a file declaring only
-    `allowed-tools` was told its tools were being ignored *because of* the bad
-    quoting. They are ignored either way — most of the real files on this machine
-    declare exactly that, so the wrong claim would have been the common case.
-    """
+class TestAllowedToolsIsNamedInsteadOfSilentlyIgnored:
+    """Claude's permission key stays non-authoritative, but is never silent."""
 
     ALLOWED_TOOLS_ONLY = """---
 allowed-tools: Read, Edit, Glob
@@ -133,22 +127,27 @@ description: Rework the outline: from the pain.
 # Outline
 """
 
-    def test_it_does_not_blame_the_quoting_for_them(self, tmp_path):
+    def test_bad_yaml_still_names_the_unsupported_key(self, tmp_path):
         reason = _why_the_skill_cannot_be_read(
             _write(tmp_path, self.ALLOWED_TOOLS_ONLY)
         )
 
-        assert "ignored" not in reason
+        assert "allowed-tools" in reason
+        assert "tools:" in reason
 
-    def test_it_says_what_did_survive(self, tmp_path):
+    def test_valid_yaml_is_also_reported(self, tmp_path):
+        body = self.ALLOWED_TOOLS_ONLY.replace(
+            "description: Rework the outline: from the pain.",
+            "description: 'Rework the outline: from the pain.'",
+        )
         reason = _why_the_skill_cannot_be_read(
-            _write(tmp_path, self.ALLOWED_TOOLS_ONLY)
+            _write(tmp_path, body)
         )
 
-        assert "description" in reason
+        assert reason.startswith("declares Claude Code allowed-tools")
 
     def test_the_loader_never_grants_from_allowed_tools(self, tmp_path):
-        """Even in a well-formed file, so the message is right to ignore it."""
+        """A warning must not quietly become a permission alias."""
         from connectonion.useful_plugins.skills import _tool_patterns
 
         assert _tool_patterns({"allowed-tools": "Read, Edit"}) == []

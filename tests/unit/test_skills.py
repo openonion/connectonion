@@ -319,6 +319,31 @@ class TestSkillInvocation:
         )
 
     @patch.object(skills_module, '_load_skill')
+    def test_allowed_tools_warns_once_and_grants_nothing(self, mock_load):
+        agent = FakeAgent()
+        mock_load.return_value = {
+            'frontmatter': {'allowed-tools': 'Bash(git *)'},
+            'instructions': 'Review the repository',
+            'requirements': None,
+        }
+
+        for _ in range(2):
+            agent.current_session['messages'] = [
+                {'role': 'user', 'content': '/review'}
+            ]
+            handle_skill_invocation(agent)
+
+        assert 'Bash(git *)' not in agent.current_session['permissions']
+        assert agent.current_session['_skill_warnings'] == {
+            'review:allowed-tools': True,
+        }
+        warnings = [
+            call for call in agent.logger.print.call_args_list
+            if 'allowed-tools' in call.args[0]
+        ]
+        assert len(warnings) == 1
+
+    @patch.object(skills_module, '_load_skill')
     def test_handle_skill_invocation_ignores_non_slash(self, mock_load):
         """Test that non-slash messages are ignored."""
         agent = FakeAgent()

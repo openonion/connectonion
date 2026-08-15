@@ -88,6 +88,12 @@ directly:
 co ai --yolo "/deploy-oo-chat" --yolo-turns 10
 ```
 
+Claude Code's `allowed-tools` frontmatter is not a ConnectOnion permission
+grant: the tool names and authority rules are not identical. Add the equivalent
+`tools:` list when you want turn-scoped auto-approval in ConnectOnion. Skill
+invocation and `co doctor` both warn when `allowed-tools` would otherwise be
+silently ignored.
+
 YOLO deliberately reuses the existing ULW session and frontend protocol.
 Persisted fields such as `mode: ulw`, `ulw_turns`, and
 `skip_tool_approval` remain unchanged for compatibility.
