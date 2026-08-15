@@ -156,6 +156,7 @@ def _show_help():
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
+    console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
@@ -734,6 +735,13 @@ def email_sent_read(email_id: str = typer.Argument(..., help="Email # from the s
     handle_email_sent_read(email_id)
 
 
+@email_app.command("addresses")
+def email_addresses():
+    """List every email address this account owns, marking the default sender."""
+    from .commands.email_commands import handle_email_addresses
+    handle_email_addresses()
+
+
 @email_app.command("name")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
@@ -758,6 +766,43 @@ def email_upgrade(
     """Upgrade email tier — deducts the monthly price from your credits."""
     from .commands.email_commands import handle_email_upgrade
     handle_email_upgrade(tier, domain=domain, alias=alias, keep_address=keep_address)
+
+
+# One command, not a group: a group callback with positional arguments would
+# swallow "list" as the address ('co transfer list' parses the group args
+# first), so the listing mode is the literal address "list" instead.
+@app.command("transfer")
+def transfer(
+    address: str = typer.Argument(..., help="Recipient 0x… address, or 'list' for your transfer history"),
+    amount: Optional[float] = typer.Argument(None, help="Amount in USD credits, e.g. 5.00"),
+    memo: Optional[str] = typer.Option(None, "--memo", help="Note stored with the transfer"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Send without the interactive confirmation"),
+    sent: bool = typer.Option(False, "--sent", help="With list: only transfers you sent"),
+    received: bool = typer.Option(False, "--received", help="With list: only transfers you received"),
+    last: int = typer.Option(50, "--last", "-n", help="With list: how many to show"),
+):
+    """Send credits to another agent address (irreversible, confirms first), or list transfers."""
+    from .commands.transfer_commands import handle_transfer_list, handle_transfer_send
+    if address == "list":
+        handle_transfer_list(sent=sent, received=received, last=last)
+    else:
+        handle_transfer_send(address, amount, memo=memo, yes=yes)
+
+
+# Telegram command group. The bot is the user's own (@BotFather), so the token
+# lives in their keys.env -- no OpenOnion credential and nothing billed.
+telegram_app = _typer_app(help="Send a message from your Telegram bot.")
+app.add_typer(telegram_app, name="telegram")
+
+
+@telegram_app.command("send")
+def telegram_send(
+    chat: str = typer.Argument(..., help="Chat id, or @channelname for a channel"),
+    message: str = typer.Argument(..., help="The text to send"),
+):
+    """Send a Telegram message."""
+    from .commands.telegram_commands import handle_telegram_send
+    handle_telegram_send(chat, message)
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
