@@ -57,11 +57,10 @@ Home vanished on upgrade would be a worse bug than an inconsistent path. Move it
 
 #### It travels
 
-`co deploy --to` rsyncs the project **excluding `.co/*`**, because that directory
-holds the agent's identity, logs and evals — that exclusion is why a redeploy doesn't
-reissue your agent's address. Two things are included back in: `.co/skills/` and
-`.co/dashboard.html`. Same reason for both. A deploy that dropped your Home page would
-regenerate a starter over it, and the agent would look fine.
+`co deploy --to` protects server-owned `.co/` state such as identity, logs and evals,
+while syncing project-authored files such as `.co/host.yaml`, `.co/skills/` and
+`.co/dashboard.html`. A deploy that dropped the Home page could regenerate a starter
+over it and still look successful, so the page travels as ordinary project content.
 
 #### It isn't scaffolded
 

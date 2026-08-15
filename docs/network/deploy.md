@@ -290,7 +290,7 @@ myagent → prod (co@1.2.3.4)
 ### What a deploy does
 
 ```
-ensure(setup) → sync code → install deps if changed → write unit if changed → restart
+ensure(setup) → sync code → install deps if changed → authenticate live identity → write unit if changed → restart
 ```
 
 `ensure(setup)` is idempotent and a no-op once the server is converged, which is why a
@@ -300,7 +300,8 @@ decide whether to spend seconds or tens of seconds.
 
 ### What survives, and what does not
 
-The rsync carries the project tree and **excludes `.co/`**, with one exception:
+The rsync carries the project tree. Framework-owned state under `.co/` is
+protected, while project-authored configuration and skills still travel:
 
 | | |
 |---|---|
@@ -309,8 +310,19 @@ The rsync carries the project tree and **excludes `.co/`**, with one exception:
 | `.co/skills/` | **synced** — skills are what the agent *is*, not state it accumulated |
 | everything else in the project | synced, with `--delete`, so a deleted file goes away |
 
-A change you make over ssh survives the next deploy, as long as it is not a file the
-sync owns.
+The project's root `.gitignore` is the boundary for its own generated state too.
+An ignored path is neither uploaded nor deleted on the server. For example, an agent
+that writes a cache under `work/` should include:
+
+```gitignore
+work/
+```
+
+The live `/srv/<agent>/work/` then survives every deploy, including files that exist
+only on the server. Non-ignored source still follows the laptop and `--delete`, so a
+source file removed locally is removed remotely. Keep large or irreplaceable state
+outside `/srv/<agent>/` when possible; otherwise list it in `.gitignore` before the
+first deploy.
 
 ### The agent runs as itself, not as you
 

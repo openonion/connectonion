@@ -639,6 +639,21 @@ RSYNC_FILTERS = [
 ]
 
 
+def _rsync_filters(project_dir: Path) -> list[str]:
+    """Framework safety rules plus the project's own deploy boundary.
+
+    A path in the root ``.gitignore`` is neither transferred nor deleted on
+    the server. That gives authors one familiar place to name generated caches
+    and runtime state, and matches the cloud deploy path. Framework-owned
+    secrets and state remain protected first, regardless of project rules.
+    """
+    filters = list(RSYNC_FILTERS)
+    gitignore = project_dir / ".gitignore"
+    if gitignore.is_file():
+        filters.extend(["--exclude-from", str(gitignore)])
+    return filters
+
+
 def _agent_account(agent_identity: dict) -> Optional[dict]:
     """Authenticate as the agent, so the server bills the agent.
 
@@ -775,7 +790,11 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     template defaults behind a proxy pointed at the wrong port, and reports
     success either way.
 
-    See RSYNC_FILTERS for the two rules and why the default is now "carry".
+    The project's root `.gitignore` is also authoritative: ignored paths are
+    neither copied from the laptop nor deleted on the server. Put generated
+    runtime state there when it lives inside the project root.
+
+    See RSYNC_FILTERS for the framework rules and why the default is "carry".
     """
     from .server_commands import _identity as _ssh_identity
 
@@ -783,7 +802,7 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     result = subprocess.run(
         [
             "rsync", "-az", "--delete",
-            *RSYNC_FILTERS,
+            *_rsync_filters(project_dir),
             "-e", " ".join(["ssh", "-o", "BatchMode=yes",
                             "-o", "StrictHostKeyChecking=accept-new",
                             *_ssh_identity(target)]),

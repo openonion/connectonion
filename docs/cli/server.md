@@ -150,10 +150,13 @@ $150.41 of $360.00 refunded to your credit — the unused part of the term.
 ```
 /srv/<agent>/            code, rsynced each deploy
 /srv/<agent>/.venv       dependencies
-/srv/<agent>/.co/        identity, logs, evals — a deploy never touches this
+/srv/<agent>/.co/        identity/logs preserved; project config and skills synced
 /etc/systemd/system/<agent>.service
 /etc/caddy/Caddyfile     the hostname, proxied to the agent
 ```
+
+Paths listed in the project's root `.gitignore` are also preserved. Use that for
+runtime-generated directories inside the project, such as `work/` or `state/`.
 
 `systemctl` gives what the container was for: `Restart=always` for crash recovery,
 `enable` for start-on-boot, journald for logs.
