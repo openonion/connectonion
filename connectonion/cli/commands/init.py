@@ -174,7 +174,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Authenticate to get OPENONION_API_KEY (always, for everyone)
     auth_success = authenticate(global_co_dir, save_to_project=False)
 
-    from .env_inheritance import describes_this_machine, is_personal_account_credential
+    from .env_inheritance import (AGENT_IDENTITY_KEYS, describes_this_machine,
+                                  is_personal_account_credential)
 
     # Handle .env file - append API keys from global config
     env_path = Path(current_dir) / ".env"
@@ -185,8 +186,11 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # AGENT_CONFIG_PATH is not one of them — it describes the machine, not the
     # identity, and copying an absolute home directory into a file that travels
     # is what made a project only work where it was made (#438).
-    IDENTITY_KEYS = {'AGENT_ADDRESS', 'OPENONION_API_KEY',
-                     'AGENT_EMAIL', 'IS_EMAIL_ACTIVE'}
+    #
+    # Shared with `co deploy --to`, which withholds exactly this set: propagating
+    # the operator's identity into a project is the point here and a bug there,
+    # so the two must be reading one definition.
+    IDENTITY_KEYS = set(AGENT_IDENTITY_KEYS)
 
     # Read global keys.env into a dict
     global_keys = {}  # key -> "KEY=value" line
