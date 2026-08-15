@@ -138,6 +138,7 @@ Two more, for Drive specifically:
 ```bash
 co email                       # bare command = inbox
 co email inbox -n 20 -u
+co email inbox -n 1000 --offset 1000  # the next page of older mail
 co email read 41               # the id in the # column, not the row position
 co email send bob@example.com "Subject" "Body"
 co email send bob@example.com "Subject" "Body" --from aaron@openonion.ai
@@ -146,12 +147,16 @@ co email sent -n 20 --to bob@example.com
 co email sent read 12
 ```
 
+Received inbox pages accept `-n/--last` from 1 through 1000. Use `--offset` to
+skip newer rows and continue through older mail; for example, page through
+offsets 0, 1000, 2000 until the command returns no rows.
+
 It is a smaller surface than Gmail/Outlook, and the differences bite:
 
 - **No `reply`, no `search`, no attachments, no scheduling.** To answer a message,
   send a new one with the subject you want.
 - **`read` takes the id printed in the `#` column** (a server id), not "row 3", and
-  only finds it among the last 100 received.
+  currently finds it among the latest 1000 received.
 - A failed send that is safe to retry prints the **full retry command**
   (`co email send ... --idempotency-key <key>`) — run it as printed so a send
   that actually went out is not duplicated.

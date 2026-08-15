@@ -42,12 +42,16 @@ emails = get_emails()
 Three functions. That's all:
 
 ```python
-get_emails(last=10, unread=False)  # Get emails
+get_emails(last=10, unread=False, offset=0)  # Get one received-mail page
 send_email(to, subject, message)   # Send email (already done)
 mark_read(email_id)                # Mark as read after processing
 ```
 
 **Important**: Emails are NOT auto-marked as read. You control when to mark them.
+
+`last` must be between 1 and 1000, and `offset` must be non-negative. To scan a
+larger inbox, request successive pages such as `get_emails(last=1000,
+offset=0)`, then offsets 1000, 2000, and so on until the result is empty.
 
 ---
 
