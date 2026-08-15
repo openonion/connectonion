@@ -1,14 +1,17 @@
-"""A contact runs the operator's shell, and the gate never learns who asked.
+"""Direct EXEC is authenticated and constrained by the host whitelist.
 
-#653 measured the chain end to end against agents made by today's `co create`,
-on default settings — no capture, no replay, no attack on the protocol:
+#653 measured the original missing-caller bug end to end: EXEC did not receive
+the signed caller address, so even a stranger could drive a whitelisted tool.
+The host now passes the address and resolves its server-authoritative trust
+level before calling the tool runner.
 
     1. connect                  -> ONBOARD_REQUIRED ['invite_code']
     2. submit the invite code   -> CONNECTED           (a stranger is now a contact)
-    3. the contact ran  whoami  -> changxing           (the operator's account)
+    3. the contact ran  whoami  -> changxing
 
-Step 3 works because EXEC is gated by the permission whitelist alone. The two
-handlers sit next to each other:
+Step 3 is now expected product behavior after an operator-issued invite, but
+only for tools the operator already allowed in the server-side whitelist.
+Unlike the old bug, strangers and blocked identities remain outside this path.
 
     def handle_ws_input(storage, prompt, connection, session=None, images=None,
                         files=None, requester_address=None):
@@ -26,15 +29,12 @@ INPUT", and the authentication is — the authorisation is not.
 `conn["agent_address"]` has held the authenticated caller's address all along.
 Nothing asked it.
 
-## What this changes
+## Product boundary
 
-EXEC now requires admin or whitelisted. It is the terminal-style fast path: no
-LLM, no session, and no approval hook — `before_each_tool` does not fire, so a
-tool invoked this way skips every check that exists between the model deciding
-to call something and it running. A contact can still talk to the agent
-(INPUT), where the model and the approval flow are in the way. Driving the
-operator's tools directly is not the same act, and it was never gated as if it
-were.
+EXEC accepts contact, legacy whitelist, or admin. It is the terminal-style fast
+path: no LLM, no session, and no approval dialog. The server-side permission
+whitelist remains authoritative, including its protected-control-file guard.
+Admin remains distinct on control-plane routes rather than ordinary execution.
 
 The remaining half of #653 is the *scope* of what is whitelisted --
 `Bash(co *)` is auto-approved, and `co` is not a read-only tool -- which is
@@ -153,13 +153,13 @@ class TestWhoMayDriveToolsDirectly:
 
         assert result["status"] == "success"
 
-    def test_a_contact_may_not(self, ws_exec):
-        """The one the issue measured: an invite code bought this level."""
+    def test_a_contact_may_run_a_pre_authorised_tool(self, ws_exec):
+        """An operator-issued invite is the normal B2B user grant."""
         handler, calls = ws_exec
         result = handler("bash", {"command": "whoami"}, requester_address=CONTACT)
 
-        assert result["status"] == "error"
-        assert calls == [], "the tool ran for a contact"
+        assert result["status"] == "success"
+        assert calls == ["bash"]
 
     def test_a_stranger_may_not(self, ws_exec):
         handler, calls = ws_exec
@@ -170,9 +170,9 @@ class TestWhoMayDriveToolsDirectly:
 
     def test_the_refusal_says_what_is_needed(self, ws_exec):
         handler, _ = ws_exec
-        result = handler("bash", {"command": "whoami"}, requester_address=CONTACT)
+        result = handler("bash", {"command": "whoami"}, requester_address=STRANGER)
 
-        assert "whitelist" in result["error"].lower(), result["error"]
+        assert "contact or admin" in result["error"].lower(), result["error"]
 
     def test_no_address_is_refused(self, ws_exec):
         handler, calls = ws_exec

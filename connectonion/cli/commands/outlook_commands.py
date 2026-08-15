@@ -3,7 +3,7 @@ Purpose: CLI surface for Outlook email and contacts — send/read/search mail an
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
   Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env and checks the operation scope → Outlook() instance | mail commands use list/read/send methods and the numbered inbox cache | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
-  State/Effects: writes ~/.co/outlook_last_inbox.json for mail numbering | mutates Outlook mail/contact data through the library | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
+  State/Effects: writes ~/.co/outlook_last_inbox.json for mail numbering | read changes mailbox state only with --mark-read; send/reply/contact commands mutate their named data | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
   Integration: exposes handle_outlook_* functions for cli/main.py, including handle_outlook_contact_add/list/search | presentation mirrors existing mail tables | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
   Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/Mail/Contacts.ReadWrite scopes, invalid files/times/ids | Graph API errors propagate from Outlook
 """
@@ -184,8 +184,8 @@ def _resolve_email_id(outlook, email_id: str) -> str:
     return emails[int(email_id) - 1]["id"]
 
 
-def handle_outlook_read(email_id: str):
-    """Show one Outlook email's full body and mark it read. Accepts the listing # or a full message id."""
+def handle_outlook_read(email_id: str, mark_read: bool = False):
+    """Show one Outlook message; mark it read only with explicit opt-in."""
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
     if not resolved:
@@ -203,12 +203,14 @@ def handle_outlook_read(email_id: str):
     console.print()
     console.print(content.strip() or "[dim](empty body)[/dim]", markup=False, highlight=False)
 
-    marked = ""
-    if "Mail.ReadWrite" in os.getenv("MICROSOFT_SCOPES", ""):
+    marked = "Unread state unchanged. "
+    if mark_read and "Mail.ReadWrite" in os.getenv("MICROSOFT_SCOPES", ""):
         # Marking read is a mailbox write — Graph rejects it with 403 on
         # tokens that only carry Mail.Read + Mail.Send.
         outlook.mark_read(resolved)
         marked = "Marked read. "
+    elif mark_read:
+        marked = "Not marked read: run co auth microsoft to grant Mail.ReadWrite. "
     console.print(f"\n[dim]{marked}Reply with:[/dim] [bold]co outlook reply <#> <message>[/bold]\n")
 
 

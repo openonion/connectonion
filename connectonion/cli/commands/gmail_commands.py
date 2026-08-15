@@ -3,7 +3,7 @@ Purpose: CLI surface for the user's Gmail mailbox — send, list (inbox/sent), r
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.gmail.Gmail] | imported by [cli/main.py via handle_gmail_*()] | hits the Gmail API through the Gmail tool
   Data flow: _gmail() loads GOOGLE_* from .env / ~/.co/keys.env → Gmail() instance | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/gmail_last_inbox.json | read/reply: resolve short numbers via that cache → get_email_body()/reply() | send: '-' body reads stdin
-  State/Effects: writes ~/.co/gmail_last_inbox.json (last listing's # → message id map; "numbers mean your last listing" — only inbox and search write it) | read marks emails read server-side | Gmail refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
+  State/Effects: writes ~/.co/gmail_last_inbox.json (last listing's # → message id map; "numbers mean your last listing" — only inbox and search write it) | read changes mailbox state only with --mark-read | Gmail refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
   Integration: exposes handle_gmail_send(), handle_gmail_inbox(), handle_gmail_read(), handle_gmail_reply(), handle_gmail_sent(), handle_gmail_search() for cli/main.py | presentation mirrors outlook_commands.py (table shape, ● unread mark, ✉️ panel, '✓ Sent' wording) | Gmail API logic lives in useful_tools/gmail.py | requires prior 'co auth google'
   Errors: every guarded failure prints a hint and exits 1 (typer.Exit) so scripts can detect it — missing auth/scopes, unresolvable email # | Gmail API errors propagate from the Gmail tool
 """
@@ -128,8 +128,8 @@ def _resolve_email_id(gmail, email_id: str) -> str:
     return emails[int(email_id) - 1]["id"]
 
 
-def handle_gmail_read(email_id: str):
-    """Show one Gmail email's full body and mark it read. Accepts the listing # or a full message id."""
+def handle_gmail_read(email_id: str, mark_read: bool = False):
+    """Show one Gmail message; mark it read only with explicit opt-in."""
     gmail = _gmail()
     resolved = _resolve_email_id(gmail, email_id)
     if not resolved:
@@ -147,12 +147,14 @@ def handle_gmail_read(email_id: str):
     console.print()
     console.print(content.strip() or "[dim](empty body)[/dim]", markup=False, highlight=False)
 
-    marked = ""
-    if "gmail.modify" in os.getenv("GOOGLE_SCOPES", ""):
+    marked = "Unread state unchanged. "
+    if mark_read and "gmail.modify" in os.getenv("GOOGLE_SCOPES", ""):
         # Marking read is a mailbox write — the API rejects it on tokens that
         # only carry gmail.readonly + gmail.send.
         gmail.mark_read(resolved)
         marked = "Marked read. "
+    elif mark_read:
+        marked = "Not marked read: run co auth google to grant gmail.modify. "
     console.print(f"\n[dim]{marked}Reply with:[/dim] [bold]co gmail reply <#> <message>[/bold]\n")
 
 

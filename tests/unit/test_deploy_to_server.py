@@ -110,6 +110,22 @@ class TestSyncNeverTouchesState:
         assert ("--exclude", ".venv/") in pairs
         assert ("--exclude", ".git/") in pairs
 
+    def test_rsync_honours_the_projects_gitignore(self, project):
+        (project / ".gitignore").write_text("work/\n")
+
+        with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
+            dts._sync_code("user@host", "myagent", project)
+
+        argv = self._rsync_argv(run)
+        assert "--exclude-from" in argv
+        assert str(project / ".gitignore") in argv
+
+    def test_a_project_without_gitignore_needs_no_fake_filter_file(self, project):
+        with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
+            dts._sync_code("user@host", "myagent", project)
+
+        assert "--exclude-from" not in self._rsync_argv(run)
+
     def test_setup_never_writes_inside_the_state_directory(self, project):
         """ensure(setup) may create .co/ but must not write files into it.
 
@@ -178,6 +194,52 @@ class TestConvergence:
         """
         with patch.object(dts, "_ssh", return_value=_ok(json.dumps({"schema": 2}))):
             assert dts._read_provision("user@host", "myagent") == {"schema": 0}
+
+
+class TestRemoteAgentAccount:
+    """Account metadata must be signed by the private key that stays remote."""
+
+    ADDRESS = "0x" + "ab" * 32
+    ACCOUNT = {
+        "OPENONION_API_KEY": "remote-token",
+        "AGENT_ADDRESS": ADDRESS,
+        "AGENT_EMAIL": "remote@mail.openonion.ai",
+        "IS_EMAIL_ACTIVE": "true",
+    }
+
+    def test_reads_public_account_metadata_from_the_remote_signer(self):
+        payload = {"address": self.ADDRESS, "account": self.ACCOUNT}
+        stdout = "startup noise\n" + dts.REMOTE_ACCOUNT_MARKER + json.dumps(payload) + "\n"
+
+        with patch.object(dts, "_ssh", return_value=_ok(stdout)) as ssh:
+            assert dts._remote_agent_account("user@host", "myagent") == payload
+
+        command = ssh.call_args.args[1]
+        assert "/srv/myagent/.venv/bin/python" in command
+        assert self.ACCOUNT["OPENONION_API_KEY"] not in command
+
+    def test_rejects_account_metadata_for_a_different_identity(self):
+        payload = {
+            "address": self.ADDRESS,
+            "account": {**self.ACCOUNT, "AGENT_ADDRESS": "0x" + "cd" * 32},
+        }
+        stdout = dts.REMOTE_ACCOUNT_MARKER + json.dumps(payload)
+
+        with patch.object(dts, "_ssh", return_value=_ok(stdout)):
+            assert dts._remote_agent_account("user@host", "myagent") is None
+
+    @pytest.mark.parametrize("response", [_fail(), _ok("not-json"), _ok(
+        dts.REMOTE_ACCOUNT_MARKER + "null")])
+    def test_failure_never_invents_an_account(self, response):
+        with patch.object(dts, "_ssh", return_value=response):
+            assert dts._remote_agent_account("user@host", "myagent") is None
+
+    def test_malformed_account_metadata_fails_closed(self):
+        payload = {"address": self.ADDRESS, "account": "not-an-account"}
+        stdout = dts.REMOTE_ACCOUNT_MARKER + json.dumps(payload)
+
+        with patch.object(dts, "_ssh", return_value=_ok(stdout)):
+            assert dts._remote_agent_account("user@host", "myagent") is None
 
     def test_the_interpreter_is_checked_in_the_same_round_trip(self):
         """Not a second ssh call: the marker read already costs one."""
@@ -333,6 +395,8 @@ class TestHandleDeployTo:
              patch.object(dts, "_ensure_setup", return_value=True), \
              patch.object(dts, "_sync_code", return_value=True), \
              patch.object(dts, "_install_deps_if_changed", return_value=True), \
+             patch.object(dts, "_remote_agent_account", return_value=None), \
+             patch.object(dts, "_sync_env", return_value=True), \
              patch.object(dts, "_write_unit_if_changed", return_value=True), \
              patch.object(dts, "_restart", return_value=False), \
              patch.object(dts, "_mark_provisioned") as mark:
@@ -347,12 +411,51 @@ class TestHandleDeployTo:
              patch.object(dts, "_ensure_setup", return_value=True), \
              patch.object(dts, "_sync_code", return_value=True), \
              patch.object(dts, "_install_deps_if_changed", return_value=True), \
+             patch.object(dts, "_remote_agent_account", return_value=None), \
+             patch.object(dts, "_sync_env", return_value=True), \
              patch.object(dts, "_write_unit_if_changed", return_value=True), \
              patch.object(dts, "_restart", return_value=True), \
              patch.object(dts, "_mark_provisioned") as mark:
             assert dts.handle_deploy_to("prod", project) is True
 
         mark.assert_called_once()
+
+    def test_existing_remote_identity_supplies_the_environment(self, project):
+        """A preserved server key must never receive the derived key's account."""
+        derived_address = "0x" + "11" * 32
+        remote_address = "0x" + "22" * 32
+        remote_account = {
+            "OPENONION_API_KEY": "remote-token",
+            "AGENT_ADDRESS": remote_address,
+            "AGENT_EMAIL": "remote@mail.openonion.ai",
+            "IS_EMAIL_ACTIVE": "true",
+        }
+
+        with patch.object(dts, "load_server", return_value={"ssh": "user@host"}), \
+             patch.object(sc, "_ssh_public_lines", return_value=[]), \
+             patch.object(dts, "_deployer_address", return_value=None), \
+             patch.object(dts, "derived_agent_identity", return_value={
+                 "address": derived_address, "key_bytes": b"derived-private-key"
+             }), \
+             patch.object(dts, "_read_provision", return_value={"schema": 3}), \
+             patch.object(dts, "_ensure_setup", return_value=True), \
+             patch.object(dts, "_sync_code", return_value=True), \
+             patch.object(dts, "_install_deps_if_changed", return_value=True), \
+             patch.object(dts, "_remote_agent_account", return_value={
+                 "address": remote_address, "account": remote_account
+             }), \
+             patch.object(dts, "_sync_env", return_value=True) as sync_env, \
+             patch.object(dts, "_port_for", return_value=8000), \
+             patch.object(dts, "_record_port"), \
+             patch.object(dts, "_remote_user", return_value="user"), \
+             patch.object(dts, "_write_unit_if_changed", return_value=True), \
+             patch.object(dts, "_restart", return_value=True), \
+             patch.object(dts, "_mark_provisioned"):
+            assert dts.handle_deploy_to("prod", project) is True
+
+        emitted_account = sync_env.call_args.args[3]
+        assert emitted_account == remote_account
+        assert derived_address not in json.dumps(emitted_account)
 
 
 class TestAdminSeeding:

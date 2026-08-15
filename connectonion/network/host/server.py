@@ -69,7 +69,7 @@ from .http_router import (
 )
 
 
-EXEC_REQUIRES = ("admin", "whitelist")
+EXEC_REQUIRES = ("admin", "whitelist", "contact")
 
 
 def _make_ws_exec(create_agent, exec_permissions, trust_agent):
@@ -87,12 +87,11 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
     runs `whoami` as the operator. The session loop's comment said "Auth is the
     same gate as INPUT" -- the authentication was; the authorisation was not.
 
-    Admin or whitelisted, because EXEC is the terminal-style fast path: no LLM,
-    no session, and no approval hook. `before_each_tool` does not fire here, so
-    a tool invoked this way skips everything that normally sits between the
-    model deciding to call something and it running. A contact can still talk
-    to the agent through INPUT, where those checks are in the way. Driving the
-    operator's tools directly is a different act and was never gated as one.
+    EXEC is the terminal-style fast path: no LLM, no session, and no approval
+    hook. It remains limited to the operator's server-side permission whitelist.
+    An invite grants contact status, so a contact may use those pre-authorised
+    tools just like an admin; it does not grant permission to anything absent
+    from that whitelist.
     """
     def handle_ws_exec(tool_name, args, requester_address=None):
         if not requester_address:
@@ -103,7 +102,7 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
                  else trust_agent.get_level(requester_address))
         if level not in EXEC_REQUIRES:
             return {"status": "error",
-                    "error": f"forbidden: exec requires admin or whitelist, "
+                    "error": f"forbidden: exec requires a contact or admin, "
                              f"you are {level}"}
 
         return exec_handler(create_agent, exec_permissions, tool_name, args)

@@ -37,11 +37,8 @@ if TYPE_CHECKING:
 FILE_CREATION_PATTERNS = [
     re.compile(r"cat\s+<<"),              # cat <<EOF, cat <<'EOF', cat << 'EOF'
     re.compile(r">\s*\S+\.\w+\s*<<"),     # > file.py <<EOF
-    re.compile(r"echo\s+.*[^2]>\s*\S+"),  # echo "..." > file (but not 2>)
-    re.compile(r"printf\s+.*[^2]>\s*\S+"),# printf "..." > file (but not 2>)
-    re.compile(r"tee\s+\S+"),             # tee file.py
-    re.compile(r"(?<!\d)>\s*[~\.]"),      # > ./file, > ~/file (not 2>/dev/null)
-    re.compile(r"(?<!\d)>>\s*[~\.]"),     # >> ./file, >> ~/file
+    re.compile(r"echo\s+.*(?<![2>])>(?!>)\s*\S+"),   # echo "..." > file (but not 2> or >>)
+    re.compile(r"printf\s+.*(?<![2>])>(?!>)\s*\S+"), # printf "..." > file (but not 2> or >>)
 ]
 
 # Patterns that indicate bash is being used to read files (standalone, not in pipelines)

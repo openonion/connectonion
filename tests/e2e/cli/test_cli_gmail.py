@@ -46,7 +46,15 @@ def test_gmail_read_routes_id():
         result = runner.invoke(app, ["gmail", "read", "3"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3")
+    handler.assert_called_once_with("3", mark_read=False)
+
+
+def test_gmail_read_routes_explicit_mark_read():
+    with patch("connectonion.cli.commands.gmail_commands.handle_gmail_read") as handler:
+        result = runner.invoke(app, ["gmail", "read", "3", "--mark-read"])
+
+    assert result.exit_code == 0
+    handler.assert_called_once_with("3", mark_read=True)
 
 
 def test_gmail_send_routes_arguments():

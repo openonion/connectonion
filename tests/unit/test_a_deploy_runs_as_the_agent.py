@@ -142,6 +142,23 @@ def test_a_project_with_no_env_still_gets_its_account(tmp_path):
     assert "eyJ-agents-token" in sent["body"]
 
 
+def test_failed_remote_auth_clears_old_account_metadata(tmp_path):
+    """Omitting new fields is insufficient if yesterday's env file survives."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / ".env").write_text(
+        f"OPENONION_API_KEY=stale-token\nAGENT_ADDRESS={OPERATOR}\n"
+    )
+
+    with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+        assert dts._sync_env("prod", "myagent", project, None)
+
+    script = ssh.call_args.args[1]
+    assert dts.ENV_FILE_TEMPLATE.format(agent="myagent") in script
+    assert "stale-token" not in script
+    assert "printf %s '' | base64 -d" in script
+
+
 class TestAgentAccount:
     """Authenticating as the agent, from the key this machine derived."""
 
