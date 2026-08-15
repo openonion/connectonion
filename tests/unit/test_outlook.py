@@ -961,10 +961,11 @@ class TestDownloadAttachments:
             {"name": "cover.jpg", "contentBytes": base64.b64encode(b"replace me").decode()},
         ])
 
-        with pytest.raises(FileExistsError, match="Refusing to overwrite"):
-            outlook.download_attachments("msg-id", out_dir)
+        saved = outlook.download_attachments("msg-id", out_dir)
 
         assert outside.read_bytes() == b"keep me"
+        assert saved == [str(out_dir / "cover-1.jpg")]
+        assert (out_dir / "cover-1.jpg").read_bytes() == b"replace me"
 
     def test_replaces_control_characters_in_sender_filename(self, monkeypatch, tmp_path):
         import base64
