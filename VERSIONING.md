@@ -43,9 +43,10 @@ Stable users remain on the 1.6.x line while the 1.7.0 feature train is exercised
 alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Current Version: 1.7.0a7
+## Current Version: 1.7.0a8
 
 ### Version History
+- 1.7.0a8 (**an open Codex Work Room keeps its exact provider thread for the first real task**: because Codex does not persist a rollout until its first turn, open-only app-server processes now remain alive behind a bounded, expiring registry. The first Work Room follow-up claims that same thread ID, streams normally through OIP, persists the rollout, and then closes the process; real-Codex and browser acceptance cover the path that alpha 7 exposed.)
 - 1.7.0a7 (**an explicit Codex request always opens the native Codex adapter**: `run`, `use`, `start`, `open`, slash-command, delegation, and Chinese Codex requests are routed deterministically before the model chooses a tool. Opening Codex without a task creates or resumes the native session without inventing a prompt; an OIP-visible guard rejects direct Codex launches through shell tools while leaving ordinary shell mentions alone. The same provider session, activity, approval, terminal status, and Work Room card remain correlated through OIP.)
 - 1.7.0a6 (**the latest stable fixes move forward without reopening the browser boundary**: merges the exact `v1.6.9` stable line into the OIP-only preview, including authenticated-contact approvals, consistent deploy identity and runtime-state preservation, safe redirects, non-mutating mail reads, and explicit Claude Code grant reporting. Codex and Claude Code remain native adapters translated into OIP at the provider edge.)
 - 1.7.0a5 (**one OIP browser protocol and two native coding adapters**: the abandoned alternate transport, generic coding-agent edge, SDK dependency, CLI flags, gateway, exports, tests, fixtures, and product docs are removed. `co ai` serves OIP 0.1 over `/ws`; `@connectonion/react@0.4.2-alpha.4` owns the browser client; Codex and Claude Code remain native provider adapters. Fresh installations mint one private owner invite and reveal it only through `co keys --reveal`.)

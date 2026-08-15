@@ -1,11 +1,11 @@
 """
 Purpose: Run Codex via its native app-server protocol, stream steps and permission requests to the frontend, and resume sessions
 LLM-Note:
-  Dependencies: imports from [json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
+  Dependencies: imports from [atexit, json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
   Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
-  State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
+  State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | open-only threads remain in a process-local registry for at most 15 minutes (maximum 8) until their first turn persists the rollout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
   Integration: exposes codex(...) and CodexAppServer | this is the native adapter: ConnectOnion's Python client drives Codex app-server directly | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
-  Performance: long-lived process per call | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
+  Performance: one process per active call; open-only keeps its initialized process until first follow-up/expiry | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
   Errors: returns envelope with error on missing binary, JSON-RPC failure/timeout, or exception | never raises to the agent loop
 
 Codex tool. ConnectOnion drives the codex CLI's built-in `app-server` (OpenAI's
@@ -33,6 +33,7 @@ Requires the `codex` CLI (npm install -g @openai/codex) and Codex auth. Set
 $CODEX_CMD to override the binary path/command.
 """
 
+import atexit
 import json
 import os
 import shutil
@@ -54,6 +55,16 @@ _APPROVAL_METHODS = (
 )
 # Thread items that represent a discrete step worth showing as a tool card.
 _TOOL_ITEM_TYPES = ("commandExecution", "fileChange", "mcpToolCall", "webSearch")
+
+# A newly started Codex thread is not written to ~/.codex until its first turn.
+# Keep an open-only app-server alive so the Work Room's first message can use
+# the exact provider thread id that was shown to the user.  Once that first
+# turn completes, Codex has persisted the rollout and ordinary thread/resume
+# works across later tool calls and Host restarts.
+_OPEN_THREAD_TTL_SECONDS = 15 * 60
+_MAX_OPEN_THREADS = 8
+_open_threads = {}
+_open_threads_lock = threading.Lock()
 
 
 def codex(prompt: str = "", session_id: str = "", cwd: str = "",
@@ -107,40 +118,72 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
         return _approval_allowed(method, params, approval, agent)
 
     cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
-    client = CodexAppServer(
-        command=command,
-        cwd=cwd or ".",
-        on_event=on_event,
-        on_approval=on_approval,
-        cancelled=cancelled if callable(cancelled) else None,
-    )
+    working_directory = cwd or "."
+    cancellation_check = cancelled if callable(cancelled) else None
+    client = None
     deadline = time.monotonic() + timeout
     force_close = False
+    keep_open = False
     try:
-        client.start()
-        client.initialize(timeout=_remaining(deadline))
         has_prompt = bool(prompt.strip())
-        if has_prompt:
-            client.refresh_account(timeout=_remaining(deadline))
         approval_policy = "untrusted" if approval == "manual" else "never"
-        if session_id:
-            sid = client.resume_thread(
+        if session_id and has_prompt:
+            client = _take_open_thread(
                 session_id,
+                cwd=working_directory,
                 sandbox=sandbox,
                 model=model,
                 approval_policy=approval_policy,
-                timeout=_remaining(deadline),
             )
+        reused_open_thread = client is not None
+        if client is not None:
+            client.on_event = on_event
+            client.on_approval = on_approval
+            client.cancelled = cancellation_check or (lambda: False)
+            client.refresh_account(timeout=_remaining(deadline))
+            sid = session_id
             resumed = True
         else:
-            sid = client.start_thread(
-                sandbox=sandbox,
-                model=model,
-                approval_policy=approval_policy,
-                timeout=_remaining(deadline),
+            client = CodexAppServer(
+                command=command,
+                cwd=working_directory,
+                on_event=on_event,
+                on_approval=on_approval,
+                cancelled=cancellation_check,
             )
-            resumed = False
+            client.start()
+            client.initialize(timeout=_remaining(deadline))
+            if has_prompt:
+                client.refresh_account(timeout=_remaining(deadline))
+        if not reused_open_thread:
+            if session_id:
+                sid = client.resume_thread(
+                    session_id,
+                    sandbox=sandbox,
+                    model=model,
+                    approval_policy=approval_policy,
+                    timeout=_remaining(deadline),
+                )
+                resumed = True
+            else:
+                sid = client.start_thread(
+                    sandbox=sandbox,
+                    model=model,
+                    approval_policy=approval_policy,
+                    timeout=_remaining(deadline),
+                )
+                resumed = False
         if not has_prompt:
+            if not session_id:
+                _store_open_thread(
+                    sid,
+                    client,
+                    cwd=working_directory,
+                    sandbox=sandbox,
+                    model=model,
+                    approval_policy=approval_policy,
+                )
+                keep_open = True
             return _envelope(
                 sid, resumed=resumed, exit_code=0, opened=True
             )
@@ -153,10 +196,11 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     except Exception as e:
         return _envelope(session_id, error=f"codex app-server: {e}")
     finally:
-        if force_close:
-            client.close(force=True)
-        else:
-            client.close()
+        if client is not None and not keep_open:
+            if force_close:
+                client.close(force=True)
+            else:
+                client.close()
 
     turn = turn or {}
     status = turn.get("status", "")
@@ -165,6 +209,95 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                          usage=turn.get("usage", {}), exit_code=0)
     return _envelope(sid, resumed=resumed, last_message="".join(chunks),
                      usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}")
+
+
+def _thread_config(cwd, sandbox, model, approval_policy):
+    return cwd, sandbox, model, approval_policy
+
+
+def _store_open_thread(
+    thread_id, client, *, cwd, sandbox, model, approval_policy
+):
+    """Keep a no-turn thread alive until its first Work Room message."""
+    record = {
+        "client": client,
+        "config": _thread_config(cwd, sandbox, model, approval_policy),
+        "opened_at": time.monotonic(),
+    }
+    timer = threading.Timer(
+        _OPEN_THREAD_TTL_SECONDS, _expire_open_thread, (thread_id, client)
+    )
+    timer.daemon = True
+    record["timer"] = timer
+    with _open_threads_lock:
+        previous = _open_threads.pop(thread_id, None)
+        _open_threads[thread_id] = record
+        evicted = []
+        while len(_open_threads) > _MAX_OPEN_THREADS:
+            oldest = min(
+                _open_threads,
+                key=lambda key: _open_threads[key]["opened_at"],
+            )
+            evicted.append(_open_threads.pop(oldest))
+    _close_thread_records([previous] if previous is not None else [])
+    _close_thread_records(evicted)
+    timer.start()
+
+
+def _take_open_thread(
+    thread_id, *, cwd, sandbox, model, approval_policy
+):
+    """Claim a matching live open-only thread for its first provider turn."""
+    _close_expired_open_threads()
+    expected = _thread_config(cwd, sandbox, model, approval_policy)
+    with _open_threads_lock:
+        record = _open_threads.get(thread_id)
+        if record is None:
+            return None
+        _open_threads.pop(thread_id, None)
+    record["timer"].cancel()
+    if record["config"] != expected:
+        record["client"].close()
+        return None
+    return record["client"]
+
+
+def _close_expired_open_threads(now=None):
+    now = time.monotonic() if now is None else now
+    with _open_threads_lock:
+        expired = [
+            thread_id
+            for thread_id, record in _open_threads.items()
+            if now - record["opened_at"] >= _OPEN_THREAD_TTL_SECONDS
+        ]
+        records = [_open_threads.pop(thread_id) for thread_id in expired]
+    _close_thread_records(records)
+
+
+def _expire_open_thread(thread_id, client):
+    with _open_threads_lock:
+        record = _open_threads.get(thread_id)
+        if record is None or record["client"] is not client:
+            return
+        _open_threads.pop(thread_id, None)
+    record["client"].close()
+
+
+def _close_thread_records(records):
+    for record in records:
+        record["timer"].cancel()
+        record["client"].close()
+
+
+def _close_open_threads():
+    """Reap open-only app-servers when the Host process exits."""
+    with _open_threads_lock:
+        records = list(_open_threads.values())
+        _open_threads.clear()
+    _close_thread_records(records)
+
+
+atexit.register(_close_open_threads)
 
 
 def _turn_error(turn):
