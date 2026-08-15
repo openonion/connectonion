@@ -17,6 +17,10 @@ import pytest
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
 from connectonion import CodexPlugin
+from connectonion.cli.co_ai.plugins.native_coding_agent_routing import (
+    reject_raw_codex_launch,
+    route_explicit_codex_request,
+)
 from connectonion.useful_plugins import eval as eval_plugin
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 
@@ -80,7 +84,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "model",
         "timeout",
     }
-    assert codex_schema["required"] == ["prompt"]
+    assert codex_schema.get("required", []) == []
     assert "claude_code" in agent.tools._tools
     claude_schema = agent.tools.get("claude_code").to_function_schema()["parameters"]
     assert set(claude_schema["properties"]) == {
@@ -99,6 +103,11 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # 40 tool schemas stay out of the request.
     assert agent.tools.get_instance("browserautomation") is None
     assert "bash" in agent.tools._tools
+    assert route_explicit_codex_request in agent.events["after_user_input"]
+    assert reject_raw_codex_launch in agent.events["before_each_tool"]
+    assert agent.events["before_each_tool"].index(reject_raw_codex_launch) < agent.events[
+        "before_each_tool"
+    ].index(agent_mod.tool_approval[-1])
     assert "todolist" in agent.tools._instances
     assert "enter_plan_mode" not in agent.tools._tools
     assert "exit_plan_and_implement" not in agent.tools._tools
@@ -247,6 +256,8 @@ def test_the_real_prompt_differs_with_and_without_a_role(tmp_path, monkeypatch):
     assert len(coding) > len(plain)
     assert "# Tool: Codex delegation" in coding
     assert "# Tool: Claude Code delegation" in coding
+    assert "Native coding-agent routing is mandatory" in coding
+    assert "call `codex()` without `prompt`" in coding
     assert "you are a coding agent" not in plain.lower()
     # Behaviour that every agent needs survives dropping the role.
     for prompt in (coding, plain):

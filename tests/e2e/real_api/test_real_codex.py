@@ -62,6 +62,23 @@ class _Agent:
 
 
 @requires_codex
+def test_real_codex_open_without_prompt_creates_thread_without_model_turn():
+    """Open-only reaches the real app-server but never needs a model turn."""
+    result = json.loads(
+        codex(prompt="", cwd=".", approval="deny", timeout=30)
+    )
+
+    assert result["provider"] == "codex"
+    assert result["session_id"]
+    assert result["opened"] is True
+    assert result["resumed"] is False
+    assert result["last_message"] == ""
+    assert result["usage"] == {}
+    assert result["exit_code"] == 0
+    assert "error" not in result
+
+
+@requires_codex
 def test_real_codex_app_server_handshake_and_reporting():
     """Drives the real `codex app-server` end-to-end. initialize + thread/start
     run against the real binary (no auth needed to get a thread id); without

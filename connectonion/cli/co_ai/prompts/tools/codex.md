@@ -8,6 +8,11 @@ When the user explicitly asks to open, use, start, or hand work to Codex, call
 adapter resolves the workspace and reports an unavailable or unauthenticated
 Codex installation honestly.
 
+If the request only says to open or start Codex, call `codex()` with no
+`prompt`. That creates the native provider thread and Work Room without
+inventing or submitting a task. If the user included work, pass their actual
+request as `prompt`; never replace it with a generic greeting or probe.
+
 ## Contract
 
 - Pass `cwd` when the user named a specific repository. Otherwise omit it and

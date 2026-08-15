@@ -43,18 +43,6 @@ explicit unsupported descriptor fails clearly instead of selecting another
 transport. Identity, recipient binding, replay protection, and trust policy
 remain ConnectOnion Host responsibilities.
 
-On its first web-server start, `co ai` creates a private owner invite in
-`~/.co/keys.env`. The code is never printed in startup logs. When you are ready
-to connect your own client, reveal it intentionally:
-
-```bash
-co keys --reveal
-```
-
-Restarting `co ai` keeps the same invite, so clients already given the code are
-not locked out. An explicit `CO_INVITE_CODE` in the current project or process
-continues to take precedence.
-
 ### One-Shot Mode
 
 ```bash
@@ -151,6 +139,7 @@ The agent has a full suite of tools for coding tasks:
 
 **Codex delegation**
 - Hand a scoped coding task to the installed Codex CLI
+- Open an empty native Codex thread and Work Room without inventing a task
 - Continue the same Codex thread by passing back its `session_id`
 - Stream Codex progress and approve concrete sensitive actions in the same UI
 
@@ -173,6 +162,17 @@ commands, while Full access runs without prompts using Codex's
 resumed. In a hosted session, only the operator can approve Codex's
 nested permission requests; shared contacts are always confined to read-only
 Codex runs with permission requests denied.
+
+An explicit request such as “run Codex”, “open Codex”, or `/codex …` always
+uses the native `codex()` adapter. Raw launches through `bash`, `shell`,
+`run_background`, `codex exec`, or package-runner equivalents are rejected
+before approval and before a process starts. Commands that only inspect or
+mention the name, such as `which codex` or `rg codex docs/`, remain ordinary
+shell commands.
+
+When the request is only “open Codex”, the adapter starts a provider thread but
+does not send `turn/start`, spend a model turn, or manufacture a greeting. O Chat
+still receives the provider invocation and opens the same interactive Work Room.
 
 **Claude Code delegation**
 - Hand a scoped coding task to the installed Claude Code CLI

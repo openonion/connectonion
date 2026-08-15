@@ -56,13 +56,14 @@ _APPROVAL_METHODS = (
 _TOOL_ITEM_TYPES = ("commandExecution", "fileChange", "mcpToolCall", "webSearch")
 
 
-def codex(prompt: str, session_id: str = "", cwd: str = "",
+def codex(prompt: str = "", session_id: str = "", cwd: str = "",
           sandbox: str = "workspace-write", model: str = "", timeout: int = 600,
           approval: str = "manual", agent=None) -> str:
     """Run Codex (via `codex app-server`) and optionally resume a session.
 
     Args:
-        prompt: Task for Codex (e.g., "fix the failing tests")
+        prompt: Task for Codex (e.g., "fix the failing tests"). Omit it to
+            create or resume a provider thread without submitting a turn.
         session_id: Thread id returned by a previous call, to resume it
         cwd: Directory Codex works in (default: current directory)
         sandbox: "read-only", "workspace-write" (default), or "danger-full-access"
@@ -118,7 +119,9 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
     try:
         client.start()
         client.initialize(timeout=_remaining(deadline))
-        client.refresh_account(timeout=_remaining(deadline))
+        has_prompt = bool(prompt.strip())
+        if has_prompt:
+            client.refresh_account(timeout=_remaining(deadline))
         approval_policy = "untrusted" if approval == "manual" else "never"
         if session_id:
             sid = client.resume_thread(
@@ -137,11 +140,12 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
                 timeout=_remaining(deadline),
             )
             resumed = False
+        if not has_prompt:
+            return _envelope(
+                sid, resumed=resumed, exit_code=0, opened=True
+            )
         turn = client.run_turn(
-            sid,
-            prompt,
-            cwd=cwd,
-            timeout=_remaining(deadline),
+            sid, prompt, cwd=cwd, timeout=_remaining(deadline)
         )
     except _ProviderCancelled as e:
         force_close = True
@@ -315,7 +319,8 @@ def _approval_details(method, params):
 
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
-              usage: dict = None, exit_code: int = -1, error: str = "") -> str:
+              usage: dict = None, exit_code: int = -1, error: str = "",
+              opened: bool = False) -> str:
     """Build the JSON result envelope returned to the calling agent."""
     result = {
         "provider": "codex",
@@ -325,6 +330,8 @@ def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
         "usage": usage or {},
         "exit_code": exit_code,
     }
+    if opened:
+        result["opened"] = True
     if error:
         result["error"] = error
     return json.dumps(result)
