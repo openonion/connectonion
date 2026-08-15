@@ -218,6 +218,13 @@ class TestRemoteAgentAccount:
         with patch.object(dts, "_ssh", return_value=response):
             assert dts._remote_agent_account("user@host", "myagent") is None
 
+    def test_malformed_account_metadata_fails_closed(self):
+        payload = {"address": self.ADDRESS, "account": "not-an-account"}
+        stdout = dts.REMOTE_ACCOUNT_MARKER + json.dumps(payload)
+
+        with patch.object(dts, "_ssh", return_value=_ok(stdout)):
+            assert dts._remote_agent_account("user@host", "myagent") is None
+
     def test_the_interpreter_is_checked_in_the_same_round_trip(self):
         """Not a second ssh call: the marker read already costs one."""
         with patch.object(dts, "_ssh", return_value=_ok("{}\nVENV_PRESENT")) as ssh:

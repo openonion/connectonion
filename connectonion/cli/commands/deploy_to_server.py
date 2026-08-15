@@ -736,6 +736,8 @@ print({REMOTE_ACCOUNT_MARKER!r} + json.dumps(result))
                 return None
             address = result.get("address")
             account = result.get("account")
+            if account is not None and not isinstance(account, dict):
+                return None
             if account and account.get("AGENT_ADDRESS") != address:
                 return None
             return result
@@ -790,8 +792,6 @@ def _sync_env(target: str, agent: str, project_dir: Path,
                       f"supported in an EnvironmentFile[/yellow]")
     env_vars = {k: v for k, v in env_vars.items()
                 if v is not None and k not in multiline}
-    if not env_vars:
-        return True
 
     body = "".join(f"{k}={v}\n" for k, v in env_vars.items())
     dest = ENV_FILE_TEMPLATE.format(agent=agent)
@@ -801,7 +801,8 @@ def _sync_env(target: str, agent: str, project_dir: Path,
     # remainder of the file would then run as commands — under sudo.
     payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
 
-    console.print(f"[dim]  writing secrets … ({len(env_vars)} keys)[/dim]")
+    action = "writing secrets" if env_vars else "clearing stale account metadata"
+    console.print(f"[dim]  {action} … ({len(env_vars)} keys)[/dim]")
     result = _ssh(target, f"""
 sudo mkdir -p {shlex.quote(str(Path(dest).parent))}
 printf %s {shlex.quote(payload)} | base64 -d | sudo tee {shlex.quote(dest)} >/dev/null
