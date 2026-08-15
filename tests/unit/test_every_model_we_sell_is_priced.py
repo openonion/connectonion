@@ -3,7 +3,7 @@
 PAID_MANAGED_MODELS is what `co auth` offers a paying customer. Checked against
 the price table:
 
-    co/gemini-3.6-flash   priced=True   ctx=1,000,000
+    co/gemini-3.7-flash   priced=True   ctx=1,000,000
     co/gemini-3.5-flash   priced=True   ctx=1,000,000
     co/gemini-2.5-pro     priced=True   ctx=1,000,000
     co/gemini-2.5-flash   priced=True   ctx=1,000,000

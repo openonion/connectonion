@@ -136,7 +136,7 @@ class TestExactMatchesAreUntouched:
         assert not is_estimated_price(model)
 
     def test_the_managed_prefix_still_resolves(self):
-        assert not is_estimated_price("co/gemini-3.6-flash")
+        assert not is_estimated_price("co/gemini-3.7-flash")
 
     def test_a_managed_variant_is_an_estimate_too(self):
         assert is_estimated_price("co/gemini-2.5-flash-lite")

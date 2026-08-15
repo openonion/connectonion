@@ -905,7 +905,7 @@ def poll_mode_changes(agent: 'Agent') -> None:
     """Poll compatibility ``mode_change`` frames at iteration start.
 
     Handles Read only, Auto, Full access, and a legacy Plan request. New clients
-    use the Host-acknowledged ACP permission-profile transaction instead.
+    use the Host-acknowledged OIP permission-profile transaction instead.
     """
     if agent.current_session.get('mode') == 'plan':
         handle_permission_profile_change(agent, 'plan')

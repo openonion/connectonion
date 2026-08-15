@@ -14,12 +14,8 @@ import uuid
 
 from rich.console import Console
 
-from ....core.acp_wire import (
-    ACP_CANCEL_METHOD,
-    ACP_SCHEMA_VERSION,
-    ACP_SET_SESSION_MODE_METHOD,
-)
 from ...trust.ws_admin import get_onboard_requirements
+from ..protocol import oip_descriptor, supports_oip
 from .agent_io import resume_forwarding
 
 console = Console()
@@ -93,6 +89,16 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "session", "mode_is_admin",
     ):
         conn.pop(key, None)
+
+    if not supports_oip(data.get("protocol")):
+        await send_msg({
+            "type": "ERROR",
+            "code": -32010,
+            "message": "Unsupported OIP protocol",
+            "retryable": False,
+            "protocol": oip_descriptor(),
+        })
+        return None
 
     signed_commands = (
         data.get("payload", {}).get("signed_commands") == 1
@@ -219,14 +225,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "type": "CONNECTED",
         "session_id": session_id,
         "status": status,
-        "carrier_capabilities": {
-            "acp": {
-                "schema": ACP_SCHEMA_VERSION,
-                "client_notifications": [ACP_CANCEL_METHOD],
-                **({"client_requests": [ACP_SET_SESSION_MODE_METHOD]}
-                   if mode_state is not None else {}),
-            }
-        },
+        "protocol": oip_descriptor(),
     }
     if mode_state is not None:
         connected_msg["session_modes"] = mode_state

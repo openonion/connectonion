@@ -2,6 +2,15 @@
 
 Debug and test AI agent prompts and tools during development.
 
+The scoring plugin is opt-in. Ordinary `co ai` sessions still keep bounded
+session records for recent debugging, but they make no scoring-model calls.
+Start `co ai --eval` when you explicitly want completion scoring:
+
+```bash
+co ai --eval
+co ai --eval "exercise this agent and score the result"
+```
+
 ## Quick Start
 
 ```python

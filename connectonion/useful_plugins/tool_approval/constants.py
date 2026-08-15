@@ -34,7 +34,7 @@ Tool Classification:
 # The third profile is handled by a separate bounded-grant plugin:
 #   - ':danger-full-access': handled by full_access; sets skip_tool_approval=True
 #
-# New clients change profiles through the Host-acknowledged ACP transaction.
+# New clients change profiles through the Host-acknowledged OIP transaction.
 # The legacy WebSocket frame remains a migration reader only.
 # =============================================================================
 

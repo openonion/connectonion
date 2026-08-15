@@ -16,7 +16,6 @@ Used by:
 - Web chat interface at chat.openonion.ai
 """
 
-import hashlib
 import logging
 import os
 import threading
@@ -117,91 +116,39 @@ def start_server(
     Args:
         agent: Agent instance to host
         port: Port to run server on
-        model: Model for per-connection ACP coding agents
-        max_iterations: Tool iteration limit for ACP coding agents
+        model: Model used by the hosted coding agent
+        max_iterations: Tool iteration limit for the hosted coding agent
         yolo: Whether an administrator may select bounded Full access
         yolo_turns: Maximum Full access turns before a checkpoint
-        agent_factory: Optional configured factory for new ACP sessions
+        agent_factory: Reserved configured factory for hosted sessions
 
     The server will be accessible at:
     - POST http://localhost:{port}/input
     - WS ws://localhost:{port}/ws
-    - ACP WS ws://localhost:{port}/acp
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
     from ...network.host.config import load_host_config
-    from .acp_server import capture_network_workspace, create_acp_agent
 
-    network_workspace = capture_network_workspace(Path.cwd())
-    try:
-        # Use global ~/.co/ for consistent identity across all co ai sessions
-        co_dir = Path.home() / ".co"
-        if _prepare_owner_onboarding(co_dir):
-            from ..commands.project_cmd_lib import console
+    # Use global ~/.co/ for consistent identity across all co ai sessions.
+    co_dir = Path.home() / ".co"
+    if _prepare_owner_onboarding(co_dir):
+        from ..commands.project_cmd_lib import console
 
-            console.print(
-                "[green]Owner invite created.[/green] Run [bold]co keys --reveal[/bold] when onboarding your client."
-            )
-        input_limits = load_host_config(co_dir)
-        addr_data = address.load(co_dir)
-
-        # Open chat URL after agent successfully starts (2 second delay)
-        if addr_data:
-
-            def open_chat_delayed():
-                time.sleep(2)
-                webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
-
-            threading.Thread(target=open_chat_delayed, daemon=True).start()
-
-        # ACP needs one isolated lifecycle adapter per authenticated connection.
-        # @connectonion/react selects /acp from exact discovery; /ws remains the
-        # bounded compatibility path only when that descriptor is absent. Both
-        # doors share the host's signature and trust boundary.
-        acp_model = model or getattr(getattr(agent, "llm", None), "model", None)
-        acp_model = acp_model or "co/claude-opus-4-5"
-        acp_max_iterations = max_iterations if max_iterations is not None else getattr(agent, "max_iterations", 100)
-
-        def create_network_acp_agent(principal):
-            # A session ID is a routing value, never a credential. Keep persistent
-            # network sessions in a stable namespace selected only from the
-            # authenticated connection principal so copied IDs cross no boundary.
-            owner = "\0".join(
-                (
-                    "v1",
-                    principal.recipient,
-                    principal.address,
-                    principal.origin or "",
-                    principal.auth_method,
-                    network_workspace.namespace_key,
-                )
-            )
-            owner_id = hashlib.sha256(owner.encode("utf-8")).hexdigest()
-            session_co_dir = co_dir / "acp-principals" / owner_id
-            return create_acp_agent(
-                model=acp_model,
-                max_iterations=acp_max_iterations,
-                # --yolo is an operator ceiling, not authority delegated to every
-                # trusted remote caller. Only the authenticated administrator can
-                # receive the Full access profile on this direct endpoint.
-                yolo=yolo and principal.level == "admin",
-                yolo_turns=yolo_turns,
-                agent_factory=agent_factory,
-                session_co_dir=session_co_dir,
-                network_workspace=network_workspace,
-                input_limits=input_limits,
-            )
-
-        # Start server with same co_dir (relay enabled by default for web chat).
-        # co ai keeps one Agent instance so browser/tool state can persist across
-        # continued inputs in the same local web server.
-        host(
-            agent,
-            port=port,
-            trust="careful",
-            co_dir=co_dir,
-            acp_agent_factory=create_network_acp_agent,
+        console.print(
+            "[green]Owner invite created.[/green] Run [bold]co keys --reveal[/bold] when onboarding your client."
         )
-    finally:
-        network_workspace.close()
+    load_host_config(co_dir)
+    addr_data = address.load(co_dir)
+
+    # Open chat URL after agent successfully starts (2 second delay)
+    if addr_data:
+
+        def open_chat_delayed():
+            time.sleep(2)
+            webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
+        threading.Thread(target=open_chat_delayed, daemon=True).start()
+
+    # The first-party browser speaks OIP over /ws. Native Codex and Claude Code
+    # delegation stay inside the Agent as provider adapters.
+    host(agent, port=port, trust="careful", co_dir=co_dir)

@@ -7,7 +7,6 @@ LLM-Note:
   Errors: known LLM provider failures print one actionable message and exit 1; programmer errors still propagate with their traceback
 """
 
-import asyncio
 import json
 import sys
 from contextlib import nullcontext, redirect_stdout
@@ -17,22 +16,21 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from ...core.usage import DEFAULT_MODEL
+
 console = Console()
 
 
 def handle_ai(
     prompt: str = None,
     port: int = 8000,
-    model: str = "co/claude-opus-4-5",
+    model: str = DEFAULT_MODEL,
     max_iterations: int = 100,
     yolo: bool = False,
     yolo_turns: int = 100,
     evaluate: bool = False,
     json_output: bool = False,
     resume: str = None,
-    acp: bool = False,
-    acp_mcp: bool = False,
-    state_dir: Path | None = None,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -46,26 +44,11 @@ def handle_ai(
         evaluate: Score completion with the eval debugging plugin
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
-        acp: Serve the coding agent over ACP v1 on stdio
-        acp_mcp: Allow ACP clients to launch session-scoped stdio MCP servers
-        state_dir: ACP-only root for mutable session, log, and eval state
 
     Examples:
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
     """
-    if acp and (prompt or json_output or resume):
-        console.print("[red]--acp cannot be combined with a prompt, --json, or --resume[/red]")
-        raise typer.Exit(2)
-
-    if acp_mcp and not acp:
-        console.print("[red]--acp-mcp requires --acp[/red]")
-        raise typer.Exit(2)
-
-    if state_dir is not None and not acp:
-        console.print("[red]--state-dir requires --acp[/red]")
-        raise typer.Exit(2)
-
     if not prompt and (json_output or resume):
         message = "--json and --resume require a one-shot prompt"
         if json_output:
@@ -78,7 +61,10 @@ def handle_ai(
         console.print("[red]--resume requires --json[/red]")
         raise typer.Exit(2)
 
-    agent_factory = _agent_factory(evaluate=evaluate)
+    # The web server owns turn-by-turn evaluation separately. ``--eval`` is a
+    # one-shot option; attaching it to the long-lived browser agent makes every
+    # browser turn bill an eval model and leaks that plugin into server tests.
+    agent_factory = _agent_factory(evaluate=evaluate and bool(prompt))
 
     if prompt and json_output:
         _handle_json_one_shot(
@@ -89,26 +75,6 @@ def handle_ai(
             yolo_turns,
             resume,
             agent_factory=agent_factory,
-        )
-        return
-
-    if acp:
-        from ..co_ai.acp_server import serve_acp
-
-        prepared_state_dir = (
-            _prepare_acp_state_dir(state_dir) if state_dir is not None else None
-        )
-
-        asyncio.run(
-            serve_acp(
-                model=model,
-                max_iterations=max_iterations,
-                yolo=yolo,
-                yolo_turns=yolo_turns,
-                agent_factory=agent_factory,
-                allow_mcp=acp_mcp,
-                state_dir=prepared_state_dir,
-            )
         )
         return
 
@@ -136,23 +102,6 @@ def _agent_factory(*, evaluate: bool):
 
         extra_plugins = (eval_plugin,)
     return partial(_create_agent, extra_plugins=extra_plugins)
-
-
-def _prepare_acp_state_dir(state_dir: Path) -> Path:
-    """Create one private root for an isolated ACP process."""
-
-    from ..co_ai.one_shot_sessions import (
-        SessionSnapshotError,
-        prepare_snapshot_storage,
-    )
-
-    selected = Path(state_dir).expanduser()
-    try:
-        prepare_snapshot_storage(selected)
-        return selected.resolve(strict=True)
-    except (OSError, SessionSnapshotError):
-        console.print(f"[red]ACP state directory is unavailable: {selected}[/red]")
-        raise typer.Exit(2) from None
 
 
 def _create_agent(

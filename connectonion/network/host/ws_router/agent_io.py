@@ -1,7 +1,7 @@
 """
 Purpose: Bridge synchronous hosted Agents to the async WebSocket transport
 LLM-Note:
-  Dependencies: imports from [core.acp_wire, network.io, session.mode]
+  Dependencies: imports from [network.io, session.mode]
   Data flow: INPUT → Agent thread → WebSocketIO → async forwarder → OUTPUT/ERROR
   State/Effects: spawns Agent threads/tasks; updates the active-session registry
   Integration: start_agent(), resume_forwarding(), forward_agent_msgs_to_client()
@@ -14,39 +14,11 @@ import threading
 
 from rich.console import Console
 
-from ....core.acp_wire import (
-    acp_notification_frame,
-    acp_permission_request_frame,
-)
 from ...io import WebSocketIO
 from ..session.mode import ModeTransactionError
 
 console = Console()
 logger = logging.getLogger(__name__)
-
-
-def _acp_rollout_frame(event, session_id):
-    if not session_id:
-        return None
-    try:
-        return acp_notification_frame(event, session_id)
-    except (TypeError, ValueError) as exc:
-        console.print(
-            f"[yellow]ACP mirror skipped; legacy event continues: {exc}[/yellow]"
-        )
-        return None
-
-
-def _acp_permission_rollout_frame(event, session_id):
-    if not session_id:
-        return None
-    try:
-        return acp_permission_request_frame(event, session_id)
-    except (TypeError, ValueError) as exc:
-        console.print(
-            f"[yellow]ACP permission mirror skipped; legacy request continues: {exc}[/yellow]"
-        )
-        return None
 
 
 def _final_agent_event(result, session, chat_items):
@@ -97,15 +69,10 @@ async def _send_output(
     duration_ms,
     session,
 ):
-    """Send the additive ACP message mirror, then authoritative OUTPUT."""
+    """Send the authoritative OIP terminal output."""
     from ..session import session_to_chat_items
 
     chat_items = session_to_chat_items(session or {})
-    final_event = _final_agent_event(result, session, chat_items)
-    if final_event is not None:
-        acp_frame = _acp_rollout_frame(final_event, session_id)
-        if acp_frame is not None:
-            await send_msg(acp_frame)
     await send_msg({
         "type": "OUTPUT",
         "result": result,
@@ -141,25 +108,8 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
 async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
     """Forward agent events to client. Send OUTPUT (or ERROR) when agent finishes."""
     async for event in io.read_msgs_from_agent():
-        persisted_trace = io.is_persisted_trace_event(event)
-        event_type = event.get("type")
         if event.get("type") == "approval_needed":
-            acp_request = _acp_permission_rollout_frame(event, session_id)
-            io.register_permission_request(event, session_id, acp_request)
-            if acp_request is not None:
-                await send_msg(acp_request)
-        should_mirror = event_type in {
-            "tool_call", "tool_result", "mode_changed"
-        } or (
-            event_type in {"thinking", "plan"} and persisted_trace
-        )
-        acp_frame = (
-            _acp_rollout_frame(event, session_id) if should_mirror else None
-        )
-        if acp_frame is not None:
-            await send_msg(acp_frame)
-            # Rollout is dual-write: older clients still need the legacy event,
-            # while new clients de-duplicate the matching logical transition.
+            io.register_permission_request(event, session_id)
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)
@@ -207,11 +157,13 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     else:
         await send_msg({"type": "ERROR", "message": "Agent completed without result"})
 
-    # After the run, push the dashboard.html the agent may have rewritten. A run that
-    # didn't touch it sends nothing (send_dashboard compares against what this
-    # connection last saw), so an unchanged Home costs no bandwidth per turn.
-    from .dashboard import send_dashboard
-    await send_dashboard(send_msg, session_id, conn)
+    # Dashboard delivery is connection state: CONNECT sends the initial snapshot
+    # and records its stamp, then a completed run may replace it. Callers without
+    # a connection are forwarding only the OIP agent stream and must not acquire
+    # an unrelated Home frame from process-global dashboard state.
+    if conn is not None:
+        from .dashboard import send_dashboard
+        await send_dashboard(send_msg, session_id, conn)
 
 
 def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None):

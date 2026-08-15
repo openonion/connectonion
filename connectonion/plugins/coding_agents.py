@@ -8,6 +8,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ..core.approval_modes import (
+    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+    READ_ONLY_PERMISSION_PROFILE,
+    WORKSPACE_PERMISSION_PROFILE,
+    has_valid_full_access_grant,
+    legacy_permission_profile_id,
+)
 from ..core.events import on_agent_ready
 from ..useful_tools.claude_code import _run_claude_code
 from ..useful_tools.codex import codex as _run_codex
@@ -86,8 +93,15 @@ class _CodingAgentPlugin(list):
             return None, f"Working directory is not a directory: {candidate}."
         return candidate, ""
 
-    def _invoke(self, agent, prompt: str, run) -> str:
+    def _invoke(
+        self,
+        agent,
+        prompt: str,
+        run,
+        permission_mode: PermissionMode | None = None,
+    ) -> str:
         started = time.monotonic()
+        effective_mode = permission_mode or self.permission_mode
         parent_id = _parent_tool_call_id(agent)
         invocation_id = f"{self.provider}:{parent_id}" if parent_id else f"{self.provider}:untracked"
         _emit(
@@ -98,7 +112,7 @@ class _CodingAgentPlugin(list):
             provider=self.provider,
             providerDisplayName=self.display_name,
             taskSummary=_bounded(prompt, 500),
-            permissionMode=self.permission_mode.value,
+            permissionMode=effective_mode.value,
             status="running",
         )
         try:
@@ -147,6 +161,16 @@ class CodexPlugin(_CodingAgentPlugin):
     provider = "codex"
     display_name = "Codex"
 
+    def __init__(
+        self,
+        *,
+        permission_mode: PermissionMode | str = PermissionMode.MANUAL,
+        workspace: str | Path | None = None,
+        use_host_permissions: bool = False,
+    ) -> None:
+        self.use_host_permissions = use_host_permissions
+        super().__init__(permission_mode=permission_mode, workspace=workspace)
+
     def codex(
         self,
         prompt: str,
@@ -160,11 +184,7 @@ class CodexPlugin(_CodingAgentPlugin):
         working_directory, error = self._cwd(cwd)
         if error:
             return json.dumps({"provider": "codex", "session_id": session_id, "error": error})
-        sandbox, approval = {
-            PermissionMode.MANUAL: ("workspace-write", "manual"),
-            PermissionMode.AUTO_APPROVE: ("workspace-write", "auto"),
-            PermissionMode.FULL_ACCESS: ("danger-full-access", "auto"),
-        }[self.permission_mode]
+        sandbox, approval, effective_mode = self._policy(agent)
         return self._invoke(
             agent,
             prompt,
@@ -178,7 +198,44 @@ class CodexPlugin(_CodingAgentPlugin):
                 approval=approval,
                 agent=agent,
             ),
+            permission_mode=effective_mode,
         )
+
+    def _policy(self, agent) -> tuple[str, str, PermissionMode]:
+        if not self.use_host_permissions:
+            sandbox, approval = {
+                PermissionMode.MANUAL: ("workspace-write", "manual"),
+                PermissionMode.AUTO_APPROVE: ("workspace-write", "auto"),
+                PermissionMode.FULL_ACCESS: ("danger-full-access", "auto"),
+            }[self.permission_mode]
+            return sandbox, approval, self.permission_mode
+
+        session = getattr(agent, "current_session", {}) or {}
+        requester = session.get("requester")
+        if requester and requester.get("level") != "admin":
+            return "read-only", "deny", PermissionMode.MANUAL
+        try:
+            profile = legacy_permission_profile_id(
+                session.get("mode", READ_ONLY_PERMISSION_PROFILE)
+            )
+        except ValueError:
+            profile = READ_ONLY_PERMISSION_PROFILE
+        if (
+            profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE
+            and not has_valid_full_access_grant(session)
+        ):
+            profile = READ_ONLY_PERMISSION_PROFILE
+        return {
+            READ_ONLY_PERMISSION_PROFILE: (
+                "read-only", "manual", PermissionMode.MANUAL
+            ),
+            WORKSPACE_PERMISSION_PROFILE: (
+                "workspace-write", "manual", PermissionMode.AUTO_APPROVE
+            ),
+            DANGER_FULL_ACCESS_PERMISSION_PROFILE: (
+                "danger-full-access", "deny", PermissionMode.FULL_ACCESS
+            ),
+        }[profile]
 
 
 class ClaudeCodePlugin(_CodingAgentPlugin):

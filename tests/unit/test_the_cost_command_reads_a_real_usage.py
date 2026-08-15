@@ -35,7 +35,7 @@ class _Agent:
     """Only what cmd_cost touches, with last_usage the type agent.py assigns."""
 
     def __init__(self, usage=None):
-        self.llm = type("LLM", (), {"model": "co/gemini-3.6-flash"})()
+        self.llm = type("LLM", (), {"model": "co/gemini-3.7-flash"})()
         self.total_cost = 0.0014
         self.last_usage = usage
         self.context_percent = 12.0
@@ -122,7 +122,7 @@ class TestTheTotalIsTheWholeSession:
         second = TokenUsage(input_tokens=40, output_tokens=5, total_tokens=101,
                             cost=0.000600)
         return SimpleNamespace(
-            llm=SimpleNamespace(model="co/gemini-3.6-flash"),
+            llm=SimpleNamespace(model="co/gemini-3.7-flash"),
             total_cost=0.001176,
             last_usage=second,
             context_percent=12.0,

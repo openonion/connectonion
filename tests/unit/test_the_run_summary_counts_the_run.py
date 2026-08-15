@@ -29,12 +29,12 @@ def _session(*calls):
     """A trace shaped the way agent.py writes one: request, then result."""
     trace = [{"type": "user_input", "content": "hi"}]
     for input_tokens, output_tokens, cost in calls:
-        trace.append({"type": "llm_call", "model": "co/gemini-3.6-flash",
+        trace.append({"type": "llm_call", "model": "co/gemini-3.7-flash",
                       "status": "pending"})
         # model_dump(), because that is what agent.py records — building the
         # TokenUsage object here instead made every test below pass over code
         # that raised AttributeError on the first real run.
-        trace.append({"type": "llm_result", "model": "co/gemini-3.6-flash",
+        trace.append({"type": "llm_result", "model": "co/gemini-3.7-flash",
                       "usage": TokenUsage(input_tokens=input_tokens,
                                           output_tokens=output_tokens,
                                           cost=cost).model_dump()})

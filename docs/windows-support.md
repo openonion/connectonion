@@ -267,8 +267,12 @@ New tests in `tests/unit/test_windows_compat.py`:
 - ✅ Subprocess pipe decodes UTF-8/emoji even when the locale reports GBK/cp936
 - ✅ Subprocess survives non-UTF-8 bytes (`errors="replace"`, no crash)
 
-A real Windows E2E job (`.github/workflows/tests.yml` → `windows-e2e`) also runs the
-shipped `Shell` + background runner under an actual `chcp 936` (GBK) console.
+A real Windows E2E job (`.github/workflows/tests.yml` → `windows-e2e`) installs the
+wheel like a user, verifies the Patchright CLI, launches the preinstalled Chrome,
+then hides Chrome and proves `co browser` can download per-user Chromium and drive
+it on a truly fresh setup. It also runs the shipped `Shell` + background runner
+under an actual `chcp 936` (GBK) console. The fresh-setup journey is the single
+browser-download check, avoiding a second redundant network installation.
 
 ## Supported Characters
 

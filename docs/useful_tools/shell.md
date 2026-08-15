@@ -47,6 +47,10 @@ result = shell.run("python --version")
 # Returns: "Python 3.11.0"
 ```
 
+Pass `timeout=<seconds>` for long-running work. The value is honored without a
+hidden ten-minute cap. If it expires, `subprocess.TimeoutExpired` is raised so a
+caller or agent can distinguish the timeout from successful output.
+
 ### run_in_dir(command, directory)
 
 Execute command in a specific directory.

@@ -289,7 +289,7 @@ def execute_single_tool(
     }
 
     # Every result must have a preceding start with the same stable ID.  This
-    # is required by ACP clients and also avoids a completion that cannot be
+    # is required by streaming clients and also avoids a completion that cannot be
     # correlated by ConnectOnion clients when the requested tool is unknown.
     agent._record_trace({
         "type": "tool_call",

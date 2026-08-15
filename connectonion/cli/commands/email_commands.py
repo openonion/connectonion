@@ -16,8 +16,8 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from ...backend import backend_url
 
+from ...backend import backend_url
 from .project_cmd_lib import load_api_key
 
 console = Console()
@@ -118,7 +118,14 @@ def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
 
     console.print()
     console.print(table)
-    console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]\n")
+    console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]")
+    if page_is_full:
+        next_offset = offset + last
+        console.print(
+            "[dim]Next page:[/dim] "
+            f"[bold]co email inbox --last {last} --offset {next_offset}[/bold]"
+        )
+    console.print()
 
 
 def handle_email_sent(last: int = 10, to: str = None):

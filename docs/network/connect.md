@@ -783,7 +783,7 @@ class RemoteAgent:
 ```
 
 `set_permission_profile()` uses one timeout budget for endpoint resolution,
-CONNECT, PING handling, and the owned ACP response. If it raises
+CONNECT, PING handling, and the owned OIP mode response. If it raises
 `TimeoutError`, the durable outcome is unknown: Host persistence may have
 completed even though the acknowledgement did not arrive. Reconnect and use
 the next `CONNECTED` state (`available_permission_profiles` and

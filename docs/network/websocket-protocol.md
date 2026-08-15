@@ -2,12 +2,8 @@
 
 > CONNECT to start or resume, INPUT to message, EXEC to run one tool directly. Session stays alive between executions.
 
-> **Migration note:** this page documents the ConnectOnion compatibility
-> socket at `/ws`; that socket is not ACP. `co ai` now also starts native ACP
-> v1 over the authenticated `/acp` WebSocket. The published React Alpha.2
-> package and O Chat select `/acp` when the Host advertises the exact supported
-> descriptor; `/ws` remains the fallback only when that descriptor is absent. See
-> [Authenticated ACP WebSocket](acp-websocket.md).
+> This is OIP 0.1, the single ConnectOnion browser protocol. `co ai` serves it
+> over the authenticated `/ws` socket and advertises it in `CONNECTED`.
 
 ---
 
@@ -398,82 +394,26 @@ The tool is checked against the host's `.co/host.yaml` permission whitelist (the
 { "type": "APPROVAL_RESPONSE", "approved": true, "scope": "once" }
 ```
 
-Legacy approval responses are consumed once and are bound to the currently
-pending request. Updated React clients answer the paired ACP request instead.
+Approval responses are consumed once and are bound to the currently pending
+request.
 
-#### ACP_RESPONSE
+#### mode_change
 
-Answer one `ACP_REQUEST`. The outer carrier binds the response to the Host
-session; `message` is the exact ACP JSON-RPC result for the request ID.
-
-```json
-{
-  "type": "ACP_RESPONSE",
-  "acpSchema": "schema-v1.19.0",
-  "sessionId": "550e8400-...",
-  "message": {
-    "jsonrpc": "2.0",
-    "id": "approval-event-uuid",
-    "result": {
-      "outcome": {"outcome": "selected", "optionId": "allow_once"}
-    }
-  }
-}
-```
-
-The Host accepts only an advertised option for the active request and session.
-`allow_once` and `allow_session` grant one call or the current session;
-`reject_soft`, `reject_hard`, and `reject_explain` deny. A matching malformed
-response or `cancelled` fails closed. Optional rejection feedback belongs at
-`result._meta.connectonion.feedback` and has no authorization meaning.
-
-#### ACP_REQUEST (`session/set_mode`)
-
-An authenticated client selects one Host-advertised permission profile with
-the exact ACP v1.19 request. The ACP method retains its standard
-`session/set_mode` name. On a signed-command connection the complete request is
-also the signed `payload`; the Host executes that verified copy.
+An authenticated client selects one Host-advertised permission profile:
 
 ```json
 {
-  "type": "ACP_REQUEST",
-  "acpSchema": "schema-v1.19.0",
-  "message": {
-    "jsonrpc": "2.0",
-    "id": "mode-request-uuid",
-    "method": "session/set_mode",
-    "params": {
-      "sessionId": "550e8400-...",
-      "modeId": ":workspace"
-    }
-  },
-  "payload": {
-    "type": "ACP_REQUEST",
-    "acpSchema": "schema-v1.19.0",
-    "message": {
-      "jsonrpc": "2.0",
-      "id": "mode-request-uuid",
-      "method": "session/set_mode",
-      "params": {
-        "sessionId": "550e8400-...",
-        "modeId": ":workspace"
-      }
-    },
-    "to": "0x3d4017c3e843...",
-    "timestamp": 1702234567,
-    "nonce": "550e8400-..."
-  },
-  "from": "0xClientPublicKey",
-  "signature": "0x..."
+  "type": "mode_change",
+  "mode": ":workspace"
 }
 ```
 
 The request is accepted only while the durable session is idle and owned by
 the authenticated caller. `:read-only` is always available; `:workspace` and
 `:danger-full-access` are identity- and launch-authority-bounded. No client
-field can supply or extend Full access turns. Success is an `ACP_RESPONSE` with
-an empty result and means the JSONL commit completed; busy, policy, ownership,
-and persistence failures are correlated JSON-RPC errors.
+field can supply or extend Full access turns. Success is `mode_changed` and
+means the durable commit completed; busy, policy, ownership, and persistence
+failures return `ERROR`.
 `@connectonion/react` owns this browser operation; O Chat consumes it without
 constructing protocol frames. Default and Plan are separate client
 collaboration modes and do not appear in this Host permission list.
@@ -516,13 +456,7 @@ Response to CONNECT.
   "type": "CONNECTED",
   "session_id": "550e8400-...",
   "status": "new",
-  "carrier_capabilities": {
-    "acp": {
-      "schema": "schema-v1.19.0",
-      "client_notifications": ["session/cancel"],
-      "client_requests": ["session/set_mode"]
-    }
-  },
+  "protocol": {"name": "oip", "version": "0.1"},
   "session_modes": {
     "currentModeId": ":read-only",
     "availableModes": [
@@ -544,8 +478,8 @@ Response to CONNECT.
 | `"running"` | Agent still running | Wait for events/OUTPUT |
 
 `server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).
-`session_modes` is present only with the matching advertised client request and
-is the authoritative current/available state for this authenticated identity.
+`session_modes` is the authoritative current/available state for this
+authenticated identity when Host mode policy is enabled.
 
 #### OUTPUT
 
@@ -565,35 +499,22 @@ The session may contain a canonical `plan` array. It is current replacement
 state, not a transcript entry, and is preserved across session sync, reconnect,
 and final output.
 
-#### ACP_NOTIFICATION (`plan`)
+#### plan
 
-After a successful TodoList state change, the Host sends the exact stable ACP
-v1.19 plan update immediately before the matching legacy `type: "plan"` event:
+After a successful TodoList state change, the Host sends one complete plan:
 
 ```json
 {
-  "type": "ACP_NOTIFICATION",
-  "acpSchema": "schema-v1.19.0",
-  "message": {
-    "jsonrpc": "2.0",
-    "method": "session/update",
-    "params": {
-      "sessionId": "550e8400-...",
-      "update": {
-        "sessionUpdate": "plan",
-        "entries": [
-          {"content": "Run tests", "priority": "high", "status": "in_progress"},
-          {"content": "Update docs", "priority": "medium", "status": "pending"}
-        ]
-      }
-    }
-  }
+  "type": "plan",
+  "entries": [
+    {"content": "Run tests", "priority": "high", "status": "in_progress"},
+    {"content": "Update docs", "priority": "medium", "status": "pending"}
+  ]
 }
 ```
 
 Every update replaces the complete plan; an empty `entries` list clears it.
-Stable plan has no message or plan ID. Experimental `plan_update` and
-`plan_removed` are not part of this carrier. The event is observational and
+The plan has no message or plan ID. The event is observational and
 cannot answer `plan_review` or grant execution permission.
 
 #### EXEC_RESULT
@@ -620,45 +541,6 @@ Keep-alive. Sent every 30 seconds.
 ```json
 { "type": "PING" }
 ```
-
-#### ACP_REQUEST
-
-The Host sends this immediately before its legacy `approval_needed` event.
-The outer envelope is ConnectOnion; `message` is one exact ACP
-`session/request_permission` JSON-RPC request.
-
-```json
-{
-  "type": "ACP_REQUEST",
-  "acpSchema": "schema-v1.19.0",
-  "message": {
-    "jsonrpc": "2.0",
-    "id": "approval-event-uuid",
-    "method": "session/request_permission",
-    "params": {
-      "sessionId": "550e8400-...",
-      "toolCall": {
-        "toolCallId": "call-1",
-        "title": "Bash(npm test)",
-        "status": "pending",
-        "rawInput": {"command": "npm test"}
-      },
-      "options": [
-        {"optionId": "allow_once", "name": "Allow this call", "kind": "allow_once"},
-        {"optionId": "allow_session", "name": "Allow for this session", "kind": "allow_always"},
-        {"optionId": "reject_soft", "name": "Reject this call and continue", "kind": "reject_once"},
-        {"optionId": "reject_hard", "name": "Reject and stop this turn", "kind": "reject_once"},
-        {"optionId": "reject_explain", "name": "Reject and explain first", "kind": "reject_once"}
-      ]
-    }
-  }
-}
-```
-
-The request UUID, Host session ID, and tool-call ID are stable across replay.
-New browser code belongs in `@connectonion/react`; oo-chat consumes its
-normalized approval item and does not parse this envelope. The standalone
-TypeScript SDK is retired from this rollout.
 
 #### Stream Events
 

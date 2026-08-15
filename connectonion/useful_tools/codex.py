@@ -2,16 +2,16 @@
 Purpose: Run Codex via its native app-server protocol, stream steps and permission requests to the frontend, and resume sessions
 LLM-Note:
   Dependencies: imports from [json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
-  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to ACP-status-aligned FRONTEND events (tool_call / tool_result) via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
+  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
   State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
-  Integration: exposes codex(...) and CodexAppServer | this IS the adapter — ConnectOnion's own Python client drives the codex CLI's native app-server (no external codex-acp Node binary) | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
+  Integration: exposes codex(...) and CodexAppServer | this is the native adapter: ConnectOnion's Python client drives Codex app-server directly | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
   Performance: long-lived process per call | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
   Errors: returns envelope with error on missing binary, JSON-RPC failure/timeout, or exception | never raises to the agent loop
 
 Codex tool. ConnectOnion drives the codex CLI's built-in `app-server` (OpenAI's
 native JSON-RPC 2.0 protocol) directly from Python — our own client is the
 adapter, so the only dependency is the `codex` binary itself (no external
-codex-acp Node adapter).
+third-party protocol bridge).
 
 Why app-server: session + resume (thread/start, thread/resume), live streaming
 of Codex's inner steps (item/* events), and interactive permission callbacks

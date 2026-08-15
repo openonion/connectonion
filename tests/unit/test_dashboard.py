@@ -370,7 +370,7 @@ def test_starter_skill_names_match_what_the_profile_publishes():
     from connectonion.network.host.server import _build_agent_profile
 
     meta = {
-        "name": "Lisa", "tools": [], "model": "co/gemini-3.6-flash",
+        "name": "Lisa", "tools": [], "model": "co/gemini-3.7-flash",
         "skills": [
             {"name": "daily-brief", "description": "d", "location": "project"},
             {"name": "my-notes", "description": "d", "location": "user"},

@@ -4,7 +4,7 @@
 
 **Date:** 2026-08-12
 
-**Related:** [018 Event API Naming](018-event-api-naming.md), [025 Interruptible Agent Steps](025-interruptible-agent-steps.md), [034 ACP-aligned Wire Tool Statuses](034-acp-aligned-wire-tool-statuses.md), [GitHub issue #902](https://github.com/openonion/connectonion/issues/902)
+**Related:** [018 Event API Naming](018-event-api-naming.md), [025 Interruptible Agent Steps](025-interruptible-agent-steps.md), [053 One browser protocol, native coding adapters](053-oip-only-browser-and-native-coding-adapters.md), [GitHub issue #902](https://github.com/openonion/connectonion/issues/902)
 
 ## Context
 
@@ -13,10 +13,8 @@ session, but the adapter waited for one final JSON result. In O Chat this looked
 like a long-running opaque tool call. Users could not see whether Claude was
 reading a file, editing it, or running a command.
 
-The product goal is narrower than exposing ConnectOnion as an ACP service:
-`co ai` remains the parent agent, calls Claude Code as one tool, and shows
-Claude's inner tool activity in the existing web experience. Public ACP ingress
-and third-party clients are separate protocol work.
+`co ai` remains the parent agent, calls Claude Code as one native tool, and
+shows Claude's inner tool activity in the existing OIP web experience.
 
 ## Decision
 
@@ -96,8 +94,8 @@ callbacks without sharing ConnectOnion's dependency environment.
 ## Rejected alternatives
 
 - **Wait only for final JSON:** preserves the old opaque web experience.
-- **Treat Claude Code as ACP ingress:** reverses the immediate client/agent goal
-  and does not make the existing `co ai` delegation visible.
+- **Add another browser transport for Claude Code:** reverses the immediate
+  client/agent goal and does not make the existing `co ai` delegation visible.
 - **Install the Python Agent SDK beside MCP v2:** has an unsatisfiable declared
   dependency set at this decision date.
 - **Lower ConnectOnion to MCP v1:** breaks the chosen 1.7 protocol baseline.

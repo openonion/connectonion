@@ -3,7 +3,7 @@
 After `co auth` verifies a GitHub star, the CLI grants 100k tokens and prints the
 managed models to spend them on. Two of the four did not work:
 
-    co/gemini-3.6-flash        ok
+    co/gemini-3.7-flash        ok
     co/gemini-3-pro-preview    404  This model is no longer available
     co/gpt-5                   403  paid_account_required
     co/claude-sonnet-4         403  paid_account_required

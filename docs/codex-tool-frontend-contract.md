@@ -9,16 +9,16 @@ described in [Coding-agent plugins](concepts/coding-agent-plugins.md).
 
 The tool (`connectonion/useful_tools/codex.py`) is **our own Python client** for
 Codex's built-in **`codex app-server`** — OpenAI's native JSON-RPC 2.0 protocol
-(newline-delimited over stdio). It is *not* the external `@zed-industries/codex-acp`
-Node adapter, and it is *not* headless `codex exec`.
+(newline-delimited over stdio). It does not add a second adapter dependency and
+it is not headless `codex exec`.
 
 Why app-server:
 
-| | headless `codex exec` | codex-acp (ACP) | **codex app-server (chosen)** |
-|---|---|---|---|
-| dependency | `codex` CLI | `codex` **+ codex-acp Node binary** | `codex` CLI only |
-| whose code is the adapter | — | Zed Industries (Rust/Node) | **ours (Python)** |
-| session + resume | parse JSONL / `resume` | `session/load` | `thread/start` + `thread/resume` |
+| | headless `codex exec` | **codex app-server (chosen)** |
+|---|---|---|
+| dependency | `codex` CLI | `codex` CLI only |
+| whose code is the adapter | — | **ours (Python)** |
+| session + resume | parse JSONL / `resume` | `thread/start` + `thread/resume` |
 | interactive approval callbacks | ❌ none (sandbox only) | ✅ | ✅ `item/*/requestApproval` |
 | official / stable | yes | third-party wrapper | **yes (OpenAI, powers every surface)** |
 | create session w/o auth | n/a | ❌ needs auth | ✅ (auth only for the model turn) |
@@ -45,7 +45,7 @@ Key points:
 
 - **Stable `tool_id`**: `tool_call` and its `tool_result` share the item id so the
   SDK correlates them (`chat-item-mapper.ts` finds the tool_call by id).
-- **ACP-aligned live status**: provider events use `in_progress`, `completed`,
+- **Stable live status**: provider events use `in_progress`, `completed`,
   and `failed`. The SDK also accepts the historical success/failure values;
   canonical session traces keep their existing statuses.
 - **Generic compatibility remains.** `tool_call` / `tool_result` are still

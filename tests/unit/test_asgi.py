@@ -15,7 +15,7 @@ import json
 import queue
 import threading
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock
 
 from connectonion.network.asgi import (
     handle_websocket,
@@ -28,7 +28,6 @@ from connectonion.network.host.ws_router.agent_io import (
     _agent_thread_body,
     forward_agent_msgs_to_client,
 )
-from connectonion.network.host.ws_router import agent_io as agent_io_module
 from connectonion.network.io import WebSocketIO
 from connectonion.network.host.session import ActiveSessionRegistry
 
@@ -78,19 +77,26 @@ class TestWebSocketIOInASGI:
 
 @pytest.mark.asyncio
 class TestForwardAgentEvents:
-    """Test forward_agent_msgs_to_client async function."""
+    """Test the OIP event stream sent to the browser."""
 
-    FINAL_MESSAGE_ID = "6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e"
-
-    async def test_sends_outgoing_messages_to_client(self):
-        """Test that outgoing events are forwarded via send_msg."""
-        io = WebSocketIO()
+    async def _forward(self, io, *, result_holder=None, storage=None):
         sent_messages = []
 
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
+        async def send_msg(message):
+            sent_messages.append(message)
 
-        io.send({"type": "thinking"})
+        await forward_agent_msgs_to_client(
+            send_msg,
+            io,
+            "test-session",
+            result_holder=result_holder,
+            storage=storage,
+        )
+        return sent_messages
+
+    async def test_sends_outgoing_messages_once_in_order(self):
+        io = WebSocketIO()
+        io.send({"type": "thinking", "content": "checking"})
         io.send({
             "type": "tool_call",
             "tool_id": "call-1",
@@ -98,111 +104,20 @@ class TestForwardAgentEvents:
             "args": {},
             "status": "in_progress",
         })
-
-        def agent_done():
-            import time
-            time.sleep(0.05)
-            io.mark_agent_done()
-
-        threading.Thread(target=agent_done).start()
-
-        await asyncio.wait_for(
-            forward_agent_msgs_to_client(mock_send_msg, io, "test-session"),
-            timeout=2.0
-        )
-
-        event_types = [m["type"] for m in sent_messages if m.get("type") not in ("ERROR",)]
-        assert "thinking" in event_types
-        assert "ACP_NOTIFICATION" in event_types
-        assert "tool_call" in event_types
-        acp_message = next(
-            message for message in sent_messages
-            if message.get("type") == "ACP_NOTIFICATION"
-        )["message"]
-        assert acp_message["method"] == "session/update"
-        assert acp_message["params"]["sessionId"] == "test-session"
-
-    async def test_public_thought_acp_mirror_precedes_legacy_event(self):
-        io = WebSocketIO()
-        sent_messages = []
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        thought = {
-            "type": "thinking",
-            "id": "thought-1",
-            "kind": "reflect",
-            "content": "checking the result",
-        }
-        io._send_persisted_trace(thought)
         io.mark_agent_done()
 
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "session-1"
-        )
+        sent = await self._forward(io)
 
-        assert [message["type"] for message in sent_messages[:2]] == [
-            "ACP_NOTIFICATION",
+        assert [message["type"] for message in sent] == [
             "thinking",
-        ]
-        assert sent_messages[0]["message"]["params"] == {
-            "sessionId": "session-1",
-            "update": {
-                "content": {"text": "checking the result", "type": "text"},
-                "messageId": "thought-1",
-                "_meta": {"connectonion": {"kind": "reflect"}},
-                "sessionUpdate": "agent_thought_chunk",
-            },
-        }
-        assert sent_messages[1]["type"] == "thinking"
-        assert sent_messages[1]["id"] == thought["id"]
-        assert sent_messages[1]["kind"] == thought["kind"]
-        assert sent_messages[1]["content"] == thought["content"]
-        assert sent_messages[1]["session_id"] == "session-1"
-        assert isinstance(sent_messages[1]["ts"], float)
-
-    async def test_direct_thinking_event_stays_legacy_only(self):
-        """The public IO primitive does not classify direct events as thoughts."""
-        io = WebSocketIO()
-        sent_messages = []
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        thought = {
-            "type": "thinking",
-            "id": "direct-thought",
-            "content": "not a persisted trace entry",
-        }
-        io.send(thought)
-        io.mark_agent_done()
-
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "session-1"
-        )
-
-        protocol_types = [
-            message["type"] for message in sent_messages
-            if message["type"] != "DASHBOARD_SNAPSHOT"
-        ]
-        assert protocol_types == [
-            "thinking",
+            "tool_call",
             "ERROR",
         ]
-        assert sent_messages[0] == {**thought, "session_id": "session-1"}
-        assert not any(
-            message.get("type") == "ACP_NOTIFICATION"
-            for message in sent_messages
-        )
+        assert sent[0]["session_id"] == "test-session"
+        assert sent[1]["session_id"] == "test-session"
 
-    async def test_persisted_plan_acp_mirror_precedes_legacy_replacement(self):
+    async def test_persisted_plan_is_one_complete_replacement(self):
         io = WebSocketIO()
-        sent_messages = []
-
-        async def mock_send_msg(message):
-            sent_messages.append(message)
-
         plan = {
             "type": "plan",
             "entries": [{
@@ -214,120 +129,41 @@ class TestForwardAgentEvents:
         io._send_persisted_trace(plan)
         io.mark_agent_done()
 
-        await forward_agent_msgs_to_client(mock_send_msg, io, "session-1")
+        sent = await self._forward(io)
 
-        assert [message["type"] for message in sent_messages[:2]] == [
-            "ACP_NOTIFICATION",
-            "plan",
-        ]
-        assert sent_messages[0]["message"]["params"] == {
-            "sessionId": "session-1",
-            "update": {
-                "entries": plan["entries"],
-                "sessionUpdate": "plan",
+        assert sent[0]["type"] == "plan"
+        assert sent[0]["entries"] == plan["entries"]
+        assert sent[0]["session_id"] == "test-session"
+        assert [message["type"] for message in sent] == ["plan", "ERROR"]
+
+    async def test_sends_output_and_normalized_chat_items(self):
+        io = WebSocketIO()
+        io.mark_agent_done()
+        message_id = "6d1fcd7e-2e31-4ac4-9f39-7de8f73cd82e"
+        result = {
+            "result": "answer",
+            "duration_ms": 50,
+            "session": {
+                "messages": [{
+                    "role": "assistant",
+                    "content": "answer",
+                    "id": message_id,
+                }],
             },
         }
-        assert sent_messages[1]["session_id"] == "session-1"
 
-    async def test_direct_plan_event_stays_legacy_only(self):
+        sent = await self._forward(io, result_holder=[result])
+
+        output = next(message for message in sent if message["type"] == "OUTPUT")
+        assert output["result"] == "answer"
+        assert output["chat_items"][-1] == {
+            "id": message_id,
+            "type": "agent",
+            "content": "answer",
+        }
+
+    async def test_provider_diagnostics_are_not_public_thoughts(self):
         io = WebSocketIO()
-        sent_messages = []
-
-        async def mock_send_msg(message):
-            sent_messages.append(message)
-
-        io.send({"type": "plan", "entries": []})
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(mock_send_msg, io, "session-1")
-
-        assert [
-            message["type"] for message in sent_messages
-            if message["type"] != "DASHBOARD_SNAPSHOT"
-        ] == ["plan", "ERROR"]
-
-    async def test_bad_plan_mirror_still_drains_legacy_and_output(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "committed",
-            "duration_ms": 5,
-            "session": {"plan": []},
-        }]
-
-        async def mock_send_msg(message):
-            sent_messages.append(message)
-
-        io._send_persisted_trace({"type": "plan", "entries": []})
-        io.mark_agent_done()
-        with patch.object(
-            agent_io_module,
-            "acp_notification_frame",
-            side_effect=ValueError("bad plan mirror"),
-        ):
-            await forward_agent_msgs_to_client(
-                mock_send_msg,
-                io,
-                "session-1",
-                result_holder=result_holder,
-            )
-
-        assert [
-            message["type"] for message in sent_messages
-            if message["type"] != "DASHBOARD_SNAPSHOT"
-        ] == ["plan", "OUTPUT"]
-
-    async def test_bad_thought_mirror_still_drains_legacy_and_output(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "committed",
-            "duration_ms": 5,
-            "session": {},
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io._send_persisted_trace({
-            "type": "thinking",
-            "id": "thought-1",
-            "content": "already visible",
-        })
-        io.mark_agent_done()
-
-        with patch.object(
-            agent_io_module,
-            "acp_notification_frame",
-            side_effect=ValueError("bad thought mirror"),
-        ):
-            await forward_agent_msgs_to_client(
-                mock_send_msg,
-                io,
-                "session-1",
-                result_holder=result_holder,
-            )
-
-        protocol_types = [
-            message["type"] for message in sent_messages
-            if message["type"] != "DASHBOARD_SNAPSHOT"
-        ]
-        assert protocol_types == [
-            "thinking",
-            "OUTPUT",
-        ]
-
-    async def test_provider_diagnostics_are_not_acp_thoughts(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "committed",
-            "duration_ms": 5,
-            "session": {},
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
         io.send({
             "type": "llm_result",
             "id": "provider-1",
@@ -335,333 +171,34 @@ class TestForwardAgentEvents:
         })
         io.mark_agent_done()
 
-        await forward_agent_msgs_to_client(
-            mock_send_msg,
+        sent = await self._forward(
             io,
-            "session-1",
-            result_holder=result_holder,
+            result_holder=[{
+                "result": "committed",
+                "duration_ms": 5,
+                "session": {},
+            }],
         )
 
-        protocol_types = [
-            message["type"] for message in sent_messages
-            if message["type"] != "DASHBOARD_SNAPSHOT"
-        ]
-        assert protocol_types == [
+        assert [message["type"] for message in sent] == [
             "llm_result",
             "OUTPUT",
         ]
 
-    async def test_sends_output_from_result_holder(self):
-        """Test that OUTPUT is sent when agent completes with result."""
+    async def test_sends_stable_error_without_private_details(self):
         io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{"result": "answer", "session_id": "s1", "duration_ms": 50, "session": {}}]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
         io.mark_agent_done()
 
-        await asyncio.wait_for(
-            forward_agent_msgs_to_client(mock_send_msg, io, "s1", result_holder=result_holder),
-            timeout=2.0
+        sent = await self._forward(
+            io,
+            result_holder=[OSError("private /srv/agent/session.jsonl")],
         )
 
-        output_msgs = [m for m in sent_messages if m.get("type") == "OUTPUT"]
-        assert len(output_msgs) == 1
-        assert output_msgs[0]["result"] == "answer"
-
-    async def test_persisted_final_answer_precedes_output_as_acp_message(self):
-        io = WebSocketIO()
-        sent_messages = []
-        session = {
-            "messages": [
-                {"role": "system", "content": "help"},
-                {"role": "user", "content": "question"},
-                {
-                    "role": "assistant",
-                    "content": "answer",
-                    "id": self.FINAL_MESSAGE_ID,
-                },
-            ]
-        }
-        result_holder = [{
-            "result": "answer",
-            "duration_ms": 50,
-            "session": session,
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
-        )
-
-        terminal_messages = [
-            message for message in sent_messages
-            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
-        ]
-        assert [message["type"] for message in terminal_messages] == [
-            "ACP_NOTIFICATION",
-            "OUTPUT",
-        ]
-        params = terminal_messages[0]["message"]["params"]
-        assert params == {
-            "sessionId": "s1",
-            "update": {
-                "content": {"text": "answer", "type": "text"},
-                "messageId": self.FINAL_MESSAGE_ID,
-                "sessionUpdate": "agent_message_chunk",
-            },
-        }
-        assert terminal_messages[1]["chat_items"][-1] == {
-            "id": self.FINAL_MESSAGE_ID,
-            "type": "agent",
-            "content": "answer",
-        }
-
-    async def test_unpersisted_terminal_text_uses_legacy_output_only(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "Task incomplete: Maximum iterations reached.",
-            "duration_ms": 50,
-            "session": {"messages": []},
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
-        )
-
-        assert [
-            message["type"] for message in sent_messages
-            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
-        ] == ["OUTPUT"]
-
-    async def test_legacy_stored_answer_without_id_uses_output_only(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "answer",
-            "duration_ms": 50,
-            "session": {
-                "messages": [{"role": "assistant", "content": "answer"}],
-            },
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
-        )
-
-        assert [
-            message["type"] for message in sent_messages
-            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
-        ] == ["OUTPUT"]
-
-    async def test_terminal_text_does_not_reuse_an_older_matching_answer(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "same text",
-            "duration_ms": 50,
-            "session": {
-                "messages": [
-                    {"role": "assistant", "content": "same text"},
-                    {"role": "user", "content": "new question"},
-                    {"role": "assistant", "content": "different answer"},
-                ]
-            },
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
-        )
-
-        assert [
-            message["type"] for message in sent_messages
-            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
-        ] == ["OUTPUT"]
-
-    async def test_stored_completion_reuses_the_same_message_id(self):
-        io = WebSocketIO()
-        sent_messages = []
-        stored = Mock(
-            status="done",
-            result="answer",
-            duration_ms=50,
-            session={
-                "messages": [
-                    {"role": "user", "content": "question"},
-                    {
-                        "role": "assistant",
-                        "content": "answer",
-                        "id": self.FINAL_MESSAGE_ID,
-                    },
-                ]
-            },
-        )
-        storage = Mock()
-        storage.get.return_value = stored
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", storage=storage
-        )
-
-        assert (
-            sent_messages[0]["message"]["params"]["update"]["messageId"]
-            == self.FINAL_MESSAGE_ID
-        )
-        assert sent_messages[1]["chat_items"][-1]["id"] == self.FINAL_MESSAGE_ID
-
-    async def test_bad_final_message_mirror_still_sends_output(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "answer",
-            "duration_ms": 50,
-            "session": {
-                "messages": [
-                    {"role": "user", "content": "question"},
-                    {
-                        "role": "assistant",
-                        "content": "answer",
-                        "id": self.FINAL_MESSAGE_ID,
-                    },
-                ]
-            },
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-        with patch.object(
-            agent_io_module,
-            "acp_notification_frame",
-            side_effect=ValueError("bad mirror"),
-        ):
-            await forward_agent_msgs_to_client(
-                mock_send_msg, io, "s1", result_holder=result_holder
-            )
-
-        assert [
-            message["type"] for message in sent_messages
-            if message.get("type") in {"ACP_NOTIFICATION", "OUTPUT"}
-        ] == ["OUTPUT"]
-
-    async def test_stray_live_assistant_event_cannot_duplicate_final_answer(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "answer",
-            "duration_ms": 50,
-            "session": {
-                "messages": [{
-                    "role": "assistant",
-                    "content": "answer",
-                    "id": self.FINAL_MESSAGE_ID,
-                }],
-            },
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.send({
-            "type": "assistant",
-            "id": "plugin-message",
-            "content": "plugin text",
-        })
-        io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
-        )
-
-        assert [
-            message["type"] for message in sent_messages
-            if message.get("type") in {
-                "assistant", "ACP_NOTIFICATION", "OUTPUT"
-            }
-        ] == [
-            "assistant",
-            "ACP_NOTIFICATION",
-            "OUTPUT",
-        ]
-        acp_updates = [
-            message["message"]["params"]["update"]
-            for message in sent_messages
-            if message["type"] == "ACP_NOTIFICATION"
-        ]
-        assert [update["messageId"] for update in acp_updates] == [
-            self.FINAL_MESSAGE_ID
-        ]
-
-    async def test_bad_acp_mirror_falls_back_without_inviting_a_retry(self):
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [{
-            "result": "committed",
-            "duration_ms": 5,
-            "session": {},
-        }]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.send({"type": "tool_result", "status": "success", "result": "ok"})
-        io.mark_agent_done()
-
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
-        )
-
-        event_types = [message["type"] for message in sent_messages]
-        assert event_types.count("tool_result") == 1
-        assert event_types.count("OUTPUT") == 1
-        assert "ACP_NOTIFICATION" not in event_types
-        assert "ERROR" not in event_types
-
-    async def test_sends_error_from_exception(self):
-        """Unexpected Agent errors never disclose their raw details."""
-        io = WebSocketIO()
-        sent_messages = []
-        result_holder = [OSError("private /srv/agent/.co/session_results.jsonl")]
-
-        async def mock_send_msg(msg):
-            sent_messages.append(msg)
-
-        io.mark_agent_done()
-
-        await asyncio.wait_for(
-            forward_agent_msgs_to_client(mock_send_msg, io, "s1", result_holder=result_holder),
-            timeout=2.0
-        )
-
-        error_msgs = [m for m in sent_messages if m.get("type") == "ERROR"]
-        assert error_msgs == [{
+        assert sent == [{
             "type": "ERROR",
             "code": -32603,
             "message": "Unable to run agent",
         }]
-        assert "private" not in str(sent_messages)
 
     async def test_agent_thread_keeps_private_error_for_output_boundary(
         self, caplog
@@ -669,7 +206,7 @@ class TestForwardAgentEvents:
         io = WebSocketIO()
         result_holder = [None]
         registry = Mock()
-        private_detail = "private /srv/agent/.co/session_results.jsonl"
+        private_detail = "private /srv/agent/session_results.jsonl"
 
         _agent_thread_body(
             {"ws_input": Mock(side_effect=OSError(private_detail))},
@@ -692,28 +229,21 @@ class TestForwardAgentEvents:
 
     async def test_owned_prompt_policy_error_keeps_stable_public_details(self):
         io = WebSocketIO()
-        sent_messages = []
-        result_holder = [ModeTransactionError(
-            -32000, "Session is busy", {"retryable": True}
-        )]
-
-        async def mock_send_msg(message):
-            sent_messages.append(message)
-
         io.mark_agent_done()
-        await forward_agent_msgs_to_client(
-            mock_send_msg, io, "s1", result_holder=result_holder
+
+        sent = await self._forward(
+            io,
+            result_holder=[ModeTransactionError(
+                -32000, "Session is busy", {"retryable": True}
+            )],
         )
 
-        assert next(
-            message for message in sent_messages
-            if message.get("type") == "ERROR"
-        ) == {
+        assert sent == [{
             "type": "ERROR",
             "code": -32000,
             "message": "Session is busy",
             "retryable": True,
-        }
+        }]
 
 
 @pytest.mark.asyncio

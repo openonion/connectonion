@@ -4,7 +4,7 @@
 
 **Date:** 2026-08-12
 
-**Related:** [031 Session Mode Authority](031-acp-session-mode-authority.md), [039 Authoritative Host Mode Updates](039-authoritative-acp-host-mode-updates.md), [040 Durable Host Mode Transactions](040-durable-acp-host-session-mode-transactions.md), [Issue #903](https://github.com/openonion/connectonion/issues/903)
+**Related:** [053 One browser protocol, native coding adapters](053-oip-only-browser-and-native-coding-adapters.md), [Issue #903](https://github.com/openonion/connectonion/issues/903)
 
 ## Context
 
@@ -32,13 +32,13 @@ Connect uses the same two-layer model:
 
 Collaboration is client workflow state. Plan never grants or rewrites Host
 authority. Permission profiles are authenticated Host state and change only
-after the durable ACP `session/set_mode` transaction is acknowledged.
+after the matching OIP `mode_changed` response is acknowledged.
 
 `Auto` is the product label for the workspace profile, not a canonical
 `auto_approve` identifier. `--yolo` remains a recognizable CLI shorthand for
 Full access; it is not a fourth mode or the primary UI/code identifier.
 
-The exact permission profiles are emitted on ACP and persisted in session
+The exact permission profiles are emitted on OIP and persisted in session
 state. Full access remains operator-only and requires ConnectOnion's complete,
 current Host grant and turn ceiling. This vocabulary alignment does not claim
 that every provider implements Codex's operating-system sandbox.

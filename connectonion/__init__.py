@@ -90,7 +90,7 @@ _FROM = {
         "read_file", "edit", "multi_edit", "glob", "grep", "write",
     )},
     **{name: ".network" for name in (
-        "connect", "RemoteAgent", "Response", "ExecResult", "ACPModeError",
+        "connect", "RemoteAgent", "Response", "ExecResult", "PermissionModeError",
         "host", "create_app",
         "IO", "relay", "announce", "HTTPRequest", "HTTPResponse", "HTTPRoute",
         "HTTPRouter",
@@ -203,7 +203,7 @@ __all__ = [
     "RemoteAgent",
     "Response",
     "ExecResult",
-    "ACPModeError",
+    "PermissionModeError",
     "host",
     "create_app",
     "IO",

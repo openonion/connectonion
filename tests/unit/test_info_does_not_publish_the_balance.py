@@ -42,7 +42,7 @@ def _info(**metadata) -> dict:
         "name": "billing",
         "address": "0x" + "a" * 64,
         "tools": ["read"],
-        "model": "co/gemini-3.6-flash",
+        "model": "co/gemini-3.7-flash",
         "version": "1.6.0",
     }
     base.update(metadata)
@@ -77,7 +77,7 @@ class TestWhatInfoStillAnswers:
     def test_the_model_and_tools(self):
         result = _info()
 
-        assert result["model"] == "co/gemini-3.6-flash"
+        assert result["model"] == "co/gemini-3.7-flash"
         assert result["tools"] == ["read"]
 
     def test_an_agent_without_a_balance_is_unchanged(self):

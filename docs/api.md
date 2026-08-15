@@ -496,7 +496,7 @@ res = remote.call("bash", command="co status")   # -> ExecResult
 |--------|---------|---------|
 | `remote.input(prompt, timeout=60)` | `Response(text, done)` | Hand the remote LLM a task |
 | `remote.call(tool, timeout=60, **args)` | `ExecResult(text, status, duration_ms, error)` | Run one tool directly, no LLM |
-| `remote.set_permission_profile(profile_id, timeout=30)` | `None` | Durably select one Host-advertised ACP permission profile |
+| `remote.set_permission_profile(profile_id, timeout=30)` | `None` | Durably select one Host-advertised OIP permission profile |
 
 `set_permission_profile()` returning means the Host committed the policy. A
 `TimeoutError` is an unknown outcome, not a rollback: the Host may have

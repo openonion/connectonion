@@ -65,7 +65,7 @@ co email read 42
 
 Prints the sender, subject, date, and body, then marks the message read.
 
-> Reads from your 100 most recent messages. An email older than that won't be
+> Reads from your 1000 most recent messages. An email older than that won't be
 > found by id yet (see [Limitations](#limitations)).
 
 ### `co email send <to> <subject> <message>` — Send

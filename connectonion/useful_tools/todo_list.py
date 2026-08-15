@@ -60,7 +60,7 @@ class TodoList:
         Args:
             content: What needs to be done (imperative form, e.g., "Fix bug")
             active_form: Present continuous form (e.g., "Fixing bug")
-            priority: ACP plan priority; defaults to medium for compatibility
+            priority: OIP plan priority; defaults to medium
 
         Returns:
             Confirmation message
