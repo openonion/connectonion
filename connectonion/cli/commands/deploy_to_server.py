@@ -2,7 +2,7 @@
 Purpose: Deploy an agent onto a server you own — converge the setup, sync the code, restart the unit
 LLM-Note:
   Dependencies: imports from [hashlib, json, shlex, subprocess, pathlib, yaml, rich, server_commands, project_cmd_lib] | imported by [cli/main.py via handle_deploy_to] | tested by [tests/unit/test_deploy_to_server.py]
-  Data flow: handle_deploy_to(server, project_dir) → load_server() resolves the ssh target → _read_provision() reads /srv/<agent>/.co/provision.json → _ensure_setup() runs only the missing steps → _sync_code() rsyncs excluding .co/ → _install_deps() only when requirements.txt changed → _write_unit() on change → systemctl restart
+  Data flow: handle_deploy_to(server, project_dir) → load_server() resolves the ssh target → _read_provision() reads /srv/<agent>/.co/provision.json → _ensure_setup() runs only the missing steps → _sync_code() rsyncs excluding .co/ → _install_deps() only when requirements.txt changed → _remote_agent_account() authenticates the key that actually lives on the server → _write_unit() on change → systemctl restart
   State/Effects: on the server creates /srv/<agent>/{,.venv,.co} and /etc/systemd/system/<agent>.service | rsyncs code | NEVER writes inside /srv/<agent>/.co except provision.json | locally reads .co/host.yaml and the project files
   Integration: exposes handle_deploy_to(server, project_dir) | requires a server registered by `co server add` (#311) reachable with the key from `co keys --ssh` (#310)
   Performance: one ssh round trip to read provision.json, one rsync, one restart | setup steps are skipped entirely once the schema matches
@@ -686,6 +686,64 @@ def _agent_account(agent_identity: dict) -> Optional[dict]:
     }
 
 
+REMOTE_ACCOUNT_MARKER = "CONNECTONION_REMOTE_ACCOUNT="
+
+
+def _remote_agent_account(target: str, agent: str) -> Optional[dict]:
+    """Authenticate the identity held by the server, without exporting its key.
+
+    The server may already have a legacy, rotated, or ``--own-identity`` key.
+    Running the signing step in its venv makes that key authoritative. Only its
+    public address and newly issued account metadata cross the SSH boundary.
+
+    Returns ``None`` when the key cannot be loaded or authenticated. Callers
+    must then omit all identity/account environment variables rather than pair
+    one identity's private key with another identity's account.
+    """
+    co_dir = f"{SRV}/{agent}/.co"
+    script = f"""
+import json
+from pathlib import Path
+
+from connectonion import address
+from connectonion.cli.commands.deploy_to_server import _agent_account
+
+identity = address.load(Path({co_dir!r}))
+result = None
+if identity:
+    account = _agent_account({{
+        'address': identity['address'],
+        'key_bytes': bytes(identity['signing_key']),
+    }})
+    result = {{'address': identity['address'], 'account': account}}
+print({REMOTE_ACCOUNT_MARKER!r} + json.dumps(result))
+"""
+    encoded = base64.b64encode(script.encode()).decode()
+    python = f"{SRV}/{agent}/.venv/bin/python"
+    runner = f"import base64; exec(base64.b64decode({encoded!r}))"
+    command = f"{python} -c {shlex.quote(runner)}"
+    response = _ssh(target, command, timeout=60)
+    if response.returncode != 0:
+        return None
+
+    for line in reversed(response.stdout.splitlines()):
+        if line.startswith(REMOTE_ACCOUNT_MARKER):
+            try:
+                result = json.loads(line[len(REMOTE_ACCOUNT_MARKER):])
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(result, dict):
+                return None
+            address = result.get("address")
+            account = result.get("account")
+            if account is not None and not isinstance(account, dict):
+                return None
+            if account and account.get("AGENT_ADDRESS") != address:
+                return None
+            return result
+    return None
+
+
 def _env_for_server(env_vars: dict, agent: str,
                     agent_account: Optional[dict] = None) -> dict:
     """The project's `.env`, corrected for the machine it is going to.
@@ -734,8 +792,6 @@ def _sync_env(target: str, agent: str, project_dir: Path,
                       f"supported in an EnvironmentFile[/yellow]")
     env_vars = {k: v for k, v in env_vars.items()
                 if v is not None and k not in multiline}
-    if not env_vars:
-        return True
 
     body = "".join(f"{k}={v}\n" for k, v in env_vars.items())
     dest = ENV_FILE_TEMPLATE.format(agent=agent)
@@ -745,7 +801,8 @@ def _sync_env(target: str, agent: str, project_dir: Path,
     # remainder of the file would then run as commands — under sudo.
     payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
 
-    console.print(f"[dim]  writing secrets … ({len(env_vars)} keys)[/dim]")
+    action = "writing secrets" if env_vars else "clearing stale account metadata"
+    console.print(f"[dim]  {action} … ({len(env_vars)} keys)[/dim]")
     result = _ssh(target, f"""
 sudo mkdir -p {shlex.quote(str(Path(dest).parent))}
 printf %s {shlex.quote(payload)} | base64 -d | sudo tee {shlex.quote(dest)} >/dev/null
@@ -1080,24 +1137,30 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     if not _sync_code(target, agent, project_dir):
         return False
 
-    # The account the agent runs on. Derived identities can be authenticated
-    # from here, because this machine holds the key the server was given; an
-    # `--own-identity` agent cannot be, by construction, so say what is missing
-    # rather than fall back to the operator's account — which is the bug this
-    # replaces, and it is silent.
-    agent_account = _agent_account(agent_identity) if agent_identity else None
+    if not _install_deps_if_changed(target, agent, project_dir, skill_requirements):
+        return False
+
+    # Authenticate on the machine that holds the live private key. The key may
+    # be the one just derived above, or a legacy/rotated/--own-identity key that
+    # _ensure_setup deliberately preserved. In every case the remote key wins.
+    remote_identity = _remote_agent_account(target, agent)
+    agent_account = remote_identity.get("account") if remote_identity else None
     if agent_account:
+        remote_address = remote_identity["address"]
+        if agent_identity and remote_address != agent_identity["address"]:
+            console.print(f"  [dim]identity {remote_address[:16]}… "
+                          "(existing server identity)[/dim]")
         console.print(f"  [dim]account {agent_account['AGENT_EMAIL']} — "
                       f"the agent's own[/dim]")
-    elif agent_identity:
-        console.print("[yellow]  could not authenticate as the agent — "
-                      "deploying without an account[/yellow]")
+    else:
+        known = remote_identity.get("address") if remote_identity else None
+        suffix = f" {known[:16]}…" if known else ""
+        console.print(f"[yellow]  could not authenticate the server identity{suffix} — "
+                      "deploying without account metadata[/yellow]")
     if not agent_account:
-        console.print(f"[dim]  run [cyan]co auth[/cyan] in {SRV}/{agent} to give "
-                      f"it one; co/* models need it[/dim]")
+        console.print(f"[dim]  ssh to the server and run [cyan]cd {SRV}/{agent} && "
+                      "co auth[/cyan]; co/* models need an authenticated account[/dim]")
     if not _sync_env(target, agent, project_dir, agent_account):
-        return False
-    if not _install_deps_if_changed(target, agent, project_dir, skill_requirements):
         return False
     # Decided on the server, where the answer lives, and recorded so a redeploy
     # keeps it — the Caddyfile points at this number.
