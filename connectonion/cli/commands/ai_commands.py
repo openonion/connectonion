@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 from contextlib import nullcontext, redirect_stdout
+from functools import partial
 from pathlib import Path
 
 import typer
@@ -26,6 +27,7 @@ def handle_ai(
     max_iterations: int = 100,
     yolo: bool = False,
     yolo_turns: int = 100,
+    evaluate: bool = False,
     json_output: bool = False,
     resume: str = None,
     acp: bool = False,
@@ -41,6 +43,7 @@ def handle_ai(
         max_iterations: Max tool iterations
         yolo: Skip tool approvals and keep working across turns
         yolo_turns: Maximum autonomous turns before a checkpoint
+        evaluate: Score completion with the eval debugging plugin
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
         acp: Serve the coding agent over ACP v1 on stdio
@@ -75,9 +78,17 @@ def handle_ai(
         console.print("[red]--resume requires --json[/red]")
         raise typer.Exit(2)
 
+    agent_factory = _agent_factory(evaluate=evaluate)
+
     if prompt and json_output:
         _handle_json_one_shot(
-            prompt, model, max_iterations, yolo, yolo_turns, resume
+            prompt,
+            model,
+            max_iterations,
+            yolo,
+            yolo_turns,
+            resume,
+            agent_factory=agent_factory,
         )
         return
 
@@ -94,13 +105,14 @@ def handle_ai(
                 max_iterations=max_iterations,
                 yolo=yolo,
                 yolo_turns=yolo_turns,
+                agent_factory=agent_factory,
                 allow_mcp=acp_mcp,
                 state_dir=prepared_state_dir,
             )
         )
         return
 
-    agent = _create_agent(model, max_iterations, yolo, yolo_turns)
+    agent = agent_factory(model, max_iterations, yolo, yolo_turns)
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
@@ -112,7 +124,18 @@ def handle_ai(
             max_iterations=max_iterations,
             yolo=yolo,
             yolo_turns=yolo_turns,
+            agent_factory=agent_factory,
         )
+
+
+def _agent_factory(*, evaluate: bool):
+    """Configure optional behavior once, before selecting a runtime mode."""
+    extra_plugins = ()
+    if evaluate:
+        from ...useful_plugins import eval as eval_plugin
+
+        extra_plugins = (eval_plugin,)
+    return partial(_create_agent, extra_plugins=extra_plugins)
 
 
 def _prepare_acp_state_dir(state_dir: Path) -> Path:
@@ -140,6 +163,7 @@ def _create_agent(
     *,
     resumable=False,
     state_dir: Path | None = None,
+    extra_plugins=(),
 ):
     from ..co_ai.agent import GLOBAL_CO_DIR, create_agent
 
@@ -150,6 +174,7 @@ def _create_agent(
         state_dir=state_dir,
         yolo_turns=yolo_turns if yolo else None,
         background_tools=not resumable,
+        extra_plugins=extra_plugins,
     )
 
 
@@ -199,7 +224,11 @@ def _handle_json_one_shot(
                 )
                 factory = agent_factory or _create_agent
                 agent = factory(
-                    model, max_iterations, yolo, yolo_turns, resumable=True
+                    model,
+                    max_iterations,
+                    yolo,
+                    yolo_turns,
+                    resumable=True,
                 )
                 restore_tool_state(agent, tools)
                 if session is None:
