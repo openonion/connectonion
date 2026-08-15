@@ -8,7 +8,6 @@ LLM-Note:
   Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
 """
 
-import os
 import shlex
 
 import requests
@@ -16,8 +15,8 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from ...backend import backend_url
 
+from ...backend import backend_url
 from .project_cmd_lib import load_api_key
 
 console = Console()
