@@ -36,8 +36,10 @@ A PR that says *"I didn't test the Windows path and I'm unsure the retry logic i
 
 **Every PR ships a dev-blog post in the same diff** — a file added or updated under `docs/blog/`. This is enforced by CI (`blog-gate`): a PR that touches no `docs/blog/` file fails the check. The posts sync to the docs site, so writing it here is what keeps the site current without anyone asking.
 
-What the post is: a short Design Journal piece telling the story of this change — the problem as a user or AI hit it, what the fix teaches, what was measured. Written for a reader, not a robot.
+What the post is: a short Design Journal piece telling the **story** of this change — the problem as someone actually hit it, a turn or complication, what the fix teaches, what was measured. Written for a reader who could stop reading at any point.
 What it is not: a changelog entry, a list of commits, or marketing copy.
+
+The gate reviews the writing, not just the file: a post without a narrative arc — a changelog wearing prose — fails the check, with the model's one concrete fix in the error. A merged PR means its story was worth reading.
 
 Blog file in this PR:
 
