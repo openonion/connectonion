@@ -20,6 +20,13 @@ from connectonion.useful_tools.codex import codex
 codex_module = importlib.import_module("connectonion.useful_tools.codex")
 
 
+@pytest.fixture(autouse=True)
+def _reap_open_only_clients():
+    codex_module._close_open_threads()
+    yield
+    codex_module._close_open_threads()
+
+
 class FakeServer:
     """Stand-in CodexAppServer that simulates one turn via callbacks."""
     last = None
@@ -122,6 +129,87 @@ class TestCodexRun:
             isinstance(call, tuple) and call[0] == "run_turn"
             for call in FakeServer.last.calls
         )
+        assert "close" not in FakeServer.last.calls
+
+    def test_first_prompt_reuses_the_exact_open_only_thread(self):
+        with (
+            patch.object(codex_module, "CodexAppServer", FakeServer),
+            patch.object(
+                codex_module,
+                "_base_command",
+                return_value=["codex", "app-server"],
+            ),
+        ):
+            opened = json.loads(
+                codex(prompt="", cwd=".", approval="auto", agent=_Agent(_IO()))
+            )
+            server = FakeServer.last
+            result = json.loads(
+                codex(
+                    prompt="inspect",
+                    session_id=opened["session_id"],
+                    cwd=".",
+                    approval="auto",
+                    agent=_Agent(_IO()),
+                )
+            )
+
+        assert FakeServer.last is server
+        assert result["session_id"] == opened["session_id"]
+        assert result["resumed"] is True
+        assert ("run_turn", "thread-1", "inspect") in server.calls
+        assert not any(
+            isinstance(call, tuple) and call[0] == "resume_thread"
+            for call in server.calls
+        )
+        assert server.calls[-1] == "close"
+
+    def test_expired_open_only_thread_is_closed(self):
+        opened = _run(
+            prompt="", cwd=".", approval="auto", agent=_Agent(_IO())
+        )
+        server = FakeServer.last
+
+        codex_module._close_expired_open_threads(
+            now=codex_module.time.monotonic()
+            + codex_module._OPEN_THREAD_TTL_SECONDS
+        )
+
+        assert opened["session_id"] not in codex_module._open_threads
+        assert server.calls[-1] == "close"
+
+    def test_open_only_registry_evicts_the_oldest_process(self):
+        servers = []
+        for index in range(codex_module._MAX_OPEN_THREADS + 1):
+            server = FakeServer(["codex", "app-server"])
+            servers.append(server)
+            codex_module._store_open_thread(
+                f"thread-{index}",
+                server,
+                cwd=".",
+                sandbox="read-only",
+                model="",
+                approval_policy="never",
+            )
+
+        assert len(codex_module._open_threads) == codex_module._MAX_OPEN_THREADS
+        assert "thread-0" not in codex_module._open_threads
+        assert servers[0].calls[-1] == "close"
+
+    def test_changed_policy_refuses_and_closes_an_open_only_process(self):
+        _run(prompt="", cwd=".", approval="auto", agent=_Agent(_IO()))
+        server = FakeServer.last
+
+        claimed = codex_module._take_open_thread(
+            "thread-1",
+            cwd=".",
+            sandbox="workspace-write",
+            model="",
+            approval_policy="untrusted",
+        )
+
+        assert claimed is None
+        assert server.calls[-1] == "close"
 
     def test_open_existing_session_without_prompt_resumes_without_turn(self):
         result = _run(

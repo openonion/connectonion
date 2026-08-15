@@ -78,6 +78,32 @@ def test_real_codex_open_without_prompt_creates_thread_without_model_turn():
     assert "error" not in result
 
 
+@pytest.mark.skipif(
+    not HAS_AUTH, reason="needs Codex credentials for an open-only follow-up"
+)
+@requires_codex
+def test_real_codex_open_only_thread_accepts_its_first_follow_up():
+    """The exact thread id shown by open-only must accept the first real turn."""
+    opened = json.loads(
+        codex(prompt="", cwd=".", approval="deny", timeout=30)
+    )
+
+    follow_up = json.loads(
+        codex(
+            "Reply with exactly: opened-thread-ok",
+            session_id=opened["session_id"],
+            cwd=".",
+            approval="deny",
+            timeout=120,
+        )
+    )
+
+    assert follow_up["session_id"] == opened["session_id"]
+    assert follow_up["resumed"] is True
+    assert "error" not in follow_up
+    assert "opened-thread-ok" in follow_up["last_message"].lower()
+
+
 @requires_codex
 def test_real_codex_app_server_handshake_and_reporting():
     """Drives the real `codex app-server` end-to-end. initialize + thread/start

@@ -11,7 +11,7 @@ Preview releases never replace the stable recommendation. Install one with
 ## Current release work
 
 - Stable release: `1.6.9`
-- Preview target: `1.7.0a7`
+- Preview target: `1.7.0a8`
 - Browser client: `@connectonion/react@0.4.2-alpha.7`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
@@ -27,11 +27,18 @@ the provider session without inventing a prompt, and an OIP-visible guard blocks
 direct Codex launches through shell tools without affecting ordinary shell text.
 The browser continues to use OIP 0.1 and the same shared Work Room card.
 
+Alpha 8 closes the open-only lifecycle found by public browser acceptance.
+Codex writes a rollout only after its first turn, so an open-only app-server now
+stays alive in a bounded, expiring registry. The first Work Room message claims
+that exact provider thread, completes the real turn, persists the rollout, and
+then closes the process. The session ID shown when Codex opens is therefore the
+same one used by the first task.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
 python -m pip install --pre --upgrade connectonion
-python -m pip install connectonion==1.7.0a7
+python -m pip install connectonion==1.7.0a8
 ```
 
 ## Design Journal

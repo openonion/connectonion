@@ -32,10 +32,20 @@ the user supplied no work. The returned session ID is still the handle for the
 next real task. Opening a work room and asking someone to work are different
 actions, even when the same API supports both.
 
+The first public browser run exposed one more lifecycle detail: Codex does not
+write a resumable rollout until a thread receives its first turn. Alpha 7 could
+therefore display a real open-only thread ID and still fail when the Work Room
+tried to resume it in a new app-server process. Alpha 8 keeps that initial
+app-server alive behind a bounded, fifteen-minute registry. The first follow-up
+claims the exact thread, persists it by completing a real turn, and closes the
+process. Expiry and a hard registry limit prevent abandoned rooms from becoming
+an unbounded process leak.
+
 The useful measurement was not one happy mocked call. The focused suite now
 covers 101 routing, adapter, plugin, and co-ai cases, including false positives
-and wrapped shell launches. Three authenticated Codex app-server tests exercise
-open-without-turn, a real turn, and session resume. The installed wheel is then
+and wrapped shell launches. Four authenticated Codex app-server tests exercise
+open-without-turn, its same-thread first follow-up, a real turn, and session
+resume. The installed wheel is then
 tested in a fresh environment so a source checkout cannot accidentally supply
 the new plugin. The final browser acceptance remains the most human test: the
 same words from the original screenshot must produce a Codex card and an
