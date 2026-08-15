@@ -42,12 +42,16 @@ emails = get_emails()
 Three functions. That's all:
 
 ```python
-get_emails(last=10, unread=False)  # Get emails
+get_emails(last=10, unread=False)  # Get 1–100 received emails
 send_email(to, subject, message)   # Send email (already done)
 mark_read(email_id)                # Mark as read after processing
 ```
 
 **Important**: Emails are NOT auto-marked as read. You control when to mark them.
+
+`last` must be between 1 and 100. The received-mail endpoint does not paginate
+yet, so requesting more raises `ValueError` rather than returning a silently
+incomplete result.
 
 ---
 

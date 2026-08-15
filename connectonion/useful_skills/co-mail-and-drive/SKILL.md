@@ -146,6 +146,10 @@ co email sent -n 20 --to bob@example.com
 co email sent read 12
 ```
 
+Received inbox pages accept `-n/--last` from 1 through 100. A larger request is
+rejected locally; never treat it as a complete mailbox scan. Sent mail uses a
+separate endpoint and may accept a larger page.
+
 It is a smaller surface than Gmail/Outlook, and the differences bite:
 
 - **No `reply`, no `search`, no attachments, no scheduling.** To answer a message,

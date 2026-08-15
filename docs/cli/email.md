@@ -36,6 +36,7 @@ co email
 ```bash
 co email inbox                 # last 10
 co email inbox --last 25       # last 25  (alias: -n 25)
+co email inbox --last 100      # largest received-mail page
 co email inbox --unread        # only unread  (alias: -u)
 ```
 
@@ -43,11 +44,16 @@ Unread messages are marked with a green `●`. The leftmost `#` is the email's
 id — pass it to `co email read`.
 
 **Options**
-- `--last, -n` — how many to show (default: 10)
+- `--last, -n` — how many to show (default: 10, range: 1–100)
 - `--unread, -u` — only unread messages
 
 > Note: `--unread` filters the fetched page locally, so `--last 10 --unread`
 > means "unread among your 10 most recent," not "your 10 most recent unread."
+
+The received-mail service currently exposes one page of at most 100 messages.
+Values outside 1–100 fail locally instead of being silently clamped or sent to
+the backend as a generic HTTP 422. Sent mail has a separate endpoint and is not
+subject to this received-mail maximum.
 
 ### `co email read <#>` — Read one message
 

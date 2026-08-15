@@ -723,7 +723,14 @@ def email_send(
 
 @email_app.command("inbox")
 def email_inbox(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(
+        10,
+        "--last",
+        "-n",
+        min=1,
+        max=100,
+        help="How many received emails to show (1-100)",
+    ),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
 ):
     """List recent received emails."""
