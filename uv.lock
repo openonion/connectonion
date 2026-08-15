@@ -315,7 +315,7 @@ wheels = [
 
 [[package]]
 name = "connectonion"
-version = "1.7.0a2"
+version = "1.7.0a3"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
