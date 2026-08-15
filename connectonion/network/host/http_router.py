@@ -27,6 +27,7 @@ from ...core.approval_modes import READ_ONLY_PERMISSION_PROFILE
 from ...project import project_co_dir
 from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
+from .protocol import oip_descriptor
 from .session import SessionStorage, session_to_chat_items
 from .session.mode import SERVER_OWNED_SESSION_KEYS as SERVER_OWNED_SESSION_KEYS
 from .session.mode import (
@@ -293,6 +294,7 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
                 ),
             },
         },
+        "protocol": oip_descriptor(),
     }
 
     # Public transport discovery contains fixed route metadata

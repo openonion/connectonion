@@ -15,6 +15,7 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import get_onboard_requirements
+from ..protocol import oip_descriptor, supports_oip
 from .agent_io import resume_forwarding
 
 console = Console()
@@ -88,6 +89,16 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "session", "mode_is_admin",
     ):
         conn.pop(key, None)
+
+    if not supports_oip(data.get("protocol")):
+        await send_msg({
+            "type": "ERROR",
+            "code": -32010,
+            "message": "Unsupported OIP protocol",
+            "retryable": False,
+            "protocol": oip_descriptor(),
+        })
+        return None
 
     signed_commands = (
         data.get("payload", {}).get("signed_commands") == 1
@@ -214,7 +225,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "type": "CONNECTED",
         "session_id": session_id,
         "status": status,
-        "protocol": {"name": "oip", "version": "0.1"},
+        "protocol": oip_descriptor(),
     }
     if mode_state is not None:
         connected_msg["session_modes"] = mode_state

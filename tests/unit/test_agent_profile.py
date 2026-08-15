@@ -21,6 +21,13 @@ def test_info_publishes_only_project_tree_skills():
     assert names == {"my-project-skill"}, "/info is unauthenticated; only published skills belong in it"
     # The operator's machine must not be advertised by the agent.
     assert "lark-approval" not in names and "aaron-review" not in names
+    assert result["protocol"] == {
+        "name": "oip",
+        "version": "0.1",
+        "min_version": "0.1",
+        "max_version": "0.1",
+        "websocket_path": "/ws",
+    }
 
 
 @pytest.mark.asyncio
@@ -39,6 +46,50 @@ async def test_authenticated_connect_gets_the_full_skill_list():
     assert profile["balance_usd"] == 12.5
     types = [m["type"] for m in sent]
     assert types.index("CONNECTED") < types.index("AGENT_PROFILE")
+    connected = next(m for m in sent if m["type"] == "CONNECTED")
+    assert connected["protocol"]["min_version"] == "0.1"
+    assert connected["protocol"]["max_version"] == "0.1"
+
+
+@pytest.mark.asyncio
+async def test_connect_accepts_legacy_client_without_protocol_descriptor():
+    from connectonion.network.host.ws_router.connect import establish_connection
+    sent = []
+    storage = Mock(); storage.get.return_value = None
+    registry = Mock(); registry.get.return_value = None
+
+    await establish_connection({}, "0xvisitor", AsyncMock(side_effect=sent.append),
+                               {}, storage, registry)
+
+    assert sent[0]["type"] == "CONNECTED"
+
+
+@pytest.mark.asyncio
+async def test_connect_rejects_unsupported_oip_once_without_creating_session():
+    from connectonion.network.host.ws_router.connect import establish_connection
+    sent = []
+    storage = Mock(); registry = Mock()
+
+    await establish_connection(
+        {"protocol": {"name": "oip", "version": "9.0"}},
+        "0xvisitor", AsyncMock(side_effect=sent.append), {}, storage, registry,
+    )
+
+    assert sent == [{
+        "type": "ERROR",
+        "code": -32010,
+        "message": "Unsupported OIP protocol",
+        "retryable": False,
+        "protocol": {
+            "name": "oip",
+            "version": "0.1",
+            "min_version": "0.1",
+            "max_version": "0.1",
+            "websocket_path": "/ws",
+        },
+    }]
+    storage.get.assert_not_called()
+    registry.get.assert_not_called()
 
 
 @pytest.mark.asyncio
