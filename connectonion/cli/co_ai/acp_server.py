@@ -24,6 +24,7 @@ import unicodedata
 from collections import deque
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping
 from urllib.parse import unquote_to_bytes, urlsplit
@@ -2330,22 +2331,19 @@ async def serve_acp(
     max_iterations: int,
     yolo: bool,
     yolo_turns: int,
-    evaluate: bool = False,
+    agent_factory: AgentFactory | None = None,
     allow_mcp: bool = False,
     state_dir: Path | None = None,
 ) -> None:
     """Serve ``co ai`` as an ACP v1 Agent until the client closes stdin."""
 
-    agent_factory = None
-    if state_dir is not None or evaluate:
+    if state_dir is not None:
         from ..commands.ai_commands import _create_agent
 
-        def agent_factory(**kwargs: Any) -> Any:
-            return _create_agent(
-                **kwargs,
-                state_dir=state_dir,
-                evaluate=evaluate,
-            )
+        agent_factory = partial(
+            agent_factory or _create_agent,
+            state_dir=state_dir,
+        )
 
     transport = await open_stdio_transport()
     agent = create_acp_agent(

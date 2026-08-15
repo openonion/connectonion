@@ -22,6 +22,7 @@ from connectonion.cli.co_ai.one_shot_sessions import (
     save_snapshot,
 )
 from connectonion.network.host.acp_gateway import ACPPrincipal
+from connectonion.useful_plugins import eval as eval_plugin
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 
 
@@ -106,15 +107,15 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # tabs itself (`-t <tab>`), so the workaround is gone.
     from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
     assert _bind_browser_session not in agent.events["before_each_tool"]
-    for handler in agent_mod.eval:
+    for handler in eval_plugin:
         assert handler not in agent.events[handler._event_type]
 
     evaluated = agent_mod.create_coding_agent(
         model="fake",
         max_iterations=5,
-        evaluate=True,
+        extra_plugins=(eval_plugin,),
     )
-    for handler in agent_mod.eval:
+    for handler in eval_plugin:
         assert handler in evaluated.events[handler._event_type]
 
 

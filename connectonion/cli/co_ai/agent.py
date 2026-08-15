@@ -13,7 +13,7 @@ Tools included:
 - Shell: bash (with approval flow)
 
 Plugins included:
-- eval: Optional task scoring for debugging (`evaluate=True`)
+- caller-supplied plugins: Explicit opt-ins such as task evaluation
 - system_reminder: Contextual hints
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
@@ -40,7 +40,6 @@ from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
     auto_compact,
     enable_yolo,
-    eval,
     image_result_formatter,
     prefer_write_tool,
     runtime_input,
@@ -120,7 +119,7 @@ def create_agent(
     role: str | None = "coding",
     background_tools: bool = True,
     state_dir: Path | None = None,
-    evaluate: bool = False,
+    extra_plugins=(),
 ) -> Agent:
     """Build the co-ai agent.
 
@@ -167,7 +166,7 @@ def create_agent(
     plugins = [
         skills_plugin,
         subagents,
-        *([eval] if evaluate else []),
+        *extra_plugins,
         system_reminder,
         prefer_write_tool,
         [grant_managed_delegation_permissions],

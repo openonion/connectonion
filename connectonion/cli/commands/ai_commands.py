@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 from contextlib import nullcontext, redirect_stdout
+from functools import partial
 from pathlib import Path
 
 import typer
@@ -77,9 +78,17 @@ def handle_ai(
         console.print("[red]--resume requires --json[/red]")
         raise typer.Exit(2)
 
+    agent_factory = _agent_factory(evaluate=evaluate)
+
     if prompt and json_output:
         _handle_json_one_shot(
-            prompt, model, max_iterations, yolo, yolo_turns, resume, evaluate
+            prompt,
+            model,
+            max_iterations,
+            yolo,
+            yolo_turns,
+            resume,
+            agent_factory=agent_factory,
         )
         return
 
@@ -96,16 +105,14 @@ def handle_ai(
                 max_iterations=max_iterations,
                 yolo=yolo,
                 yolo_turns=yolo_turns,
-                evaluate=evaluate,
+                agent_factory=agent_factory,
                 allow_mcp=acp_mcp,
                 state_dir=prepared_state_dir,
             )
         )
         return
 
-    agent = _create_agent(
-        model, max_iterations, yolo, yolo_turns, evaluate=evaluate
-    )
+    agent = agent_factory(model, max_iterations, yolo, yolo_turns)
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
@@ -117,8 +124,18 @@ def handle_ai(
             max_iterations=max_iterations,
             yolo=yolo,
             yolo_turns=yolo_turns,
-            evaluate=evaluate,
+            agent_factory=agent_factory,
         )
+
+
+def _agent_factory(*, evaluate: bool):
+    """Configure optional behavior once, before selecting a runtime mode."""
+    extra_plugins = ()
+    if evaluate:
+        from ...useful_plugins import eval as eval_plugin
+
+        extra_plugins = (eval_plugin,)
+    return partial(_create_agent, extra_plugins=extra_plugins)
 
 
 def _prepare_acp_state_dir(state_dir: Path) -> Path:
@@ -146,7 +163,7 @@ def _create_agent(
     *,
     resumable=False,
     state_dir: Path | None = None,
-    evaluate: bool = False,
+    extra_plugins=(),
 ):
     from ..co_ai.agent import GLOBAL_CO_DIR, create_agent
 
@@ -157,7 +174,7 @@ def _create_agent(
         state_dir=state_dir,
         yolo_turns=yolo_turns if yolo else None,
         background_tools=not resumable,
-        evaluate=evaluate,
+        extra_plugins=extra_plugins,
     )
 
 
@@ -179,7 +196,6 @@ def _handle_json_one_shot(
     yolo,
     yolo_turns,
     resume,
-    evaluate=False,
     *,
     agent_factory=None,
     persist_session=True,
@@ -213,7 +229,6 @@ def _handle_json_one_shot(
                     yolo,
                     yolo_turns,
                     resumable=True,
-                    evaluate=evaluate,
                 )
                 restore_tool_state(agent, tools)
                 if session is None:

@@ -18,6 +18,7 @@ import connectonion.cli.commands.ai_commands as ai_mod
 import connectonion.cli.commands.trust_commands as trust_mod
 from connectonion.cli.co_ai.agent import GLOBAL_CO_DIR
 from connectonion.core.exceptions import LLMAuthenticationError
+from connectonion.useful_plugins import eval as eval_plugin
 
 
 def test_handle_ai_calls_start_server(monkeypatch):
@@ -50,13 +51,13 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert called["max_iterations"] == 3
     assert called["yolo"] is True
     assert called["yolo_turns"] == 7
-    assert called["evaluate"] is False
+    assert callable(called["agent_factory"])
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
     assert created["yolo_turns"] == 7
-    assert created["evaluate"] is False
+    assert created["extra_plugins"] == ()
 
 
 def test_handle_ai_enables_eval_only_when_requested(monkeypatch, capsys):
@@ -77,7 +78,7 @@ def test_handle_ai_enables_eval_only_when_requested(monkeypatch, capsys):
 
     ai_mod.handle_ai(prompt="task", evaluate=True)
 
-    assert created["evaluate"] is True
+    assert created["extra_plugins"] == (eval_plugin,)
     assert capsys.readouterr().out.endswith("done\n")
 
 
