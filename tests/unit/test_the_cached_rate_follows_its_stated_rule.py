@@ -8,7 +8,7 @@ from connectonion.core.usage import MODEL_PRICING
 GOOGLE_ROWS = {name: row for name, row in MODEL_PRICING.items()
                if name.startswith("gemini")}
 
-PUBLISHED_EXCEPTIONS = {"gemini-3.6-flash"}
+PUBLISHED_EXCEPTIONS = {"gemini-3.6-flash", "gemini-3.7-flash"}
 
 
 class TestTheCommonGoogleRowsUseTheSeventyFivePercentDiscount:
@@ -36,6 +36,10 @@ class TestTheProviderPublishedException:
         row = MODEL_PRICING["gemini-3.6-flash"]
         assert row["cached"] == pytest.approx(row["input"] * 0.10)
         assert row["cached"] == 0.15
+
+    def test_gemini_3_7_flash_is_ten_percent_of_promotional_input(self):
+        row = MODEL_PRICING["gemini-3.7-flash"]
+        assert row == {"input": 0.75, "output": 3.75, "cached": 0.075}
 
 
 class TestTheConfirmedRatesStay:
