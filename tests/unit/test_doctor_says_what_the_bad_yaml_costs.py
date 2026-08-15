@@ -133,12 +133,13 @@ description: Rework the outline: from the pain.
 # Outline
 """
 
-    def test_it_does_not_blame_the_quoting_for_them(self, tmp_path):
+    def test_it_says_the_permission_declaration_is_ignored(self, tmp_path):
         reason = _why_the_skill_cannot_be_read(
             _write(tmp_path, self.ALLOWED_TOOLS_ONLY)
         )
 
-        assert "ignored" not in reason
+        assert "allowed-tools" in reason
+        assert "ignored" in reason
 
     def test_it_says_what_did_survive(self, tmp_path):
         reason = _why_the_skill_cannot_be_read(
@@ -152,6 +153,46 @@ description: Rework the outline: from the pain.
         from connectonion.useful_plugins.skills import _tool_patterns
 
         assert _tool_patterns({"allowed-tools": "Read, Edit"}) == []
+
+    def test_valid_yaml_is_still_reported_by_doctor(self, tmp_path):
+        skill = _write(tmp_path, """---
+name: claude-helper
+description: A valid Claude Code skill
+allowed-tools: Bash(git status) Read
+---
+
+# Helper
+""")
+
+        reason = _why_the_skill_cannot_be_read(skill)
+
+        assert "allowed-tools" in reason
+        assert "not auto-approve" in reason
+
+    def test_invoking_the_skill_warns_once(self, tmp_path, monkeypatch):
+        import importlib
+
+        skills = importlib.import_module("connectonion.useful_plugins.skills")
+
+        skill_dir = tmp_path / "claude-helper"
+        skill_dir.mkdir()
+        skill = skill_dir / "SKILL.md"
+        skill.write_text("""---
+name: claude-helper
+description: A valid Claude Code skill
+allowed-tools: Bash(git status) Read
+---
+
+# Helper
+""", encoding="utf-8")
+        monkeypatch.setattr(skills, "_get_skill_paths", lambda _: [skill])
+        skills._WARNED_ALLOWED_TOOLS.clear()
+
+        with pytest.warns(UserWarning, match="allowed-tools.*not auto-approved") as seen:
+            skills._load_skill("claude-helper")
+            skills._load_skill("claude-helper")
+
+        assert len(seen) == 1
 
 
 class TestTheGenuinelyUnreadableStaysUnreadable:
