@@ -553,28 +553,22 @@ def check_approval(agent: 'Agent') -> None:
         return
 
     # =================================================================
-    # The dialog belongs to the operator, not to whoever is connected
+    # Only a trusted caller may approve work in their own session
     # =================================================================
-    # Placed here, at the one line that is about to prompt — not earlier. An
-    # earlier check refused `read_file` for a contact, which gates access
-    # rather than approval and makes the agent useless to the people it was
-    # shared with. Only a call that would have opened the dialog is affected.
+    # CONNECT authenticates the socket, and the host writes that verified
+    # identity into this session on every turn. Contacts and explicitly
+    # whitelisted callers are ordinary users of the shared agent: they may
+    # approve work in the session they own. Admin status is reserved for the
+    # separate control-plane routes; it is not required to use the agent.
     #
-    # The host knows who is on this socket: CONNECT is signed and the trust
-    # layer classified them before the session existed. That answer used to be
-    # dropped, so a contact saw the owner's "Allow" button and an invite code
-    # carried command execution.
-    #
-    # No requester recorded means the session did not arrive through the host —
-    # a local `co ai` run — and behaves as before.
+    # Missing requester data means a local `co ai` run and keeps the local
+    # approval flow working. An unexpected network trust level fails closed.
     requester = agent.current_session.get('requester')
-    if requester and requester.get('level') != 'admin':
+    if requester and requester.get('level') not in {'admin', 'contact', 'whitelist'}:
         raise ValueError(
-            f"{tool_name} needs the operator's approval, and you are "
-            f"{requester.get('level', 'not the operator')}. Only they can "
-            f"answer that prompt. Ask them to allow it in .co/host.yaml under "
-            f"`permissions` — the entry for this call is "
-            f"`{_permission_line(pending)}`."
+            f"{tool_name} needs approval from a trusted contact. Your current "
+            f"access level is {requester.get('level', 'unknown')}. Ask the "
+            "agent owner for an invite or whitelist access."
         )
 
     # Get approval key for this tool

@@ -1,17 +1,14 @@
 """Who is allowed to answer an approval prompt.
 
 The host knows exactly who is on the socket: CONNECT is signed, and the trust
-layer classifies the caller as admin / whitelisted / contact / blocked before
-the session exists. That answer was computed and dropped — `approval.py` had
-zero references to the requester.
+layer classifies the caller as admin / whitelist / contact / blocked before
+the session exists. Approval uses that server-computed level, never a level
+claimed by the client.
 
-So the dialog went to whoever was connected. A contact — anyone who typed the
-invite code — was shown the owner's dialog and could click "Allow". An invite
-code carried command execution.
-
-The dialog is the operator's. Anyone else gets a refusal that names what the
-operator would have to pre-authorise, which is a thing they can paste into a
-message and ask for.
+An authenticated contact owns their session and must be able to approve its
+ordinary work. Stranger and blocked identities still fail before a prompt is
+shown. Admin remains a control-plane role, not a prerequisite for using the
+agent.
 """
 
 import pytest
@@ -51,10 +48,22 @@ DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
                                            'description': 'clean'}}
 
 
-class TestOnlyAnAdminIsAsked:
+class TestTrustedCallersApproveTheirOwnSession:
 
-    @pytest.mark.parametrize("level", ['contact', 'whitelisted', 'stranger'])
-    def test_a_non_admin_is_not_shown_the_dialog(self, level):
+    @pytest.mark.parametrize("level", ['contact', 'whitelist', 'admin'])
+    def test_a_trusted_caller_is_shown_the_dialog(self, level):
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': level})
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert len(io.sent) == 1
+        assert io.sent[0]['type'] == 'approval_needed'
+
+    @pytest.mark.parametrize("level", ['stranger', 'blocked', 'unexpected'])
+    def test_an_untrusted_caller_is_not_shown_the_dialog(self, level):
         io = FakeIO()
         agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
                                             'level': level})
@@ -63,38 +72,17 @@ class TestOnlyAnAdminIsAsked:
         with pytest.raises(ValueError):
             check_approval(agent)
 
-        assert io.sent == [], (
-            f"a {level} was offered the operator's approval dialog and could "
-            "have clicked Allow"
-        )
+        assert io.sent == []
 
-    def test_the_refusal_names_what_to_ask_for(self):
-        """The requester cannot fix this themselves, so tell them what to ask.
-
-        A refusal that just says no turns into a message to the operator
-        saying 'it did not work', which costs a round trip to learn nothing.
-        """
+    def test_the_refusal_explains_how_to_get_access(self):
         agent = FakeAgent(io=FakeIO(), requester={'address': '0x' + 'e' * 64,
-                                                  'level': 'contact'})
+                                                  'level': 'stranger'})
         agent.current_session['pending_tool'] = DANGEROUS
 
         with pytest.raises(ValueError) as exc:
             check_approval(agent)
 
-        message = str(exc.value)
-        assert 'host.yaml' in message
-        assert 'bash' in message
-
-    def test_an_admin_is_still_asked(self):
-        io = FakeIO(responses=[{'approved': True}])
-        agent = FakeAgent(io=io, requester={'address': '0x' + 'f' * 64,
-                                            'level': 'admin'})
-        agent.current_session['pending_tool'] = DANGEROUS
-
-        check_approval(agent)
-
-        assert len(io.sent) == 1
-        assert io.sent[0]['type'] == 'approval_needed'
+        assert 'invite or whitelist access' in str(exc.value)
 
     def test_a_safe_tool_is_unaffected_for_everyone(self):
         """This gates approval, not access. A contact may still use the agent."""
@@ -216,6 +204,24 @@ class TestTheLevelTheHostActuallyComputes:
 
         check_approval(agent)
 
+        assert len(io.sent) == 1
+
+    def test_a_real_contact_is_shown_their_approval_dialog(self, tmp_path, monkeypatch):
+        from connectonion.network.trust import TrustAgent
+
+        contact = '0x' + '2' * 64
+        (tmp_path / '.co').mkdir()
+        monkeypatch.chdir(tmp_path)
+        trust = TrustAgent('careful')
+        trust.promote_to_contact(contact)
+
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester=self._resolve(contact, tmp_path))
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert agent.current_session['requester']['level'] == 'contact'
         assert len(io.sent) == 1
 
     def test_someone_not_in_admins_txt_is_not_admin(self, tmp_path, monkeypatch):
