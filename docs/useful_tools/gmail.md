@@ -168,7 +168,8 @@ you can do by hand:
 
 ```bash
 co gmail                                            # inbox
-co gmail read 3                                     # open #3, mark read
+co gmail read 3                                     # open #3, preserve unread state
+co gmail read 3 --mark-read                         # explicitly mark read
 co gmail send bob@example.com "Hi" "Body text"
 co gmail search "from:alice@example.com is:unread"
 ```

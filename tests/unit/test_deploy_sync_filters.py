@@ -13,7 +13,7 @@ import subprocess
 
 import pytest
 
-from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS
+from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS, _rsync_filters
 
 
 pytestmark = pytest.mark.skipif(
@@ -88,6 +88,31 @@ def test_server_owned_state_survives_the_delete(synced, relpath):
 def test_deleted_code_still_goes_away(synced):
     """The protection must not turn `--delete` off for the rest of the tree."""
     assert not (synced / "stale.py").exists()
+
+
+def test_gitignored_runtime_state_is_neither_replaced_nor_deleted(tmp_path):
+    """The project names its state once; a deploy must leave the live copy alone."""
+    local, server = tmp_path / "local", tmp_path / "server"
+    local.mkdir()
+    (local / ".gitignore").write_text("work/\n")
+    (local / "work").mkdir()
+    (local / "work" / "cache.json").write_text("STALE LAPTOP COPY")
+    (local / "agent.py").write_text("print('new code')\n")
+
+    (server / "work").mkdir(parents=True)
+    (server / "work" / "cache.json").write_text("LIVE SERVER STATE")
+    (server / "work" / "sentinel.json").write_text("SERVER ONLY")
+    (server / "stale.py").write_text("deleted source")
+
+    subprocess.run(
+        ["rsync", "-a", "--delete", *_rsync_filters(local),
+         f"{local}/", f"{server}/"],
+        check=True, capture_output=True,
+    )
+
+    assert (server / "work" / "cache.json").read_text() == "LIVE SERVER STATE"
+    assert (server / "work" / "sentinel.json").read_text() == "SERVER ONLY"
+    assert not (server / "stale.py").exists(), "non-ignored deleted code lingered"
 
 
 @pytest.mark.parametrize("relpath, server_value", [

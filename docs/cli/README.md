@@ -207,13 +207,14 @@ activated by `co auth`. Manage it from the terminal.
 ```bash
 co email                                          # show inbox (default)
 co email inbox --unread                           # only unread (alias: -u)
-co email read 42                                  # read message #42, mark read
+co email read 42                                  # read #42, preserve unread state
+co email read 42 --mark-read                      # explicitly mark it read
 co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 ```
 
 **Subcommands:**
 - `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`)
-- `co email read <#>` - print one message's body and mark it read
+- `co email read <#>` - print one message's body; add `--mark-read` to consume it
 - `co email send <to> <subject> <message>` - send from your agent address
 - `co email sent` - list sent email (`--last/-n`, `--to`)
 - `co email sent read <#>` - print one sent message's body and status
@@ -249,7 +250,8 @@ Your personal Gmail account from the terminal, via the Gmail API. Requires
 ```bash
 co gmail                                            # inbox (10 most recent)
 co gmail inbox -n 25 -u                             # last 25, unread only
-co gmail read 3                                     # read #3 from the listing, mark read
+co gmail read 3                                     # read #3, preserve unread state
+co gmail read 3 --mark-read                         # explicitly mark it read
 co gmail send bob@example.com "Hi" "Body text"      # send now
 co gmail search "from:alice@example.com is:unread"  # full Gmail query syntax
 #### `co gdrive` - Google Drive Files
@@ -268,7 +270,7 @@ co gdrive put report.pdf               # upload
 **Subcommands:**
 
 - `co gmail` / `co gmail inbox` - list recent emails (`--last/-n`, `--unread/-u`)
-- `co gmail read <#>` - show one email and mark it read
+- `co gmail read <#>` - show one email; add `--mark-read` to consume it
 - `co gmail reply <#> <message>` - threaded reply (`-` reads stdin)
 - `co gmail send <to> <subject> <message>` - send, with `--cc` and `--bcc`
 - `co gmail sent` - list recently sent emails
@@ -326,7 +328,8 @@ Requires `co auth microsoft` once (Mail/Contacts scopes; saved as `MICROSOFT_*` 
 ```bash
 co outlook                                            # show inbox (default)
 co outlook inbox -n 25 -u                             # last 25, unread only
-co outlook read 3                                     # read #3 from the listing, mark read
+co outlook read 3                                     # read #3, preserve unread state
+co outlook read 3 --mark-read                         # explicitly mark it read
 co outlook send bob@example.com "Hi" "Body text"      # send now
 co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
 co outlook contact add "Zhou Yifei" zhou@example.com  # save contact
@@ -335,7 +338,7 @@ co outlook contact search yifei                       # find by name/email
 
 **Subcommands:**
 - `co outlook` / `co outlook inbox` - numbered inbox table (`--last/-n`, `--unread/-u`)
-- `co outlook read <#>` - print one message's body and mark it read (inbox # or full Graph ID)
+- `co outlook read <#>` - print one message's body; add `--mark-read` to consume it
 - `co outlook send <to> <subject> <message>` - send, with `--cc`, `--bcc`, repeatable `--attach FILE` (~3MB Graph limit), and `--at` to schedule (`+30m`, `+2h`, or UTC ISO time — Exchange holds delivery)
 - `co outlook sent` - list recently sent emails
 - `co outlook search <query>` - search subject and body

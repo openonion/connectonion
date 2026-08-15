@@ -17,6 +17,7 @@ co email send alice@example.com "Hello" "Thanks for trying ConnectOnion!"
 
 # Read message #42 from the inbox list
 co email read 42
+co email read 42 --mark-read      # opt in to changing mailbox state
 ```
 
 That's the whole surface. Everything below is detail.
@@ -61,9 +62,11 @@ generic backend validation error.
 
 ```bash
 co email read 42
+co email read 42 --mark-read
 ```
 
-Prints the sender, subject, date, and body, then marks the message read.
+Prints the sender, subject, date, and body without changing unread state. Add
+`--mark-read` only after you intend to consume the message.
 
 > Reads from your 1000 most recent messages. An email older than that won't be
 > found by id yet (see [Limitations](#limitations)).

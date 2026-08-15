@@ -15,6 +15,7 @@ co outlook
 
 # Read message #3 from the inbox list
 co outlook read 3
+co outlook read 3 --mark-read
 
 # Send a message
 co outlook send alice@example.com "Hello" "Thanks for the meeting today!"
@@ -99,12 +100,13 @@ in a later shell session.
 
 ```bash
 co outlook read 3
+co outlook read 3 --mark-read
 ```
 
 Prints the full body (sender, subject, date, content). Accepts the `#` from
-your last listing (inbox or search) or a full Graph message ID. If your
-Microsoft auth includes the `Mail.ReadWrite` scope, the message is also
-marked read.
+your last listing (inbox or search) or a full Graph message ID. The message is
+left unread by default. Use `--mark-read` when opening it should consume it;
+that opt-in needs the `Mail.ReadWrite` scope.
 
 ### `co outlook reply <#> <message>` — Reply
 

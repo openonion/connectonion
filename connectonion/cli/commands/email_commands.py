@@ -2,8 +2,8 @@
 Purpose: CLI surface for the agent mailbox — send, list (inbox), and read emails from the terminal
 LLM-Note:
   Dependencies: imports from [rich.console, rich.table, rich.panel, .project_cmd_lib.load_api_key, ...useful_tools.send_email.send_email, ...useful_tools.get_emails.get_emails/mark_read] | imported by [cli/main.py via handle_email_*()] | hits the configured backend through the engine tools at [/api/v1/email/*]
-  Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread, offset) → Rich table | handle_email_read() → get_emails() → find by id → print body → mark_read(id)
-  State/Effects: no local state | network calls happen inside the engine tools | mark_read() flips server-side read status | writes to stdout via rich.Console
+  Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread, offset) → Rich table | handle_email_read() → get_emails() → find by id → print body → optionally mark_read(id)
+  State/Effects: no local state | network calls happen inside the engine tools | only read --mark-read flips server-side read status | writes to stdout via rich.Console
   Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read(), handle_email_addresses() for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py | requires prior 'co auth'
   Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
 """
@@ -92,6 +92,7 @@ def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
 
     from ...useful_tools.get_emails import get_emails
     emails = get_emails(last=last, offset=offset)
+    page_is_full = len(emails) == last
     if unread:
         # The /received endpoint ignores the unread param, so filter here to keep the flag honest.
         emails = [e for e in emails if not e.get("read")]
@@ -220,12 +221,12 @@ def handle_email_sent_read(email_id: str):
     console.print()
 
 
-def handle_email_read(email_id: str):
-    """Show a single email's body and mark it read."""
+def handle_email_read(email_id: str, mark_read: bool = False):
+    """Show a single email's body; mutate its read state only when requested."""
     if not _require_auth():
         return
 
-    from ...useful_tools.get_emails import get_emails, mark_read
+    from ...useful_tools.get_emails import get_emails
     emails = get_emails(last=1000)
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
@@ -244,7 +245,12 @@ def handle_email_read(email_id: str):
     console.print(match.get("message", "") or "[dim](empty body)[/dim]")
     console.print()
 
-    mark_read(str(email_id))
+    if mark_read:
+        from ...useful_tools.get_emails import mark_read as mark_email_read
+        mark_email_read(str(email_id))
+        console.print("[dim]Marked read.[/dim]")
+    else:
+        console.print("[dim]Unread state unchanged. Use --mark-read to change it.[/dim]")
 
 
 def handle_email_addresses():

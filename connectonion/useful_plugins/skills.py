@@ -130,6 +130,10 @@ PUBLISHED_SKILL_LOCATIONS = ("project", "claude-project")
 # and not one — travelling and being publishable are different questions.
 TRAVELS_ON_DEPLOY = ("project", "claude-project", "builtin")
 
+# A Claude Code skill may be invoked more than once in a process. Keep the
+# compatibility warning useful instead of printing it on every turn.
+_WARNED_ALLOWED_TOOLS = set()
+
 
 # =============================================================================
 # SKILL DISCOVERY
@@ -186,6 +190,7 @@ def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
         if path.exists():
             content = path.read_text(encoding="utf-8")
             frontmatter, instructions = _parse_skill_content(content)
+            _warn_ignored_allowed_tools(path, frontmatter)
             manifest_name = frontmatter.get('name') or skill_name
             requirements = parse_skill_requirements(frontmatter, str(manifest_name))
             return {
@@ -196,6 +201,32 @@ def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
             }
 
     return None
+
+
+def _warn_ignored_allowed_tools(path: Path, frontmatter: dict) -> None:
+    """Warn once when a Claude permission declaration cannot be honored safely.
+
+    Claude Code accepts a space-delimited scalar with Claude tool names as well
+    as newer YAML lists. ConnectOnion's ``tools:`` field uses its own registered
+    tool names and parser. Treating the fields as aliases in a stable patch
+    would therefore either grant the wrong capability or silently grant
+    nothing. Keep failing closed, but make that compatibility boundary visible.
+    """
+    if 'allowed-tools' not in frontmatter or 'tools' in frontmatter:
+        return
+    key = str(path.resolve())
+    if key in _WARNED_ALLOWED_TOOLS:
+        return
+    _WARNED_ALLOWED_TOOLS.add(key)
+
+    import warnings
+    warnings.warn(
+        f"Skill {path} declares Claude Code allowed-tools; those permissions "
+        "are not auto-approved by ConnectOnion 1.6.9. Review the tool names "
+        "and add a ConnectOnion tools: declaration if the grants are intended.",
+        UserWarning,
+        stacklevel=2,
+    )
 
 
 # ---\n<yaml>\n---\n<instructions>.  Shared with the reader that diagnoses a
@@ -476,18 +507,24 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         # it grants permissions, so a file that declares one is the real problem:
         # the declaration does nothing and the author cannot tell.
         recovered = _read_frontmatter(yaml_text)
-        # `tools:` only. `allowed-tools:` is another tool's key and _tool_patterns
-        # never reads it, so it is ignored whether or not the YAML parses —
-        # blaming the bad quoting for that would be a false claim, and most of
-        # these files declare allowed-tools rather than tools.
-        declares_tools = any(
-            line.split(':', 1)[0].strip() == 'tools'
+        # Neither permission spelling is recovered from malformed YAML. The
+        # doctor names `allowed-tools` separately because valid declarations are
+        # also deliberately fail-closed in 1.6.9, rather than guessed into a
+        # different tool vocabulary.
+        declared_keys = {
+            line.split(':', 1)[0].strip()
             for line in yaml_text.splitlines()
             if ':' in line and not line.startswith((' ', '\t'))
-        )
-        if declares_tools:
+        }
+        if 'tools' in declared_keys:
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— its tools: declaration is being ignored')
+        if 'allowed-tools' in declared_keys:
+            survived = ('; name and description were still read'
+                        if recovered.get('description') else '')
+            return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
+                    '— its Claude Code allowed-tools declaration is ignored by '
+                    f'ConnectOnion 1.6.9{survived}')
         if recovered.get('description'):
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— name and description were still read')
@@ -499,6 +536,10 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         parse_skill_requirements(frontmatter, str(skill_name))
     except SkillManifestError as exc:
         return str(exc)
+
+    if 'allowed-tools' in frontmatter and 'tools' not in frontmatter:
+        return ('Claude Code allowed-tools permissions are not auto-approved by '
+                'ConnectOnion 1.6.9; review the tool names and add tools: if intended')
 
     return None
 

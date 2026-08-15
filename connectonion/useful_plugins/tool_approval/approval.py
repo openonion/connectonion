@@ -421,20 +421,6 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
 # Event Handlers
 # =============================================================================
 
-def _permission_line(pending: dict) -> str:
-    """The exact host.yaml key that would allow this call in future.
-
-    Capitalised `Bash(...)` because that is the form the loader matches. A
-    suggestion that pastes cleanly and then silently does nothing is worse than
-    no suggestion — the operator stops looking for the real cause.
-    """
-    name = pending['name']
-    if name.lower() not in ('bash', 'shell', 'run'):
-        return name
-    binary = (pending.get('arguments') or {}).get('command', '').strip().split(' ')[0]
-    return f"Bash({binary} *)" if binary else "Bash"
-
-
 @before_each_tool
 def check_approval(agent: 'Agent') -> None:
     """Check if a tool is allowed by the current permission profile.
@@ -564,7 +550,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # Fail closed: every remaining live-IO tool needs approval
     # =================================================================
-    # The dialog belongs to the operator, not to whoever is connected
+    # The dialog belongs to the authenticated actor running this session
     # =================================================================
     # Placed here, at the one line that is about to prompt — not earlier. An
     # earlier check refused `read_file` for a contact, which gates access
@@ -572,20 +558,18 @@ def check_approval(agent: 'Agent') -> None:
     # shared with. Only a call that would have opened the dialog is affected.
     #
     # The host knows who is on this socket: CONNECT is signed and the trust
-    # layer classified them before the session existed. That answer used to be
-    # dropped, so a contact saw the owner's "Allow" button and an invite code
-    # carried command execution.
+    # layer classified them before the session existed. An accepted invite is
+    # the normal B2B user grant, so contacts must be able to approve ordinary
+    # work in their own session. Admin status is reserved for the control plane
+    # (trust mutation, deployment/configuration and privileged inspection).
     #
     # No requester recorded means the session did not arrive through the host —
     # a local `co ai` run — and behaves as before.
     requester = agent.current_session.get('requester')
-    if requester and requester.get('level') != 'admin':
+    if requester and requester.get('level') not in {'contact', 'whitelist', 'admin'}:
         raise ValueError(
-            f"{tool_name} needs the operator's approval, and you are "
-            f"{requester.get('level', 'not the operator')}. Only they can "
-            f"answer that prompt. Ask them to allow it in .co/host.yaml under "
-            f"`permissions` — the entry for this call is "
-            f"`{_permission_line(pending)}`."
+            f"{tool_name} needs approval from an authenticated contact or "
+            f"admin. This requester is {requester.get('level', 'unknown')}."
         )
 
     # Get approval key for this tool
