@@ -210,6 +210,25 @@ class TestLoadEnvVars:
             finally:
                 os.chdir(original_cwd)
 
+    def test_loads_the_owner_invite_without_mutating_the_environment(
+        self, tmp_path, monkeypatch
+    ):
+        home = tmp_path / "home"
+        (home / ".co").mkdir(parents=True)
+        (home / ".co" / "keys.env").write_text(
+            "CO_INVITE_CODE=OWNER-INVIT-CODE2\n", encoding="utf-8"
+        )
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.delenv("CO_INVITE_CODE", raising=False)
+
+        from connectonion.cli.commands.keys_commands import _load_env_vars
+
+        before = dict(os.environ)
+        result = _load_env_vars(project_dir=tmp_path / "project", home=home)
+
+        assert result["CO_INVITE_CODE"] == "OWNER-INVIT-CODE2"
+        assert dict(os.environ) == before
+
     def test_uses_canonical_sources_from_a_deep_directory_without_mutation(
         self, tmp_path, monkeypatch
     ):
@@ -479,6 +498,35 @@ class TestHandleKeysSuccess:
         assert "*" * 16 in output
         assert token not in output
         assert token[:8] not in output
+
+    def test_owner_invite_is_masked_until_reveal(self, monkeypatch, capsys):
+        from connectonion import address
+        from connectonion.cli.commands import keys_commands
+        from rich.console import Console
+
+        invite = "OWNER-INVIT-CODE2"
+        monkeypatch.setattr(
+            keys_commands,
+            "console",
+            Console(width=200, color_system=None),
+        )
+        monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: Path(".co"))
+        monkeypatch.setattr(address, "load", lambda _path: self.MOCK_ADDR)
+        monkeypatch.setattr(
+            keys_commands,
+            "_load_env_vars",
+            lambda: {"OPENONION_API_KEY": None, "CO_INVITE_CODE": invite},
+        )
+
+        keys_commands.handle_keys(reveal=False)
+        masked = capsys.readouterr().out
+        keys_commands.handle_keys(reveal=True)
+        revealed = capsys.readouterr().out
+
+        assert "Owner Invite" in masked
+        assert invite not in masked
+        assert "*" * 16 in masked
+        assert invite in revealed
 
 
 class TestHandleKeysOAuth:

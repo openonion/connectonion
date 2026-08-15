@@ -26,6 +26,12 @@ from connectonion.useful_plugins import eval as eval_plugin
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 
 
+@pytest.fixture(autouse=True)
+def avoid_real_global_owner_setup(monkeypatch):
+    """Server tests exercise hosting without writing to the developer's home."""
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", lambda _co_dir: False)
+
+
 def test_managed_delegation_permissions_are_explicit(tmp_path):
     """Nested coding agents own inner approval without reopening unknown tools."""
     agent = SimpleNamespace(current_session={'permissions': {}})
@@ -141,6 +147,32 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert called["relay_url"] is None
     assert called["agent"] is agent
     assert callable(called["acp_agent_factory"])
+
+
+def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
+    agent = SimpleNamespace(name="agent")
+    printed = []
+    prepared = []
+    secret = "NEVER-PRINT-THIS2"
+
+    def prepare(co_dir):
+        prepared.append(co_dir)
+        return True
+
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", prepare)
+    monkeypatch.setattr(main_mod, "host", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "connectonion.cli.commands.project_cmd_lib.console.print",
+        lambda message: printed.append(message),
+    )
+    monkeypatch.setenv("CO_INVITE_CODE", secret)
+
+    main_mod.start_server(agent)
+
+    assert prepared == [Path.home() / ".co"]
+    output = " ".join(printed)
+    assert "co keys --reveal" in output
+    assert secret not in output
 
 
 def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only(

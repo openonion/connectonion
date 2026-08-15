@@ -24,6 +24,18 @@ co ai
 - Agent runs in your project directory
 - Starts an authenticated ACP v1 WebSocket at `/acp` for compatible clients
 
+On its first web-server start, `co ai` creates a private owner invite in
+`~/.co/keys.env`. The code is never printed in startup logs. When you are ready
+to connect your own client, reveal it intentionally:
+
+```bash
+co keys --reveal
+```
+
+Restarting `co ai` keeps the same invite, so clients already given the code are
+not locked out. An explicit `CO_INVITE_CODE` in the current project or process
+continues to take precedence.
+
 The published `@connectonion/react@0.4.2-alpha.2` package owns browser transport
 selection, and O Chat pins it. An exact supported discovery descriptor selects
 authenticated `/acp`;

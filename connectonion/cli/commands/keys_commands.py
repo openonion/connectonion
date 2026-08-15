@@ -63,6 +63,7 @@ def _load_env_vars(
 
     names = (
         "OPENONION_API_KEY",
+        "CO_INVITE_CODE",
         "GOOGLE_EMAIL",
         "GOOGLE_ACCESS_TOKEN",
         "GOOGLE_REFRESH_TOKEN",
@@ -210,6 +211,13 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
             )
     else:
         sec_table.add_row("API Key", "[dim]not set — run 'co auth'[/dim]")
+
+    owner_invite = env_vars.get("CO_INVITE_CODE")
+    if owner_invite:
+        sec_table.add_row(
+            "Owner Invite",
+            owner_invite if reveal else _mask(owner_invite, secret=True),
+        )
 
     telegram_token = env_vars.get("TELEGRAM_BOT_TOKEN")
     if telegram_token:
