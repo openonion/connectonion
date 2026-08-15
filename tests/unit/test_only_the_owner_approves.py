@@ -5,13 +5,10 @@ layer classifies the caller as admin / whitelisted / contact / blocked before
 the session exists. That answer was computed and dropped — `approval.py` had
 zero references to the requester.
 
-So the dialog went to whoever was connected. A contact — anyone who typed the
-invite code — was shown the owner's dialog and could click "Allow". An invite
-code carried command execution.
-
-The dialog is the operator's. Anyone else gets a refusal that names what the
-operator would have to pre-authorise, which is a thing they can paste into a
-message and ask for.
+An operator-issued invite is the normal B2B user grant. A contact can approve
+ordinary work in the session authenticated as that contact. Admin status is
+reserved for control-plane routes; strangers and blocked identities cannot use
+an approval dialog to cross the trust boundary.
 """
 
 import pytest
@@ -51,50 +48,31 @@ DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
                                            'description': 'clean'}}
 
 
-class TestOnlyAnAdminIsAsked:
+class TestAuthenticatedUsersCanApproveTheirOwnWork:
 
-    @pytest.mark.parametrize("level", ['contact', 'whitelisted', 'stranger'])
-    def test_a_non_admin_is_not_shown_the_dialog(self, level):
+    @pytest.mark.parametrize("level", ['contact', 'whitelisted', 'admin'])
+    def test_a_contact_or_admin_is_shown_the_dialog(self, level):
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': level})
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert [event['type'] for event in io.sent] == ['approval_needed']
+
+    @pytest.mark.parametrize("level", ['stranger', 'blocked', None])
+    def test_an_untrusted_requester_is_not_shown_the_dialog(self, level):
         io = FakeIO()
         agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
                                             'level': level})
         agent.current_session['pending_tool'] = DANGEROUS
 
-        with pytest.raises(ValueError):
-            check_approval(agent)
-
-        assert io.sent == [], (
-            f"a {level} was offered the operator's approval dialog and could "
-            "have clicked Allow"
-        )
-
-    def test_the_refusal_names_what_to_ask_for(self):
-        """The requester cannot fix this themselves, so tell them what to ask.
-
-        A refusal that just says no turns into a message to the operator
-        saying 'it did not work', which costs a round trip to learn nothing.
-        """
-        agent = FakeAgent(io=FakeIO(), requester={'address': '0x' + 'e' * 64,
-                                                  'level': 'contact'})
-        agent.current_session['pending_tool'] = DANGEROUS
-
         with pytest.raises(ValueError) as exc:
             check_approval(agent)
 
-        message = str(exc.value)
-        assert 'host.yaml' in message
-        assert 'bash' in message
-
-    def test_an_admin_is_still_asked(self):
-        io = FakeIO(responses=[{'approved': True}])
-        agent = FakeAgent(io=io, requester={'address': '0x' + 'f' * 64,
-                                            'level': 'admin'})
-        agent.current_session['pending_tool'] = DANGEROUS
-
-        check_approval(agent)
-
-        assert len(io.sent) == 1
-        assert io.sent[0]['type'] == 'approval_needed'
+        assert io.sent == []
+        assert 'authenticated contact or admin' in str(exc.value)
 
     def test_a_safe_tool_is_unaffected_for_everyone(self):
         """This gates approval, not access. A contact may still use the agent."""
@@ -107,6 +85,21 @@ class TestOnlyAnAdminIsAsked:
         check_approval(agent)
 
         assert io.sent == []
+
+    def test_a_contact_cannot_approve_rewriting_protected_policy(self):
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': 'contact'})
+        agent.current_session['pending_tool'] = {
+            'name': 'write',
+            'arguments': {'path': '.co/host.yaml', 'content': 'permissions: {}'},
+        }
+
+        with pytest.raises(ValueError) as exc:
+            check_approval(agent)
+
+        assert io.sent == []
+        assert 'does not get to write it' in str(exc.value)
 
 
 class TestAnUnknownRequester:
@@ -227,3 +220,39 @@ class TestTheLevelTheHostActuallyComputes:
         requester = self._resolve('0x' + '2' * 64, tmp_path)
 
         assert requester['level'] != 'admin'
+
+
+class TestFreshInviteJourney:
+    """An invite creates a usable contact and survives a host restart."""
+
+    POLICY = """---
+allow: [contact]
+deny: [blocked]
+onboard:
+  invite_code: [TEAM-INVITE]
+default: deny
+---
+"""
+
+    def test_invited_contact_can_approve_after_restart(self, tmp_path, monkeypatch):
+        from connectonion.network.trust import TrustAgent
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / '.co').mkdir()
+        address = '0x' + 'c' * 64
+
+        first_host = TrustAgent(self.POLICY)
+        assert first_host.verify_invite(address, 'TEAM-INVITE') is True
+        assert first_host.get_level(address) == 'contact'
+
+        # A new TrustAgent is the restart boundary. Contact state is read from
+        # the project trust files rather than kept only in process memory.
+        restarted_host = TrustAgent(self.POLICY)
+        requester = {'address': address, 'level': restarted_host.get_level(address)}
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester=requester)
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert io.sent[0]['type'] == 'approval_needed'
