@@ -632,7 +632,7 @@ agent = Agent(name="test", api_key="your-api-key-here")
 
 ### Model Selection
 ```python
-agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.6-flash
+agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.7-flash
 ```
 
 ### Iteration Control

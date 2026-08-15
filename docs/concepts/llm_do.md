@@ -7,7 +7,7 @@ Make direct LLM calls with optional structured output. Supports OpenAI, Google G
 ```python
 from connectonion import llm_do
 
-# Default: co/gemini-3.6-flash (managed key, no setup needed)
+# Default: co/gemini-3.7-flash (managed key, no setup needed)
 answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
 
@@ -120,8 +120,8 @@ llm_do("Hello", model="co/gpt-4o-mini")
 llm_do("Hello", model="co/o4-mini")
 
 # Google Gemini models (via managed keys)
-llm_do("Hello", model="co/gemini-3.6-flash")
-llm_do("Hello", model="co/gemini-3.6-flash")
+llm_do("Hello", model="co/gemini-3.7-flash")
+llm_do("Hello", model="co/gemini-3.7-flash")
 
 # Anthropic Claude models (via managed keys)
 llm_do("Hello", model="co/claude-sonnet-4-5")
@@ -146,7 +146,7 @@ class Answer(BaseModel):
 
 # Works with all providers
 llm_do("What is 2+2?", output=Answer, model="co/gpt-4o-mini")      # ✅
-llm_do("What is 2+2?", output=Answer, model="co/gemini-3.6-flash") # ✅
+llm_do("What is 2+2?", output=Answer, model="co/gemini-3.7-flash") # ✅
 llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
 
 # Legacy Claude models do NOT support structured output
@@ -160,7 +160,7 @@ llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
 | `input` | str | required | The input text/question |
 | `output` | BaseModel | None | Pydantic model for structured output |
 | `system_prompt` | str\|Path | None | System prompt (string or file path) |
-| `model` | str | "co/gemini-3.6-flash" | Model to use (supports OpenAI, Gemini, Claude) |
+| `model` | str | "co/gemini-3.7-flash" | Model to use (supports OpenAI, Gemini, Claude) |
 | `temperature` | float | 0.1 | Randomness (0=deterministic, 2=creative) |
 
 ## What You Get

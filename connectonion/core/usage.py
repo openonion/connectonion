@@ -91,6 +91,11 @@ MODEL_PRICING = {
     # the output rate. See test_the_cached_rate_follows_its_stated_rule.py.
     # Standard paid tier, per million tokens: input $1.50, output $7.50,
     # context-cached input $0.15 (Google pricing page, checked 2026-08-08).
+    # gemini-3.7-flash: Google intro rate $0.75/$3.75 through 2026-12-31, then
+    # list $1.50/$7.50 — recorded at list so promo expiry cannot underbill.
+    # Cached follows the standard 25% rule; 3.6's $0.15 is a published
+    # exception that does not extend to 3.7.
+    "gemini-3.7-flash": {"input": 1.50, "output": 7.50, "cached": 0.375},
     "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     # Solved from real charges, two calls: (in=4, total=28, $0.000074) and
@@ -125,6 +130,7 @@ MODEL_CONTEXT_LIMITS = {
     "claude-3-7-sonnet": 200000,
 
     # Gemini
+    "gemini-3.7-flash": 1000000,
     "gemini-3.6-flash": 1000000,
     "gemini-3.5-flash": 1000000,
     # Without this row it took the 128,000 default, so `% ctx` read 7.8x high and
@@ -155,6 +161,7 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/gemini-3.7-flash",
     "co/gemini-3.6-flash",
     "co/gemini-3.5-flash",
     "co/gemini-2.5-pro",

@@ -112,7 +112,7 @@ Error: {error}"""
 
     reasoning = llm_do(
         prompt,
-        model="co/gemini-3.6-flash",
+        model="co/gemini-3.7-flash",
         temperature=0.2,
         system_prompt=REFLECT_PROMPT
     )

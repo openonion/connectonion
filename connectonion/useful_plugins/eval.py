@@ -55,7 +55,7 @@ Focus on the USER'S INTENT, not exact text matching:
 Be lenient - if the core task was done, mark it passed."""
 
 
-DEFAULT_SCORING_MODEL = "co/gemini-3.6-flash"
+DEFAULT_SCORING_MODEL = "co/gemini-3.7-flash"
 
 
 def _scoring_model(agent: 'Agent') -> str:

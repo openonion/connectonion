@@ -42,7 +42,7 @@ Agent(
     name="my_bot",                        # Required: agent identifier
     tools=[func1, func2],                 # Optional: functions agent can call
     system_prompt="You are helpful",      # Optional: personality/behavior
-    model="co/gemini-3.6-flash",            # Optional: LLM model (default: co/gemini-3.6-flash)
+    model="co/gemini-3.7-flash",            # Optional: LLM model (default: co/gemini-3.7-flash)
     max_iterations=100,                   # Optional: how many tool calls allowed (default: 100)
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
@@ -448,7 +448,7 @@ See [max_iterations.md](max_iterations.md) for detailed guide.
 
 ### Supported Providers
 
-Default model is `co/gemini-3.6-flash`. You can use:
+Default model is `co/gemini-3.7-flash`. You can use:
 
 ```python
 # OpenAI models
@@ -895,7 +895,7 @@ import pytest
 @pytest.mark.real_api
 def test_real_agent():
     """Requires OPENONION_API_KEY or GEMINI_API_KEY in environment."""
-    agent = Agent("test", tools=[search], model="co/gemini-3.6-flash")
+    agent = Agent("test", tools=[search], model="co/gemini-3.7-flash")
     result = agent.input("Search for Python")
     assert "Python" in result
 

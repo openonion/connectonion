@@ -121,7 +121,7 @@ class TestTheMessageSaysWhatToDo:
 
     def test_it_names_models_that_do_work(self, message):
         # The whole point: a new user needs a next step, not a diagnosis.
-        assert "co/gemini-3.6-flash" in message
+        assert "co/gemini-3.7-flash" in message
 
     def test_it_links_where_to_buy_credits(self, message):
         assert "o.openonion.ai" in message
@@ -144,7 +144,7 @@ class TestTheAttributesAreReadable:
         assert error.model_requested == "gpt-5"
 
     def test_it_carries_the_free_models(self, error):
-        assert "co/gemini-3.6-flash" in error.free_models
+        assert "co/gemini-3.7-flash" in error.free_models
 
 
 class TestTheOtherRowsStillWork:

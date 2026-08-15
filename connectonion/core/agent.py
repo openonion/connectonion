@@ -38,7 +38,7 @@ class Agent:
         tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "co/gemini-3.6-flash",
+        model: str = "co/gemini-3.7-flash",
         max_iterations: int = 100,
         log: Optional[Union[bool, str, Path]] = None,
         quiet: bool = False,

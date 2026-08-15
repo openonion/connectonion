@@ -140,7 +140,7 @@ def test_transcribe_mismatch_stops_before_a_billed_request(project, monkeypatch)
     monkeypatch.setenv("OPENONION_API_KEY", token_for(FOREIGN))
 
     with pytest.raises(AmbientAPIKeyAccountMismatch):
-        _get_api_key("co/gemini-3.6-flash")
+        _get_api_key("co/gemini-3.7-flash")
 
 
 def test_image_upload_mismatch_stops_before_http(project, monkeypatch):
@@ -174,7 +174,7 @@ def test_llm_environment_mismatch_stops_before_client_creation(
     )
 
     with pytest.raises(AmbientAPIKeyAccountMismatch):
-        OpenOnionLLM(model="co/gemini-3.6-flash")
+        OpenOnionLLM(model="co/gemini-3.7-flash")
 
 
 def test_explicit_llm_key_remains_caller_owned(project, monkeypatch):
@@ -190,7 +190,7 @@ def test_explicit_llm_key_remains_caller_owned(project, monkeypatch):
     monkeypatch.setattr(openai, "OpenAI", client)
     monkeypatch.setenv("OPENONION_API_KEY", token_for(FOREIGN))
 
-    llm = OpenOnionLLM(api_key="explicit-key", model="co/gemini-3.6-flash")
+    llm = OpenOnionLLM(api_key="explicit-key", model="co/gemini-3.7-flash")
 
     assert llm.auth_token == "explicit-key"
     assert captured["api_key"] == "explicit-key"

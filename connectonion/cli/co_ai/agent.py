@@ -91,7 +91,7 @@ def agent_name(co_dir: Path = Path(".co")) -> str:
 
 
 def create_agent(
-    model: str = "co/gemini-3.6-flash",
+    model: str = "co/gemini-3.7-flash",
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
     yolo_turns: int | None = None,

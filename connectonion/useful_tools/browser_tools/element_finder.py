@@ -208,7 +208,7 @@ def find_element(
     result = llm_do(
         prompt,
         output=ElementMatch,
-        model="co/gemini-3.6-flash",
+        model="co/gemini-3.7-flash",
         temperature=0.1
     )
 

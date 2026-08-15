@@ -260,7 +260,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Write .env
     if not env_existed:
         if keys_to_add or global_keys:
-            env_content = "# Default model: co/gemini-3.6-flash (managed keys with free credits)\n\n"
+            env_content = "# Default model: co/gemini-3.7-flash (managed keys with free credits)\n\n"
             # Add all global keys + detected keys
             all_keys = list(global_keys.values()) + [k for k in keys_to_add if k not in global_keys.values()]
             env_content += '\n'.join(all_keys) + '\n'
@@ -276,7 +276,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # OPENROUTER_API_KEY=
 
 # Optional: Override default model
-# MODEL=co/gemini-3.6-flash
+# MODEL=co/gemini-3.7-flash
 """
             env_path.write_text(env_content, encoding='utf-8')
         files_created.append(".env")

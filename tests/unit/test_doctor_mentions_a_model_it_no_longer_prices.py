@@ -52,7 +52,7 @@ class TestARetiredModel:
 class TestASupportedModel:
 
     @pytest.mark.parametrize("model", [
-        "co/gemini-3.6-flash", "gemini-2.5-pro", "o4-mini",
+        "co/gemini-3.7-flash", "gemini-2.5-pro", "o4-mini",
         "claude-sonnet-4-20250514",
     ])
     def test_is_not_reported(self, model):

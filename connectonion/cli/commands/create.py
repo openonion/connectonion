@@ -371,7 +371,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # describes the machine it is on rather than the one that made the file.
         lines_to_add = []
         if "# Default model:" not in env_content:
-            lines_to_add.append("# Default model: co/gemini-3.6-flash (managed keys with free credits)\n")
+            lines_to_add.append("# Default model: co/gemini-3.7-flash (managed keys with free credits)\n")
 
         if lines_to_add:
             # Add blank line after comments if we're adding any
@@ -380,7 +380,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         # Fallback - create minimal .env with detected keys
         env_lines = [
-            "# Default model: co/gemini-3.6-flash (managed keys with free credits)",
+            "# Default model: co/gemini-3.7-flash (managed keys with free credits)",
             "",
         ]
 

@@ -79,7 +79,7 @@ email
 ---
 name: explore
 description: Fast codebase exploration
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 15
 tools:
   - file_read      # ← Clear: only reading files
@@ -91,7 +91,7 @@ tools:
 ---
 name: plan
 description: Design implementation plans
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 10
 tools:
   - file_read      # ← Same: only reading
@@ -103,7 +103,7 @@ tools:
 ---
 name: debug
 description: Analyze errors and suggest fixes
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 20
 tools:
   - file_read      # Read files
@@ -129,7 +129,7 @@ tools:
 ---
 name: scraper
 description: Web scraping with browser automation
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 25
 tools:
   - browser        # Navigate, click, screenshot
@@ -143,7 +143,7 @@ tools:
 ---
 name: research
 description: Research topics and save findings
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 20
 tools:
   - web            # Fetch documentation
@@ -156,7 +156,7 @@ tools:
 ---
 name: email_assistant
 description: Manage emails and drafts
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 15
 tools:
   - email          # Send, read, organize

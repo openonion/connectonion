@@ -3,7 +3,7 @@
 After `co auth` verifies a GitHub star, the CLI grants 100k tokens and prints the
 managed models to spend them on. Two of the four did not work:
 
-    co/gemini-3.6-flash        ok
+    co/gemini-3.7-flash        ok
     co/gemini-3-pro-preview    404  This model is no longer available
     co/gpt-5                   403  paid_account_required
     co/claude-sonnet-4         403  paid_account_required
@@ -48,9 +48,9 @@ class TestTheListIsUsable:
         assert all(m.startswith("co/") for m in MANAGED_MODELS)
 
     def test_the_default_model_is_offered(self):
-        # co/gemini-3.6-flash is what a new project is created with, so it has
+        # co/gemini-3.7-flash is what a new project is created with, so it has
         # to be one of the names the same flow tells the user about.
-        assert "co/gemini-3.6-flash" in MANAGED_MODELS
+        assert "co/gemini-3.7-flash" in MANAGED_MODELS
 
     def test_there_is_only_one_copy_of_the_list(self):
         """Both call sites must render the tuple, not their own literal."""

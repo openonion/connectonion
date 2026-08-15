@@ -84,7 +84,7 @@ agent = Agent("assistant", model="co/gemini-2.5-pro")  # Managed
 agent = Agent("assistant", model="gemini-2.5-pro")     # Your key
 
 # Newest Flash workhorse - frontier intelligence built for speed
-agent = Agent("assistant", model="co/gemini-3.6-flash")  # Managed
+agent = Agent("assistant", model="co/gemini-3.7-flash")  # Managed
 agent = Agent("assistant", model="gemini-3.6-flash")     # Your key
 
 # Fastest Gemini 3 model

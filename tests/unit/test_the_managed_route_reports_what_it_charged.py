@@ -6,7 +6,7 @@ Every `co/` response carries what the server actually billed:
                     cost_usd=0.000837, balance_after=1245.371763)
 
 `OpenOnionLLM.complete()` ignores `cost_usd` and recomputes from the local
-price table. Measured against the default model, `co/gemini-3.6-flash`, on a
+price table. Measured against the default model, `co/gemini-3.7-flash`, on a
 one-line prompt:
 
     shown      $0.000072
@@ -47,7 +47,7 @@ def _response(cost_usd=None, prompt=3, completion=9, total=114):
 def llm():
     with patch.dict("os.environ", {"OPENONION_API_KEY": "test-token"}):
         with patch("openai.OpenAI"):
-            return OpenOnionLLM(model="co/gemini-3.6-flash")
+            return OpenOnionLLM(model="co/gemini-3.7-flash")
 
 
 def _complete(llm, response):
@@ -91,7 +91,7 @@ class TestWithoutOneNothingChanges:
 
         result = _complete(llm, _response(cost_usd=None))
 
-        assert result.usage.cost == calculate_cost("co/gemini-3.6-flash", 3, 9, 0)
+        assert result.usage.cost == calculate_cost("co/gemini-3.7-flash", 3, 9, 0)
 
     def test_and_it_is_not_zero(self, llm):
         """The fallback has to stay a real estimate: a provider that reports no

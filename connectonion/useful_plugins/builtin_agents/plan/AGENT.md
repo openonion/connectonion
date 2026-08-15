@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Implementation planning agent - analyze requirements and design actionable plans
-model: co/gemini-3.6-flash
+model: co/gemini-3.7-flash
 max_iterations: 10
 tools:
   - glob

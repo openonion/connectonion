@@ -38,14 +38,14 @@ Runs the prompt, prints the result, and exits. No server started.
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--port` | `-p` | `8000` | Port for web server |
-| `--model` | `-m` | `co/gemini-3.6-flash` | LLM model to use |
+| `--model` | `-m` | `co/gemini-3.7-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
 | `--yolo` | | off | Skip tool approvals and keep working across turns |
 | `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
 
 ```bash
 co ai --port 9000
-co ai --model co/gemini-3.6-flash
+co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
 ```
@@ -143,7 +143,7 @@ co ai "Add rate limiting to the API endpoint in oo-api/routes/llm.py"
 co ai "The test test_agent_loop is failing, investigate and fix it"
 
 # Use a different model
-co ai --model co/gemini-3.6-flash
+co ai --model co/gemini-3.7-flash
 
 # Run on a different port
 co ai --port 9000

@@ -22,7 +22,7 @@ def test_ai_forwards_yolo_options():
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model="co/gemini-3.6-flash",
+        model="co/gemini-3.7-flash",
         max_iterations=100,
         yolo=True,
         yolo_turns=4,
