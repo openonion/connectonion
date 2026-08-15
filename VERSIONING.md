@@ -39,13 +39,14 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-Stable users remain on 1.6.4 while the 1.7.0 feature train is exercised through
+Stable users remain on the 1.6.x line while the 1.7.0 feature train is exercised through
 alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Current Version: 1.7.0a4
+## Current Version: 1.7.0a5
 
 ### Version History
+- 1.7.0a5 (**one OIP browser protocol and two native coding adapters**: the abandoned alternate transport, generic coding-agent edge, SDK dependency, CLI flags, gateway, exports, tests, fixtures, and product docs are removed. `co ai` serves OIP 0.1 over `/ws`; `@connectonion/react@0.4.2-alpha.4` owns the browser client; Codex and Claude Code remain native provider adapters. Fresh installations mint one private owner invite and reveal it only through `co keys --reveal`.)
 - 1.7.0a4 (**cache accounting becomes visible and billable**: Gemini 3.7 cached input uses its actual discounted rate, while console output, `co ai /cost`, the Textual status line, and managed-route usage preserve new input, cached input, output, and the final server charge. Provider-reported zero remains explicit and a cache hit is never invented; the SDK reports what happened instead of promising that implicit caching will happen on every turn.)
 - 1.7.0a3 (**the coding-agent cards go live**: the preview pair that makes O Chat's live Codex/Claude Code cards work — this package ships the `coding_agents` plugin (`CodexPlugin`/`ClaudeCodePlugin`, first tagged in a2's tree but never included in a published artifact) and the `no-store` discovery header (#996) that a1 lacked, so O Chat connects. Pairs with `@connectonion/react` 0.4.2-alpha.3. OIP is the canonical browser protocol.)
 - 1.6.6 (**the default model is Gemini 3.7 Flash, and the CLI stops hiding features**: every default — Agent, `llm_do`, `co ai`, transcribe — now uses `co/gemini-3.7-flash` (1M context; 3.6 stays available as rollback and explicit configurations are untouched). `co transfer <address> <amount>` exposes the peer-to-peer credit transfers the backend has served for months, with an explicit confirmation before anything irreversible and a history listing. `co email addresses` shows every address an account owns and the send `--from` ownership error names it as the next step. Next-step tips survive piping — they used to hide from scripts and AI callers, exactly the audience that needs them.)
