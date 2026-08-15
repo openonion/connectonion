@@ -358,6 +358,11 @@ def ai(
         min=1,
         help="Autonomous turns before a checkpoint (requires --yolo)",
     ),
+    evaluate: bool = typer.Option(
+        False,
+        "--eval",
+        help="Score task completion with two extra model calls",
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit one machine-readable JSON result"
     ),
@@ -387,6 +392,7 @@ def ai(
         max_iterations=max_iterations,
         yolo=yolo,
         yolo_turns=yolo_turns,
+        evaluate=evaluate,
         json_output=json_output,
         resume=resume,
         acp=acp,

@@ -106,6 +106,16 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # tabs itself (`-t <tab>`), so the workaround is gone.
     from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
     assert _bind_browser_session not in agent.events["before_each_tool"]
+    for handler in agent_mod.eval:
+        assert handler not in agent.events[handler._event_type]
+
+    evaluated = agent_mod.create_coding_agent(
+        model="fake",
+        max_iterations=5,
+        evaluate=True,
+    )
+    for handler in agent_mod.eval:
+        assert handler in evaluated.events[handler._event_type]
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):

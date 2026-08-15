@@ -50,11 +50,35 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert called["max_iterations"] == 3
     assert called["yolo"] is True
     assert called["yolo_turns"] == 7
+    assert called["evaluate"] is False
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
     assert created["yolo_turns"] == 7
+    assert created["evaluate"] is False
+
+
+def test_handle_ai_enables_eval_only_when_requested(monkeypatch, capsys):
+    created = {}
+
+    class FakeAgent:
+        def input(self, prompt):
+            return "done"
+
+    def fake_create_agent(**kwargs):
+        created.update(kwargs)
+        return FakeAgent()
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent",
+        fake_create_agent,
+    )
+
+    ai_mod.handle_ai(prompt="task", evaluate=True)
+
+    assert created["evaluate"] is True
+    assert capsys.readouterr().out.endswith("done\n")
 
 
 def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):

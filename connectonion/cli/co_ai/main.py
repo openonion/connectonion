@@ -42,6 +42,7 @@ def start_server(
     max_iterations: int | None = None,
     yolo: bool = False,
     yolo_turns: int = 100,
+    evaluate: bool = False,
 ):
     """Start AI coding agent web server.
 
@@ -52,6 +53,7 @@ def start_server(
         max_iterations: Tool iteration limit for ACP coding agents
         yolo: Whether an administrator may select bounded Full access
         yolo_turns: Maximum Full access turns before a checkpoint
+        evaluate: Whether new ACP sessions include the eval debugging plugin
 
     The server will be accessible at:
     - POST http://localhost:{port}/input
@@ -103,6 +105,13 @@ def start_server(
             )
             owner_id = hashlib.sha256(owner.encode("utf-8")).hexdigest()
             session_co_dir = co_dir / "acp-principals" / owner_id
+            agent_factory = None
+            if evaluate:
+                from ..commands.ai_commands import _create_agent
+
+                def agent_factory(**kwargs):
+                    return _create_agent(**kwargs, evaluate=True)
+
             return create_acp_agent(
                 model=acp_model,
                 max_iterations=acp_max_iterations,
@@ -111,6 +120,7 @@ def start_server(
                 # receive the Full access profile on this direct endpoint.
                 yolo=yolo and principal.level == "admin",
                 yolo_turns=yolo_turns,
+                agent_factory=agent_factory,
                 session_co_dir=session_co_dir,
                 network_workspace=network_workspace,
                 input_limits=input_limits,

@@ -3,7 +3,7 @@ Purpose: Unified logging interface for agents - terminal output + plain text + Y
 LLM-Note:
   Dependencies: imports from [datetime, pathlib, typing, json, re, yaml, os, console.py] | imported by [agent.py, tool_executor.py] | tested by [tests/unit/test_logger.py]
   Data flow: receives from Agent/tool_executor → delegates to Console for terminal/file → writes YAML evals to .co/evals/
-  State/Effects: writes to .co/evals/{input_slug}.yaml (one file per unique first input — _slugify keeps Unicode word characters, so a Chinese, Japanese or Cyrillic prompt gets its own file; keeping only [a-zA-Z0-9] made every non-Latin prompt collapse to `default` and share one) | run data stored in .co/evals/{input_slug}/run_{n}.yaml, trimmed to KEEP_RUNS_PER_EVAL | the number of evals is not capped — `co doctor` reports the size | eval data persisted after each turn
+  State/Effects: writes to .co/evals/{input_slug}.yaml (one file per unique first input — _slugify keeps Unicode word characters, so a Chinese, Japanese or Cyrillic prompt gets its own file; keeping only [a-zA-Z0-9] made every non-Latin prompt collapse to `default` and share one) | retains KEEP_EVAL_RECORDS generated records and KEEP_RUNS_PER_EVAL runs per record | authored evals are never pruned | eval data persisted after each turn
   Integration: exposes Logger(agent_name, quiet, log), .print(), .log_tool_call(name, args), .log_tool_result(result, timing), .log_llm_response(), .start_session(), .log_turn()
   Eval format: eval.yaml (metadata + turns) | run_N.yaml (system_prompt, model, cwd, tokens, cost, duration_ms, timestamp, messages as multi-line JSON)
   Performance: YAML written after each turn (incremental) | Console delegation is direct passthrough
@@ -11,26 +11,30 @@ LLM-Note:
 """
 
 import json
-import re
-from datetime import datetime
 import os
+import re
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union, Dict, Any, List
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
 from .console import Console
+from .project import project_co_dir as _project_co_dir
 
 # How many run_N.yaml files to keep per eval. They hold the full message array
 # of one turn, nothing in the code reads them back, and an agent on a schedule
 # wrote 9.5 MB of them a day on the box it was deployed to.
 KEEP_RUNS_PER_EVAL = 20
 
-
-# The project's `.co/`, found by walking up -- not `Path(".co")`, which creates
-# one wherever the Agent happens to be constructed. See connectonion/project.py.
-from .project import project_co_dir as _project_co_dir
+# `co ai` names a record from each distinct first prompt. A developer measured
+# 2,311 of those records using 281 MB after six months, even though no command
+# reads generated records back automatically. Keep enough recent history for
+# debugging without turning a hidden directory into unbounded storage. Authored
+# evals (the files `co eval` runs) are identified separately and never pruned.
+KEEP_EVAL_RECORDS = 500
 
 
 def _slugify(text: str, max_length: int = 50) -> str:
@@ -144,6 +148,7 @@ class Logger:
         self.eval_data: Optional[Dict[str, Any]] = None
         self.current_run: int = 0
         self._first_input: Optional[str] = None  # Track first input for file naming
+        self._eval_was_new = False
 
     # Delegate to Console
     def print(self, message: str, style: str = None):
@@ -207,6 +212,7 @@ class Logger:
         self.eval_dir = None
         self.eval_data = None
         self.current_run = 0
+        self._eval_was_new = False
 
     def _init_eval_file(self, first_input: str):
         """Initialize or load eval file based on first input.
@@ -225,6 +231,7 @@ class Logger:
 
         # Load existing or create new
         existing = _read_eval_file(self.eval_file)
+        self._eval_was_new = existing is None
         if existing is not None:
             self.eval_data = existing
 
@@ -507,6 +514,58 @@ class Logger:
         with open(tmp, 'w', encoding='utf-8') as f:
             yaml.dump(ordered, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         os.replace(tmp, self.eval_file)
+
+        if self._eval_was_new:
+            self._trim_old_evals(
+                self.eval_file.parent,
+                protected=self.eval_file,
+            )
+            self._eval_was_new = False
+
+    @staticmethod
+    def _trim_old_evals(
+        evals_dir: Path,
+        keep: Optional[int] = None,
+        protected: Optional[Path] = None,
+    ) -> None:
+        """Keep the newest generated session records and every authored eval.
+
+        A generated record has the logger's `created`, `runs`, and `turns`
+        fields and lacks the `agent`/`expected` fields that make a file an
+        authored test for `co eval`. Each deleted record owns the sibling
+        directory containing its full-message run files.
+
+        Retention is housekeeping, so malformed files and filesystem races are
+        preserved or ignored instead of failing the Agent turn.
+        """
+        keep = KEEP_EVAL_RECORDS if keep is None else keep
+        if not evals_dir or not evals_dir.is_dir():
+            return
+
+        generated = []
+        for path in evals_dir.glob("*.yaml"):
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+                is_generated = (
+                    isinstance(data, dict)
+                    and {"created", "runs", "turns"} <= set(data)
+                    and "agent" not in data
+                    and "expected" not in data
+                )
+                if is_generated:
+                    generated.append((path.stat().st_mtime_ns, path))
+            except (OSError, yaml.YAMLError):
+                continue
+
+        excess = max(0, len(generated) - keep)
+        for _, path in sorted(generated)[:excess]:
+            if protected is not None and path == protected:
+                continue
+            try:
+                path.unlink(missing_ok=True)
+                shutil.rmtree(evals_dir / path.stem, ignore_errors=True)
+            except OSError:
+                continue
 
     def get_eval_path(self) -> Optional[str]:
         """Get the absolute path to the current eval file.

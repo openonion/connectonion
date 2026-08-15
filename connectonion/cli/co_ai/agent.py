@@ -13,7 +13,7 @@ Tools included:
 - Shell: bash (with approval flow)
 
 Plugins included:
-- eval: Session persistence for debugging
+- eval: Optional task scoring for debugging (`evaluate=True`)
 - system_reminder: Contextual hints
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
@@ -120,6 +120,7 @@ def create_agent(
     role: str | None = "coding",
     background_tools: bool = True,
     state_dir: Path | None = None,
+    evaluate: bool = False,
 ) -> Agent:
     """Build the co-ai agent.
 
@@ -166,7 +167,7 @@ def create_agent(
     plugins = [
         skills_plugin,
         subagents,
-        eval,
+        *([eval] if evaluate else []),
         system_reminder,
         prefer_write_tool,
         [grant_managed_delegation_permissions],

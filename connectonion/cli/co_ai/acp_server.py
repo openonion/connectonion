@@ -2330,17 +2330,22 @@ async def serve_acp(
     max_iterations: int,
     yolo: bool,
     yolo_turns: int,
+    evaluate: bool = False,
     allow_mcp: bool = False,
     state_dir: Path | None = None,
 ) -> None:
     """Serve ``co ai`` as an ACP v1 Agent until the client closes stdin."""
 
     agent_factory = None
-    if state_dir is not None:
+    if state_dir is not None or evaluate:
         from ..commands.ai_commands import _create_agent
 
         def agent_factory(**kwargs: Any) -> Any:
-            return _create_agent(**kwargs, state_dir=state_dir)
+            return _create_agent(
+                **kwargs,
+                state_dir=state_dir,
+                evaluate=evaluate,
+            )
 
     transport = await open_stdio_transport()
     agent = create_acp_agent(

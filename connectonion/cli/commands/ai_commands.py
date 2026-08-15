@@ -26,6 +26,7 @@ def handle_ai(
     max_iterations: int = 100,
     yolo: bool = False,
     yolo_turns: int = 100,
+    evaluate: bool = False,
     json_output: bool = False,
     resume: str = None,
     acp: bool = False,
@@ -41,6 +42,7 @@ def handle_ai(
         max_iterations: Max tool iterations
         yolo: Skip tool approvals and keep working across turns
         yolo_turns: Maximum autonomous turns before a checkpoint
+        evaluate: Score completion with the eval debugging plugin
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
         acp: Serve the coding agent over ACP v1 on stdio
@@ -77,7 +79,7 @@ def handle_ai(
 
     if prompt and json_output:
         _handle_json_one_shot(
-            prompt, model, max_iterations, yolo, yolo_turns, resume
+            prompt, model, max_iterations, yolo, yolo_turns, resume, evaluate
         )
         return
 
@@ -94,13 +96,16 @@ def handle_ai(
                 max_iterations=max_iterations,
                 yolo=yolo,
                 yolo_turns=yolo_turns,
+                evaluate=evaluate,
                 allow_mcp=acp_mcp,
                 state_dir=prepared_state_dir,
             )
         )
         return
 
-    agent = _create_agent(model, max_iterations, yolo, yolo_turns)
+    agent = _create_agent(
+        model, max_iterations, yolo, yolo_turns, evaluate=evaluate
+    )
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
@@ -112,6 +117,7 @@ def handle_ai(
             max_iterations=max_iterations,
             yolo=yolo,
             yolo_turns=yolo_turns,
+            evaluate=evaluate,
         )
 
 
@@ -140,6 +146,7 @@ def _create_agent(
     *,
     resumable=False,
     state_dir: Path | None = None,
+    evaluate: bool = False,
 ):
     from ..co_ai.agent import GLOBAL_CO_DIR, create_agent
 
@@ -150,6 +157,7 @@ def _create_agent(
         state_dir=state_dir,
         yolo_turns=yolo_turns if yolo else None,
         background_tools=not resumable,
+        evaluate=evaluate,
     )
 
 
@@ -171,6 +179,7 @@ def _handle_json_one_shot(
     yolo,
     yolo_turns,
     resume,
+    evaluate=False,
     *,
     agent_factory=None,
     persist_session=True,
@@ -199,7 +208,12 @@ def _handle_json_one_shot(
                 )
                 factory = agent_factory or _create_agent
                 agent = factory(
-                    model, max_iterations, yolo, yolo_turns, resumable=True
+                    model,
+                    max_iterations,
+                    yolo,
+                    yolo_turns,
+                    resumable=True,
+                    evaluate=evaluate,
                 )
                 restore_tool_state(agent, tools)
                 if session is None:

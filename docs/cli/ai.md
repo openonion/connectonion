@@ -195,6 +195,7 @@ operator choice at process launch.
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
 | `--yolo` | | off | Skip tool approvals and keep working across turns |
 | `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
+| `--eval` | | off | Debug a task with two extra model calls that score completion |
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
 | `--acp` | | off | Serve stable ACP v1 over stdin/stdout |
@@ -206,6 +207,7 @@ co ai --port 9000
 co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
+co ai --eval "Check whether this agent really completed the task"
 co ai --acp
 co ai --acp --acp-mcp
 co ai --acp --state-dir /private/tmp/co-acp-test
@@ -404,9 +406,12 @@ This is loaded every session, so the agent always follows your rules.
 `co ai` uses your global identity from `~/.co/`:
 
 - Logs saved to `~/.co/logs/oo.log`
-- Eval sessions saved to `~/.co/evals/`
+- Session records saved to `~/.co/evals/` (the newest 500 are retained)
 - Resumable one-shot sessions saved privately under `~/.co/ai/sessions/`
 - Same address across all `co ai` sessions
+
+Task scoring is separate from session recording. It is off by default; pass
+`--eval` when debugging to generate an expected outcome and score completion.
 
 ## Examples
 
