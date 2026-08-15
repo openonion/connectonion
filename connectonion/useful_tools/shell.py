@@ -5,8 +5,8 @@ LLM-Note:
   Data flow: Shell() creates instance → .run(command, timeout) or .run_in_dir(command, directory, timeout) → subprocess.run(shell=True) in cwd → captures stdout+stderr → _format_output() truncates if >10000 chars → returns formatted output: str
   State/Effects: executes system commands via subprocess.run(shell=True) | stores default cwd in self.cwd | no file persistence | side effects depend on executed commands (file I/O, network calls, etc.)
   Integration: exposes Shell class with .run(command, timeout), .run_in_dir(command, directory, timeout) | used as agent tool | class methods extracted to tools via extract_methods_from_instance() | instance accessible via agent.tools.shell
-  Performance: timeout default 120s, max 600s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes) | uses system default shell (bash/sh on Unix, cmd.exe on Windows)
-  Errors: returns "Error: Command timed out" on TimeoutExpired | includes stderr in output | includes exit code for non-zero returns | handles empty output gracefully
+  Performance: timeout default 120s, caller's value honoured | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes) | uses system default shell (bash/sh on Unix, cmd.exe on Windows)
+  Errors: returns a "TIMEOUT: ... did NOT complete" string on TimeoutExpired | includes stderr in output | includes exit code for non-zero returns | handles empty output gracefully
 
 Shell tool for executing terminal commands (cross-platform).
 
@@ -55,12 +55,11 @@ class Shell:
 
         Args:
             command: Shell command to execute (e.g., "ls -la", "git status")
-            timeout: Seconds before timeout (default: 120, max: 600)
+            timeout: Seconds before timeout (default: 120), honoured as given
 
         Returns:
             Command output (stdout + stderr)
         """
-        timeout = min(timeout, 600)
 
         try:
             result = subprocess.run(
@@ -75,7 +74,11 @@ class Shell:
                 env=_utf8_env(),
             )
         except subprocess.TimeoutExpired:
-            return f"Error: Command timed out after {timeout} seconds"
+            return (
+                f"TIMEOUT: command was killed after {timeout} seconds and did NOT complete. "
+                f"Any work it was part-way through is unfinished. "
+                f"Do not treat this as success; re-run with a larger timeout or smaller scope."
+            )
 
         return self._format_output(result)
 
@@ -85,12 +88,11 @@ class Shell:
         Args:
             command: Shell command to execute
             directory: Directory to run the command in
-            timeout: Seconds before timeout (default: 120, max: 600)
+            timeout: Seconds before timeout (default: 120), honoured as given
 
         Returns:
             Command output (stdout + stderr)
         """
-        timeout = min(timeout, 600)
 
         try:
             result = subprocess.run(
@@ -105,7 +107,11 @@ class Shell:
                 env=_utf8_env(),
             )
         except subprocess.TimeoutExpired:
-            return f"Error: Command timed out after {timeout} seconds"
+            return (
+                f"TIMEOUT: command was killed after {timeout} seconds and did NOT complete. "
+                f"Any work it was part-way through is unfinished. "
+                f"Do not treat this as success; re-run with a larger timeout or smaller scope."
+            )
 
         return self._format_output(result)
 

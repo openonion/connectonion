@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: receives command: str, description: str, cwd: str, timeout: int → subprocess.run() with shell=True → captures stdout+stderr → truncates if >10000 chars → returns formatted output: str
   State/Effects: executes system commands via subprocess.run(shell=True) | no persistent state | reads/writes filesystem based on command | can have any side effect depending on command (network calls, file operations, etc.)
   Integration: exposes bash(command, description="", cwd, timeout) function | used as agent tool | description is OPTIONAL (defaults "") — an LLM is prompted to fill it for the approval UI, but direct/programmatic callers (remote.call, co call, scripts) can pass command alone | not passed to shell | Unix/Mac only (raises ValueError on Windows)
-  Performance: timeout default 120s, max 600s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
+  Performance: timeout default 120s, caller's value honoured | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
   Errors: raises ValueError on Windows | returns formatted error on timeout | non-zero exit codes included in output | stderr merged with stdout
 
 Bash tool for executing terminal commands (Unix/Mac only).
@@ -36,7 +36,10 @@ def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120
             — an LLM should fill it in so the approval UI can show intent, but direct
             callers (scripts, remote.call, co call) may pass just the command.
         cwd: Working directory (default: current directory)
-        timeout: Seconds before timeout (default: 120, max: 600)
+        timeout: Seconds before timeout (default: 120). Honoured as given —
+            an agent invoking another agent over bash routinely needs more than
+            ten minutes, and a silently clamped value is indistinguishable from
+            a respected one.
 
     Returns:
         Command output (stdout + stderr)
@@ -45,8 +48,6 @@ def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120
     if platform.system() == "Windows":
         return "Error: bash tool is for Unix/Mac only. Use Shell class for Windows."
 
-    # Cap timeout at 10 minutes
-    timeout = min(timeout, 600)
 
     try:
         result = subprocess.run(
@@ -61,7 +62,14 @@ def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120
             timeout=timeout
         )
     except subprocess.TimeoutExpired:
-        return f"Error: Command timed out after {timeout} seconds"
+        # Callers must be able to tell a killed command from a finished one.
+        # This string is the only signal they get, so it leads with TIMEOUT and
+        # says the work is incomplete rather than reading like ordinary output.
+        return (
+            f"TIMEOUT: command was killed after {timeout} seconds and did NOT complete. "
+            f"Any work it was part-way through is unfinished. "
+            f"Do not treat this as success; re-run with a larger timeout or smaller scope."
+        )
     except FileNotFoundError:
         return "Error: /bin/bash not found. This tool requires bash shell."
 

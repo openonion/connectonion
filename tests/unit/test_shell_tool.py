@@ -18,6 +18,7 @@ Components under test:
 import pytest
 import tempfile
 import platform
+import subprocess
 from pathlib import Path
 from connectonion.useful_tools.shell import Shell
 from connectonion.useful_tools.bash import bash
@@ -71,7 +72,11 @@ class TestShellRun:
         """Test that timeout returns error message."""
         shell = Shell()
         result = shell.run("sleep 5", timeout=1)
-        assert "timed out" in result
+        # A timeout must be unmistakable to the caller: a killed command and a
+        # finished one arriving as similar-looking strings is how orchestrators
+        # come to mark truncated steps complete.
+        assert "TIMEOUT" in result
+        assert "did NOT complete" in result
 
 
 class TestShellRunInDir:
@@ -205,7 +210,8 @@ class TestBashWithTimeout:
     def test_bash_timeout_returns_error(self):
         """Test that timeout returns error message."""
         result = bash("sleep 5", "Sleep command", timeout=1)
-        assert "timed out" in result
+        assert "TIMEOUT" in result
+        assert "did NOT complete" in result
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
@@ -260,3 +266,40 @@ class TestBashOnWindows:
         """Test that bash returns error on Windows."""
         result = bash("echo test", "Echo test")
         assert "Unix/Mac only" in result
+
+
+class TestTimeoutNotClamped:
+    """The caller's timeout must be honoured, not silently reduced.
+
+    Regression for #1037: `timeout = min(timeout, 600)` capped every call at ten
+    minutes without telling anyone. Agents invoking other agents over bash need
+    longer than that, and a clamped value is indistinguishable from a respected
+    one — so a step killed at 600s was reported as complete and whole pipelines
+    exited 0 having produced nothing.
+    """
+
+    @pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
+    def test_bash_passes_timeout_through_unchanged(self, monkeypatch):
+        seen = {}
+
+        def fake_run(*args, **kwargs):
+            seen["timeout"] = kwargs["timeout"]
+            raise subprocess.TimeoutExpired(cmd="sleep", timeout=kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        result = bash("sleep 9000", "long agent run", timeout=7200)
+
+        assert seen["timeout"] == 7200, "timeout was clamped instead of passed through"
+        assert "7200" in result, "the reported timeout must be the one actually used"
+
+    def test_shell_run_passes_timeout_through_unchanged(self, monkeypatch):
+        seen = {}
+
+        def fake_run(*args, **kwargs):
+            seen["timeout"] = kwargs["timeout"]
+            raise subprocess.TimeoutExpired(cmd="sleep", timeout=kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        Shell().run("sleep 9000", timeout=7200)
+
+        assert seen["timeout"] == 7200, "timeout was clamped instead of passed through"
