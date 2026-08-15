@@ -157,11 +157,13 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     else:
         await send_msg({"type": "ERROR", "message": "Agent completed without result"})
 
-    # After the run, push the dashboard.html the agent may have rewritten. A run that
-    # didn't touch it sends nothing (send_dashboard compares against what this
-    # connection last saw), so an unchanged Home costs no bandwidth per turn.
-    from .dashboard import send_dashboard
-    await send_dashboard(send_msg, session_id, conn)
+    # Dashboard delivery is connection state: CONNECT sends the initial snapshot
+    # and records its stamp, then a completed run may replace it. Callers without
+    # a connection are forwarding only the OIP agent stream and must not acquire
+    # an unrelated Home frame from process-global dashboard state.
+    if conn is not None:
+        from .dashboard import send_dashboard
+        await send_dashboard(send_msg, session_id, conn)
 
 
 def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None):

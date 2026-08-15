@@ -61,7 +61,10 @@ def handle_ai(
         console.print("[red]--resume requires --json[/red]")
         raise typer.Exit(2)
 
-    agent_factory = _agent_factory(evaluate=evaluate)
+    # The web server owns turn-by-turn evaluation separately. ``--eval`` is a
+    # one-shot option; attaching it to the long-lived browser agent makes every
+    # browser turn bill an eval model and leaks that plugin into server tests.
+    agent_factory = _agent_factory(evaluate=evaluate and bool(prompt))
 
     if prompt and json_output:
         _handle_json_one_shot(
