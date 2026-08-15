@@ -7,29 +7,35 @@ assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Problem
+What user problem does this solve? Describe the current limitation and who encounters it.
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+## Proposed solution
+Describe the behavior or API you would like.
 
-**Example Usage**
-Show how the feature would be used:
+## Release planning
+- **Suggested target version:** [e.g. 1.8.0, 2.x, future roadmap, or TBD]
+- **Estimated release window:** [e.g. next alpha, next stable, future roadmap, or unknown]
+- **Why this version:** Explain dependencies, urgency, and compatibility impact.
+
+> The reporter's target is an estimate. Maintainers confirm the release by assigning a milestone.
+
+## Example usage
 ```python
 from connectonion import Agent
 
-# Example of how the feature would work
+# Show how the proposed feature would work
 agent = Agent("assistant")
-# Your proposed API usage
 ```
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Alternatives considered
+Describe any alternative solutions or workarounds.
 
-**Additional context**
-Add any other context, screenshots, or examples about the feature request here.
+## Implementation help
+- [ ] I can submit a PR
+- [ ] I can help with guidance
+- [ ] I can test the implementation
+- [ ] I am only reporting the need
 
-**Would you be willing to help implement this feature?**
-- [ ] Yes, I can submit a PR
-- [ ] Yes, but I would need guidance
-- [ ] No, but I can help test it
+## Additional context
+Add any other context, screenshots, or examples.
