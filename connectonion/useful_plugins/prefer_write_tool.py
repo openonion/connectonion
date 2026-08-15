@@ -14,7 +14,9 @@ AI models often use bash commands for file operations:
 - Creating: `cat <<EOF > file.py`, `echo > file.py` → BLOCKED
 - Reading: `cat file.txt`, `head file.txt`, `tail file.txt` → SOFT REMINDER
 
-File creation is blocked because it bypasses tool UI/diffs/approval flow.
+Explicit shell authoring is blocked because it bypasses tool UI/diffs/approval
+flow. Output redirects, append-only logs, and `tee` are allowed because the
+shell command is not authoring the redirected content.
 File reading is allowed but a system reminder suggests using read_file tool instead.
 
 Usage:
@@ -33,15 +35,12 @@ if TYPE_CHECKING:
     from ..core.agent import Agent
 
 
-# Patterns that indicate bash is being used to create/write files (hard blocked)
+# Patterns that indicate bash is explicitly authoring file content (hard blocked)
 FILE_CREATION_PATTERNS = [
     re.compile(r"cat\s+<<"),              # cat <<EOF, cat <<'EOF', cat << 'EOF'
     re.compile(r">\s*\S+\.\w+\s*<<"),     # > file.py <<EOF
     re.compile(r"echo\s+.*[^2]>\s*\S+"),  # echo "..." > file (but not 2>)
     re.compile(r"printf\s+.*[^2]>\s*\S+"),# printf "..." > file (but not 2>)
-    re.compile(r"tee\s+\S+"),             # tee file.py
-    re.compile(r"(?<!\d)>\s*[~\.]"),      # > ./file, > ~/file (not 2>/dev/null)
-    re.compile(r"(?<!\d)>>\s*[~\.]"),     # >> ./file, >> ~/file
 ]
 
 # Patterns that indicate bash is being used to read files (standalone, not in pipelines)

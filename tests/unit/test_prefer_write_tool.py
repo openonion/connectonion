@@ -28,14 +28,13 @@ class TestFileCreationDetection:
     def test_printf_redirect(self):
         assert _is_file_creation_command("printf 'test' > file.txt")
 
-    def test_tee(self):
-        assert _is_file_creation_command("echo hello | tee file.txt")
-        assert _is_file_creation_command("ls -la | tee output.txt")
+    def test_command_output_redirects_are_allowed(self):
+        """Redirecting another command's output is not file authoring."""
+        assert not _is_file_creation_command("co browser get_text > ~/out.txt")
+        assert not _is_file_creation_command("co browser get_text >> ~/.co/ledger.jsonl")
 
-    def test_path_redirect(self):
-        assert _is_file_creation_command("echo test > ./file.txt")
-        assert _is_file_creation_command("echo test > ~/notes.txt")
-        assert _is_file_creation_command("echo test >> ./log.txt")
+    def test_tee_is_allowed_for_logging(self):
+        assert not _is_file_creation_command("co run task | tee run.log")
 
     def test_not_stderr_redirect(self):
         """2>/dev/null should NOT be flagged as file creation."""
