@@ -228,6 +228,26 @@ def test_get_emails_success(mock_get, sample_emails_backend_format):
     assert call_args[1]["params"]["unread_only"] is False
 
 
+@pytest.mark.parametrize("last", [0, 101, 1000, -1, True, 1.5, "10"])
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.get')
+def test_get_emails_rejects_an_unsupported_received_mail_limit(mock_get, last):
+    with pytest.raises(ValueError, match="last must be between 1 and 100"):
+        get_emails(last=last)
+    mock_get.assert_not_called()
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_accepts_the_received_mail_maximum(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": []}
+    mock_get.return_value = response
+
+    assert get_emails(last=100) == []
+    assert mock_get.call_args.kwargs["params"]["limit"] == 100
+
+
 @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
 @patch('requests.get')
 def test_get_emails_unread_only(mock_get):
@@ -295,6 +315,17 @@ def test_get_sent_returns_what_was_sent(mock_get):
     call_args = mock_get.call_args
     assert call_args[0][0].endswith("/api/v1/email/sent")
     assert call_args[1]["params"] == {"limit": 5}
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_sent_still_accepts_one_thousand(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": []}
+    mock_get.return_value = response
+
+    assert get_sent(last=1000) == []
+    assert mock_get.call_args.kwargs["params"]["limit"] == 1000
 
 
 @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})

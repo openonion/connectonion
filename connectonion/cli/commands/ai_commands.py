@@ -20,6 +20,7 @@ def handle_ai(
     max_iterations: int = 100,
     yolo: bool = False,
     yolo_turns: int = 100,
+    evaluate: bool = False,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -30,17 +31,26 @@ def handle_ai(
         max_iterations: Max tool iterations
         yolo: Skip tool approvals and keep working across turns
         yolo_turns: Maximum autonomous turns before a checkpoint
+        evaluate: Score completion with the eval debugging plugin
 
     Examples:
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
     """
     from ..co_ai.agent import GLOBAL_CO_DIR, create_agent
+
+    extra_plugins = ()
+    if evaluate:
+        from ...useful_plugins import eval as eval_plugin
+
+        extra_plugins = (eval_plugin,)
+
     agent = create_agent(
         model=model,
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
         yolo_turns=yolo_turns if yolo else None,
+        extra_plugins=extra_plugins,
     )
 
     if prompt:

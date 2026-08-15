@@ -16,6 +16,7 @@ import pytest
 import typer
 from connectonion.cli.co_ai.agent import GLOBAL_CO_DIR
 from connectonion.core.exceptions import LLMAuthenticationError
+from connectonion.useful_plugins import eval as eval_plugin
 
 
 def test_handle_ai_calls_start_server(monkeypatch):
@@ -41,6 +42,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
         max_iterations=3,
         yolo=True,
         yolo_turns=7,
+        evaluate=True,
     )
 
     assert called["port"] == 1111
@@ -49,6 +51,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
     assert created["yolo_turns"] == 7
+    assert created["extra_plugins"] == (eval_plugin,)
 
 
 def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):

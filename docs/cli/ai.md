@@ -42,13 +42,18 @@ Runs the prompt, prints the result, and exits. No server started.
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
 | `--yolo` | | off | Skip tool approvals and keep working across turns |
 | `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
+| `--eval` | | off | Run two extra model calls to derive and score an expected outcome |
 
 ```bash
 co ai --port 9000
 co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --yolo "Fix the failing suite" --yolo-turns 20
+co ai --eval "Exercise this agent and score the result"
 ```
+
+`co ai` keeps bounded session records for recent debugging, retaining the newest
+500. Completion scoring is separate and runs only when `--eval` is supplied.
 
 ## YOLO mode
 

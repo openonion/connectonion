@@ -18,9 +18,14 @@ Components under test:
 import pytest
 import tempfile
 import platform
+import subprocess
+import importlib
+from unittest.mock import patch
 from pathlib import Path
 from connectonion.useful_tools.shell import Shell
 from connectonion.useful_tools.bash import bash
+
+bash_module = importlib.import_module("connectonion.useful_tools.bash")
 
 
 # =============================================================================
@@ -67,11 +72,22 @@ class TestShellRun:
             result = shell.run("pwd")
             assert tmpdir in result
 
-    def test_run_timeout(self):
-        """Test that timeout returns error message."""
+    def test_run_timeout(self, monkeypatch):
+        """A timeout is an exception, never successful tool output."""
+        def expired(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", expired)
         shell = Shell()
-        result = shell.run("sleep 5", timeout=1)
-        assert "timed out" in result
+        with pytest.raises(subprocess.TimeoutExpired):
+            shell.run("long-running-agent", timeout=1)
+
+    def test_run_honors_timeout_longer_than_ten_minutes(self):
+        shell = Shell()
+        completed = subprocess.CompletedProcess("agent", 0, stdout="done", stderr="")
+        with patch("connectonion.useful_tools.shell.subprocess.run", return_value=completed) as run:
+            assert shell.run("agent", timeout=7200) == "done"
+        assert run.call_args.kwargs["timeout"] == 7200
 
 
 class TestShellRunInDir:
@@ -90,6 +106,12 @@ class TestShellRunInDir:
         with tempfile.TemporaryDirectory() as tmpdir:
             shell.run_in_dir("touch test_file.txt", tmpdir)
             assert (Path(tmpdir) / "test_file.txt").exists()
+
+    def test_run_in_dir_honors_timeout_longer_than_ten_minutes(self, monkeypatch, tmp_path):
+        completed = subprocess.CompletedProcess("agent", 0, stdout="done", stderr="")
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed)
+
+        assert Shell().run_in_dir("agent", str(tmp_path), timeout=7200) == "done"
 
 
 class TestShellIntegration:
@@ -202,10 +224,20 @@ class TestBashWithCwd:
 class TestBashWithTimeout:
     """Tests for bash timeout handling."""
 
-    def test_bash_timeout_returns_error(self):
-        """Test that timeout returns error message."""
-        result = bash("sleep 5", "Sleep command", timeout=1)
-        assert "timed out" in result
+    def test_bash_timeout_returns_error(self, monkeypatch):
+        """A timeout is an exception, never successful tool output."""
+        def expired(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", expired)
+        with pytest.raises(subprocess.TimeoutExpired):
+            bash("long-running-agent", "Long-running command", timeout=1)
+
+    def test_bash_honors_timeout_longer_than_ten_minutes(self):
+        completed = subprocess.CompletedProcess("agent", 0, stdout="done", stderr="")
+        with patch.object(bash_module.subprocess, "run", return_value=completed) as run:
+            assert bash("agent", timeout=7200) == "done"
+        assert run.call_args.kwargs["timeout"] == 7200
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
@@ -250,6 +282,25 @@ class TestBashIntegration:
         assert "command" in schema["parameters"]["properties"]
         assert "cwd" in schema["parameters"]["properties"]
         assert "timeout" in schema["parameters"]["properties"]
+
+    def test_bash_timeout_is_an_agent_tool_error(self, monkeypatch):
+        """The Agent trace exposes a timeout as an error instead of success."""
+        from unittest.mock import Mock
+        from connectonion import Agent
+
+        def expired(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", expired)
+        mock_llm = Mock()
+        mock_llm.model = "test-model"
+        agent = Agent("test", llm=mock_llm, tools=[bash], log=False, quiet=True)
+
+        result = agent.execute_tool("bash", {"command": "long-running-agent", "timeout": 7200})
+
+        assert result["status"] == "error"
+        assert "timed out after 7200 seconds" in result["result"]
+        assert agent.current_session["trace"][-1]["error_type"] == "TimeoutExpired"
 
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific test")

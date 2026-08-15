@@ -14,7 +14,7 @@ Tools included:
 - Shell: bash (with approval flow)
 
 Plugins included:
-- eval: Session persistence for debugging
+- caller-supplied plugins: Explicit opt-ins such as task evaluation
 - system_reminder: Contextual hints
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
@@ -35,22 +35,10 @@ Debug:
 
 from pathlib import Path
 
-from .context import load_project_context
-from .prompts.assembler import assemble_prompt
-from .tools import (
-    FileTools,
-    enter_plan_mode, exit_plan_and_implement, write_plan,
-    ask_user,
-    run_background, task_output, kill_task,
-    load_guide,
-)
-from .skills import skill
-from .plugins import system_reminder
-from connectonion import Agent, bash, TodoList
+from connectonion import Agent, TodoList, bash
 from connectonion.useful_plugins import (
     auto_compact,
     enable_yolo,
-    eval,
     image_result_formatter,
     prefer_write_tool,
     runtime_input,
@@ -60,6 +48,21 @@ from connectonion.useful_plugins import (
 )
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
+from .context import load_project_context
+from .plugins import system_reminder
+from .prompts.assembler import assemble_prompt
+from .skills import skill
+from .tools import (
+    FileTools,
+    ask_user,
+    enter_plan_mode,
+    exit_plan_and_implement,
+    kill_task,
+    load_guide,
+    run_background,
+    task_output,
+    write_plan,
+)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 # Global .co directory for co ai (consistent logs/evals location)
@@ -96,6 +99,7 @@ def create_agent(
     co_dir: Path = Path(".co"),
     yolo_turns: int | None = None,
     role: str | None = "coding",
+    extra_plugins=(),
 ) -> Agent:
     """Build the co-ai agent.
 
@@ -141,7 +145,7 @@ def create_agent(
     plugins = [
         skills_plugin,
         subagents,
-        eval,
+        *extra_plugins,
         system_reminder,
         prefer_write_tool,
         tool_approval,
@@ -150,7 +154,6 @@ def create_agent(
         image_result_formatter,
         runtime_input,
     ]
-
     agent = Agent(
         name=agent_name(co_dir),
         tools=tools,

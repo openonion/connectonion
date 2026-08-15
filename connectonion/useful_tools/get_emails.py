@@ -9,17 +9,22 @@ LLM-Note:
   Errors: missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
 """
 
+from typing import Dict, List, Union
+
 import requests
-from typing import List, Dict, Union
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+
+MIN_RECEIVED_EMAILS = 1
+MAX_RECEIVED_EMAILS = 100
 
 
 def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
     """Get emails sent to the agent's address.
 
     Args:
-        last: Number of emails to retrieve (default: 10)
+        last: Number of emails to retrieve (default: 10, range: 1-100)
         unread: Only get unread emails (default: False)
 
     Returns:
@@ -31,8 +36,18 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
             - timestamp: ISO format timestamp
             - read: Boolean read status
     """
+    if (
+        isinstance(last, bool)
+        or not isinstance(last, int)
+        or not MIN_RECEIVED_EMAILS <= last <= MAX_RECEIVED_EMAILS
+    ):
+        raise ValueError(
+            f"last must be between {MIN_RECEIVED_EMAILS} and "
+            f"{MAX_RECEIVED_EMAILS} for received email"
+        )
+
     token = require_ambient_api_key()
-    
+
     # Fetch emails from backend API
     endpoint = f"{backend_url()}/api/v1/email/received"
 
@@ -135,7 +150,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
         raise ValueError("No email IDs provided to mark as read")
 
     token = require_ambient_api_key()
-    
+
     # Mark emails as read via backend API
     endpoint = f"{backend_url()}/api/v1/email/s/mark-read"
 

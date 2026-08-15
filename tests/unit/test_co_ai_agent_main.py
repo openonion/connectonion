@@ -15,6 +15,7 @@ from pathlib import Path
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
+from connectonion.useful_plugins import eval as eval_plugin
 
 
 def test_create_coding_agent(monkeypatch, tmp_path):
@@ -48,6 +49,31 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # tabs itself (`-t <tab>`), so the workaround is gone.
     from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
     assert _bind_browser_session not in agent.events["before_each_tool"]
+    registered = [handler for handlers in agent.events.values() for handler in handlers]
+    assert all(handler not in registered for handler in eval_plugin)
+    # Recent session records remain available for debugging; only the two
+    # scoring-model calls are opt-in, and logger retention bounds disk usage.
+    assert agent.logger.enable_sessions is True
+
+
+def test_co_ai_eval_is_explicitly_opt_in(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+
+    agent = agent_mod.create_agent(
+        model="fake",
+        max_iterations=1,
+        co_dir=tmp_path / ".co",
+        extra_plugins=(eval_plugin,),
+    )
+
+    registered = [handler for handlers in agent.events.values() for handler in handlers]
+    assert all(handler in registered for handler in eval_plugin)
+    assert agent.logger.enable_sessions is True
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):

@@ -7,7 +7,6 @@ from typer.testing import CliRunner
 
 from connectonion.cli.main import app
 
-
 runner = CliRunner()
 
 
@@ -26,6 +25,7 @@ def test_ai_forwards_yolo_options():
         max_iterations=100,
         yolo=True,
         yolo_turns=4,
+        evaluate=False,
     )
 
 
@@ -39,3 +39,11 @@ def test_ai_rejects_non_positive_yolo_turns():
     output = strip_ansi(result.output)
     assert "--yolo-turns" in output
     assert "1" in output
+
+
+def test_ai_eval_is_explicit_and_forwarded():
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(app, ["ai", "task", "--eval"])
+
+    assert result.exit_code == 0
+    assert handler.call_args.kwargs["evaluate"] is True

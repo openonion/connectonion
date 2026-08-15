@@ -49,6 +49,10 @@ mark_read(email_id)                # Mark as read after processing
 
 **Important**: Emails are NOT auto-marked as read. You control when to mark them.
 
+`last` accepts 1 through 100, matching the received-mail API. Unsupported
+values raise `ValueError("last must be between 1 and 100 for received email")` before credentials
+are loaded or a network request is made; the function never silently clamps.
+
 ---
 
 ## Common Patterns

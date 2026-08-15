@@ -356,6 +356,11 @@ def ai(
         min=1,
         help="Autonomous turns before a checkpoint (requires --yolo)",
     ),
+    evaluate: bool = typer.Option(
+        False,
+        "--eval",
+        help="Score completions with the eval plugin (off by default)",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -366,6 +371,7 @@ def ai(
         max_iterations=max_iterations,
         yolo=yolo,
         yolo_turns=yolo_turns,
+        evaluate=evaluate,
     )
 
 
@@ -697,7 +703,10 @@ def email_send(
 
 @email_app.command("inbox")
 def email_inbox(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(
+        10, "--last", "-n", min=1, max=100,
+        help="How many emails to show (1-100)",
+    ),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
 ):
     """List recent received emails."""
