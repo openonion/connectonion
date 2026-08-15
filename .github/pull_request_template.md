@@ -4,6 +4,16 @@ Brief description of what this PR does.
 ## Related Issue
 Fixes #(issue number)
 
+## Labels and target release (required)
+
+- **Suggested labels:** [bug, feature, documentation, tests, design, browser, platform]
+- **Proposed target version:** [e.g. next patch, 1.8.0, 2.x, or TBD]
+- **Estimated release window:** [e.g. next alpha, next stable, future roadmap, or unknown]
+- **Milestone:** [maintainer assigns the confirmed release milestone]
+- **Why this release:** Explain urgency, dependencies, compatibility, and rollback risk.
+
+> The author's target is an estimate. Maintainers confirm the release by applying labels and assigning a milestone.
+
 ## How this was written
 
 - [ ] I wrote this myself
@@ -34,7 +44,9 @@ A PR that says *"I didn't test the Windows path and I'm unsure the retry logic i
 
 ## Dev Blog (required)
 
-**Every PR ships a dev-blog post in the same diff** — a file added or updated under `docs/blog/`. This is enforced by CI (`blog-gate`): a PR that touches no `docs/blog/` file fails the check. The posts sync to the docs site, so writing it here is what keeps the site current without anyone asking.
+**Every PR ships a dev-blog post in the same diff** — a file added or updated under `docs/blog/`. This is enforced by CI (`blog-gate`).
+
+The posts sync to the docs site, so writing it here is what keeps the site current without anyone asking.
 
 What the post is: a short Design Journal piece telling the **story** of this change — the problem as someone actually hit it, a turn or complication, what the fix teaches, what was measured. Written for a reader who could stop reading at any point.
 What it is not: a changelog entry, a list of commits, or marketing copy.
@@ -58,7 +70,6 @@ Paste the actual command and its real output. The output is the evidence — a t
 
 ```
 $ pytest tests/ -m "not real_api and not network"
-
 ```
 
 - [ ] I have added tests for new functionality
@@ -73,13 +84,13 @@ Keep a PR to one concern. A change that spans several subsystems at once is hard
 
 ## Example Usage
 ```python
-# Show how to use any new features or fixes
 from connectonion import Agent
 
-# Example code
+# Show how to use any new features or fixes
 ```
 
 ## Checklist
+- [ ] I proposed at least one label and a target version above
 - [ ] My code follows the project's code style
 - [ ] I have read every line of this diff and can defend each change
 - [ ] I have commented my code, particularly in hard-to-understand areas
