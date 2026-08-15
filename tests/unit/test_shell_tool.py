@@ -3,8 +3,7 @@
 Tests cover:
 - Shell class: cross-platform shell execution
 - bash function: Unix/Mac specific bash execution
-"""
-"""
+
 LLM-Note: Tests for shell tool
 
 What it tests:
@@ -15,14 +14,15 @@ Components under test:
 """
 
 
-import pytest
+import platform
 import subprocess
 import tempfile
-import platform
 from pathlib import Path
-from connectonion.useful_tools.shell import Shell
-from connectonion.useful_tools.bash import bash
 
+import pytest
+
+from connectonion.useful_tools.bash import bash
+from connectonion.useful_tools.shell import Shell
 
 # =============================================================================
 # Shell Class Tests (Cross-Platform)
@@ -128,10 +128,11 @@ class TestShellIntegration:
 
     def test_shell_can_be_used_as_agent_tool(self):
         """Test that Shell can be registered with agent."""
+        from unittest.mock import Mock
+
         from connectonion import Agent
         from connectonion.core.llm import LLMResponse
         from connectonion.core.usage import TokenUsage
-        from unittest.mock import Mock
 
         mock_llm = Mock()
         mock_llm.model = "test-model"
@@ -261,10 +262,11 @@ class TestBashIntegration:
 
     def test_bash_can_be_used_as_agent_tool(self):
         """Test that bash can be registered with agent."""
+        from unittest.mock import Mock
+
         from connectonion import Agent
         from connectonion.core.llm import LLMResponse
         from connectonion.core.usage import TokenUsage
-        from unittest.mock import Mock
 
         mock_llm = Mock()
         mock_llm.model = "test-model"
@@ -297,6 +299,27 @@ class TestBashIntegration:
         assert "command" in schema["parameters"]["properties"]
         assert "cwd" in schema["parameters"]["properties"]
         assert "timeout" in schema["parameters"]["properties"]
+
+    def test_bash_timeout_is_an_agent_tool_error(self, monkeypatch):
+        """The Agent trace exposes a timeout as an error instead of success."""
+        from unittest.mock import Mock
+
+        from connectonion import Agent
+
+        def expired(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        monkeypatch.setattr(subprocess, "run", expired)
+
+        mock_llm = Mock()
+        mock_llm.model = "test-model"
+        agent = Agent("test", llm=mock_llm, tools=[bash], log=False, quiet=True)
+
+        result = agent.execute_tool("bash", {"command": "long-running-agent", "timeout": 7200})
+
+        assert result["status"] == "error"
+        assert "timed out after 7200 seconds" in result["result"]
+        assert agent.current_session["trace"][-1]["error_type"] == "TimeoutExpired"
 
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific test")
