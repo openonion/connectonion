@@ -26,6 +26,7 @@ def test_ai_forwards_yolo_options():
         max_iterations=100,
         yolo=True,
         yolo_turns=4,
+        evaluate=False,
         json_output=False,
         resume=None,
         acp=False,
@@ -49,6 +50,7 @@ def test_ai_forwards_json_and_resume_options():
         max_iterations=100,
         yolo=False,
         yolo_turns=100,
+        evaluate=False,
         json_output=True,
         resume="session-id",
         acp=False,
@@ -69,12 +71,21 @@ def test_ai_forwards_acp_mode():
         max_iterations=100,
         yolo=False,
         yolo_turns=100,
+        evaluate=False,
         json_output=False,
         resume=None,
         acp=True,
         acp_mcp=False,
         state_dir=None,
     )
+
+
+def test_ai_eval_is_explicit_and_forwarded():
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(app, ["ai", "task", "--eval"])
+
+    assert result.exit_code == 0
+    assert handler.call_args.kwargs["evaluate"] is True
 
 
 def test_ai_forwards_explicit_acp_state_dir(tmp_path):
