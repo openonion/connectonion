@@ -719,10 +719,13 @@ def email_inbox(
 
 
 @email_app.command("read")
-def email_read(email_id: str = typer.Argument(..., help="Email # from the inbox list")):
-    """Show one email's body and mark it read."""
+def email_read(
+    email_id: str = typer.Argument(..., help="Email # from the inbox list"),
+    mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+):
+    """Show one email's body without changing its unread state."""
     from .commands.email_commands import handle_email_read
-    handle_email_read(email_id)
+    handle_email_read(email_id, mark_read=mark_read)
 
 
 sent_app = _typer_app(help="List and read emails the agent has sent")
@@ -845,10 +848,11 @@ def gmail_inbox(
 @gmail_app.command("read")
 def gmail_read(
     email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
 ):
-    """Show one email's full body and mark it read."""
+    """Show one email's full body without changing its unread state."""
     from .commands.gmail_commands import handle_gmail_read
-    handle_gmail_read(email_id)
+    handle_gmail_read(email_id, mark_read=mark_read)
 
 
 @gmail_app.command("reply")
@@ -1106,10 +1110,13 @@ def outlook_inbox(
 
 
 @outlook_app.command("read")
-def outlook_read(email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)")):
-    """Show one email's body and mark it read."""
+def outlook_read(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)"),
+    mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+):
+    """Show one email's body without changing its unread state."""
     from .commands.outlook_commands import handle_outlook_read
-    handle_outlook_read(email_id)
+    handle_outlook_read(email_id, mark_read=mark_read)
 
 
 @outlook_app.command("reply")
