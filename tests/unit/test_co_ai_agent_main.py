@@ -16,6 +16,7 @@ import pytest
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
+from connectonion import CodexPlugin
 from connectonion.cli.co_ai.one_shot_sessions import (
     SessionSnapshotError,
     load_snapshot,
@@ -64,6 +65,12 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
     assert "ask_user" in agent.tools._tools
     assert "codex" in agent.tools._tools
+    codex_plugins = [
+        plugin for plugin in agent.installed_plugins
+        if isinstance(plugin, CodexPlugin)
+    ]
+    assert len(codex_plugins) == 1
+    assert agent.tools.get("codex")._bound_instance is codex_plugins[0]
     codex_schema = agent.tools.get("codex").to_function_schema()["parameters"]
     assert set(codex_schema["properties"]) == {
         "prompt",
@@ -72,7 +79,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "model",
         "timeout",
     }
-    assert codex_schema["required"] == ["prompt", "cwd"]
+    assert codex_schema["required"] == ["prompt"]
     assert "claude_code" in agent.tools._tools
     claude_schema = agent.tools.get("claude_code").to_function_schema()["parameters"]
     assert set(claude_schema["properties"]) == {
@@ -106,6 +113,38 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # tabs itself (`-t <tab>`), so the workaround is gone.
     from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
     assert _bind_browser_session not in agent.events["before_each_tool"]
+
+
+def test_co_ai_codex_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    import connectonion.plugins.coding_agents as coding_agents
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+    monkeypatch.setattr(
+        coding_agents,
+        "_run_codex",
+        lambda **kwargs: '{"provider":"codex","session_id":"s1","exit_code":0}',
+    )
+    monkeypatch.chdir(tmp_path)
+    agent = agent_mod.create_agent(model="fake", max_iterations=1)
+    agent.current_session = {
+        "trace": [],
+        "mode": ":read-only",
+        "_active_tool_call_id": "call-1",
+    }
+
+    agent.tools.codex("inspect", agent=agent)
+
+    lifecycle = [
+        entry for entry in agent.current_session["trace"]
+        if entry["type"] == "provider_invocation"
+    ]
+    assert [entry["status"] for entry in lifecycle] == ["running", "completed"]
+    assert all(entry["parentToolCallId"] == "call-1" for entry in lifecycle)
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):

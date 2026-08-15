@@ -34,7 +34,7 @@ Debug:
 
 from pathlib import Path
 
-from connectonion import Agent, TodoList, bash
+from connectonion import Agent, CodexPlugin, TodoList, bash
 from connectonion.core.events import after_user_input
 from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
@@ -59,7 +59,6 @@ from .tools import (
     acp_agent,
     ask_user,
     claude_code,
-    codex,
     kill_task,
     load_guide,
     run_background,
@@ -129,6 +128,10 @@ def create_agent(
     """
     todo = TodoList()
     file_tools = FileTools()
+    codex_plugin = CodexPlugin(
+        workspace=Path.cwd(),
+        use_host_permissions=True,
+    )
 
     tools = [
         file_tools,
@@ -139,17 +142,13 @@ def create_agent(
         *([run_background, task_output, kill_task] if background_tools else []),
         load_guide,
         ask_user,
-        # Codex owns approval for its concrete inner actions. The co ai wrapper
-        # derives that policy from the current mode instead of exposing it to
-        # the planner model as another set of permission switches.
-        codex,
         claude_code,
         acp_agent,
     ]
 
     base_prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
-        tools=tools,
+        tools=[*tools, codex_plugin.codex],
         role=role,
     )
 
@@ -164,6 +163,7 @@ def create_agent(
     # image_result_formatter stays — it turns the screenshot path the CLI prints
     # back into an image the model and the user can actually see.
     plugins = [
+        codex_plugin,
         skills_plugin,
         subagents,
         eval,

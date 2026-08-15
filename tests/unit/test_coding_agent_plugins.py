@@ -70,6 +70,58 @@ def test_invocation_lifecycle_is_parented_and_terminal(monkeypatch, tmp_path):
     assert finish.kwargs["sessionId"] == "s1"
 
 
+@pytest.mark.parametrize(
+    ("session", "sandbox", "approval"),
+    [
+        ({"mode": ":read-only"}, "read-only", "manual"),
+        ({"mode": ":workspace"}, "workspace-write", "manual"),
+        (
+            {
+                "mode": ":danger-full-access",
+                "full_access_turns": 2,
+                "full_access_turns_used": 0,
+                "skip_tool_approval": True,
+            },
+            "danger-full-access",
+            "deny",
+        ),
+        (
+            {"mode": ":workspace", "requester": {"level": "contact"}},
+            "read-only",
+            "deny",
+        ),
+    ],
+)
+def test_codex_plugin_can_follow_the_authenticated_host_permission_ceiling(
+    monkeypatch,
+    tmp_path,
+    session,
+    sandbox,
+    approval,
+):
+    import connectonion.plugins.coding_agents as module
+
+    seen = {}
+
+    def fake_codex(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"provider": "codex", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_codex", fake_codex)
+    agent = SimpleNamespace(
+        current_session={"_active_tool_call_id": "call-8", **session},
+        io=SimpleNamespace(log=MagicMock()),
+    )
+
+    CodexPlugin(
+        workspace=tmp_path,
+        use_host_permissions=True,
+    ).codex("inspect", agent=agent)
+
+    assert seen["sandbox"] == sandbox
+    assert seen["approval"] == approval
+
+
 def test_public_signature_matches_the_provider_contract(tmp_path):
     for method in (
         CodexPlugin(workspace=tmp_path).codex,

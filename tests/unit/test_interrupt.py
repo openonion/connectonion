@@ -7,9 +7,8 @@ import time
 
 import pytest
 
-from connectonion import Agent, before_each_tool
+from connectonion import Agent, CodexPlugin, before_each_tool
 from connectonion.cli.co_ai.tools.claude_code import claude_code as co_ai_claude_code
-from connectonion.cli.co_ai.tools.codex import codex as co_ai_codex
 from connectonion.core.interrupt import InterruptibleIO, UserInterrupt, run_interruptible
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.logger import Logger
@@ -170,24 +169,22 @@ def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():
 
 
 @pytest.mark.parametrize(
-    ("provider", "tool", "module_name", "backend_name"),
+    ("provider", "module_name", "backend_name"),
     [
         (
             "codex",
-            co_ai_codex,
-            "connectonion.cli.co_ai.tools.codex",
-            "run_codex",
+            "connectonion.plugins.coding_agents",
+            "_run_codex",
         ),
         (
             "claude_code",
-            co_ai_claude_code,
             "connectonion.cli.co_ai.tools.claude_code",
             "_run_claude_code",
         ),
     ],
 )
 def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
-    monkeypatch, tmp_path, provider, tool, module_name, backend_name
+    monkeypatch, tmp_path, provider, module_name, backend_name
 ):
     """Both wrappers revoke framework state and IO after an interrupt.
 
@@ -215,6 +212,14 @@ def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
 
     module = importlib.import_module(module_name)
     monkeypatch.setattr(module, backend_name, slow_backend)
+    tool = (
+        CodexPlugin(
+            workspace=tmp_path,
+            use_host_permissions=True,
+        ).codex
+        if provider == "codex"
+        else co_ai_claude_code
+    )
     agent = Agent(
         f"{provider}-interrupt",
         llm=MockLLM(),
@@ -260,18 +265,17 @@ def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
 
 
 @pytest.mark.parametrize(
-    ("provider", "tool", "library_module"),
+    ("provider", "library_module"),
     [
-        ("codex", co_ai_codex, "connectonion.useful_tools.codex"),
+        ("codex", "connectonion.useful_tools.codex"),
         (
             "claude_code",
-            co_ai_claude_code,
             "connectonion.useful_tools.claude_code",
         ),
     ],
 )
 def test_interrupt_stops_provider_process_before_late_write(
-    monkeypatch, tmp_path, provider, tool, library_module
+    monkeypatch, tmp_path, provider, library_module
 ):
     """Cooperative adapters stop their launch group after the lease is revoked."""
     script = tmp_path / "slow_provider.py"
@@ -291,6 +295,14 @@ def test_interrupt_stops_provider_process_before_late_write(
         library,
         "_base_command",
         lambda: [sys.executable, str(script), str(started), str(late)],
+    )
+    tool = (
+        CodexPlugin(
+            workspace=tmp_path,
+            use_host_permissions=True,
+        ).codex
+        if provider == "codex"
+        else co_ai_claude_code
     )
     agent = Agent(
         f"{provider}-process-cancel",
