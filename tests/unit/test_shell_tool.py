@@ -15,12 +15,20 @@ Components under test:
 """
 
 
-import pytest
-import tempfile
+import importlib
 import platform
+import subprocess
+import tempfile
 from pathlib import Path
-from connectonion.useful_tools.shell import Shell
+from unittest.mock import patch
+
+import pytest
+
 from connectonion.useful_tools.bash import bash
+from connectonion.useful_tools.shell import Shell
+
+
+bash_module = importlib.import_module("connectonion.useful_tools.bash")
 
 
 # =============================================================================
@@ -67,11 +75,23 @@ class TestShellRun:
             result = shell.run("pwd")
             assert tmpdir in result
 
-    def test_run_timeout(self):
-        """Test that timeout returns error message."""
+    def test_run_timeout_raises(self):
+        """A timeout is an error outcome, not successful prose output."""
         shell = Shell()
-        result = shell.run("sleep 5", timeout=1)
-        assert "timed out" in result
+        expired = subprocess.TimeoutExpired(cmd="slow command", timeout=7200)
+        with patch("connectonion.useful_tools.shell.subprocess.run", side_effect=expired):
+            with pytest.raises(subprocess.TimeoutExpired) as raised:
+                shell.run("slow command", timeout=7200)
+
+        assert raised.value is expired
+
+    def test_run_honors_timeout_above_ten_minutes(self):
+        """The caller's timeout reaches subprocess.run unchanged."""
+        completed = subprocess.CompletedProcess("long command", 0, "done\n", "")
+        with patch("connectonion.useful_tools.shell.subprocess.run", return_value=completed) as run:
+            assert Shell().run("long command", timeout=7200) == "done"
+
+        assert run.call_args.kwargs["timeout"] == 7200
 
 
 class TestShellRunInDir:
@@ -90,6 +110,16 @@ class TestShellRunInDir:
         with tempfile.TemporaryDirectory() as tmpdir:
             shell.run_in_dir("touch test_file.txt", tmpdir)
             assert (Path(tmpdir) / "test_file.txt").exists()
+
+    def test_run_in_dir_honors_timeout_and_raises(self):
+        shell = Shell()
+        expired = subprocess.TimeoutExpired(cmd="slow command", timeout=7200)
+        with patch("connectonion.useful_tools.shell.subprocess.run", side_effect=expired) as run:
+            with pytest.raises(subprocess.TimeoutExpired) as raised:
+                shell.run_in_dir("slow command", "/tmp", timeout=7200)
+
+        assert raised.value is expired
+        assert run.call_args.kwargs["timeout"] == 7200
 
 
 class TestShellIntegration:
@@ -202,10 +232,23 @@ class TestBashWithCwd:
 class TestBashWithTimeout:
     """Tests for bash timeout handling."""
 
-    def test_bash_timeout_returns_error(self):
-        """Test that timeout returns error message."""
-        result = bash("sleep 5", "Sleep command", timeout=1)
-        assert "timed out" in result
+    def test_bash_timeout_raises(self):
+        """A timeout is an error outcome, not successful prose output."""
+        expired = subprocess.TimeoutExpired(cmd="slow command", timeout=7200)
+        with patch.object(bash_module.subprocess, "run", side_effect=expired) as run:
+            with pytest.raises(subprocess.TimeoutExpired) as raised:
+                bash("slow command", "Run a long agent", timeout=7200)
+
+        assert raised.value is expired
+        assert run.call_args.kwargs["timeout"] == 7200
+
+    def test_bash_honors_timeout_above_ten_minutes(self):
+        """The caller's timeout reaches subprocess.run unchanged."""
+        completed = subprocess.CompletedProcess("long command", 0, "done\n", "")
+        with patch.object(bash_module.subprocess, "run", return_value=completed) as run:
+            assert bash("long command", timeout=7200) == "done"
+
+        assert run.call_args.kwargs["timeout"] == 7200
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")

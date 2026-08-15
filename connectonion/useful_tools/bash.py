@@ -5,8 +5,8 @@ LLM-Note:
   Data flow: receives command: str, description: str, cwd: str, timeout: int → subprocess.run() with shell=True → captures stdout+stderr → truncates if >10000 chars → returns formatted output: str
   State/Effects: executes system commands via subprocess.run(shell=True) | no persistent state | reads/writes filesystem based on command | can have any side effect depending on command (network calls, file operations, etc.)
   Integration: exposes bash(command, description="", cwd, timeout) function | used as agent tool | description is OPTIONAL (defaults "") — an LLM is prompted to fill it for the approval UI, but direct/programmatic callers (remote.call, co call, scripts) can pass command alone | not passed to shell | Unix/Mac only (raises ValueError on Windows)
-  Performance: timeout default 120s, max 600s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
-  Errors: raises ValueError on Windows | returns formatted error on timeout | non-zero exit codes included in output | stderr merged with stdout
+  Performance: timeout default 120s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
+  Errors: raises ValueError on Windows | raises subprocess.TimeoutExpired on timeout | non-zero exit codes included in output | stderr merged with stdout
 
 Bash tool for executing terminal commands (Unix/Mac only).
 
@@ -23,8 +23,8 @@ Usage:
 Note: This tool is for Unix/Mac systems. For cross-platform usage, use Shell class instead.
 """
 
-import subprocess
 import platform
+import subprocess
 
 
 def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120) -> str:
@@ -36,7 +36,7 @@ def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120
             — an LLM should fill it in so the approval UI can show intent, but direct
             callers (scripts, remote.call, co call) may pass just the command.
         cwd: Working directory (default: current directory)
-        timeout: Seconds before timeout (default: 120, max: 600)
+        timeout: Seconds before timeout (default: 120)
 
     Returns:
         Command output (stdout + stderr)
@@ -44,9 +44,6 @@ def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120
     # Check platform
     if platform.system() == "Windows":
         return "Error: bash tool is for Unix/Mac only. Use Shell class for Windows."
-
-    # Cap timeout at 10 minutes
-    timeout = min(timeout, 600)
 
     try:
         result = subprocess.run(
@@ -60,8 +57,6 @@ def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120
             cwd=cwd,
             timeout=timeout
         )
-    except subprocess.TimeoutExpired:
-        return f"Error: Command timed out after {timeout} seconds"
     except FileNotFoundError:
         return "Error: /bin/bash not found. This tool requires bash shell."
 
