@@ -21,7 +21,10 @@ import os
 import threading
 import time
 import webbrowser
+from contextlib import contextmanager
 from pathlib import Path
+
+from dotenv import dotenv_values
 
 from connectonion import address, host
 
@@ -32,6 +35,70 @@ logging.basicConfig(level=logging.WARNING, format="[%(levelname)s] %(name)s: %(m
 # 1. Current directory .env
 # 2. Global ~/.co/keys.env
 # No need to load again here (load_dotenv doesn't override existing env vars)
+
+
+@contextmanager
+def _owner_invite_lock(co_dir: Path):
+    """Serialize the one-time invite mint across simultaneous ``co ai`` starts."""
+    co_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = co_dir / "owner-invite.lock"
+    with lock_path.open("a+b") as lock_file:
+        if os.name == "nt":
+            import msvcrt
+
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            lock_path.chmod(0o600)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _ensure_owner_invite(co_dir: Path) -> bool:
+    """Load or mint the private invite used by the careful onboarding policy.
+
+    The process environment wins because it may have come from the current
+    project's ``.env``. Otherwise the global value is loaded into this process
+    (dotenv loading happened before ``co ai`` reached this module), or one is
+    minted once and written with owner-only permissions.
+    """
+    if os.environ.get("CO_INVITE_CODE"):
+        return False
+
+    from ..commands.project_cmd_lib import mint_invite_code, upsert_env
+
+    with _owner_invite_lock(co_dir):
+        keys_env = co_dir / "keys.env"
+        existing = dotenv_values(keys_env, interpolate=False).get("CO_INVITE_CODE")
+        if existing:
+            os.environ["CO_INVITE_CODE"] = existing
+            return False
+
+        invite = mint_invite_code()
+        upsert_env(keys_env, {"CO_INVITE_CODE": invite})
+        os.environ["CO_INVITE_CODE"] = invite
+        return True
+
+
+def _prepare_owner_onboarding(co_dir: Path) -> bool:
+    """Ensure the global identity and its private owner invite exist."""
+    from ..commands.project_cmd_lib import ensure_global_config
+
+    ensure_global_config()
+    return _ensure_owner_invite(co_dir)
 
 
 def start_server(
@@ -62,13 +129,19 @@ def start_server(
     - GET http://localhost:{port}/info
     """
     from ...network.host.config import load_host_config
+
     # Use global ~/.co/ for consistent identity across all co ai sessions.
     co_dir = Path.home() / ".co"
-    _ensure_invite_code(co_dir)
+    if _prepare_owner_onboarding(co_dir):
+        from ..commands.project_cmd_lib import console
+
+        console.print(
+            "[green]Owner invite created.[/green] Run [bold]co keys --reveal[/bold] when onboarding your client."
+        )
     load_host_config(co_dir)
     addr_data = address.load(co_dir)
 
-        # Open chat URL after agent successfully starts (2 second delay)
+    # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
 
         def open_chat_delayed():
@@ -80,28 +153,3 @@ def start_server(
     # The first-party browser speaks OIP over /ws. Native Codex and Claude Code
     # delegation stay inside the Agent as provider adapters.
     host(agent, port=port, trust="careful", co_dir=co_dir)
-
-
-def _ensure_invite_code(co_dir: Path) -> Path | None:
-    """Provision one private, stable invite for a bare ``co ai`` installation."""
-    if os.environ.get("CO_INVITE_CODE"):
-        return None
-
-    from ..commands.project_cmd_lib import mint_invite_code
-
-    invite_file = co_dir / "co-ai-invite.env"
-    co_dir.mkdir(parents=True, exist_ok=True)
-    if invite_file.exists():
-        line = invite_file.read_text(encoding="utf-8").strip()
-        key, separator, code = line.partition("=")
-        if key != "CO_INVITE_CODE" or not separator or not code:
-            raise ValueError(f"Invalid co ai invite file: {invite_file}")
-    else:
-        code = mint_invite_code()
-        invite_file.write_text(f"CO_INVITE_CODE={code}\n", encoding="utf-8")
-        if os.name != "nt":
-            invite_file.chmod(0o600)
-        print(f"[co ai] Created a private invite code in {invite_file}")
-
-    os.environ["CO_INVITE_CODE"] = code
-    return invite_file
