@@ -40,6 +40,32 @@ def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist
     return connect_auth(data, trust, **auth_kwargs)
 
 
+def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelist):
+    """Re-authenticate an equivalent live connection without repeating policy."""
+    from ..auth import authenticate_connect_identity, signature_already_used
+
+    metadata = route_handlers.get("agent_metadata") or {}
+    auth_kwargs = {"blacklist": blacklist}
+    if metadata.get("address"):
+        auth_kwargs["recipient_address"] = metadata["address"]
+
+    # A custom connection verifier may carry authentication semantics that the
+    # standard Ed25519 verifier cannot reproduce. Let deployments provide the
+    # narrow reattach half explicitly; otherwise preserve their existing gate.
+    reattach_auth = route_handlers.get("reattach_auth")
+    if reattach_auth is not None:
+        return reattach_auth(data, trust, whitelist=whitelist, **auth_kwargs)
+    connect_auth = route_handlers.get("connect_auth")
+    if connect_auth is not None:
+        return connect_auth(data, trust, whitelist=whitelist, **auth_kwargs)
+
+    return authenticate_connect_identity(
+        data,
+        replay_check=route_handlers.get("replay", signature_already_used),
+        **auth_kwargs,
+    )
+
+
 async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
     """Handle CONNECT message: auth + merge + optional running reattach."""
     _, agent_address, _, err = authenticate_connect_frame(
@@ -99,7 +125,7 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
         })
         return
 
-    _, agent_address, _, err = authenticate_connect_frame(
+    _, agent_address, _, err = authenticate_reattach_frame(
         data, route_handlers, trust, blacklist, whitelist
     )
 
