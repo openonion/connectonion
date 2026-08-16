@@ -676,6 +676,7 @@ def test_process_runner_is_headless_and_does_not_use_a_shell(tmp_path):
 
 
 def test_provider_process_does_not_inherit_unrelated_credentials(monkeypatch, tmp_path):
+    monkeypatch.setenv("USER", "macos-keychain-user")
     monkeypatch.setenv("OPENAI_API_KEY", "must-not-cross")
     monkeypatch.setenv("GH_TOKEN", "must-not-cross")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "provider-auth")
@@ -690,6 +691,7 @@ def test_provider_process_does_not_inherit_unrelated_credentials(monkeypatch, tm
             ["claude"], cwd=str(tmp_path), timeout=2, on_event=lambda event: None
         )
     environment = popen.call_args.kwargs["env"]
+    assert environment["USER"] == "macos-keychain-user"
     assert "OPENAI_API_KEY" not in environment
     assert "GH_TOKEN" not in environment
     assert environment["ANTHROPIC_API_KEY"] == "provider-auth"
