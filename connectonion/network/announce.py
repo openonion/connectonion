@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: get_ips() makes HTTP request to ipify (one-time) | pure function otherwise | deterministic JSON serialization (matches server verification) | signature is hex string without 0x prefix
   Integration: exposes get_ips(), create_announce_message(address_data, summary, endpoints) | used by host() to announce agent presence to relay network | relay server verifies signature using address (public key) | heartbeat re-sends with updated timestamp
   Performance: Ed25519 signing is fast (sub-millisecond) | get_ips() ~300-500ms for ipify call (runs once at startup)
-  Errors: raises KeyError if address_data missing required keys | address.sign() errors bubble up | any ipify failure (timeout, DNS, 5xx) returns the local addresses without a public one — it used to raise out of get_endpoints() into host startup, which this line already claimed it did not
+  Errors: raises KeyError if address_data missing required keys | address.sign() errors bubble up | denied local adapter enumeration and ipify failures degrade independently, so neither optional discovery source can abort Host startup
 
 Build ANNOUNCE messages for relay registration.
 
@@ -68,11 +68,21 @@ def get_ips() -> List[str]:
     """Get all IP addresses (localhost, local network, public)."""
     ips = ["localhost"]
 
-    # Local IPs
-    for adapter in ifaddr.get_adapters():
-        for ip in adapter.ips:
-            if isinstance(ip.ip, str) and not ip.ip.startswith('127.'):
-                ips.append(ip.ip)
+    # Interface discovery is optional reachability enrichment. Sandboxed Linux
+    # processes can be allowed to bind/listen while the netlink operation used
+    # by ifaddr is denied. That must cost local endpoint discovery, not Host
+    # startup. Keep this catch around the OS boundary (including iteration), so
+    # programming errors elsewhere still surface normally.
+    try:
+        for adapter in ifaddr.get_adapters():
+            for ip in adapter.ips:
+                if isinstance(ip.ip, str) and not ip.ip.startswith("127."):
+                    ips.append(ip.ip)
+    except OSError as exc:
+        print(
+            "[announce] local network discovery unavailable "
+            f"({type(exc).__name__}); continuing with public/relay discovery."
+        )
 
     # Public IP, from a third party, which is the one address this project cannot
     # work out for itself. Everything above is already collected, and those are
