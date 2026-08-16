@@ -9,14 +9,15 @@ The plugin is the same in every mode; what moves is the gate.
 
 | mode | behaviour |
 |---|---|
-| `default` | local/admin operators confirm each unpermitted tool; hosted non-admin requesters are rejected without a dialog |
-| `plan` | O Chat workflow; server approval authority remains `default` |
-| `auto_approve` | local/admin-only: named file edits land without asking; every other unpermitted call still needs operator approval |
-| `full_access` | local/admin-only bounded approval bypass — see `useful_plugins/full_access` |
+| `:read-only` (legacy `default`/`safe`) | every unpermitted live-IO call asks an authenticated user |
+| `:workspace` (legacy `auto_approve`/`accept_edits`) | deterministic Auto permits workspace reads, reversible edits, and focused verification; higher-impact calls ask or deny |
+| `:danger-full-access` (legacy `full_access`/`ulw`/`yolo`) | explicit, Host-bounded bypass — see `useful_plugins/full_access` |
+| `plan` | workflow state; it does not grant a permission profile |
 
 Mode changes arrive over the WebSocket, so a client can move between them
 mid-session without restarting the agent. In a hosted session, only the admin
-operator can enable `auto_approve` or `full_access`; other requesters remain in `default`.
+operator can enable Auto or Full access; authenticated contacts can still
+answer their own manual approval requests.
 
 ## Scope of an approval
 
@@ -28,11 +29,11 @@ into the next.
 
 ## Classification boundary
 
-The approval boundary is an allowlist, not a denylist. Template, config, skill,
-session, and explicit mode permissions run first. With live IO, every remaining
-tool must receive operator approval; a hosted non-admin requester is rejected
-without a dialog. Adding a plugin or MCP tool therefore cannot silently acquire
-side effects just because its name is new.
+The Auto policy is a narrow allowlist: workspace reads, reversible edits, and
+focused test/lint/build commands can proceed. Unknown or external calls ask;
+credential access, deletion, control-file writes, and writes outside the
+workspace are denied. An Auto `ask` cannot be overridden by a broad template,
+config, or skill rule; only a prior human session grant can reuse it.
 
 The co ai `codex` and `claude_code` wrappers receive explicit grants only inside
 the outer LLM-loop session because their inner runtimes own action approval.

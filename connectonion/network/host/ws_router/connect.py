@@ -276,6 +276,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     session_id = data.get("session_id") or str(uuid.uuid4())
     client_session = data.get("session")
     server_newer = False
+    stored = None
 
     if client_session:
         msg_count = len(client_session.get("messages", []))

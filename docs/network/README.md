@@ -10,7 +10,7 @@ Connect and collaborate between agents with automatic reliability and recovery.
 - [remote-call.md](remote-call.md) - Run a remote agent's tools directly with `remote.call()`, gated by the host.yaml whitelist
 - [io.md](io.md) - Stream events and communicate with clients
 - [session-reconnect.md](session-reconnect.md) - WebSocket reconnection and session recovery
-- [dashboard.md](dashboard.md) - Give your agent a Home page with `dashboard.html`
+- [dashboard.md](dashboard.md) - Understand and customize your agent's Control Center
 
 ## Key Features
 

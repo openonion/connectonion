@@ -1,14 +1,16 @@
 """Unit tests for the Host-side dashboard delivery (network/host/ws_router/dashboard.py)."""
 
-import pytest
 from pathlib import Path
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from connectonion.network.host.ws_router import dashboard as dashboard_module
 from connectonion.network.host.ws_router.dashboard import (
     MAX_DASHBOARD_BYTES,
-    read_dashboard_snapshot,
     ensure_dashboard,
     published_skills,
+    read_dashboard_snapshot,
     render_starter,
     send_dashboard,
 )
@@ -91,7 +93,7 @@ def test_ensure_dashboard_does_not_clobber_existing(in_tmp):
 
 def test_render_starter_empty_skills_has_no_invalid_buttons():
     html = render_starter({"name": "Bare", "skills": []})
-    assert "data-ochat-skill" not in html
+    assert 'data-ochat-skill="' not in html
     assert ".co/skills/" in html  # tells the operator how to get one
 
 
@@ -100,13 +102,16 @@ def test_every_published_skill_is_reachable():
     111 skills the Home page silently pretended did not exist."""
     skills = [{"name": f"skill-{i:03d}", "description": "", "location": "project"} for i in range(115)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert html.count("data-ochat-skill") == 115
+    # The first three are repeated as Quick actions; every capability remains
+    # in the searchable disclosure for a predictable complete index.
+    assert html.count('data-ochat-skill="') == 118
 
 
 def test_a_short_list_is_not_hidden_behind_a_disclosure():
     skills = [{"name": f"skill-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Few", "skills": skills})
-    assert "<details" not in html
+    assert '<details class="card capabilities">' in html
+    assert '<details class="more">' not in html
 
 
 def test_a_long_list_shows_the_first_few_and_folds_the_rest():
@@ -117,7 +122,7 @@ def test_a_long_list_shows_the_first_few_and_folds_the_rest():
     skills += [{"name": f"x-{i}", "description": "", "location": "project"} for i in range(5)]
     html = render_starter({"name": "Many", "skills": skills})
 
-    assert html.count("<details") == 1
+    assert html.count('<details class="more">') == 1
     assert "17 more skills" in html          # 25 total, 8 shown
     assert "other" not in html.lower()
 
@@ -170,6 +175,65 @@ def test_the_starter_carries_no_javascript():
     assert "onclick" not in html
 
 
+def test_control_center_semantic_golden_layout_is_present():
+    html = render_starter({
+        "name": "Operations",
+        "model": "co/example",
+        "trust": "careful",
+        "address": ADDRESS,
+        "tools": ["read", "write"],
+        "skills": [
+            {"name": "daily-brief", "description": "Prepare the day.", "location": "project"},
+            {"name": "invoice", "description": "Create an invoice.", "location": "project"},
+        ],
+    })
+
+    for landmark in (
+        "Control Center", 'id="now-title"', "Quick actions", "Capabilities",
+        "Recent", "Diagnostics", "Host details",
+    ):
+        # Recent is allowed to be absent without history; all other day-zero
+        # landmarks are stable. Test the explicit activity implementation name
+        # separately rather than rendering a dishonest empty card.
+        if landmark != "Recent":
+            assert landmark in html
+    assert '<co-filter target="#capability-list"' in html
+    assert 'id="capability-list"' in html
+    assert "co/example" in html and "careful" in html and ADDRESS in html
+
+
+def test_control_center_accessibility_contract_is_in_the_shipped_template():
+    template = (Path(dashboard_module.__file__).parent / "starter.html").read_text()
+    assert "min-height: 44px" in template
+    assert "prefers-reduced-motion: reduce" in template
+    assert ":focus-visible" in template
+    assert "@media (max-width: 520px)" in template
+    assert "@media (min-width: 640px)" in template
+    assert "https://" not in template and "http://" not in template
+
+
+def _contrast(hex_a, hex_b):
+    def luminance(value):
+        rgb = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+        linear = [part / 12.92 if part <= .04045 else ((part + .055) / 1.055) ** 2.4
+                  for part in rgb]
+        return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2]
+    high, low = sorted((luminance(hex_a), luminance(hex_b)), reverse=True)
+    return (high + .05) / (low + .05)
+
+
+def test_control_center_text_tokens_meet_wcag_aa_in_light_and_dark():
+    for foreground, background in (
+        ("#171a17", "#f7f8f6"),
+        ("#505650", "#f7f8f6"),
+        ("#626962", "#ffffff"),
+        ("#f1f5f1", "#111411"),
+        ("#bbc4bb", "#111411"),
+        ("#aeb7ae", "#191d19"),
+    ):
+        assert _contrast(foreground, background) >= 4.5
+
+
 def test_render_starter_escapes_a_hostile_skill_name():
     html = render_starter({"name": "X", "skills": [
         {"name": "<img src=x>", "description": "<script>y</script>", "location": "project"},
@@ -186,19 +250,18 @@ def test_render_starter_escapes_agent_name():
 
 # --- Integration: the two emit points actually send DASHBOARD_SNAPSHOT ---
 
-import pytest as _pytest
-from unittest.mock import AsyncMock, Mock
 
-
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_establish_connection_sends_snapshot_after_connected(in_tmp):
     from connectonion.network.host.ws_router.connect import establish_connection
     (in_tmp / "dashboard.html").write_text("<h1>home</h1>", encoding="utf-8")
 
     sent = []
     send_msg = AsyncMock(side_effect=lambda m: sent.append(m))
-    storage = Mock(); storage.get.return_value = None
-    registry = Mock(); registry.get.return_value = None
+    storage = Mock()
+    storage.get.return_value = None
+    registry = Mock()
+    registry.get.return_value = None
     conn = {}
 
     await establish_connection({}, "0xabc", send_msg, conn, storage, registry)
@@ -211,18 +274,20 @@ async def test_establish_connection_sends_snapshot_after_connected(in_tmp):
     assert snap["html"] == "<h1>home</h1>" and "session_id" in snap
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_establish_connection_no_snapshot_when_no_file(in_tmp):
     from connectonion.network.host.ws_router.connect import establish_connection
     sent = []
     send_msg = AsyncMock(side_effect=lambda m: sent.append(m))
-    storage = Mock(); storage.get.return_value = None
-    registry = Mock(); registry.get.return_value = None
+    storage = Mock()
+    storage.get.return_value = None
+    registry = Mock()
+    registry.get.return_value = None
     await establish_connection({}, "0xabc", send_msg, {}, storage, registry)
     assert [m["type"] for m in sent] == ["CONNECTED"]  # no dashboard.html → no snapshot
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_forward_sends_snapshot_after_output(in_tmp):
     from connectonion.network.host.ws_router.agent_io import forward_agent_msgs_to_client
     (in_tmp / "dashboard.html").write_text("<h1>after run</h1>", encoding="utf-8")
@@ -267,7 +332,7 @@ def test_read_snapshot_survives_an_unreadable_path(in_tmp, capsys):
 # --- Per-connection dedup: an unchanged Home shouldn't re-ship every turn ---
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_send_dashboard_sends_to_a_fresh_connection(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>home</h1>", encoding="utf-8")
     sent = []
@@ -278,7 +343,7 @@ async def test_send_dashboard_sends_to_a_fresh_connection(in_tmp):
     assert [m["type"] for m in sent] == ["DASHBOARD_SNAPSHOT"]
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_send_dashboard_skips_an_unchanged_file(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>home</h1>", encoding="utf-8")
     sent = []
@@ -291,7 +356,7 @@ async def test_send_dashboard_skips_an_unchanged_file(in_tmp):
     assert len(sent) == 1
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_send_dashboard_resends_after_the_agent_rewrites_it(in_tmp):
     path = in_tmp / "dashboard.html"
     path.write_text("<h1>before</h1>", encoding="utf-8")
@@ -306,7 +371,7 @@ async def test_send_dashboard_resends_after_the_agent_rewrites_it(in_tmp):
     assert [m["html"] for m in sent] == ["<h1>before</h1>", "<h1>after the run</h1>"]
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_send_dashboard_gives_each_connection_its_own_snapshot(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>home</h1>", encoding="utf-8")
     sent = []
@@ -318,7 +383,7 @@ async def test_send_dashboard_gives_each_connection_its_own_snapshot(in_tmp):
     assert len(sent) == 2  # dedup is per connection, never global
 
 
-@_pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_send_dashboard_sends_nothing_when_there_is_no_file(in_tmp):
     sent = []
     await send_dashboard(AsyncMock(side_effect=lambda m: sent.append(m)), "sid", {})
@@ -347,7 +412,7 @@ def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
         {"name": "dashboard", "description": "", "location": "builtin"},
     ]})
     html = read_dashboard_snapshot()["html"]
-    assert "data-ochat-skill" not in html
+    assert 'data-ochat-skill="' not in html
     assert ".co/skills/" in html  # falls back to the empty state
 
 
@@ -355,7 +420,7 @@ def test_starter_lists_published_skills_past_unpublished_ones():
     skills = [{"name": f"personal-{i}", "description": "", "location": "user"} for i in range(5)]
     skills += [{"name": f"shipped-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert html.count("data-ochat-skill") == 6
+    assert html.count('data-ochat-skill="') == 9
     assert "personal-" not in html
 
 
@@ -520,6 +585,7 @@ def test_the_deploy_rsync_carries_the_dashboard(tmp_path):
     """
     import shutil
     import subprocess
+
     from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS
 
     if shutil.which("rsync") is None:

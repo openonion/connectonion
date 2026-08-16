@@ -68,6 +68,9 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         policy=mode_policy,
         is_admin=is_admin,
     )
+    # claim_host_prompt() atomically rechecks the verified owner and replaces
+    # every SERVER_OWNED_SESSION_KEYS value with the durable server snapshot.
+    # This is the OIP successor to the 1.6.11 merge-and-restore guard.
     session = record.session
 
     start = time.time()

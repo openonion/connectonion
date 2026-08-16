@@ -207,6 +207,7 @@ from ...core.events import after_iteration, after_user_input, before_each_tool, 
 from ...project import project_co_dir
 from .bash_parser import check_bash_chain_permitted
 from .constants import (
+    DANGEROUS_TOOLS,
     FILE_EDIT_TOOLS,
     VALID_PERMISSION_PROFILES,
 )
@@ -453,8 +454,36 @@ def check_approval(agent: 'Agent') -> None:
         if refusal:
             raise ValueError(refusal)
 
+        # The deterministic policy plugin runs immediately before this human
+        # approval hook. Its result is transient call state, not a second
+        # approval store: session-scoped human grants still live only in the
+        # unified permissions dict below.
+        policy = pending.get('approval_policy')
+        if policy:
+            verdict = policy.get('decision')
+            if verdict == 'deny':
+                raise ValueError(
+                    f"Tool '{tool_name}' denied by {policy.get('policy_id')}: "
+                    f"{policy.get('reason', 'policy denied the call')}"
+                )
+            if verdict == 'allow':
+                if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    agent.logger.console.log_permission_granted(
+                        tool_name, tool_args, 'policy', policy.get('reason', 'auto-approved')
+                    )
+                return
+
         # Get permissions from session (includes safe tools from template)
         permissions = agent.current_session.get('permissions', {})
+        if policy and policy.get('decision') == 'ask' and policy.get('requires_human'):
+            # High-impact/unknown calls may only reuse an approval a person
+            # already granted in this session. Broad template, config, or skill
+            # rules cannot turn the policy's mandatory human decision into a
+            # silent allow (for example Bash(co *) must not imply co deploy).
+            permissions = {
+                key: value for key, value in permissions.items()
+                if value.get('source') == 'user'
+            }
 
         if permissions:
             # matches_permission_pattern is from skills plugin - handles pattern matching
@@ -538,6 +567,15 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # PROFILE: :workspace - edits auto-approved, others need approval
     # =================================================================
+    if agent.current_session.get('workflow_mode') == 'plan':
+        if tool_name in DANGEROUS_TOOLS:
+            raise ValueError(
+                f"Tool '{tool_name}' is blocked in Plan Mode. "
+                "Use read-only tools to explore, write your plan with write_plan(), "
+                "then call exit_plan_and_implement() when ready for approval."
+            )
+        return
+
     if mode == WORKSPACE_PERMISSION_PROFILE:
         if tool_name in FILE_EDIT_TOOLS and requester_is_operator:
             if getattr(getattr(agent, 'logger', None), 'console', None):
@@ -588,6 +626,8 @@ def check_approval(agent: 'Agent') -> None:
         'arguments': tool_args,
         'description': tool_args.get('description', ''),
     }
+    if pending.get('approval_policy'):
+        approval_msg['policy'] = pending['approval_policy']
     if batch_remaining:
         approval_msg['batch_remaining'] = batch_remaining
 

@@ -3,8 +3,9 @@ name: Tests
 on:
   push:
     branches: [ main, master, 'release/**' ]
+  # Every PR needs evidence, including stacked PRs whose base is another
+  # feature branch. A missing workflow is too easy to mistake for a green one.
   pull_request:
-    branches: [ main, master, 'release/**' ]
   workflow_call:
 
 jobs:
@@ -56,11 +57,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
-          # pytest-timeout is required, not optional: pytest.ini sets `timeout`
-          # and runs under --strict-config, so without the plugin pytest exits
-          # on an unknown ini option before collecting anything.
-          pip install pytest pytest-cov pytest-mock pytest-asyncio pytest-timeout psutil
+          pip install -e ".[dev]"
 
       - name: Run all tests
         env:
@@ -102,8 +99,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
-          pip install pytest pytest-mock pytest-asyncio pytest-timeout
+          pip install -e ".[dev]"
 
       - name: Run browser transport + daemon tests (native Windows named pipes)
         run: |

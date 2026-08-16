@@ -34,6 +34,13 @@ SERVER_OWNED_SESSION_KEYS = (
     *_FULL_ACCESS_FIELDS,
     "permissions",
     "approval",
+    # A 1.6.11 rolling-build policy field.  The OIP mode transaction does not
+    # read it, but it must not be client-authored while older adapters can
+    # still restore it.
+    "approval_profile",
+    # Obsolete rolling-build marker.  It is deliberately dropped rather than
+    # restored so a browser can never choose its authorization default.
+    "_new_session",
     "requester",
 )
 
@@ -237,6 +244,9 @@ def session_with_durable_policy(client_session: dict | None, durable: dict) -> d
         merged.pop(field, None)
         if field in durable:
             merged[field] = copy.deepcopy(durable[field])
+    # ``_new_session`` belonged only to the pre-OIP draft policy and must not
+    # survive either a client round-trip or an old durable snapshot.
+    merged.pop("_new_session", None)
     if durable.get("session_id"):
         merged["session_id"] = durable["session_id"]
     return merged

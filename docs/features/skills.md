@@ -312,8 +312,8 @@ EOF
 ### 3. Built-in Skill (Shipped with ConnectOnion)
 
 The default set is deliberately customer-facing: `install-connectonion`, `co-browser`,
-`co-mail-and-drive`, `topup`, and `dashboard` (edit the agent's
-[Home page](../network/dashboard.md)). The first three keep their one canonical body in
+`co-mail-and-drive`, `topup`, and `dashboard` (the compatibility skill name for editing
+the agent's [Control Center](../network/dashboard.md)). The first three keep their one canonical body in
 `connectonion/useful_skills/`; an explicit allowlist loads them as defaults. `topup` and
 `dashboard` live in `connectonion/cli/co_ai/skills/builtin/`.
 
@@ -326,7 +326,7 @@ Users can override by creating same-named skill in project or user level.
 
 Built-in skills are **not published** to chat clients — only project-tree skills
 (`.co/skills/`, `.claude/skills/`) appear in an agent's public profile. This matters
-for dashboard action buttons, which a client validates against that profile: a button
+for Control Center action buttons, which a client validates against that profile: a button
 naming a built-in or user-level skill renders but never runs. The allowlist is
 `PUBLISHED_SKILL_LOCATIONS` in `connectonion/useful_plugins/skills.py`.
 
