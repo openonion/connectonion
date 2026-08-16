@@ -199,13 +199,13 @@ File Relationships:
                                     → raise ValueError or return
 """
 
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
-from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
+from ...core.events import after_iteration, after_user_input, before_each_tool, before_iteration
 from ...project import project_co_dir
-from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
+from .bash_parser import check_bash_chain_permitted
+from .constants import DANGEROUS_TOOLS, DEFAULT_MODE, VALID_MODES
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
@@ -328,14 +328,19 @@ def _get_mode(agent: 'Agent') -> str:
         'plan': Read-only tools only, exit_plan_and_implement needs approval
         'accept_edits': No approvals, agent runs freely
     """
-    return agent.current_session.get('mode', DEFAULT_MODE)
+    from .policy import ensure_approval_profile
+
+    return ensure_approval_profile(agent)
 
 
 def _set_mode(agent: 'Agent', mode: str) -> None:
     """Set approval mode in session and notify frontend."""
-    if mode not in VALID_MODES:
-        mode = DEFAULT_MODE
-    agent.current_session['mode'] = mode
+    from .policy import set_approval_profile
+
+    try:
+        mode = set_approval_profile(agent, mode)
+    except ValueError:
+        mode = set_approval_profile(agent, DEFAULT_MODE)
     # Notify frontend of mode change
     if agent.io:
         agent.io.send({'type': 'mode_changed', 'mode': mode, 'triggered_by': 'agent'})
@@ -426,8 +431,36 @@ def check_approval(agent: 'Agent') -> None:
         if refusal:
             raise ValueError(refusal)
 
+        # The deterministic policy plugin runs immediately before this human
+        # approval hook. Its result is transient call state, not a second
+        # approval store: session-scoped human grants still live only in the
+        # unified permissions dict below.
+        policy = pending.get('approval_policy')
+        if policy:
+            verdict = policy.get('decision')
+            if verdict == 'deny':
+                raise ValueError(
+                    f"Tool '{tool_name}' denied by {policy.get('policy_id')}: "
+                    f"{policy.get('reason', 'policy denied the call')}"
+                )
+            if verdict == 'allow':
+                if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    agent.logger.console.log_permission_granted(
+                        tool_name, tool_args, 'policy', policy.get('reason', 'auto-approved')
+                    )
+                return
+
         # Get permissions from session (includes safe tools from template)
         permissions = agent.current_session.get('permissions', {})
+        if policy and policy.get('decision') == 'ask' and policy.get('requires_human'):
+            # High-impact/unknown calls may only reuse an approval a person
+            # already granted in this session. Broad template, config, or skill
+            # rules cannot turn the policy's mandatory human decision into a
+            # silent allow (for example Bash(co *) must not imply co deploy).
+            permissions = {
+                key: value for key, value in permissions.items()
+                if value.get('source') == 'user'
+            }
 
         if permissions:
             # matches_permission_pattern is from skills plugin - handles pattern matching
@@ -481,7 +514,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # Check if another plugin requested to skip approvals (e.g., ulw)
     # =================================================================
-    if agent.current_session.get('mode') == 'ulw':
+    if _get_mode(agent) == 'full_access':
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
@@ -509,17 +542,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # MODE: accept_edits - File edits auto-approved, others need approval
     # =================================================================
-    if mode == 'accept_edits':
-        if tool_name in FILE_EDIT_TOOLS:
-            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
-                agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
-            return
-        # Other dangerous tools fall through to approval logic
-
-    # =================================================================
-    # MODE: plan - Read-only tools only, exit_plan_and_implement needs approval
-    # =================================================================
-    if mode == 'plan':
+    if agent.current_session.get('workflow_mode') == 'plan':
         # Block dangerous tools in plan mode (exit_plan_and_implement handles its own io.send/receive)
         if tool_name in DANGEROUS_TOOLS:
             raise ValueError(
@@ -532,10 +555,12 @@ def check_approval(agent: 'Agent') -> None:
             return
 
     # =================================================================
-    # MODE: safe - Dangerous tools need approval
+    # Safe and Default calls not allowed by policy require human approval.
     # =================================================================
-    # Unknown tools (not in SAFE or DANGEROUS) are treated as safe
-    if tool_name not in DANGEROUS_TOOLS:
+    # Compatibility for callers invoking this handler without the exported
+    # plugin chain. In normal use the policy result is always present, and an
+    # unknown tool receives ``ask`` rather than reaching this branch.
+    if not pending.get('approval_policy') and tool_name not in DANGEROUS_TOOLS:
         return
 
     # =================================================================
@@ -576,6 +601,8 @@ def check_approval(agent: 'Agent') -> None:
         'arguments': tool_args,
         'description': tool_args.get('description', ''),
     }
+    if pending.get('approval_policy'):
+        approval_msg['policy'] = pending['approval_policy']
     if batch_remaining:
         approval_msg['batch_remaining'] = batch_remaining
 
@@ -878,11 +905,13 @@ def poll_mode_changes(agent: 'Agent') -> None:
 
     for msg in agent.io.receive_all('mode_change'):
         new_mode = msg.get('mode')
-        if new_mode in VALID_MODES:
+        if new_mode == 'plan':
+            agent.current_session['workflow_mode'] = 'plan'
+            agent.io.send({'type': 'mode_changed', 'mode': 'plan', 'triggered_by': 'user'})
+        elif new_mode in VALID_MODES:
+            if new_mode in {'ulw', 'yolo', 'full_access'} and msg.get('turns') is not None:
+                agent.current_session['ulw_turns'] = msg['turns']
             handle_mode_change(agent, new_mode)
-        elif new_mode == 'ulw':
-            from ..ulw import handle_ulw_mode_change
-            handle_ulw_mode_change(agent, msg.get('turns'))
 
 
 @after_iteration
@@ -917,19 +946,41 @@ def handle_mode_change(agent: 'Agent', mode: str) -> None:
         agent: Agent instance
         mode: New mode ('safe', 'plan', 'accept_edits')
     """
-    if mode not in VALID_MODES:
-        # Unknown mode - might be handled by another plugin (e.g., ulw)
+    from .policy import canonical_profile, set_approval_profile
+
+    if mode == 'plan':
+        agent.current_session['workflow_mode'] = 'plan'
+        if agent.io:
+            agent.io.send({'type': 'mode_changed', 'mode': 'plan', 'triggered_by': 'user'})
+        return
+
+    canonical = canonical_profile(mode)
+    if canonical is None:
+        return
+    requester = agent.current_session.get('requester')
+    if canonical == 'full_access' and requester and requester.get('level') != 'admin':
+        set_approval_profile(agent, 'safe', source='host-boundary')
+        _log(agent, "[yellow]Only the local or Host admin operator can enable Full access[/yellow]")
         return
 
     old_mode = _get_mode(agent)
-    if old_mode == mode:
+    if old_mode == canonical:
         return  # No change
 
     # Clear skip_tool_approval when switching to a mode we handle
     agent.current_session.pop('skip_tool_approval', None)
 
-    _set_mode(agent, mode)
-    _log(agent, f"[cyan]Mode changed: {old_mode} → {mode}[/cyan]")
+    set_approval_profile(agent, canonical)
+    if canonical == 'full_access':
+        turns = agent.current_session.get('ulw_turns')
+        from ..ulw import handle_ulw_mode_change
+        handle_ulw_mode_change(agent, turns)
+        # ULW keeps its established wire/session fields; the versioned profile
+        # remains the authority source for new clients.
+        set_approval_profile(agent, canonical)
+    elif agent.io:
+        agent.io.send({'type': 'mode_changed', 'mode': canonical, 'triggered_by': 'user'})
+    _log(agent, f"[cyan]Mode changed: {old_mode} → {canonical}[/cyan]")
 
 
 def get_current_mode(agent: 'Agent') -> str:

@@ -2,6 +2,31 @@
 
 ConnectOnion provides multiple permission mechanisms to balance safety and automation. This guide explains how they work together.
 
+## Approval profiles
+
+New sessions use the versioned **Default** profile. Default runs a deterministic
+Auto Approve policy before the human approval hook:
+
+- workspace reads and reversible workspace edits are allowed;
+- focused test, lint, type-check, and build commands are allowed;
+- deletions and credential access are denied;
+- deployment, publishing, external communication, payments, outside-workspace
+  reads, and unknown tools ask a person.
+
+Every policy result contains `allow`, `ask`, or `deny` plus a policy ID,
+version, reason, effect class, and scope. An `ask` uses the existing
+`approval_needed` protocol and the existing `session['permissions']` store; the
+policy does not maintain a second approval cache.
+
+**Safe** asks for every call that is not already explicitly permitted. **Full
+access** is an explicit local/Host-admin choice and remains bounded by Host
+authorization controls. The old names `accept_edits`, `ulw`, and `yolo` remain
+wire aliases. Old or unversioned sessions whose mode was `default` migrate to
+Safe so upgrading cannot silently grant more authority.
+
+Plan is a workflow state, not an approval profile. Entering or leaving a plan
+does not change Default, Safe, or Full access.
+
 ## Unified Permission System
 
 **Core Concept**: All permissions use a single, consistent data structure at runtime. Whether from config files, skills, or user approvals, every permission is stored the same way in `session['permissions']`.
@@ -52,9 +77,9 @@ session['permissions'] = {
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. Tool Approval - Ask user for dangerous operations       │
-│    bash, edit, write → require explicit user approval      │
-│    If no permission in unified dict → ask user             │
+│ 5. Auto Approve policy + Tool Approval                     │
+│    deterministic allow/ask/deny for the exact call         │
+│    ask reuses the existing human approval path             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,14 +157,12 @@ agent.input("Update the docs")
 # → Turn ends, permissions cleared ✓
 
 # Session memory - remember decisions
-agent.input("Run tests")
-# → bash("pytest") approval needed (first time, not in config)
-# → User approves for "session"
-# → Future pytest calls auto-approved for this session ✓
+agent.input("Run focused tests")
+# → bash("pytest tests/unit/test_api.py") is auto-approved by Default ✓
 
-# Dangerous operations - always ask
+# Destructive operations fail closed
 agent.input("Delete all files")
-# → User approval required (destructive operation)
+# → deletion denied by the built-in policy
 ```
 
 ## Unified Permission Format

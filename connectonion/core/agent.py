@@ -268,7 +268,11 @@ class Agent:
             self.current_session = {
                 'messages': [{"role": "system", "content": self.system_prompt}],
                 'trace': [],
-                'turn': 0  # Track conversation turns
+                'turn': 0,  # Track conversation turns
+                # Consumed by the approval plugin. Persisted sessions without a
+                # versioned profile migrate to Safe; only an actual new session
+                # receives the Default Auto Approve profile.
+                '_new_session': True,
             }
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)

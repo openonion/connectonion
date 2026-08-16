@@ -26,17 +26,19 @@ Agent can enter plan mode via enter_plan_mode().
 User can switch modes via WebSocket mode_change message.
 
 State management:
-- Mode stored in agent.current_session['mode']
+- Workflow state stored in agent.current_session['workflow_mode']
 - Plan path stored in agent.current_session['plan_path']
 - Previous mode stored in agent.current_session['previous_mode']
 - Plan file at .co/PLAN.md
 """
 
 from pathlib import Path
-from ....project import project_co_dir
+
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.panel import Panel
+
+from ....project import project_co_dir
 
 # Note: The `agent` parameter in tool functions has no type hint.
 #
@@ -65,7 +67,7 @@ def get_plan_file_path(session_id: str = None) -> Path:
 
 def is_plan_mode_active(agent) -> bool:
     """Check if plan mode is currently active."""
-    return agent.current_session.get('mode') == 'plan'
+    return agent.current_session.get('workflow_mode') == 'plan'
 
 
 def enter_plan_mode(agent=None) -> str:
@@ -93,13 +95,12 @@ def enter_plan_mode(agent=None) -> str:
         4. exit_plan_and_implement() - Get user approval, then implement
     """
     # Check if already in plan mode
-    if agent and agent.current_session.get('mode') == 'plan':
+    if agent and agent.current_session.get('workflow_mode') == 'plan':
         return "Already in plan mode. Use exit_plan_and_implement() when ready for user approval."
 
     # Save previous mode and set plan path in session
     if agent:
-        agent.current_session['previous_mode'] = agent.current_session.get('mode', 'safe')
-        agent.current_session['mode'] = 'plan'
+        agent.current_session['workflow_mode'] = 'plan'
         if agent.io:
             agent.io.send({'type': 'mode_changed', 'mode': 'plan', 'triggered_by': 'agent'})
 
@@ -150,7 +151,7 @@ def enter_plan_mode(agent=None) -> str:
         border_style="green"
     ))
 
-    return f"Entered plan mode. Write your plan with write_plan(), then call exit_plan_and_implement() when ready for user approval."
+    return "Entered plan mode. Write your plan with write_plan(), then call exit_plan_and_implement() when ready for user approval."
 
 
 def exit_plan_and_implement(agent=None) -> str:
@@ -164,7 +165,7 @@ def exit_plan_and_implement(agent=None) -> str:
     Returns:
         User's response message (raw from io.receive)
     """
-    if agent and agent.current_session.get('mode') != 'plan':
+    if agent and agent.current_session.get('workflow_mode') != 'plan':
         return "Not in plan mode. Use enter_plan_mode() first."
 
     plan_path = agent.current_session.get('plan_path') if agent else None
@@ -191,16 +192,18 @@ def exit_plan_and_implement(agent=None) -> str:
         ))
         response = {"message": f"Plan approved. Implement now. Do NOT re-enter plan mode.\n\n---\n\n{plan_content}"}
 
-    # Restore previous mode
+    # Planning is workflow state, not authority. Leaving it does not change the
+    # user's Default/Safe/Full access approval profile.
     if agent:
-        previous_mode = agent.current_session.get('previous_mode', 'safe')
-        agent.current_session['mode'] = previous_mode
+        agent.current_session.pop('workflow_mode', None)
+        from connectonion.useful_plugins.tool_approval import get_current_mode
+        current_mode = get_current_mode(agent)
         if agent.io:
-            agent.io.send({'type': 'mode_changed', 'mode': previous_mode})
+            agent.io.send({'type': 'mode_changed', 'mode': current_mode})
 
         # Clean up session state
         agent.current_session.pop('plan_path', None)
-        agent.current_session.pop('previous_mode', None)
+        agent.current_session.pop('previous_mode', None)  # legacy sessions
 
     return response.get("message", "")
 

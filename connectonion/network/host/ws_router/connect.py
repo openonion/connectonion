@@ -11,6 +11,7 @@ LLM-Note:
 import uuid
 
 from rich.console import Console
+
 from ...trust.ws_admin import get_onboard_requirements
 from .agent_io import resume_forwarding
 
@@ -85,6 +86,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     conn["session_id"] = session_id
     conn["session"] = data.get("session")
     server_newer = False
+    stored = None
 
     if conn["session"]:
         msg_count = len(conn["session"].get("messages", []))
@@ -119,7 +121,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
             client = conn["session"] or {}
             conn["session"], server_newer = merge_sessions(client_session=client, server_session=stored.session)
             if server_newer:
-                console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
+                console.print("  [dim]↕ merged sessions (server newer)[/dim]")
 
     # The live half, and the worse one: resume_forwarding rewinds and streams
     # the output of a turn already in progress. A caller who does not own it was
@@ -136,6 +138,16 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     console.print(f"[green]✓ CONNECT[/green] agent_address={agent_address[:16]}... session={session_id[:8]}... status={status}{' (server_newer)' if server_newer else ''}")
 
     connected_msg = {"type": "CONNECTED", "session_id": session_id, "status": status}
+    from ....useful_plugins.tool_approval.policy import advertised_profile_state
+
+    trust_agent = route_handlers and route_handlers.get("trust_agent")
+    is_admin = getattr(trust_agent, "is_admin", None)
+    allow_full_access = bool(is_admin and is_admin(agent_address))
+    connected_msg["session_modes"] = advertised_profile_state(
+        conn["session"] if stored else None,
+        new_session=stored is None,
+        allow_full_access=allow_full_access,
+    )
     if server_newer and conn["session"]:
         from ..session import session_to_chat_items
         connected_msg["server_newer"] = True

@@ -41,8 +41,12 @@ Tool Classification:
 #   - Agent: via enter_plan_mode() tool (safe/accept_edits → plan)
 # =============================================================================
 
-VALID_MODES = {'safe', 'plan', 'accept_edits'}
-DEFAULT_MODE = 'safe'
+VALID_MODES = {
+    'default', 'safe', 'full_access',
+    # Compatibility wire aliases retained for older clients.
+    'accept_edits', 'ulw', 'yolo', 'plan',
+}
+DEFAULT_MODE = 'default'
 
 
 # Tools that need approval in 'safe' mode
