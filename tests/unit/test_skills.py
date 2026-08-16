@@ -332,6 +332,49 @@ class TestSkillInvocation:
         mock_load.assert_not_called()
 
     @patch.object(skills_module, '_load_skill')
+    def test_handle_skill_invocation_ignores_multimodal_non_slash(self, mock_load):
+        """Image prompts are ordinary input, not malformed slash commands."""
+        agent = FakeAgent()
+        content = [
+            {'type': 'text', 'text': 'What is in this image?'},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,abc'}},
+        ]
+        agent.current_session['messages'] = [{'role': 'user', 'content': content}]
+
+        handle_skill_invocation(agent)
+
+        mock_load.assert_not_called()
+        assert agent.current_session['messages'][-1]['content'] == content
+
+    @patch.object(skills_module, '_load_skill')
+    def test_multimodal_slash_command_preserves_image(self, mock_load):
+        """A slash command may replace its text without dropping attachments."""
+        agent = FakeAgent()
+        image = {
+            'type': 'image_url',
+            'image_url': {'url': 'data:image/png;base64,abc'},
+        }
+        agent.current_session['messages'] = [{
+            'role': 'user',
+            'content': [{'type': 'text', 'text': '/inspect focus'}, image],
+        }]
+        mock_load.return_value = {
+            'frontmatter': {},
+            'instructions': 'Inspect the image',
+        }
+
+        handle_skill_invocation(agent)
+
+        mock_load.assert_called_once_with('inspect')
+        assert agent.current_session['messages'][-1]['content'] == [
+            {
+                'type': 'text',
+                'text': 'Inspect the image\n\n---\n## Arguments\nfocus',
+            },
+            image,
+        ]
+
+    @patch.object(skills_module, '_load_skill')
     def test_handle_skill_invocation_skill_not_found(self, mock_load):
         """Test that missing skills are handled gracefully."""
         agent = FakeAgent()
