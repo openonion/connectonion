@@ -412,6 +412,123 @@ def test_interruptible_io_log_uses_wire_status_normalization():
         lease.log("tool_result", tool_id="call-2", status="mystery")
 
 
+def test_live_provider_trace_is_visible_before_transaction_commit():
+    """Long-running native work must not wait for the outer tool to return."""
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    start = {
+        "id": "trace-provider-start",
+        "type": "provider_invocation",
+        "invocationId": "codex:outer",
+        "parentToolCallId": "outer",
+        "provider": "codex",
+        "providerDisplayName": "Codex",
+        "status": "running",
+    }
+
+    lease._send_persisted_trace(start)
+    assert lease.send_live_trace(start) is True
+
+    assert [message["type"] for message in io._msgs_from_agent] == [
+        "provider_invocation"
+    ]
+    assert not WebSocketIO.is_persisted_trace_event(io._msgs_from_agent[0])
+
+    assert lease.commit() is True
+    assert [message["type"] for message in io._msgs_from_agent] == [
+        "provider_invocation",
+        "provider_invocation",
+    ]
+    assert WebSocketIO.is_persisted_trace_event(io._msgs_from_agent[1])
+
+
+def test_interruptible_io_cancels_a_live_provider_card_without_committing_trace():
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    start = {
+        "id": "trace-provider-start",
+        "type": "provider_invocation",
+        "invocationId": "codex:outer",
+        "parentToolCallId": "outer",
+        "provider": "codex",
+        "providerDisplayName": "Codex",
+        "status": "running",
+    }
+
+    lease._send_persisted_trace(start)
+    lease.send_live_trace(start)
+    lease.cancel()
+
+    assert [message["status"] for message in io._msgs_from_agent] == [
+        "running",
+        "cancelled",
+    ]
+    assert not any(
+        WebSocketIO.is_persisted_trace_event(message)
+        for message in io._msgs_from_agent
+    )
+
+
+def test_coding_provider_streams_its_live_start_before_the_backend_returns(monkeypatch, tmp_path):
+    """Exercise the real hosted tool lease, not just the IO primitive."""
+    import connectonion.plugins.coding_agents as coding_agents
+
+    started = threading.Event()
+    release = threading.Event()
+    observed_live_start = threading.Event()
+
+    def backend(**kwargs):
+        started.set()
+        release.wait(timeout=2)
+        return '{"provider":"codex","session_id":"provider-session","exit_code":0}'
+
+    monkeypatch.setattr(coding_agents, "_run_codex", backend)
+    plugin = CodexPlugin(workspace=tmp_path)
+    agent = Agent("live-provider", llm=MockLLM(), tools=[plugin.codex], log=False, quiet=True)
+    agent.current_session = {"messages": [], "trace": [], "iteration": 1}
+    agent.io = WebSocketIO()
+
+    def release_when_visible():
+        assert started.wait(timeout=1)
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            live = [
+                message for message in agent.io._msgs_from_agent
+                if message.get("type") == "provider_invocation"
+                and message.get("status") == "running"
+                and not WebSocketIO.is_persisted_trace_event(message)
+            ]
+            if live:
+                observed_live_start.set()
+                break
+            time.sleep(0.01)
+        release.set()
+
+    threading.Thread(target=release_when_visible, daemon=True).start()
+    trace = execute_single_tool(
+        "codex",
+        {"prompt": "inspect", "cwd": str(tmp_path)},
+        "outer-codex-call",
+        agent.tools,
+        agent,
+        Logger("live-provider", log=False),
+    )
+
+    assert observed_live_start.is_set()
+    assert trace["status"] == "success"
+    provider_events = [
+        message for message in agent.io._msgs_from_agent
+        if message.get("type") == "provider_invocation"
+    ]
+    assert provider_events[0]["status"] == "running"
+    assert not WebSocketIO.is_persisted_trace_event(provider_events[0])
+    assert any(
+        event["status"] == "completed"
+        and WebSocketIO.is_persisted_trace_event(event)
+        for event in provider_events
+    )
+
+
 def test_interruptible_io_makes_request_approval_an_interrupted_tool():
     entered = threading.Event()
 

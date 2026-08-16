@@ -346,9 +346,13 @@ def _parent_tool_call_id(agent) -> str | None:
 
 
 def _emit(agent, event_type: str, **fields: Any) -> None:
+    entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
-        record({"type": event_type, **fields})
+        record(entry)
+        stream_live = getattr(getattr(agent, "io", None), "send_live_trace", None)
+        if callable(stream_live):
+            stream_live(entry)
         return
     io = getattr(agent, "io", None)
     if io is not None:

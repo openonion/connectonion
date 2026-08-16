@@ -101,7 +101,13 @@ class IO(ABC):
         """
         self.send(normalize_wire_event({"type": event_type, **data}))
 
-    def request_approval(self, tool: str, arguments: Dict[str, Any]) -> bool:
+    def request_approval(
+        self,
+        tool: str,
+        arguments: Dict[str, Any],
+        *,
+        context: Dict[str, Any] | None = None,
+    ) -> bool:
         """Two-way: request permission, wait for response.
 
         Sends approval_needed event and blocks until client responds.
@@ -117,7 +123,20 @@ class IO(ABC):
             if not io.request_approval("delete_file", {"path": "/tmp/x"}):
                 raise ToolRejected()
         """
-        self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
+        event: Dict[str, Any] = {
+            "type": "approval_needed",
+            "tool": tool,
+            "arguments": arguments,
+        }
+        if isinstance(context, dict):
+            # Presentation correlation is deliberately narrow.  Arbitrary
+            # provider callback data may contain private paths or protocol
+            # payloads and must never become a top-level browser event.
+            for key in ("provider", "invocationId", "parentToolCallId", "activityId"):
+                value = context.get(key)
+                if isinstance(value, str) and value:
+                    event[key] = value
+        self.send(event)
         response = self.receive()
         return response.get("approved", False)
 

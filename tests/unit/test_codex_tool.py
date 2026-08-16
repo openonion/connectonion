@@ -100,8 +100,8 @@ class _IO:
     def log(self, event_type, **data):
         self.events.append((event_type, data))
 
-    def request_approval(self, tool, arguments):
-        self.asked.append((tool, arguments))
+    def request_approval(self, tool, arguments, *, context=None):
+        self.asked.append((tool, arguments, context))
         return self.approve
 
 
@@ -378,6 +378,33 @@ class TestApproval:
         _run(prompt="fix", approval="manual", agent=agent)
         assert FakeServer.last.approval_decision is False
 
+    def test_manual_approval_has_provider_correlation(self):
+        agent = _Agent(
+            _IO(),
+            {"_active_tool_call_id": "parent-codex-call"},
+        )
+
+        _run(
+            prompt="fix",
+            cwd="/private/tmp/workspace/.workroom-e2e",
+            approval="manual",
+            agent=agent,
+        )
+
+        _, details, context = agent.io.asked[0]
+        assert details["cwd"] == "/repo"
+        assert context == {
+            "provider": "codex",
+            "invocationId": "codex:parent-codex-call",
+            "parentToolCallId": "parent-codex-call",
+        }
+        assert [event[0] for event in agent.io.events] == [
+            "tool_call",
+            "provider_invocation",
+            "provider_invocation",
+            "tool_result",
+        ]
+
     def test_hosted_contact_cannot_answer_manual_approval(self):
         agent = _Agent(
             _IO(approve=True),
@@ -476,6 +503,16 @@ class TestApprovalDetails:
         assert details["files"] == ["parser.py", "test_parser.py"]
         assert "parser.py" in details["action"]
         assert "test_parser.py" in details["action"]
+
+    def test_missing_provider_cwd_uses_a_safe_workroom_label(self):
+        details = codex_module._approval_details(
+            "item/fileChange/requestApproval",
+            {"fileChanges": {"dijkstra.py": {}}},
+            fallback_cwd="/private/tmp/operator-project/.workroom-e2e-20260816",
+        )
+
+        assert details["grant_root"] == ".workroom-e2e-20260816"
+        assert details["files"] == ["dijkstra.py"]
 
     def test_v2_permissions_show_the_exact_requested_profile(self):
         permissions = {"network": {"enabled": True}}

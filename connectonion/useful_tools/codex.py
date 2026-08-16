@@ -115,7 +115,13 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
         _forward_ui(agent, event)
 
     def on_approval(method, params):
-        return _approval_allowed(method, params, approval, agent)
+        return _approval_allowed(
+            method,
+            params,
+            approval,
+            agent,
+            fallback_cwd=working_directory,
+        )
 
     cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
     working_directory = cwd or "."
@@ -340,14 +346,16 @@ def _forward_ui(agent, event):
                     "parentToolCallId": parent_id} if parent_id else {})
     if kind == "tool_start":
         _emit_provider_event(agent, "tool_call", tool_id=event.get("id", ""),
-                             name=event.get("name", "codex"), args={},
+                             name=event.get("name", "codex"),
+                             args=event.get("args", {}),
                              status="in_progress", provider="codex",
                              **correlation)
     elif kind == "tool_end":
         _emit_provider_event(agent, "tool_result", tool_id=event.get("id", ""),
-                             name=event.get("name", "codex"), args={},
+                             name=event.get("name", "codex"),
+                             args=event.get("args", {}),
                              status="failed" if event.get("failed") else "completed",
-                             result=event.get("name", ""), provider="codex",
+                             result=event.get("result", ""), provider="codex",
                              **correlation)
 
 
@@ -358,9 +366,13 @@ def _active_parent_tool_call_id(agent):
 
 
 def _emit_provider_event(agent, event_type, **fields):
+    entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
-        record({"type": event_type, **fields})
+        record(entry)
+        stream_live = getattr(getattr(agent, "io", None), "send_live_trace", None)
+        if callable(stream_live):
+            stream_live(entry)
     else:
         if event_type == "tool_result":
             fields.pop("name", None)
@@ -368,7 +380,7 @@ def _emit_provider_event(agent, event_type, **fields):
         agent.io.log(event_type, **fields)
 
 
-def _approval_allowed(method, params, approval, agent):
+def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
     """Whether one server approval request may proceed."""
     if approval == "auto":
         # ``approvalPolicy=never`` already permits work inside the selected
@@ -390,7 +402,36 @@ def _approval_allowed(method, params, approval, agent):
     io = getattr(agent, "io", None) if agent is not None else None
     if io is None:
         return False
-    return bool(io.request_approval("codex", _approval_details(method, params)))
+    context = _approval_context(agent, params)
+    if context:
+        _emit_provider_event(
+            agent,
+            "provider_invocation",
+            invocationId=context["invocationId"],
+            parentToolCallId=context["parentToolCallId"],
+            provider="codex",
+            providerDisplayName="Codex",
+            status="awaiting_approval",
+        )
+    try:
+        return bool(
+            io.request_approval(
+                "codex",
+                _approval_details(method, params, fallback_cwd=fallback_cwd),
+                context=context or None,
+            )
+        )
+    finally:
+        if context:
+            _emit_provider_event(
+                agent,
+                "provider_invocation",
+                invocationId=context["invocationId"],
+                parentToolCallId=context["parentToolCallId"],
+                provider="codex",
+                providerDisplayName="Codex",
+                status="running",
+            )
 
 
 def _approval_response(method, params, allowed):
@@ -414,8 +455,27 @@ def _approval_response(method, params, allowed):
     }
 
 
-def _approval_details(method, params):
+def _approval_context(agent, params):
+    parent_id = _active_parent_tool_call_id(agent)
+    if not parent_id:
+        return {}
+    context = {
+        "provider": "codex",
+        "invocationId": f"codex:{parent_id}",
+        "parentToolCallId": parent_id,
+    }
+    for key in ("itemId", "item_id", "id"):
+        value = params.get(key)
+        if isinstance(value, str) and value:
+            context["activityId"] = value
+            break
+    return context
+
+
+def _approval_details(method, params, *, fallback_cwd=""):
     """Show the concrete scope of one Codex permission request."""
+    explicit_cwd = params.get("cwd")
+    cwd = explicit_cwd if isinstance(explicit_cwd, str) and explicit_cwd else _display_cwd(fallback_cwd)
     cmd = params.get("command")
     if isinstance(cmd, list):
         cmd = " ".join(cmd)
@@ -423,11 +483,16 @@ def _approval_details(method, params):
         return {
             "action": cmd,
             "command": cmd,
-            "cwd": params.get("cwd", ""),
+            "cwd": cwd,
             "reason": params.get("reason", ""),
         }
     if method in {"item/fileChange/requestApproval", "applyPatchApproval"}:
-        root = params.get("grantRoot") or params.get("cwd") or "unknown path"
+        explicit_root = params.get("grantRoot") or params.get("cwd")
+        root = (
+            explicit_root
+            if isinstance(explicit_root, str) and explicit_root
+            else _display_cwd(fallback_cwd) or "workspace"
+        )
         file_changes = params.get("fileChanges", {})
         files = list(file_changes) if isinstance(file_changes, dict) else []
         scope = f" under {root}"
@@ -444,11 +509,21 @@ def _approval_details(method, params):
         return {
             "action": f"Grant permissions: {json.dumps(permissions, sort_keys=True)}",
             "permissions": permissions,
-            "cwd": params.get("cwd", ""),
+            "cwd": cwd,
             "reason": params.get("reason", ""),
         }
-    action = params.get("reason") or params.get("cwd") or "codex action"
+    action = params.get("reason") or cwd or "codex action"
     return {"action": action, "reason": params.get("reason", "")}
+
+
+def _display_cwd(value):
+    """Keep approval context useful without exposing an operator's full path."""
+    if not isinstance(value, str) or not value:
+        return ""
+    if not os.path.isabs(value):
+        return value
+    normalized = value.rstrip("/\\")
+    return os.path.basename(normalized) or "."
 
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
@@ -832,6 +907,22 @@ class CodexAppServer:
             if isinstance(name, list):
                 name = " ".join(name)
             failed = item.get("status") in ("failed", "error") or item.get("exitCode") not in (None, 0)
-            return {"kind": "tool_start" if start else "tool_end",
-                    "id": item.get("id", ""), "name": name, "failed": failed}
+            args = {}
+            if itype == "commandExecution" and item.get("command"):
+                command = item["command"]
+                args["command"] = " ".join(command) if isinstance(command, list) else str(command)
+            elif itype == "fileChange":
+                path = item.get("path") or item.get("filePath")
+                if isinstance(path, str) and path:
+                    args["path"] = path
+            elif itype == "webSearch" and item.get("query"):
+                args["query"] = str(item["query"])
+            return {
+                "kind": "tool_start" if start else "tool_end",
+                "id": item.get("id", ""),
+                "name": name,
+                "args": args,
+                "result": "Failed" if failed else "Completed",
+                "failed": failed,
+            }
         return {"kind": itype, "id": item.get("id", "")}
