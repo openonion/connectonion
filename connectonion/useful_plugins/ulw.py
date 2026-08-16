@@ -77,6 +77,12 @@ def handle_ulw_mode_change(agent: 'Agent', turns: int = None) -> None:
 
     # Set ULW state
     agent.current_session['mode'] = 'ulw'
+    # The versioned approval policy is the authority consumed immediately
+    # before every tool. Keep the legacy ULW compatibility fields, but update
+    # that profile in the same transition so `--yolo` cannot announce Full
+    # access while the policy still enforces Safe/Default underneath it.
+    from .tool_approval.policy import set_approval_profile
+    set_approval_profile(agent, 'full_access', source='bounded-yolo')
     agent.current_session['ulw_turns'] = turns
     agent.current_session['ulw_turns_used'] = 0
     agent.current_session['skip_tool_approval'] = True

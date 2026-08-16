@@ -44,6 +44,11 @@ def test_mode_change_defaults_to_100_turns():
     agent = FakeAgent()
     handle_ulw_mode_change(agent)
     assert agent.current_session['mode'] == 'ulw'
+    assert agent.current_session['approval_profile'] == {
+        'id': 'full_access',
+        'version': 1,
+        'source': 'bounded-yolo',
+    }
     assert agent.current_session['ulw_turns'] == ULW_DEFAULT_TURNS
     assert agent.current_session['ulw_turns_used'] == 0
     assert agent.current_session['skip_tool_approval'] is True
