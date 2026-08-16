@@ -79,9 +79,14 @@ def test_targeted_provider_stop_reaches_only_the_current_active_io():
     sent = []
     frames = [
         {'type': 'CONNECT'},
-        {'type': 'PROVIDER_INTERRUPT', 'invocationId': 'codex:outer'},
+        {
+            'type': 'PROVIDER_INTERRUPT',
+            'invocationId': 'codex:outer',
+            'requestId': 'provider-stop-1',
+        },
     ]
     io = Mock()
+    io.request_provider_interrupt.return_value = True
     active = SimpleNamespace(status='running', io=io)
     registry = Mock()
     registry.get.return_value = active
@@ -116,10 +121,13 @@ def test_targeted_provider_stop_reaches_only_the_current_active_io():
     finally:
         ws_session.handle_connect = original
 
-    io.send_to_agent.assert_called_once_with({
-        'type': 'PROVIDER_INTERRUPT', 'invocationId': 'codex:outer',
-    })
-    assert sent == []
+    io.request_provider_interrupt.assert_called_once_with('codex:outer')
+    assert sent == [{
+        'type': 'PROVIDER_INTERRUPT_ACK',
+        'requestId': 'provider-stop-1',
+        'invocationId': 'codex:outer',
+        'accepted': True,
+    }]
 
 
 def test_a_failed_agent_turn_is_not_left_running():
