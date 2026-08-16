@@ -1,34 +1,38 @@
 # Auto Is a Boundary, Not a Bypass
 
-The stable and preview lines had slowly taught two different lessons about
-automation. A user could see “Auto” in one place, “Default” in another, and a
-legacy session field in a third. The dangerous interpretation was that any one
-of those labels meant the browser had been granted permission to do whatever the
-agent next proposed.
+During a long Codex Work Room test, the task itself was ordinary: write a small
+C program, compile it, run its tests. The confusing part was at the bottom of
+the chat. The operator saw a mode called **Default**, while the Work Room said
+that Codex was waiting for a decision. They asked the obvious question: “Is
+Auto actually on, or will I still have to approve this?”
 
-The merge makes the boundary explicit. A Host owns the durable permission
-profile, starts every browser session in Read only, and advertises only the
-profiles it is prepared to enforce. The workspace Auto profile is not a
-universal approval switch: it permits a small deterministic class of local,
-reversible workspace work. It still asks for unclear or broader actions, and it
-denies deletion, credentials, external control, and writes outside the approved
-workspace.
+That question exposed a product bug, not a naming nit. The stable line spoke
+about an auto-approval plugin, the preview line called the same idea a Host
+permission profile, and an older session could still carry a legacy marker.
+It was too easy to read one of those things as permission for the browser to do
+whatever the next provider request required.
 
-That distinction mattered during a rolling deployment. An older client can
-round-trip a session snapshot, but it cannot choose a newer server-owned
-authorization default. The Host strips stale policy markers before merging a
-client session and re-applies the durable owner and permission state atomically.
-Planning remains a local workflow state; it never changes what a Host will
-approve.
+At first, renaming the visible button looked like the smallest fix. It would
+have made the screenshot nicer, but it would not have answered the operator's
+real question after a refresh or a rolling upgrade. A client can remember a
+conversation; it must not decide an authorization default. We changed the
+shape of the decision instead: the Host starts a session in Read only, owns the
+durable profile, and advertises only the choices it is willing to enforce.
 
-We measured the boundary rather than trusting its label. The policy tests cover
-allowed reads and reversible edits, approvals for ambiguous work, and denials
-for destructive or sensitive actions. The Host route tests cover the
-owner-preserving transaction. The full non-real-API suite then ran 7,070 tests;
-the separate preview-document contract also passed against the clean published
-preview documentation worktree.
+The resulting **Auto** profile is deliberately boring. It covers a small,
+deterministic class of reversible work inside the selected workspace. A request
+outside that boundary still asks or is denied. Delete operations, credentials,
+external control, and out-of-workspace writes do not become safe because a
+button has a friendly label. Planning remains a workflow state; it is not a
+permission grant.
 
-This is deliberately not the promised model-reviewed Auto mode. That later
-feature needs an explicit reviewer and acceptance evidence. Until then, “Auto”
-means a Host-enforced workspace boundary that can be explained, tested, and
-revoked — not a nicer name for unrestricted autonomy.
+The regression followed the moment that had caused the confusion: reconnect a
+browser carrying an old-looking session, choose the advertised profile, then
+ask for work that crosses the boundary. The Host keeps the owner and policy
+state, while the policy tests distinguish an allowed local edit from an
+ambiguous or destructive action.
+
+This is not the future model-reviewed Auto mode. That needs its own reviewer
+and acceptance evidence. For now, Auto means something an operator can answer
+in one sentence: *the Host may do this narrow kind of workspace work without
+asking again; everything broader remains under review.*
