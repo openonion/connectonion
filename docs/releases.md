@@ -43,9 +43,11 @@ forwarder; every mismatch and signature replay remains rejected.
 Alpha 10 separates that reattach proof from first-connect authorization. The
 same live caller must still present a fresh signature and unchanged recipient,
 capability, protocol, session, replay claim, and current blacklist status, but
-the Host no longer repeats mutable onboarding/contact policy for a connection
-that is already authorized. A first Send racing the eager browser CONNECT now
-reaches INPUT instead of surfacing a local trust-file error.
+the Host no longer repeats mutable onboarding/contact/admin policy or rebuilds
+permission authority for a connection that is already authorized. It republishes
+the existing mode, profile, transcript, and dashboard state. A first Send or
+Codex Work Room follow-up racing the eager browser CONNECT now reaches its input
+instead of surfacing a local trust-file error.
 
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 

@@ -45,17 +45,21 @@ two halves. A first connection proves the signed identity and authorizes it unde
 current policy. An equivalent reattach must prove the signed identity, recipient,
 freshness, replay claim and current blacklist again, then show that every bound
 connection field is unchanged. It must not ask onboarding/contact policy to
-authorize the same still-live connection twice. Custom verifiers retain their
-existing gate unless they explicitly provide the same narrow reattach half.
+authorize the same still-live connection twice, nor re-read admin lists and
+rebuild permission authority that connection already owns. It republishes the
+existing mode, profile, transcript, and dashboard state to the new physical
+browser socket. Custom verifiers retain their existing gate unless they
+explicitly provide the same narrow reattach half.
 
 The tests make the boundary visible. One session-loop test puts two freshly
 signed, equivalent `CONNECT` frames into the same logical stream and expects two
 `CONNECTED` replies for the same session. Six negative cases try to change the
 identity, recipient, capability, session, protocol, or reuse a signature. Every
 one is rejected. A regression makes trust policy raise the exact missing-file
-error and proves reattach never calls it; another proves a newly blacklisted
-caller is still refused. Together with the existing Host, relay, replay, and
-command-signing coverage, 70 focused tests passed in the follow-up run.
+error and proves reattach never calls it; another makes admin/mode initialization
+raise the same error and proves it is not repeated. A newly blacklisted caller is
+still refused. Together with the existing Host, relay, replay, profile, and
+command-signing coverage, 76 focused tests passed in the follow-up run.
 
 The production screenshot was the important measurement. Before this change,
 the transcript proved that Codex had finished while a red authentication error

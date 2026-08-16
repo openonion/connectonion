@@ -139,10 +139,92 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
         })
         return
 
-    await establish_connection(
-        data, agent_address, send_msg, conn, storage, registry, route_handlers,
-        resume_running=False,
+    await republish_authenticated_connection(
+        data, send_msg, conn, storage, registry, route_handlers
     )
+
+
+async def republish_authenticated_connection(data, send_msg, conn, storage,
+                                             registry, route_handlers):
+    """Republish an unchanged live connection without reopening its policy gate."""
+    session_id = conn["session_id"]
+    status = _connection_status(registry, session_id)
+    server_newer = _merge_reattach_session(data, conn, storage)
+    connected_msg = _reattach_connected_frame(
+        conn, status, route_handlers, server_newer
+    )
+    await send_msg(connected_msg)
+    await _send_agent_profile(send_msg, route_handlers, session_id)
+
+    # The physical browser socket is new even though the logical relay
+    # connection is not. Force the current Home snapshot onto that socket.
+    from .dashboard import send_dashboard
+    await send_dashboard(send_msg, session_id)
+    console.print(
+        f"[green]↻ REATTACH[/green] agent_address={conn['agent_address'][:16]}... "
+        f"session={session_id[:8]}... status={status}"
+    )
+
+
+def _connection_status(registry, session_id):
+    active = registry.get(session_id)
+    if active and active.status == "running":
+        return "running"
+    if active and active.status == "connected":
+        registry.update_ping(session_id)
+        return "connected"
+    return "new"
+
+
+def _merge_reattach_session(data, conn, storage):
+    stored = storage.get(conn["session_id"])
+    if not stored or not stored.session:
+        return False
+    from ..session import merge_sessions
+    conn["session"], server_newer = merge_sessions(
+        client_session=data.get("session") or {},
+        server_session=stored.session,
+    )
+    return server_newer
+
+
+def _reattach_connected_frame(conn, status, route_handlers, server_newer):
+    frame = {
+        "type": "CONNECTED",
+        "session_id": conn["session_id"],
+        "status": status,
+        "protocol": oip_descriptor(),
+    }
+    mode_policy = route_handlers.get("session_modes")
+    if mode_policy is not None and conn.get("session") is not None:
+        frame["session_modes"] = mode_policy.state(
+            conn["session"], is_admin=bool(conn.get("mode_is_admin"))
+        )
+    if server_newer:
+        from ..session import session_to_chat_items
+        frame.update({
+            "server_newer": True,
+            "session": conn["session"],
+            "chat_items": session_to_chat_items(conn["session"]),
+        })
+    return frame
+
+
+async def _send_agent_profile(send_msg, route_handlers, session_id):
+    metadata = route_handlers.get("agent_metadata")
+    if not metadata:
+        return
+    await send_msg({
+        "type": "AGENT_PROFILE",
+        "session_id": session_id,
+        "name": metadata.get("name"),
+        "address": metadata.get("address"),
+        "model": metadata.get("model"),
+        "tools": metadata.get("tools", []),
+        "skills": metadata.get("skills", []),
+        **({"balance_usd": metadata["balance_usd"]}
+           if metadata.get("balance_usd") is not None else {}),
+    })
 
 
 async def establish_connection(data, agent_address, send_msg, conn, storage, registry,
