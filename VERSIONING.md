@@ -43,9 +43,10 @@ Stable users remain on the 1.6.x line while the 1.7.0 feature train is exercised
 alpha, beta, and release-candidate builds. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Current Version: 1.7.0a8
+## Current Version: 1.7.0a9
 
 ### Version History
+- 1.7.0a9 (**reloading an OIP session keeps the authenticated relay continuity without weakening the connection boundary**: when a fresh browser WebSocket reaches the still-live logical relay queue, an equivalent freshly signed CONNECT now reattaches only if caller, recipient, signed-command capability, OIP protocol, and application session are unchanged. Any mismatch and signature replay remain rejected; CONNECTED is republished without duplicating a running-session forwarder, so a completed Codex Work Room no longer turns into `already authenticated` after refresh.)
 - 1.7.0a8 (**an open Codex Work Room keeps its exact provider thread for the first real task**: because Codex does not persist a rollout until its first turn, open-only app-server processes now remain alive behind a bounded, expiring registry. The first Work Room follow-up claims that same thread ID, streams normally through OIP, persists the rollout, and then closes the process; real-Codex and browser acceptance cover the path that alpha 7 exposed.)
 - 1.7.0a7 (**an explicit Codex request always opens the native Codex adapter**: `run`, `use`, `start`, `open`, slash-command, delegation, and Chinese Codex requests are routed deterministically before the model chooses a tool. Opening Codex without a task creates or resumes the native session without inventing a prompt; an OIP-visible guard rejects direct Codex launches through shell tools while leaving ordinary shell mentions alone. The same provider session, activity, approval, terminal status, and Work Room card remain correlated through OIP.)
 - 1.7.0a6 (**the latest stable fixes move forward without reopening the browser boundary**: merges the exact `v1.6.9` stable line into the OIP-only preview, including authenticated-contact approvals, consistent deploy identity and runtime-state preservation, safe redirects, non-mutating mail reads, and explicit Claude Code grant reporting. Codex and Claude Code remain native adapters translated into OIP at the provider edge.)

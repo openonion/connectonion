@@ -11,7 +11,7 @@ Preview releases never replace the stable recommendation. Install one with
 ## Current release work
 
 - Stable release: `1.6.9`
-- Preview target: `1.7.0a8`
+- Preview target: `1.7.0a9`
 - Browser client: `@connectonion/react@0.4.2-alpha.7`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
@@ -34,11 +34,17 @@ that exact provider thread, completes the real turn, persists the rollout, and
 then closes the process. The session ID shown when Codex opens is therefore the
 same one used by the first task.
 
+Alpha 9 makes reload an authenticated OIP reattach instead of a false second
+login. A fresh signed CONNECT that reaches the still-live relay queue is accepted
+only when caller, recipient, signed-command capability, OIP protocol, and session
+are unchanged. The Host republishes CONNECTED without duplicating a running
+forwarder; every mismatch and signature replay remains rejected.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
 python -m pip install --pre --upgrade connectonion
-python -m pip install connectonion==1.7.0a8
+python -m pip install connectonion==1.7.0a9
 ```
 
 ## Design Journal
