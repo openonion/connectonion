@@ -17,9 +17,20 @@ class InterruptibleIO:
         self._cancelled = threading.Event()
         self._gate = threading.Lock()
         self._deferred: list[tuple[bool, Any]] = []
+        # Provider events need a live presentation lane: their canonical trace
+        # still waits for the transactional tool session to commit, but a coding
+        # Work Room must not wait minutes to say that work has started.  Keep the
+        # currently visible provider invocations so cancellation can close their
+        # presentation without publishing any uncommitted session state.
+        self._live_provider_invocations: dict[str, dict[str, Any]] = {}
 
     def cancel(self) -> None:
         with self._gate:
+            if self._cancelled.is_set():
+                return
+            for invocation in self._live_provider_invocations.values():
+                self.__io.send({**invocation, "status": "cancelled"})
+            self._live_provider_invocations.clear()
             self._cancelled.set()
             self._deferred.clear()
 
@@ -58,6 +69,31 @@ class InterruptibleIO:
             if not self._cancelled.is_set():
                 self._deferred.append((True, copy.deepcopy(event)))
 
+    def send_live_trace(self, event: dict[str, Any]) -> bool:
+        """Show one provider event now without committing its copied trace.
+
+        ``execute_single_tool`` deliberately makes a hosted tool transactional:
+        its session and canonical trace are published only after the tool
+        returns.  Native coding providers are long-running, though, so their
+        start and child activity events require a non-persistent presentation
+        lane.  The same event (including its stable trace id) is later sent by
+        ``commit()``; clients upsert it rather than creating a duplicate.
+        """
+        with self._gate:
+            if self._cancelled.is_set():
+                return False
+            live = copy.deepcopy(event)
+            if live.get("type") == "provider_invocation":
+                invocation_id = live.get("invocationId")
+                status = live.get("status")
+                if isinstance(invocation_id, str) and invocation_id:
+                    if status in {"completed", "failed", "cancelled"}:
+                        self._live_provider_invocations.pop(invocation_id, None)
+                    else:
+                        self._live_provider_invocations[invocation_id] = live
+            self.__io.send(live)
+            return True
+
     def receive(self):
         response = self.__io.receive_interruptibly(self._cancelled)
         if response.get("type") == "INTERRUPT":
@@ -79,8 +115,14 @@ class InterruptibleIO:
                 # the underlying IO boundary's wire-event normalization.
                 self.__io.log(event_type, **data)
 
-    def request_approval(self, tool: str, arguments) -> bool:
-        self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
+    def request_approval(self, tool: str, arguments, *, context=None) -> bool:
+        event = {"type": "approval_needed", "tool": tool, "arguments": arguments}
+        if isinstance(context, dict):
+            for key in ("provider", "invocationId", "parentToolCallId", "activityId"):
+                value = context.get(key)
+                if isinstance(value, str) and value:
+                    event[key] = value
+        self.send(event)
         return self.receive().get("approved", False)
 
     def send_image(self, image_data: str) -> None:

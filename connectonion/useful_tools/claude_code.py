@@ -449,9 +449,13 @@ class _ClaudeStreamForwarder:
         if self._event_count >= _MAX_LIVE_EVENTS:
             return
         self._event_count += 1
+        entry = {"type": event_type, **fields}
         record = getattr(self._agent, "_record_trace", None)
         if callable(record) and isinstance(getattr(self._agent, "current_session", None), dict):
-            record({"type": event_type, **fields})
+            record(entry)
+            stream_live = getattr(self._io, "send_live_trace", None)
+            if callable(stream_live):
+                stream_live(entry)
         else:
             self._io.log(event_type, **fields)
 
