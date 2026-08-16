@@ -10,6 +10,7 @@ from connectonion import address
 from connectonion.network.connect import RemoteAgent
 from connectonion.network.host import auth
 from connectonion.network.host.ws_router.connect import handle_authenticated_reconnect
+from connectonion.network.trust.trust_agent import TrustAgent
 
 
 RECIPIENT = "0x" + "12" * 20
@@ -56,7 +57,7 @@ def authenticated_conn(keys):
     }
 
 
-async def reattach(frame, conn):
+async def reattach(frame, conn, trust="open", blacklist=None):
     sent = []
     storage = MagicMock()
     storage.get.return_value = None
@@ -73,11 +74,34 @@ async def reattach(frame, conn):
         {"agent_metadata": {"address": RECIPIENT}},
         storage,
         registry,
-        "open",
-        None,
+        trust,
+        blacklist,
         None,
     )
     return sent
+
+
+@pytest.mark.asyncio
+async def test_reattach_does_not_repeat_mutable_trust_policy(keys, monkeypatch):
+    """A live connection was already authorized; reattach only re-authenticates it."""
+    trust = TrustAgent("open")
+    should_allow = MagicMock(side_effect=FileNotFoundError(2, "No such file or directory"))
+    monkeypatch.setattr(trust, "should_allow", should_allow)
+    sent = await reattach(connect_frame(keys), authenticated_conn(keys), trust=trust)
+
+    assert sent[0]["type"] == "CONNECTED"
+    should_allow.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reattach_still_enforces_current_blacklist(keys):
+    sent = await reattach(
+        connect_frame(keys),
+        authenticated_conn(keys),
+        blacklist=[keys["address"]],
+    )
+
+    assert sent == [{"type": "ERROR", "message": "forbidden: blacklisted"}]
 
 
 @pytest.mark.asyncio

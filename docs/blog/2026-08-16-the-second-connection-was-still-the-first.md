@@ -32,12 +32,30 @@ OIP protocol, and application session. If all of those are equal, it republishes
 for a running agent. If any field differs, the old rejection remains. Reusing
 the same signature still fails the replay guard.
 
+The first public alpha taught us that “verifies the fresh signature again” was
+still too broad. The implementation reused the whole first-connect gate, so it
+also repeated the mutable trust decision: read the contact lists, decide whether
+the caller must onboard, and consult policy. A brand-new session connected, but
+its first Send raced another equivalent `CONNECT` through that second policy
+read. A local missing-file error became `misconfigured: [Errno 2]` in the browser,
+and the actual `INPUT` never reached the Host.
+
+That was not a reason to weaken reauthentication. It was a reason to name its
+two halves. A first connection proves the signed identity and authorizes it under
+current policy. An equivalent reattach must prove the signed identity, recipient,
+freshness, replay claim and current blacklist again, then show that every bound
+connection field is unchanged. It must not ask onboarding/contact policy to
+authorize the same still-live connection twice. Custom verifiers retain their
+existing gate unless they explicitly provide the same narrow reattach half.
+
 The tests make the boundary visible. One session-loop test puts two freshly
 signed, equivalent `CONNECT` frames into the same logical stream and expects two
 `CONNECTED` replies for the same session. Six negative cases try to change the
 identity, recipient, capability, session, protocol, or reuse a signature. Every
-one is rejected. Together with the existing Host, relay, and command-signing
-coverage, 77 focused tests passed.
+one is rejected. A regression makes trust policy raise the exact missing-file
+error and proves reattach never calls it; another proves a newly blacklisted
+caller is still refused. Together with the existing Host, relay, replay, and
+command-signing coverage, 70 focused tests passed in the follow-up run.
 
 The production screenshot was the important measurement. Before this change,
 the transcript proved that Codex had finished while a red authentication error
