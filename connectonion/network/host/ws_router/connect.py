@@ -2,9 +2,9 @@
 Purpose: Authenticate CONNECT, bind session ownership, initialize durable Host mode policy, advertise capabilities, and optionally reattach running work
 LLM-Note:
   Dependencies: imports from [..session (merge_sessions, session_to_chat_items via lazy local import), ...trust.ws_admin (get_onboard_requirements), .agent_io (resume_forwarding), uuid, rich.console] | imported by [.session as part of CONNECT dispatch]
-  Data flow: verify identity/trust → bind/replace session ID by owner → merge conversation → ensure durable Safe/current policy → derive identity-bounded SessionModeState → CONNECTED → optional running-agent rewind/resume
+  Data flow: verify identity/trust → bind/replace session ID by owner → merge conversation → ensure durable Safe/current policy → derive identity-bounded SessionModeState → CONNECTED → optional running-agent rewind/resume | equivalent authenticated relay CONNECT → reverify → republish CONNECTED without another forwarder
   State/Effects: mutates authenticated connection state; may append initial/normalized durable session; refreshes registry ping when reattaching
-  Integration: handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist) → returns (io, forward_task) for reattach or None
+  Integration: handle_connect(...) handles the first CONNECT; handle_authenticated_reconnect(...) handles a matching fresh relay reload; establish_connection(..., resume_running=False) republishes authority without a second forwarder
   Performance: one ownership read plus one atomic mode-state initialization and registry checks per CONNECT
   Errors: auth/policy/storage initialization failures surface as bounded ERROR frames; private storage exceptions are not sent
 """
@@ -22,8 +22,8 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
-    """Handle CONNECT message: auth, session merge, send CONNECTED. Returns (io, task) for reattach or None."""
+def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist):
+    """Authenticate one CONNECT with the Host's configured verifier."""
     from ..auth import authenticate_connect, signature_already_used
 
     metadata = route_handlers.get("agent_metadata") or {}
@@ -32,15 +32,19 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
         auth_kwargs["recipient_address"] = metadata["address"]
     connect_auth = route_handlers.get("connect_auth")
     if connect_auth is None:
-        _, agent_address, sig_valid, err = authenticate_connect(
+        return authenticate_connect(
             data, trust,
             replay_check=route_handlers.get("replay", signature_already_used),
             **auth_kwargs,
         )
-    else:
-        _, agent_address, sig_valid, err = connect_auth(
-            data, trust, **auth_kwargs
-        )
+    return connect_auth(data, trust, **auth_kwargs)
+
+
+async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
+    """Handle CONNECT message: auth + merge + optional running reattach."""
+    _, agent_address, _, err = authenticate_connect_frame(
+        data, route_handlers, trust, blacklist, whitelist
+    )
 
     if err and "forbidden" in err.lower():
         trust_agent = route_handlers["trust_agent"]
@@ -71,8 +75,52 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
     )
 
 
+async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
+                                         storage, registry, trust, blacklist,
+                                         whitelist):
+    """Accept only an equivalent, freshly authenticated relay reattach.
+
+    The relay multiplexes by application session id. A browser reload can put a
+    new CONNECT into the old logical queue before its close frame is observed.
+    Treat that narrow case as idempotent without allowing an authenticated
+    socket to change caller, recipient, capability level, or session.
+    """
+    payload = data.get("payload") or {}
+    equivalent = (
+        data.get("session_id") == conn.get("session_id")
+        and (payload.get("signed_commands") == 1) == bool(conn.get("signed_commands"))
+        and payload.get("to") == conn.get("recipient_address")
+        and supports_oip(data.get("protocol"))
+    )
+    if not equivalent:
+        await send_msg({
+            "type": "ERROR",
+            "message": "already authenticated: open a new connection",
+        })
+        return
+
+    _, agent_address, _, err = authenticate_connect_frame(
+        data, route_handlers, trust, blacklist, whitelist
+    )
+
+    if err:
+        await send_msg({"type": "ERROR", "message": err})
+        return
+    if agent_address != conn.get("agent_address"):
+        await send_msg({
+            "type": "ERROR",
+            "message": "already authenticated: open a new connection",
+        })
+        return
+
+    await establish_connection(
+        data, agent_address, send_msg, conn, storage, registry, route_handlers,
+        resume_running=False,
+    )
+
+
 async def establish_connection(data, agent_address, send_msg, conn, storage, registry,
-                               route_handlers=None):
+                               route_handlers=None, resume_running=True):
     """Post-auth half of CONNECT: populate conn, merge sessions, send CONNECTED.
 
     Called by handle_connect and, after a successful onboard, with the stashed
@@ -261,6 +309,6 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     from .dashboard import send_dashboard
     await send_dashboard(send_msg, session_id, conn)
 
-    if status == "running":
+    if status == "running" and resume_running:
         active.io.rewind_to(data.get("last_msg_id"))
         return resume_forwarding(send_msg, active, registry, session_id, storage, conn)

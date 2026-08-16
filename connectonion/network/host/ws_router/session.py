@@ -2,7 +2,7 @@
 Purpose: Run one client session — read loop, per-type dispatch, lifecycle of forward + ping tasks
 LLM-Note:
   Dependencies: imports from [.connect, .agent_io, .exec, .mode, .ping, ...trust.ws_admin, asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
-  Data flow: recv → verify every v2 application command → dispatch CONNECT/INPUT/EXEC/mode_change/INTERRUPT/admin/runtime frames → bounded response → cancel spawned tasks on close
+  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime frames → bounded response → cancel spawned tasks on close
   State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
   Integration: OIP mode_change uses .mode durable authority; interrupt requires registered active IO; signed-command clients execute only verified payload copies
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
@@ -15,7 +15,7 @@ from rich.console import Console
 
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from .agent_io import start_agent
-from .connect import establish_connection, handle_connect
+from .connect import establish_connection, handle_authenticated_reconnect, handle_connect
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
@@ -52,10 +52,10 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
             # and then inject unsigned commands. Reauthentication belongs on a
             # fresh transport, with fresh per-connection state.
             if msg_type == "CONNECT" and conn.get("authenticated"):
-                await send_msg({
-                    "type": "ERROR",
-                    "message": "already authenticated: open a new connection",
-                })
+                await handle_authenticated_reconnect(
+                    data, send_msg, conn, route_handlers, storage, registry,
+                    trust, blacklist, whitelist,
+                )
                 continue
 
             # A v2 CONNECT signs the capability that enables this gate. Keep the
