@@ -93,6 +93,52 @@ async def test_connect_rejects_unsupported_oip_once_without_creating_session():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("transport", ["direct", "relay"])
+@pytest.mark.parametrize("protocol", [None, {"name": "oip", "version": "0.1"}])
+async def test_rolling_oip_readers_have_direct_and_relay_parity(
+    transport, protocol, monkeypatch
+):
+    from connectonion.network.host.ws_router import connect
+
+    sent = []
+    telemetry = []
+    storage = Mock(); storage.get.return_value = None
+    registry = Mock(); registry.get.return_value = None
+    monkeypatch.setattr(connect.console, "print", telemetry.append)
+    frame = {} if protocol is None else {"protocol": protocol}
+
+    await connect.establish_connection(
+        frame,
+        "0xvisitor",
+        AsyncMock(side_effect=sent.append),
+        {"transport": transport},
+        storage,
+        registry,
+    )
+
+    assert sent[0]["type"] == "CONNECTED"
+    assert telemetry[0] == (
+        f"[dim]OIP_COMPAT transport={transport} "
+        f"peer={'legacy' if protocol is None else 'oip/0.1'} outcome=accepted[/dim]"
+    )
+
+
+def test_oip_compatibility_telemetry_never_copies_untrusted_wire_values():
+    from connectonion.network.host.protocol import oip_compatibility_record
+
+    record = oip_compatibility_record(
+        {"name": "prompt=secret", "version": "/Users/private/customer"},
+        "attacker-controlled",
+    )
+
+    assert record == {
+        "transport": "unknown",
+        "peer": "unsupported",
+        "outcome": "rejected",
+    }
+
+
+@pytest.mark.asyncio
 async def test_no_profile_frame_without_route_handlers():
     """The optional argument keeps callers that only need the session half working."""
     from connectonion.network.host.ws_router.connect import establish_connection

@@ -1045,6 +1045,7 @@ def host(
             blacklist=blacklist,
             whitelist=whitelist,
             enable_ping=True,
+            transport="relay",
         )
         on_startup, on_shutdown = _create_relay_lifespan(
             relay_url, addr_data, summary, port, relay_session_runner,

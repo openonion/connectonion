@@ -23,7 +23,7 @@ from .ping import ping_loop
 console = Console()
 
 
-async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True):
+async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown"):
     """Run one client session from connect to disconnect.
 
     Reads frames, dispatches by type, cleans up on close. Used by both the
@@ -31,7 +31,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     own send_msg/recv_msg adapters.
     """
     conn = {"authenticated": False, "agent_address": None, "session_id": None,
-            "session": None, "signed_commands": False, "recipient_address": None}
+            "session": None, "signed_commands": False, "recipient_address": None,
+            "transport": transport}
     active_io = None
     forward_task = None
     exec_tasks = set()

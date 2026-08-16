@@ -73,6 +73,7 @@ async def handle_websocket(
         trust=trust,
         blacklist=blacklist,
         whitelist=whitelist,
+        transport="direct",
     )
 
     console.print(f"[dim]⚡ ws-[/dim] [dim]({registry.count()} active)[/dim]")

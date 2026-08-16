@@ -10,9 +10,9 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
-- Stable release: `1.6.9`
-- Preview target: `1.7.0a10`
-- Browser client: `@connectonion/react@0.4.2-alpha.7`
+- Stable release: `1.6.10`
+- Preview target: `1.7.0a11`
+- Browser client: `@connectonion/react@0.4.2-alpha.10`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
 Host serves the authenticated `/ws` connection; `@connectonion/react` owns the
@@ -49,11 +49,17 @@ the existing mode, profile, transcript, and dashboard state. A first Send or
 Codex Work Room follow-up racing the eager browser CONNECT now reaches its input
 instead of surfacing a local trust-file error.
 
+Alpha 11 makes the OIP 0.1 rolling window explicit. Descriptor-less 0.1 peers
+remain readable, Direct and Relay use the same compatibility gate, unsupported
+versions fail once without retry, discovery stays uncached, and Host records only
+content-free compatibility classifications. DD-053 now defines the release and
+time boundary before a reader can be removed.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
 python -m pip install --pre --upgrade connectonion
-python -m pip install connectonion==1.7.0a10
+python -m pip install connectonion==1.7.0a11
 ```
 
 ## Design Journal
