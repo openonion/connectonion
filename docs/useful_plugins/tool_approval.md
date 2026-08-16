@@ -1,6 +1,19 @@
 # tool_approval
 
-Web-based approval for dangerous tools via WebSocket. Requires user confirmation before executing tools that can modify files or run commands.
+Versioned authorization profiles plus WebSocket approval for calls that need a
+human decision.
+
+## Profiles
+
+| Profile | Behaviour |
+|---|---|
+| `default` | Auto-approves workspace reads/edits and focused verification; asks or denies higher-impact calls |
+| `safe` | Manual approval for every call not explicitly permitted |
+| `full_access` | Explicit local/Host-admin bypass, still bounded by Host control files |
+
+`accept_edits` maps to Default. `ulw` and `yolo` map to Full access. Persisted
+old/unversioned `default` sessions migrate to Safe. Planning uses
+`workflow_mode: plan` and never changes the approval profile.
 
 ## Quick Start
 
@@ -29,8 +42,8 @@ LLM returns tool_calls batch: [bash("npm install"), write("config.json"), bash("
 tool_executor iterates sequentially:
     ↓
 ┌─ Tool #1: bash("npm install")
-│   before_each_tool fires → check_approval()
-│   → Is it safe? No (bash is DANGEROUS)
+│   before_each_tool fires → deterministic policy → check_approval()
+│   → Policy result: ask (package installation is not focused verification)
 │   → Already approved for session? No
 │   → Send to client:
 │       {
@@ -138,7 +151,8 @@ send_email, post, delete, remove
 
 ### Unknown Tools
 
-Tools not in either list are treated as safe (no approval needed).
+Unknown tools are never silently allowed. Default and Safe ask through the
+existing approval protocol; without an approval channel they fail closed.
 
 ## Config-Based Auto-Approval
 

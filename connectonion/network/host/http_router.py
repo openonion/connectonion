@@ -33,7 +33,7 @@ from .session import Session, SessionStorage, merge_sessions, session_to_chat_it
 # survives the round trip without the client being able to invent it.
 SERVER_OWNED_SESSION_KEYS = (
     'mode', 'ulw_turns', 'ulw_turns_used', 'skip_tool_approval',
-    'permissions', 'approval', 'requester',
+    'permissions', 'approval', 'approval_profile', 'requester',
 )
 
 
@@ -90,6 +90,13 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         session.pop(key, None)
         if key in stored_session:
             session[key] = stored_session[key]
+
+    # A client cannot declare itself new to obtain a more permissive default.
+    # The server knows whether this id has stored state, and the approval plugin
+    # consumes this one-shot marker before the session is checkpointed.
+    session.pop('_new_session', None)
+    if stored is None:
+        session['_new_session'] = True
 
     # After the merge, and overwriting whatever arrived. The session dict
     # round-trips through the client, so anything read out of it is their

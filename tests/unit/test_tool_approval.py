@@ -672,7 +672,8 @@ class TestPollModeChanges:
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'plan'
+        assert agent.current_session['workflow_mode'] == 'plan'
+        assert agent.current_session['mode'] == 'safe'
 
     def test_poll_mode_changes_handles_accept_edits_mode(self):
         """poll_mode_changes should handle mode_change to accept_edits."""
@@ -682,7 +683,8 @@ class TestPollModeChanges:
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'accept_edits'
+        assert agent.current_session['mode'] == 'default'
+        assert agent.current_session['approval_profile']['id'] == 'default'
 
     def test_poll_mode_changes_handles_ulw_mode(self):
         """poll_mode_changes should handle mode_change to ulw."""
@@ -721,7 +723,8 @@ class TestPollModeChanges:
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == 'plan'
+        assert agent.current_session['workflow_mode'] == 'plan'
+        assert agent.current_session['mode'] == 'safe'
         # Other signal should still be in pending
         assert len(io.pending_signals) == 1
         assert io.pending_signals[0]['type'] == 'other_signal'

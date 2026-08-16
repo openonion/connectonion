@@ -9,10 +9,12 @@ The plugin is the same in every mode; what moves is the gate.
 
 | mode | behaviour |
 |---|---|
-| `safe` | dangerous tool calls are confirmed one at a time |
-| `plan` | the agent proposes a plan and waits for review before doing anything |
-| `accept_edits` | file edits land without asking; other dangerous calls still ask |
-| `ulw` | runs unattended for a bounded number of turns — see `useful_plugins/ulw` |
+| `default` | deterministic Auto Approve for workspace work; higher-impact calls ask or deny |
+| `safe` | every call without an explicit permission asks |
+| `full_access` | explicit local/Host-admin access, bounded by Host controls |
+
+`accept_edits`, `ulw`, and `yolo` remain compatibility aliases. Plan is stored
+as workflow state and does not change the approval profile.
 
 Mode changes arrive over the WebSocket, so a client can move between them
 mid-session without restarting the agent.
@@ -25,8 +27,8 @@ temporary grants are snapshotted and restored around the skill rather than
 merged into it — a permission the user gave for one turn must not survive
 into the next.
 
-## What it does not do
+## Policy decisions
 
-It does not decide what is dangerous. That comes from the tool's own
-declaration and the permission patterns, so adding a tool does not mean editing
-this plugin.
+The Default policy emits a versioned `allow`, `ask`, or `deny` decision with a
+reason, effect class, and scope. Unknown tools ask rather than running silently.
+An `ask` reuses the same human approval protocol and permission state as before.
