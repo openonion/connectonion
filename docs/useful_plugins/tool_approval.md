@@ -1,6 +1,19 @@
 # tool_approval
 
-Web-based approval for tools via WebSocket. With live IO, a tool without an explicit permission must receive approval from the local/admin operator before execution. A hosted non-admin requester is rejected without a dialog.
+Versioned OIP permission profiles plus WebSocket approval for calls that need a
+human decision.
+
+## Profiles
+
+| Profile | Behaviour |
+|---|---|
+| `:read-only` | Manual approval for every live-IO call not explicitly permitted |
+| `:workspace` | Auto-approves workspace reads/edits and focused verification; asks or denies higher-impact calls |
+| `:danger-full-access` | Explicit local/Host-admin bypass, still bounded by Host control files |
+
+Legacy `default`/`safe` map to Read only; `auto_approve`/`accept_edits` map to
+Auto; `ulw` and `yolo` map to Full access. Planning uses `workflow_mode: plan`
+and never grants a permission profile.
 
 ## Quick Start
 
@@ -32,8 +45,9 @@ LLM returns tool_calls batch: [bash("npm install"), write("config.json"), bash("
 tool_executor iterates sequentially:
     ↓
 ┌─ Tool #1: bash("npm install")
-│   before_each_tool fires → check_approval()
-│   → Explicitly permitted? No
+│   before_each_tool fires → deterministic policy → check_approval()
+│   → Policy result: ask (package installation is not focused verification)
+│   → Already approved for session? No
 │   → Send to client:
 │       {
 │         "type": "approval_needed",
@@ -139,18 +153,11 @@ send_email, post, delete, remove
 
 ### Unknown Tools
 
-Unknown and dynamically registered tools require operator approval when live IO is present. A hosted non-admin requester is rejected without a dialog. This fail-closed default keeps plugin and MCP tools behind the same approval boundary as built-in effectful tools.
-
-Three explicit exceptions preserve existing workflows:
-
-- Local library use without `agent.io` stays non-interactive.
-- `auto_approve` auto-approves only the named file-edit tools (`write`, `edit`, and `multi_edit`).
-- `full_access` remains an explicit bypass controlled by its own plugin.
-
-Only a local/admin operator receives approval dialogs or may enable
-`auto_approve` or `full_access`. In hosted sessions, only the admin operator can enable them.
-A contact, whitelisted caller, or stranger may switch back to `default`, but cannot
-turn a mode-change frame into file or dynamic-tool authority.
+Unknown and dynamically registered tools are never silently allowed. In Auto,
+they ask through the existing approval protocol; without an approval channel,
+they fail closed. Auto applies only to the Host-authorized `:workspace` profile
+for a local/admin operator. Authenticated contacts can answer manual approval
+requests but cannot elevate their profile.
 
 ## Config-Based Auto-Approval
 

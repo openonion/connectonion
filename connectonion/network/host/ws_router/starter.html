@@ -3,231 +3,234 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$name · Control Center</title>
 <style>
-  /* No JavaScript anywhere in this file, by contract: the client renders a
-     dashboard under a CSP that runs only its own bridge script, so an agent's
-     own script tag or inline handler is dropped. Every affordance here — the
-     disclosure groups, the hover states — is CSS or plain HTML. Images would
-     have to be inlined as data: URIs, so there are none. */
+  /* Shared Control Center tokens. The page is self-contained: no remote assets,
+     scripts, inline handlers, or navigation. The chat bridge owns declarative
+     data-ochat-* controls; plain HTML remains usable when that bridge is absent. */
   :root {
     color-scheme: light dark;
-    --bg: #fbfbfa; --fg: #171717; --muted: #6b6b6b; --faint: #8a8a8a;
-    --card: #fff; --line: #e7e7e5; --hover: #f4f4f2; --accent: #16a34a;
+    --cc-bg: #f7f8f6;
+    --cc-surface: #ffffff;
+    --cc-surface-raised: #f0f2ee;
+    --cc-text: #171a17;
+    --cc-muted: #505650;
+    --cc-subtle: #626962;
+    --cc-border: #d9ddd7;
+    --cc-accent: #14733a;
+    --cc-accent-soft: #e2f3e7;
+    --cc-danger: #b42318;
+    --cc-focus: #075985;
+    --cc-radius-sm: 10px;
+    --cc-radius-md: 14px;
+    --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #131313; --fg: #ededed; --muted: #a0a0a0; --faint: #8b8b8b;
-      --card: #1a1a1a; --line: #2b2b2b; --hover: #212121; --accent: #22c55e;
+      --cc-bg: #111411;
+      --cc-surface: #191d19;
+      --cc-surface-raised: #222722;
+      --cc-text: #f1f5f1;
+      --cc-muted: #bbc4bb;
+      --cc-subtle: #aeb7ae;
+      --cc-border: #343b34;
+      --cc-accent: #62d68a;
+      --cc-accent-soft: #173d25;
+      --cc-danger: #ff8a80;
+      --cc-focus: #7dd3fc;
+      --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
     }
   }
-  * { box-sizing: border-box; margin: 0; }
+  * { box-sizing: border-box; }
+  html { background: var(--cc-bg); }
   body {
+    margin: 0;
+    padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
+    background: var(--cc-bg);
+    color: var(--cc-text);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--bg); color: var(--fg); line-height: 1.5;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    padding: 32px 18px 56px;
   }
-  /* The Home pane is ~440px wide in oo-chat, full-width on mobile, and sometimes a
-     whole browser window. One centred column with a max-width covers all three;
-     anything that stretches turns an eight-character button into a 1400px bar.
+  main { width: min(100%, 860px); margin: 0 auto; }
+  button, input, summary { font: inherit; }
+  button, summary { min-height: 44px; }
+  :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
 
-     A media query here measures THE PANE, not the browser window. The client
-     renders this page inside its own iframe, and a media query inside an iframe
-     evaluates against that frame's viewport — so `@media (max-width: 560px)` in a
-     dashboard means "when the pane is narrower than 560px", which is the question
-     you actually wanted to ask. Verified: with the pane at 320px the frame reports
-     innerWidth 319 and the query matches; dragged to 900px it reports 899 and does
-     not. No container queries needed — the isolation already gives you one.
-
-     This matters more now that the pane is resizable: one dashboard has to hold up
-     across the whole 320–900px range, not at the two or three widths the client
-     used to pick. Design for the narrow end first; a four-column table needs about
-     500px, so give it a stacked form below that or the column you care about ends
-     up off the right edge behind a scrollbar. */
-  main { max-width: 680px; margin: 0 auto; }
-
-  header { margin-bottom: 24px; }
-  /* Name and mark on one line. The mark is a letter, not an image: the CSP allows
-     images only as data: URIs, and an agent has no artwork anyway. It is the only
-     saturated colour above the fold, which is what makes the page feel like it
-     belongs to something rather than being a listing of a folder. */
-  .id { display: flex; align-items: center; gap: 10px; }
+  .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
+  .eyebrow {
+    margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
+    letter-spacing: .11em; text-transform: uppercase;
+  }
+  .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .mark {
-    flex: none; width: 34px; height: 34px; border-radius: 9px;
-    background: var(--accent); color: #fff;
-    font-size: 16px; font-weight: 650; line-height: 34px; text-align: center;
-    text-transform: uppercase; user-select: none;
+    flex: none; display: grid; place-items: center; width: 42px; height: 42px;
+    border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
+    font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
   }
-  h1 { font-size: 24px; font-weight: 680; letter-spacing: -0.025em; line-height: 1.15; }
-  /* What the agent is for, in the agent's own words. The manifest below answers
-     "what is it made of", which is a different and much less interesting question. */
-  .tagline { font-size: 13.5px; line-height: 1.45; margin-top: 10px; }
+  h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
+  .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
   .tagline:empty { display: none; }
-  .sub { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .sub { margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
 
-  /* 66 characters in a 440px pane. It wraps rather than truncating — an ellipsis
-     would defeat the only reason it is here (a deployed agent's address cannot be
-     known before its first boot) — and it is boxed so it reads as a value you can
-     copy rather than as a mistake in the layout. Below the skills, because you
-     read it once, on the day you deploy. */
-  .addr {
-    color: var(--muted); margin-top: 22px; padding: 8px 10px;
-    background: var(--hover); border: 1px solid var(--line); border-radius: 8px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 10.5px; line-height: 1.5; word-break: break-all;
-    user-select: all;
+  .grid { display: grid; gap: 14px; }
+  .stack { margin-top: 14px; }
+  .card {
+    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
+    background: var(--cc-surface); box-shadow: var(--cc-shadow);
+  }
+  .card-pad { padding: 16px; }
+  .section-title {
+    margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
+    letter-spacing: .09em; text-transform: uppercase;
   }
 
-  /* No card around the rows. At 440px a bordered box whose background differs
-     from the page by one percent of luminance renders as its border alone, and
-     that border then duplicates the hairlines of the rows inside it — two
-     separator systems stacked. The rows carry themselves. */
-  .section {
-    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--faint); margin: 0 0 8px 2px;
+  .now { display: flex; align-items: flex-start; gap: 11px; }
+  .status-dot {
+    flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px;
+    background: var(--cc-accent); box-shadow: 0 0 0 5px var(--cc-accent-soft);
   }
-  .empty {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 20px 18px;
+  .now strong { display: block; font-size: 15px; }
+  .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
+
+  .quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .quick .skill {
+    min-height: 72px; padding: 12px 30px 12px 12px;
+    border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
   }
-  .empty p { color: var(--muted); font-size: 13.5px; }
-  .empty code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-    background: var(--hover); padding: 1px 5px; border-radius: 4px;
-  }
+  .quick .skill::after { right: 13px; }
 
-  /* The one disclosure on the page. A details element is the only fold that
-     works with no JavaScript. It is centred and bordered so it cannot be
-     mistaken for a skill row — left-aligned, borderless, chevroned right:
-     pressing it must not feel like it might run something.
-
-     A down-chevron under a sentence, not a sideways triangle beside a slug. The
-     triangle is the file-tree idiom, and this page spent a redesign getting out
-     of the file browser. */
-  .more { margin-top: 6px; }
-  .more > summary {
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-    padding: 11px 12px; cursor: pointer; list-style: none;
-    border: 1px solid var(--line); border-radius: 9px;
-    font-size: 12.5px; font-weight: 600; color: var(--muted);
-    transition: background .12s, border-color .12s, color .12s;
-  }
-  .more > summary::-webkit-details-marker { display: none; }
-  .more > summary::after {
-    content: ""; flex: none; width: 6px; height: 6px; margin-top: -3px;
-    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
-    transform: rotate(45deg); transition: transform .15s;
-  }
-  .more[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
-  .more > summary:hover { background: var(--hover); color: var(--fg); border-color: var(--faint); }
-  .more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .more > summary:active { background: var(--line); }
-  .more[open] > .rows { margin-top: 6px; }
-  /* <summary> text cannot change without JS; two labels and a swap can. */
-  .lbl-less { display: none; }
-  .more[open] .lbl-more { display: none; }
-  .more[open] .lbl-less { display: inline; }
-
-
-  .rows { display: flex; flex-direction: column; gap: 2px; }
-
-  /* Every row is a control, and has to look like one when nobody is hovering it.
-     Hover is the wrong place to put the only affordance: it does not exist on a
-     touch screen, and on a desktop it arrives after you have already guessed. */
   .skill {
     position: relative; display: flex; flex-direction: column; justify-content: center;
-    width: 100%; min-height: 56px; text-align: left; font: inherit; cursor: pointer;
-    background: none; border: 0; border-radius: 9px;
-    padding: 11px 34px 11px 12px; color: var(--fg);
-    transition: background .12s;
+    width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
+    border: 0; border-radius: var(--cc-radius-sm); background: transparent;
+    color: var(--cc-text); cursor: pointer; text-align: left;
   }
-  /* A chevron drawn in CSS — the CSP forbids an icon font or a remote SVG, and a
-     border-box rotated 45° costs nothing. */
   .skill::after {
-    content: ""; position: absolute; right: 14px; top: 50%;
-    width: 6px; height: 6px; margin-top: -4px;
-    border-right: 1.5px solid var(--faint); border-top: 1.5px solid var(--faint);
-    transform: rotate(45deg);
-    transition: transform .12s, border-color .12s;
+    content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
+    border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
+    transform: translateY(-50%) rotate(45deg);
   }
-  .skill:hover, .skill:focus-visible { background: var(--hover); }
-  .skill:hover::after, .skill:focus-visible::after {
-    border-color: var(--accent); transform: rotate(45deg) translate(2px, -2px);
-  }
-  .skill:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .skill:active { background: var(--line); }
-  /* The name stays the literal skill name — it is what you would type — but in the
-     UI face. In monospace a hyphenated slug reads as a file path, which is most of
-     why this page used to look like a directory listing. */
-  .skill .name {
-    display: block; font-size: 14px; font-weight: 600;
-    letter-spacing: -0.006em;
-  }
-  /* One line, and the server already cut it at a sentence. Uniform row height is
-     what turns a list into something scannable; ragged two-line clamps gave every
-     row a different height and nothing for the eye to lock onto. */
+  .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
+  .skill:active { background: var(--cc-accent-soft); }
+  .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
   .skill .desc {
-    display: block; margin-top: 3px;
-    font-size: 12.5px; line-height: 1.4; color: var(--muted);
+    margin-top: 2px; color: var(--cc-muted); font-size: 12px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .skill .desc:empty { display: none; }
 
-  /* A pane dragged out to a full window is one column of 56px rows with a field of
-     white either side. Past ~720px there is room for two. */
-  @media (min-width: 720px) {
-    .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  details.card { overflow: clip; }
+  details.card > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
   }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::after {
+    content: ""; flex: none; width: 8px; height: 8px;
+    border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
+    transform: rotate(45deg) translate(-2px, 2px);
+  }
+  details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
+  .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
+  .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
+  co-filter { display: block; min-height: 44px; margin-top: 12px; }
+  .rows { display: grid; gap: 2px; margin-top: 8px; }
+  .more { margin-top: 7px; }
+  .more > summary {
+    display: flex; align-items: center; justify-content: center; padding: 8px 12px;
+    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
+    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 680;
+  }
+  .more > summary::-webkit-details-marker { display: none; }
+  .more[open] > .rows { margin-top: 7px; }
+  .lbl-less { display: none; }
+  .more[open] .lbl-more { display: none; }
+  .more[open] .lbl-less { display: inline; }
+  .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
+  .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
+  code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
 
-  /* Activity and schedule. Both are absent on a fresh agent — an empty box on
-     the day-zero page would be the first thing a new user sees, saying nothing. */
-  .act { display: flex; align-items: baseline; gap: 8px; padding: 7px 0;
-         border-top: 1px solid var(--line); font-size: 12.5px; }
-  .act:first-child { border-top: 0; }
-  .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-               white-space: nowrap; color: var(--fg); }
-  .act .meta { flex: none; color: var(--faint); font-variant-numeric: tabular-nums;
-               font-size: 11.5px; }
-  /* Three outcomes, three weights. "failed" has to survive being read at a
-     glance in a 440px column, so it carries colour; "running" is the one that
-     means "look again in a minute", not "something is wrong". */
-  .act .bad { color: #dc2626; }
-  .act .live { color: var(--accent); }
-  @media (prefers-color-scheme: dark) { .act .bad { color: #f87171; } }
-  .sec { padding: 12px 16px 14px; }
-  .sec > h2 { font-size: 11px; font-weight: 650; letter-spacing: 0.08em;
-              text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
+  .activity { display: grid; gap: 10px; }
+  .sec { padding: 14px 16px; }
+  .sec > h2 { margin: 0 0 6px; font-size: 12px; }
+  .act { display: flex; align-items: baseline; gap: 8px; min-height: 38px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
+  .act:first-of-type { border-top: 0; }
+  .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act .meta { flex: none; color: var(--cc-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .act .bad { color: var(--cc-danger); }
+  .act .live { color: var(--cc-accent); font-weight: 680; }
+
+  .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
+  .diag { display: grid; grid-template-columns: minmax(76px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
+  .diag:first-child { border-top: 0; }
+  .diag dt { color: var(--cc-subtle); }
+  .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
+
+  @media (min-width: 640px) {
+    .masthead { grid-template-columns: 1fr auto; align-items: end; }
+    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+    .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
+  }
+  @media (max-width: 520px) {
+    body { padding-inline: 10px; }
+    .quick { grid-template-columns: 1fr; }
+    .quick .skill { min-height: 56px; }
+    .act { align-items: flex-start; flex-direction: column; gap: 1px; }
+    .act .what { white-space: normal; }
+    .diag { grid-template-columns: 1fr; gap: 2px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .skill, summary { transition: background-color .14s ease, border-color .14s ease; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+  }
 </style>
 </head>
 <body>
   <main>
-    <header>
-      <div class="id"><span class="mark">$initial</span><h1>$name</h1></div>
-      <p class="tagline">$tagline</p>
-      <p class="sub">$subtitle</p>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Control Center</p>
+        <div class="identity"><span class="mark" aria-hidden="true">$initial</span><h1>$name</h1></div>
+        <p class="tagline">$tagline</p>
+        <p class="sub">$subtitle</p>
+      </div>
     </header>
-$body
+
+    <div class="grid overview">
+      <section class="card card-pad" aria-labelledby="now-title">
+        <h2 class="section-title" id="now-title">Now</h2>
+        <div class="now"><span class="status-dot" aria-hidden="true"></span><div><strong>Ready</strong><p>Available for a new task.</p></div></div>
+      </section>
+$quick_actions
+    </div>
+
+    <div class="grid stack">
 $activity
-$address
+      <details class="card capabilities">
+        <summary><span>Capabilities</span><span class="count">$capability_count</span></summary>
+        <div class="details-body">
+          <co-filter target="#capability-list" placeholder="Search capabilities"></co-filter>
+          <div class="capability-rows" id="capability-list">
+$body
+          </div>
+        </div>
+      </details>
+$diagnostics
+    </div>
   </main>
 </body>
 </html>
 
 <!--FRAGMENTS
-
-Everything below this marker is authoring scaffolding, not part of the page: the
-repeated pieces the body is built from. Python splits the file here, so none of
-this reaches an agent's dashboard.html.
-
-They live in this file rather than in Python or in files of their own — one file
-to keep in sync, and a browser never renders template content, so the page above
-still opens and previews as the thing it renders.
-
-Placeholders are $name-style (string.Template). Do not use $ for anything else.
-
+Everything below this marker is render scaffolding and never reaches the page.
+Placeholders use string.Template syntax; do not use dollar signs elsewhere.
 -->
 
-<template id="skill"><button class="skill" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
+<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
 
 <template id="list"><div class="rows">
 $rows
@@ -240,13 +243,29 @@ $rows
     </div>
   </details></template>
 
-<template id="empty"><section class="card empty">
-    <p>No skills yet. Add one to <code>.co/skills/</code> and it shows up here as a one-click action.</p>
+<template id="empty"><section class="empty">
+    <p>No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p>
+  </section></template>
+
+<template id="quick"><section class="card card-pad" aria-labelledby="quick-title">
+    <h2 class="section-title" id="quick-title">Quick actions</h2>
+    <div class="quick">
+$rows
+    </div>
   </section></template>
 
 <template id="activity"><section class="card sec">
-    <h2>$title</h2>
+    <h2 class="section-title">$title</h2>
 $rows
   </section></template>
 
 <template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>
+
+<template id="diagnostics"><details class="card diagnostics-card">
+    <summary><span>Diagnostics</span><span class="count">Host details</span></summary>
+    <dl class="diagnostics">
+$rows
+    </dl>
+  </details></template>
+
+<template id="diag"><div class="diag"><dt>$label</dt><dd class="$class">$value</dd></div></template>

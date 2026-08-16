@@ -197,10 +197,17 @@ from .constants import (
     VALID_MODES,
     VALID_PERMISSION_PROFILES,
 )
+from .policy import apply_auto_approve_policy
 
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[tool_approval])
-tool_approval = [load_config_permissions, poll_mode_changes, poll_interrupt, check_approval]
+tool_approval = [
+    load_config_permissions,
+    poll_mode_changes,
+    poll_interrupt,
+    apply_auto_approve_policy,
+    check_approval,
+]
 
 # Export mode functions for external use
 __all__ = [

@@ -23,6 +23,18 @@ def test_ci_audits_the_exact_dependency_lock():
     assert "--disable-pip --strict --progress-spinner off" in TESTS
 
 
+def test_every_pull_request_runs_the_test_workflow():
+    trigger = TESTS.split("on:", 1)[1].split("jobs:", 1)[0]
+    pull_request = trigger.split("pull_request:", 1)[1].split("workflow_call:", 1)[0]
+
+    assert "branches:" not in pull_request
+
+
+def test_pytest_jobs_install_the_declared_dev_extra():
+    assert TESTS.count('pip install -e ".[dev]"') == 2
+    assert "pip install pytest" not in TESTS
+
+
 def test_tag_and_emergency_manual_release_paths_exist():
     assert 'tags:\n      - "v*"' in RELEASE
     assert "workflow_dispatch:" in RELEASE
