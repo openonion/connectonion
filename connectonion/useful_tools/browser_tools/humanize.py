@@ -287,6 +287,14 @@ def _clipboard_get() -> str:
     return out.decode("utf-8", errors="replace").rstrip("\r\n")
 
 
+def _active_text_len(page) -> int:
+    """Return the current focused editor length for paste acceptance checks."""
+    return page.evaluate(
+        "() => { const e = document.activeElement;"
+        " return e ? ((e.value != null ? e.value : e.textContent) || '').length : 0; }"
+    )
+
+
 def _paste(page, text):
     """Put `text` on the OS clipboard and Ctrl/Cmd+V it into the focused field, then restore
     the user's clipboard. Returns True only if the field actually took the paste — some
