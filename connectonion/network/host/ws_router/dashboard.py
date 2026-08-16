@@ -13,12 +13,13 @@ changed since this connection last saw it.
 
 import asyncio
 import re
+from functools import lru_cache
 from html import escape
 from pathlib import Path
-from functools import lru_cache
 from string import Template
 
 from ....console import Console
+from ....project import project_root
 
 DASHBOARD_FILE = "dashboard.html"
 CO_DIR = ".co"
@@ -45,10 +46,6 @@ _project_dir = None
 # What to render when the agent has not written a Home page of its own. Set once
 # at host startup, for the same reason as _project_dir.
 _agent_metadata = None
-
-
-# The directory that owns `.co/`. See connectonion/project.py.
-from ....project import project_root
 
 
 def dashboard_path():
@@ -309,6 +306,39 @@ def _skill_sections(skills):
             ).strip())
 
 
+def _quick_actions(skills):
+    """Up to three real skills, prominent without inventing unsupported actions."""
+    if not skills:
+        return ""
+    _, fragments = _starter_templates()
+    rows = "\n".join("      " + _skill_row(skill) for skill in sorted(
+        skills, key=lambda item: item["name"]
+    )[:3])
+    return "    " + fragments["quick"].safe_substitute(rows=rows).strip()
+
+
+def _diagnostics(agent_metadata, skill_count):
+    """Operator facts kept behind one disclosure, escaped and copyable."""
+    _, fragments = _starter_templates()
+    facts = []
+    for label, value, class_name in (
+        ("Model", agent_metadata.get("model"), ""),
+        ("Trust", agent_metadata.get("trust"), ""),
+        ("Tools", len(agent_metadata.get("tools") or []), ""),
+        ("Skills", skill_count, ""),
+        ("Address", agent_metadata.get("address"), "addr"),
+    ):
+        if value in (None, "", 0):
+            continue
+        facts.append(fragments["diag"].safe_substitute(
+            label=escape(str(label)), value=escape(str(value)), **{"class": class_name}
+        ).strip())
+    if not facts:
+        return ""
+    rows = "\n".join("      " + item for item in facts)
+    return "    " + fragments["diagnostics"].safe_substitute(rows=rows).strip()
+
+
 def _subtitle(agent_metadata, skill_count):
     """Model, skills, tools — the three facts that say what this agent can do.
 
@@ -367,8 +397,15 @@ def render_starter(agent_metadata):
         initial=escape(name.strip()[:1] or "A"),
         tagline=_tagline(agent_metadata),
         subtitle=_subtitle(agent_metadata, len(skills)),
+        # Compatibility for operator starter overrides written before Control
+        # Center. The bundled template uses diagnostics; old templates may
+        # still contain $address.
         address=_address_line(agent_metadata),
         activity=_activity_sections(),
+        quick_actions=_quick_actions(skills),
+        capability_count=(f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
+                          if skills else "None published"),
+        diagnostics=_diagnostics(agent_metadata, len(skills)),
         body=_skill_sections(skills),
     )
 
@@ -481,7 +518,8 @@ def scheduled_entries():
     the scheduler cannot disagree about what an entry means.
     """
     try:
-        from ..schedule import load_entries, load_state, last_run, running_entries
+        from ..schedule import last_run, load_entries, load_state, running_entries
+
         _running = running_entries()
     except Exception:
         return [], []
