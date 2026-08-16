@@ -244,24 +244,32 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
     provider = "claude_code"
     display_name = "Claude Code"
 
+    def __init__(
+        self,
+        *,
+        permission_mode: PermissionMode | str = PermissionMode.MANUAL,
+        workspace: str | Path | None = None,
+        use_host_permissions: bool = False,
+    ) -> None:
+        self.use_host_permissions = use_host_permissions
+        super().__init__(permission_mode=permission_mode, workspace=workspace)
+
     def claude_code(
         self,
         prompt: str,
-        cwd: str = "",
+        cwd: str,
         session_id: str = "",
         model: str = "",
         timeout: int = 600,
         agent=None,
     ) -> str:
         """Run or resume Claude Code inside the configured workspace."""
+        provider_mode, effective_mode = self._policy(agent)
+        if provider_mode is None:
+            return _hosted_claude_refusal(session_id)
         working_directory, error = self._cwd(cwd)
         if error:
             return json.dumps({"provider": "claude_code", "session_id": session_id, "error": error})
-        provider_mode = {
-            PermissionMode.MANUAL: "manual",
-            PermissionMode.AUTO_APPROVE: "acceptEdits",
-            PermissionMode.FULL_ACCESS: "auto",
-        }[self.permission_mode]
         return self._invoke(
             agent,
             prompt,
@@ -275,7 +283,60 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
                 agent=agent,
                 workspace=self.workspace,
             ),
+            permission_mode=effective_mode,
         )
+
+    def _policy(self, agent) -> tuple[str | None, PermissionMode]:
+        if not self.use_host_permissions:
+            return {
+                PermissionMode.MANUAL: "manual",
+                PermissionMode.AUTO_APPROVE: "acceptEdits",
+                PermissionMode.FULL_ACCESS: "auto",
+            }[self.permission_mode], self.permission_mode
+
+        session = getattr(agent, "current_session", {}) or {}
+        requester = session.get("requester")
+        if requester and requester.get("level") != "admin":
+            return None, PermissionMode.MANUAL
+        try:
+            profile = legacy_permission_profile_id(
+                session.get("mode", READ_ONLY_PERMISSION_PROFILE)
+            )
+        except ValueError:
+            profile = READ_ONLY_PERMISSION_PROFILE
+        if (
+            profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE
+            and not has_valid_full_access_grant(session)
+        ):
+            profile = READ_ONLY_PERMISSION_PROFILE
+        return {
+            READ_ONLY_PERMISSION_PROFILE: ("manual", PermissionMode.MANUAL),
+            WORKSPACE_PERMISSION_PROFILE: (
+                "acceptEdits", PermissionMode.AUTO_APPROVE
+            ),
+            DANGER_FULL_ACCESS_PERMISSION_PROFILE: (
+                "auto", PermissionMode.FULL_ACCESS
+            ),
+        }[profile]
+
+
+def _hosted_claude_refusal(session_id: str) -> str:
+    return json.dumps(
+        {
+            "provider": "claude_code",
+            "session_id": session_id,
+            "resumed": bool(session_id),
+            "status": "error",
+            "result": "",
+            "error": (
+                "Claude Code delegation is available only to the operator "
+                "in a hosted session."
+            ),
+            "exit_code": -1,
+            "usage": {},
+            "total_cost_usd": None,
+        }
+    )
 
 
 def _parent_tool_call_id(agent) -> str | None:

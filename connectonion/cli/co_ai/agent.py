@@ -34,7 +34,7 @@ Debug:
 
 from pathlib import Path
 
-from connectonion import Agent, CodexPlugin, TodoList, bash
+from connectonion import Agent, ClaudeCodePlugin, CodexPlugin, TodoList, bash
 from connectonion.core.events import after_user_input
 from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
@@ -56,7 +56,6 @@ from .skills import skill
 from .tools import (
     FileTools,
     ask_user,
-    claude_code,
     kill_task,
     load_guide,
     run_background,
@@ -131,6 +130,10 @@ def create_agent(
         workspace=Path.cwd(),
         use_host_permissions=True,
     )
+    claude_plugin = ClaudeCodePlugin(
+        workspace=Path.cwd(),
+        use_host_permissions=True,
+    )
 
     tools = [
         file_tools,
@@ -141,12 +144,11 @@ def create_agent(
         *([run_background, task_output, kill_task] if background_tools else []),
         load_guide,
         ask_user,
-        claude_code,
     ]
 
     base_prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
-        tools=[*tools, codex_plugin.codex],
+        tools=[*tools, codex_plugin.codex, claude_plugin.claude_code],
         role=role,
     )
 
@@ -162,6 +164,7 @@ def create_agent(
     # back into an image the model and the user can actually see.
     plugins = [
         codex_plugin,
+        claude_plugin,
         native_coding_agent_routing,
         skills_plugin,
         subagents,
