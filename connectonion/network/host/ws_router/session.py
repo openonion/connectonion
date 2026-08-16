@@ -23,6 +23,26 @@ from .ping import ping_loop
 console = Console()
 
 
+async def _send_provider_interrupt_ack(
+    send_msg,
+    *,
+    request_id: str,
+    invocation_id: str | None,
+    accepted: bool,
+    reason: str | None = None,
+):
+    """Reply to one modern scoped Stop without exposing provider internals."""
+    frame = {
+        "type": "PROVIDER_INTERRUPT_ACK",
+        "requestId": request_id,
+        "invocationId": invocation_id,
+        "accepted": accepted,
+    }
+    if reason:
+        frame["reason"] = reason
+    await send_msg(frame)
+
+
 async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown"):
     """Run one client session from connect to disconnect.
 
@@ -234,6 +254,24 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
 
             elif msg_type == "PROVIDER_INTERRUPT":
                 invocation_id = data.get("invocationId")
+                request_id = data.get("requestId")
+                # Older browser clients used the unacknowledged frame. Keep
+                # their existing behavior during a rolling upgrade, but require
+                # a bounded correlation id before claiming an acknowledgement.
+                legacy_request = request_id is None
+                if not legacy_request and (
+                    not isinstance(request_id, str)
+                    or not request_id
+                    or len(request_id) > 128
+                ):
+                    await _send_provider_interrupt_ack(
+                        send_msg,
+                        request_id="",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason="invalid_request",
+                    )
+                    continue
                 sid = conn.get("session_id")
                 registered = registry.get(sid) if sid else None
                 if (
@@ -245,16 +283,42 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     or registered.status != "running"
                     or registered.io is not active_io
                 ):
-                    await send_msg({
-                        "type": "ERROR",
-                        "message": "provider stop requires the exact active provider run",
-                    })
+                    if legacy_request:
+                        await send_msg({
+                            "type": "ERROR",
+                            "message": "provider stop requires the exact active provider run",
+                        })
+                    else:
+                        await _send_provider_interrupt_ack(
+                            send_msg,
+                            request_id=request_id,
+                            invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                            accepted=False,
+                            reason="not_active",
+                        )
                     continue
-                # The agent-side lease accepts only an invocation it currently
-                # owns. The browser supplies a correlation id, never authority.
-                active_io.send_to_agent({
-                    "type": "PROVIDER_INTERRUPT", "invocationId": invocation_id,
-                })
+                request_provider_interrupt = getattr(
+                    active_io, "request_provider_interrupt", None,
+                )
+                accepted = bool(
+                    request_provider_interrupt(invocation_id)
+                    if callable(request_provider_interrupt)
+                    else False
+                )
+                if legacy_request:
+                    if not accepted:
+                        await send_msg({
+                            "type": "ERROR",
+                            "message": "provider stop requires the exact active provider run",
+                        })
+                    continue
+                await _send_provider_interrupt_ack(
+                    send_msg,
+                    request_id=request_id,
+                    invocation_id=invocation_id,
+                    accepted=accepted,
+                    reason=None if accepted else "not_active",
+                )
 
             elif msg_type == "APPROVAL_RESPONSE" and active_io:
                 resolver = getattr(active_io, "resolve_legacy_permission", None)

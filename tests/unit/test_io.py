@@ -126,6 +126,24 @@ class TestWebSocketIO:
             {"type": "PROVIDER_INTERRUPT", "invocationId": "codex:other"},
         ]
 
+    def test_provider_stop_is_accepted_only_while_that_invocation_is_live(self):
+        io = WebSocketIO()
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "codex:current",
+            "status": "running",
+        })
+
+        assert io.request_provider_interrupt("codex:current") is True
+        assert io.take_provider_interrupt("codex:current") is True
+
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "codex:current",
+            "status": "cancelled",
+        })
+        assert io.request_provider_interrupt("codex:current") is False
+
     def test_receive_blocks_until_data(self):
         """receive() blocks until data is available."""
         io = WebSocketIO()

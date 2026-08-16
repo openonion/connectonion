@@ -56,6 +56,28 @@ A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not
 normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
 See [Trust Gate](#trust-gate-onboarding).
 
+### Scoped native-provider stop
+
+`PROVIDER_INTERRUPT` stops one live Codex or Claude Code invocation without
+cancelling its enclosing agent turn. Current clients include a bounded
+`requestId`; the Host replies exactly once with:
+
+```json
+{
+  "type": "PROVIDER_INTERRUPT_ACK",
+  "requestId": "…",
+  "invocationId": "codex:…",
+  "accepted": true
+}
+```
+
+`accepted: true` means the Host owns and forwarded the exact live invocation;
+it is not the terminal outcome. The matching `provider_invocation` event with
+`status: "cancelled"` remains authoritative. A stale or invalid target returns
+`accepted: false` with the stable reason `not_active` or `invalid_request`, so
+the client can restore a retry action. Legacy requests without `requestId`
+retain the older no-ack behaviour during the rolling compatibility window.
+
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                    WebSocket Lifecycle                          │

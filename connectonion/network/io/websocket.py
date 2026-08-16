@@ -34,6 +34,12 @@ class WebSocketIO(IO):
         # ── Agent messages (agent→client) ──
         self._msgs_from_agent: list[Dict[str, Any]] = []
         self._agent_condition = threading.Condition()
+        # Provider invocation IDs are public correlation values, not authority.
+        # The Host still owns the live lease, but it can reject a stale Stop
+        # immediately instead of leaving the browser with a permanently pending
+        # local button state.
+        self._live_provider_invocations: set[str] = set()
+        self._provider_condition = threading.Condition()
         self._finished = False
         self._cursor = 0
 
@@ -79,9 +85,23 @@ class WebSocketIO(IO):
                 message['id'] = str(uuid.uuid4())
             if 'ts' not in message:
                 message['ts'] = time.time()
+            self._track_provider_invocation(message)
             with self._agent_condition:
                 self._msgs_from_agent.append(message)
                 self._agent_condition.notify_all()
+
+    def _track_provider_invocation(self, message: Dict[str, Any]) -> None:
+        """Keep the transport-side index aligned with typed provider lifecycle frames."""
+        if message.get("type") != "provider_invocation":
+            return
+        invocation_id = message.get("invocationId")
+        if not isinstance(invocation_id, str) or not invocation_id:
+            return
+        with self._provider_condition:
+            if message.get("status") in {"completed", "failed", "cancelled"}:
+                self._live_provider_invocations.discard(invocation_id)
+            else:
+                self._live_provider_invocations.add(invocation_id)
 
     def receive(self) -> Dict[str, Any]:
         """Block until client message arrives."""
@@ -152,6 +172,16 @@ class WebSocketIO(IO):
                     return True
             return False
 
+    def request_provider_interrupt(self, invocation_id: str) -> bool:
+        """Accept a Stop only for a provider run the current Host IO still owns."""
+        if not isinstance(invocation_id, str) or not invocation_id:
+            return False
+        with self._provider_condition:
+            if invocation_id not in self._live_provider_invocations:
+                return False
+        self.send_to_agent({"type": "PROVIDER_INTERRUPT", "invocationId": invocation_id})
+        return True
+
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
         with self._client_condition:
@@ -171,6 +201,8 @@ class WebSocketIO(IO):
 
     def mark_agent_done(self):
         """Signal that agent is done producing messages."""
+        with self._provider_condition:
+            self._live_provider_invocations.clear()
         with self._agent_condition:
             self._finished = True
             self._agent_condition.notify_all()
@@ -178,6 +210,8 @@ class WebSocketIO(IO):
     def close(self):
         """Mark IO as closed (prevents further sends)."""
         self._closed = True
+        with self._provider_condition:
+            self._live_provider_invocations.clear()
 
     # ═══════════════════════════════════════════════════════
     # Transport side (async)
