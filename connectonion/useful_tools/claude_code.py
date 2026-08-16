@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
 
+from ..core.provider_events import provider_activity_event, remember_provider_activity
+
 PERMISSION_MODES = (
     "default",
     "manual",
@@ -172,7 +174,7 @@ def _run_claude_code(
 
     argv = _stream_command(command, prompt, session_id, permission_mode, model)
     forwarder = _ClaudeStreamForwarder(agent)
-    cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
+    cancelled = _provider_cancellation_check(agent)
     try:
         completed = _run_process(
             argv,
@@ -349,6 +351,23 @@ def _completed_envelope(completed, requested_session: str) -> str:
     )
 
 
+def _provider_cancellation_check(agent):
+    """Scope a Work Room Stop to this Claude Code invocation when available."""
+    io = getattr(agent, "io", None)
+    session = getattr(agent, "current_session", None)
+    parent_id = session.get("_active_tool_call_id") if isinstance(session, dict) else None
+    invocation_id = f"claude_code:{parent_id}" if isinstance(parent_id, str) and parent_id else ""
+    targeted = getattr(io, "is_provider_cancelled", None)
+    global_cancelled = getattr(io, "is_cancelled", None)
+
+    def cancelled():
+        if callable(global_cancelled) and global_cancelled():
+            return True
+        return bool(invocation_id and callable(targeted) and targeted(invocation_id))
+
+    return cancelled
+
+
 class _ClaudeStreamForwarder:
     """Translate Claude stream-json messages into native live tool events."""
 
@@ -365,6 +384,7 @@ class _ClaudeStreamForwarder:
             if self._parent_tool_call_id else {}
         )
         self._tools: dict[str, dict[str, Any]] = {}
+        self._activity_sequences: dict[str, int] = {}
         self._event_count = 0
 
     def handle(self, event: dict[str, Any]) -> None:
@@ -394,17 +414,7 @@ class _ClaudeStreamForwarder:
                 continue
             metadata = _event_metadata(event)
             metadata["name"] = _bounded_text(block.get("name") or "Tool")
-            self._emit(
-                "tool_call",
-                tool_id=_wire_tool_id(provider_id),
-                name=f"Claude Code › {metadata['name']}",
-                args=_bounded_args(block.get("input")),
-                status="in_progress",
-                provider="claude_code",
-                child_session_id=metadata["session_id"],
-                parent_tool_id=metadata["parent_tool_id"],
-                **self._correlation,
-            )
+            self._emit_tool_start(provider_id, metadata, _bounded_args(block.get("input")))
             self._tools[tool_id] = metadata
 
     def _user(self, event: dict[str, Any]) -> None:
@@ -420,24 +430,27 @@ class _ClaudeStreamForwarder:
                 if self._event_count + len(self._tools) + 2 > _MAX_LIVE_EVENTS:
                     continue
                 self._emit_unknown_start(provider_id, metadata)
-            self._emit(
-                "tool_result",
-                tool_id=_wire_tool_id(provider_id),
-                status="failed" if block.get("is_error") else "completed",
-                result=_bounded_result(block.get("content")),
-                provider="claude_code",
-                child_session_id=metadata["session_id"],
-                parent_tool_id=metadata["parent_tool_id"],
-                **self._correlation,
+            self._emit_tool_result(
+                provider_id,
+                metadata,
+                "failed" if block.get("is_error") else "completed",
+                _bounded_result(block.get("content")),
             )
             self._tools.pop(tool_id, None)
 
     def _emit_unknown_start(self, provider_id: str, metadata: dict[str, Any]) -> None:
-        self._emit(
+        metadata["name"] = "Tool"
+        self._emit_tool_start(provider_id, metadata, {})
+
+    def _emit_tool_start(self, provider_id: str, metadata: dict[str, Any], args: dict[str, Any]) -> None:
+        if not self._reserve_event():
+            return
+        self._emit_safe_activity(provider_id, metadata, args, "running")
+        self._send(
             "tool_call",
             tool_id=_wire_tool_id(provider_id),
-            name="Claude Code › Tool",
-            args={},
+            name=f"Claude Code › {metadata['name']}",
+            args=args,
             status="in_progress",
             provider="claude_code",
             child_session_id=metadata["session_id"],
@@ -445,10 +458,71 @@ class _ClaudeStreamForwarder:
             **self._correlation,
         )
 
-    def _emit(self, event_type: str, **fields: Any) -> None:
-        if self._event_count >= _MAX_LIVE_EVENTS:
+    def _emit_tool_result(
+        self,
+        provider_id: str,
+        metadata: dict[str, Any],
+        status: str,
+        result: str,
+    ) -> None:
+        if not self._reserve_event():
             return
+        self._emit_safe_activity(provider_id, metadata, {}, status)
+        self._send(
+            "tool_result",
+            tool_id=_wire_tool_id(provider_id),
+            status=status,
+            result=result,
+            provider="claude_code",
+            child_session_id=metadata["session_id"],
+            parent_tool_id=metadata["parent_tool_id"],
+            **self._correlation,
+        )
+
+    def _emit_safe_activity(
+        self,
+        provider_id: str,
+        metadata: dict[str, Any],
+        details: dict[str, Any],
+        status: str,
+    ) -> None:
+        if not self._correlation:
+            return
+        activity_id = _wire_tool_id(provider_id)
+        fields = provider_activity_event(
+            provider="claude_code",
+            activity_id=activity_id,
+            sequence=self._activity_sequence(activity_id),
+            native_kind="tool",
+            status=status,
+            name=metadata["name"],
+            details=details,
+        )
+        fields.pop("type")
+        remember_provider_activity(
+            self._agent,
+            self._correlation["invocationId"],
+            fields,
+        )
+        self._send("provider_activity", **fields, **self._correlation)
+
+    def _activity_sequence(self, activity_id: str) -> int:
+        if activity_id not in self._activity_sequences:
+            self._activity_sequences[activity_id] = len(self._activity_sequences) + 1
+        return self._activity_sequences[activity_id]
+
+    def _emit(self, event_type: str, **fields: Any) -> None:
+        if not self._reserve_event():
+            return
+        self._send(event_type, **fields)
+
+    def _reserve_event(self) -> bool:
+        if self._event_count >= _MAX_LIVE_EVENTS:
+            return False
         self._event_count += 1
+        return True
+
+    def _send(self, event_type: str, **fields: Any) -> None:
         entry = {"type": event_type, **fields}
         record = getattr(self._agent, "_record_trace", None)
         if callable(record) and isinstance(getattr(self._agent, "current_session", None), dict):

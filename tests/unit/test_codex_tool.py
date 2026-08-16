@@ -84,7 +84,7 @@ class FakeServer:
         self.on_event({"kind": "tool_start", "id": "c1", "name": "pytest"})
         self.approval_decision = self.on_approval(
             "item/commandExecution/requestApproval",
-            {"command": "pytest -q", "cwd": "/repo"},
+            {"command": "pytest -q", "cwd": self.cwd},
         )
         self.on_event({"kind": "tool_end", "id": "c1", "name": "pytest", "failed": False})
         self.on_event({"kind": "agent_message", "text": "world"})
@@ -356,8 +356,150 @@ class TestFrontendEventVocabulary:
         _run(prompt="fix", approval="auto", agent=agent)
         assert all(et != "codex_event" for et, _ in agent.io.events)
 
+    def test_safe_provider_activity_precedes_the_legacy_tool_compatibility_event(self):
+        agent = _Agent(_IO(), {"_active_tool_call_id": "parent-1"})
+        start = {
+            "kind": "tool_start",
+            "id": "compile-1",
+            "name": "cc -std=c11 -Wall -Werror sort.c -o sort",
+            "native_kind": "commandExecution",
+            "args": {
+                "command": "cc -std=c11 -Wall -Werror sort.c -o sort --token private-value",
+                "cwd": "/private/tmp/operator/private-workroom",
+            },
+        }
+        end = {**start, "kind": "tool_end", "failed": False, "result": "private output"}
+
+        codex_module._forward_ui(agent, start)
+        codex_module._forward_ui(agent, end)
+
+        typed = [data for event_type, data in agent.io.events if event_type == "provider_activity"]
+        assert typed == [
+            {
+                "provider": "codex",
+                "activityId": "compile-1",
+                "sequence": 1,
+                "kind": "command",
+                "status": "running",
+                "title": "Compile the requested C11 program",
+                "summary": "Compiling the requested C11 program",
+                "invocationId": "codex:parent-1",
+                "parentToolCallId": "parent-1",
+            },
+            {
+                "provider": "codex",
+                "activityId": "compile-1",
+                "sequence": 1,
+                "kind": "command",
+                "status": "completed",
+                "title": "Compile the requested C11 program",
+                "summary": "Compiled the requested C11 program",
+                "invocationId": "codex:parent-1",
+                "parentToolCallId": "parent-1",
+            },
+        ]
+        assert "private" not in json.dumps(typed)
+        assert [event_type for event_type, _ in agent.io.events] == [
+            "provider_activity", "tool_call", "provider_activity", "tool_result",
+        ]
+
 
 class TestApproval:
+    def test_native_approval_has_a_safe_verified_workroom_presentation(self):
+        agent = _Agent(
+            _IO(approve=True),
+            {"_active_tool_call_id": "parent-codex-call"},
+        )
+
+        allowed = codex_module._approval_allowed(
+            "item/commandExecution/requestApproval",
+            {
+                "command": "cc -std=c11 sort.c --token private-value",
+                "cwd": "/private/tmp/workroom",
+                "reason": "compile private-value",
+            },
+            "manual",
+            agent,
+            fallback_cwd="/private/tmp/workroom",
+        )
+
+        assert allowed is True
+        _, arguments, context = agent.io.asked[0]
+        assert arguments == {
+            "action": "Compile the requested C11 program",
+            "scope": "This Work Room only",
+            "reason": "Compile the requested workspace files before continuing",
+        }
+        assert context["providerApproval"] == {
+            "action": "Compile the requested C11 program",
+            "scope": "This Work Room only",
+            "reason": "Compile the requested workspace files before continuing",
+            "scopeClassification": "workroom",
+            "allowOnce": True,
+            "allowSession": False,
+            "files": ["sort.c"],
+        }
+        assert "private" not in json.dumps({"arguments": arguments, "context": context})
+        provider_events = [
+            data for event_type, data in agent.io.events
+            if event_type == "provider_invocation"
+        ]
+        assert provider_events == [
+            {
+                "invocationId": "codex:parent-codex-call",
+                "parentToolCallId": "parent-codex-call",
+                "provider": "codex",
+                "providerDisplayName": "Codex",
+                "status": "awaiting_approval",
+                "currentSummary": "Waiting for your decision",
+            },
+            {
+                "invocationId": "codex:parent-codex-call",
+                "parentToolCallId": "parent-codex-call",
+                "provider": "codex",
+                "providerDisplayName": "Codex",
+                "status": "running",
+                "currentSummary": "Working in the selected workspace",
+            },
+        ]
+
+    def test_native_approval_outside_the_workroom_fails_closed_after_review(self):
+        agent = _Agent(_IO(approve=True), {"_active_tool_call_id": "parent-codex-call"})
+
+        allowed = codex_module._approval_allowed(
+            "item/fileChange/requestApproval",
+            {
+                "grantRoot": "/private/tmp/outside-workroom",
+                "fileChanges": {"/private/tmp/outside-workroom/private.py": {}},
+            },
+            "manual",
+            agent,
+            fallback_cwd="/private/tmp/workroom",
+        )
+
+        assert allowed is False
+        _, arguments, context = agent.io.asked[0]
+        assert arguments["scope"] == "Outside this Work Room"
+        assert context["providerApproval"]["scopeClassification"] == "elevated"
+        assert context["providerApproval"]["allowOnce"] is False
+
+    def test_native_approval_with_an_unknown_boundary_fails_closed_after_review(self):
+        agent = _Agent(_IO(approve=True), {"_active_tool_call_id": "parent-codex-call"})
+
+        allowed = codex_module._approval_allowed(
+            "item/commandExecution/requestApproval",
+            {"command": "pytest -q"},
+            "manual",
+            agent,
+            fallback_cwd="",
+        )
+
+        assert allowed is False
+        _, arguments, context = agent.io.asked[0]
+        assert arguments["scope"] == "Boundary could not be verified"
+        assert context["providerApproval"]["scopeClassification"] == "unknown"
+        assert context["providerApproval"]["allowOnce"] is False
+
     def test_auto_denies_unexpected_callback_without_asking(self):
         agent = _Agent(_IO(approve=True))
         _run(prompt="fix", approval="auto", agent=agent)
@@ -369,9 +511,12 @@ class TestApproval:
         _run(prompt="fix", approval="manual", agent=agent)
         assert FakeServer.last.approval_decision is True
         assert agent.io.asked and agent.io.asked[0][0] == "codex"
-        # the approval summary shows the actual command
-        assert agent.io.asked[0][1]["command"] == "pytest -q"
-        assert agent.io.asked[0][1]["cwd"] == "/repo"
+        # The approval summary is safe presentation, not raw provider transport.
+        assert agent.io.asked[0][1] == {
+            "action": "Run the requested tests",
+            "scope": "This Work Room only",
+            "reason": "Verify the requested workspace changes before continuing",
+        }
 
     def test_manual_rejected_denies(self):
         agent = _Agent(_IO(approve=False))
@@ -392,16 +537,30 @@ class TestApproval:
         )
 
         _, details, context = agent.io.asked[0]
-        assert details["cwd"] == "/repo"
+        assert details == {
+            "action": "Run the requested tests",
+            "scope": "This Work Room only",
+            "reason": "Verify the requested workspace changes before continuing",
+        }
         assert context == {
             "provider": "codex",
             "invocationId": "codex:parent-codex-call",
             "parentToolCallId": "parent-codex-call",
+            "providerApproval": {
+                "action": "Run the requested tests",
+                "scope": "This Work Room only",
+                "reason": "Verify the requested workspace changes before continuing",
+                "scopeClassification": "workroom",
+                "allowOnce": True,
+                "allowSession": False,
+            },
         }
         assert [event[0] for event in agent.io.events] == [
+            "provider_activity",
             "tool_call",
             "provider_invocation",
             "provider_invocation",
+            "provider_activity",
             "tool_result",
         ]
 
@@ -477,15 +636,33 @@ class TestApprovalDetails:
         details = codex_module._approval_details(
             "execCommandApproval", {"command": ["git", "push"], "cwd": "/repo"}
         )
-        assert details["command"] == "git push"
+        assert details == {
+            "action": "Run a workspace command",
+            "scope": "Outside this Work Room",
+            "reason": "Codex requested approval to continue",
+        }
+
+    def test_outbound_command_never_inherits_a_workroom_allowance(self):
+        presentation = codex_module._provider_approval_presentation(
+            "item/commandExecution/requestApproval",
+            {"command": "git push origin main", "cwd": "/private/tmp/workroom"},
+            fallback_cwd="/private/tmp/workroom",
+        )
+
+        assert presentation["action"] == "Run a workspace command"
+        assert presentation["scopeClassification"] == "elevated"
+        assert presentation["allowOnce"] is False
 
     def test_v2_file_change_shows_the_grant_root(self):
         details = codex_module._approval_details(
             "item/fileChange/requestApproval",
             {"grantRoot": "/repo/src", "reason": "write parser"},
         )
-        assert details["grant_root"] == "/repo/src"
-        assert "/repo/src" in details["action"]
+        assert details == {
+            "action": "Make workspace file changes",
+            "scope": "Boundary could not be verified",
+            "reason": "Apply the requested workspace file changes",
+        }
 
     def test_legacy_patch_shows_the_grant_root_and_changed_files(self):
         details = codex_module._approval_details(
@@ -499,10 +676,11 @@ class TestApprovalDetails:
                 "reason": "implement parser",
             },
         )
-        assert details["grant_root"] == "/repo/src"
-        assert details["files"] == ["parser.py", "test_parser.py"]
-        assert "parser.py" in details["action"]
-        assert "test_parser.py" in details["action"]
+        assert details == {
+            "action": "Make workspace file changes",
+            "scope": "Boundary could not be verified",
+            "reason": "Apply the requested workspace file changes",
+        }
 
     def test_missing_provider_cwd_uses_a_safe_workroom_label(self):
         details = codex_module._approval_details(
@@ -511,8 +689,11 @@ class TestApprovalDetails:
             fallback_cwd="/private/tmp/operator-project/.workroom-e2e-20260816",
         )
 
-        assert details["grant_root"] == ".workroom-e2e-20260816"
-        assert details["files"] == ["dijkstra.py"]
+        assert details == {
+            "action": "Make workspace file changes",
+            "scope": "This Work Room only",
+            "reason": "Apply the requested workspace file changes",
+        }
 
     def test_v2_permissions_show_the_exact_requested_profile(self):
         permissions = {"network": {"enabled": True}}
@@ -520,8 +701,11 @@ class TestApprovalDetails:
             "item/permissions/requestApproval",
             {"permissions": permissions, "cwd": "/repo"},
         )
-        assert details["permissions"] == permissions
-        assert '"network"' in details["action"]
+        assert details == {
+            "action": "Expand provider permissions",
+            "scope": "Boundary could not be verified",
+            "reason": "Review the requested permission expansion",
+        }
 
 
 class TestResumeProtocol:

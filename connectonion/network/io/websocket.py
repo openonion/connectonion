@@ -137,6 +137,21 @@ class WebSocketIO(IO):
                     return True
             return False
 
+    def take_provider_interrupt(self, invocation_id: str) -> bool:
+        """Consume one Stop addressed to the exact live provider invocation."""
+        if not isinstance(invocation_id, str) or not invocation_id:
+            return False
+        with self._client_condition:
+            for index, message in enumerate(self._msgs_from_client):
+                if (
+                    message.get("type") == "PROVIDER_INTERRUPT"
+                    and message.get("invocationId") == invocation_id
+                ):
+                    self._msgs_from_client.pop(index)
+                    self._client_condition.notify_all()
+                    return True
+            return False
+
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
         with self._client_condition:

@@ -116,6 +116,16 @@ class TestWebSocketIO:
 
         assert result == {"approved": True}
 
+    def test_targeted_provider_interrupt_consumes_only_its_exact_invocation(self):
+        io = WebSocketIO()
+        io.send_to_agent({"type": "PROVIDER_INTERRUPT", "invocationId": "codex:other"})
+        io.send_to_agent({"type": "PROVIDER_INTERRUPT", "invocationId": "codex:current"})
+
+        assert io.take_provider_interrupt("codex:current") is True
+        assert io.receive_all() == [
+            {"type": "PROVIDER_INTERRUPT", "invocationId": "codex:other"},
+        ]
+
     def test_receive_blocks_until_data(self):
         """receive() blocks until data is available."""
         io = WebSocketIO()
@@ -287,6 +297,43 @@ class TestHighLevelAPI:
 
         thread.join(timeout=1)
         assert result is True
+
+    def test_request_approval_forwards_safe_provider_presentation_separately(self):
+        io = WebSocketIO()
+
+        def respond():
+            with io._agent_condition:
+                while not io._msgs_from_agent:
+                    io._agent_condition.wait(timeout=1)
+            io.send_to_agent({"approved": True})
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        presentation = {
+            "action": "Run a workspace command",
+            "scope": "This Work Room only",
+            "reason": "Codex requested approval to continue",
+            "scopeClassification": "workroom",
+            "allowOnce": True,
+            "allowSession": False,
+        }
+        result = io.request_approval(
+            "codex",
+            {"action": presentation["action"]},
+            context={
+                "provider": "codex",
+                "invocationId": "codex:parent",
+                "parentToolCallId": "parent",
+                "providerApproval": presentation,
+                "ignoredSecret": "private-value",
+            },
+        )
+
+        thread.join(timeout=1)
+        event = io._msgs_from_agent[0]
+        assert result is True
+        assert event["providerApproval"] == presentation
+        assert "ignoredSecret" not in event
 
     def test_request_approval_rejected(self):
         """request_approval() returns False when client rejects."""

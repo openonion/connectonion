@@ -73,6 +73,55 @@ def test_a_sealed_turn_does_not_send_a_false_ack():
     }]
 
 
+def test_targeted_provider_stop_reaches_only_the_current_active_io():
+    from connectonion.network.host.ws_router import session as ws_session
+
+    sent = []
+    frames = [
+        {'type': 'CONNECT'},
+        {'type': 'PROVIDER_INTERRUPT', 'invocationId': 'codex:outer'},
+    ]
+    io = Mock()
+    active = SimpleNamespace(status='running', io=io)
+    registry = Mock()
+    registry.get.return_value = active
+
+    async def send_msg(data):
+        sent.append(data)
+
+    async def recv_msg():
+        return frames.pop(0) if frames else None
+
+    async def connect(data, send_msg, conn, *args, **kwargs):
+        conn.update({
+            'authenticated': True,
+            'agent_address': '0xclient',
+            'session_id': 'session-1',
+            'session': {},
+        })
+        return io, None
+
+    original = ws_session.handle_connect
+    ws_session.handle_connect = connect
+    try:
+        asyncio.run(ws_session.run_ws_session(
+            send_msg,
+            recv_msg,
+            route_handlers={},
+            storage=None,
+            registry=registry,
+            trust=None,
+            enable_ping=False,
+        ))
+    finally:
+        ws_session.handle_connect = original
+
+    io.send_to_agent.assert_called_once_with({
+        'type': 'PROVIDER_INTERRUPT', 'invocationId': 'codex:outer',
+    })
+    assert sent == []
+
+
 def test_a_failed_agent_turn_is_not_left_running():
     from connectonion.network.host.ws_router.agent_io import _agent_thread_body
 

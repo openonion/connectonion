@@ -136,6 +136,9 @@ class IO(ABC):
                 value = context.get(key)
                 if isinstance(value, str) and value:
                     event[key] = value
+            presentation = context.get("providerApproval")
+            if isinstance(presentation, dict):
+                event["providerApproval"] = presentation
         self.send(event)
         response = self.receive()
         return response.get("approved", False)

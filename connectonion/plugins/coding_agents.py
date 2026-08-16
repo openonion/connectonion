@@ -16,6 +16,13 @@ from ..core.approval_modes import (
     legacy_permission_profile_id,
 )
 from ..core.events import on_agent_ready
+from ..core.provider_events import (
+    clear_provider_activity_history,
+    provider_status_summary,
+    provider_task_title,
+    provider_terminal_summary,
+    take_provider_activity_history,
+)
 from ..useful_tools.claude_code import _run_claude_code
 from ..useful_tools.codex import codex as _run_codex
 
@@ -104,6 +111,8 @@ class _CodingAgentPlugin(list):
         effective_mode = permission_mode or self.permission_mode
         parent_id = _parent_tool_call_id(agent)
         invocation_id = f"{self.provider}:{parent_id}" if parent_id else f"{self.provider}:untracked"
+        task_title = provider_task_title(prompt)
+        clear_provider_activity_history(agent, invocation_id)
         _emit(
             agent,
             "provider_invocation",
@@ -111,13 +120,18 @@ class _CodingAgentPlugin(list):
             parentToolCallId=parent_id,
             provider=self.provider,
             providerDisplayName=self.display_name,
-            taskSummary=_bounded(prompt, 500),
+            # Legacy readers use taskSummary, so make that compatibility field
+            # safe too. Raw provider instructions never belong in a Work Room.
+            taskTitle=task_title,
+            taskSummary=task_title,
+            currentSummary=provider_status_summary("running"),
             permissionMode=effective_mode.value,
             status="running",
         )
         try:
             result = run()
         except BaseException as exc:
+            take_provider_activity_history(agent, invocation_id)
             _emit(
                 agent,
                 "provider_invocation",
@@ -127,7 +141,12 @@ class _CodingAgentPlugin(list):
                 providerDisplayName=self.display_name,
                 status="cancelled" if exc.__class__.__name__ == "UserInterrupt" else "failed",
                 elapsedMs=round((time.monotonic() - started) * 1000),
-                error=_bounded(exc, 1000),
+                currentSummary=provider_status_summary(
+                    "cancelled" if exc.__class__.__name__ == "UserInterrupt" else "failed"
+                ),
+                errorSummary=provider_terminal_summary(
+                    "cancelled" if exc.__class__.__name__ == "UserInterrupt" else "failed"
+                ),
             )
             raise
         envelope = _envelope(result)
@@ -139,6 +158,10 @@ class _CodingAgentPlugin(list):
             terminal = "failed"
         else:
             terminal = "completed"
+        terminal_summary = provider_terminal_summary(
+            terminal,
+            take_provider_activity_history(agent, invocation_id),
+        )
         _emit(
             agent,
             "provider_invocation",
@@ -149,8 +172,13 @@ class _CodingAgentPlugin(list):
             status=terminal,
             sessionId=_bounded(envelope.get("session_id", ""), 512),
             elapsedMs=round((time.monotonic() - started) * 1000),
-            result=_bounded(envelope.get("result", envelope.get("last_message", "")), 4000),
-            error=_bounded(error or "", 1000),
+            currentSummary=terminal_summary,
+            resultSummary=terminal_summary,
+            **(
+                {"errorSummary": terminal_summary}
+                if terminal == "failed"
+                else {}
+            ),
         )
         return result
 

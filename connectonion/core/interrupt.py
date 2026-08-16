@@ -4,6 +4,8 @@ import copy
 import threading
 from typing import Any, Callable, Optional, Tuple
 
+from .provider_events import provider_status_summary, provider_terminal_summary
+
 
 class UserInterrupt(Exception):
     """Internal control flow for an interrupt consumed by a blocking gate."""
@@ -23,6 +25,7 @@ class InterruptibleIO:
         # currently visible provider invocations so cancellation can close their
         # presentation without publishing any uncommitted session state.
         self._live_provider_invocations: dict[str, dict[str, Any]] = {}
+        self._cancelled_provider_invocations: set[str] = set()
 
     def cancel(self) -> None:
         with self._gate:
@@ -54,6 +57,37 @@ class InterruptibleIO:
     def is_cancelled(self) -> bool:
         """Let cooperative blocking tools stop their own external work."""
         return self._cancelled.is_set()
+
+    def is_provider_cancelled(self, invocation_id: str) -> bool:
+        """Consume a scoped provider stop without revoking the enclosing turn."""
+        if self._cancelled.is_set() or not isinstance(invocation_id, str) or not invocation_id:
+            return self._cancelled.is_set()
+        with self._gate:
+            if invocation_id in self._cancelled_provider_invocations:
+                return True
+        take_provider_interrupt = getattr(type(self.__io), "take_provider_interrupt", None)
+        if take_provider_interrupt and take_provider_interrupt(self.__io, invocation_id):
+            return self.cancel_provider(invocation_id)
+        return False
+
+    def cancel_provider(self, invocation_id: str) -> bool:
+        """Publish one honest target terminal state and revoke that provider only."""
+        with self._gate:
+            invocation = self._live_provider_invocations.pop(invocation_id, None)
+            if invocation is None or self._cancelled.is_set():
+                return False
+            self._cancelled_provider_invocations.add(invocation_id)
+            self.__io.send({
+                **invocation,
+                "status": "cancelled",
+                # Use the same finite Work Room vocabulary as the provider
+                # adapter. A targeted stop must not introduce a one-off raw
+                # presentation string that an independently deployed React
+                # client cannot safely recognize.
+                "currentSummary": provider_status_summary("cancelled"),
+                "resultSummary": provider_terminal_summary("cancelled"),
+            })
+            return True
 
     def send(self, event) -> None:
         with self._gate:
@@ -122,6 +156,16 @@ class InterruptibleIO:
                 value = context.get(key)
                 if isinstance(value, str) and value:
                     event[key] = value
+            # Native providers construct this small, verified presentation
+            # envelope before entering the revocable tool lease.  Preserve it
+            # exactly here: without it hosted Work Rooms fail closed as an
+            # unknown boundary even when Core has verified the request is
+            # confined to the selected workspace.  Never copy arbitrary
+            # callback fields; only the dedicated presentation object crosses
+            # this boundary.
+            presentation = context.get("providerApproval")
+            if isinstance(presentation, dict):
+                event["providerApproval"] = copy.deepcopy(presentation)
         self.send(event)
         return self.receive().get("approved", False)
 

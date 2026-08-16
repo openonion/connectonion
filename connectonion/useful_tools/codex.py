@@ -36,11 +36,19 @@ $CODEX_CMD to override the binary path/command.
 import atexit
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
 import threading
 import time
+
+from ..core.provider_events import (
+    command_phase,
+    provider_activity_event,
+    provider_status_summary,
+    remember_provider_activity,
+)
 
 SANDBOX_LEVELS = ("read-only", "workspace-write", "danger-full-access")
 APPROVAL_MODES = ("manual", "auto", "deny")
@@ -123,7 +131,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
             fallback_cwd=working_directory,
         )
 
-    cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
+    cancelled = _provider_cancellation_check(agent)
     working_directory = cwd or "."
     cancellation_check = cancelled if callable(cancelled) else None
     client = None
@@ -345,12 +353,19 @@ def _forward_ui(agent, event):
     correlation = ({"invocationId": f"codex:{parent_id}",
                     "parentToolCallId": parent_id} if parent_id else {})
     if kind == "tool_start":
+        _emit_safe_provider_activity(agent, event, "running", correlation)
         _emit_provider_event(agent, "tool_call", tool_id=event.get("id", ""),
                              name=event.get("name", "codex"),
                              args=event.get("args", {}),
                              status="in_progress", provider="codex",
                              **correlation)
     elif kind == "tool_end":
+        _emit_safe_provider_activity(
+            agent,
+            event,
+            "failed" if event.get("failed") else "completed",
+            correlation,
+        )
         _emit_provider_event(agent, "tool_result", tool_id=event.get("id", ""),
                              name=event.get("name", "codex"),
                              args=event.get("args", {}),
@@ -359,10 +374,63 @@ def _forward_ui(agent, event):
                              **correlation)
 
 
+def _emit_safe_provider_activity(agent, event, status, correlation):
+    """Send a redacted OIP activity before the legacy generic compatibility event."""
+    activity_id = event.get("id")
+    invocation_id = correlation.get("invocationId")
+    if not isinstance(activity_id, str) or not activity_id or not invocation_id:
+        return
+    details = event.get("args")
+    fields = provider_activity_event(
+        provider="codex",
+        activity_id=activity_id,
+        sequence=_provider_activity_sequence(agent, invocation_id, activity_id),
+        native_kind=event.get("native_kind", event.get("name", "")),
+        status=status,
+        name=event.get("name", ""),
+        details=details if isinstance(details, dict) else {},
+    )
+    fields.pop("type")
+    remember_provider_activity(agent, invocation_id, fields)
+    _emit_provider_event(agent, "provider_activity", **fields, **correlation)
+
+
+def _provider_activity_sequence(agent, invocation_id, activity_id):
+    """Keep start/result updates on one stable sequence number for replay."""
+    sequences = getattr(agent, "_provider_activity_sequences", None)
+    if not isinstance(sequences, dict):
+        sequences = {}
+        setattr(agent, "_provider_activity_sequences", sequences)
+    key = (invocation_id, activity_id)
+    if key not in sequences:
+        sequences[key] = 1 + max(
+            (value for (known_invocation, _), value in sequences.items()
+             if known_invocation == invocation_id),
+            default=0,
+        )
+    return sequences[key]
+
+
 def _active_parent_tool_call_id(agent):
     session = getattr(agent, "current_session", None)
     value = session.get("_active_tool_call_id") if isinstance(session, dict) else None
     return value if isinstance(value, str) and value else None
+
+
+def _provider_cancellation_check(agent):
+    """Scope a Work Room Stop to this Codex invocation when the IO supports it."""
+    io = getattr(agent, "io", None)
+    parent_id = _active_parent_tool_call_id(agent)
+    invocation_id = f"codex:{parent_id}" if parent_id else ""
+    targeted = getattr(io, "is_provider_cancelled", None)
+    global_cancelled = getattr(io, "is_cancelled", None)
+
+    def cancelled():
+        if callable(global_cancelled) and global_cancelled():
+            return True
+        return bool(invocation_id and callable(targeted) and targeted(invocation_id))
+
+    return cancelled
 
 
 def _emit_provider_event(agent, event_type, **fields):
@@ -403,6 +471,9 @@ def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
     if io is None:
         return False
     context = _approval_context(agent, params)
+    presentation = _provider_approval_presentation(method, params, fallback_cwd=fallback_cwd)
+    if context:
+        context["providerApproval"] = presentation
     if context:
         _emit_provider_event(
             agent,
@@ -412,15 +483,25 @@ def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
             provider="codex",
             providerDisplayName="Codex",
             status="awaiting_approval",
+            currentSummary=provider_status_summary("awaiting_approval"),
         )
     try:
-        return bool(
+        approved = bool(
             io.request_approval(
                 "codex",
-                _approval_details(method, params, fallback_cwd=fallback_cwd),
+                _approval_details(
+                    method,
+                    params,
+                    fallback_cwd=fallback_cwd,
+                    presentation=presentation,
+                ),
                 context=context or None,
             )
         )
+        # A client response is never sufficient to expand a Work Room's verified
+        # boundary. The provider still receives a normal decline for an elevated
+        # request, even if a stale or custom client sends `approved: true`.
+        return approved and presentation["allowOnce"]
     finally:
         if context:
             _emit_provider_event(
@@ -431,6 +512,7 @@ def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
                 provider="codex",
                 providerDisplayName="Codex",
                 status="running",
+                currentSummary=provider_status_summary("running"),
             )
 
 
@@ -472,48 +554,169 @@ def _approval_context(agent, params):
     return context
 
 
-def _approval_details(method, params, *, fallback_cwd=""):
-    """Show the concrete scope of one Codex permission request."""
-    explicit_cwd = params.get("cwd")
-    cwd = explicit_cwd if isinstance(explicit_cwd, str) and explicit_cwd else _display_cwd(fallback_cwd)
-    cmd = params.get("command")
-    if isinstance(cmd, list):
-        cmd = " ".join(cmd)
-    if isinstance(cmd, str) and cmd.strip():
-        return {
-            "action": cmd,
-            "command": cmd,
-            "cwd": cwd,
-            "reason": params.get("reason", ""),
-        }
-    if method in {"item/fileChange/requestApproval", "applyPatchApproval"}:
-        explicit_root = params.get("grantRoot") or params.get("cwd")
-        root = (
-            explicit_root
-            if isinstance(explicit_root, str) and explicit_root
-            else _display_cwd(fallback_cwd) or "workspace"
-        )
-        file_changes = params.get("fileChanges", {})
-        files = list(file_changes) if isinstance(file_changes, dict) else []
-        scope = f" under {root}"
-        if files:
-            scope += f" ({', '.join(files)})"
-        return {
-            "action": f"Allow file changes{scope}",
-            "grant_root": root,
-            "files": files,
-            "reason": params.get("reason", ""),
-        }
-    if method == "item/permissions/requestApproval":
-        permissions = params.get("permissions", {})
-        return {
-            "action": f"Grant permissions: {json.dumps(permissions, sort_keys=True)}",
-            "permissions": permissions,
-            "cwd": cwd,
-            "reason": params.get("reason", ""),
-        }
-    action = params.get("reason") or cwd or "codex action"
-    return {"action": action, "reason": params.get("reason", "")}
+def _approval_details(method, params, *, fallback_cwd="", presentation=None):
+    """Return the safe legacy presentation fields for one Codex approval."""
+    presentation = presentation or _provider_approval_presentation(
+        method, params, fallback_cwd=fallback_cwd
+    )
+    return {
+        "action": presentation["action"],
+        "scope": presentation["scope"],
+        "reason": presentation["reason"],
+    }
+
+
+def _provider_approval_presentation(method, params, *, fallback_cwd=""):
+    """Describe verified approval scope without exposing provider transport data."""
+    is_file_change = method in {"item/fileChange/requestApproval", "applyPatchApproval"}
+    command = params.get("command")
+    if isinstance(command, list):
+        command = " ".join(str(part) for part in command)
+    if isinstance(command, str) and command.strip():
+        action, reason = _command_approval_copy(command)
+    elif is_file_change:
+        action = "Make workspace file changes"
+        reason = "Apply the requested workspace file changes"
+    elif method == "item/permissions/requestApproval":
+        action = "Expand provider permissions"
+        reason = "Review the requested permission expansion"
+    else:
+        action = "Perform a provider action"
+        reason = "Codex requested approval to continue"
+    requested_root = params.get("grantRoot") if is_file_change else params.get("cwd")
+    if not isinstance(requested_root, str) or not requested_root:
+        requested_root = params.get("cwd") if is_file_change else requested_root
+    scope_classification = _approval_scope_classification(requested_root, fallback_cwd)
+    if isinstance(command, str) and _requests_external_effect(command):
+        # A Work Room directory is not authority to publish, fetch, or contact
+        # another machine. Keep the command hidden, but require a broader
+        # policy rather than allowing it through the filesystem label.
+        scope_classification = "elevated"
+    scope = {
+        "workroom": "This Work Room only",
+        "elevated": "Outside this Work Room",
+        "unknown": "Boundary could not be verified",
+    }[scope_classification]
+    presentation = {
+        "action": action,
+        "scope": scope,
+        "reason": reason,
+        "scopeClassification": scope_classification,
+        # Only a positively verified Work Room boundary may be approved. An
+        # omitted or malformed scope is not a smaller request; it is unknown.
+        "allowOnce": scope_classification == "workroom",
+        # Native Codex approvals are one request at a time. Calling this a
+        # session trust grant would promise authority this adapter does not have.
+        "allowSession": False,
+    }
+    files = _approval_file_names(
+        params,
+        fallback_cwd=fallback_cwd,
+        include_command=bool(isinstance(command, str) and command.strip()),
+    )
+    if files:
+        presentation["files"] = files
+    return presentation
+
+
+def _command_approval_copy(command):
+    """Return a finite, decision-useful command label without disclosing it."""
+    phase = command_phase(details={"command": command})
+    return {
+        "compile_c11": (
+            "Compile the requested C11 program",
+            "Compile the requested workspace files before continuing",
+        ),
+        "compile_c": (
+            "Compile the requested C program",
+            "Compile the requested workspace files before continuing",
+        ),
+        "compile_and_test": (
+            "Compile and run the requested tests",
+            "Verify the requested workspace changes before continuing",
+        ),
+        "test": (
+            "Run the requested tests",
+            "Verify the requested workspace changes before continuing",
+        ),
+        "run": (
+            "Run the requested program",
+            "Verify the requested program before continuing",
+        ),
+        "inspect": (
+            "Inspect the workspace",
+            "Check the requested workspace result before continuing",
+        ),
+        "command": (
+            "Run a workspace command",
+            "Codex requested approval to continue",
+        ),
+    }[phase]
+
+
+def _requests_external_effect(command):
+    return bool(re.search(
+        r"(?:^|\s)(?:curl|wget|ssh|scp|rsync|nc)(?:\s|$)"
+        r"|(?:^|\s)git\s+(?:push|fetch|pull|clone)(?:\s|$)"
+        r"|(?:^|\s)(?:npm|pnpm)\s+(?:publish|install)(?:\s|$)"
+        r"|(?:^|\s)pip(?:3)?\s+install(?:\s|$)",
+        command.lower(),
+    ))
+
+
+def _approval_scope_classification(requested_root, fallback_cwd):
+    if not isinstance(fallback_cwd, str) or not fallback_cwd:
+        return "unknown"
+    if not isinstance(requested_root, str) or not requested_root:
+        return "workroom"
+    if not os.path.isabs(requested_root):
+        return "elevated" if ".." in requested_root.replace("\\", "/").split("/") else "workroom"
+    try:
+        workroom = os.path.realpath(fallback_cwd)
+        requested = os.path.realpath(requested_root)
+        return "workroom" if os.path.commonpath((workroom, requested)) == workroom else "elevated"
+    except (OSError, ValueError):
+        return "unknown"
+
+
+def _approval_file_names(params, *, fallback_cwd="", include_command=False):
+    """Return only verified basenames, never raw paths or arbitrary arguments."""
+    file_changes = params.get("fileChanges", {})
+    candidates = list(file_changes) if isinstance(file_changes, dict) else []
+    names = []
+    for candidate in candidates[:8]:
+        if not _is_inside_workroom(candidate, fallback_cwd):
+            continue
+        name = candidate.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        if name and name not in {".", ".."} and name not in names:
+            names.append(name[:128])
+    if include_command:
+        command = params.get("command")
+        if isinstance(command, list):
+            command = " ".join(str(part) for part in command)
+        if isinstance(command, str):
+            # Bare C source/header names resolve inside the already verified
+            # command cwd. We intentionally never extract a path, flag, URL,
+            # variable, or provider-controlled free-form token for the UI.
+            for name in re.findall(r"(?<![\w./-])([A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.(?:c|h))(?![\w.-])", command):
+                if name not in names:
+                    names.append(name)
+                if len(names) == 8:
+                    break
+    return names
+
+
+def _is_inside_workroom(candidate, fallback_cwd):
+    if not isinstance(candidate, str) or not candidate:
+        return False
+    if not isinstance(fallback_cwd, str) or not fallback_cwd:
+        return False
+    try:
+        workroom = os.path.realpath(fallback_cwd)
+        path = os.path.realpath(candidate)
+        return os.path.commonpath((workroom, path)) == workroom
+    except (OSError, ValueError):
+        return False
 
 
 def _display_cwd(value):
@@ -965,6 +1168,7 @@ class CodexAppServer:
                 "kind": "tool_start" if start else "tool_end",
                 "id": item.get("id", ""),
                 "name": name,
+                "native_kind": itype,
                 "args": args,
                 "result": "Failed" if failed else "Completed",
                 "failed": failed,
