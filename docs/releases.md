@@ -11,7 +11,7 @@ Preview releases never replace the stable recommendation. Install one with
 ## Current release work
 
 - Stable release: `1.6.10`
-- Preview target: `1.7.0a11`
+- Preview target: `1.7.0a12`
 - Browser client: `@connectonion/react@0.4.2-alpha.10`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
@@ -55,11 +55,20 @@ versions fail once without retry, discovery stays uncached, and Host records onl
 content-free compatibility classifications. DD-053 now defines the release and
 time boundary before a reader can be removed.
 
+Alpha 12 closes the production blockers found by real Chrome acceptance. Claude
+Code keeps its authenticated macOS CLI environment and publishes a resumable
+Work Room lifecycle like Codex. Stop now terminates the complete hosted Bash
+process group, and multimodal messages no longer crash slash-command dispatch or
+lose their image parts. The release gate includes fresh onboarding, approval,
+cancellation with a process-tree check, text and image attachments, reconnect,
+both native coding adapters, mobile layout, and session rollback across exact
+published React and Host prereleases.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
 python -m pip install --pre --upgrade connectonion
-python -m pip install connectonion==1.7.0a11
+python -m pip install connectonion==1.7.0a12
 ```
 
 ## Design Journal
