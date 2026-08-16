@@ -7,6 +7,37 @@
 
 ---
 
+## Rolling compatibility window
+
+Frontend and Host deployments are not atomic. OIP 0.1 therefore follows
+reader-before-writer deployment:
+
+| Pair | Required behaviour |
+|---|---|
+| descriptor-less 0.1 reader ↔ current Host | accepted |
+| current React ↔ descriptor-less 0.1 Host | accepted |
+| current React ↔ current Host | advertised `oip/0.1` accepted |
+| unsupported protocol/version | one non-retryable error; socket closes; no reconnect loop |
+
+Within 0.1, new non-authoritative fields and events are additive. Readers ignore
+what they do not understand and retain generic provider/tool rendering. Identity,
+session ownership, permission profiles, approvals, cancellation, terminal state,
+and protocol/version are authoritative: malformed or unknown values are rejected
+instead of guessed.
+
+For a rename, release R reads both names; R+1 may write the new name after R is
+publicly pinned; the old reader remains until at least R+2 and 30 days after R.
+The descriptor-less reader remains through 1.7.x and may be removed no earlier
+than 1.8.0a1, 2026-09-15, and two previews after compatibility telemetry no
+longer observes it, whichever is later.
+
+Host emits one content-free `OIP_COMPAT` record for CONNECT/reattach. It contains
+only `transport=direct|relay|unknown`, `peer=legacy|oip/0.1|unsupported`, and
+`outcome=accepted|rejected`; it never copies peer strings, prompts, credentials,
+addresses, session IDs, or paths.
+
+---
+
 ## Overview
 
 Three client message types, three intents:

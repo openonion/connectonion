@@ -15,11 +15,22 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import get_onboard_requirements
-from ..protocol import oip_descriptor, supports_oip
+from ..protocol import oip_compatibility_record, oip_descriptor, supports_oip
 from .agent_io import resume_forwarding
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def _record_oip_compatibility(data, conn):
+    record = oip_compatibility_record(
+        data.get("protocol"), conn.get("transport", "unknown")
+    )
+    console.print(
+        "[dim]OIP_COMPAT "
+        f"transport={record['transport']} peer={record['peer']} "
+        f"outcome={record['outcome']}[/dim]"
+    )
 
 
 def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist):
@@ -111,6 +122,7 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
     Treat that narrow case as idempotent without allowing an authenticated
     socket to change caller, recipient, capability level, or session.
     """
+    _record_oip_compatibility(data, conn)
     payload = data.get("payload") or {}
     equivalent = (
         data.get("session_id") == conn.get("session_id")
@@ -237,6 +249,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     ``route_handlers`` is optional so a caller that only needs the session half can
     omit it; without it no AGENT_PROFILE is sent.
     """
+    _record_oip_compatibility(data, conn)
     # A second CONNECT on the same socket must not inherit the first identity
     # while durable policy initialization is in flight or after it fails.
     conn["authenticated"] = False
