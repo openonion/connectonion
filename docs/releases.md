@@ -11,7 +11,7 @@ Preview releases never replace the stable recommendation. Install one with
 ## Current release work
 
 - Stable release: `1.6.9`
-- Preview target: `1.7.0a9`
+- Preview target: `1.7.0a10`
 - Browser client: `@connectonion/react@0.4.2-alpha.7`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
@@ -40,11 +40,20 @@ only when caller, recipient, signed-command capability, OIP protocol, and sessio
 are unchanged. The Host republishes CONNECTED without duplicating a running
 forwarder; every mismatch and signature replay remains rejected.
 
+Alpha 10 separates that reattach proof from first-connect authorization. The
+same live caller must still present a fresh signature and unchanged recipient,
+capability, protocol, session, replay claim, and current blacklist status, but
+the Host no longer repeats mutable onboarding/contact/admin policy or rebuilds
+permission authority for a connection that is already authorized. It republishes
+the existing mode, profile, transcript, and dashboard state. A first Send or
+Codex Work Room follow-up racing the eager browser CONNECT now reaches its input
+instead of surfacing a local trust-file error.
+
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
 python -m pip install --pre --upgrade connectonion
-python -m pip install connectonion==1.7.0a9
+python -m pip install connectonion==1.7.0a10
 ```
 
 ## Design Journal

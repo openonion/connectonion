@@ -57,7 +57,7 @@ def authenticated_conn(keys):
     }
 
 
-async def reattach(frame, conn, trust="open", blacklist=None):
+async def reattach(frame, conn, trust="open", blacklist=None, route_handlers=None):
     sent = []
     storage = MagicMock()
     storage.get.return_value = None
@@ -71,7 +71,7 @@ async def reattach(frame, conn, trust="open", blacklist=None):
         frame,
         send,
         conn,
-        {"agent_metadata": {"address": RECIPIENT}},
+        route_handlers or {"agent_metadata": {"address": RECIPIENT}},
         storage,
         registry,
         trust,
@@ -91,6 +91,34 @@ async def test_reattach_does_not_repeat_mutable_trust_policy(keys, monkeypatch):
 
     assert sent[0]["type"] == "CONNECTED"
     should_allow.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reattach_does_not_reinitialize_identity_bound_mode_policy(keys):
+    trust = TrustAgent("open")
+    trust.is_admin = MagicMock(side_effect=FileNotFoundError(2, "No such file or directory"))
+    trust.get_level = MagicMock(side_effect=FileNotFoundError(2, "No such file or directory"))
+    policy = MagicMock()
+    policy.state.return_value = {"current": ":read-only"}
+    conn = authenticated_conn(keys)
+    conn.update({"mode_is_admin": False, "session": {"permission_profile": ":read-only"}})
+
+    sent = await reattach(
+        connect_frame(keys),
+        conn,
+        trust=trust,
+        route_handlers={
+            "agent_metadata": {"address": RECIPIENT},
+            "session_modes": policy,
+            "trust_agent": trust,
+            "result_ttl": 60,
+        },
+    )
+
+    assert sent[0]["type"] == "CONNECTED"
+    assert sent[0]["session_modes"] == {"current": ":read-only"}
+    trust.is_admin.assert_not_called()
+    trust.get_level.assert_not_called()
 
 
 @pytest.mark.asyncio
