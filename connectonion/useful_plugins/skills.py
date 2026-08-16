@@ -704,6 +704,29 @@ def _close_out_a_turn_that_never_finished(agent: 'Agent') -> None:
     _restore_permissions(agent)
 
 
+def _message_text(content):
+    if isinstance(content, str):
+        return content, None
+    if isinstance(content, list):
+        for index, part in enumerate(content):
+            if (
+                isinstance(part, dict)
+                and part.get('type') == 'text'
+                and isinstance(part.get('text'), str)
+            ):
+                return part['text'], index
+    return '', None
+
+
+def _replace_message_text(message, text_index, text):
+    if text_index is None:
+        message['content'] = text
+        return
+    content = list(message['content'])
+    content[text_index] = {**content[text_index], 'text': text}
+    message['content'] = content
+
+
 @after_user_input
 def handle_skill_invocation(agent: 'Agent') -> None:
     """Detect /command and load skill with permission scope.
@@ -721,7 +744,7 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     if last_msg.get('role') != 'user':
         return
 
-    content = last_msg.get('content', '')
+    content, text_index = _message_text(last_msg.get('content', ''))
     if not content.startswith('/'):
         return
 
@@ -745,7 +768,11 @@ def handle_skill_invocation(agent: 'Agent') -> None:
 
     preflight = preflight_skills([(skill_name, skill.get('requirements'))])
     if preflight.missing_required:
-        messages[-1]['content'] = format_preflight_report(preflight) + "\nSkill did not start."
+        _replace_message_text(
+            last_msg,
+            text_index,
+            format_preflight_report(preflight) + "\nSkill did not start.",
+        )
         return
 
     # Grant skill permissions (with snapshot)
@@ -755,7 +782,7 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     # Replace user message with skill instructions, preserving slash-command args.
     if skill_args:
         instructions = f"{instructions}\n\n---\n## Arguments\n{skill_args}"
-    messages[-1]['content'] = instructions
+    _replace_message_text(last_msg, text_index, instructions)
 
     if agent.logger.console:
         description = frontmatter.get('description', '')
