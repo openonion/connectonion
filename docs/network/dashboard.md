@@ -1,14 +1,15 @@
-# Dashboard — your agent's Home page
+# Control Center
 
-Every hosted agent can have a **Home page**: a single file, `.co/dashboard.html`. A
-chat client renders it beside the conversation, so opening your agent shows something
-useful before you type anything.
+Every hosted agent has a **Control Center** beside the conversation. The Host renders
+a current day-zero view—identity and state, Now, quick actions, recent activity,
+schedules, searchable capabilities, and diagnostics—before you type anything.
+Custom pages keep the stable filename `.co/dashboard.html` for compatibility.
 
 ```
 my-agent/
 ├── agent.py
 └── .co/
-    ├── dashboard.html   ← the Home page
+    ├── dashboard.html   ← optional custom Control Center (compatible filename)
     └── skills/          ← and the skills it offers
 ```
 
@@ -18,19 +19,18 @@ on. There's no extra endpoint, no build step, and no sidecar JSON.
 
 ## It starts working on its own
 
-The first time you run `host()`, if there's no `dashboard.html`, ConnectOnion writes a
-starter one: your agent's name, what it runs on, and **every** skill it publishes as a
-one-click button with its description underneath.
+When there is no `dashboard.html`, ConnectOnion renders the bundled starter fresh.
+It writes no file, so improvements and newly published skills appear after upgrades.
 
 ```python
 from connectonion import Agent
 from connectonion.network import host
 
 host(lambda: Agent("lisa", tools=[...]))
-# → Created dashboard.html — your agent's Home page.
+# → The client receives Lisa's current Control Center.
 ```
 
-After that the file is yours. ConnectOnion never overwrites it.
+If you create `.co/dashboard.html`, the file is yours and ConnectOnion never overwrites it.
 
 ### Where it lives, and how it's found
 
@@ -45,31 +45,29 @@ found. So it doesn't matter which directory you start the agent from:
 my-agent/           ← found, because .co/ is here
 ├── .co/dashboard.html
 └── src/
-    └── run.py      ← `python run.py` from in here still serves the same Home
+    └── run.py      ← `python run.py` from here still serves the same Control Center
 ```
 
-With no `.co/` above you, the Home lands where the agent was started.
+With no `.co/` above you, the custom-file lookup starts where the agent was started.
 
 **An older `dashboard.html` in the project root still works.** If one is there it is
 the file being served, and nothing moves, copies, or overwrites it — an agent whose
-Home vanished on upgrade would be a worse bug than an inconsistent path. Move it to
+Control Center vanished on upgrade would be a worse bug than an inconsistent path. Move it to
 `.co/` yourself when you feel like it. If both exist, `.co/` wins.
 
 #### It travels
 
 `co deploy --to` protects server-owned `.co/` state such as identity, logs and evals,
 while syncing project-authored files such as `.co/host.yaml`, `.co/skills/` and
-`.co/dashboard.html`. A deploy that dropped the Home page could regenerate a starter
-over it and still look successful, so the page travels as ordinary project content.
+`.co/dashboard.html`. A deploy that dropped a custom Control Center would silently
+replace it with the starter, so the page travels as ordinary project content.
 
 #### It isn't scaffolded
 
 `co create` and `co init` deliberately do not write one. At create time the project has
 no skills yet, and the starter is never written over an existing file — scaffolding
-then would freeze an empty Home forever. It is written on the first `host()`, the first
-moment the agent's skills are actually known. On a server the same rule applies: an
-agent deployed without a dashboard gets one built from the skills that actually made it
-onto the server, rather than a copy of what your laptop had.
+then would freeze an empty Control Center forever. Instead the Host renders from the
+skills and activity that are present on that server at read time.
 
 ### One starter for all your agents
 
@@ -78,7 +76,7 @@ bundled template.
 
 It replaces the **template**, not the page: each agent still renders its own name and
 its own skills. That matters — a client validates every button against the skills
-*that* agent published, so serving one agent's finished Home for another gives a page
+*that* agent published, so serving one agent's finished Control Center for another gives a page
 of buttons that silently do nothing.
 
 An override only needs the parts you want to change. Its `<template>` fragments are
@@ -99,13 +97,13 @@ not "Lark Base".
 ### Where the markup lives
 
 One file: `connectonion/network/host/ws_router/starter.html`. It is a complete page —
-open it in a browser and you see what a starter dashboard looks like — followed by a
+open it in a browser and you see what the starter Control Center looks like — followed by a
 `<!--FRAGMENTS` marker and the repeated pieces (a skill row, a group, a flat list, the
 empty state) as `<template>` tags. Python splits on the marker, fills in the
 placeholders, and contains no HTML of its own. Everything below the marker, including
 its notes, is stripped before anything is written.
 
-Edit that file to change how a starter dashboard looks.
+Edit that file to change how the starter Control Center looks.
 
 Anything you write there has to survive the client's contract: **no JavaScript** (the
 CSP runs only the client's own bridge script, so an agent's script tag or inline
@@ -115,11 +113,11 @@ which is the one thing that works without scripting.
 
 ## Editing it
 
-`.co/dashboard.html` is a plain HTML file — edit it with any editor. Or ask the agent: the
-built-in `dashboard` skill teaches it the file's contract.
+`.co/dashboard.html` is a plain HTML file — edit it with any editor. Or ask the agent:
+the built-in `dashboard` skill (name preserved for compatibility) teaches the contract.
 
 ```
-/dashboard put this week's numbers on my home page
+/dashboard put this week's numbers in my Control Center
 ```
 
 Write plain HTML and inline CSS. Two constraints, both enforced by the client's
@@ -130,12 +128,12 @@ sandbox rather than by convention:
   happen.
 - **No external URLs.** No CDN stylesheets, no remote images, no fonts from the
   network. Inline your styles and use `data:` URIs for images.
-- **No links out.** A Home page is one self-contained page. A client cancels clicks
+- **No links out.** A Control Center is one self-contained page. A client cancels clicks
   on `<a href="https://…">`, so such a link renders as dead text — use a
   `data-ochat-skill` button when you want the user to *do* something. Same-page
   anchors (`href="#section"`) work normally.
 
-Keep it under **2MB**. The Host won't send a larger file, and the Home pane goes
+Keep it under **2MB**. The Host won't send a larger file, and the Control Center pane goes
 blank. Inline images are base64, which is ~33% larger than the source file — compress
 screenshots before embedding them.
 
@@ -143,7 +141,7 @@ screenshots before embedding them.
 
 The same sandbox that locks the page down also gives you something useful for free.
 Your page renders inside its own iframe, and a media query inside an iframe evaluates
-against **that frame's** viewport — so this means "when the Home pane is narrower than
+against **that frame's** viewport — so this means "when the Control Center pane is narrower than
 560px", which is the question you actually wanted to ask:
 
 ```css
@@ -163,7 +161,7 @@ behind a horizontal scrollbar, which nobody scrolls to find a number they came f
 > **Why so locked down?** The client renders your `dashboard.html` in a sandboxed
 > iframe with a strict Content-Security-Policy, because from its side the file is
 > untrusted, agent-authored HTML. Everything above follows from that: nothing loads
-> from the network, nothing scripts, and nothing navigates away. A Home page is a
+> from the network, nothing scripts, and nothing navigates away. A Control Center is a
 > glanceable, self-contained page whose one action is running a skill.
 >
 > Supporting external links later is a deliberate change to that contract, not a
@@ -203,15 +201,15 @@ The Host sends the file at two moments:
 
 | When | Why |
 |------|-----|
-| On connect, right after `CONNECTED` | Home paints before the first message |
+| On connect, right after `CONNECTED` | Control Center paints before the first message |
 | After each run, right after `OUTPUT` | A run that rewrote the dashboard shows the new version |
 
 The post-run send is skipped when the file hasn't changed since that connection last
-saw it, so an unchanged Home costs nothing per turn. Nothing is polled and nothing
+saw it, so an unchanged Control Center costs nothing per turn. Nothing is polled and nothing
 watches the filesystem — if you edit it by hand while a client is
 connected, the change shows up after the next run.
 
-An agent with no dashboard file sends nothing, and clients simply show no Home pane.
+An agent with no custom file receives the freshly rendered starter.
 
 ## Wire format
 
@@ -235,7 +233,7 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 |----------|---------|
 | `read_dashboard_snapshot(session_id=None)` | Build the frame, or `None` if the file is missing, too large, unreadable, or not UTF-8 |
 | `send_dashboard(send_msg, session_id, conn=None)` | Send it unless this connection already has the current file; reads off the event loop |
-| `ensure_dashboard(agent_metadata, project_dir=None)` | Write the starter if absent, and anchor the directory later reads resolve against |
+| `ensure_dashboard(agent_metadata, project_dir=None)` | Anchor the project and metadata used to render the starter; writes no file |
 | `project_root(start=None)` | Walk up for `.co/`; the project, not the cwd |
 | `dashboard_path()` | `.co/dashboard.html`, or a legacy root one if that is what exists |
 | `render_starter(agent_metadata)` | The day-zero HTML, from `starter.html` |

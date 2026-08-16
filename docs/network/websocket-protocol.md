@@ -533,8 +533,9 @@ contract is documented in `oo-api/docs/relay-announce-profile.md`.
 
 #### DASHBOARD_SNAPSHOT
 
-The agent's `dashboard.html` — its Home page — for the client to render beside the
-chat. Sent right after `CONNECTED` so Home paints before any input, and again after
+The agent's Control Center HTML (customized through the compatible
+`dashboard.html` filename) for the client to render beside chat. Sent right after
+`CONNECTED` so the Control Center paints before any input, and again after
 `OUTPUT` when the run changed the file. Agents without a `dashboard.html` never send
 it, and the frame is skipped when the file hasn't changed since this connection last
 saw it.
