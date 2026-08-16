@@ -72,6 +72,7 @@ _CLAUDE_ENVIRONMENT_KEYS = (
     "SYSTEMROOT",
     "TEMP",
     "TMP",
+    "USER",
     "USERPROFILE",
     "WINDIR",
 )
