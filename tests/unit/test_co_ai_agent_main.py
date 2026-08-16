@@ -9,6 +9,7 @@ Components under test:
 - Module: co_ai_agent_main
 """
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,7 +17,7 @@ import pytest
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
-from connectonion import CodexPlugin
+from connectonion import ClaudeCodePlugin, CodexPlugin
 from connectonion.cli.co_ai.plugins.native_coding_agent_routing import (
     reject_raw_codex_launch,
     route_explicit_codex_request,
@@ -86,6 +87,12 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     }
     assert codex_schema.get("required", []) == []
     assert "claude_code" in agent.tools._tools
+    claude_plugins = [
+        plugin for plugin in agent.installed_plugins
+        if isinstance(plugin, ClaudeCodePlugin)
+    ]
+    assert len(claude_plugins) == 1
+    assert agent.tools.get("claude_code")._bound_instance is claude_plugins[0]
     claude_schema = agent.tools.get("claude_code").to_function_schema()["parameters"]
     assert set(claude_schema["properties"]) == {
         "prompt",
@@ -160,6 +167,42 @@ def test_co_ai_codex_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path)
     ]
     assert [entry["status"] for entry in lifecycle] == ["running", "completed"]
     assert all(entry["parentToolCallId"] == "call-1" for entry in lifecycle)
+
+
+def test_co_ai_claude_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    import connectonion.plugins.coding_agents as coding_agents
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+    monkeypatch.setattr(
+        coding_agents,
+        "_run_claude_code",
+        lambda **kwargs: json.dumps({
+            "provider": "claude_code",
+            "session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "exit_code": 0,
+        }),
+    )
+    monkeypatch.chdir(tmp_path)
+    agent = agent_mod.create_agent(model="fake", max_iterations=1)
+    agent.current_session = {
+        "trace": [],
+        "mode": ":read-only",
+        "_active_tool_call_id": "call-2",
+    }
+
+    agent.tools.claude_code("inspect", cwd=".", agent=agent)
+
+    lifecycle = [
+        entry for entry in agent.current_session["trace"]
+        if entry["type"] == "provider_invocation"
+    ]
+    assert [entry["status"] for entry in lifecycle] == ["running", "completed"]
+    assert all(entry["parentToolCallId"] == "call-2" for entry in lifecycle)
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):

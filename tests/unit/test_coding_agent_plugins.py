@@ -122,6 +122,85 @@ def test_codex_plugin_can_follow_the_authenticated_host_permission_ceiling(
     assert seen["approval"] == approval
 
 
+@pytest.mark.parametrize(
+    ("session", "permission_mode"),
+    [
+        ({"mode": ":read-only"}, "manual"),
+        ({"mode": ":workspace"}, "acceptEdits"),
+        (
+            {
+                "mode": ":danger-full-access",
+                "full_access_turns": 2,
+                "full_access_turns_used": 0,
+                "skip_tool_approval": True,
+            },
+            "auto",
+        ),
+    ],
+)
+def test_claude_plugin_can_follow_the_authenticated_host_permission_ceiling(
+    monkeypatch,
+    tmp_path,
+    session,
+    permission_mode,
+):
+    import connectonion.plugins.coding_agents as module
+
+    seen = {}
+
+    def fake_claude(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({
+            "provider": "claude_code",
+            "session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "exit_code": 0,
+        })
+
+    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
+    agent = SimpleNamespace(
+        current_session={"_active_tool_call_id": "call-9", **session},
+        io=SimpleNamespace(log=MagicMock()),
+    )
+
+    ClaudeCodePlugin(
+        workspace=tmp_path,
+        use_host_permissions=True,
+    ).claude_code("inspect", cwd=str(tmp_path), agent=agent)
+
+    assert seen["permission_mode"] == permission_mode
+
+
+def test_hosted_contact_cannot_launch_claude_plugin(monkeypatch, tmp_path):
+    import connectonion.plugins.coding_agents as module
+
+    monkeypatch.setattr(module, "_run_claude_code", pytest.fail)
+    io = SimpleNamespace(log=MagicMock())
+    agent = SimpleNamespace(
+        current_session={
+            "_active_tool_call_id": "call-10",
+            "mode": ":danger-full-access",
+            "requester": {"address": "0xcontact", "level": "contact"},
+        },
+        io=io,
+    )
+
+    result = json.loads(
+        ClaudeCodePlugin(
+            workspace=tmp_path,
+            use_host_permissions=True,
+        ).claude_code(
+            "change it",
+            cwd=str(tmp_path.parent / "private-repository-name"),
+            session_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            agent=agent,
+        )
+    )
+
+    assert result["status"] == "error"
+    assert "only to the operator" in result["error"]
+    io.log.assert_not_called()
+
+
 def test_public_signature_matches_the_provider_contract(tmp_path):
     for method in (
         CodexPlugin(workspace=tmp_path).codex,
