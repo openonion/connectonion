@@ -209,6 +209,13 @@ The relay is a pure forwarder — it doesn't parse or modify messages, just rout
 2. Relay stores agent info (now discoverable)
 3. When client calls `connect("0xaddress")`, SDK tries direct connection first, falls back to relay if needed
 
+Endpoint discovery is best-effort. `AGENT_PUBLIC_DOMAIN` bypasses automatic
+discovery. Otherwise the Host tries local interfaces and a public-IP lookup
+independently; if a container denies interface enumeration, or the public
+lookup is unavailable, the Host still starts and keeps its relay connection.
+When neither source yields a publishable address, the announcement carries no
+direct endpoint and clients use the relay.
+
 ### Heartbeat & Keep-Alive
 
 | Connection | Mechanism | Interval | Purpose |
