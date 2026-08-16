@@ -210,6 +210,10 @@ def test_public_signature_matches_the_provider_contract(tmp_path):
             "prompt", "cwd", "session_id", "model", "timeout", "agent"
         ]
 
+    assert inspect.signature(CodexPlugin(workspace=tmp_path).codex).parameters[
+        "timeout"
+    ].default == 1800
+
 
 def test_codex_prompt_is_optional_so_open_does_not_invent_a_task(tmp_path):
     signature = inspect.signature(CodexPlugin(workspace=tmp_path).codex)

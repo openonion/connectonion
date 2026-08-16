@@ -177,7 +177,7 @@ class CodexPlugin(_CodingAgentPlugin):
         cwd: str = "",
         session_id: str = "",
         model: str = "",
-        timeout: int = 600,
+        timeout: int = 1800,
         agent=None,
     ) -> str:
         """Run, open, or resume Codex inside the operator-configured workspace."""

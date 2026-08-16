@@ -654,6 +654,12 @@ class CodexAppServer:
         self._stderr_tail = ""
         self._stderr_thread = None
         self._exit_error = None
+        # A human deciding on a nested approval is not active Codex execution.
+        # Keep that wall time separate from the bounded turn budget so a careful
+        # review cannot make the next provider step time out immediately.
+        self._approval_lock = threading.Lock()
+        self._approval_wait_seconds = 0.0
+        self._approval_started_at = None
 
     # ── lifecycle ────────────────────────────────────────────────
 
@@ -755,13 +761,20 @@ class CodexAppServer:
 
     def run_turn(self, thread_id, prompt, cwd="", timeout=600):
         deadline = time.monotonic() + timeout
+        approval_pause_mark = self._approval_pause_mark()
         self._turn_done.clear()
         self._turn_result = {}
         self.request("turn/start", {
             "threadId": thread_id, "cwd": cwd or self.cwd or ".",
             "input": [{"type": "text", "text": prompt}],
         }, timeout=_remaining(deadline))
-        self._wait_for(self._turn_done, deadline, "turn", timeout)
+        self._wait_for_turn(
+            self._turn_done,
+            deadline,
+            approval_pause_mark,
+            "turn",
+            timeout,
+        )
         return self._turn_result
 
     # ── JSON-RPC plumbing ────────────────────────────────────────
@@ -799,6 +812,29 @@ class CodexAppServer:
             if self.cancelled():
                 raise _ProviderCancelled(f"{operation} interrupted")
             remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"{operation} timed out after {timeout}s")
+            if event.wait(min(0.1, remaining)):
+                return
+
+    def _approval_pause_mark(self):
+        with self._approval_lock:
+            return self._approval_wait_seconds
+
+    def _approval_pause_since(self, mark, now):
+        with self._approval_lock:
+            paused = self._approval_wait_seconds - mark
+            if self._approval_started_at is not None:
+                paused += now - self._approval_started_at
+        return max(0.0, paused)
+
+    def _wait_for_turn(self, event, deadline, approval_pause_mark, operation, timeout):
+        """Wait for a turn without charging an operator's approval review time."""
+        while True:
+            if self.cancelled():
+                raise _ProviderCancelled(f"{operation} interrupted")
+            now = time.monotonic()
+            remaining = deadline + self._approval_pause_since(approval_pause_mark, now) - now
             if remaining <= 0:
                 raise TimeoutError(f"{operation} timed out after {timeout}s")
             if event.wait(min(0.1, remaining)):
@@ -870,10 +906,18 @@ class CodexAppServer:
 
     def _handle_server_request(self, req_id, method, params):
         if method in _APPROVAL_METHODS:
+            started_at = time.monotonic()
+            with self._approval_lock:
+                self._approval_started_at = started_at
             try:
                 allowed = bool(self.on_approval(method, params))
             except Exception:
                 allowed = False
+            finally:
+                finished_at = time.monotonic()
+                with self._approval_lock:
+                    self._approval_wait_seconds += max(0.0, finished_at - started_at)
+                    self._approval_started_at = None
             self._send(
                 {
                     "id": req_id,

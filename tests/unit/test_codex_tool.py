@@ -603,6 +603,47 @@ class TestResumeProtocol:
         assert request.call_args.kwargs["timeout"] == 10
         done.wait.assert_called_once_with(0.1)
 
+    def test_turn_wait_preserves_the_full_budget_after_manual_approval(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+
+        class ApprovalDelayEvent:
+            def __init__(self):
+                self.waits = []
+
+            def clear(self):
+                pass
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
+                if len(self.waits) == 1:
+                    # Simulate 100 seconds of operator review between two
+                    # active execution slices without sleeping in the test.
+                    client._approval_wait_seconds = 100
+                    return False
+                return True
+
+        done = ApprovalDelayEvent()
+        client._turn_done = done
+        with patch.object(client, "request", return_value={}), patch.object(
+            codex_module.time, "monotonic", side_effect=[0, 0, 1, 101]
+        ):
+            client.run_turn("thread-1", "continue", timeout=10)
+
+        assert done.waits == [0.1, 0.1]
+
+    def test_approval_request_records_operator_review_time(self):
+        client = codex_module.CodexAppServer(
+            ["codex", "app-server"], on_approval=lambda *_: True
+        )
+        with patch.object(client, "_send"), patch.object(
+            codex_module.time, "monotonic", side_effect=[10, 35]
+        ):
+            client._handle_server_request(
+                1, "item/commandExecution/requestApproval", {"command": "pytest -q"}
+            )
+
+        assert client._approval_wait_seconds == 25
+
     def test_close_reaps_the_process_tree_and_closes_every_pipe(self):
         client = codex_module.CodexAppServer(["codex", "app-server"])
         process = MagicMock()
