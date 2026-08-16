@@ -53,9 +53,15 @@ For Codex, omitting `prompt` creates or resumes the native provider thread
 without starting a model turn. This is the backend half of O Chat's “Open Work
 Room” behavior: the room can exist before it has a task.
 
-`co ai` also installs a routing interceptor. Explicit run/use/start/open Codex
-intent receives a hidden native-route reminder, and any attempt to execute the
-Codex CLI through bash, shell, command substitution, a background wrapper, or a
-package runner is rejected with `codex()` as the required next action. The
+`co ai` installs both plugins, so Codex and Claude Code share the same native
+provider-card and Work Room lifecycle. In hosted sessions, Claude Code remains
+operator-only: a signature-verified non-admin is rejected before workspace
+resolution or process launch. Admin permission profiles select the provider
+mode again on every first turn and resume.
+
+`co ai` also installs a Codex routing interceptor. Explicit run/use/start/open
+Codex intent receives a hidden native-route reminder, and any attempt to execute
+the Codex CLI through bash, shell, command substitution, a background wrapper,
+or a package runner is rejected with `codex()` as the required next action. The
 interceptor parses command positions, so documentation searches and strings
 that merely contain “codex” are not blocked.
