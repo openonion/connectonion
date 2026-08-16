@@ -469,6 +469,102 @@ def test_interruptible_io_cancels_a_live_provider_card_without_committing_trace(
     )
 
 
+def test_interruptible_io_stops_only_the_requested_live_provider():
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    codex = {
+        "type": "provider_invocation",
+        "invocationId": "codex:outer",
+        "parentToolCallId": "outer",
+        "provider": "codex",
+        "providerDisplayName": "Codex",
+        "status": "running",
+    }
+    claude = {
+        "type": "provider_invocation",
+        "invocationId": "claude_code:other",
+        "parentToolCallId": "other",
+        "provider": "claude_code",
+        "providerDisplayName": "Claude Code",
+        "status": "running",
+    }
+    lease.send_live_trace(codex)
+    lease.send_live_trace(claude)
+    io.send_to_agent({"type": "PROVIDER_INTERRUPT", "invocationId": "codex:outer"})
+
+    assert lease.is_provider_cancelled("codex:outer") is True
+    assert lease.is_provider_cancelled("claude_code:other") is False
+    terminal = io._msgs_from_agent[-1]
+    assert terminal["invocationId"] == "codex:outer"
+    assert terminal["status"] == "cancelled"
+    assert terminal["resultSummary"] == "The provider stopped"
+
+
+def test_interruptible_io_preserves_verified_native_approval_presentation():
+    """The hosted tool lease must not downgrade a verified Work Room boundary."""
+    io = WebSocketIO()
+    presentation = {
+        "action": "Compile the requested C11 program",
+        "scope": "This Work Room only",
+        "reason": "Compile the requested workspace files before continuing",
+        "scopeClassification": "workroom",
+        "allowOnce": True,
+        "allowSession": False,
+        "files": ["sort.c"],
+    }
+
+    def approval_tool(agent) -> str:
+        approved = agent.io.request_approval(
+            "codex",
+            {"action": "Compile the requested C11 program"},
+            context={
+                "provider": "codex",
+                "invocationId": "codex:outer",
+                "parentToolCallId": "outer",
+                "providerApproval": presentation,
+            },
+        )
+        return "approved" if approved else "denied"
+
+    agent = Agent(
+        "verified-approval",
+        llm=MockLLM(),
+        tools=[approval_tool],
+        log=False,
+        quiet=True,
+    )
+    agent.current_session = {"messages": [], "trace": [], "iteration": 1}
+    agent.io = io
+
+    def approve_after_event() -> None:
+        deadline = time.monotonic() + 1
+        while (
+            not any(message.get("type") == "approval_needed" for message in io._msgs_from_agent)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.01)
+        if any(message.get("type") == "approval_needed" for message in io._msgs_from_agent):
+            io.send_to_agent({"type": "APPROVAL_RESPONSE", "approved": True})
+
+    threading.Thread(target=approve_after_event, daemon=True).start()
+    trace = execute_single_tool(
+        "approval_tool", {}, "outer", agent.tools, agent,
+        Logger("verified-approval", log=False),
+    )
+
+    assert io._msgs_from_agent
+    approval = next(
+        message for message in io._msgs_from_agent
+        if message.get("type") == "approval_needed"
+    )
+    assert approval["providerApproval"] == presentation
+    assert approval["providerApproval"] is not presentation
+    assert approval["provider"] == "codex"
+    assert approval["invocationId"] == "codex:outer"
+    assert trace["status"] == "success"
+    assert trace["result"] == "approved"
+
+
 def test_coding_provider_streams_its_live_start_before_the_backend_returns(monkeypatch, tmp_path):
     """Exercise the real hosted tool lease, not just the IO primitive."""
     import connectonion.plugins.coding_agents as coding_agents

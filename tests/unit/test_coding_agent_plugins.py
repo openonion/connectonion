@@ -70,6 +70,75 @@ def test_invocation_lifecycle_is_parented_and_terminal(monkeypatch, tmp_path):
     assert finish.kwargs["sessionId"] == "s1"
 
 
+def test_invocation_uses_safe_summaries_instead_of_prompt_or_provider_output(monkeypatch, tmp_path):
+    import connectonion.plugins.coding_agents as module
+
+    monkeypatch.setattr(
+        module,
+        "_run_codex",
+        lambda **kwargs: json.dumps({
+            "provider": "codex",
+            "session_id": "s1",
+            "exit_code": 0,
+            "last_message": "compiled with --token private-value",
+        }),
+    )
+    io = SimpleNamespace(log=MagicMock())
+    agent = SimpleNamespace(io=io, current_session={"_active_tool_call_id": "call-7"})
+
+    CodexPlugin(workspace=tmp_path).codex(
+        "Create sort.c and test_sort.c with TOKEN=private-value",
+        agent=agent,
+    )
+
+    start, finish = io.log.call_args_list
+    assert start.kwargs["taskTitle"] == "Build and verify the requested C program"
+    assert start.kwargs["taskSummary"] == "Build and verify the requested C program"
+    assert start.kwargs["currentSummary"] == "Working in the selected workspace"
+    assert "private" not in json.dumps(start.kwargs)
+    assert finish.kwargs["currentSummary"] == "The provider completed its run"
+    assert finish.kwargs["resultSummary"] == "The provider completed its run"
+    assert "result" not in finish.kwargs
+    assert "private" not in json.dumps(finish.kwargs)
+
+
+def test_invocation_terminal_summary_uses_only_recorded_safe_activity(monkeypatch, tmp_path):
+    import connectonion.plugins.coding_agents as module
+    from connectonion.core.provider_events import remember_provider_activity
+
+    def fake_codex(**kwargs):
+        invocation_id = "codex:call-7"
+        remember_provider_activity(
+            kwargs["agent"],
+            invocation_id,
+            {"title": "Compile the requested C11 program", "status": "completed"},
+        )
+        remember_provider_activity(
+            kwargs["agent"],
+            invocation_id,
+            {"title": "Run the requested tests", "status": "completed"},
+        )
+        remember_provider_activity(
+            kwargs["agent"],
+            invocation_id,
+            {"title": "private provider output", "status": "completed"},
+        )
+        return json.dumps({"provider": "codex", "session_id": "s1", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_codex", fake_codex)
+    io = SimpleNamespace(log=MagicMock())
+    agent = SimpleNamespace(io=io, current_session={"_active_tool_call_id": "call-7"})
+
+    CodexPlugin(workspace=tmp_path).codex("write a C sorting program", agent=agent)
+
+    finish = io.log.call_args_list[-1]
+    assert finish.kwargs["currentSummary"] == (
+        "Completed the provider run after the recorded compilation and test checks"
+    )
+    assert finish.kwargs["resultSummary"] == finish.kwargs["currentSummary"]
+    assert "private" not in json.dumps(finish.kwargs)
+
+
 @pytest.mark.parametrize(
     ("session", "sandbox", "approval"),
     [
@@ -239,4 +308,88 @@ def test_replay_reconstructs_one_parent_card_with_nested_activity():
         "id": "child", "type": "tool_call", "name": "Bash", "args": {},
         "status": "done", "result": "ok", "timing_ms": None,
         "provider": "codex", "invocationId": "codex:parent", "parentToolCallId": "parent",
+        "legacy": True,
     }]
+
+
+def test_replay_prefers_one_safe_typed_activity_over_legacy_raw_tool_data():
+    session = {
+        "messages": [{"role": "user", "content": "build it"}],
+        "trace": [
+            {"type": "user_input"},
+            {"type": "tool_call", "tool_id": "parent", "name": "codex", "args": {}},
+            {
+                "type": "provider_invocation",
+                "invocationId": "codex:parent",
+                "parentToolCallId": "parent",
+                "provider": "codex",
+                "providerDisplayName": "Codex",
+                "taskTitle": "Implement the requested change",
+                "taskSummary": "Implement the requested change",
+                "currentSummary": "Working in the selected workspace",
+                "status": "running",
+            },
+            {
+                "type": "provider_activity",
+                "provider": "codex",
+                "invocationId": "codex:parent",
+                "parentToolCallId": "parent",
+                "activityId": "compile-1",
+                "sequence": 1,
+                "kind": "command",
+                "status": "running",
+                "title": "Run a workspace command",
+                "summary": "Running a workspace command",
+            },
+            {
+                "type": "tool_result",
+                "tool_id": "compile-1",
+                "name": "cc --token private-value",
+                "args": {"cwd": "/private/tmp/private-workroom"},
+                "status": "completed",
+                "result": "private output",
+                "provider": "codex",
+                "invocationId": "codex:parent",
+                "parentToolCallId": "parent",
+            },
+            {
+                "type": "provider_activity",
+                "provider": "codex",
+                "invocationId": "codex:parent",
+                "parentToolCallId": "parent",
+                "activityId": "compile-1",
+                "sequence": 1,
+                "kind": "command",
+                "status": "completed",
+                "title": "Run a workspace command",
+                "summary": "Command completed",
+            },
+            {
+                "type": "provider_invocation",
+                "invocationId": "codex:parent",
+                "parentToolCallId": "parent",
+                "provider": "codex",
+                "providerDisplayName": "Codex",
+                "status": "completed",
+                "currentSummary": "The provider completed its run",
+                "resultSummary": "The provider completed its run",
+            },
+            {"type": "tool_result", "tool_id": "parent", "name": "codex", "args": {}, "status": "success", "result": "done"},
+        ],
+    }
+
+    items = session_to_chat_items(session)
+
+    assert [item["type"] for item in items] == ["user", "provider_invocation"]
+    assert items[1]["taskTitle"] == "Implement the requested change"
+    assert items[1]["resultSummary"] == "The provider completed its run"
+    assert items[1]["activities"] == [{
+        "id": "compile-1",
+        "sequence": 1,
+        "kind": "command",
+        "status": "completed",
+        "title": "Run a workspace command",
+        "summary": "Command completed",
+        "legacy": False,
+    }]
+    assert "private" not in json.dumps(items)

@@ -69,6 +69,9 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             if key not in {'ts'}
         }
 
+    if entry_type == 'provider_activity':
+        return _provider_activity_item(entry)
+
     # tool_executor.py records two trace entries per tool: 'tool_call' (placeholder before
     # execute, no result) then 'tool_result' (final state, has status/result/timing_ms).
     # Emit one ChatItem per tool from the 'tool_result' so we don't double-render. Match
@@ -98,6 +101,52 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
         return item
 
     return None
+
+
+def _provider_activity_item(entry: dict) -> dict | None:
+    """Keep only the safe typed Work Room fields during replay."""
+    activity_id = entry.get('activityId')
+    invocation_id = entry.get('invocationId')
+    parent_id = entry.get('parentToolCallId')
+    if not all(isinstance(value, str) and value for value in (activity_id, invocation_id, parent_id)):
+        return None
+    sequence = entry.get('sequence')
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+        return None
+    kind = entry.get('kind')
+    status = entry.get('status')
+    title = entry.get('title')
+    summary = entry.get('summary')
+    if not all(isinstance(value, str) and value for value in (kind, status, title, summary)):
+        return None
+    item = {
+        'type': 'provider_activity',
+        'invocationId': invocation_id,
+        'parentToolCallId': parent_id,
+        'activityId': activity_id,
+        'sequence': sequence,
+        'kind': kind,
+        'status': status,
+        'title': title,
+        'summary': summary,
+    }
+    files = _safe_file_names(entry.get('files'))
+    if files:
+        item['files'] = files
+    return item
+
+
+def _safe_file_names(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    names: list[str] = []
+    for candidate in value[:8]:
+        if not isinstance(candidate, str):
+            continue
+        name = candidate.replace('\\', '/').rstrip('/').rsplit('/', 1)[-1]
+        if name and name not in {'.', '..'} and name not in names:
+            names.append(name[:128])
+    return names
 
 
 def session_to_chat_items(session: dict) -> list[dict]:
@@ -196,6 +245,16 @@ def _nest_provider_invocations(items: list[dict]) -> list[dict]:
     if not invocations:
         return items
 
+    native_activity_ids = {
+        (item.get('invocationId'), item.get('activityId'))
+        for item in items
+        if (
+            item.get('type') == 'provider_activity'
+            and item.get('invocationId') in invocations
+            and isinstance(item.get('activityId'), str)
+        )
+    }
+
     output: list[dict] = []
     emitted: set[str] = set()
     for item in items:
@@ -207,14 +266,54 @@ def _nest_provider_invocations(items: list[dict]) -> list[dict]:
                 emitted.add(invocation_id)
             continue
         if (
+            item.get('type') == 'provider_activity'
+            and isinstance(invocation_id, str)
+            and invocation_id in invocations
+        ):
+            activity = _nested_provider_activity(item)
+            if activity:
+                _upsert_provider_activity(invocations[invocation_id], activity)
+            continue
+        if (
             item.get('type') == 'tool_call'
             and isinstance(parent_id, str)
             and isinstance(invocation_id, str)
             and invocation_id in invocations
         ):
-            invocations[invocation_id]['activities'].append(item)
+            if (invocation_id, item.get('id')) not in native_activity_ids:
+                invocations[invocation_id]['activities'].append({**item, 'legacy': True})
             continue
         if item.get('type') == 'tool_call' and item.get('id') in parent_ids:
             continue
         output.append(item)
+    for invocation in invocations.values():
+        invocation['activities'].sort(
+            key=lambda activity: activity.get('sequence', float('inf')),
+        )
     return output
+
+
+def _nested_provider_activity(item: dict) -> dict | None:
+    required = ('activityId', 'sequence', 'kind', 'status', 'title', 'summary')
+    if any(key not in item for key in required):
+        return None
+    activity = {
+        'id': item['activityId'],
+        'sequence': item['sequence'],
+        'kind': item['kind'],
+        'status': item['status'],
+        'title': item['title'],
+        'summary': item['summary'],
+        'legacy': False,
+    }
+    if item.get('files'):
+        activity['files'] = item['files']
+    return activity
+
+
+def _upsert_provider_activity(invocation: dict, activity: dict) -> None:
+    for existing in invocation['activities']:
+        if existing.get('id') == activity['id']:
+            existing.update(activity)
+            return
+    invocation['activities'].append(activity)

@@ -196,6 +196,45 @@ def test_inner_tool_start_becomes_a_provider_labelled_native_card():
     )
 
 
+def test_inner_tool_also_emits_a_safe_oip_activity_when_parented():
+    agent = SimpleNamespace(
+        io=MagicMock(),
+        current_session={"_active_tool_call_id": "parent-claude-1"},
+    )
+    forwarder = claude_module._ClaudeStreamForwarder(agent)
+
+    forwarder.handle(
+        {
+            "type": "assistant",
+            "session_id": "session-1",
+            "message": {
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "Bash",
+                    "input": {"command": "pytest -q --token private-value"},
+                }]
+            },
+        }
+    )
+
+    typed, legacy = agent.io.log.call_args_list
+    assert typed.args == ("provider_activity",)
+    assert typed.kwargs == {
+        "provider": "claude_code",
+        "activityId": "claude:toolu_1",
+        "sequence": 1,
+        "kind": "command",
+        "status": "running",
+        "title": "Run the requested tests",
+        "summary": "Running the requested tests",
+        "invocationId": "claude_code:parent-claude-1",
+        "parentToolCallId": "parent-claude-1",
+    }
+    assert "private" not in json.dumps(typed.kwargs)
+    assert legacy.args == ("tool_call",)
+
+
 def test_duplicate_assistant_messages_do_not_duplicate_tool_cards():
     agent = _agent()
     forwarder = claude_module._ClaudeStreamForwarder(agent)

@@ -232,6 +232,30 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 else:
                     request_interrupt()
 
+            elif msg_type == "PROVIDER_INTERRUPT":
+                invocation_id = data.get("invocationId")
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                if (
+                    not isinstance(invocation_id, str)
+                    or not invocation_id
+                    or len(invocation_id) > 512
+                    or not active_io
+                    or not registered
+                    or registered.status != "running"
+                    or registered.io is not active_io
+                ):
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "provider stop requires the exact active provider run",
+                    })
+                    continue
+                # The agent-side lease accepts only an invocation it currently
+                # owns. The browser supplies a correlation id, never authority.
+                active_io.send_to_agent({
+                    "type": "PROVIDER_INTERRUPT", "invocationId": invocation_id,
+                })
+
             elif msg_type == "APPROVAL_RESPONSE" and active_io:
                 resolver = getattr(active_io, "resolve_legacy_permission", None)
                 if resolver is None:
