@@ -15,6 +15,7 @@ from connectonion.useful_plugins.tool_approval.policy import (
     evaluate_auto_approve,
     set_approval_profile,
 )
+from connectonion.useful_plugins.ulw import handle_yolo_mode_change
 
 
 def test_new_session_advertises_versioned_default_without_trusting_client_state():
@@ -283,3 +284,14 @@ def test_full_access_is_still_bounded_by_control_files(tmp_path, monkeypatch):
     instance = agent(tmp_path, profile="full_access")
     with pytest.raises(ValueError, match="decides what this agent may do"):
         call(instance, "write", {"path": str(tmp_path / ".co" / "host.yaml")})
+
+
+def test_bounded_yolo_updates_the_versioned_policy_before_its_first_tool(tmp_path):
+    instance = agent(tmp_path, io=False, profile="safe")
+    handle_yolo_mode_change(instance, turns=30)
+
+    result = call(instance, "add", {"content": "compile", "active_form": "compiling"})
+
+    assert instance.current_session["approval_profile"]["id"] == "full_access"
+    assert result["decision"] == "allow"
+    assert result["reason"] == "Full access was explicitly selected"
