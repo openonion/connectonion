@@ -14,9 +14,13 @@ Components under test:
 """
 
 
+import os
 import platform
+import signal
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -186,6 +190,8 @@ class TestBashBasic:
         assert "description" in schema["properties"]
         assert "command" in schema["required"]
         assert "description" not in schema["required"]
+        assert "agent" not in schema["properties"]
+        assert tool._needs_agent is True
 
     def test_bash_returns_stdout(self):
         """Test that stdout is captured."""
@@ -300,6 +306,38 @@ class TestBashIntegration:
         assert "cwd" in schema["parameters"]["properties"]
         assert "timeout" in schema["parameters"]["properties"]
 
+    def test_host_interrupt_terminates_bash_process_group(self, tmp_path):
+        """OIP Stop must not abandon the shell or its child process."""
+        from connectonion import Agent
+        from connectonion.network.io.websocket import WebSocketIO
+
+        child_pid_file = tmp_path / "child.pid"
+        command = f"sleep 30 & child=$!; echo $child > {child_pid_file}; wait $child"
+        agent = Agent("cancel-bash", tools=[bash], log=False, quiet=True)
+        agent.io = WebSocketIO()
+
+        def interrupt_after_child_starts():
+            deadline = time.monotonic() + 3
+            while not child_pid_file.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert child_pid_file.exists()
+            agent.io.send_to_agent({"type": "INTERRUPT"})
+
+        interrupter = threading.Thread(target=interrupt_after_child_starts)
+        interrupter.start()
+        trace = agent.execute_tool("bash", {"command": command})
+        interrupter.join(timeout=1)
+
+        assert trace["status"] == "interrupted"
+        child_pid = int(child_pid_file.read_text())
+        deadline = time.monotonic() + 2
+        while _process_exists(child_pid) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        survived = _process_exists(child_pid)
+        if survived:
+            os.kill(child_pid, signal.SIGKILL)
+        assert not survived
+
     def test_bash_timeout_is_an_agent_tool_error(self, monkeypatch):
         """The Agent trace exposes a timeout as an error instead of success."""
         from unittest.mock import Mock
@@ -320,6 +358,14 @@ class TestBashIntegration:
         assert result["status"] == "error"
         assert "timed out after 7200 seconds" in result["result"]
         assert agent.current_session["trace"][-1]["error_type"] == "TimeoutExpired"
+
+
+def _process_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific test")
