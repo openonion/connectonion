@@ -2,11 +2,20 @@
 
 import json
 
+import pytest
+
 from connectonion.core.provider_events import (
+    provider_artifact_event,
     provider_activity_event,
     provider_status_summary,
     provider_task_title,
     provider_terminal_summary,
+)
+
+
+_PNG = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlRjyoAAAAASUVORK5CYII="
 )
 
 
@@ -112,3 +121,44 @@ def test_claude_read_maps_to_a_shared_inspection_vocabulary():
     assert event["kind"] == "inspect"
     assert event["title"] == "Inspect the workspace"
     assert event["summary"] == "Inspecting workspace context"
+
+
+def test_provider_artifact_is_a_bounded_image_bound_to_one_state_revision():
+    event = provider_artifact_event(
+        provider="codex",
+        invocation_id="codex:call-7",
+        parent_tool_call_id="call-7",
+        artifact_id="screen-7",
+        state_revision=4,
+        thumbnail_data_url=_PNG,
+        alt="Latest provider workspace view",
+    )
+
+    assert event == {
+        "type": "provider_artifact",
+        "provider": "codex",
+        "invocationId": "codex:call-7",
+        "parentToolCallId": "call-7",
+        "artifactId": "screen-7",
+        "kind": "screenshot",
+        "stateRevision": 4,
+        "thumbnailDataUrl": _PNG,
+        "alt": "Latest provider workspace view",
+    }
+
+
+@pytest.mark.parametrize("thumbnail,alt", [
+    ("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", "Latest provider workspace view"),
+    (_PNG, "Run curl --token private-value"),
+])
+def test_provider_artifact_rejects_untrusted_or_unsafe_rendering_input(thumbnail, alt):
+    with pytest.raises(ValueError):
+        provider_artifact_event(
+            provider="codex",
+            invocation_id="codex:call-7",
+            parent_tool_call_id="call-7",
+            artifact_id="screen-7",
+            state_revision=4,
+            thumbnail_data_url=thumbnail,
+            alt=alt,
+        )

@@ -4,7 +4,11 @@ import copy
 import threading
 from typing import Any, Callable, Optional, Tuple
 
-from .provider_events import provider_status_summary, provider_terminal_summary
+from .provider_events import (
+    next_provider_state_revision_after,
+    provider_status_summary,
+    provider_terminal_summary,
+)
 
 
 class UserInterrupt(Exception):
@@ -32,7 +36,11 @@ class InterruptibleIO:
             if self._cancelled.is_set():
                 return
             for invocation in self._live_provider_invocations.values():
-                self.__io.send({**invocation, "status": "cancelled"})
+                self.__io.send({
+                    **invocation,
+                    "status": "cancelled",
+                    "stateRevision": next_provider_state_revision_after(invocation),
+                })
             self._live_provider_invocations.clear()
             self._cancelled.set()
             self._deferred.clear()
@@ -80,6 +88,7 @@ class InterruptibleIO:
             self.__io.send({
                 **invocation,
                 "status": "cancelled",
+                "stateRevision": next_provider_state_revision_after(invocation),
                 # Use the same finite Work Room vocabulary as the provider
                 # adapter. A targeted stop must not introduce a one-off raw
                 # presentation string that an independently deployed React

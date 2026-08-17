@@ -20,6 +20,7 @@ Streaming-only event types (llm_call, llm_result, compact, etc.) are not
 reconstructed — they're live-only feedback and don't survive reconnect by design.
 """
 
+from ....core.provider_events import provider_artifact_event
 from ....useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
 
 
@@ -71,6 +72,9 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
 
     if entry_type == 'provider_activity':
         return _provider_activity_item(entry)
+
+    if entry_type == 'provider_artifact':
+        return _provider_artifact_item(entry)
 
     # tool_executor.py records two trace entries per tool: 'tool_call' (placeholder before
     # execute, no result) then 'tool_result' (final state, has status/result/timing_ms).
@@ -134,6 +138,35 @@ def _provider_activity_item(entry: dict) -> dict | None:
     if files:
         item['files'] = files
     return item
+
+
+def _provider_artifact_item(entry: dict) -> dict | None:
+    """Revalidate a persisted preview with Core's canonical strict contract."""
+    artifact_id = entry.get('artifactId')
+    invocation_id = entry.get('invocationId')
+    parent_id = entry.get('parentToolCallId')
+    thumbnail = entry.get('thumbnailDataUrl')
+    alt = entry.get('alt')
+    revision = entry.get('stateRevision')
+    if not all(
+        isinstance(value, str) and value
+        for value in (artifact_id, invocation_id, parent_id, thumbnail, alt)
+    ):
+        return None
+    if entry.get('kind') != 'screenshot':
+        return None
+    try:
+        return provider_artifact_event(
+            provider=entry.get('provider'),
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            artifact_id=artifact_id,
+            state_revision=revision,
+            thumbnail_data_url=thumbnail,
+            alt=alt,
+        )
+    except ValueError:
+        return None
 
 
 def _safe_file_names(value: object) -> list[str]:
@@ -266,6 +299,19 @@ def _nest_provider_invocations(items: list[dict]) -> list[dict]:
                 emitted.add(invocation_id)
             continue
         if (
+            item.get('type') == 'provider_artifact'
+            and isinstance(invocation_id, str)
+            and invocation_id in invocations
+        ):
+            artifact = _nested_provider_artifact(item)
+            invocation = invocations[invocation_id]
+            if (
+                artifact
+                and artifact['stateRevision'] == invocation.get('stateRevision')
+            ):
+                invocation['artifact'] = artifact
+            continue
+        if (
             item.get('type') == 'provider_activity'
             and isinstance(invocation_id, str)
             and invocation_id in invocations
@@ -309,6 +355,19 @@ def _nested_provider_activity(item: dict) -> dict | None:
     if item.get('files'):
         activity['files'] = item['files']
     return activity
+
+
+def _nested_provider_artifact(item: dict) -> dict | None:
+    required = ('artifactId', 'kind', 'stateRevision', 'thumbnailDataUrl', 'alt')
+    if any(key not in item for key in required):
+        return None
+    return {
+        'id': item['artifactId'],
+        'kind': item['kind'],
+        'stateRevision': item['stateRevision'],
+        'thumbnailDataUrl': item['thumbnailDataUrl'],
+        'alt': item['alt'],
+    }
 
 
 def _upsert_provider_activity(invocation: dict, activity: dict) -> None:

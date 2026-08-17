@@ -298,6 +298,86 @@ def test_inner_tool_result_completes_the_same_card(is_error, status):
     )
 
 
+def test_inline_workspace_png_becomes_a_real_revision_bound_provider_artifact():
+    thumbnail = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8A"
+        "AusB9WlRjyoAAAAASUVORK5CYII="
+    )
+    agent = SimpleNamespace(
+        io=MagicMock(),
+        current_session={"_active_tool_call_id": "parent-claude-image"},
+    )
+    forwarder = claude_module._ClaudeStreamForwarder(agent)
+    forwarder.handle({
+        "type": "assistant",
+        "session_id": "s",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_image", "name": "Read", "input": {},
+        }]},
+    })
+    agent.io.log.reset_mock()
+
+    forwarder.handle({
+        "type": "user",
+        "session_id": "s",
+        "message": {"content": [{
+            "type": "tool_result",
+            "tool_use_id": "toolu_image",
+            "content": [{
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/png", "data": thumbnail},
+            }],
+        }]},
+    })
+
+    lifecycle, artifact, activity, result = agent.io.log.call_args_list
+    assert lifecycle.args == ("provider_invocation",)
+    assert lifecycle.kwargs["stateRevision"] == 1
+    assert artifact.args == ("provider_artifact",)
+    assert artifact.kwargs["stateRevision"] == lifecycle.kwargs["stateRevision"]
+    assert artifact.kwargs["thumbnailDataUrl"] == f"data:image/png;base64,{thumbnail}"
+    assert activity.args == ("provider_activity",)
+    assert result.args == ("tool_result",)
+    assert result.kwargs["result"] == "Provider returned a workspace image."
+    assert thumbnail not in json.dumps(result.kwargs)
+
+
+def test_inline_svg_or_url_content_never_becomes_a_provider_artifact():
+    agent = SimpleNamespace(
+        io=MagicMock(),
+        current_session={"_active_tool_call_id": "parent-claude-image"},
+    )
+    forwarder = claude_module._ClaudeStreamForwarder(agent)
+    forwarder.handle({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_image", "name": "Read", "input": {},
+        }]},
+    })
+    agent.io.log.reset_mock()
+
+    forwarder.handle({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result",
+            "tool_use_id": "toolu_image",
+            "content": [{
+                "type": "image",
+                "source": {
+                    "type": "url",
+                    "media_type": "image/svg+xml",
+                    "data": "https://example.invalid/private-preview.svg",
+                },
+            }],
+        }]},
+    })
+
+    assert [call.args[0] for call in agent.io.log.call_args_list] == [
+        "provider_activity", "tool_result",
+    ]
+    assert "private-preview" not in json.dumps(agent.io.log.call_args_list[-1].kwargs)
+
+
 def test_subagent_parent_id_is_preserved_for_future_nested_ui():
     agent = _agent()
     forwarder = claude_module._ClaudeStreamForwarder(agent)

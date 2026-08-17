@@ -2,9 +2,9 @@
 Purpose: Run Codex via its native app-server protocol, stream steps and permission requests to the frontend, and resume sessions
 LLM-Note:
   Dependencies: imports from [atexit, json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
-  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
+  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log; a completed native imageView becomes a bounded PNG/JPEG provider_artifact only when it stays inside cwd → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
   State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | open-only threads remain in a process-local registry for at most 15 minutes (maximum 8) until their first turn persists the rollout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
-  Integration: exposes codex(...) and CodexAppServer | this is the native adapter: ConnectOnion's Python client drives Codex app-server directly | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
+  Integration: exposes codex(...) and CodexAppServer | this is the native adapter: ConnectOnion's Python client drives Codex app-server directly | lifecycle revisions/cache are owned by plugins/coding_agents.py and core/provider_events.py | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
   Performance: one process per active call; open-only keeps its initialized process until first follow-up/expiry | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
   Errors: returns envelope with error on missing binary, JSON-RPC failure/timeout, or exception | never raises to the agent loop
 
@@ -34,6 +34,7 @@ $CODEX_CMD to override the binary path/command.
 """
 
 import atexit
+import base64
 import json
 import os
 import re
@@ -42,11 +43,16 @@ import signal
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 from ..core.provider_events import (
     command_phase,
+    next_provider_state_revision,
+    provider_artifact_event,
+    provider_artifact_for_state,
     provider_activity_event,
     provider_status_summary,
+    remember_provider_artifact,
     remember_provider_activity,
 )
 
@@ -71,6 +77,7 @@ _TOOL_ITEM_TYPES = ("commandExecution", "fileChange", "mcpToolCall", "webSearch"
 # works across later tool calls and Host restarts.
 _OPEN_THREAD_TTL_SECONDS = 15 * 60
 _MAX_OPEN_THREADS = 8
+_MAX_WORKROOM_IMAGE_BYTES = 180 * 1024
 _open_threads = {}
 _open_threads_lock = threading.Lock()
 
@@ -120,7 +127,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     def on_event(event):
         if event.get("kind") == "agent_message":
             chunks.append(event.get("text", ""))
-        _forward_ui(agent, event)
+        _forward_ui(agent, event, workspace=working_directory)
 
     def on_approval(method, params):
         return _approval_allowed(
@@ -339,7 +346,7 @@ def _base_command():
     return [found, "app-server"] if found else None
 
 
-def _forward_ui(agent, event):
+def _forward_ui(agent, event, *, workspace=None):
     """Convert one Codex thread event into the frontend's native event stream.
 
     The @connectonion/react package maps `tool_call` (stable tool_id) → a
@@ -372,6 +379,81 @@ def _forward_ui(agent, event):
                              status="failed" if event.get("failed") else "completed",
                              result=event.get("result", ""), provider="codex",
                              **correlation)
+    elif kind == "image_view":
+        _emit_workspace_image_artifact(agent, event, correlation, workspace)
+
+
+def _emit_workspace_image_artifact(agent, event, correlation, workspace):
+    """Forward a completed native `imageView`, never a terminal/text stand-in.
+
+    Codex alone decides whether it viewed an image. ConnectOnion permits that
+    image to become a Work Room thumbnail only after resolving it inside the
+    operator-selected workspace and validating the exact bounded PNG/JPEG
+    payload used on the OIP wire.
+    """
+    invocation_id = correlation.get("invocationId")
+    parent_id = correlation.get("parentToolCallId")
+    thumbnail = _workspace_image_data_url(event.get("path"), workspace)
+    if not invocation_id or not parent_id or thumbnail is None:
+        return
+    lifecycle = _emit_provider_event(
+        agent,
+        "provider_invocation",
+        invocationId=invocation_id,
+        parentToolCallId=parent_id,
+        provider="codex",
+        providerDisplayName="Codex",
+        status="running",
+        currentSummary=provider_status_summary("running"),
+    )
+    revision = lifecycle.get("stateRevision")
+    try:
+        artifact = provider_artifact_event(
+            provider="codex",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            artifact_id=f"image-{revision}",
+            state_revision=revision,
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+    except ValueError:
+        return
+    remember_provider_artifact(
+        agent,
+        provider="codex",
+        invocation_id=invocation_id,
+        parent_tool_call_id=parent_id,
+        thumbnail_data_url=thumbnail,
+        alt="Latest provider workspace view",
+    )
+    _emit_provider_event(agent, "provider_artifact", **_without_event_type(artifact))
+
+
+def _workspace_image_data_url(path, workspace):
+    """Read a small, regular workspace PNG/JPEG without leaking its path."""
+    if not isinstance(path, str) or not path or not isinstance(workspace, (str, Path)):
+        return None
+    try:
+        root = Path(workspace).expanduser().resolve(strict=True)
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        image = candidate.resolve(strict=True)
+        if not root.is_dir() or not image.is_relative_to(root) or not image.is_file():
+            return None
+        if image.stat().st_size > _MAX_WORKROOM_IMAGE_BYTES:
+            return None
+        binary = image.read_bytes()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if binary.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif binary.startswith(b"\xff\xd8") and binary.endswith(b"\xff\xd9"):
+        mime = "image/jpeg"
+    else:
+        return None
+    return f"data:{mime};base64,{base64.b64encode(binary).decode('ascii')}"
 
 
 def _emit_safe_provider_activity(agent, event, status, correlation):
@@ -434,6 +516,15 @@ def _provider_cancellation_check(agent):
 
 
 def _emit_provider_event(agent, event_type, **fields):
+    if event_type == "provider_invocation":
+        invocation_id = fields.get("invocationId")
+        if isinstance(invocation_id, str) and invocation_id:
+            # Native approval transitions share the outer invocation's
+            # revision stream.  React can therefore distinguish a replayed
+            # approval/running frame from a newer state after a scoped Stop.
+            fields["stateRevision"] = next_provider_state_revision(
+                agent, invocation_id
+            )
     entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
@@ -446,6 +537,30 @@ def _emit_provider_event(agent, event_type, **fields):
             fields.pop("name", None)
             fields.pop("args", None)
         agent.io.log(event_type, **fields)
+    if event_type == "provider_invocation":
+        _emit_cached_provider_artifact(agent, entry)
+    return entry
+
+
+def _emit_cached_provider_artifact(agent, lifecycle):
+    """Keep the latest real preview on a newer approval/terminal revision."""
+    artifact = provider_artifact_for_state(
+        agent,
+        provider=lifecycle.get("provider"),
+        invocation_id=lifecycle.get("invocationId"),
+        parent_tool_call_id=lifecycle.get("parentToolCallId"),
+        state_revision=lifecycle.get("stateRevision"),
+    )
+    if artifact is not None:
+        _emit_provider_event(
+            agent,
+            "provider_artifact",
+            **_without_event_type(artifact),
+        )
+
+
+def _without_event_type(event):
+    return {key: value for key, value in event.items() if key != "type"}
 
 
 def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
@@ -1149,6 +1264,14 @@ class CodexAppServer:
         itype = item.get("type", "")
         if itype == "agentMessage":
             return {"kind": "agent_message", "text": item.get("text") or item.get("content", "")}
+        if itype == "imageView":
+            # A thumbnail is emitted only once Codex completed the native image
+            # viewer item; a started item can point at a partially written file.
+            return {
+                "kind": "image_view" if not start else "image_view_started",
+                "id": item.get("id", ""),
+                "path": item.get("path") or item.get("filePath", ""),
+            }
         if itype in _TOOL_ITEM_TYPES:
             name = item.get("command") or item.get("title") or item.get("path") or itype
             if isinstance(name, list):

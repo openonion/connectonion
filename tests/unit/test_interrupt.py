@@ -479,6 +479,7 @@ def test_interruptible_io_stops_only_the_requested_live_provider():
         "provider": "codex",
         "providerDisplayName": "Codex",
         "status": "running",
+        "stateRevision": 3,
     }
     claude = {
         "type": "provider_invocation",
@@ -497,6 +498,7 @@ def test_interruptible_io_stops_only_the_requested_live_provider():
     terminal = io._msgs_from_agent[-1]
     assert terminal["invocationId"] == "codex:outer"
     assert terminal["status"] == "cancelled"
+    assert terminal["stateRevision"] == 4
     assert terminal["resultSummary"] == "The provider stopped"
 
 
