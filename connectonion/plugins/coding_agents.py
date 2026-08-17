@@ -18,6 +18,7 @@ from ..core.approval_modes import (
 from ..core.events import on_agent_ready
 from ..core.provider_events import (
     clear_provider_activity_history,
+    next_provider_state_revision,
     provider_status_summary,
     provider_task_title,
     provider_terminal_summary,
@@ -374,6 +375,14 @@ def _parent_tool_call_id(agent) -> str | None:
 
 
 def _emit(agent, event_type: str, **fields: Any) -> None:
+    if event_type == "provider_invocation":
+        invocation_id = fields.get("invocationId")
+        if isinstance(invocation_id, str) and invocation_id:
+            # The same entry is later sent through the live and durable lanes;
+            # assign once, before either lane observes it.
+            fields["stateRevision"] = next_provider_state_revision(
+                agent, invocation_id
+            )
     entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):

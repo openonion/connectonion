@@ -45,6 +45,7 @@ import time
 
 from ..core.provider_events import (
     command_phase,
+    next_provider_state_revision,
     provider_activity_event,
     provider_status_summary,
     remember_provider_activity,
@@ -434,6 +435,15 @@ def _provider_cancellation_check(agent):
 
 
 def _emit_provider_event(agent, event_type, **fields):
+    if event_type == "provider_invocation":
+        invocation_id = fields.get("invocationId")
+        if isinstance(invocation_id, str) and invocation_id:
+            # Native approval transitions share the outer invocation's
+            # revision stream.  React can therefore distinguish a replayed
+            # approval/running frame from a newer state after a scoped Stop.
+            fields["stateRevision"] = next_provider_state_revision(
+                agent, invocation_id
+            )
     entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):

@@ -7,6 +7,7 @@ module deliberately does not copy them into the default Work Room envelope.
 
 from __future__ import annotations
 
+import base64
 import re
 from typing import Any, Iterable, Mapping
 
@@ -29,6 +30,18 @@ _SAFE_ACTIVITY_TITLES = frozenset(
     }
 )
 _ACTIVITY_HISTORY_ATTRIBUTE = "_provider_workroom_activity_history"
+_STATE_REVISIONS_ATTRIBUTE = "_provider_workroom_state_revisions"
+_SAFE_ARTIFACT_ALTS = frozenset(
+    {
+        "Latest provider workspace view",
+        "Latest provider browser view",
+    }
+)
+_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_ARTIFACT_DATA_URL = re.compile(
+    r"^data:(image/png|image/jpeg);base64,([A-Za-z0-9+/]+={0,2})$"
+)
+_MAX_ARTIFACT_DATA_URL_LENGTH = 262_144
 
 
 def provider_task_title(prompt: object) -> str:
@@ -114,6 +127,43 @@ def clear_provider_activity_history(agent: object, invocation_id: object) -> Non
     history.pop(invocation_id, None)
 
 
+def next_provider_state_revision(agent: object, invocation_id: object) -> int:
+    """Advance one provider invocation's monotonic Work Room state revision.
+
+    A provider invocation is replayed over a reconnect and may be sent down a
+    live lane before its durable trace is committed.  The revision belongs to
+    the semantic lifecycle event rather than either delivery lane, so a client
+    can reject an older snapshot without guessing from timestamps or output.
+    """
+    if not isinstance(invocation_id, str) or not invocation_id:
+        raise ValueError("provider state revision requires an invocation id")
+    revisions = getattr(agent, _STATE_REVISIONS_ATTRIBUTE, None)
+    if not isinstance(revisions, dict):
+        revisions = {}
+        setattr(agent, _STATE_REVISIONS_ATTRIBUTE, revisions)
+    previous = revisions.get(invocation_id, 0)
+    if isinstance(previous, bool) or not isinstance(previous, int) or previous < 0:
+        previous = 0
+    revision = previous + 1
+    revisions[invocation_id] = revision
+    return revision
+
+
+def next_provider_state_revision_after(event: Mapping[str, object]) -> int:
+    """Return the successor for a Host-synthesized terminal lifecycle event.
+
+    ``InterruptibleIO`` must immediately publish a cancelled state before the
+    native adapter unwinds.  It cannot own the adapter's agent-local revision
+    map, so it derives the same next revision from the visible invocation.  The
+    adapter's later durable terminal event gets that same revision, allowing
+    the browser to upsert it as the same semantic state.
+    """
+    previous = event.get("stateRevision")
+    if isinstance(previous, bool) or not isinstance(previous, int) or previous < 1:
+        return 1
+    return previous + 1
+
+
 def remember_provider_activity(
     agent: object,
     invocation_id: object,
@@ -190,6 +240,76 @@ def provider_activity_event(
     if files:
         event["files"] = files
     return event
+
+
+def provider_artifact_event(
+    *,
+    provider: str,
+    invocation_id: str,
+    parent_tool_call_id: str,
+    artifact_id: str,
+    state_revision: int,
+    thumbnail_data_url: str,
+    alt: str,
+) -> dict[str, Any]:
+    """Build one bounded, image-only Work Room preview event.
+
+    Native adapters do not expose arbitrary provider text as a visual.  An
+    adapter may opt in only after it has captured a real, Host-owned image of
+    the provider workspace or browser.  The inline PNG/JPEG avoids third-party
+    URL fetches, SVG/script execution, and bearer URLs leaking into a reader's
+    Work Room; the browser still validates it again before rendering.
+    """
+    if provider not in {"codex", "claude_code"}:
+        raise ValueError("provider artifact requires a supported provider")
+    if not all(
+        isinstance(value, str) and value
+        for value in (invocation_id, parent_tool_call_id)
+    ):
+        raise ValueError("provider artifact requires invocation correlation")
+    if not isinstance(artifact_id, str) or not _ARTIFACT_ID.fullmatch(artifact_id):
+        raise ValueError("provider artifact id is invalid")
+    if (
+        isinstance(state_revision, bool)
+        or not isinstance(state_revision, int)
+        or state_revision < 1
+    ):
+        raise ValueError("provider artifact requires a positive state revision")
+    if alt not in _SAFE_ARTIFACT_ALTS:
+        raise ValueError("provider artifact alt text is not approved")
+    _validate_artifact_data_url(thumbnail_data_url)
+    return {
+        "type": "provider_artifact",
+        "provider": provider,
+        "invocationId": invocation_id,
+        "parentToolCallId": parent_tool_call_id,
+        "artifactId": artifact_id,
+        "kind": "screenshot",
+        "stateRevision": state_revision,
+        "thumbnailDataUrl": thumbnail_data_url,
+        "alt": alt,
+    }
+
+
+def _validate_artifact_data_url(value: object) -> None:
+    """Refuse a non-image, oversized, or malformed inline thumbnail."""
+    if not isinstance(value, str) or len(value) > _MAX_ARTIFACT_DATA_URL_LENGTH:
+        raise ValueError("provider artifact thumbnail is invalid")
+    matched = _ARTIFACT_DATA_URL.fullmatch(value)
+    if matched is None:
+        raise ValueError("provider artifact thumbnail must be an inline PNG or JPEG")
+    mime, encoded = matched.groups()
+    try:
+        binary = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:
+        raise ValueError("provider artifact thumbnail is malformed") from exc
+    valid_image = (
+        mime == "image/png" and binary.startswith(b"\x89PNG\r\n\x1a\n")
+    ) or (
+        mime == "image/jpeg" and binary.startswith(b"\xff\xd8") and binary.endswith(b"\xff\xd9")
+    )
+    if not valid_image:
+        raise ValueError("provider artifact thumbnail does not match its image type")
 
 
 def _words(value: object) -> str:

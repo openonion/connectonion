@@ -13,6 +13,7 @@ import asyncio
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any, Dict
 
 from .base import IO
@@ -20,6 +21,23 @@ from .base import IO
 
 class _PersistedTraceEvent(dict):
     """Cooperative Host-local provenance; never an extra wire field or sandbox."""
+
+
+@dataclass(frozen=True)
+class ProviderInterruptResult:
+    """Host decision for one correlated provider Stop request.
+
+    The boolean behavior intentionally preserves the old duck-typed internal
+    API while exposing the revision an acknowledged browser must retain across
+    reconnect/replay.
+    """
+
+    accepted: bool
+    state_revision: int | None
+    reason: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.accepted
 
 
 class WebSocketIO(IO):
@@ -38,7 +56,11 @@ class WebSocketIO(IO):
         # The Host still owns the live lease, but it can reject a stale Stop
         # immediately instead of leaving the browser with a permanently pending
         # local button state.
-        self._live_provider_invocations: set[str] = set()
+        self._live_provider_invocations: dict[str, int | None] = {}
+        # Retain the latest semantic revision even after a terminal event. A
+        # tool's durable trace can replay earlier lifecycle entries after its
+        # live lane has already published the terminal state.
+        self._latest_provider_revisions: dict[str, int] = {}
         self._provider_condition = threading.Condition()
         self._finished = False
         self._cursor = 0
@@ -97,11 +119,27 @@ class WebSocketIO(IO):
         invocation_id = message.get("invocationId")
         if not isinstance(invocation_id, str) or not invocation_id:
             return
+        state_revision = message.get("stateRevision")
+        if (
+            isinstance(state_revision, bool)
+            or not isinstance(state_revision, int)
+            or state_revision < 1
+        ):
+            state_revision = None
         with self._provider_condition:
+            known_revision = self._latest_provider_revisions.get(invocation_id)
+            if known_revision is not None:
+                # A versioned state must never regress. Once this Host has seen
+                # a version, an unversioned compatibility replay is also too
+                # weak to reactivate the invocation.
+                if state_revision is None or state_revision <= known_revision:
+                    return
+            if state_revision is not None:
+                self._latest_provider_revisions[invocation_id] = state_revision
             if message.get("status") in {"completed", "failed", "cancelled"}:
-                self._live_provider_invocations.discard(invocation_id)
+                self._live_provider_invocations.pop(invocation_id, None)
             else:
-                self._live_provider_invocations.add(invocation_id)
+                self._live_provider_invocations[invocation_id] = state_revision
 
     def receive(self) -> Dict[str, Any]:
         """Block until client message arrives."""
@@ -172,15 +210,41 @@ class WebSocketIO(IO):
                     return True
             return False
 
-    def request_provider_interrupt(self, invocation_id: str) -> bool:
-        """Accept a Stop only for a provider run the current Host IO still owns."""
+    def request_provider_interrupt(
+        self,
+        invocation_id: str,
+        state_revision: int | None = None,
+    ) -> ProviderInterruptResult:
+        """Accept a Stop only for the exact live provider state the Host owns."""
         if not isinstance(invocation_id, str) or not invocation_id:
-            return False
+            return ProviderInterruptResult(False, None, "not_active")
+        if (
+            state_revision is not None
+            and (
+                isinstance(state_revision, bool)
+                or not isinstance(state_revision, int)
+                or state_revision < 1
+            )
+        ):
+            return ProviderInterruptResult(False, None, "invalid_revision")
         with self._provider_condition:
             if invocation_id not in self._live_provider_invocations:
-                return False
-        self.send_to_agent({"type": "PROVIDER_INTERRUPT", "invocationId": invocation_id})
-        return True
+                return ProviderInterruptResult(False, None, "not_active")
+            current_revision = self._live_provider_invocations[invocation_id]
+            if state_revision is not None:
+                if current_revision is None:
+                    return ProviderInterruptResult(
+                        False, None, "state_unconfirmed"
+                    )
+                if current_revision != state_revision:
+                    return ProviderInterruptResult(
+                        False, current_revision, "state_changed"
+                    )
+        frame = {"type": "PROVIDER_INTERRUPT", "invocationId": invocation_id}
+        if state_revision is not None:
+            frame["stateRevision"] = state_revision
+        self.send_to_agent(frame)
+        return ProviderInterruptResult(True, current_revision)
 
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
@@ -203,6 +267,7 @@ class WebSocketIO(IO):
         """Signal that agent is done producing messages."""
         with self._provider_condition:
             self._live_provider_invocations.clear()
+            self._latest_provider_revisions.clear()
         with self._agent_condition:
             self._finished = True
             self._agent_condition.notify_all()
@@ -212,6 +277,7 @@ class WebSocketIO(IO):
         self._closed = True
         with self._provider_condition:
             self._live_provider_invocations.clear()
+            self._latest_provider_revisions.clear()
 
     # ═══════════════════════════════════════════════════════
     # Transport side (async)

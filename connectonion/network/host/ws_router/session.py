@@ -29,6 +29,7 @@ async def _send_provider_interrupt_ack(
     request_id: str,
     invocation_id: str | None,
     accepted: bool,
+    state_revision: int | None = None,
     reason: str | None = None,
 ):
     """Reply to one modern scoped Stop without exposing provider internals."""
@@ -38,6 +39,12 @@ async def _send_provider_interrupt_ack(
         "invocationId": invocation_id,
         "accepted": accepted,
     }
+    if (
+        not isinstance(state_revision, bool)
+        and isinstance(state_revision, int)
+        and state_revision > 0
+    ):
+        frame["stateRevision"] = state_revision
     if reason:
         frame["reason"] = reason
     await send_msg(frame)
@@ -255,6 +262,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
             elif msg_type == "PROVIDER_INTERRUPT":
                 invocation_id = data.get("invocationId")
                 request_id = data.get("requestId")
+                state_revision = data.get("stateRevision")
                 # Older browser clients used the unacknowledged frame. Keep
                 # their existing behavior during a rolling upgrade, but require
                 # a bounded correlation id before claiming an acknowledgement.
@@ -271,6 +279,29 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         accepted=False,
                         reason="invalid_request",
                     )
+                    continue
+                if state_revision is not None and (
+                    isinstance(state_revision, bool)
+                    or not isinstance(state_revision, int)
+                    or state_revision < 1
+                ):
+                    if not legacy_request:
+                        await _send_provider_interrupt_ack(
+                            send_msg,
+                            request_id=request_id,
+                            invocation_id=(
+                                invocation_id
+                                if isinstance(invocation_id, str)
+                                else None
+                            ),
+                            accepted=False,
+                            reason="invalid_revision",
+                        )
+                    else:
+                        await send_msg({
+                            "type": "ERROR",
+                            "message": "provider stop requires a valid state revision",
+                        })
                     continue
                 sid = conn.get("session_id")
                 registered = registry.get(sid) if sid else None
@@ -300,11 +331,14 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 request_provider_interrupt = getattr(
                     active_io, "request_provider_interrupt", None,
                 )
-                accepted = bool(
-                    request_provider_interrupt(invocation_id)
+                result = (
+                    request_provider_interrupt(invocation_id, state_revision)
                     if callable(request_provider_interrupt)
                     else False
                 )
+                accepted = bool(result)
+                acknowledged_revision = getattr(result, "state_revision", None)
+                reason = getattr(result, "reason", None)
                 if legacy_request:
                     if not accepted:
                         await send_msg({
@@ -317,7 +351,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     request_id=request_id,
                     invocation_id=invocation_id,
                     accepted=accepted,
-                    reason=None if accepted else "not_active",
+                    state_revision=acknowledged_revision,
+                    reason=None if accepted else (reason or "not_active"),
                 )
 
             elif msg_type == "APPROVAL_RESPONSE" and active_io:

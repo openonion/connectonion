@@ -27,6 +27,17 @@ def test_production_package_has_no_acp_modules():
     assert modules == []
 
 
+def test_repository_has_no_retained_acp_prototype():
+    prototypes = ROOT / "prototypes"
+    retained = [
+        path.relative_to(ROOT).as_posix()
+        for path in prototypes.rglob("*")
+        if path.is_file() and "acp" in path.name.lower()
+    ] if prototypes.exists() else []
+
+    assert retained == []
+
+
 def test_co_ai_rejects_removed_acp_option():
     result = CliRunner().invoke(app, ["ai", "--acp"])
 

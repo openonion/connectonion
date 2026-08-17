@@ -772,6 +772,88 @@ class TestSessionToChatItems:
         ids = [item['id'] for item in items]
         assert len(ids) == len(set(ids))  # All unique
 
+    def test_replays_a_verified_provider_artifact_only_for_its_current_state(self):
+        thumbnail = (
+            'data:image/png;base64,'
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlRjyoAAAAASUVORK5CYII='
+        )
+        session = {
+            'trace': [
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'status': 'running',
+                    'stateRevision': 3,
+                },
+                {
+                    'type': 'provider_artifact',
+                    'provider': 'codex',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'artifactId': 'screen-3',
+                    'kind': 'screenshot',
+                    'stateRevision': 3,
+                    'thumbnailDataUrl': thumbnail,
+                    'alt': 'Latest provider workspace view',
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items == [{
+            'type': 'provider_invocation',
+            'invocationId': 'codex:call-7',
+            'parentToolCallId': 'call-7',
+            'provider': 'codex',
+            'providerDisplayName': 'Codex',
+            'status': 'running',
+            'stateRevision': 3,
+            'id': 'codex:call-7',
+            'activities': [],
+            'artifact': {
+                'id': 'screen-3',
+                'kind': 'screenshot',
+                'stateRevision': 3,
+                'thumbnailDataUrl': thumbnail,
+                'alt': 'Latest provider workspace view',
+            },
+        }]
+
+    def test_drops_a_persisted_artifact_that_only_claims_to_be_a_png(self):
+        session = {
+            'trace': [
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'status': 'running',
+                    'stateRevision': 3,
+                },
+                {
+                    'type': 'provider_artifact',
+                    'provider': 'codex',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'artifactId': 'not-an-image',
+                    'kind': 'screenshot',
+                    'stateRevision': 3,
+                    'thumbnailDataUrl': 'data:image/png;base64,bm90IGEgcG5n',
+                    'alt': 'Latest provider workspace view',
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items[0]['type'] == 'provider_invocation'
+        assert 'artifact' not in items[0]
+
 
 class TestReconnectionScenarios:
     """End-to-end reconnection scenario tests."""

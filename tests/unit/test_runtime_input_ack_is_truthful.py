@@ -83,10 +83,15 @@ def test_targeted_provider_stop_reaches_only_the_current_active_io():
             'type': 'PROVIDER_INTERRUPT',
             'invocationId': 'codex:outer',
             'requestId': 'provider-stop-1',
+            'stateRevision': 7,
         },
     ]
     io = Mock()
-    io.request_provider_interrupt.return_value = True
+    io.request_provider_interrupt.return_value = SimpleNamespace(
+        accepted=True,
+        state_revision=7,
+        reason=None,
+    )
     active = SimpleNamespace(status='running', io=io)
     registry = Mock()
     registry.get.return_value = active
@@ -121,12 +126,13 @@ def test_targeted_provider_stop_reaches_only_the_current_active_io():
     finally:
         ws_session.handle_connect = original
 
-    io.request_provider_interrupt.assert_called_once_with('codex:outer')
+    io.request_provider_interrupt.assert_called_once_with('codex:outer', 7)
     assert sent == [{
         'type': 'PROVIDER_INTERRUPT_ACK',
         'requestId': 'provider-stop-1',
         'invocationId': 'codex:outer',
         'accepted': True,
+        'stateRevision': 7,
     }]
 
 

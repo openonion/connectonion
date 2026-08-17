@@ -66,7 +66,9 @@ def test_invocation_lifecycle_is_parented_and_terminal(monkeypatch, tmp_path):
     assert start.kwargs["invocationId"] == "codex:call-7"
     assert start.kwargs["parentToolCallId"] == "call-7"
     assert start.kwargs["status"] == "running"
+    assert start.kwargs["stateRevision"] == 1
     assert finish.kwargs["status"] == "completed"
+    assert finish.kwargs["stateRevision"] == 2
     assert finish.kwargs["sessionId"] == "s1"
 
 

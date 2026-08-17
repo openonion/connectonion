@@ -452,6 +452,7 @@ class TestApproval:
                 "providerDisplayName": "Codex",
                 "status": "awaiting_approval",
                 "currentSummary": "Waiting for your decision",
+                "stateRevision": 1,
             },
             {
                 "invocationId": "codex:parent-codex-call",
@@ -460,6 +461,7 @@ class TestApproval:
                 "providerDisplayName": "Codex",
                 "status": "running",
                 "currentSummary": "Working in the selected workspace",
+                "stateRevision": 2,
             },
         ]
 

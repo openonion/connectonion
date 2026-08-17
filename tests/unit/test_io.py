@@ -132,17 +132,64 @@ class TestWebSocketIO:
             "type": "provider_invocation",
             "invocationId": "codex:current",
             "status": "running",
+            "stateRevision": 7,
         })
 
-        assert io.request_provider_interrupt("codex:current") is True
+        accepted = io.request_provider_interrupt("codex:current", 7)
+        assert accepted.accepted is True
+        assert accepted.state_revision == 7
+        assert io.receive_all() == [{
+            "type": "PROVIDER_INTERRUPT",
+            "invocationId": "codex:current",
+            "stateRevision": 7,
+        }]
+
+        # The exact live revision is part of the authority boundary. A stale
+        # browser cannot turn a replayed "running" frame into a fresh stop.
+        stale = io.request_provider_interrupt("codex:current", 6)
+        assert stale.accepted is False
+        assert stale.state_revision == 7
+        assert stale.reason == "state_changed"
+
+        accepted = io.request_provider_interrupt("codex:current", 7)
+        assert accepted.accepted is True
         assert io.take_provider_interrupt("codex:current") is True
 
         io.send({
             "type": "provider_invocation",
             "invocationId": "codex:current",
             "status": "cancelled",
+            "stateRevision": 8,
         })
-        assert io.request_provider_interrupt("codex:current") is False
+        assert io.request_provider_interrupt("codex:current", 8).accepted is False
+
+    def test_replayed_provider_state_cannot_reopen_a_newer_terminal_invocation(self):
+        io = WebSocketIO()
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "codex:replayed",
+            "status": "running",
+            "stateRevision": 1,
+        })
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "codex:replayed",
+            "status": "cancelled",
+            "stateRevision": 3,
+        })
+        # Live provider events are committed to the durable trace at the end
+        # of a tool transaction. Their older replay must not briefly make a
+        # completed run Stop-addressable again.
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "codex:replayed",
+            "status": "running",
+            "stateRevision": 1,
+        })
+
+        result = io.request_provider_interrupt("codex:replayed", 1)
+        assert result.accepted is False
+        assert result.reason == "not_active"
 
     def test_receive_blocks_until_data(self):
         """receive() blocks until data is available."""
