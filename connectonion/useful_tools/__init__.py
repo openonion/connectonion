@@ -18,6 +18,7 @@ from .google_calendar import GoogleCalendar
 from .outlook import Outlook
 from .microsoft_calendar import MicrosoftCalendar
 from .web_fetch import WebFetch
+from .youcom_search import YoucomSearch
 from .shell import Shell
 from .bash import bash
 from .codex import codex
@@ -56,6 +57,7 @@ __all__ = [
     "Outlook",
     "MicrosoftCalendar",
     "WebFetch",
+    "YoucomSearch",
     "Shell",
     "bash",
     "codex",

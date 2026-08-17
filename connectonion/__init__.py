@@ -81,7 +81,7 @@ _FROM = {
     **{name: ".useful_tools" for name in (
         "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
         "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
-        "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
+        "MicrosoftCalendar", "WebFetch", "YoucomSearch", "Shell", "bash", "codex", "ClaudeCode",
         "claude_code",
         "DiffWriter",
         "MODE_NORMAL", "MODE_AUTO", "MODE_PLAN",
