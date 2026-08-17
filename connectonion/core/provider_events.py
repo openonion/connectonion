@@ -9,6 +9,14 @@ Image ownership: ``useful_tools/codex.py`` may supply a completed native
 may supply an explicit inline raster block. ``plugins/coding_agents.py`` owns the
 lifecycle revision that lets a real latest image survive a later approval or
 terminal state without being confused for new evidence.
+
+Cross-repository reader contract: this module is the authoritative writer-side
+boundary. ``connectonion-react/src/connect/chat-item-mapper.ts`` independently
+validates and normalizes these fields before they reach UI state; O Chat's
+``docs/WORKROOM.md`` and ``components/chat/messages/coding-agent-workroom.tsx``
+render only that bounded state. Change provider event shape, safe vocabulary,
+artifact limits, or revision semantics in all three layers together, with Core
+as authority and browser layers as fail-closed readers.
 """
 
 from __future__ import annotations
