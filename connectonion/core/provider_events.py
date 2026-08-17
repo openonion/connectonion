@@ -57,6 +57,9 @@ _ARTIFACT_DATA_URL = re.compile(
     r"^data:(image/png|image/jpeg);base64,([A-Za-z0-9+/]+={0,2})$"
 )
 _MAX_ARTIFACT_DATA_URL_LENGTH = 262_144
+_PROVIDER_MESSAGE_ROLES = frozenset({"user", "assistant"})
+_PROVIDER_MESSAGE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,512}$")
+_MAX_PROVIDER_MESSAGE_LENGTH = 16_000
 
 
 def provider_task_title(prompt: object) -> str:
@@ -397,6 +400,62 @@ def provider_artifact_event(
         "thumbnailDataUrl": thumbnail_data_url,
         "alt": alt,
     }
+
+
+def provider_message_event(
+    *,
+    provider: str,
+    invocation_id: str,
+    parent_tool_call_id: str,
+    message_id: str,
+    role: str,
+    text: str,
+    workroom_id: str | None = None,
+    continuation_of: str | None = None,
+) -> dict[str, Any]:
+    """Build one bounded, plain-text native-provider conversation message.
+
+    Unlike a provider activity, a message is intentionally user-visible
+    conversation content. It never carries command output, local paths, or
+    HTML. Browsers must render it as text; this writer only permits the two
+    conversation roles and bounds the payload before it enters the OIP trace.
+    """
+    if provider not in {"codex", "claude_code"}:
+        raise ValueError("provider message has an unknown provider")
+    for value, label in (
+        (invocation_id, "invocation id"),
+        (parent_tool_call_id, "parent tool call id"),
+        (message_id, "message id"),
+    ):
+        if not isinstance(value, str) or not _PROVIDER_MESSAGE_ID.fullmatch(value):
+            raise ValueError(f"provider message requires a valid {label}")
+    if role not in _PROVIDER_MESSAGE_ROLES:
+        raise ValueError("provider message has an unknown role")
+    if not isinstance(text, str):
+        raise ValueError("provider message text must be a string")
+    cleaned = text.replace("\x00", "").strip()
+    if not cleaned:
+        raise ValueError("provider message text is required")
+    if len(cleaned) > _MAX_PROVIDER_MESSAGE_LENGTH:
+        cleaned = cleaned[: _MAX_PROVIDER_MESSAGE_LENGTH - 1] + "…"
+    event: dict[str, Any] = {
+        "type": "provider_message",
+        "provider": provider,
+        "invocationId": invocation_id,
+        "parentToolCallId": parent_tool_call_id,
+        "messageId": message_id,
+        "role": role,
+        "text": cleaned,
+    }
+    if workroom_id is not None:
+        if not isinstance(workroom_id, str) or not _PROVIDER_MESSAGE_ID.fullmatch(workroom_id):
+            raise ValueError("provider message has an invalid work room id")
+        event["workroomId"] = workroom_id
+    if continuation_of is not None:
+        if not isinstance(continuation_of, str) or not _PROVIDER_MESSAGE_ID.fullmatch(continuation_of):
+            raise ValueError("provider message has an invalid continuation id")
+        event["continuationOf"] = continuation_of
+    return event
 
 
 def _validate_artifact_data_url(value: object) -> None:

@@ -393,6 +393,7 @@ def _emit(agent, event_type: str, **fields: Any) -> dict[str, Any]:
             fields["stateRevision"] = next_provider_state_revision(
                 agent, invocation_id
             )
+            fields.update(_provider_workroom_fields(agent, invocation_id))
     entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
@@ -407,6 +408,23 @@ def _emit(agent, event_type: str, **fields: Any) -> dict[str, Any]:
     if event_type == "provider_invocation":
         _emit_cached_provider_artifact(agent, entry)
     return entry
+
+
+def _provider_workroom_fields(agent, invocation_id: str) -> dict[str, str]:
+    """Attach a stable, Host-owned conversation grouping to provider lifecycle."""
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return {"workroomId": invocation_id}
+    workroom_id = session.get("_provider_workroom_id", invocation_id)
+    fields = {
+        "workroomId": workroom_id
+        if isinstance(workroom_id, str) and workroom_id
+        else invocation_id,
+    }
+    continuation_of = session.get("_provider_continuation_of")
+    if isinstance(continuation_of, str) and continuation_of:
+        fields["continuationOf"] = continuation_of
+    return fields
 
 
 def _emit_cached_provider_artifact(agent, lifecycle: dict[str, Any]) -> None:

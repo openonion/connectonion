@@ -112,6 +112,24 @@ class _Agent:
         self.current_session = current_session or {}
 
 
+class _WorkroomIO(_IO):
+    """Small native-message mailbox and wire capture for Work Room tests."""
+
+    def __init__(self, messages=()):
+        super().__init__()
+        self.messages = list(messages)
+        self.outbound = []
+
+    def receive_all(self, message_type):
+        assert message_type == "PROVIDER_INPUT"
+        result = self.messages
+        self.messages = []
+        return result
+
+    def send(self, event):
+        self.outbound.append(event)
+
+
 def _run(**kwargs):
     with patch.object(codex_module, "CodexAppServer", FakeServer), \
          patch.object(codex_module, "_base_command", return_value=["codex", "app-server"]):
@@ -245,6 +263,90 @@ class TestCodexRun:
             "refresh_account",
             ("start_thread", "workspace-write", "", "never"),
         ]
+
+    def test_live_workroom_message_is_acknowledged_only_after_native_steer(self):
+        io = _WorkroomIO([{
+            "type": "PROVIDER_INPUT",
+            "invocationId": "codex:outer",
+            "stateRevision": 7,
+            "text": "Please add a reverse-order fixture.",
+            "requestId": "direct-1",
+        }])
+        agent = _Agent(io, {"_active_tool_call_id": "outer"})
+        client = MagicMock()
+
+        codex_module._steer_workroom_inputs(agent, client, "thread-1", "turn-1")
+
+        client.steer_turn.assert_called_once_with(
+            "thread-1",
+            "turn-1",
+            "Please add a reverse-order fixture.",
+            "direct-1",
+        )
+        assert io.events == [("provider_message", {
+            "provider": "codex",
+            "invocationId": "codex:outer",
+            "parentToolCallId": "outer",
+            "messageId": "user:direct-1",
+            "role": "user",
+            "text": "Please add a reverse-order fixture.",
+            "workroomId": "codex:outer",
+        })]
+        assert io.outbound == [{
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": "direct-1",
+            "invocationId": "codex:outer",
+            "accepted": True,
+            "stateRevision": 7,
+        }]
+
+    def test_failed_native_steer_keeps_the_workroom_message_unacknowledged(self):
+        io = _WorkroomIO([{
+            "type": "PROVIDER_INPUT",
+            "invocationId": "codex:outer",
+            "stateRevision": 7,
+            "text": "Please add a reverse-order fixture.",
+            "requestId": "direct-1",
+        }])
+        agent = _Agent(io, {"_active_tool_call_id": "outer"})
+        client = MagicMock()
+        client.steer_turn.side_effect = RuntimeError("turn already completed")
+
+        codex_module._steer_workroom_inputs(agent, client, "thread-1", "turn-1")
+
+        assert io.events == []
+        assert io.outbound == []
+
+    def test_direct_continuation_acknowledges_the_source_only_after_turn_start(self):
+        io = _WorkroomIO()
+        agent = _Agent(io, {
+            "_active_tool_call_id": "continued",
+            "_provider_workroom_id": "codex:root",
+            "_provider_continuation_of": "codex:source",
+            "_provider_direct_message": "Run the C11 checks now.",
+            "_provider_direct_message_id": "direct-2",
+            "_provider_direct_state_revision": 7,
+        })
+
+        codex_module._confirm_direct_workroom_turn(agent)
+
+        assert io.events == [("provider_message", {
+            "provider": "codex",
+            "invocationId": "codex:continued",
+            "parentToolCallId": "continued",
+            "messageId": "user:direct-2",
+            "role": "user",
+            "text": "Run the C11 checks now.",
+            "workroomId": "codex:root",
+            "continuationOf": "codex:source",
+        })]
+        assert io.outbound == [{
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": "direct-2",
+            "invocationId": "codex:source",
+            "accepted": True,
+            "stateRevision": 7,
+        }]
 
     def test_auth_refresh_failure_does_not_start_a_thread(self):
         class AuthFailureServer(FakeServer):
@@ -609,12 +711,14 @@ class TestApproval:
             },
         }
         assert [event[0] for event in agent.io.events] == [
+            "provider_message",
             "provider_activity",
             "tool_call",
             "provider_invocation",
             "provider_invocation",
             "provider_activity",
             "tool_result",
+            "provider_message",
         ]
 
     def test_hosted_contact_cannot_answer_manual_approval(self):
@@ -839,6 +943,26 @@ class TestResumeProtocol:
 
         assert request.call_args.kwargs["timeout"] == 10
         done.wait.assert_called_once_with(0.1)
+
+    def test_turn_start_callback_runs_only_after_codex_returns_a_turn_id(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+        done = MagicMock()
+        done.wait.return_value = True
+        client._turn_done = done
+        started = []
+        with patch.object(
+            client,
+            "request",
+            return_value={"turn": {"id": "turn-7"}},
+        ):
+            client.run_turn(
+                "thread-1",
+                "continue",
+                timeout=10,
+                on_turn_started=started.append,
+            )
+
+        assert started == ["turn-7"]
 
     def test_turn_wait_preserves_the_full_budget_after_manual_approval(self):
         client = codex_module.CodexAppServer(["codex", "app-server"])

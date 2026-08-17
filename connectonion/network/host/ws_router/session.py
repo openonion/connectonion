@@ -14,7 +14,7 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
-from .agent_io import start_agent
+from .agent_io import start_agent, start_provider_workroom_turn
 from .connect import establish_connection, handle_authenticated_reconnect, handle_connect
 from .exec import run_exec
 from .mode import handle_mode_change
@@ -35,6 +35,33 @@ async def _send_provider_interrupt_ack(
     """Reply to one modern scoped Stop without exposing provider internals."""
     frame = {
         "type": "PROVIDER_INTERRUPT_ACK",
+        "requestId": request_id,
+        "invocationId": invocation_id,
+        "accepted": accepted,
+    }
+    if (
+        not isinstance(state_revision, bool)
+        and isinstance(state_revision, int)
+        and state_revision > 0
+    ):
+        frame["stateRevision"] = state_revision
+    if reason:
+        frame["reason"] = reason
+    await send_msg(frame)
+
+
+async def _send_provider_input_ack(
+    send_msg,
+    *,
+    request_id: str,
+    invocation_id: str | None,
+    accepted: bool,
+    state_revision: int | None = None,
+    reason: str | None = None,
+):
+    """Reply to one direct Codex Work Room message without exposing internals."""
+    frame = {
+        "type": "PROVIDER_INPUT_ACK",
         "requestId": request_id,
         "invocationId": invocation_id,
         "accepted": accepted,
@@ -354,6 +381,87 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     state_revision=acknowledged_revision,
                     reason=None if accepted else (reason or "not_active"),
                 )
+
+            elif msg_type == "PROVIDER_INPUT":
+                invocation_id = data.get("invocationId")
+                request_id = data.get("requestId")
+                state_revision = data.get("stateRevision")
+                text = data.get("text")
+                if (
+                    not isinstance(request_id, str)
+                    or not request_id
+                    or len(request_id) > 128
+                    or not isinstance(invocation_id, str)
+                    or not invocation_id
+                    or len(invocation_id) > 512
+                    or not isinstance(text, str)
+                    or not text.strip()
+                    or len(text) > 12_000
+                    or isinstance(state_revision, bool)
+                    or not isinstance(state_revision, int)
+                    or state_revision < 1
+                ):
+                    await _send_provider_input_ack(
+                        send_msg,
+                        request_id=request_id if isinstance(request_id, str) else "",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason="invalid_request",
+                    )
+                    continue
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                request_provider_input = getattr(active_io, "request_provider_input", None)
+                if (
+                    active_io
+                    and registered
+                    and registered.status == "running"
+                    and registered.io is active_io
+                    and callable(request_provider_input)
+                ):
+                    result = request_provider_input(
+                        invocation_id,
+                        state_revision,
+                        text,
+                        request_id,
+                    )
+                    if not result:
+                        await _send_provider_input_ack(
+                            send_msg,
+                            request_id=request_id,
+                            invocation_id=invocation_id,
+                            accepted=False,
+                            state_revision=getattr(result, "state_revision", None),
+                            reason=getattr(result, "reason", "not_active"),
+                        )
+                    # A queued mailbox item is not an accepted Codex turn.
+                    # The native adapter emits the positive ACK only after its
+                    # matching ``turn/steer`` succeeds, so the browser retains
+                    # its draft if a terminal race prevents delivery.
+                    continue
+
+                started, reason = await start_provider_workroom_turn(
+                    data,
+                    send_msg,
+                    conn,
+                    route_handlers,
+                    storage,
+                    registry,
+                )
+                if started is None:
+                    await _send_provider_input_ack(
+                        send_msg,
+                        request_id=request_id,
+                        invocation_id=invocation_id,
+                        accepted=False,
+                        reason=reason or "not_active",
+                    )
+                    continue
+                active_io, forward_task, _state_revision = started
+                # A terminal continuation is similarly acknowledged by the
+                # native adapter only after ``thread/resume`` + ``turn/start``
+                # succeed. Starting a Host worker is deliberately not enough
+                # to let the composer clear its unsent text.
 
             elif msg_type == "APPROVAL_RESPONSE" and active_io:
                 resolver = getattr(active_io, "resolve_legacy_permission", None)
