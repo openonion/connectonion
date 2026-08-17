@@ -8,6 +8,7 @@ Pre-built skills you can copy into your project and invoke with `/skill-name`.
 |-------|---------|--------|
 | [browser-workflow-skill-builder](browser-workflow-skill-builder.md) | Build robust browser automation skills for logged-in sites — save page context, write skill-local extract/verify scripts, and lock flows with hash-verified one-shot actions | `/browser-workflow-skill-builder` |
 | [cli-skill-design](cli-skill-design.md) | Design a `co <thing>` command surface and its SKILL.md together — tip-tested discoverability and self-diagnosing errors, both as checks you run | `/cli-skill-design` |
+| [fde-client-agent](fde-client-agent.md) | Deploy and operate a client-facing agent (FDE): project shape, state outside rsync, incremental table writes, identity/billing verification, sandboxed control center, client comms — every rule paid for by a real incident | `/fde-client-agent` |
 | [co-browser](co-browser.md) | Drive one persistent, logged-in browser from the shell — solo or multi-agent | `/co-browser` |
 | [install-connectonion](install-connectonion.md) | Install & fully set up ConnectOnion so every `co` command works (init+auth→keys.env, email, browser) for a possibly non-technical user — auto-corrects, ends with a plain-language summary | `/install-connectonion` |
 | [ship-feature](ship-feature.md) | Ship a feature end-to-end: tests → docs → docs-site → release | `/ship-feature` |
