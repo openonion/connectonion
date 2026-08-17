@@ -67,6 +67,7 @@ from .http_router import (
     admin_admins_add_handler,
     admin_admins_remove_handler,
 )
+from .provider_workroom import prepare_provider_workroom_turn
 
 
 EXEC_REQUIRES = ("admin", "whitelist", "contact")
@@ -284,6 +285,25 @@ def _create_route_handlers(
 
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
 
+    def handle_prepare_provider_workroom_turn(
+        storage,
+        session_id,
+        invocation_id,
+        text,
+        request_id,
+        requester_address,
+    ):
+        return prepare_provider_workroom_turn(
+            create_agent,
+            storage,
+            session_id,
+            invocation_id,
+            text,
+            request_id,
+            requester_address,
+            host_full_access_turns_ceiling=mode_policy.full_access_turns,
+        )
+
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
 
@@ -308,6 +328,7 @@ def _create_route_handlers(
         "replay": replay_check,
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,
+        "prepare_provider_workroom_turn": handle_prepare_provider_workroom_turn,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
         # TrustAgent instance for direct access in http.py/websocket.py

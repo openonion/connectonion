@@ -136,6 +136,72 @@ def test_targeted_provider_stop_reaches_only_the_current_active_io():
     }]
 
 
+def test_direct_codex_input_queue_does_not_send_a_false_positive_ack():
+    from connectonion.network.host.ws_router import session as ws_session
+
+    sent = []
+    frames = [
+        {'type': 'CONNECT'},
+        {
+            'type': 'PROVIDER_INPUT',
+            'invocationId': 'codex:outer',
+            'requestId': 'provider-input-1',
+            'stateRevision': 7,
+            'text': 'Please add a reverse-order fixture.',
+        },
+    ]
+    io = Mock()
+    io.request_provider_input.return_value = SimpleNamespace(
+        accepted=True,
+        state_revision=7,
+        reason=None,
+    )
+    active = SimpleNamespace(status='running', io=io)
+    registry = Mock()
+    registry.get.return_value = active
+
+    async def send_msg(data):
+        sent.append(data)
+
+    async def recv_msg():
+        return frames.pop(0) if frames else None
+
+    async def connect(data, send_msg, conn, *args, **kwargs):
+        conn.update({
+            'authenticated': True,
+            'agent_address': '0xclient',
+            'session_id': 'session-1',
+            'session': {},
+        })
+        return io, None
+
+    original = ws_session.handle_connect
+    ws_session.handle_connect = connect
+    try:
+        asyncio.run(ws_session.run_ws_session(
+            send_msg,
+            recv_msg,
+            route_handlers={},
+            storage=None,
+            registry=registry,
+            trust=None,
+            enable_ping=False,
+        ))
+    finally:
+        ws_session.handle_connect = original
+
+    io.request_provider_input.assert_called_once_with(
+        'codex:outer',
+        7,
+        'Please add a reverse-order fixture.',
+        'provider-input-1',
+    )
+    # The native app-server sends the positive acknowledgement only after its
+    # matching turn/steer succeeds. A Host mailbox enqueue alone must leave the
+    # browser draft intact if the Codex turn becomes terminal in the meantime.
+    assert sent == []
+
+
 def test_a_failed_agent_turn_is_not_left_running():
     from connectonion.network.host.ws_router.agent_io import _agent_thread_body
 

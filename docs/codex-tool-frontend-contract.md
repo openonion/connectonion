@@ -43,7 +43,7 @@ events already in that vocabulary:
 |---|---|---|
 | `item/started` (commandExecution, fileChange, mcpToolCall, webSearch) | `tool_call` `{tool_id, name, args, status: in_progress}` | running tool card |
 | `item/completed` (same item) | `tool_result` `{tool_id, status: completed\|failed}` | card completes / errors |
-| `item/completed` (agentMessage) | — (returned as the tool result `last_message`) | agent's own reply |
+| `item/completed` (agentMessage) | bounded `provider_message` | native Codex conversation bubble |
 | `item/*/requestApproval` (server → client) | `agent.io.request_approval(...)` → `approval_needed` | approval card, answer flows back |
 
 Key points:
@@ -69,6 +69,30 @@ Key points:
   A tool error names `codex()` as the next action, while unrelated commands that
   only mention the word continue normally.
 
+## Direct Work Room messages
+
+The browser does not send a Work Room follow-up through the outer agent's
+`INPUT` path. It sends a signed `PROVIDER_INPUT` frame containing the visible
+Codex invocation, its positive `stateRevision`, a request ID, and bounded text.
+Host validates that correlation before choosing one native-only path:
+
+| Source state | Native action | When the browser receives an accepted ACK |
+| --- | --- | --- |
+| Live Codex invocation | queue then `turn/steer` on the active app-server turn | only after `turn/steer` succeeds |
+| Caller-owned terminal Codex invocation | atomically claim the durable thread, `thread/resume`, then `turn/start` | only after the resumed `turn/start` returns a native turn ID |
+
+An input mailbox enqueue, a Host worker allocation, or a `thread/resume` request
+alone is deliberately **not** an accepted `PROVIDER_INPUT_ACK`. Each can race a
+terminal native turn. React retains the browser draft until the native adapter
+emits the matching positive acknowledgement, so an unaccepted message remains
+available for retry instead of disappearing from the operator's composer.
+
+The direct terminal path executes `agent.execute_tool("codex", ...)` only. It
+does not call `Agent.input()`, create an outer COAI prompt, or expose native
+command output in the provider conversation. User and assistant text are emitted
+as bounded `provider_message` entries; commands and local paths remain semantic
+activity or private provider state.
+
 ## What the frontend team should know
 
 - The React package owns normalization and child correlation. O Chat consumes
@@ -83,5 +107,6 @@ Key points:
 Verified end-to-end against the real `codex` 0.145.0 `app-server`: `initialize`
 + `thread/start` return a real thread id with no auth; `turn/start` runs and the
 tool surfaces the real auth error cleanly when unauthenticated. Unit tests cover
-the native-event conversion and the approval gate; the real-binary e2e lives in
+the native-event conversion, the truthful direct-message acknowledgement, and
+the approval gate; the real-binary e2e lives in
 `tests/e2e/real_api/test_real_codex.py`.

@@ -40,6 +40,18 @@ class ProviderInterruptResult:
         return self.accepted
 
 
+@dataclass(frozen=True)
+class ProviderInputResult:
+    """Host decision for one direct native-provider message."""
+
+    accepted: bool
+    state_revision: int | None
+    reason: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.accepted
+
+
 class WebSocketIO(IO):
     """Bridge async WebSocket to sync IO interface.
 
@@ -57,6 +69,7 @@ class WebSocketIO(IO):
         # immediately instead of leaving the browser with a permanently pending
         # local button state.
         self._live_provider_invocations: dict[str, int | None] = {}
+        self._live_provider_names: dict[str, str] = {}
         # Retain the latest semantic revision even after a terminal event. A
         # tool's durable trace can replay earlier lifecycle entries after its
         # live lane has already published the terminal state.
@@ -138,8 +151,12 @@ class WebSocketIO(IO):
                 self._latest_provider_revisions[invocation_id] = state_revision
             if message.get("status") in {"completed", "failed", "cancelled"}:
                 self._live_provider_invocations.pop(invocation_id, None)
+                self._live_provider_names.pop(invocation_id, None)
             else:
                 self._live_provider_invocations[invocation_id] = state_revision
+                provider = message.get("provider")
+                if provider in {"codex", "claude_code"}:
+                    self._live_provider_names[invocation_id] = provider
 
     def receive(self) -> Dict[str, Any]:
         """Block until client message arrives."""
@@ -246,6 +263,58 @@ class WebSocketIO(IO):
         self.send_to_agent(frame)
         return ProviderInterruptResult(True, current_revision)
 
+    def request_provider_input(
+        self,
+        invocation_id: str,
+        state_revision: int | None,
+        text: str,
+        request_id: str,
+    ) -> ProviderInputResult:
+        """Queue an exact direct message only for a live steerable Codex run.
+
+        A true result means the Host mailbox accepted the request, not that
+        Codex accepted it.  The native adapter sends ``PROVIDER_INPUT_ACK``
+        only after its matching ``turn/steer`` succeeds.
+        """
+        if (
+            not isinstance(invocation_id, str)
+            or not invocation_id
+            or not isinstance(request_id, str)
+            or not request_id
+            or not isinstance(text, str)
+            or not text.strip()
+            or len(text) > 12_000
+        ):
+            return ProviderInputResult(False, None, "invalid_request")
+        if (
+            state_revision is not None
+            and (
+                isinstance(state_revision, bool)
+                or not isinstance(state_revision, int)
+                or state_revision < 1
+            )
+        ):
+            return ProviderInputResult(False, None, "invalid_revision")
+        with self._provider_condition:
+            if invocation_id not in self._live_provider_invocations:
+                return ProviderInputResult(False, None, "not_active")
+            if self._live_provider_names.get(invocation_id) != "codex":
+                return ProviderInputResult(False, None, "unsupported_provider")
+            current_revision = self._live_provider_invocations[invocation_id]
+            if state_revision is not None:
+                if current_revision is None:
+                    return ProviderInputResult(False, None, "state_unconfirmed")
+                if current_revision != state_revision:
+                    return ProviderInputResult(False, current_revision, "state_changed")
+        self.send_to_agent({
+            "type": "PROVIDER_INPUT",
+            "invocationId": invocation_id,
+            "stateRevision": state_revision,
+            "text": text.strip(),
+            "requestId": request_id,
+        })
+        return ProviderInputResult(True, current_revision)
+
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
         with self._client_condition:
@@ -267,6 +336,7 @@ class WebSocketIO(IO):
         """Signal that agent is done producing messages."""
         with self._provider_condition:
             self._live_provider_invocations.clear()
+            self._live_provider_names.clear()
             self._latest_provider_revisions.clear()
         with self._agent_condition:
             self._finished = True
@@ -277,6 +347,7 @@ class WebSocketIO(IO):
         self._closed = True
         with self._provider_condition:
             self._live_provider_invocations.clear()
+            self._live_provider_names.clear()
             self._latest_provider_revisions.clear()
 
     # ═══════════════════════════════════════════════════════
