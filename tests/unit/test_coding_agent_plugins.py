@@ -72,6 +72,42 @@ def test_invocation_lifecycle_is_parented_and_terminal(monkeypatch, tmp_path):
     assert finish.kwargs["sessionId"] == "s1"
 
 
+def test_terminal_state_keeps_the_latest_real_provider_preview(monkeypatch, tmp_path):
+    import connectonion.plugins.coding_agents as module
+    from connectonion.core.provider_events import remember_provider_artifact
+
+    thumbnail = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlRjyoAAAAASUVORK5CYII="
+    )
+
+    def fake_codex(**kwargs):
+        remember_provider_artifact(
+            kwargs["agent"],
+            provider="codex",
+            invocation_id="codex:call-7",
+            parent_tool_call_id="call-7",
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+        return json.dumps({"provider": "codex", "session_id": "s1", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_codex", fake_codex)
+    io = SimpleNamespace(log=MagicMock())
+    agent = SimpleNamespace(io=io, current_session={"_active_tool_call_id": "call-7"})
+
+    CodexPlugin(workspace=tmp_path).codex("inspect a real workspace image", agent=agent)
+
+    start, terminal, artifact = io.log.call_args_list
+    assert start.args == ("provider_invocation",)
+    assert terminal.args == ("provider_invocation",)
+    assert terminal.kwargs["stateRevision"] == 2
+    assert artifact.args == ("provider_artifact",)
+    assert artifact.kwargs["stateRevision"] == terminal.kwargs["stateRevision"]
+    assert artifact.kwargs["thumbnailDataUrl"] == thumbnail
+    assert artifact.kwargs["alt"] == "Latest provider workspace view"
+
+
 def test_invocation_uses_safe_summaries_instead_of_prompt_or_provider_output(monkeypatch, tmp_path):
     import connectonion.plugins.coding_agents as module
 

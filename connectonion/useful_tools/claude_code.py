@@ -1,4 +1,12 @@
-"""Run Claude Code once while streaming its inner tools to ConnectOnion IO."""
+"""Run Claude Code once while streaming its inner tools to ConnectOnion IO.
+
+LLM-Note:
+  Data flow: native Claude stream-json -> bounded tool/approval events -> OIP
+  Work Room. A provider preview is emitted only from a real inline PNG/JPEG
+  image content block and is revalidated by provider_events.py before O Chat
+  renders it. See useful_tools/codex.py for the equivalent Codex imageView
+  path and plugins/coding_agents.py for the lifecycle writer.
+"""
 
 import hashlib
 import json
@@ -16,7 +24,14 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
 
-from ..core.provider_events import provider_activity_event, remember_provider_activity
+from ..core.provider_events import (
+    next_provider_state_revision,
+    provider_activity_event,
+    provider_artifact_event,
+    provider_status_summary,
+    remember_provider_activity,
+    remember_provider_artifact,
+)
 
 PERMISSION_MODES = (
     "default",
@@ -46,6 +61,7 @@ _MAX_SESSION_CHARS = 512
 _MAX_PATH_CHARS = 4_096
 _MAX_MODEL_CHARS = 128
 _MAX_TIMEOUT_SECONDS = 3_600
+_MAX_ARTIFACT_SOURCE_CHARS = 245_760
 _SENSITIVE_KEY_PARTS = (
     "api_key",
     "apikey",
@@ -430,11 +446,12 @@ class _ClaudeStreamForwarder:
                 if self._event_count + len(self._tools) + 2 > _MAX_LIVE_EVENTS:
                     continue
                 self._emit_unknown_start(provider_id, metadata)
+            self._emit_native_image_artifact(provider_id, block.get("content"))
             self._emit_tool_result(
                 provider_id,
                 metadata,
                 "failed" if block.get("is_error") else "completed",
-                _bounded_result(block.get("content")),
+                _safe_tool_result(block.get("content")),
             )
             self._tools.pop(tool_id, None)
 
@@ -478,6 +495,59 @@ class _ClaudeStreamForwarder:
             parent_tool_id=metadata["parent_tool_id"],
             **self._correlation,
         )
+
+    def _emit_native_image_artifact(self, provider_id: str, content: Any) -> None:
+        """Forward a real Claude inline image, never text or an external URL."""
+        if not self._correlation or self._event_count + 2 > _MAX_LIVE_EVENTS:
+            return
+        thumbnail = _inline_image_data_url(content)
+        if thumbnail is None:
+            return
+        invocation_id = self._correlation["invocationId"]
+        parent_id = self._correlation["parentToolCallId"]
+        # Validate before advancing the visible lifecycle so an unsupported
+        # content block cannot create an otherwise meaningless state update.
+        try:
+            provider_artifact_event(
+                provider="claude_code",
+                invocation_id=invocation_id,
+                parent_tool_call_id=parent_id,
+                artifact_id="latest",
+                state_revision=1,
+                thumbnail_data_url=thumbnail,
+                alt="Latest provider workspace view",
+            )
+        except ValueError:
+            return
+        revision = next_provider_state_revision(self._agent, invocation_id)
+        artifact = provider_artifact_event(
+            provider="claude_code",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            artifact_id=f"image-{_stable_identifier(provider_id)}-{revision}",
+            state_revision=revision,
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+        remember_provider_artifact(
+            self._agent,
+            provider="claude_code",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+        self._emit(
+            "provider_invocation",
+            invocationId=invocation_id,
+            parentToolCallId=parent_id,
+            provider="claude_code",
+            providerDisplayName="Claude Code",
+            status="running",
+            currentSummary=provider_status_summary("running"),
+            stateRevision=revision,
+        )
+        self._emit("provider_artifact", **_without_event_type(artifact))
 
     def _emit_safe_activity(
         self,
@@ -667,6 +737,52 @@ def _bounded_result(value: Any, limit: int = _MAX_RESULT_CHARS) -> str:
         except (TypeError, ValueError):
             text = str(value)
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _safe_tool_result(value: Any) -> str:
+    """Summarize structured native results without copying inline image bytes."""
+    if not isinstance(value, list):
+        return _bounded_result(value)
+    parts: list[str] = []
+    for block in value[:_MAX_COLLECTION_ITEMS]:
+        if not isinstance(block, dict):
+            parts.append("Provider returned a structured result.")
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            parts.append(block["text"])
+        elif block.get("type") == "image":
+            parts.append("Provider returned a workspace image.")
+        else:
+            parts.append("Provider returned a structured result.")
+    return _bounded_result("\n".join(parts))
+
+
+def _inline_image_data_url(value: Any) -> str | None:
+    """Return the latest explicitly inline PNG/JPEG Claude image content block."""
+    if not isinstance(value, list):
+        return None
+    for block in reversed(value[:_MAX_COLLECTION_ITEMS]):
+        if not isinstance(block, dict) or block.get("type") != "image":
+            continue
+        source = block.get("source")
+        if not isinstance(source, dict) or source.get("type") != "base64":
+            continue
+        media_type = source.get("media_type")
+        data = source.get("data")
+        if (
+            media_type not in {"image/png", "image/jpeg"}
+            or not isinstance(data, str)
+            or not data
+            or len(data) > _MAX_ARTIFACT_SOURCE_CHARS
+        ):
+            continue
+        return f"data:{media_type};base64,{data}"
+    return None
+
+
+def _without_event_type(event: dict[str, Any]) -> dict[str, Any]:
+    """Use a canonical event with the forwarder's local event sender."""
+    return {key: value for key, value in event.items() if key != "type"}
 
 
 def _bounded_usage(value: Any) -> dict[str, Any]:

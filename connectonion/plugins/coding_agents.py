@@ -1,4 +1,11 @@
-"""Provider plugins for bounded Codex and Claude Code delegation."""
+"""Provider plugins for bounded Codex and Claude Code delegation.
+
+LLM-Note:
+  This is the lifecycle writer for the OIP Work Room: it creates the monotonic
+  provider state revisions consumed by @connectonion/react and O Chat. Native
+  event producers live in useful_tools/codex.py and useful_tools/claude_code.py;
+  image validation/cache rules live in core/provider_events.py.
+"""
 
 from __future__ import annotations
 
@@ -17,8 +24,10 @@ from ..core.approval_modes import (
 )
 from ..core.events import on_agent_ready
 from ..core.provider_events import (
+    clear_provider_artifact,
     clear_provider_activity_history,
     next_provider_state_revision,
+    provider_artifact_for_state,
     provider_status_summary,
     provider_task_title,
     provider_terminal_summary,
@@ -114,6 +123,7 @@ class _CodingAgentPlugin(list):
         invocation_id = f"{self.provider}:{parent_id}" if parent_id else f"{self.provider}:untracked"
         task_title = provider_task_title(prompt)
         clear_provider_activity_history(agent, invocation_id)
+        clear_provider_artifact(agent, invocation_id)
         _emit(
             agent,
             "provider_invocation",
@@ -374,7 +384,7 @@ def _parent_tool_call_id(agent) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _emit(agent, event_type: str, **fields: Any) -> None:
+def _emit(agent, event_type: str, **fields: Any) -> dict[str, Any]:
     if event_type == "provider_invocation":
         invocation_id = fields.get("invocationId")
         if isinstance(invocation_id, str) and invocation_id:
@@ -390,10 +400,31 @@ def _emit(agent, event_type: str, **fields: Any) -> None:
         stream_live = getattr(getattr(agent, "io", None), "send_live_trace", None)
         if callable(stream_live):
             stream_live(entry)
-        return
-    io = getattr(agent, "io", None)
-    if io is not None:
-        io.log(event_type, **fields)
+    else:
+        io = getattr(agent, "io", None)
+        if io is not None:
+            io.log(event_type, **fields)
+    if event_type == "provider_invocation":
+        _emit_cached_provider_artifact(agent, entry)
+    return entry
+
+
+def _emit_cached_provider_artifact(agent, lifecycle: dict[str, Any]) -> None:
+    """Keep a real latest preview attached after a lifecycle revision changes."""
+    artifact = provider_artifact_for_state(
+        agent,
+        provider=lifecycle.get("provider"),
+        invocation_id=lifecycle.get("invocationId"),
+        parent_tool_call_id=lifecycle.get("parentToolCallId"),
+        state_revision=lifecycle.get("stateRevision"),
+    )
+    if artifact is not None:
+        _emit(agent, "provider_artifact", **_without_type(artifact))
+
+
+def _without_type(event: dict[str, Any]) -> dict[str, Any]:
+    """Pass a canonical event through the local emitter without a duplicate type."""
+    return {key: value for key, value in event.items() if key != "type"}
 
 
 def _envelope(result: Any) -> dict[str, Any]:

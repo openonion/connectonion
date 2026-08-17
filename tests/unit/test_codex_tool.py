@@ -5,6 +5,7 @@ on_approval callbacks, so these run without spawning `codex app-server`. A
 real-binary end-to-end lives in tests/e2e/real_api/test_real_codex.py.
 """
 
+import base64
 import importlib
 import io
 import json
@@ -402,6 +403,56 @@ class TestFrontendEventVocabulary:
         assert [event_type for event_type, _ in agent.io.events] == [
             "provider_activity", "tool_call", "provider_activity", "tool_result",
         ]
+
+    def test_completed_workspace_image_view_becomes_a_current_safe_artifact(self, tmp_path):
+        workspace = tmp_path / "workroom"
+        workspace.mkdir()
+        image = workspace / "latest.png"
+        thumbnail = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlRjyoAAAAASUVORK5CYII="
+        )
+        image.write_bytes(base64.b64decode(thumbnail.split(",", 1)[1]))
+        agent = _Agent(_IO(), {"_active_tool_call_id": "parent-image-1"})
+
+        codex_module._forward_ui(
+            agent,
+            {"kind": "image_view", "id": "view-1", "path": str(image)},
+            workspace=workspace,
+        )
+
+        assert [event_type for event_type, _ in agent.io.events] == [
+            "provider_invocation", "provider_artifact",
+        ]
+        lifecycle, artifact = [data for _, data in agent.io.events]
+        assert lifecycle == {
+            "invocationId": "codex:parent-image-1",
+            "parentToolCallId": "parent-image-1",
+            "provider": "codex",
+            "providerDisplayName": "Codex",
+            "status": "running",
+            "currentSummary": "Working in the selected workspace",
+            "stateRevision": 1,
+        }
+        assert artifact["stateRevision"] == lifecycle["stateRevision"]
+        assert artifact["thumbnailDataUrl"] == thumbnail
+        assert artifact["alt"] == "Latest provider workspace view"
+        assert str(image) not in json.dumps(agent.io.events)
+
+    def test_image_view_outside_the_workspace_is_never_forwarded(self, tmp_path):
+        workspace = tmp_path / "workroom"
+        workspace.mkdir()
+        image = tmp_path / "private.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\nnot-a-workroom-preview")
+        agent = _Agent(_IO(), {"_active_tool_call_id": "parent-image-1"})
+
+        codex_module._forward_ui(
+            agent,
+            {"kind": "image_view", "id": "view-1", "path": str(image)},
+            workspace=workspace,
+        )
+
+        assert agent.io.events == []
 
 
 class TestApproval:

@@ -3,6 +3,12 @@
 Native coding providers expose commands, local paths, and arbitrary output.  Those
 values remain available to the provider and legacy compatibility stream, but this
 module deliberately does not copy them into the default Work Room envelope.
+
+Image ownership: ``useful_tools/codex.py`` may supply a completed native
+``imageView`` from inside the operator workspace; ``useful_tools/claude_code.py``
+may supply an explicit inline raster block. ``plugins/coding_agents.py`` owns the
+lifecycle revision that lets a real latest image survive a later approval or
+terminal state without being confused for new evidence.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ _SAFE_ACTIVITY_TITLES = frozenset(
     }
 )
 _ACTIVITY_HISTORY_ATTRIBUTE = "_provider_workroom_activity_history"
+_ARTIFACT_HISTORY_ATTRIBUTE = "_provider_workroom_latest_artifacts"
 _STATE_REVISIONS_ATTRIBUTE = "_provider_workroom_state_revisions"
 _SAFE_ARTIFACT_ALTS = frozenset(
     {
@@ -125,6 +132,99 @@ def clear_provider_activity_history(agent: object, invocation_id: object) -> Non
         history = {}
         setattr(agent, _ACTIVITY_HISTORY_ATTRIBUTE, history)
     history.pop(invocation_id, None)
+
+
+def clear_provider_artifact(agent: object, invocation_id: object) -> None:
+    """Forget a prior run's preview before an invocation starts.
+
+    A Work Room may reuse a parent tool id after retry/replay. Keeping a real
+    image from the old run would still be misleading, so previews share the
+    invocation-scoped lifetime of safe activity evidence.
+    """
+    if not isinstance(invocation_id, str) or not invocation_id:
+        return
+    artifacts = getattr(agent, _ARTIFACT_HISTORY_ATTRIBUTE, None)
+    if isinstance(artifacts, dict):
+        artifacts.pop(invocation_id, None)
+
+
+def remember_provider_artifact(
+    agent: object,
+    *,
+    provider: str,
+    invocation_id: str,
+    parent_tool_call_id: str,
+    thumbnail_data_url: str,
+    alt: str,
+) -> None:
+    """Remember an already-validated real preview for later lifecycle states.
+
+    The browser accepts an image only when it has the same revision as the
+    current invocation. A real image captured while running is therefore
+    replayed under a newer approval or terminal revision rather than silently
+    disappearing. This cache never stores an unvalidated URL, SVG, or provider
+    text; it is intentionally one latest image per invocation.
+    """
+    provider_artifact_event(
+        provider=provider,
+        invocation_id=invocation_id,
+        parent_tool_call_id=parent_tool_call_id,
+        artifact_id="latest",
+        state_revision=1,
+        thumbnail_data_url=thumbnail_data_url,
+        alt=alt,
+    )
+    artifacts = getattr(agent, _ARTIFACT_HISTORY_ATTRIBUTE, None)
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+        setattr(agent, _ARTIFACT_HISTORY_ATTRIBUTE, artifacts)
+    artifacts[invocation_id] = {
+        "provider": provider,
+        "parentToolCallId": parent_tool_call_id,
+        "thumbnailDataUrl": thumbnail_data_url,
+        "alt": alt,
+    }
+
+
+def provider_artifact_for_state(
+    agent: object,
+    *,
+    provider: object,
+    invocation_id: object,
+    parent_tool_call_id: object,
+    state_revision: object,
+) -> dict[str, Any] | None:
+    """Return the newest real preview correlated to one lifecycle revision.
+
+    ``None`` is the normal case: no native adapter supplied a real image, or
+    the current lifecycle belongs to a different provider/boundary.
+    """
+    if not all(
+        isinstance(value, str) and value
+        for value in (provider, invocation_id, parent_tool_call_id)
+    ):
+        return None
+    artifacts = getattr(agent, _ARTIFACT_HISTORY_ATTRIBUTE, None)
+    cached = artifacts.get(invocation_id) if isinstance(artifacts, dict) else None
+    if not isinstance(cached, dict):
+        return None
+    if (
+        cached.get("provider") != provider
+        or cached.get("parentToolCallId") != parent_tool_call_id
+    ):
+        return None
+    try:
+        return provider_artifact_event(
+            provider=provider,
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_tool_call_id,
+            artifact_id=f"latest-{state_revision}",
+            state_revision=state_revision,
+            thumbnail_data_url=cached["thumbnailDataUrl"],
+            alt=cached["alt"],
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def next_provider_state_revision(agent: object, invocation_id: object) -> int:
