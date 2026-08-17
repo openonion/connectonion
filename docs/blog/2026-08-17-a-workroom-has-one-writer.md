@@ -1,41 +1,56 @@
 # A Work Room Has One Writer
 
-A coding Work Room lives in three repositories. That makes it easy to mistake
-three copies of a small JSON object for three owners of the product.
+The first long Codex acceptance run did not crash. It did something more
+embarrassing: after several real actions, the parent conversation reduced the
+agent to a small card that mostly said “Work Room.” The work was there — inspect
+the project, write the C sorter, compile it, run tests, pause for a decision —
+but a person looking at the chat could not tell what was happening.
 
-They are not. The provider adapter in ConnectOnion is the only writer of live
-state. It decides which activity terms are safe to surface, keeps native
-commands and paths out of the presentation envelope, and assigns the revision
-that says whether an update is newer than the one already on screen.
+That was the reason to use a long run instead of a one-message demo. A short
+answer never made the handoff between the provider, the React reader, and O
+Chat compete. An eight-step run did. The provider could first report useful
+activity, then supply a real workspace image, then pause for approval, and
+finally complete. Each update was small and valid on its own. Together they
+asked a question we had not made explicit: when the later approval contains no
+image, did the image disappear, or is the approval simply newer state that must
+keep the last real evidence?
 
-The React package is deliberately less ambitious. It validates that envelope,
-normalizes it into client state, and refuses malformed or stale authority. It
-does not infer a successful command, invent a thumbnail, or turn a missing
-revision into an approval. O Chat is less ambitious again: it renders the
-bounded state, gives the reader a focused Work Room, and sends a Stop or
-approval decision back with the identifiers that Core supplied.
+At first that looked like a rendering choice. Put a little merge logic in the
+card, preserve whatever field happens to be present, and move on. But the
+browser cannot know whether a missing artifact means “keep the old one,”
+“remove it,” or “this event belongs to a different invocation.” The same guess
+would be even more dangerous for a Stop acknowledgement or an approval. A
+beautiful card that lets an old decision settle a new run is not a harmless UI
+bug.
 
-That division matters most when a run is long. A provider may report activity,
-show a real workspace image, pause for an approval, and then finish. If each
-reader tried to reconstruct those transitions from a transcript, the card
-could show stale evidence or offer authority for the wrong invocation. A UI
-that looks helpful but permits the wrong action is worse than an incomplete
-one.
+The turn was to stop asking the readers to reconstruct a provider session from
+a transcript. Core is now the single writer of the bounded Work Room state. It
+chooses safe activity words, refuses native commands and paths in the browser
+envelope, retains a genuine latest image only when the provider supplied one,
+and assigns a revision to every meaningful transition. A later approval or
+terminal event can therefore carry the latest valid evidence without pretending
+that it produced new evidence.
 
-The practical rule is: one writer, independently defensive readers. The Core
-event module now names the React normalizer and O Chat Work Room that consume
-its bounded contract; the corresponding frontend headers point back to this
-authority. A future change to safe vocabulary, artifact limits, revision
-semantics, Stop acknowledgement, or approval identity therefore has an
-explicit route through all three layers.
+The React package has a narrower job: validate the envelope, normalize it, and
+reject malformed or stale authority. It does not infer a successful command,
+invent a thumbnail, or promote a missing revision into an approval. O Chat is
+narrower still. It renders the compact snapshot and focused Work Room, then
+sends Stop or approval decisions back with the identifiers Core supplied.
 
-The evidence is intentionally cross-layer. Core unit tests validate the event
-shape and revision behavior. React tests validate normalization. O Chat's
-production-browser acceptance run drives an eight-step native coding task,
-checks the focused card and Work Room at phone width, and verifies approval and
-scoped Stop behavior. A thumbnail is accepted only when the provider supplied
-real native image evidence; an absent image leaves the progress view honest.
+The result is quieter than the first version. A running card leads with task,
+current meaningful work, and status. A real provider image is bounded so it
+cannot push progress below the fold. Detailed activity is folded into the Work
+Room rather than copied into the parent conversation. When there is no real
+image, the card says what it knows instead of faking a screenshot.
 
-This is not an abstraction for its own sake. It is the smallest boundary that
-lets a long-running agent remain visible without making the browser a second
-agent runtime.
+We made the route between the three repositories visible in the boundary
+headers: Core writes the contract, React normalizes it, and O Chat renders it.
+The evidence follows the same route. Core tests exercise revision and artifact
+retention; React tests exercise normalization; O Chat's production-browser
+acceptance runs the multi-step coding journey, approval, scoped Stop, and a
+phone-width layout.
+
+The lesson was not “add more state to the card.” It was that a live Work Room
+needs one authoritative writer and defensive readers. That is the smallest
+boundary that makes a long-running coding agent legible without turning the
+browser into a second agent runtime.
