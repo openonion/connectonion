@@ -16,7 +16,8 @@ from connectonion.cli.commands import server_commands as sc
 
 
 PRICING = {
-    "region": "australia-southeast1",
+    "regions": ["australia-southeast1"],
+    "default_region": "australia-southeast1",
     "term_months": 12,
     "machine_types": {
         "e2-small": {
@@ -31,7 +32,7 @@ PRICING = {
 def confirm_without_a_tty(capsys):
     with patch.object(sys.stdin, "isatty", return_value=False):
         with patch("questionary.confirm") as prompt:
-            answer = sc._confirm("my-box", "e2-small", PRICING, balance=1000.0)
+            answer = sc._confirm("my-box", "e2-small", "australia-southeast1", PRICING, balance=1000.0)
     return answer, prompt, capsys.readouterr().out
 
 
