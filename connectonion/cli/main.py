@@ -468,11 +468,13 @@ def server_check(
 def server_new(
     name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
+    region: Optional[str] = typer.Option(None, "--region",
+                                         help="Where to provision (default: australia-southeast1)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
     """Have a server created for you. Charges 12 months of credit up front."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
         raise typer.Exit(1)
 
 

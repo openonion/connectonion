@@ -301,7 +301,8 @@ class TestServerForget:
 
 PRICING = {
     "term_months": 12,
-    "region": "asia-southeast1",
+    "regions": ["asia-southeast1", "australia-southeast1"],
+    "default_region": "asia-southeast1",
     "default": "e2-small",
     "machine_types": {"e2-small": {"usd_12mo": 180.0, "description": "2 vCPU, 2 GB"}},
 }
@@ -406,6 +407,52 @@ class TestServerNewSuccess:
             sc.handle_server_new("prod")
 
         assert post.call_args.kwargs["json"]["ssh_public_key"] == line
+
+
+class TestServerNewRegion:
+    """openonion/connectonion#713 — a region nobody could pick from the CLI."""
+
+    def test_the_chosen_region_is_sent(self, servers_file):
+        response = Mock(status_code=200)
+        response.json.return_value = {"ssh_target": "co@1.2.3.4",
+                                      "expires_at": "2027-07-31T00:00:00+00:00",
+                                      "charged_usd": 180.0}
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response) as post:
+            sc.handle_server_new("prod", region="australia-southeast1")
+
+        assert post.call_args.kwargs["json"]["region"] == "australia-southeast1"
+
+    def test_no_region_falls_back_to_the_backends_default(self, servers_file):
+        response = Mock(status_code=200)
+        response.json.return_value = {"ssh_target": "co@1.2.3.4",
+                                      "expires_at": "2027-07-31T00:00:00+00:00",
+                                      "charged_usd": 180.0}
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response) as post:
+            sc.handle_server_new("prod")
+
+        assert post.call_args.kwargs["json"]["region"] == PRICING["default_region"]
+
+    def test_an_unknown_region_is_rejected_before_charging(self, servers_file, capsys):
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch("requests.post") as post:
+            assert sc.handle_server_new("prod", region="mars-central1") is False
+
+        post.assert_not_called()
+        assert "mars-central1" in capsys.readouterr().out
 
 
 class TestServerNewFailureReporting:
@@ -799,7 +846,8 @@ class TestThePromptLeadsWithTheMonthlyPrice:
     instead of it."""
 
     PRICING = {
-        "term_months": 12, "region": "australia-southeast1", "default": "e2-small",
+        "term_months": 12, "regions": ["australia-southeast1"],
+        "default_region": "australia-southeast1", "default": "e2-small",
         "machine_types": {"e2-small": {"usd_month": 30.0, "usd_12mo": 360.0,
                                        "description": "2 vCPU (shared), 2 GB"}},
     }
@@ -807,7 +855,7 @@ class TestThePromptLeadsWithTheMonthlyPrice:
     def _prompt(self, pricing):
         with patch("questionary.confirm") as confirm:
             confirm.return_value.ask.return_value = False
-            sc._confirm("prod", "e2-small", pricing, 500.0)
+            sc._confirm("prod", "e2-small", pricing["default_region"], pricing, 500.0)
 
     def test_both_the_month_and_the_year_are_shown(self, capsys):
         self._prompt(self.PRICING)
@@ -867,6 +915,8 @@ class TestARecreatedServerDoesNotLookLikeAnAttack:
         with patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing",
                           return_value={"default": "e2-small",
+                                        "regions": ["australia-southeast1"],
+                                        "default_region": "australia-southeast1",
                                         "machine_types": {"e2-small": {"usd_12mo": 180.0}}}), \
              patch("connectonion.cli.commands.project_cmd_lib.load_api_key",
                    return_value="k"), \
@@ -920,6 +970,8 @@ class TestReadyMeansYouCanLogIn:
         with patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing",
                           return_value={"default": "e2-small",
+                                        "regions": ["australia-southeast1"],
+                                        "default_region": "australia-southeast1",
                                         "machine_types": {"e2-small": {"usd_12mo": 180.0}}}), \
              patch("connectonion.cli.commands.project_cmd_lib.load_api_key",
                    return_value="k"), \

@@ -663,7 +663,8 @@ def _fetch_pricing() -> Optional[dict]:
     return response.json() if response.status_code == 200 else None
 
 
-def _confirm(name: str, machine_type: str, pricing: dict, balance: Optional[float]) -> bool:
+def _confirm(name: str, machine_type: str, region: str, pricing: dict,
+            balance: Optional[float]) -> bool:
     """Show what this costs and what is left, then ask.
 
     Every other `co` command is either free or spends metered credit in
@@ -695,7 +696,7 @@ def _confirm(name: str, machine_type: str, pricing: dict, balance: Optional[floa
 
     console.print()
     console.print(f"  [cyan]name[/cyan]          {name}")
-    console.print(f"  [cyan]region[/cyan]        {pricing['region']}")
+    console.print(f"  [cyan]region[/cyan]        {region}")
     console.print(f"  [cyan]machine[/cyan]       {machine_type} [dim]— {entry['description']}[/dim]")
     console.print(f"  [cyan]cost[/cyan]          [bold]${monthly:.0f} / month[/bold] "
                   f"[dim]— ${price:.2f} for {months} months, charged now[/dim]")
@@ -871,7 +872,7 @@ def handle_server_fix_key(name: str) -> bool:
 
 
 def handle_server_new(name: str, machine_type: Optional[str] = None,
-                      yes: bool = False) -> bool:
+                      region: Optional[str] = None, yes: bool = False) -> bool:
     """Have a server created for you, and register it locally."""
     import requests
 
@@ -914,8 +915,14 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         console.print(f"[dim]Available: {', '.join(sorted(pricing['machine_types']))}[/dim]\n")
         return False
 
+    region = region or pricing["default_region"]
+    if region not in pricing["regions"]:
+        console.print(f"\n[red]Unknown region: {region}[/red]")
+        console.print(f"[dim]Available: {', '.join(sorted(pricing['regions']))}[/dim]\n")
+        return False
+
     if not yes:
-        if not _confirm(name, machine_type, pricing, _fetch_balance(api_key)):
+        if not _confirm(name, machine_type, region, pricing, _fetch_balance(api_key)):
             console.print("[dim]Nothing was created or charged.[/dim]\n")
             return False
 
@@ -925,7 +932,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
             f"{backend_url()}/api/v1/servers",
             headers={"Authorization": f"Bearer {api_key}"},
             json={"name": name, "ssh_public_key": ssh_public_line,
-                  "machine_type": machine_type},
+                  "machine_type": machine_type, "region": region},
             timeout=300,
         )
     except requests.RequestException as exc:
