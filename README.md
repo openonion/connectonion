@@ -1,5 +1,9 @@
 # 🧅 ConnectOnion
 
+**Keep simple things simple, make complicated things possible.**
+
+A template-first toolkit for FDEs building, debugging, deploying, and operating real AI agents.
+
 <div align="center">
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
@@ -11,516 +15,105 @@
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 [![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
-**A simple, elegant open-source framework for production-ready AI agents**
-
 [📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/openonion/connectonion)
 
 </div>
 
 ---
 
-> ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
-> 
-> This is the core principle that drives every design decision in ConnectOnion.
+You don't assemble a framework stack. You start from a working template and a CLI that covers the whole delivery path:
 
-## 🎯 Living Our Philosophy
+```bash
+pip install connectonion
 
-### Step 1: Simple - Create and Use
+co create sales-agent       # create from a working template
+cd sales-agent
+co ai                       # build and debug with COAI
+co doctor                   # verify the environment
+co deploy                   # deploy the Agent
+co status                   # inspect what is running
+```
+
+That is the product. The Python runtime underneath is real and documented — but you reach for it when you need it, not before.
+
+## Five minutes, start to running agent
+
+`co create` gives you the same agent that powers `co ai`: files, shell, browser, planning, todos, sub-agents — hosted and reachable. You specialise it with skills in `.co/skills/`, not by rewriting a skeleton.
+
+`co ai` opens an AI coding session that knows this codebase — in your terminal, or as a web chat at [chat.openonion.ai](https://chat.openonion.ai). It edits your project, runs your tests, and asks before doing anything destructive.
+
+`co deploy` ships it. `co status` tells you what is running and which account pays for it. When something is off, `co doctor` names the missing piece instead of leaving you to guess.
+
+No API key setup required to start: the default model runs on managed `co/` keys with starter credits. Bring your own OpenAI/Anthropic/Gemini key whenever you want.
+
+## The toolkit, by job
+
+Short list, not a reference — each command has a full page at [docs.connectonion.com](https://docs.connectonion.com).
+
+### Start and build
+
+| Command | What it does |
+|---|---|
+| `co create` / `co init` | New project from the working template, or add `.co/` to an existing one |
+| `co ai` | AI coding session in your project — terminal or web chat |
+| `co copy` | Copy any built-in tool's source into your project to modify |
+| `co skills discover` / `copy` / `link` | Find, vendor, and share reusable SKILL.md workflows |
+
+### Test and diagnose
+
+| Command | What it does |
+|---|---|
+| `co doctor` | Diagnose the installation — names the missing piece |
+| `co status` | Credential sources, account, balance, deployments |
+| `co browser` | Drive one persistent browser: direct verbs or `co browser do "..."` |
+
+### Deploy and operate
+
+| Command | What it does |
+|---|---|
+| `co deploy` | Deploy to ConnectOnion Cloud, or `--to <server>` onto a machine you own |
+| `co server new` / `add` / `ls` / `check` / `ssh` | Provision (pick a `--region`), register, preflight, and shell into servers |
+| `co call` | Run one command on a remote agent and print the result — no LLM |
+
+### Connect real work
+
+| Command | What it does |
+|---|---|
+| `co email` | The agent's own mailbox — send, read, `share` an address with another account |
+| `co gmail` / `co outlook` | Your Gmail and Outlook from the terminal (OAuth via `co auth`) |
+| `co gdrive` | List, search, download, upload Google Drive files |
+
+## What you get
+
+- **Templates** — one working agent (`co-ai`), specialised with skills rather than forked into skeletons. It hosts, it deploys, it survives a redeploy with the same identity.
+- **Toolkit** — the `co` CLI above, plus ready-to-use tools you import instead of wiring: `bash`, `Shell`, `FileTools`, `BrowserAutomation`, `Gmail`, `Outlook`, `GDrive`, `GoogleCalendar`, `Memory`, `TodoList`.
+- **Runtime** — a Python framework where ordinary functions are tools, with lifecycle hooks, plugins, logging, and multi-provider LLM support. It is the enabling layer, not the starting point.
+- **Open extension points** — every built-in tool, plugin, and skill is source you can copy into your project and change. Nothing is a black box:
+
+```bash
+co copy Gmail    # the Gmail tool's source lands in your project, yours to edit
+```
+
+## Ordinary functions become tools
+
+The one Python idea to know: type hints and a docstring are the whole schema.
+
 ```python
 from connectonion import Agent
 
-agent = Agent(name="assistant")
-agent.input("Hello!")  # That's it!
-```
-
-### Step 2: Add Your Tools
-```python
 def search(query: str) -> str:
     """Search for information."""
     return f"Results for {query}"
 
-agent = Agent(name="assistant", tools=[search])
-agent.input("Search for Python tutorials")
-```
-
-### Step 3: Debug Your Agent
-```python
-agent = Agent(name="assistant", tools=[search])
-agent.auto_debug()  # Interactive debugging session
-```
-
-### Step 4: Production Ready
-```python
 agent = Agent(
-    name="production",
-    model="gpt-5",                    # Latest models
-    tools=[search, analyze, execute], # Your functions as tools
-    system_prompt=company_prompt,     # Custom behavior
-    max_iterations=10,                # Safety controls
+    name="assistant",
+    system_prompt="You are a helpful assistant.",
+    tools=[search],
 )
-agent.input("Complex production task")
+print(agent.input("Search for Python tutorials"))
 ```
 
-### Step 5: Multi-Agent - Make it Remotely Callable
-```python
-from connectonion import host
-host(agent)  # HTTP server + P2P relay - other agents can now discover and call this agent
-```
-
-## ✨ Why ConnectOnion?
-
-Most frameworks give you a way to call LLMs. ConnectOnion gives you everything around it — so you only write prompt and tools.
-
-### Built-in AI Programmer
-
-```bash
-co ai   # Opens a chat interface with an AI that deeply understands ConnectOnion
-```
-
-`co ai` is an AI coding assistant built *with* ConnectOnion. It writes working agent code because it knows the framework inside out. Fully open-source — inspect it, modify it, build your own.
-
-### Built-in Frontend & Backend — Just Write Prompt and Tools
-
-Traditional path: write agent logic → build FastAPI backend → build React frontend → wire APIs → deploy.
-
-ConnectOnion path: **write prompt and tools → deploy.**
-
-- Backend: framework handles the API layer
-- Frontend: [chat.openonion.ai](https://chat.openonion.ai) — ready-to-use chat interface
-- All open-source, customizable, but you don't start from zero
-
-### Ready-to-Use Tool Ecosystem
-
-Import and use — no schema writing, no interface wiring:
-
-```python
-from connectonion import bash, Shell                                    # Command execution
-from connectonion.useful_tools import FileTools                         # File system (with safety tracking)
-from connectonion.useful_tools.browser_tools import BrowserAutomation   # Natural language browser automation
-
-from connectonion import Gmail, Outlook              # Email
-from connectonion import GDrive                      # Google Drive files
-from connectonion import GoogleCalendar              # Calendar
-from connectonion import Memory                      # Persistent memory
-from connectonion import TodoList                    # Task tracking
-```
-
-Need to customize? Copy the source into your project:
-
-```bash
-co copy Gmail     # Copies Gmail tool source code to your project for modification
-```
-
-### Built-in Approval System
-
-Dangerous operations (bash commands, file deletion) automatically trigger approval — no permission logic needed from you.
-
-```python
-from connectonion.useful_plugins import tool_approval, shell_approval
-
-agent = Agent("assistant", tools=[bash], plugins=[shell_approval])
-# Shell commands now require approval before execution
-```
-
-Plugin-based: turn it off, customize it, or replace it entirely.
-
-### Skills System — Auto-Discovery, Claude Code Compatible
-
-Reusable workflows with automatic permission scoping:
-
-```python
-from connectonion.useful_plugins import skills
-
-agent = Agent("assistant", tools=[file_tools], plugins=[skills])
-
-# User types /commit → skill loads → git commands auto-approved → permission cleared after execution
-```
-
-Three-level auto-discovery (project → user → built-in):
-```
-.co/skills/skill-name/SKILL.md      # Project-level (highest priority)
-~/.co/skills/skill-name/SKILL.md    # User-level
-builtin/skill-name/SKILL.md         # Built-in
-```
-
-Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
-
-### 12 Lifecycle Hooks + Plugin System
-
-Inject logic at any point in the agent execution cycle:
-
-```python
-from connectonion import Agent, after_tools, llm_do
-from connectonion.useful_plugins import re_act, eval, auto_compact, subagents, ulw
-
-# Built-in plugins — same capabilities as Claude Code, open to any agent
-agent = Agent("researcher", tools=[search], plugins=[
-    re_act,         # Reflect + plan after each tool call
-    auto_compact,   # Auto-compress context at 90% capacity
-    subagents,      # Spawn sub-agents with independent tools and prompts
-    ulw,            # Ultra Light Work — fully autonomous mode
-])
-```
-
-These plugins mirror Claude Code's internal capabilities — `auto_compact`, `subagents`, `ulw` directly correspond to Claude Code's context compression, sub-agent spawning, and autonomous work mode. ConnectOnion makes these capabilities available to any agent you build.
-
-Hooks: `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
-
-Plugins are just lists of event handlers — visible, modifiable, `co copy`-able.
-
-### Multi-Agent Trust System (Fast Rules)
-
-When agents call each other, trust decisions happen **before LLM involvement** — zero token cost for 90% of cases. Trust is configured when hosting an agent:
-
-```python
-from connectonion import host
-
-host(
-    create_agent,
-    trust="careful"    # whitelist → allow, unknown → ask LLM, blocked → deny
-)
-```
-
-Three presets: `open` (dev), `careful` (staging), `strict` (production).
-
----
-
-## 💬 Join the Community
-
-[![Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Join%20Discord&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/4xfD9k8AUF)
-
-Get help, share agents, and discuss with 1000+ builders in our active community.
-
----
-
-## 🚀 Quick Start
-
-### Installation
-
-```bash
-pip install connectonion
-```
-
-### Quickest Start - Use the CLI
-
-```bash
-# Create a new agent project with one command
-co create my-agent
-
-# Navigate and run
-cd my-agent
-python agent.py
-```
-
-*The CLI guides you through API key setup automatically. No manual `.env` editing needed!*
-
-### Manual Usage
-
-```python
-import os  
-from connectonion import Agent
-
-# Set your OpenAI API key
-os.environ["OPENAI_API_KEY"] = "your-api-key-here"
-
-# 1. Define tools as simple functions
-def search(query: str) -> str:
-    """Search for information."""
-    return f"Found information about {query}"
-
-def calculate(expression: str) -> float:
-    """Perform mathematical calculations."""
-    return eval(expression)  # Use safely in production
-
-# 2. Create an agent with tools and personality
-agent = Agent(
-    name="my_assistant",
-    system_prompt="You are a helpful and friendly assistant.",
-    tools=[search, calculate]
-    # max_iterations=100 is the default - agent will try up to 100 tool calls per task
-)
-
-# 3. Use the agent
-result = agent.input("What is 25 * 4?")
-print(result)  # Agent will use the calculate function
-
-result = agent.input("Search for Python tutorials") 
-print(result)  # Agent will use the search function
-
-# 4. View behavior history (automatic!)
-print(agent.history.summary())
-```
-
-### 🔍 Interactive Debugging with `@xray`
-
-Debug your agents like you debug code - pause at breakpoints, inspect variables, and test edge cases:
-
-```python
-from connectonion import Agent
-from connectonion import xray
-
-# Mark tools you want to debug with @xray
-@xray
-def search_database(query: str) -> str:
-    """Search for information."""
-    return f"Found 3 results for '{query}'"
-
-@xray
-def send_email(to: str, subject: str) -> str:
-    """Send an email."""
-    return f"Email sent to {to}"
-
-# Create agent with @xray tools
-agent = Agent(
-    name="debug_demo",
-    tools=[search_database, send_email]
-)
-
-# Launch interactive debugging session
-agent.auto_debug()
-
-# Or debug a specific task
-agent.auto_debug("Search for Python tutorials and email the results")
-```
-
-**What happens at each `@xray` breakpoint:**
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@xray BREAKPOINT: search_database
-
-Local Variables:
-  query = "Python tutorials"
-  result = "Found 3 results for 'Python tutorials'"
-
-What do you want to do?
-  → Continue execution 🚀       [c or Enter]
-    Edit values 🔍             [e]
-    Quit debugging 🚫          [q]
-
-💡 Use arrow keys to navigate or type shortcuts
->
-```
-
-**Key features:**
-- **Pause at breakpoints**: Tools decorated with `@xray` pause execution
-- **Inspect state**: See all local variables and execution context
-- **Edit variables**: Modify results to test "what if" scenarios
-- **Full Python REPL**: Run any code to explore agent behavior
-- **See next action**: Preview what the LLM plans to do next
-
-Perfect for:
-- Understanding why agents make certain decisions
-- Testing edge cases without modifying code
-- Exploring agent behavior interactively
-- Debugging complex multi-tool workflows
-
-[Learn more in the auto_debug guide](docs/debug/auto_debug.md)
-
-### 🔌 Plugin System
-
-Package reusable capabilities as plugins and use them across multiple agents:
-
-```python
-from connectonion import Agent, after_tools, llm_do
-
-# Define a reflection plugin
-def add_reflection(agent):
-    trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_result' and trace['status'] == 'success':
-        result = trace['result']
-        reflection = llm_do(
-            f"Result: {result[:200]}\n\nWhat did we learn?",
-            system_prompt="Be concise.",
-            temperature=0.3
-        )
-        agent.current_session['messages'].append({
-            'role': 'assistant',
-            'content': f"🤔 {reflection}"
-        })
-
-# Plugin is just a list of event handlers
-reflection = [after_tools(add_reflection)]  # after_tools fires once after all tools
-
-# Use across multiple agents
-researcher = Agent("researcher", tools=[search], plugins=[reflection])
-analyst = Agent("analyst", tools=[analyze], plugins=[reflection])
-```
-
-**What plugins provide:**
-- **Reusable capabilities**: Package event handlers into bundles
-- **Simple pattern**: A plugin is just a list of event handlers
-- **Easy composition**: Combine multiple plugins together
-- **Built-in plugins**: re_act, eval, system_reminder, image_result_formatter, and more
-
-**Built-in plugins** are ready to use:
-```python
-from connectonion.useful_plugins import re_act, system_reminder
-
-agent = Agent("assistant", tools=[search], plugins=[re_act, system_reminder])
-```
-
-[Built-in plugins](docs/useful_plugins/)
-
-## 🔧 Core Concepts
-
-### Agent
-The main class that orchestrates LLM calls and tool usage. Each agent:
-- Has a unique name for tracking purposes
-- Can be given a custom personality via `system_prompt`
-- Automatically converts functions to tools
-- Records all behavior to JSON files
-
-### Function-Based Tools
-**NEW**: Just write regular Python functions! ConnectOnion automatically converts them to tools:
-
-```python
-def my_tool(param: str, optional_param: int = 10) -> str:
-    """This docstring becomes the tool description."""
-    return f"Processed {param} with value {optional_param}"
-
-# Use it directly - no wrapping needed!
-agent = Agent("assistant", tools=[my_tool])
-```
-
-Key features:
-- **Automatic Schema Generation**: Type hints become OpenAI function schemas
-- **Docstring Integration**: First line becomes tool description  
-- **Parameter Handling**: Supports required and optional parameters
-- **Type Conversion**: Handles different return types automatically
-
-### System Prompts
-Define your agent's personality and behavior with flexible input options:
-
-```python
-# 1. Direct string prompt
-agent = Agent(
-    name="helpful_tutor",
-    system_prompt="You are an enthusiastic teacher who loves to educate.",
-    tools=[my_tools]
-)
-
-# 2. Load from file (any text file, no extension restrictions)
-agent = Agent(
-    name="support_agent",
-    system_prompt="prompts/customer_support.md"  # Automatically loads file content
-)
-
-# 3. Using Path object
-from pathlib import Path
-agent = Agent(
-    name="coder",
-    system_prompt=Path("prompts") / "senior_developer.txt"
-)
-
-# 4. None for default prompt
-agent = Agent("basic_agent")  # Uses default: "You are a helpful assistant..."
-```
-
-Example prompt file (`prompts/customer_support.md`):
-```markdown
-# Customer Support Agent
-
-You are a senior customer support specialist with expertise in:
-- Empathetic communication
-- Problem-solving
-- Technical troubleshooting
-
-## Guidelines
-- Always acknowledge the customer's concern first
-- Look for root causes, not just symptoms
-- Provide clear, actionable solutions
-```
-
-### Logging
-Automatic logging of all agent activities including:
-- User inputs and agent responses
-- LLM calls with timing
-- Tool executions with parameters and results
-- Default storage in `.co/logs/{name}.log` (human-readable format)
-
-## 🎯 Example Tools
-
-You can still use the traditional Tool class approach, but the new functional approach is much simpler:
-
-### Class Instances as Tools (Still Supported)
-```python
-class Calculator:
-    def calculate(self, expression: str) -> float:
-        """Evaluate a math expression."""
-        return eval(expression)
-
-# Each public method with type hints becomes a tool
-agent = Agent("assistant", tools=[Calculator()])
-```
-
-### New Function-Based Approach (Recommended)
-```python
-def calculate(expression: str) -> float:
-    """Perform mathematical calculations."""
-    return eval(expression)  # Use safely in production
-
-def get_time(format: str = "%Y-%m-%d %H:%M:%S") -> str:
-    """Get current date and time."""
-    from datetime import datetime
-    return datetime.now().strftime(format)
-
-def read_file(filepath: str) -> str:
-    """Read contents of a text file."""
-    with open(filepath, 'r') as f:
-        return f.read()
-
-# Use them directly!
-agent = Agent("assistant", tools=[calculate, get_time, read_file])
-```
-
-The function-based approach is simpler, more Pythonic, and easier to test!
-
-## 🎨 CLI Templates
-
-ConnectOnion CLI provides templates to get you started quickly:
-
-```bash
-# Create an agent (the co-ai template)
-co create my-agent
-
-# Initialize in existing directory
-co init                # Adds .co folder only
-co init --template co-ai   # Adds the full project
-```
-
-**Available Templates:**
-- `co-ai` (default) - the same agent as `co ai`, hosted: files, shell, browser,
-  planning, todos, sub-agents. Specialise it with skills in `.co/skills/`.
-- `custom` - an LLM writes `agent.py` from your description.
-
-`minimal`, `browser`, `hosted-browser`, `coder`, and `web-research` were
-retired — six skeletons that drifted apart, four of which never called
-`host()` so they could not be deployed. One agent plus skills replaces them.
-
-Each template includes:
-- Pre-configured agent ready to run
-- Automatic API key setup
-- Embedded ConnectOnion documentation
-- Git-ready `.gitignore`
-
-Learn more in the [CLI Documentation](docs/cli/) and [Templates Guide](docs/templates/).
-
-## 🔨 Creating Custom Tools
-
-The simplest way is to use functions (recommended):
-
-```python
-def weather(city: str) -> str:
-    """Get current weather for a city."""
-    # Your weather API logic here
-    return f"Weather in {city}: Sunny, 22°C"
-
-# That's it! Use it directly
-agent = Agent(name="weather_agent", tools=[weather])
-```
-
-Or use a class instance to group related tools with shared state:
+Every run is logged to `.co/logs/` automatically. Group related tools in a class and each public method becomes a tool — the instance keeps its state:
 
 ```python
 class WeatherService:
@@ -529,445 +122,108 @@ class WeatherService:
 
     def current(self, city: str) -> str:
         """Get current weather for a city."""
-        return f"Weather in {city}: Sunny, 22°C"
+        ...
 
-    def forecast(self, city: str, days: int) -> str:
-        """Get a multi-day forecast for a city."""
-        return f"{days}-day forecast for {city}: mostly sunny"
-
-# Each public method becomes a tool; access the instance via agent.tools.weatherservice
-agent = Agent(name="weather_agent", tools=[WeatherService(api_key="...")])
+agent = Agent("weather", tools=[WeatherService(api_key="...")])
 ```
 
-## 📁 Project Structure
+A system prompt can be a string, a file path, or a `Path` — `Agent("support", system_prompt="prompts/support.md")` loads the file.
 
-```
-connectonion/
-├── connectonion/
-│   ├── __init__.py         # Main exports
-│   ├── core/               # Agent, LLM, events, tool system
-│   │   ├── agent.py        # Agent class
-│   │   ├── llm.py          # Multi-provider LLM abstraction
-│   │   ├── events.py       # Event system
-│   │   └── tool_factory.py # Function → tool conversion
-│   ├── debug/              # xray, replay, auto_debug
-│   ├── network/            # connect, host, relay, trust
-│   ├── tui/                # Terminal UI components
-│   ├── logger.py           # Unified logging facade
-│   ├── console.py          # Terminal output
-│   ├── useful_tools/       # Built-in tools
-│   ├── useful_plugins/     # Built-in plugins
-│   ├── useful_skills/      # Built-in skills
-│   └── cli/                # CLI module
-│       ├── main.py         # CLI commands
-│       ├── commands/       # Command implementations
-│       └── templates/      # Agent template (one: co-ai)
-│           └── co-ai/
-├── docs/                   # Documentation
-│   ├── quickstart.md
-│   ├── concepts/           # Core concepts
-│   ├── cli/                # CLI commands
-│   ├── templates/          # Project templates
-│   └── ...
-├── examples/
-├── tests/
-│   ├── unit/
-│   └── e2e/
-└── pyproject.toml
-```
-
-## 🧪 Running Tests
-
-```bash
-python -m pytest tests/
-```
-
-Or run individual test files:
-
-```bash
-python -m unittest tests.test_agent
-```
-
-## 📊 Automatic Logging
-
-All agent activities are automatically logged to:
-```
-.co/logs/{agent_name}.log  # Default location
-```
-
-Each log entry includes:
-- Timestamp
-- User input
-- LLM calls with timing
-- Tool executions with parameters and results
-- Final responses
-
-Control logging behavior:
-```python
-# Default: logs to .co/logs/assistant.log
-agent = Agent("assistant")
-
-# Log to current directory
-agent = Agent("assistant", log=True)  # → assistant.log
-
-# Disable logging
-agent = Agent("assistant", log=False)
-
-# Custom log file
-agent = Agent("assistant", log="my_logs/custom.log")
-```
-
-## 🔑 Configuration
-
-### OpenAI API Key
-Set your API key via environment variable:
-```bash
-export OPENAI_API_KEY="your-api-key-here"
-```
-
-Or pass directly to agent:
-```python
-agent = Agent(name="test", api_key="your-api-key-here")
-```
-
-### Model Selection
-```python
-agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.7-flash
-```
-
-### Iteration Control
-Control how many tool calling iterations an agent can perform:
-
-```python
-# Default: 10 iterations (good for most tasks)
-agent = Agent(name="assistant", tools=[...])
-
-# Complex tasks may need more iterations
-research_agent = Agent(
-    name="researcher", 
-    tools=[search, analyze, summarize, write_file],
-    max_iterations=25  # Allow more steps for complex workflows
-)
-
-# Simple agents can use fewer iterations for safety
-calculator = Agent(
-    name="calc", 
-    tools=[calculate],
-    max_iterations=5  # Prevent runaway calculations
-)
-
-# Per-request override for specific complex tasks
-result = agent.input(
-    "Analyze all project files and generate comprehensive report",
-    max_iterations=50  # Override for this specific task
-)
-```
-
-When an agent reaches its iteration limit, it returns:
-```
-"Task incomplete: Maximum iterations (100) reached."
-```
-
-**Choosing the Right Limit:**
-- **Simple tasks (1-3 tools)**: 5-10 iterations
-- **Standard workflows**: 10-15 iterations (default: 100)
-- **Complex analysis**: 20-30 iterations  
-- **Research/multi-step**: 30+ iterations
-
-## 🛠️ Advanced Usage
-
-### Multiple Tool Calls
-Agents can chain multiple tool calls automatically:
-```python
-result = agent.input(
-    "Calculate 15 * 8, then tell me what time you did this calculation"
-)
-# Agent will use calculator first, then current_time tool
-```
-
-### Custom LLM Providers
-```python
-from connectonion import LLM
-
-class CustomLLM(LLM):
-    def complete(self, messages, tools=None):
-        # Your custom LLM implementation
-        pass
-
-agent = Agent(name="test", llm=CustomLLM())
-```
-
-## ❓ FAQ
-
-### What is ConnectOnion?
-
-ConnectOnion is a simple, elegant open-source Python framework for production-ready AI agents. It gives you everything around LLM calls — just write prompt and tools.
-
-### What is ConnectOnion's philosophy?
-
-"Keep simple things simple, make complicated things possible." This principle drives every design decision — start simple, add complexity only when needed.
-
-### How do I get started?
-
-```bash
-pip install connectonion
-```
-
-Or use the CLI for faster setup:
-
-```bash
-co create my-agent
-cd my-agent
-python agent.py
-```
-
-### What LLM providers does ConnectOnion support?
-
-ConnectOnion supports multiple providers: OpenAI, Anthropic, Gemini, and `co/` managed keys (the default — no API key setup needed). To use your own key, set the provider's environment variable:
-
-```bash
-export OPENAI_API_KEY="your-key"     # for gpt-* models
-export ANTHROPIC_API_KEY="your-key"  # for claude-* models
-export GEMINI_API_KEY="your-key"     # for gemini-* models
-```
-
-### How do I add tools to my agent?
-
-Just write regular Python functions! ConnectOnion automatically converts them to tools:
-
-```python
-def search(query: str) -> str:
-    """Search for information."""
-    return f"Results for {query}"
-
-agent = Agent(name="assistant", tools=[search])
-```
-
-No schema writing, no wrapping — your function becomes a tool.
-
-### What are plugins?
-
-Plugins are lists of lifecycle hooks that inject logic at any point in the agent execution cycle. Built-in plugins:
-- `re_act`: Reflect + plan after each tool call
-- `auto_compact`: Auto-compress context at 90% capacity
-- `subagents`: Spawn sub-agents with independent tools
-- `ulw`: Ultra Light Work — fully autonomous mode
-
-```python
-from connectonion.useful_plugins import re_act, subagents
-agent = Agent("researcher", tools=[search], plugins=[re_act, subagents])
-```
-
-### What is `@xray` debugging?
-
-`@xray` is an interactive debugging feature that pauses execution at marked tools:
+Debug interactively with `@xray` and `agent.auto_debug()` — breakpoints inside tool calls, inspect and edit local state, test "what if" values, continue:
 
 ```python
 from connectonion import xray
 
 @xray
-def my_tool(query: str) -> str:
-    return "result"
+def search_database(query: str) -> str:
+    """Search for information."""
+    ...
 
-agent = Agent("assistant", tools=[my_tool])
-agent.auto_debug()
+agent.auto_debug()   # pauses at every @xray tool
 ```
 
-At each breakpoint, you can:
-- Inspect local variables
-- Edit values to test "what if" scenarios
-- Continue execution
-- Run Python REPL
+### Hooks and plugins
 
-### What is the Skills System?
-
-Skills are reusable workflows with automatic permission scoping and three-level auto-discovery:
-- `.co/skills/skill-name/SKILL.md` (project-level, highest priority)
-- `~/.co/skills/skill-name/SKILL.md` (user-level)
-- `builtin/skill-name/SKILL.md` (built-in)
-
-Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
-
-### What is the Multi-Agent Trust System?
-
-When agents call each other, trust decisions happen **before LLM involvement** (zero token cost):
+Thirteen lifecycle hooks fire through one agent turn — `after_user_input`, `before_llm`, `before_each_tool`, `after_tools`, `on_complete`, and the rest. A plugin is just a list of hook handlers:
 
 ```python
-from connectonion import host
+from connectonion.useful_plugins import re_act, auto_compact, subagents
 
-host(create_agent, trust="careful")
+agent = Agent("researcher", tools=[search], plugins=[
+    re_act,        # reflect + plan after each tool call
+    auto_compact,  # compress context near capacity
+    subagents,     # spawn sub-agents with their own tools
+])
 ```
 
-Three presets:
-- `open` (dev): Allow all
-- `careful` (staging): whitelist → allow, unknown → ask LLM, blocked → deny
-- `strict` (production): Enforce strict rules
+These are the same capabilities coding agents like Claude Code keep internal — here they are source you can read, `co copy`, and change.
 
-### What built-in tools are available?
+## Real delivery workflows
 
-Ready-to-use tools with no schema writing:
+**Browser automation.** One persistent browser shared across sessions — logins survive restarts. Deterministic verbs for scripts, natural language when you want the agent to drive:
 
-```python
-from connectonion import bash, Shell, Gmail, GDrive, Outlook, GoogleCalendar, Memory, TodoList
-from connectonion.useful_tools import FileTools
-from connectonion.useful_tools.browser_tools import BrowserAutomation
+```bash
+co browser go_to https://example.com
+co browser take_screenshot /tmp/page.png
+co browser do "log in and export this month's report"
 ```
 
-### Where can I find help?
+**Skills.** A skill is a `SKILL.md` file the agent loads on demand, with automatic permission scoping — `/commit` loads the git skill, its commands are approved for that run, then the grant clears. Discovery is three-level: project `.co/skills/` beats user `~/.co/skills/` beats built-in. Claude Code skills in `.claude/skills/` load as-is.
 
-- **[Documentation](http://docs.connectonion.com)**: Comprehensive guides
-- **[Discord](https://discord.gg/4xfD9k8AUF)**: 1000+ builders community
-- **[GitHub Issues](https://github.com/openonion/connectonion/issues)**: Bug reports
+**Deployment and remote operation.** Deploy to the cloud, or onto a machine you own:
 
----
+```bash
+co server new prod --region australia-southeast1   # provision a server you own
+co deploy --to prod                                # sync code, restart the unit
+co server ssh prod                                 # shell in whenever you want
+co call <address> co status                        # operate a remote agent, no LLM
+```
 
-## 🗺️ Roadmap
+On your own server the agent keeps its address, its logs, and your hand-made 2am fixes across redeploys, and answers on its own https hostname.
 
-**Current Focus:**
-- Multi-agent networking (serve/connect)
-- Trust system for agent collaboration
-- `co deploy` for one-command deployment
+**Communications.** The agent has its own email address from day one (`co email`). An address can be shared with another account — send rights without handing over a private key (`co email share`). Your own Gmail/Outlook/Drive connect through `co auth google` / `co auth microsoft`; tokens stay on your machine.
 
-**Recently Completed:**
-- Multiple LLM providers (OpenAI, Anthropic, Gemini, Groq, Grok, OpenRouter)
-- Managed API keys (`co/` prefix)
-- Plugin system
-- Google OAuth integration
-- Interactive debugging (`@xray`, `auto_debug`)
+## Stable and Preview
 
-See [full roadmap](docs/roadmap.md) for details.
+**Stable** is what `pip install connectonion` gives you — the 1.6.x line this README describes. Every command shown here is exercised against it.
 
-## 🔗 Connect With Us
+**Preview** is opt-in and marked as a pre-release on PyPI and GitHub. It carries the next feature train — currently the `co ai` coding-agent work (native Codex and Claude Code delegation with a live Work Room). Install an exact pre-release version to try it:
 
-<div align="center">
+```bash
+pip install connectonion==<exact-preview-version>   # see the releases page
+```
 
-[![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/4xfD9k8AUF)
-[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/openonion/connectonion)
-[![Documentation](https://img.shields.io/badge/Docs-Learn_More-blue?style=for-the-badge)](http://docs.connectonion.com)
+Find current pre-release versions on the [GitHub releases page](https://github.com/openonion/connectonion/releases). Preview behavior can change between pre-releases; stable does not inherit it until it has been exercised end to end.
 
-</div>
+## Architecture and security boundaries
 
-- **💬 Discord**: [Join our community](https://discord.gg/4xfD9k8AUF) - Get help, share ideas, meet other developers
-- **📚 Documentation**: [docs.connectonion.com](http://docs.connectonion.com) - Comprehensive guides and examples
-- **⭐ GitHub**: [Star the repo](https://github.com/openonion/connectonion) - Show your support
-- **🐛 Issues**: [Report bugs](https://github.com/openonion/connectonion/issues) - We respond quickly
+- **Permissions.** A hosted session runs under one of three profiles: **Read only** (every tool call asks a human; reads pass), **Auto** (reversible workspace work runs; external, destructive, or credential-touching operations ask), and **Full access** (approval-free, bounded by an explicit turn budget — `co ai --yolo --yolo-turns 20`). Plan is a workflow state, not a permission tier. The server owns this state; a client cannot talk itself into more authority.
+- **Trust.** When agents call each other, trust decisions run before any LLM sees the request: `open` (dev), `careful` (staging — whitelist allows, unknown asks, blocked denies), `strict` (production). Configured in the operator's own `.co/host.yaml`; no environment variable can change it.
+- **Identity.** An agent's address derives from a recovery phrase (standard SLIP-0010 derivation). A deployed agent runs under its own account and keys — not a copy of yours.
+- **Credentials.** OAuth tokens for Google and Microsoft stay on the CLI machine. The backend does not store them.
+- **Approvals.** Dangerous operations — shell commands, file deletion — trigger approval through a plugin you can inspect, replace, or turn off deliberately.
 
----
+The layer below all of this is plain: `Agent` orchestrates LLM calls and tool execution, hooks fire at each lifecycle point, plugins are lists of hook handlers, and `host(agent)` makes any agent reachable over HTTP and the relay.
 
-## ⭐ Show Your Support
+## Community and links
 
-If ConnectOnion helps you build better agents, **give it a star!** ⭐
+- **[Documentation](http://docs.connectonion.com)** — guides, CLI reference, concepts
+- **[Examples](examples/)** — working agents to read and copy
+- **[Discord](https://discord.gg/4xfD9k8AUF)** — get help, share what you build
+- **[GitHub Issues](https://github.com/openonion/connectonion/issues)** — bugs and feature requests
 
-It helps others discover the framework and motivates us to keep improving it.
+### Contributing
 
-[⭐ Star on GitHub](https://github.com/openonion/connectonion)
+ConnectOnion is open source and community-driven. Fork, branch, add tests, open a PR. See the [Contributing Guide](http://docs.connectonion.com/website-maintenance).
 
----
+### License
 
-## 🤝 Contributing
-
-We welcome contributions! ConnectOnion is open source and community-driven.
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
-
-See our [Contributing Guide](http://docs.connectonion.com/website-maintenance) for more details.
-
----
-
-## 📄 License
-
-Apache License 2.0 - Use it anywhere, even commercially. See [LICENSE](LICENSE) file for details.
+Apache License 2.0 — use it anywhere, even commercially. See [LICENSE](LICENSE).
 
 ---
 
 <div align="center">
-
-**Built with ❤️ by the open-source community**
 
 [⭐ Star this repo](https://github.com/openonion/connectonion) • [💬 Join Discord](https://discord.gg/4xfD9k8AUF) • [📖 Read Docs](https://docs.connectonion.com) • [⬆ Back to top](#-connectonion)
 
 </div>
-
-## ❓ Frequently Asked Questions (FAQ)
-
-### What is ConnectOnion?
-
-ConnectOnion is a simple, elegant framework for production-ready AI agents. Philosophy: "Keep simple things simple, make complicated things possible" - you write prompts and tools, framework handles everything else.
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| Built-in AI Programmer | `co ai` - AI coding assistant |
-| Built-in Frontend & Backend | chat.openonion.ai ready-to-use |
-| Ready-to-Use Tools | Import without schema writing |
-| Approval System | Dangerous ops auto-trigger approval |
-| Skills System | Claude Code compatible, auto-discovery |
-| 12 Lifecycle Hooks | Inject logic at any point |
-| Plugin System | re_act, auto_compact, subagents, ulw |
-| Multi-Agent Trust | Fast rules, zero token cost |
-
-### Quick Start
-
-```bash
-pip install connectonion
-```
-
-### Available Tools
-
-bash, Shell, FileTools, BrowserAutomation, Gmail, GDrive, Outlook, GoogleCalendar, Memory, TodoList
-
-### Customize Tools
-
-```bash
-co copy Gmail  # Copy tool source for modification
-```
-
-### Built-in Plugins
-
-| Plugin | Description | Claude Code Equivalent |
-|--------|-------------|------------------------|
-| re_act | Reflect + plan after each tool | - |
-| auto_compact | Auto-compress context at 90% | Context compression |
-| subagents | Spawn sub-agents | Sub-agent spawning |
-| ulw | Ultra Light Work autonomous | Autonomous mode |
-
-### Skills Auto-Discovery
-
-Project → User → Built-in levels. Automatically loads Claude Code skills from `.claude/skills/`.
-
-### Lifecycle Hooks
-
-after_user_input, before_iteration, before_llm, after_llm, before_tools, after_tools, on_error, after_iteration, on_stop_signal, on_complete
-
-### Trust System Presets
-
-open (dev), careful (staging), strict (production)
-
-### Debug Agent
-
-```python
-agent.auto_debug()  # Interactive debugging
-```
-
-### Deploy Agent
-
-```python
-from connectonion import host
-host(agent)  # HTTP + P2P relay
-```
-
-### Requirements
-
-Python 3.10+
-
-### License
-
-Apache-2.0
-
-### Help Resources
-
-[Docs](http://docs.connectonion.com) | [Discord](https://discord.gg/4xfD9k8AUF) | [Issues](https://github.com/openonion/connectonion/issues)
