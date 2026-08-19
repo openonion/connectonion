@@ -4,15 +4,25 @@
 
 The browser command already had a substantial end-to-end check. It built a
 wheel, installed it like a user, started a real browser, and drove a page on
-Windows. That was useful evidence, but it did not answer the question a macOS
-user actually has: does the packaged `co browser` command start its POSIX
-daemon and complete a navigation on this platform?
+Windows. Then a preview check was run on a Mac and the first result looked like
+a product failure: the daemon could not bind its socket and the test hung while
+waiting for it to listen. The traceback was `PermissionError: [Errno 1]
+Operation not permitted`.
+
+That failure turned out to be the managed test sandbox refusing all Unix-domain
+socket binds, not a broken Mac implementation. Running the same page-driving
+flow in a normal Mac process succeeded immediately. The uncomfortable part was
+that we had no repository gate that would have caught a real packaging or
+first-launch regression on macOS, so the environmental explanation could have
+been mistaken for confidence.
 
 ## A passing unit test is not a browser session
 
 The macOS path has different machinery. Windows uses a named pipe; macOS uses
 a Unix-domain socket. Packaging also matters: an editable checkout can hide a
-missing package entry point or browser dependency that a wheel exposes.
+missing package entry point or browser dependency that a wheel exposes. We
+needed a test that ran where the socket was allowed, while still making the
+failure visible and reproducible in CI.
 
 The new macOS gate therefore builds and installs the wheel, installs
 Patchright Chromium into an isolated runner directory, writes a local HTML
