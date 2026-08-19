@@ -116,6 +116,11 @@ When releasing a new version:
 - [ ] Update `## Current Version:` and add the release line in this file
 - [ ] Update `VERSION` in the docs site's `lib/version.ts`
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
+- [ ] Record the release's visual evidence: `python scripts/check_release_visuals.py vX.Y.Z`
+      must pass — a reviewed image set under docs/releases/assets/vX.Y.Z/ (a
+      per-release directory; the contract lives in `docs/releases/README.md`)
+      for user-visible changes, or an explicit `no_visual_change` reason for a
+      backend-only patch (#1124)
 - [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
 - [ ] Create git tag: `git tag vX.Y.Z`
 - [ ] Push commits: `git push`
