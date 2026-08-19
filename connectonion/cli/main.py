@@ -468,11 +468,13 @@ def server_check(
 def server_new(
     name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
+    region: Optional[str] = typer.Option(None, "--region",
+                                         help="Where to provision (default: australia-southeast1)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
     """Have a server created for you. Charges 12 months of credit up front."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
         raise typer.Exit(1)
 
 
@@ -766,6 +768,28 @@ def email_name(
     """Check a custom email name's availability, or --buy to claim it."""
     from .commands.email_commands import handle_email_name
     handle_email_name(name, buy=buy)
+
+
+@email_app.command("share")
+def email_share(
+    address: Optional[str] = typer.Argument(None, help="One of your addresses (omit with --list)"),
+    with_: Optional[str] = typer.Option(None, "--with", help="Grantee: public key or one of their addresses"),
+    can: Optional[str] = typer.Option(None, "--can", help="Comma-separated capabilities: send,read"),
+    list_: bool = typer.Option(False, "--list", help="Show what you've shared, and what's shared with you"),
+):
+    """Let another account send and/or read as one of your addresses, without moving it."""
+    from .commands.email_commands import handle_email_share
+    handle_email_share(address, with_=with_, can=can, list_=list_)
+
+
+@email_app.command("unshare")
+def email_unshare(
+    address: str = typer.Argument(..., help="One of your addresses"),
+    with_: str = typer.Option(..., "--with", help="Grantee to revoke: public key or one of their addresses"),
+):
+    """Revoke a grant. No key rotation — the address was never shared, only access to it."""
+    from .commands.email_commands import handle_email_unshare
+    handle_email_unshare(address, with_=with_)
 
 
 @email_app.command("upgrade")

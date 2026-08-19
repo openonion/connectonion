@@ -53,14 +53,26 @@ $ co server new prod
 is free or costs fractions of a cent, so the prompt says the price, what your balance
 becomes, and when the term ends. `--yes` skips it; nothing else does.
 
-The machine is created in **Sydney**, boots Ubuntu 24.04, and carries the SSH key
-derived from your recovery phrase — nothing else is installed. The first
+The machine is created in **Sydney** by default, boots Ubuntu 24.04, and carries the
+SSH key derived from your recovery phrase — nothing else is installed. The first
 `co deploy --to` sets up python, the venv, systemd and Caddy.
 
 | Flag | |
 |---|---|
 | `--machine e2-medium` | 4 GB, for browser agents |
+| `--region asia-southeast1` | provision somewhere other than Sydney |
 | `--yes` | skip the price confirmation |
+
+Each region has its own quota — Sydney's runs out after 4 live servers (a GCE
+external-address ceiling, not ours) — so `--region` is also the way out once you hit
+it:
+
+```bash
+co server new backup --region asia-southeast1
+```
+
+`co server ls` shows an unfamiliar `region` from `co server new`'s own output if you
+forget which one you picked; there is no separate lookup for it yet.
 
 ---
 

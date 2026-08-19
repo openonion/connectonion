@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [rich.console, rich.table, rich.panel, .project_cmd_lib.load_api_key, ...useful_tools.send_email.send_email, ...useful_tools.get_emails.get_emails/mark_read] | imported by [cli/main.py via handle_email_*()] | hits the configured backend through the engine tools at [/api/v1/email/*]
   Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread) → Rich table | handle_email_read() → get_emails() → find by id → print body → optionally mark_read(id)
   State/Effects: no local state | network calls happen inside the engine tools | only read --mark-read flips server-side read status | writes to stdout via rich.Console
-  Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read(), handle_email_addresses() for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py | requires prior 'co auth'
+  Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read(), handle_email_addresses(), handle_email_share()/handle_email_unshare() (connectonion#1137) for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py, share/unshare hit /api/v1/email/share directly like addresses/name do | requires prior 'co auth'
   Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
 """
 
@@ -297,6 +297,108 @@ def handle_email_addresses():
     console.print()
     console.print(table)
     console.print('\n[dim]Send as one with:[/dim] [bold]co email send <to> "<subject>" "<body>" --from <address>[/bold]\n')
+
+
+_CAPABILITIES = {"send": "can_send", "read": "can_read"}
+
+
+def _parse_capabilities(can: str) -> dict:
+    """'send,read' -> {'can_send': True, 'can_read': True}. Rejects a typo rather
+    than silently granting nothing, which the server would also refuse but
+    only after a round trip."""
+    flags = {"can_send": False, "can_read": False}
+    for word in can.split(","):
+        word = word.strip().lower()
+        if not word:
+            continue
+        key = _CAPABILITIES.get(word)
+        if not key:
+            console.print(f"\n[red]✗ Unknown capability: '{word}'.[/red] Use send, read, or both.\n")
+            raise typer.Exit(1)
+        flags[key] = True
+    if not flags["can_send"] and not flags["can_read"]:
+        console.print("\n[red]✗ --can needs at least one of: send, read[/red]\n")
+        raise typer.Exit(1)
+    return flags
+
+
+def _print_shares_table(title: str, rows: list, other_key: str):
+    if not rows:
+        console.print(f"[cyan]{title}:[/cyan] none\n")
+        return
+    table = Table(title=title, show_header=True, header_style="bold cyan")
+    table.add_column("Address")
+    table.add_column("With" if other_key == "grantee_public_key" else "Owner")
+    table.add_column("Can")
+    for row in rows:
+        capabilities = ",".join(
+            name for name, key in _CAPABILITIES.items() if row.get(key)
+        )
+        table.add_row(str(row.get("address", "")), str(row.get(other_key, "")), capabilities)
+    console.print(table)
+    console.print()
+
+
+def handle_email_share(
+    address: str = None, *, with_: str = None, can: str = None, list_: bool = False,
+):
+    """Grant, or list, access to one of your addresses (connectonion#1137)."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    if list_:
+        r = requests.get(f"{backend_url()}/api/v1/email/share", headers=headers, timeout=10)
+        if not r.ok:
+            console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+            raise typer.Exit(1)
+        data = r.json()
+        console.print()
+        _print_shares_table("📤 Shared by you", data.get("granted_by_me", []), "grantee_public_key")
+        _print_shares_table("📥 Shared with you", data.get("granted_to_me", []), "owner_public_key")
+        return
+
+    if not address or not with_ or not can:
+        console.print(
+            "\n[red]✗ Usage:[/red] co email share <address> --with <who> --can send,read"
+            "\n         co email share --list\n"
+        )
+        raise typer.Exit(1)
+
+    payload = {"address": address, "grantee": with_, **_parse_capabilities(can)}
+    r = requests.post(f"{backend_url()}/api/v1/email/share", json=payload, headers=headers, timeout=15)
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    data = r.json()
+    granted = ",".join(name for name, key in _CAPABILITIES.items() if data.get(key))
+    console.print(f"\n[green]✓ Shared {address}[/green] with [cyan]{with_}[/cyan] ({granted})")
+    console.print("[dim]Revoke it with:[/dim]")
+    # Plain print, not console.print: Rich wraps at the console width, and a
+    # line-broken command is no longer copy-pasteable.
+    print(f"  co email unshare {address} --with {with_}\n")
+
+
+def handle_email_unshare(address: str, *, with_: str):
+    """Revoke a grant on one of your addresses (connectonion#1137)."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+
+    r = requests.delete(
+        f"{backend_url()}/api/v1/email/share/{address}/{with_}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    console.print(f"\n[green]✓ Revoked {with_}'s access to {address}[/green]\n")
 
 
 def handle_email_name(name: str, buy: bool = False):
