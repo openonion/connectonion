@@ -46,3 +46,37 @@ from connectonion import Agent
 
 ## Additional context
 Add any other context, screenshots, or examples.
+
+## AI implementation contract
+
+<!-- The bug-sized subset. Full guidance, repository defaults, and
+     guardrails: docs/ai-implementation-contract.md -->
+
+### Scope and release line
+- Target: [ ] stable patch [ ] preview [ ] main-only
+- Exact base/tag:
+- Owning repositories:
+- Explicitly out of scope:
+- Release action authorized by this issue:
+  [ ] test only
+  [ ] prepare Draft release PR
+  [ ] publish approved Preview
+  [ ] publish stable
+  [ ] no publication
+
+### Plan before code
+- Reproduce first: a regression test must fail on the unpatched code before
+  the fix has any claim to work.
+- Inspect the current implementation, tests, and related PRs/issues before editing.
+- Do not merge a preview `main` wholesale into a stable branch.
+
+### Required verification
+- Focused red/green regression test:
+- Full suite on the exact candidate commit:
+- Real journey exercising the fixed path (browser/CLI as applicable):
+- Commands and exact output to record:
+
+### Evidence
+- [ ] The regression test's red run (pre-patch) is recorded in the PR.
+- [ ] Before/After behavior is shown, not asserted.
+- [ ] If user-visible: screenshots attached directly to the PR.
