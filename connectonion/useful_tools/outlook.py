@@ -50,6 +50,7 @@ from pathlib import Path
 
 import httpx
 from ..backend import backend_url
+from ..project import project_root
 
 
 class Outlook:
@@ -57,7 +58,7 @@ class Outlook:
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
-    def __init__(self):
+    def __init__(self, allow_external_attachments: bool = False):
         """Initialize Outlook tool.
 
         Validates that Microsoft OAuth is configured.
@@ -78,6 +79,8 @@ class Outlook:
             )
 
         self._access_token = None
+        self._attachment_root = project_root().resolve()
+        self._allow_external_attachments = allow_external_attachments
 
     def _require_scope(self, required_scope: str) -> None:
         """Raise a re-consent hint when an operation's OAuth scope is absent."""
@@ -483,12 +486,17 @@ class Outlook:
 
         return "\n".join(output)
 
-    def download_attachments(self, email_id: str, out_dir: str = ".") -> list[str]:
+    def download_attachments(self, email_id: str, out_dir: str = ".",
+                             include_inline: bool = False) -> list[str]:
         """Save an email's file attachments to disk.
 
         Args:
             email_id: Outlook message ID
             out_dir: Directory to write the files into
+            include_inline: Also save attachments Graph marks ``isInline`` —
+                embedded signature images and logos. Off by default: a mail
+                with one real PDF and a corporate signature otherwise saves
+                four decorative PNGs beside it (#924).
 
         Returns:
             List of saved file paths
@@ -510,6 +518,9 @@ class Outlook:
             content = attachment.get("contentBytes")
             if not content:
                 # itemAttachment and referenceAttachment carry no bytes to write.
+                continue
+            if attachment.get("isInline") and not include_inline:
+                # Embedded signature images and logos, not documents (#924).
                 continue
             # The name is sender-controlled: keep the last path segment only, so
             # "../../.ssh/authorized_keys" cannot escape the chosen directory.
