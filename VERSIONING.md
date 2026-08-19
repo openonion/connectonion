@@ -153,9 +153,10 @@ When releasing a new version:
       they contain a reusable design lesson.
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
 - [ ] Record the release's visual evidence: `python scripts/check_release_visuals.py vX.Y.Z`
-      must pass — a reviewed image set under `docs/releases/assets/vX.Y.Z/` for
-      user-visible changes, or an explicit `no_visual_change` reason for a
-      backend-only patch (see docs/releases/README.md, #1124)
+      must pass — a reviewed image set under docs/releases/assets/vX.Y.Z/ (a
+      per-release directory; the contract lives in `docs/releases/README.md`)
+      for user-visible changes, or an explicit `no_visual_change` reason for a
+      backend-only patch (#1124)
 - [ ] Remove artifacts from older releases: `rm -rf dist/`
 - [ ] Build package: `python -m build`
 - [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`
