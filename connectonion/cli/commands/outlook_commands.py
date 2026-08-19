@@ -215,6 +215,26 @@ def handle_outlook_read(email_id: str, mark_read: bool = False):
     console.print(f"\n[dim]{marked}Reply with:[/dim] [bold]co outlook reply <#> <message>[/bold]\n")
 
 
+def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: bool = False):
+    """Save an email's attachments to disk. Accepts the listing # or a full message id."""
+    outlook = _outlook()
+    resolved = _resolve_email_id(outlook, email_id)
+    if not resolved:
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook to refresh.[/yellow]\n")
+        raise typer.Exit(1)
+
+    saved = outlook.download_attachments(resolved, out_dir, include_inline=include_inline)
+    if not saved:
+        console.print("\n[yellow]No file attachments on that email.[/yellow]")
+        console.print("[dim]Embedded signature images are skipped — --include-inline saves them too.[/dim]\n")
+        return
+
+    console.print()
+    for path in saved:
+        console.print(f"[green]✓[/green] {path}")
+    console.print()
+
+
 def handle_outlook_reply(email_id: str, message: str, at: str = None):
     """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin."""
     if message == "-":

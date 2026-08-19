@@ -872,3 +872,178 @@ class TestOutlookContacts:
             outlook = Outlook()
             with pytest.raises(ValueError, match="Contacts.ReadWrite"):
                 outlook.list_contacts()
+
+
+class TestDownloadAttachments:
+    """Saving attachments to disk, including the sender-controlled filename."""
+
+    def _outlook(self, monkeypatch, tmp_path, attachments):
+        from connectonion.useful_tools import outlook as outlook_module
+
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.ReadWrite Mail.Send")
+        monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN", "token")
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "refresh")
+        monkeypatch.setattr(outlook_module, "project_root", lambda: tmp_path)
+
+        instance = outlook_module.Outlook()
+        monkeypatch.setattr(instance, "_request", lambda *a, **k: {"value": attachments})
+        return instance
+
+    def test_saves_file_attachment_bytes(self, monkeypatch, tmp_path):
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover.jpg", "contentBytes": base64.b64encode(b"pixels").decode()},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert (tmp_path / "out" / "cover.jpg").read_bytes() == b"pixels"
+        assert saved == [str(tmp_path / "out" / "cover.jpg")]
+
+    def test_preserves_duplicate_attachment_names(self, monkeypatch, tmp_path):
+        import base64
+
+        encoded = lambda value: base64.b64encode(value).decode()
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover.jpg", "contentBytes": encoded(b"first")},
+            {"name": "cover.jpg", "contentBytes": encoded(b"second")},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert saved == [
+            str(tmp_path / "out" / "cover.jpg"),
+            str(tmp_path / "out" / "cover-1.jpg"),
+        ]
+        assert (tmp_path / "out" / "cover.jpg").read_bytes() == b"first"
+        assert (tmp_path / "out" / "cover-1.jpg").read_bytes() == b"second"
+
+    def test_sender_cannot_escape_the_directory_with_a_relative_name(self, monkeypatch, tmp_path):
+        """A sender names the attachment '../../owned.txt'; it must stay put."""
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "../../owned.txt", "contentBytes": base64.b64encode(b"x").decode()},
+        ])
+
+        outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert (tmp_path / "out" / "owned.txt").exists()
+        assert not (tmp_path.parent / "owned.txt").exists()
+
+    def test_preserves_an_existing_file(self, monkeypatch, tmp_path):
+        import base64
+
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        existing = out_dir / "pyproject.toml"
+        existing.write_bytes(b"keep me")
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "pyproject.toml", "contentBytes": base64.b64encode(b"replace me").decode()},
+        ])
+
+        saved = outlook.download_attachments("msg-id", out_dir)
+
+        assert existing.read_bytes() == b"keep me"
+        assert saved == [str(out_dir / "pyproject-1.toml")]
+        assert (out_dir / "pyproject-1.toml").read_bytes() == b"replace me"
+
+    def test_refuses_to_follow_an_existing_symlink(self, monkeypatch, tmp_path):
+        import base64
+
+        outside = tmp_path / "outside.txt"
+        outside.write_bytes(b"keep me")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        (out_dir / "cover.jpg").symlink_to(outside)
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover.jpg", "contentBytes": base64.b64encode(b"replace me").decode()},
+        ])
+
+        saved = outlook.download_attachments("msg-id", out_dir)
+
+        assert outside.read_bytes() == b"keep me"
+        assert saved == [str(out_dir / "cover-1.jpg")]
+        assert (out_dir / "cover-1.jpg").read_bytes() == b"replace me"
+
+    def test_replaces_control_characters_in_sender_filename(self, monkeypatch, tmp_path):
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "cover\n\x1b[31m.jpg", "contentBytes": base64.b64encode(b"pixels").decode()},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert saved == [str(tmp_path / "out" / "cover__[31m.jpg")]
+        assert (tmp_path / "out" / "cover__[31m.jpg").read_bytes() == b"pixels"
+
+    def test_rejects_malformed_base64_without_creating_a_file(self, monkeypatch, tmp_path):
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "broken.pdf", "contentBytes": "not base64!"},
+        ])
+
+        with pytest.raises(ValueError):
+            outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert not (tmp_path / "out" / "broken.pdf").exists()
+
+    def test_refuses_a_destination_outside_the_project(self, monkeypatch, tmp_path):
+        outlook = self._outlook(monkeypatch, tmp_path, [])
+
+        with pytest.raises(PermissionError):
+            outlook.download_attachments("msg-id", tmp_path.parent / "elsewhere")
+
+    def test_skips_attachments_without_bytes(self, monkeypatch, tmp_path):
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "linked.docx", "@odata.type": "#microsoft.graph.referenceAttachment"},
+        ])
+
+        assert outlook.download_attachments("msg-id", tmp_path / "out") == []
+
+    def test_inline_signature_images_are_skipped_by_default(self, monkeypatch, tmp_path):
+        """One real PDF and a corporate signature must save one file, not five (#924)."""
+        import base64
+
+        encoded = lambda value: base64.b64encode(value).decode()
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "invoice.pdf", "contentBytes": encoded(b"pdf")},
+            {"name": "logo.png", "contentBytes": encoded(b"png"), "isInline": True},
+            {"name": "banner.png", "contentBytes": encoded(b"png"), "isInline": True},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert saved == [str(tmp_path / "out" / "invoice.pdf")]
+        assert not (tmp_path / "out" / "logo.png").exists()
+
+    def test_include_inline_saves_the_embedded_images_too(self, monkeypatch, tmp_path):
+        import base64
+
+        encoded = lambda value: base64.b64encode(value).decode()
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "invoice.pdf", "contentBytes": encoded(b"pdf")},
+            {"name": "logo.png", "contentBytes": encoded(b"png"), "isInline": True},
+        ])
+
+        saved = outlook.download_attachments(
+            "msg-id", tmp_path / "out", include_inline=True
+        )
+
+        assert saved == [
+            str(tmp_path / "out" / "invoice.pdf"),
+            str(tmp_path / "out" / "logo.png"),
+        ]
+
+    def test_an_inline_only_mail_reports_no_attachments(self, monkeypatch, tmp_path):
+        """The signature-only mail is the everyday case the default protects."""
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "logo.png",
+             "contentBytes": base64.b64encode(b"png").decode(),
+             "isInline": True},
+        ])
+
+        assert outlook.download_attachments("msg-id", tmp_path / "out") == []

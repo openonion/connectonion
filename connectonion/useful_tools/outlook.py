@@ -2,8 +2,8 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
-  State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) and create contacts | token refresh rewrites ~/.co/keys.env | no other local file persistence
+  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh rewrites ~/.co/keys.env
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
   Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
@@ -50,6 +50,7 @@ from pathlib import Path
 
 import httpx
 from ..backend import backend_url
+from ..project import project_root
 
 
 class Outlook:
@@ -57,7 +58,7 @@ class Outlook:
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
-    def __init__(self):
+    def __init__(self, allow_external_attachments: bool = False):
         """Initialize Outlook tool.
 
         Validates that Microsoft OAuth is configured.
@@ -78,6 +79,8 @@ class Outlook:
             )
 
         self._access_token = None
+        self._attachment_root = project_root().resolve()
+        self._allow_external_attachments = allow_external_attachments
 
     def _require_scope(self, required_scope: str) -> None:
         """Raise a re-consent hint when an operation's OAuth scope is absent."""
@@ -482,6 +485,80 @@ class Outlook:
         ]
 
         return "\n".join(output)
+
+    def download_attachments(self, email_id: str, out_dir: str = ".",
+                             include_inline: bool = False) -> list[str]:
+        """Save an email's file attachments to disk.
+
+        Args:
+            email_id: Outlook message ID
+            out_dir: Directory to write the files into
+            include_inline: Also save attachments Graph marks ``isInline`` —
+                embedded signature images and logos. Off by default: a mail
+                with one real PDF and a corporate signature otherwise saves
+                four decorative PNGs beside it (#924).
+
+        Returns:
+            List of saved file paths
+        """
+        import base64
+
+        destination = Path(out_dir).expanduser().resolve()
+        if not self._allow_external_attachments:
+            try:
+                destination.relative_to(self._attachment_root)
+            except ValueError:
+                raise PermissionError(f"Download directory is outside the project: {out_dir}") from None
+        destination.mkdir(parents=True, exist_ok=True)
+
+        attachments = self._request("GET", f"/me/messages/{email_id}/attachments").get("value", [])
+
+        saved = []
+        for attachment in attachments:
+            content = attachment.get("contentBytes")
+            if not content:
+                # itemAttachment and referenceAttachment carry no bytes to write.
+                continue
+            if attachment.get("isInline") and not include_inline:
+                # Embedded signature images and logos, not documents (#924).
+                continue
+            # The name is sender-controlled: keep the last path segment only, so
+            # "../../.ssh/authorized_keys" cannot escape the chosen directory.
+            name = os.path.basename(str(attachment.get("name", "")).replace("\\", "/"))
+            # Control characters can forge CLI output (including ANSI escapes).
+            name = "".join(
+                "_" if ord(character) < 32 or ord(character) == 127 else character
+                for character in name
+            )
+            if name in {"", ".", ".."}:
+                name = "attachment"
+            data = base64.b64decode(content, validate=True)
+            flags = (
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_BINARY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            original = destination / name
+            stem = original.stem
+            suffix = original.suffix
+            attempt = 0
+            while True:
+                candidate = original if attempt == 0 else destination / f"{stem}-{attempt}{suffix}"
+                try:
+                    descriptor_number = os.open(candidate, flags, 0o600)
+                    break
+                except FileExistsError:
+                    attempt += 1
+            try:
+                with os.fdopen(descriptor_number, "wb") as handle:
+                    handle.write(data)
+            except Exception:
+                candidate.unlink(missing_ok=True)
+                raise
+            saved.append(str(candidate))
+        return saved
 
     # === Sending ===
 
