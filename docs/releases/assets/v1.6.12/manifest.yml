@@ -1,0 +1,16 @@
+version: v1.6.12
+images:
+  - file: cli-server-new-region.png
+    alt: "co server new --help showing the new --region option"
+    caption: "co server new gains --region: pick where a server is provisioned instead of being stuck when one region's quota fills (#713)."
+    scenario: "operator runs co server new --help on a clean 1.6.12 install"
+    viewport: "terminal 100 cols, dark"
+    commit: 5177b7d8
+    source_run: "https://github.com/openonion/connectonion/actions/runs/32250158543"
+  - file: cli-email-share.png
+    alt: "co email --help showing the new share and unshare commands"
+    caption: "co email gains share/unshare: grant another account send access to one of your addresses without moving it or sharing a key (#1137)."
+    scenario: "operator runs co email --help on a clean 1.6.12 install"
+    viewport: "terminal 100 cols, dark"
+    commit: 5177b7d8
+    source_run: "https://github.com/openonion/connectonion/actions/runs/32250158543"
