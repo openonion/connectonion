@@ -207,6 +207,41 @@ def _is_paid_account_required(error) -> bool:
     return isinstance(detail, dict) and detail.get('error') == 'paid_account_required'
 
 
+# Explicit network bounds for every provider client (#1116).
+#
+# A scheduled run froze mid-iteration with the upstream socket in CLOSE_WAIT:
+# the server had closed its side and the client sat in a read that nothing
+# bounded. No error, no exit, killed by hand after 15 minutes. The fix is not
+# cleverness, it is that no provider client is ever constructed on implicit
+# SDK defaults again — every one carries these numbers, visibly.
+#
+# READ is 600s because a long non-streaming generation legitimately sends no
+# bytes until it finishes; cutting that off would break exactly the runs that
+# matter (#1116: "confirm ordinary long model generations are not cut off").
+# CONNECT is 20s — generous for proxy/VPN users, far below "looks hung".
+#
+# The documented upper bound for a stalled upstream is therefore
+# (1 + max_retries) x 600s per request: ~30 minutes for the default 2 retries,
+# ~60 for OpenOnionLLM's deliberate 5 (transient relay blips used to kill
+# whole agent runs; that decision predates this and stands). Bounded and
+# typed — a stall now ends in LLMConnectionError, never a silent hang.
+LLM_CONNECT_TIMEOUT_SECONDS = 20.0
+LLM_READ_TIMEOUT_SECONDS = 600.0
+LLM_MAX_RETRIES = 2
+
+
+def _network_bounds(max_retries: int = LLM_MAX_RETRIES) -> dict:
+    """Constructor kwargs no provider client is allowed to omit."""
+    import openai
+
+    return {
+        "timeout": openai.Timeout(
+            LLM_READ_TIMEOUT_SECONDS, connect=LLM_CONNECT_TIMEOUT_SECONDS
+        ),
+        "max_retries": max_retries,
+    }
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM including content and tool calls."""
@@ -294,7 +329,7 @@ class OpenAILLM(LLM):
         if not self.api_key:
             raise ValueError("OpenAI API key required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
         
-        self.client = openai.OpenAI(api_key=self.api_key)
+        self.client = openai.OpenAI(api_key=self.api_key, **_network_bounds())
         self.model = model
     
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -380,7 +415,7 @@ class AnthropicLLM(LLM):
         if not self.api_key:
             raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter.")
 
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.client = anthropic.Anthropic(api_key=self.api_key, **_network_bounds())
         self.model = model
         self.max_tokens = max_tokens  # Anthropic requires max_tokens (default 8192)
     
@@ -623,7 +658,8 @@ class GeminiLLM(LLM):
         # Use Gemini's OpenAI-compatible endpoint
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            **_network_bounds(),
         )
         self.model = model
     
@@ -702,7 +738,8 @@ class GroqLLM(LLM):
         self.model = model.removeprefix("groq/")
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://api.groq.com/openai/v1"
+            base_url="https://api.groq.com/openai/v1",
+            **_network_bounds(),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -780,7 +817,8 @@ class GrokLLM(LLM):
         self.model = model.removeprefix("grok/")
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://api.x.ai/v1"
+            base_url="https://api.x.ai/v1",
+            **_network_bounds(),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -862,6 +900,7 @@ class OpenRouterLLM(LLM):
         client_kwargs = {
             "api_key": self.api_key,
             "base_url": "https://openrouter.ai/api/v1",
+            **_network_bounds(),
         }
         if default_headers:
             client_kwargs["default_headers"] = default_headers
@@ -942,7 +981,8 @@ class MistralLLM(LLM):
         self.model = model.removeprefix("mistral/")
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://api.mistral.ai/v1"
+            base_url="https://api.mistral.ai/v1",
+            **_network_bounds(),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -1078,8 +1118,7 @@ class OpenOnionLLM(LLM):
         self.client = openai.OpenAI(
             base_url=self.base_url,
             api_key=self.auth_token,
-            timeout=openai.Timeout(600.0, connect=20.0),
-            max_retries=5,
+            **_network_bounds(max_retries=5),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
