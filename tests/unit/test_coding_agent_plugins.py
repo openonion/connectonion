@@ -57,18 +57,35 @@ def test_plugins_accept_only_the_three_exact_public_modes(tmp_path):
         CodexPlugin(permission_mode=":workspace", workspace=tmp_path)
 
 
-def test_workspace_traversal_and_symlink_escape_fail_closed(tmp_path):
-    workspace = tmp_path / "workspace"
-    outside = tmp_path / "outside"
+@pytest.mark.parametrize("plugin", [CodexPlugin, ClaudeCodePlugin])
+def test_plugin_workspace_errors_fail_closed_without_exposing_host_paths(tmp_path, plugin):
+    workspace = tmp_path / "customer-secret-workspace"
+    outside = tmp_path / "private-host-directory"
     workspace.mkdir()
     outside.mkdir()
+    missing = workspace / "confidential-missing-directory"
+    not_directory = workspace / "private-file"
+    not_directory.write_text("private", encoding="utf-8")
     link = workspace / "escape"
     try:
         link.symlink_to(outside, target_is_directory=True)
     except OSError:
         pytest.skip("symlinks unavailable")
-    result = json.loads(CodexPlugin(workspace=workspace).codex("inspect", cwd="escape"))
-    assert "must stay inside workspace" in result["error"]
+
+    installed = plugin(workspace=workspace)
+    tool = getattr(installed, installed.provider)
+    unavailable = json.loads(tool("inspect", cwd=str(missing)))
+    file_target = json.loads(tool("inspect", cwd=str(not_directory)))
+    escaped = json.loads(tool("inspect", cwd="escape"))
+
+    assert unavailable["error"] == "Working directory is unavailable."
+    assert file_target["error"] == "Working directory is not a directory."
+    assert escaped["error"] == (
+        "Working directory must stay inside the configured workspace."
+    )
+    public = json.dumps([unavailable, file_target, escaped])
+    for private_path in (workspace, outside, missing, not_directory, link):
+        assert str(private_path) not in public
 
 
 def test_invocation_lifecycle_is_parented_and_terminal(monkeypatch, tmp_path):
