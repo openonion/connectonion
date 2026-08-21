@@ -168,6 +168,11 @@ def _direct_session(
         # invocation. Keep that exact durable revision so only a successful
         # native ``turn/start`` can acknowledge the original request.
         "_provider_direct_state_revision": state_revision,
+        # Ownership and the terminal source revision were validated while the
+        # durable session lock was held.  Let the approval plugin consume this
+        # one-shot capability for the outer Codex wrapper only; Codex-native
+        # command and file approvals still travel through ``agent.io``.
+        "_provider_direct_approved_tool": "codex",
     }
 
 
