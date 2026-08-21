@@ -240,11 +240,6 @@ def _operator(agent: "Agent") -> bool:
 
 def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
     """Return an Auto decision only for an authorized Workspace session."""
-    # Local CLI agents retain their established no-IO behavior.  This policy
-    # defines the hosted Auto UI boundary, where a human approval channel is
-    # available for an ``ask`` result.
-    if not agent.io:
-        return None
     if ensure_approval_profile(agent) != WORKSPACE_PERMISSION_PROFILE or not _operator(agent):
         return None
     try:
@@ -256,6 +251,13 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             f"authorization policy failed closed ({type(exc).__name__})",
             "call",
             requires_human=bool(agent.io),
+        )
+    if not agent.io and result["decision"] == "ask":
+        result = decision(
+            result["effect_class"],
+            "deny",
+            f"{result['reason']}; no approval channel is available",
+            result["scope"],
         )
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
