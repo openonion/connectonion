@@ -228,6 +228,27 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert "acp_agent_factory" not in called
 
 
+def test_start_server_offers_full_access_without_activating_it(monkeypatch):
+    agent = SimpleNamespace(name="agent")
+    hosted = {}
+
+    def fake_host(value, **kwargs):
+        hosted["agent"] = value
+        hosted.update(kwargs)
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+
+    main_mod.start_server(
+        agent,
+        full_access=True,
+        full_access_turns=7,
+    )
+
+    assert hosted["agent"] is agent
+    assert agent._full_access_turns == 7
+    assert agent._full_access_needs_activation is False
+
+
 def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
     agent = SimpleNamespace(name="agent")
     printed = []

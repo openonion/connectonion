@@ -55,7 +55,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
-    assert created["full_access_turns"] == 7
+    assert created["full_access_turns"] is None
     assert created["extra_plugins"] == ()
 
 

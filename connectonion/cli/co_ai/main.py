@@ -141,6 +141,13 @@ def start_server(
     load_host_config(co_dir)
     addr_data = address.load(co_dir)
 
+    if full_access:
+        from ...useful_plugins.full_access import offer_full_access
+
+        # Web sessions still begin in Auto. This configures only the Host-owned
+        # ceiling that makes Full access selectable after CONNECT.
+        offer_full_access(agent, full_access_turns)
+
     # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
 

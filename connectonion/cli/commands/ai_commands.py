@@ -78,7 +78,14 @@ def handle_ai(
         )
         return
 
-    agent = agent_factory(model, max_iterations, full_access, full_access_turns)
+    # One-shot Full access is selected before the prompt. A web Host only
+    # advertises the ceiling and keeps every fresh session in Auto.
+    agent = agent_factory(
+        model,
+        max_iterations,
+        full_access if prompt else False,
+        full_access_turns,
+    )
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:

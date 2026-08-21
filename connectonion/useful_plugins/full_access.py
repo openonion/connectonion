@@ -74,6 +74,14 @@ def enable_full_access(agent: "Agent", turns: int | None = None) -> None:
         agent._full_access_needs_activation = False
 
 
+def offer_full_access(agent: "Agent", turns: int | None = None) -> None:
+    """Advertise a Host ceiling without changing a fresh session from Auto."""
+
+    budget = _positive_turn_count(turns, default=FULL_ACCESS_DEFAULT_TURNS)
+    agent._full_access_turns = budget
+    agent._full_access_needs_activation = False
+
+
 @after_user_input
 def activate_configured_full_access(agent: "Agent") -> None:
     """Activate an explicitly configured grant before the first model call."""
@@ -124,4 +132,5 @@ __all__ = [
     "enable_full_access",
     "full_access",
     "handle_full_access_mode_change",
+    "offer_full_access",
 ]
