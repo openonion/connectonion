@@ -77,7 +77,9 @@ def _versioning_md_version() -> str:
     return match.group(1)
 
 
-def _typescript_string_constant(text: str, name: str) -> str:
+def _typescript_string_constant(
+    text: str, name: str, *, required: bool = True
+) -> str | None:
     """Read one exported string constant from the docs' checked TS contract."""
     uncommented = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
     uncommented = re.sub(r"//[^\n]*", "", uncommented)
@@ -87,14 +89,25 @@ def _typescript_string_constant(text: str, name: str) -> str:
         uncommented,
         re.MULTILINE,
     )
-    assert match, f"docs-site has no string value for {name}"
-    return match.group(1)
+    if match:
+        return match.group(1)
+    assert not required, f"docs-site has no string value for {name}"
+    return None
 
 
-def _docs_site_version() -> str:
-    text = DOCS_SITE.read_text(encoding='utf-8')
-    name = "PREVIEW_VERSION" if re.search(r"[a-zA-Z]", connectonion.__version__) else "STABLE_VERSION"
-    return _typescript_string_constant(text, name)
+def _advertised_docs_versions(text: str) -> dict[str, str]:
+    """Read every active package channel from the docs contract."""
+    channels = ("STABLE_VERSION", "STABILIZING_VERSION", "PREVIEW_VERSION")
+    advertised = {}
+    for name in channels:
+        version = _typescript_string_constant(text, name, required=False)
+        if version is not None:
+            advertised[name] = version
+    return advertised
+
+
+def _docs_site_versions() -> dict[str, str]:
+    return _advertised_docs_versions(DOCS_SITE.read_text(encoding='utf-8'))
 
 
 @pytest.mark.parametrize(
@@ -105,6 +118,11 @@ def _docs_site_version() -> str:
             "export const PREVIEW_VERSION: string | null = '1.2.4a1'",
             "PREVIEW_VERSION",
             "1.2.4a1",
+        ),
+        (
+            "export const STABILIZING_VERSION: string | null = '1.2.4b3'",
+            "STABILIZING_VERSION",
+            "1.2.4b3",
         ),
     ],
 )
@@ -129,6 +147,20 @@ def test_docs_channel_parser_accepts_the_checked_typescript_contract(
 def test_docs_channel_parser_does_not_fall_back_to_stable(source):
     with pytest.raises(AssertionError, match="PREVIEW_VERSION"):
         _typescript_string_constant(source, "PREVIEW_VERSION")
+
+
+def test_docs_channels_can_advertise_overlapping_release_trains():
+    source = (
+        "export const STABLE_VERSION = '1.6.12'\n"
+        "export const STABILIZING_VERSION: string | null = '1.7.0b4'\n"
+        "export const PREVIEW_VERSION: string | null = '1.8.0a1'\n"
+    )
+
+    assert _advertised_docs_versions(source) == {
+        "STABLE_VERSION": "1.6.12",
+        "STABILIZING_VERSION": "1.7.0b4",
+        "PREVIEW_VERSION": "1.8.0a1",
+    }
 
 
 def test_pyproject_and_the_package_agree():
@@ -193,8 +225,9 @@ def test_the_docs_site_advertises_the_version_that_exists():
     catches drift locally and in the release runbook, not on every push. That
     is the honest limit of a cross-repo check that lives in one repo.
     """
-    assert _docs_site_version() == connectonion.__version__, (
-        f"the docs-site checkout says {_docs_site_version()}, this release is "
+    advertised = _docs_site_versions()
+    assert connectonion.__version__ in advertised.values(), (
+        f"the docs-site checkout advertises {advertised}, this release is "
         f"{connectonion.__version__}.\n"
         f"  file: {DOCS_SITE}\n"
         f"  If that checkout is simply behind, pull it. If it is current, the "
