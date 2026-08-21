@@ -569,8 +569,8 @@ After a successful TodoList state change, the Host sends one complete plan:
 ```
 
 Every update replaces the complete plan; an empty `entries` list clears it.
-The plan has no message or plan ID. The event is observational and
-cannot answer `plan_review` or grant execution permission.
+The plan has no message or plan ID. The event is observational and cannot
+grant execution permission or change the session mode.
 
 #### EXEC_RESULT
 
@@ -607,7 +607,6 @@ Keep-alive. Sent every 30 seconds.
 | `ask_user` | Agent needs human input |
 | `approval_needed` | Tool requires approval |
 | `plan` | Complete observational TodoList replacement |
-| `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
 #### AGENT_PROFILE
