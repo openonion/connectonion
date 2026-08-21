@@ -84,8 +84,9 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "cwd",
         "model",
         "timeout",
+        "summary",
     }
-    assert codex_schema.get("required", []) == []
+    assert codex_schema.get("required", []) == ["summary"]
     assert "claude_code" in agent.tools._tools
     claude_plugins = [
         plugin for plugin in agent.installed_plugins
@@ -100,8 +101,9 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "cwd",
         "model",
         "timeout",
+        "summary",
     }
-    assert claude_schema["required"] == ["prompt", "cwd"]
+    assert claude_schema["required"] == ["prompt", "cwd", "summary"]
     assert "acp_agent" not in agent.tools._tools
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools

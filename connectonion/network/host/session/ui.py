@@ -102,6 +102,8 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             'result': entry.get('result'),
             'timing_ms': entry.get('timing_ms'),
         }
+        if isinstance(entry.get('summary'), str) and entry['summary']:
+            item['summary'] = entry['summary']
         for key in ('provider', 'invocationId', 'parentToolCallId'):
             if key in entry:
                 item[key] = entry[key]
