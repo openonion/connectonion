@@ -411,3 +411,65 @@ jobs:
         run: |
           $log = Join-Path $env:USERPROFILE ".co\browser.log"
           if (Test-Path $log) { Get-Content $log } else { Write-Host "no browser.log" }
+
+  # The macOS release path is distinct from Windows: it uses the POSIX Unix
+  # socket transport and is a common place for packaging or first-launch
+  # regressions to hide. Install the wheel exactly as a user would, install the
+  # bundled browser into an isolated runner directory, then drive a real page
+  # through the public `co browser` CLI.
+  macos-e2e:
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
+
+      - name: Build and install the wheel (what PyPI ships)
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+          python -m pip install dist/*.whl
+
+      - name: CLI and bundled browser are runnable
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/co-browsers
+        run: |
+          co --version
+          python -m patchright --version
+          python -m patchright install chromium
+
+      - name: Real co browser end-to-end over the macOS Unix socket
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/co-browsers
+          CO_BROWSER_SOCK: ${{ runner.temp }}/co-browser.sock
+        run: |
+          page="$RUNNER_TEMP/co-browser-page.html"
+          printf '%s\n' '<html><body><h1>co-macos-e2e</h1></body></html>' > "$page"
+          url="file://$page"
+
+          co browser --headless go_to "$url"
+          status="$(co browser status)"
+          printf '%s\n' "$status"
+          [[ "$status" == *"Browser: open"* ]]
+
+          current_url="$(co browser get_current_url)"
+          printf '%s\n' "$current_url"
+          [[ "$current_url" == *"co-browser-page.html"* ]]
+
+          co browser close
+
+      - name: Stop the browser daemon on failure
+        if: failure()
+        env:
+          CO_BROWSER_SOCK: ${{ runner.temp }}/co-browser.sock
+        run: co browser close || true

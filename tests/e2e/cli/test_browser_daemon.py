@@ -3,7 +3,7 @@ LLM-Note: Browser daemon dispatch + socket round-trip tests
 
 What it tests:
 - Pure helpers: _coerce, _split_tokens, _is_verb, _stringify
-- dispatch(): verb matches a BrowserAutomation method → executes it; `do` → NL agent; unknown → error
+- dispatch(): verb matches a BrowserAutomation method → executes it; resident `do` is refused; unknown → error
 - Full socket round-trip: client.send() ↔ a running BrowserDaemon over a real AF_UNIX socket
 
 Components under test:
@@ -205,6 +205,28 @@ def test_dispatch_image_payload_shows_path_not_base64(tmp_path):
     assert "base64" not in payload
 
 
+def test_agent_image_payload_stays_raw_for_vision(tmp_path):
+    """The client-side agent still receives image data, not the shell summary."""
+    class ImageBrowser(StubBrowser):
+        def __init__(self):
+            super().__init__()
+            self.last_screenshot_path = ".tmp/screenshots/step_x.png"
+
+        def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+
+    daemon = make_daemon(str(tmp_path / "s.sock"), stub=ImageBrowser())
+    raw = _json.dumps({
+        "v": 1, "caller": "agent", "account": "0xcaller", "tab": None,
+        "line": "take_screenshot", "raw": True,
+    })
+
+    ok, payload = daemon.dispatch(raw)
+
+    assert ok is True
+    assert payload.startswith("data:image/png;base64,")
+
+
 def test_dispatch_list_result(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("get_links_from_page")
@@ -238,26 +260,15 @@ def test_dispatch_empty(tmp_path):
     assert ok == 2
 
 
-def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
-    """`do` must go to the NL agent, not function dispatch."""
-    captured = {}
-
-    class FakeAgent:
-        def input(self, command):
-            captured["command"] = command
-            return "agent says hi"
-
-    monkeypatch.setattr(d, "resolve_api_key", lambda: "key")
-    monkeypatch.setattr(d, "build_browser_agent", lambda browser, key: FakeAgent())
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
-
+def test_dispatch_do_refuses_a_resident_agent(tmp_path):
+    """An old client cannot put its whole model loop back inside the daemon."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, payload = daemon.dispatch(_env(
+    code, payload = daemon.dispatch(_env(
         "do find the cheapest flight", account="0xsame-account"
     ))
-    assert ok is True
-    assert payload == "agent says hi"
-    assert captured["command"] == "find the cheapest flight"
+    assert code == 2
+    assert "CLI process" in payload
+    assert daemon.browser._tab_meta == {}
 
 
 # ---- status + tab accountability ----------------------------------------
@@ -469,6 +480,47 @@ def test_socket_round_trip(short_sock, monkeypatch, capsys):
     assert daemon.browser.calls == [("go_to", "example.com")]
 
 
+def test_do_model_wait_does_not_hold_the_daemon_lane(short_sock, monkeypatch):
+    """Regression for #933: status is served while the client-side model thinks."""
+    from connectonion.cli.browser_agent import agent as agent_module
+
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+    daemon = make_daemon(sock_path)
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(sock_path)
+
+    thinking = threading.Event()
+    release = threading.Event()
+    result = []
+
+    class WaitingAgent:
+        def input(self, command):
+            thinking.set()
+            assert release.wait(timeout=5)
+            return "done"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xcaller")
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: WaitingAgent())
+
+    worker = threading.Thread(
+        target=lambda: result.append(c._run_do('do "wait for the model"', True, None))
+    )
+    worker.start()
+    assert thinking.wait(timeout=2)
+
+    code, payload = c._request("status", headless=True)
+    assert code == 0
+    assert "Browser: open" in payload
+
+    release.set()
+    worker.join(timeout=2)
+    assert result == [(0, "done")]
+    daemon._cleanup()
+
+
 def test_socket_round_trip_error_to_stderr(short_sock, monkeypatch, capsys):
     sock_path = short_sock
     monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
@@ -548,24 +600,8 @@ def _env(line, caller="", tab=None, account=""):
     })
 
 
-def test_do_refuses_to_bill_a_different_daemon_account(tmp_path, monkeypatch):
+def test_page_commands_remain_shared_across_billing_accounts(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
-
-    code, payload = daemon.dispatch(
-        _env("do send the form", caller="agent", account="0xcaller-account")
-    )
-
-    assert code == 5
-    assert "refusing `do`" in payload
-    assert "0xdaemon" in payload and "0xcaller" in payload
-    daemon._run_nl.assert_not_called()
-
-
-def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
 
     ok, _ = daemon.dispatch(
         _env("go_to example.com", caller="agent", account="0xcaller-account")
@@ -575,61 +611,56 @@ def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypat
     assert daemon.browser.calls == [("go_to", "example.com")]
 
 
-def test_do_runs_when_caller_and_daemon_accounts_match(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(return_value=(True, "done"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
+def test_do_thinks_in_the_client_without_opening_a_daemon_request(monkeypatch, capsys):
+    from connectonion.cli.browser_agent import agent as agent_module
 
-    result = daemon.dispatch(
-        _env("do send the form", caller="agent", account="0xsame-account")
+    captured = {}
+
+    class FakeAgent:
+        def input(self, command):
+            captured["command"] = command
+            return "done"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xcaller")
+    monkeypatch.setattr(c, "_connect", Mock(side_effect=AssertionError("model wait held a socket")))
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: FakeAgent())
+
+    assert c.send('do "send the form"') == 0
+    assert captured["command"] == "send the form"
+    assert capsys.readouterr().out.strip() == "done"
+
+
+def test_do_tool_calls_are_short_raw_daemon_requests(monkeypatch, capsys):
+    from connectonion.cli.browser_agent import agent as agent_module
+
+    requests = []
+
+    class FakeAgent:
+        def __init__(self, browser):
+            self.browser = browser
+
+        def input(self, command):
+            assert self.browser.go_to("https://example.com") == "navigated"
+            return "done"
+
+    def fake_request(line, **kwargs):
+        requests.append((line, kwargs))
+        return 0, "navigated"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xcaller")
+    monkeypatch.setattr(c, "_request", fake_request)
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(
+        agent_module, "build_browser_agent", lambda browser, key: FakeAgent(browser)
     )
 
-    assert result == (True, "done")
-    daemon._run_nl.assert_called_once_with("send the form")
-
-
-@pytest.mark.parametrize("raw", [
-    "do send the form",
-    _env("do send the form"),
-])
-def test_do_from_legacy_or_accountless_client_fails_closed(
-    tmp_path, monkeypatch, raw
-):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
-
-    code, payload = daemon.dispatch(raw)
-
-    assert code == 5
-    assert "cannot verify" in payload
-    daemon._run_nl.assert_not_called()
-    assert daemon.browser._tab_meta == {}
-
-
-def test_do_fails_closed_when_daemon_account_is_unavailable(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
-    monkeypatch.setattr(d, "_daemon_account", Mock(side_effect=OSError("bad identity")))
-
-    code, payload = daemon.dispatch(
-        _env("do send the form", caller="agent", account="0xcaller-account")
-    )
-
-    assert code == 5
-    assert "cannot verify" in payload
-    daemon._run_nl.assert_not_called()
-    assert daemon.browser._tab_meta == {}
-
-
-def test_do_compares_hex_addresses_case_insensitively(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(return_value=(True, "done"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xAbCd")
-
-    result = daemon.dispatch(_env("do work", account="0xaBcD"))
-
-    assert result == (True, "done")
+    assert c.send('do "visit the site"', headless=True, tab="research") == 0
+    assert requests == [(
+        "go_to https://example.com",
+        {"headless": True, "tab": "research", "raw_result": True},
+    )]
+    assert capsys.readouterr().out.strip() == "done"
 
 
 def test_client_derives_only_the_public_billing_address(tmp_path, monkeypatch):
@@ -853,16 +884,23 @@ def test_targeted_close_of_own_tab_is_allowed_bare_close_is_whole_browser(tmp_pa
     assert "closed" in payload.lower()
 
 
-def test_do_instruction_is_not_quote_mangled(tmp_path, monkeypatch):
+def test_do_instruction_is_not_quote_mangled(monkeypatch):
     """Fix: the NL instruction was re-derived from the shlex-joined line, leaking quotes.
     A multi-word instruction must reach the agent as clean text."""
     import shlex as _shlex
+    from connectonion.cli.browser_agent import agent as agent_module
+
     captured = {}
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = lambda cmd: captured.setdefault("cmd", cmd) or (True, "ok")
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
+    class FakeAgent:
+        def input(self, command):
+            captured["cmd"] = command
+            return "ok"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xsame-account")
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: FakeAgent())
     line = _shlex.join(["do", "log in and download my invoices"])   # what client.send builds
-    daemon.dispatch(_env(line, caller="a", account="0xsame-account"))
+    assert c.send(line) == 0
     assert captured["cmd"] == "log in and download my invoices"
 
 
