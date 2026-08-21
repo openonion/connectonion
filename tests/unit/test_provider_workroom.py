@@ -1,9 +1,12 @@
 """Owned native Codex Work Room continuation tests."""
 
+from connectonion import Agent
 from connectonion.network.host.provider_workroom import (
     prepare_provider_workroom_turn,
 )
 from connectonion.network.host.session import Session, SessionStorage
+from connectonion.useful_plugins import tool_approval
+from tests.utils.mock_helpers import MockLLM
 
 
 def _stored_codex_session(*, owner="0xowner"):
@@ -103,6 +106,7 @@ def test_owned_terminal_codex_thread_runs_only_the_native_tool_and_persists_safe
         "Please add a reverse-order fixture."
     )
     assert agent.current_session["_provider_direct_state_revision"] == 7
+    assert agent.current_session["_provider_direct_approved_tool"] == "codex"
 
     stored = storage.get("session-1")
     assert stored.status == "done"
@@ -144,3 +148,55 @@ def test_workroom_continuation_fails_closed_for_another_owner_or_live_source(tmp
         "input-2",
         "0xowner",
     ) == {"reason": "not_active"}
+
+
+def test_owned_continuation_reaches_codex_through_the_real_approval_plugin(tmp_path):
+    storage = SessionStorage(tmp_path / "sessions.jsonl")
+    storage.save(Session(
+        session_id="session-1",
+        status="done",
+        prompt="original outer prompt",
+        session=_stored_codex_session(),
+    ))
+    calls = []
+
+    def codex(prompt: str, cwd: str, session_id: str) -> str:
+        """Continue a Codex thread."""
+        calls.append((prompt, cwd, session_id))
+        return "continued"
+
+    class NoOuterApprovalIO:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, event):
+            self.sent.append(event)
+
+        def receive(self):
+            raise AssertionError("the outer Codex wrapper must not ask")
+
+    def create_agent():
+        return Agent(
+            "direct-codex-test",
+            llm=MockLLM(),
+            tools=[codex],
+            plugins=[tool_approval],
+            log=False,
+            quiet=True,
+        )
+
+    prepared = prepare_provider_workroom_turn(
+        create_agent,
+        storage,
+        "session-1",
+        "codex:current",
+        "Please continue.",
+        "input-1",
+        "0xowner",
+    )
+    io = NoOuterApprovalIO()
+
+    prepared["run"](io)
+
+    assert calls == [("Please continue.", "", "thread-42")]
+    assert all(event.get("type") != "approval_needed" for event in io.sent)
