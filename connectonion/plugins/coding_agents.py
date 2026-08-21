@@ -87,11 +87,14 @@ class _CodingAgentPlugin(list):
             if not candidate.is_absolute():
                 candidate = self.workspace / candidate
             candidate = candidate.resolve(strict=True)
-            candidate.relative_to(self.workspace)
         except (OSError, RuntimeError, ValueError):
-            return None, f"Working directory must stay inside workspace {self.workspace}."
+            return None, "Working directory is unavailable."
+        try:
+            candidate.relative_to(self.workspace)
+        except ValueError:
+            return None, "Working directory must stay inside the configured workspace."
         if not candidate.is_dir():
-            return None, f"Working directory is not a directory: {candidate}."
+            return None, "Working directory is not a directory."
         return candidate, ""
 
     def _invoke(
