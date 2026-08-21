@@ -37,3 +37,12 @@ suites pass another 92.
 The lesson is smaller than “hide errors.” Errors are part of the product and
 must remain specific enough to recover from. But a boundary message should
 name the rule that failed, not disclose the private value used to enforce it.
+
+The next immutable Beta exposed a second lesson. Hosted Work Rooms validate
+their directory once in the first-class coding-agent plugin and again in the
+native adapter. The first fix covered the adapter; the public browser run used
+the plugin and found its older path-bearing message. The plugin now uses the
+same categorical contract for both Codex and Claude Code, and its own tests
+assert that missing paths, files, workspace roots, and symlink targets never
+enter the result. A privacy contract has to cover every public writer, not only
+the deepest implementation.
