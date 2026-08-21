@@ -1015,6 +1015,8 @@ class RemoteAgent:
                 "args": event.get("args"),
                 "status": _tool_ui_status(event.get("status")),
             }
+            if isinstance(event.get("summary"), str) and event["summary"]:
+                tool_item["summary"] = event["summary"]
             if existing is None:
                 self._add_ui_event(tool_item)
             else:
@@ -1030,7 +1032,7 @@ class RemoteAgent:
             if existing is not None:
                 if event.get("status") is not None:
                     existing["status"] = _tool_ui_status(event["status"])
-                for field in ("name", "args", "result", "timing_ms"):
+                for field in ("name", "args", "summary", "result", "timing_ms"):
                     if field in event:
                         existing[field] = event[field]
 
