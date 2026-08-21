@@ -275,6 +275,15 @@ def execute_single_tool(
     Returns:
         Dict trace entry with: type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
     """
+    # Detach the model's presentation sentence from ordinary implementation
+    # arguments. Old sessions and third-party callers may omit it; execution
+    # remains compatible and readers provide a deterministic fallback.
+    tool_args = dict(tool_args)
+    tool_func = tools.get(tool_name)
+    summary = _bounded_tool_summary(tool_args.get("summary"))
+    if not getattr(tool_func, "_summary_is_function_argument", False):
+        tool_args.pop("summary", None)
+
     # Log tool call before execution
     logger.log_tool_call(tool_name, tool_args)
 
@@ -287,19 +296,23 @@ def execute_single_tool(
         "result": None,
         "timing_ms": 0,
     }
+    if summary:
+        trace_entry["summary"] = summary
 
     # Every result must have a preceding start with the same stable ID.  This
     # is required by streaming clients and also avoids a completion that cannot be
     # correlated by ConnectOnion clients when the requested tool is unknown.
-    agent._record_trace({
+    start_entry = {
         "type": "tool_call",
         "tool_id": tool_id,
         "name": tool_name,
         "args": tool_args,
-    })
+    }
+    if summary:
+        start_entry["summary"] = summary
+    agent._record_trace(start_entry)
 
     # Check if tool exists
-    tool_func = tools.get(tool_name)
     if tool_func is None:
         error_msg = f"Tool '{tool_name}' not found"
 
@@ -560,6 +573,16 @@ def execute_single_tool(
         clear_xray_context()
 
     return trace_entry
+
+
+def _bounded_tool_summary(value: Any) -> str | None:
+    """Return a bounded action summary or no summary for old callers."""
+    if not isinstance(value, str):
+        return None
+    value = " ".join(value.split())
+    if not value:
+        return None
+    return value[:240]
 
 
 def _add_assistant_message(messages: List[Dict], tool_calls: List) -> None:

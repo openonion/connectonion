@@ -70,6 +70,33 @@ class TestToolFactory:
         assert "y" in schema["parameters"]["properties"]
         assert "operation" in schema["parameters"]["properties"]
 
+    def test_every_tool_schema_requires_a_short_model_written_summary(self):
+        def calculate(x: int) -> int:
+            return x * 2
+
+        schema = create_tool_from_function(calculate).to_function_schema()["parameters"]
+
+        assert schema["properties"]["summary"] == {
+            "type": "string",
+            "description": "A short action phrase describing what this call is doing, written for the person watching. Do not explain why.",
+            "minLength": 1,
+            "maxLength": 240,
+        }
+        assert schema["required"] == ["x", "summary"]
+
+    def test_an_existing_summary_parameter_remains_a_real_function_argument(self):
+        def block(client_id: str, summary: str = "") -> str:
+            return f"{client_id}: {summary}"
+
+        tool = create_tool_from_function(block)
+        schema = tool.to_function_schema()["parameters"]
+
+        assert "summary" in schema["required"]
+        assert tool._summary_is_function_argument is True
+        assert tool.run(client_id="client-1", summary="Stop abusive traffic") == (
+            "client-1: Stop abusive traffic"
+        )
+
     def test_tool_with_no_docstring(self):
         """Test tool creation with function that has no docstring."""
         def no_doc(x: int) -> int:
