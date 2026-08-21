@@ -233,6 +233,24 @@ instead of spawning a rival daemon over a live browser. Startup itself is
 race-proof: a kernel lock makes two terminals' simultaneous first commands elect
 exactly one daemon — the loser exits and its command is served by the winner.
 
+### Restart the daemon after an upgrade or downgrade
+
+Installing a new ConnectOnion package does not replace a browser daemon that is
+already running. Before the first `co browser do` on the new version, stop the
+old process cleanly:
+
+```bash
+co browser close
+```
+
+The next page command starts a daemon from the newly installed package. Browser
+logins survive because they live in the persistent profile, not in the daemon.
+This restart matters for the 1.7 responsiveness update: a new client can still
+send ordinary actions to the previous daemon, but that daemon does not know the
+new raw screenshot response used by the client-side model loop, so vision would
+silently receive a saved-file message instead of image data. Do the same before
+downgrading so an older client never talks to a newer daemon.
+
 ## Troubleshooting
 
 - **"Where is my browser window?"** The default is a **visible** window; if
