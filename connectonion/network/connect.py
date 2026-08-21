@@ -1,10 +1,10 @@
 """
-Purpose: Python client for remote ConnectOnion agents — signed transport, acknowledged Host permission profiles, streaming UI events, and onboarding.
+Purpose: Python client for remote ConnectOnion agents — signed transport, acknowledged Host modes, streaming UI events, and onboarding.
 LLM-Note:
   Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign)] | imported by [network/__init__.py, connectonion/__init__.py]
-  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_permission_profile() validates Host mode state, sends signed OIP mode_change, and waits for mode_changed
+  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_session_mode() validates Host state, sends signed OIP mode_change, and waits for mode_changed
   State/Effects: mutates current session/modes/UI/status only from authenticated carrier responses; opens outbound sockets; signs deep-detached command payloads; endpoint resolution may query relay and candidate /info endpoints
-  Integration: exposes connect(), RemoteAgent, Response, ExecResult, PermissionModeError; RemoteAgent provides input/call/set_permission_profile sync+async actions and read-only state; set_session_mode is deprecated
+  Integration: exposes connect(), RemoteAgent, Response, ExecResult, PermissionModeError; RemoteAgent provides input/call/set_session_mode sync+async actions and read-only state
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
   Errors: raises ConnectionError on transport/auth failure, PermissionModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
@@ -32,7 +32,24 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 from .. import address as addr
-from ..core.approval_modes import legacy_permission_profile_id, permission_profile_id
+from ..core.mode import FULL_ACCESS, mode_id
+
+
+def _validated_remote_mode_state(mode: Any, turns_left: Any) -> tuple[str, int | None]:
+    """Validate an authoritative Host state before mirroring it locally."""
+
+    canonical = mode_id(mode)
+    if canonical == FULL_ACCESS:
+        if (
+            isinstance(turns_left, bool)
+            or not isinstance(turns_left, int)
+            or turns_left <= 0
+        ):
+            raise ValueError("full-access acknowledgement requires turns_left")
+        return canonical, turns_left
+    if turns_left is not None:
+        raise ValueError("turns_left is valid only for full-access")
+    return canonical, None
 
 
 def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
@@ -289,7 +306,7 @@ class RemoteAgent:
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
         self._ui_events: List[Dict[str, Any]] = []
-        self._available_permission_profiles: List[Dict[str, Any]] = []
+        self._available_modes: List[Dict[str, Any]] = []
         self._resolved_endpoint: Optional[str] = None
         self._endpoint_resolved = False
 
@@ -316,34 +333,27 @@ class RemoteAgent:
 
     @property
     def available_modes(self) -> List[Dict[str, Any]]:
-        """Deprecated alias for :attr:`available_permission_profiles`."""
-        return self.available_permission_profiles
+        """Server-authorized public modes from the latest connection."""
+        return copy.deepcopy(self._available_modes)
 
-    @property
-    def available_permission_profiles(self) -> List[Dict[str, Any]]:
-        """Server-authorized permission profiles from the latest connection."""
-        return copy.deepcopy(self._available_permission_profiles)
-
-    def set_permission_profile(
-        self, profile_id: str, timeout: float = 30.0
-    ) -> None:
-        """Persist a Host permission profile after its owned acknowledgement."""
+    def set_session_mode(self, mode: str, timeout: float = 30.0) -> None:
+        """Persist a Host mode after its owned acknowledgement."""
         try:
             asyncio.get_running_loop()
             raise RuntimeError(
-                "set_permission_profile() cannot be used inside async context. "
-                "Use 'await agent.set_permission_profile_async()' instead."
+                "set_session_mode() cannot be used inside async context. "
+                "Use 'await agent.set_session_mode_async()' instead."
             )
         except RuntimeError as exc:
-            if "set_permission_profile() cannot be used" in str(exc):
+            if "set_session_mode() cannot be used" in str(exc):
                 raise
-        asyncio.run(self.set_permission_profile_async(profile_id, timeout=timeout))
+        asyncio.run(self.set_session_mode_async(mode, timeout=timeout))
 
-    async def set_permission_profile_async(
-        self, profile_id: str, timeout: float = 30.0
+    async def set_session_mode_async(
+        self, mode: str, timeout: float = 30.0
     ) -> None:
-        """Commit a permission profile, or time out with outcome unknown."""
-        profile_id = permission_profile_id(profile_id)
+        """Commit one exact mode, or time out with outcome unknown."""
+        canonical = mode_id(mode)
         if (
             isinstance(timeout, bool)
             or not isinstance(timeout, (int, float))
@@ -352,28 +362,14 @@ class RemoteAgent:
             raise ValueError("timeout must be a positive number")
         try:
             await asyncio.wait_for(
-                self._set_permission_profile_transaction(profile_id), timeout=timeout
+                self._set_session_mode_transaction(canonical), timeout=timeout
             )
         except asyncio.TimeoutError:
             raise TimeoutError(
-                f"Permission profile change timed out after {timeout}s"
+                f"Permission mode change timed out after {timeout}s"
             ) from None
 
-    def set_session_mode(self, mode_id: str, timeout: float = 30.0) -> None:
-        """Deprecated alias for :meth:`set_permission_profile`."""
-        self.set_permission_profile(
-            legacy_permission_profile_id(mode_id), timeout=timeout
-        )
-
-    async def set_session_mode_async(
-        self, mode_id: str, timeout: float = 30.0
-    ) -> None:
-        """Deprecated alias for :meth:`set_permission_profile_async`."""
-        await self.set_permission_profile_async(
-            legacy_permission_profile_id(mode_id), timeout=timeout
-        )
-
-    async def _set_permission_profile_transaction(self, profile_id: str) -> None:
+    async def _set_session_mode_transaction(self, canonical: str) -> None:
         """Run negotiation and response handling under the caller's deadline."""
         import websockets
 
@@ -383,18 +379,18 @@ class RemoteAgent:
             await ws.send(json.dumps(self._build_connect_message(is_direct)))
             state = await self._wait_for_mode_connected(ws)
             if not any(
-                profile.get("id") == profile_id
-                for profile in state["availableModes"]
+                item.get("id") == canonical
+                for item in state["availableModes"]
             ):
                 raise ValueError(
-                    f"Permission profile is not available: {profile_id}"
+                    f"Permission mode is not available: {canonical}"
                 )
-            request = {"type": "mode_change", "mode": profile_id}
+            request = {"type": "mode_change", "mode": canonical}
             await ws.send(json.dumps(
                 self._build_command_message(request, is_direct)
             ))
             await self._wait_for_mode_response(
-                ws, profile_id
+                ws, canonical
             )
 
     def input(
@@ -801,7 +797,7 @@ class RemoteAgent:
                 state = self._consume_connected_mode_state(event)
                 if state is None:
                     raise ConnectionError(
-                        "Host does not support acknowledged OIP permission profiles"
+                        "Host does not support acknowledged OIP modes"
                     )
                 return state
             if event_type == "PING":
@@ -812,7 +808,7 @@ class RemoteAgent:
                 )
 
     async def _wait_for_mode_response(
-        self, ws, profile_id: str,
+        self, ws, expected_mode: str,
     ) -> None:
         while True:
             event = json.loads(await ws.recv())
@@ -827,15 +823,20 @@ class RemoteAgent:
             if event_type != "mode_changed":
                 self._handle_stream_event(event)
                 continue
-            if permission_profile_id(event.get("mode")) != profile_id:
-                raise PermissionModeError(-32602, "Host acknowledged another profile")
-            for field in (
-                "skip_tool_approval",
-                "full_access_turns",
-                "full_access_turns_used",
-            ):
-                self._current_session.pop(field, None)
-            self._current_session["mode"] = profile_id
+            try:
+                acknowledged, turns_left = _validated_remote_mode_state(
+                    event.get("mode"), event.get("turns_left")
+                )
+            except ValueError:
+                raise PermissionModeError(
+                    -32602, "Host acknowledged an invalid mode"
+                ) from None
+            if acknowledged != expected_mode:
+                raise PermissionModeError(-32602, "Host acknowledged another mode")
+            self._current_session.pop("turns_left", None)
+            self._current_session["mode"] = acknowledged
+            if turns_left is not None:
+                self._current_session["turns_left"] = turns_left
             return
 
     def _consume_connected_mode_state(
@@ -850,13 +851,26 @@ class RemoteAgent:
         if not isinstance(state, dict):
             state = None
         if state is None:
-            self._available_permission_profiles = []
+            self._available_modes = []
             return None
-        self._available_permission_profiles = copy.deepcopy(
-            state["availableModes"]
-        )
+        available = state.get("availableModes")
+        if not isinstance(available, list):
+            raise PermissionModeError(-32602, "Host advertised invalid modes")
+        try:
+            available_ids = [mode_id(item.get("id")) for item in available]
+            current, turns_left = _validated_remote_mode_state(
+                state.get("currentModeId"), state.get("turnsLeft")
+            )
+        except (AttributeError, ValueError):
+            raise PermissionModeError(-32602, "Host advertised invalid mode state") from None
+        if len(available_ids) != len(set(available_ids)) or current not in available_ids:
+            raise PermissionModeError(-32602, "Host advertised inconsistent modes")
+        self._available_modes = copy.deepcopy(available)
         if self._current_session is not None:
-            self._current_session["mode"] = state["currentModeId"]
+            self._current_session["mode"] = current
+            self._current_session.pop("turns_left", None)
+            if turns_left is not None:
+                self._current_session["turns_left"] = turns_left
         return state
 
     def _build_connect_message(self, is_direct: bool = False) -> Dict[str, Any]:
@@ -1064,10 +1078,15 @@ class RemoteAgent:
             ):
                 return
             try:
-                mode = session_mode_id(event.get("mode"))
+                mode, turns_left = _validated_remote_mode_state(
+                    event.get("mode"), event.get("turns_left")
+                )
             except ValueError:
                 return
             self._current_session["mode"] = mode
+            self._current_session.pop("turns_left", None)
+            if turns_left is not None:
+                self._current_session["turns_left"] = turns_left
 
         elif event_type == "llm_call":
             # Internal event, add thinking indicator if not already present

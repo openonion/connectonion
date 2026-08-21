@@ -558,14 +558,12 @@ function ChatPage() {
     ui,              // ChatItem[] — all streaming events
     status,          // 'idle' | 'working' | 'waiting'
     isProcessing,    // true while agent is working
-    collaborationMode, // 'default' | 'plan'
-    permissionProfile, // ':read-only' | ':workspace' | ':danger-full-access'
+    mode,            // 'read-only' | 'auto' | 'full-access'
+    turnsLeft,       // number | null
     input,           // send a message
     respond,         // answer ask_user
     respondToApproval,
-    respondToPlanReview,
-    setCollaborationMode,
-    setPermissionProfile,
+    setMode,
     reset,
   } = useAgentForHuman("0x3d4017c3e843...", {
     sessionId: "my-session-123"  // required — auto-persisted to localStorage
@@ -611,8 +609,8 @@ const agent = useAgentForHuman(address, { sessionId })
 agent.ui: ChatItem[]           // All events for rendering
 agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
 agent.isProcessing: boolean    // true while agent working
-agent.collaborationMode: CollaborationMode // 'default' | 'plan'
-agent.permissionProfile: PermissionProfile // ':read-only' | ':workspace' | ':danger-full-access'
+agent.mode: PermissionMode // 'read-only' | 'auto' | 'full-access'
+agent.turnsLeft: number | null
 agent.error: Error | null
 agent.sessionId: string
 
@@ -620,8 +618,6 @@ agent.sessionId: string
 agent.input(prompt, options?)       // Send message
 agent.respond(answer)               // Answer ask_user
 agent.respondToApproval(approved, scope, mode?, feedback?)
-agent.respondToPlanReview(message)
-agent.respondToUlwTurnsReached(action, options?)
 agent.submitOnboard(options)        // Submit invite code / payment
 agent.setCollaborationMode(mode)    // Change Default / Plan locally
 agent.setPermissionProfile(profile, options?) // Change Host permission authority
@@ -772,21 +768,21 @@ agent = connect("0x...", relay_url="ws://localhost:8000/ws/announce")
 class RemoteAgent:
     # Actions
     def input(self, prompt: str) -> Response
-    def set_permission_profile(self, profile_id: str, timeout: float = 30.0) -> None
+    def set_session_mode(self, mode: str, timeout: float = 30.0) -> None
     def reset(self) -> None
 
     # State (read-only)
     current_session: dict    # Full session data
-    available_permission_profiles: list # Host-advertised profiles for this identity
+    available_modes: list     # Host-advertised modes for this session
     ui: List[UIEvent]        # Shortcut to current_session['trace']
     status: str              # 'idle' | 'working' | 'waiting'
 ```
 
-`set_permission_profile()` uses one timeout budget for endpoint resolution,
+`set_session_mode()` uses one timeout budget for endpoint resolution,
 CONNECT, PING handling, and the owned OIP mode response. If it raises
 `TimeoutError`, the durable outcome is unknown: Host persistence may have
 completed even though the acknowledgement did not arrive. Reconnect and use
-the next `CONNECTED` state (`available_permission_profiles` and
+the next `CONNECTED` state (`available_modes` and
 `current_session["mode"]`) as authority before retrying.
 
 ### useAgentForHuman() (React)
@@ -798,16 +794,14 @@ const agent = useAgentForHuman(address, { sessionId })
 agent.ui: ChatItem[]           // All events for rendering
 agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
 agent.isProcessing: boolean
-agent.collaborationMode: CollaborationMode // 'default' | 'plan'
-agent.permissionProfile: PermissionProfile // ':read-only' | ':workspace' | ':danger-full-access'
+agent.mode: PermissionMode // 'read-only' | 'auto' | 'full-access'
+agent.turnsLeft: number | null
 
 // Actions
 agent.input(prompt)            // Send message
 agent.respond(answer)          // Answer ask_user
 agent.respondToApproval(approved, scope)
-agent.respondToPlanReview(message)
-agent.setCollaborationMode(mode)
-agent.setPermissionProfile(profile)
+agent.setMode(mode)
 agent.reset()                  // Clear conversation
 ```
 

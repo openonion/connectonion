@@ -26,8 +26,8 @@ def handle_ai(
     port: int = 8000,
     model: str = DEFAULT_MODEL,
     max_iterations: int = 100,
-    yolo: bool = False,
-    yolo_turns: int = 100,
+    full_access: bool = False,
+    full_access_turns: int = 100,
     evaluate: bool = False,
     json_output: bool = False,
     resume: str = None,
@@ -39,8 +39,8 @@ def handle_ai(
         port: Port for web server
         model: LLM model to use
         max_iterations: Max tool iterations
-        yolo: Skip tool approvals and keep working across turns
-        yolo_turns: Maximum autonomous turns before a checkpoint
+        full_access: Bypass tool approvals for a bounded user-driven turn budget
+        full_access_turns: User-driven turns before expiry to Auto
         evaluate: Score completion with the eval debugging plugin
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
@@ -71,14 +71,14 @@ def handle_ai(
             prompt,
             model,
             max_iterations,
-            yolo,
-            yolo_turns,
+            full_access,
+            full_access_turns,
             resume,
             agent_factory=agent_factory,
         )
         return
 
-    agent = agent_factory(model, max_iterations, yolo, yolo_turns)
+    agent = agent_factory(model, max_iterations, full_access, full_access_turns)
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
@@ -88,8 +88,8 @@ def handle_ai(
             port=port,
             model=model,
             max_iterations=max_iterations,
-            yolo=yolo,
-            yolo_turns=yolo_turns,
+            full_access=full_access,
+            full_access_turns=full_access_turns,
             agent_factory=agent_factory,
         )
 
@@ -107,8 +107,8 @@ def _agent_factory(*, evaluate: bool):
 def _create_agent(
     model,
     max_iterations,
-    yolo,
-    yolo_turns,
+    full_access,
+    full_access_turns,
     *,
     resumable=False,
     state_dir: Path | None = None,
@@ -121,7 +121,7 @@ def _create_agent(
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
         state_dir=state_dir,
-        yolo_turns=yolo_turns if yolo else None,
+        full_access_turns=full_access_turns if full_access else None,
         background_tools=not resumable,
         extra_plugins=extra_plugins,
     )
@@ -142,8 +142,8 @@ def _handle_json_one_shot(
     prompt,
     model,
     max_iterations,
-    yolo,
-    yolo_turns,
+    full_access,
+    full_access_turns,
     resume,
     *,
     agent_factory=None,
@@ -175,8 +175,8 @@ def _handle_json_one_shot(
                 agent = factory(
                     model,
                     max_iterations,
-                    yolo,
-                    yolo_turns,
+                    full_access,
+                    full_access_turns,
                     resumable=True,
                 )
                 restore_tool_state(agent, tools)

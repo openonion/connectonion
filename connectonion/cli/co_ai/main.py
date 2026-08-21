@@ -9,7 +9,7 @@ This file provides the `start_server()` function that:
 Architecture:
 - Uses one hosted coding agent for the web chat session
 - Trust level set to "careful" for web deployment
-- Host-acknowledged permission profiles for network sessions
+- Host-acknowledged modes for network sessions
 
 Used by:
 - CLI command: `co ai` (see cli/main.py)
@@ -107,8 +107,8 @@ def start_server(
     *,
     model: str | None = None,
     max_iterations: int | None = None,
-    yolo: bool = False,
-    yolo_turns: int = 100,
+    full_access: bool = False,
+    full_access_turns: int = 100,
     agent_factory=None,
 ):
     """Start AI coding agent web server.
@@ -118,8 +118,8 @@ def start_server(
         port: Port to run server on
         model: Model used by the hosted coding agent
         max_iterations: Tool iteration limit for the hosted coding agent
-        yolo: Whether an administrator may select bounded Full access
-        yolo_turns: Maximum Full access turns before a checkpoint
+        full_access: Whether bounded Full access is configured
+        full_access_turns: User-driven turns before Full access expires
         agent_factory: Reserved configured factory for hosted sessions
 
     The server will be accessible at:

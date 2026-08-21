@@ -24,7 +24,7 @@ class IO:
         return self.response
 
 
-def agent(*, mode=":workspace", permissions=None, requester=None):
+def agent(*, mode="auto", permissions=None, requester=None):
     session = {
         "messages": [],
         "trace": [],
@@ -163,8 +163,8 @@ def test_broad_config_cannot_silently_turn_deploy_into_auto(tmp_path, monkeypatc
     assert instance.io.sent[0]["type"] == "approval_needed"
 
 
-def test_read_only_profile_keeps_the_manual_approval_contract():
-    instance = agent(mode=":read-only")
+def test_read_only_mode_keeps_the_manual_approval_contract():
+    instance = agent(mode="read-only")
 
     result = call(instance, "write", {"path": "owned.txt"})
 
@@ -172,10 +172,10 @@ def test_read_only_profile_keeps_the_manual_approval_contract():
     assert instance.io.sent[0]["type"] == "approval_needed"
 
 
-def test_contact_cannot_use_auto_without_host_authorization():
+def test_contact_uses_the_same_auto_contract_as_every_participant():
     instance = agent(requester={"address": "0x" + "a" * 64, "level": "contact"})
 
     result = call(instance, "write", {"path": "owned.txt"})
 
-    assert result is None
-    assert instance.io.sent[0]["type"] == "approval_needed"
+    assert result["decision"] == "allow"
+    assert instance.io.sent == []

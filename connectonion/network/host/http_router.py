@@ -23,7 +23,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable
 
-from ...core.approval_modes import READ_ONLY_PERMISSION_PROFILE
+from ...core.mode import AUTO
 from ...project import project_co_dir
 from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
@@ -80,10 +80,10 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         agent.io = connection
         agent.storage = storage
         if mode_policy is not None:
-            if hasattr(agent, "_yolo_turns"):
-                agent._yolo_turns = None
-            if hasattr(agent, "_yolo_needs_activation"):
-                agent._yolo_needs_activation = False
+            if hasattr(agent, "_full_access_turns"):
+                agent._full_access_turns = None
+            if hasattr(agent, "_full_access_needs_activation"):
+                agent._full_access_needs_activation = False
             agent._host_full_access_turns_ceiling = mode_policy.full_access_turns
 
         result = agent.input(
@@ -146,7 +146,7 @@ def _normalized_host_result(
     mode_policy: HostPermissionPolicy,
     is_admin: bool,
 ) -> dict:
-    """Restore verified identity and fail invalid Agent policy state to read-only."""
+    """Restore verified identity and fail invalid Agent mode state to Auto."""
     final_session = copy.deepcopy(session)
     if requester is not None:
         final_session["requester"] = copy.deepcopy(requester)
@@ -156,10 +156,10 @@ def _normalized_host_result(
         return mode_policy.normalized(final_session, is_admin=is_admin)
     except ModeTransactionError:
         logger.exception(
-            "Agent produced invalid Host session policy; downgrading to :read-only"
+            "Agent produced invalid Host session mode; resetting to auto"
         )
         return mode_policy.apply(
-            final_session, READ_ONLY_PERMISSION_PROFILE, is_admin=is_admin
+            final_session, AUTO, is_admin=is_admin
         )
 
 

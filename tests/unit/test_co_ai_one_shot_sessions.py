@@ -96,7 +96,8 @@ class _Agent:
             "messages": messages,
             "trace": list(base.get("trace", [])),
             "turn": base.get("turn", 0) + 1,
-            "mode": ":danger-full-access",
+            "mode": "full-access",
+            "turns_left": 7,
         }
         self.tools.todo.state.append(_todo(prompt))
         self.current_session["plan"] = [
@@ -117,7 +118,8 @@ def test_snapshot_round_trip_preserves_full_session_and_tool_state(tmp_path):
         "messages": [{"role": "system", "content": "s"}],
         "trace": [],
         "turn": 2,
-        "mode": ":danger-full-access",
+        "mode": "full-access",
+        "turns_left": 7,
         "permissions": {"Bash(git *)": {"allowed": True}},
         "plan": _plan("ship"),
     }
@@ -862,7 +864,7 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     monkeypatch.setattr("connectonion.cli.co_ai.agent.create_agent", create_agent)
 
     ai_commands.handle_ai(
-        prompt="first", json_output=True, yolo=True, yolo_turns=7
+        prompt="first", json_output=True, full_access=True, full_access_turns=7
     )
 
     captured = capsys.readouterr()
@@ -874,11 +876,11 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     }
     assert captured.out.count("\n") == 1
     assert "progress" in captured.err
-    assert created["yolo_turns"] == 7
+    assert created["full_access_turns"] == 7
     assert created["background_tools"] is False
 
     stored, tools = load_snapshot(tmp_path, envelope["session_id"])
-    assert stored["mode"] == ":danger-full-access"
+    assert stored["mode"] == "full-access"
     assert stored["turn"] == 1
     assert tools == {"todolist": [_todo("first")]}
 
@@ -892,7 +894,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
             "messages": [{"role": "system", "content": "old"}],
             "trace": [{"type": "old"}],
             "turn": 4,
-            "mode": ":workspace",
+            "mode": "auto",
             "plan": _plan("old todo"),
         },
         {"todolist": [_todo("old todo")]},
@@ -905,7 +907,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
 
     envelope = json.loads(capsys.readouterr().out)
     assert envelope["session_id"] == session_id
-    assert agent.received_session["mode"] == ":workspace"
+    assert agent.received_session["mode"] == "auto"
     assert agent.received_session["turn"] == 4
     assert agent.tools.todo.state == [_todo("old todo"), _todo("next")]
 
@@ -919,7 +921,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
         "messages": [{"role": "system", "content": "old"}],
         "trace": [{"type": "old"}],
         "turn": 4,
-        "mode": ":workspace",
+        "mode": "auto",
         "plan": _plan("old todo"),
     }
     save_snapshot(tmp_path, original, {"todolist": [_todo("old todo")]})
@@ -1037,7 +1039,7 @@ def test_virtual_session_cwd_is_opaque_protocol_data(tmp_path):
         "messages": [],
         "trace": [],
         "turn": 0,
-        "mode": ":read-only",
+        "mode": "read-only",
         "plan": [],
     }
 

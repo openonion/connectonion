@@ -55,7 +55,7 @@ Plan is not a permission mode. Plan-mode protocol fields, permission behavior,
 UI controls, and prompts are removed. Todo List remains ordinary
 `pending` / `in_progress` / `completed` progress data with no authority.
 
-`--yolo` may remain a CLI convenience that selects bounded Full access. Full
+`--full-access` selects bounded Full access. Full
 access never synthesizes a follow-up prompt or recursively calls
 `agent.input(...)`. Structured continue-until-complete execution belongs to the
 separate Goal plugin planned for 1.9.

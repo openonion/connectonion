@@ -40,22 +40,22 @@ def test_handle_ai_calls_start_server(monkeypatch):
         port=1111,
         model="m",
         max_iterations=3,
-        yolo=True,
-        yolo_turns=7,
+        full_access=True,
+        full_access_turns=7,
         evaluate=True,
     )
 
     assert called["port"] == 1111
     assert called["model"] == "m"
     assert called["max_iterations"] == 3
-    assert called["yolo"] is True
-    assert called["yolo_turns"] == 7
+    assert called["full_access"] is True
+    assert called["full_access_turns"] == 7
     assert callable(called["agent_factory"])
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
-    assert created["yolo_turns"] == 7
+    assert created["full_access_turns"] == 7
     assert created["extra_plugins"] == ()
 
 
@@ -98,10 +98,10 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
         fake_create_agent,
     )
 
-    ai_mod.handle_ai(prompt="task", yolo=False, yolo_turns=9)
+    ai_mod.handle_ai(prompt="task", full_access=False, full_access_turns=9)
 
     assert created["prompt"] == "task"
-    assert created["yolo_turns"] is None
+    assert created["full_access_turns"] is None
     assert capsys.readouterr().out.endswith("done\n")
 
 

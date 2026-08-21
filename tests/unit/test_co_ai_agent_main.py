@@ -155,7 +155,7 @@ def test_co_ai_codex_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path)
     agent = agent_mod.create_agent(model="fake", max_iterations=1)
     agent.current_session = {
         "trace": [],
-        "mode": ":read-only",
+        "mode": "read-only",
         "_active_tool_call_id": "call-1",
     }
 
@@ -191,7 +191,7 @@ def test_co_ai_claude_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path
     agent = agent_mod.create_agent(model="fake", max_iterations=1)
     agent.current_session = {
         "trace": [],
-        "mode": ":read-only",
+        "mode": "read-only",
         "_active_tool_call_id": "call-2",
     }
 

@@ -21,7 +21,7 @@ reader-before-writer deployment:
 
 Within 0.1, new non-authoritative fields and events are additive. Readers ignore
 what they do not understand and retain generic provider/tool rendering. Identity,
-session ownership, permission profiles, approvals, cancellation, terminal state,
+session ownership, modes, approvals, cancellation, terminal state,
 and protocol/version are authoritative: malformed or unknown values are rejected
 instead of guessed.
 
@@ -452,24 +452,25 @@ request.
 
 #### mode_change
 
-An authenticated client selects one Host-advertised permission profile:
+An authenticated client selects one Host-advertised permission mode:
 
 ```json
 {
   "type": "mode_change",
-  "mode": ":workspace"
+  "mode": "auto"
 }
 ```
 
 The request is accepted only while the durable session is idle and owned by
-the authenticated caller. `:read-only` is always available; `:workspace` and
-`:danger-full-access` are identity- and launch-authority-bounded. No client
-field can supply or extend Full access turns. Success is `mode_changed` and
+the authenticated caller. `read-only` and `auto` are always available;
+`full-access` is offered only under a positive Host launch ceiling. Every
+authenticated participant receives the same available modes. No client field
+can supply or extend Full access turns. Success is `mode_changed` and
 means the durable commit completed; busy, policy, ownership, and persistence
 failures return `ERROR`.
 `@connectonion/react` owns this browser operation; O Chat consumes it without
-constructing protocol frames. Default and Plan are separate client
-collaboration modes and do not appear in this Host permission list.
+constructing protocol frames. Plan is not a mode; Todo List progress carries
+no authority.
 
 #### ONBOARD_SUBMIT
 
@@ -511,11 +512,12 @@ Response to CONNECT.
   "status": "new",
   "protocol": {"name": "oip", "version": "0.1"},
   "session_modes": {
-    "currentModeId": ":read-only",
+    "currentModeId": "auto",
+    "turnsLeft": null,
     "availableModes": [
-      {"id": ":read-only", "name": "Read only", "description": "Read freely; ask before edits, commands, or broader access."},
-      {"id": ":workspace", "name": "Auto", "description": "Edit the workspace automatically; broader actions still ask."},
-      {"id": ":danger-full-access", "name": "Full access", "description": "Run without approval prompts within the Host launch ceiling."}
+      {"id": "read-only", "name": "Read only"},
+      {"id": "auto", "name": "Auto"},
+      {"id": "full-access", "name": "Full access"}
     ]
   },
   "server_newer": true,
