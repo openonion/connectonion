@@ -553,7 +553,9 @@ def check_approval(agent: 'Agent') -> None:
     if 'stop_signal' in agent.current_session:
         raise ValueError("User rejected this batch of tools. They want to provide input for the correct direction.")
 
-    # No IO = not web mode, skip
+    # No IO cannot open a dialog. The deterministic policy hook immediately
+    # before this one has already allowed safe calls or denied anything that
+    # would have needed a person, so there is nothing interactive left to do.
     if not agent.io:
         return
 
