@@ -10,6 +10,7 @@ Components under test:
 """
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -275,6 +276,40 @@ def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
     output = " ".join(printed)
     assert "co keys --reveal" in output
     assert secret not in output
+
+
+def test_start_server_uses_runtime_invite_without_persisting_or_exporting(
+    monkeypatch,
+):
+    agent = SimpleNamespace(name="agent")
+    hosted = {}
+    prepared = []
+    configured = []
+    secret = "RUN-ONLY-NEVER-PRINT"
+
+    monkeypatch.delenv("CO_INVITE_CODE", raising=False)
+    monkeypatch.setattr(
+        main_mod,
+        "_prepare_owner_onboarding",
+        lambda co_dir: prepared.append(co_dir),
+    )
+    monkeypatch.setattr(
+        "connectonion.cli.commands.project_cmd_lib.ensure_global_config",
+        lambda: configured.append(True),
+    )
+    monkeypatch.setattr(
+        main_mod,
+        "host",
+        lambda value, **kwargs: hosted.update({"agent": value, **kwargs}),
+    )
+
+    main_mod.start_server(agent, invite_code=secret)
+
+    assert prepared == []
+    assert configured == [True]
+    assert "CO_INVITE_CODE" not in os.environ
+    assert hosted["trust"].config["onboard"]["invite_code"] == [secret]
+    assert hosted["trust"].verify_invite("someone", "wrong") is False
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):

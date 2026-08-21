@@ -9,6 +9,8 @@ Components under test:
 - Module: cli_commands_ai_trust
 """
 
+from pathlib import Path
+
 import pytest
 import typer
 
@@ -50,6 +52,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert called["max_iterations"] == 3
     assert called["full_access"] is True
     assert called["full_access_turns"] == 7
+    assert called["invite_code"] is None
     assert callable(called["agent_factory"])
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
@@ -57,6 +60,62 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert created["co_dir"] == GLOBAL_CO_DIR
     assert created["full_access_turns"] is None
     assert created["extra_plugins"] == ()
+
+
+def test_handle_ai_passes_invocation_invite_to_web_server(monkeypatch):
+    called = {}
+
+    monkeypatch.setattr(ai_mod, "_create_agent", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.main.start_server",
+        lambda _agent, **kwargs: called.update(kwargs),
+    )
+
+    ai_mod.handle_ai(invite_code="  RUN-ONLY-123  ")
+
+    assert called["invite_code"] == "RUN-ONLY-123"
+
+
+def test_handle_ai_reads_invocation_invite_file(tmp_path, monkeypatch):
+    called = {}
+    secret_file = tmp_path / "invite"
+    secret_file.write_text("FILE-ONLY-456\n", encoding="utf-8")
+
+    monkeypatch.setattr(ai_mod, "_create_agent", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.main.start_server",
+        lambda _agent, **kwargs: called.update(kwargs),
+    )
+
+    ai_mod.handle_ai(invite_code_file=secret_file)
+
+    assert called["invite_code"] == "FILE-ONLY-456"
+
+
+def test_handle_ai_rejects_empty_invitation_file(tmp_path):
+    secret_file = tmp_path / "invite"
+    secret_file.write_text("\n", encoding="utf-8")
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(invite_code_file=secret_file)
+
+    assert caught.value.exit_code == 2
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"invite_code": ""},
+        {"invite_code": "line-one\nline-two"},
+        {"invite_code": "one", "invite_code_file": Path("two")},
+        {"prompt": "task", "invite_code": "one"},
+    ],
+)
+def test_handle_ai_rejects_invalid_invite_option_combinations(kwargs):
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(**kwargs)
+
+    assert caught.value.exit_code == 2
 
 
 def test_handle_ai_enables_eval_only_when_requested(monkeypatch, capsys):

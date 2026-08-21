@@ -2,7 +2,7 @@
 Purpose: AI coding agent CLI command with resumable machine-readable one-shot runs
 LLM-Note:
   Dependencies: imports from [cli/co_ai/main.py, cli/co_ai/agent.py] | imported by [cli/main.py] | no direct tests
-  Data flow: CLI args → start_server() or agent.input() for one-shot
+  Data flow: CLI args → validate invocation invite → start_server() or agent.input() for one-shot
   Integration: exposes handle_ai() | called from main.py as 'co ai' command
   Errors: known LLM provider failures print one actionable message and exit 1; programmer errors still propagate with their traceback
 """
@@ -31,6 +31,8 @@ def handle_ai(
     evaluate: bool = False,
     json_output: bool = False,
     resume: str = None,
+    invite_code: str = None,
+    invite_code_file: Path = None,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -44,11 +46,27 @@ def handle_ai(
         evaluate: Score completion with the eval debugging plugin
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
+        invite_code: In-memory invite code for this web-server run
+        invite_code_file: File containing this web-server run's invite code
 
     Examples:
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
     """
+    if invite_code is not None and invite_code_file is not None:
+        console.print(
+            "[red]--invite-code and --invite-code-file cannot be combined[/red]"
+        )
+        raise typer.Exit(2)
+
+    if prompt and (invite_code is not None or invite_code_file is not None):
+        console.print(
+            "[red]Invite-code options are only available in web-server mode[/red]"
+        )
+        raise typer.Exit(2)
+
+    runtime_invite_code = _read_runtime_invite_code(invite_code, invite_code_file)
+
     if not prompt and (json_output or resume):
         message = "--json and --resume require a one-shot prompt"
         if json_output:
@@ -98,7 +116,33 @@ def handle_ai(
             full_access=full_access,
             full_access_turns=full_access_turns,
             agent_factory=agent_factory,
+            invite_code=runtime_invite_code,
         )
+
+
+def _read_runtime_invite_code(invite_code, invite_code_file) -> str | None:
+    """Resolve a web-server invite without persisting or exporting it."""
+    if invite_code_file is not None:
+        path = Path(invite_code_file).expanduser()
+        try:
+            if not path.is_file():
+                raise OSError("not a regular file")
+            invite_code = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            console.print(f"[red]Cannot read --invite-code-file: {exc}[/red]")
+            raise typer.Exit(2) from None
+
+    if invite_code is None:
+        return None
+
+    invite_code = invite_code.strip()
+    if not invite_code:
+        console.print("[red]Invite code cannot be empty[/red]")
+        raise typer.Exit(2)
+    if "\n" in invite_code or "\r" in invite_code:
+        console.print("[red]Invite code must be a single line[/red]")
+        raise typer.Exit(2)
+    return invite_code
 
 
 def _agent_factory(*, evaluate: bool):
