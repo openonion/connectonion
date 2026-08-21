@@ -32,7 +32,7 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 from .. import address as addr
-from ..core.mode import FULL_ACCESS, mode_id
+from ..core.mode import FULL_ACCESS, mode_id, set_mode
 
 
 def _validated_remote_mode_state(mode: Any, turns_left: Any) -> tuple[str, int | None]:
@@ -833,10 +833,11 @@ class RemoteAgent:
                 ) from None
             if acknowledged != expected_mode:
                 raise PermissionModeError(-32602, "Host acknowledged another mode")
-            self._current_session.pop("turns_left", None)
-            self._current_session["mode"] = acknowledged
-            if turns_left is not None:
-                self._current_session["turns_left"] = turns_left
+            set_mode(
+                self._current_session,
+                acknowledged,
+                turns_left=turns_left,
+            )
             return
 
     def _consume_connected_mode_state(
@@ -867,10 +868,7 @@ class RemoteAgent:
             raise PermissionModeError(-32602, "Host advertised inconsistent modes")
         self._available_modes = copy.deepcopy(available)
         if self._current_session is not None:
-            self._current_session["mode"] = current
-            self._current_session.pop("turns_left", None)
-            if turns_left is not None:
-                self._current_session["turns_left"] = turns_left
+            set_mode(self._current_session, current, turns_left=turns_left)
         return state
 
     def _build_connect_message(self, is_direct: bool = False) -> Dict[str, Any]:
@@ -1083,10 +1081,7 @@ class RemoteAgent:
                 )
             except ValueError:
                 return
-            self._current_session["mode"] = mode
-            self._current_session.pop("turns_left", None)
-            if turns_left is not None:
-                self._current_session["turns_left"] = turns_left
+            set_mode(self._current_session, mode, turns_left=turns_left)
 
         elif event_type == "llm_call":
             # Internal event, add thinking indicator if not already present
