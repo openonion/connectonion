@@ -15,17 +15,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ..core.approval_modes import (
-    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
-    READ_ONLY_PERMISSION_PROFILE,
-    WORKSPACE_PERMISSION_PROFILE,
-    has_valid_full_access_grant,
-    legacy_permission_profile_id,
-)
 from ..core.events import on_agent_ready
+from ..core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_of
 from ..core.provider_events import (
-    clear_provider_artifact,
     clear_provider_activity_history,
+    clear_provider_artifact,
     next_provider_state_revision,
     provider_artifact_for_state,
     provider_status_summary,
@@ -40,24 +34,14 @@ from ..useful_tools.codex import codex as _run_codex
 class PermissionMode(str, Enum):
     """The three authority choices exposed to operators and user interfaces."""
 
-    MANUAL = "manual"
-    AUTO_APPROVE = "auto_approve"
-    FULL_ACCESS = "full_access"
-
-
-_COMPATIBILITY_MODES = {
-    ":read-only": PermissionMode.MANUAL,
-    ":workspace": PermissionMode.AUTO_APPROVE,
-    ":danger-full-access": PermissionMode.FULL_ACCESS,
-}
+    READ_ONLY = READ_ONLY
+    AUTO = AUTO
+    FULL_ACCESS = FULL_ACCESS
 
 
 def _permission_mode(value: PermissionMode | str) -> PermissionMode:
     if isinstance(value, PermissionMode):
         return value
-    compatibility = _COMPATIBILITY_MODES.get(value)
-    if compatibility is not None:
-        return compatibility
     try:
         return PermissionMode(value)
     except ValueError as exc:
@@ -79,7 +63,7 @@ class _CodingAgentPlugin(list):
     def __init__(
         self,
         *,
-        permission_mode: PermissionMode | str = PermissionMode.MANUAL,
+        permission_mode: PermissionMode | str = PermissionMode.AUTO,
         workspace: str | Path | None = None,
     ) -> None:
         self.permission_mode = _permission_mode(permission_mode)
@@ -203,7 +187,7 @@ class CodexPlugin(_CodingAgentPlugin):
     def __init__(
         self,
         *,
-        permission_mode: PermissionMode | str = PermissionMode.MANUAL,
+        permission_mode: PermissionMode | str = PermissionMode.AUTO,
         workspace: str | Path | None = None,
         use_host_permissions: bool = False,
     ) -> None:
@@ -243,38 +227,25 @@ class CodexPlugin(_CodingAgentPlugin):
     def _policy(self, agent) -> tuple[str, str, PermissionMode]:
         if not self.use_host_permissions:
             sandbox, approval = {
-                PermissionMode.MANUAL: ("workspace-write", "manual"),
-                PermissionMode.AUTO_APPROVE: ("workspace-write", "auto"),
+                PermissionMode.READ_ONLY: ("read-only", "manual"),
+                PermissionMode.AUTO: ("workspace-write", "auto"),
                 PermissionMode.FULL_ACCESS: ("danger-full-access", "auto"),
             }[self.permission_mode]
             return sandbox, approval, self.permission_mode
 
         session = getattr(agent, "current_session", {}) or {}
-        requester = session.get("requester")
-        if requester and requester.get("level") != "admin":
-            return "read-only", "deny", PermissionMode.MANUAL
-        try:
-            profile = legacy_permission_profile_id(
-                session.get("mode", READ_ONLY_PERMISSION_PROFILE)
-            )
-        except ValueError:
-            profile = READ_ONLY_PERMISSION_PROFILE
-        if (
-            profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE
-            and not has_valid_full_access_grant(session)
-        ):
-            profile = READ_ONLY_PERMISSION_PROFILE
+        current = mode_of(session)
         return {
-            READ_ONLY_PERMISSION_PROFILE: (
-                "read-only", "manual", PermissionMode.MANUAL
+            READ_ONLY: (
+                "read-only", "manual", PermissionMode.READ_ONLY
             ),
-            WORKSPACE_PERMISSION_PROFILE: (
-                "workspace-write", "manual", PermissionMode.AUTO_APPROVE
+            AUTO: (
+                "workspace-write", "manual", PermissionMode.AUTO
             ),
-            DANGER_FULL_ACCESS_PERMISSION_PROFILE: (
+            FULL_ACCESS: (
                 "danger-full-access", "deny", PermissionMode.FULL_ACCESS
             ),
-        }[profile]
+        }[current]
 
 
 class ClaudeCodePlugin(_CodingAgentPlugin):
@@ -286,7 +257,7 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
     def __init__(
         self,
         *,
-        permission_mode: PermissionMode | str = PermissionMode.MANUAL,
+        permission_mode: PermissionMode | str = PermissionMode.AUTO,
         workspace: str | Path | None = None,
         use_host_permissions: bool = False,
     ) -> None:
@@ -304,8 +275,6 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
     ) -> str:
         """Run or resume Claude Code inside the configured workspace."""
         provider_mode, effective_mode = self._policy(agent)
-        if provider_mode is None:
-            return _hosted_claude_refusal(session_id)
         working_directory, error = self._cwd(cwd)
         if error:
             return json.dumps({"provider": "claude_code", "session_id": session_id, "error": error})
@@ -325,58 +294,25 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
             permission_mode=effective_mode,
         )
 
-    def _policy(self, agent) -> tuple[str | None, PermissionMode]:
+    def _policy(self, agent) -> tuple[str, PermissionMode]:
         if not self.use_host_permissions:
             return {
-                PermissionMode.MANUAL: "manual",
-                PermissionMode.AUTO_APPROVE: "acceptEdits",
+                PermissionMode.READ_ONLY: "manual",
+                PermissionMode.AUTO: "acceptEdits",
                 PermissionMode.FULL_ACCESS: "auto",
             }[self.permission_mode], self.permission_mode
 
         session = getattr(agent, "current_session", {}) or {}
-        requester = session.get("requester")
-        if requester and requester.get("level") != "admin":
-            return None, PermissionMode.MANUAL
-        try:
-            profile = legacy_permission_profile_id(
-                session.get("mode", READ_ONLY_PERMISSION_PROFILE)
-            )
-        except ValueError:
-            profile = READ_ONLY_PERMISSION_PROFILE
-        if (
-            profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE
-            and not has_valid_full_access_grant(session)
-        ):
-            profile = READ_ONLY_PERMISSION_PROFILE
+        current = mode_of(session)
         return {
-            READ_ONLY_PERMISSION_PROFILE: ("manual", PermissionMode.MANUAL),
-            WORKSPACE_PERMISSION_PROFILE: (
-                "acceptEdits", PermissionMode.AUTO_APPROVE
+            READ_ONLY: ("manual", PermissionMode.READ_ONLY),
+            AUTO: (
+                "acceptEdits", PermissionMode.AUTO
             ),
-            DANGER_FULL_ACCESS_PERMISSION_PROFILE: (
+            FULL_ACCESS: (
                 "auto", PermissionMode.FULL_ACCESS
             ),
-        }[profile]
-
-
-def _hosted_claude_refusal(session_id: str) -> str:
-    return json.dumps(
-        {
-            "provider": "claude_code",
-            "session_id": session_id,
-            "resumed": bool(session_id),
-            "status": "error",
-            "result": "",
-            "error": (
-                "Claude Code delegation is available only to the operator "
-                "in a hosted session."
-            ),
-            "exit_code": -1,
-            "usage": {},
-            "total_cost_usd": None,
-        }
-    )
-
+        }[current]
 
 def _parent_tool_call_id(agent) -> str | None:
     session = getattr(agent, "current_session", None)

@@ -99,9 +99,9 @@ async def test_reattach_does_not_reinitialize_identity_bound_mode_policy(keys):
     trust.is_admin = MagicMock(side_effect=FileNotFoundError(2, "No such file or directory"))
     trust.get_level = MagicMock(side_effect=FileNotFoundError(2, "No such file or directory"))
     policy = MagicMock()
-    policy.state.return_value = {"current": ":read-only"}
+    policy.state.return_value = {"currentModeId": "read-only"}
     conn = authenticated_conn(keys)
-    conn.update({"mode_is_admin": False, "session": {"permission_profile": ":read-only"}})
+    conn.update({"mode_is_admin": False, "session": {"mode": "read-only"}})
 
     sent = await reattach(
         connect_frame(keys),
@@ -116,7 +116,7 @@ async def test_reattach_does_not_reinitialize_identity_bound_mode_policy(keys):
     )
 
     assert sent[0]["type"] == "CONNECTED"
-    assert sent[0]["session_modes"] == {"current": ":read-only"}
+    assert sent[0]["session_modes"] == {"currentModeId": "read-only"}
     trust.is_admin.assert_not_called()
     trust.get_level.assert_not_called()
 

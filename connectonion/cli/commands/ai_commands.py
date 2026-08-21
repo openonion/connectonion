@@ -26,8 +26,8 @@ def handle_ai(
     port: int = 8000,
     model: str = DEFAULT_MODEL,
     max_iterations: int = 100,
-    yolo: bool = False,
-    yolo_turns: int = 100,
+    full_access: bool = False,
+    full_access_turns: int = 100,
     evaluate: bool = False,
     json_output: bool = False,
     resume: str = None,
@@ -39,8 +39,8 @@ def handle_ai(
         port: Port for web server
         model: LLM model to use
         max_iterations: Max tool iterations
-        yolo: Skip tool approvals and keep working across turns
-        yolo_turns: Maximum autonomous turns before a checkpoint
+        full_access: Bypass tool approvals for a bounded user-driven turn budget
+        full_access_turns: User-driven turns before expiry to Auto
         evaluate: Score completion with the eval debugging plugin
         json_output: Emit one JSON envelope to stdout
         resume: Continue a prior one-shot session ID
@@ -52,7 +52,7 @@ def handle_ai(
     if not prompt and (json_output or resume):
         message = "--json and --resume require a one-shot prompt"
         if json_output:
-            _print_envelope(None, None, message)
+            _print_envelope(None, None, "error", message)
         else:
             console.print(f"[red]{message}[/red]")
         raise typer.Exit(2)
@@ -71,14 +71,21 @@ def handle_ai(
             prompt,
             model,
             max_iterations,
-            yolo,
-            yolo_turns,
+            full_access,
+            full_access_turns,
             resume,
             agent_factory=agent_factory,
         )
         return
 
-    agent = agent_factory(model, max_iterations, yolo, yolo_turns)
+    # One-shot Full access is selected before the prompt. A web Host only
+    # advertises the ceiling and keeps every fresh session in Auto.
+    agent = agent_factory(
+        model,
+        max_iterations,
+        full_access if prompt else False,
+        full_access_turns,
+    )
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
@@ -88,8 +95,8 @@ def handle_ai(
             port=port,
             model=model,
             max_iterations=max_iterations,
-            yolo=yolo,
-            yolo_turns=yolo_turns,
+            full_access=full_access,
+            full_access_turns=full_access_turns,
             agent_factory=agent_factory,
         )
 
@@ -107,8 +114,8 @@ def _agent_factory(*, evaluate: bool):
 def _create_agent(
     model,
     max_iterations,
-    yolo,
-    yolo_turns,
+    full_access,
+    full_access_turns,
     *,
     resumable=False,
     state_dir: Path | None = None,
@@ -121,7 +128,7 @@ def _create_agent(
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
         state_dir=state_dir,
-        yolo_turns=yolo_turns if yolo else None,
+        full_access_turns=full_access_turns if full_access else None,
         background_tools=not resumable,
         extra_plugins=extra_plugins,
     )
@@ -135,15 +142,18 @@ def _handle_plain_one_shot(agent, prompt: str) -> None:
     except LLMProviderError as exc:
         console.print(f"\n[red]✗ Model request failed:[/red] {exc}\n")
         raise typer.Exit(1) from None
+    outcome = _completed_outcome(agent)
     print("\n" + result)
+    if outcome == "max_iterations":
+        raise typer.Exit(1)
 
 
 def _handle_json_one_shot(
     prompt,
     model,
     max_iterations,
-    yolo,
-    yolo_turns,
+    full_access,
+    full_access_turns,
     resume,
     *,
     agent_factory=None,
@@ -175,8 +185,8 @@ def _handle_json_one_shot(
                 agent = factory(
                     model,
                     max_iterations,
-                    yolo,
-                    yolo_turns,
+                    full_access,
+                    full_access_turns,
                     resumable=True,
                 )
                 restore_tool_state(agent, tools)
@@ -193,9 +203,12 @@ def _handle_json_one_shot(
                     )
     except Exception as exc:
         error_session_id = resume if persist_session else None
-        _print_envelope(error_session_id, None, str(exc))
+        _print_envelope(error_session_id, None, "error", str(exc))
         raise typer.Exit(1) from None
-    _print_envelope(session_id, result, None)
+    outcome = _completed_outcome(agent)
+    _print_envelope(session_id, result, outcome, None)
+    if outcome == "max_iterations":
+        raise typer.Exit(1)
 
 
 def _fresh_session(agent, session_id: str) -> dict:
@@ -208,6 +221,24 @@ def _fresh_session(agent, session_id: str) -> dict:
     }
 
 
-def _print_envelope(session_id, result, error) -> None:
-    envelope = {"session_id": session_id, "result": result, "error": error}
+def _completed_outcome(agent) -> str:
+    """Return the canonical terminal reason for the latest completed turn."""
+
+    for event in reversed(agent.current_session["trace"]):
+        if event.get("type") != "turn_result":
+            continue
+        outcome = event.get("reason")
+        if outcome not in {"natural", "max_iterations"}:
+            raise RuntimeError(f"Unexpected completed turn outcome: {outcome!r}")
+        return outcome
+    raise RuntimeError("Completed Agent turn has no turn_result outcome")
+
+
+def _print_envelope(session_id, result, outcome, error) -> None:
+    envelope = {
+        "session_id": session_id,
+        "result": result,
+        "outcome": outcome,
+        "error": error,
+    }
     print(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")))

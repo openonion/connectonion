@@ -57,14 +57,16 @@ For scripts and other coding agents, request one stable JSON object:
 
 ```bash
 co ai "Fix the failing tests" --json
-# {"session_id":"...","result":"...","error":null}
+# {"session_id":"...","result":"...","outcome":"natural","error":null}
 
 co ai "Now update the docs" --resume <session-id> --json
 ```
 
 Human-oriented progress moves to stderr in JSON mode, so stdout is safe to
-parse. A successful run exits `0`; invalid sessions and execution failures put
-a concise message in `error` and exit non-zero. Resume never silently starts a
+parse. `outcome` is `natural`, `max_iterations`, or `error`. A naturally
+completed run exits `0`; hitting the iteration cap preserves the result with
+`outcome: "max_iterations"` and exits non-zero. Invalid sessions and execution
+failures put a concise message in `error` and exit non-zero. Resume never silently starts a
 new conversation when the requested session is missing or invalid. Resume must
 run from the same project directory, and concurrent turns for one session fail
 fast instead of overwriting each other.
@@ -82,8 +84,8 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 | `--port` | `-p` | `8000` | Port for web server |
 | `--model` | `-m` | `co/gemini-3.7-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
-| `--yolo` | | off | Skip tool approvals and keep working across turns |
-| `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
+| `--full-access` | | off | Skip routine tool approvals for a bounded user-driven turn budget |
+| `--full-access-turns` | | `100` | User-driven turns before Full access expires to Auto; must be positive |
 | `--eval` | | off | Debug a task with two extra model calls that score completion |
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
@@ -92,21 +94,21 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 co ai --port 9000
 co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
-co ai --yolo "Fix the failing suite" --yolo-turns 20
+co ai --full-access "Fix the failing suite" --full-access-turns 20
 co ai --eval "Check whether this agent really completed the task"
 ```
 
-## Full access (`--yolo`)
+## Full access (`--full-access`)
 
-Use `--yolo` for a trusted task that should run without tool-approval prompts.
+Use `--full-access` for a trusted task that should run without routine tool-approval prompts.
 It works in both one-shot and web-server modes:
 
 ```bash
-# Run one task autonomously, then exit at the 20-turn bound
-co ai --yolo "Implement issue #123" --yolo-turns 20
+# Run one user-driven turn with a bounded approval bypass
+co ai --full-access "Implement issue #123" --full-access-turns 20
 
-# Start web chat with autonomous mode enabled for each session
-co ai --yolo --yolo-turns 20
+# Start web chat with Full access available under a 20-turn Host ceiling
+co ai --full-access --full-access-turns 20
 ```
 
 Slash skills are expanded before the first model call. Project skills can live
@@ -114,12 +116,12 @@ under either `.co/skills/` or `.claude/skills/`, so a project workflow can run
 directly:
 
 ```bash
-co ai --yolo "/deploy-oo-chat" --yolo-turns 10
+co ai --full-access "/deploy-oo-chat" --full-access-turns 10
 ```
 
-YOLO is the familiar CLI shorthand for Full access. It selects the canonical
-`:danger-full-access` permission profile and uses `full_access_turns` for the
-bounded autonomous checkpoint.
+The public mode is exactly `full-access`; its canonical `turns_left` budget
+decrements only after completed user-driven turns. It does not synthesize a
+follow-up prompt or continue the Agent on its own.
 
 ## What the Agent Can Do
 
@@ -159,9 +161,9 @@ session ID. Read only starts Codex read-only and asks when it requests more
 permission. Auto permits workspace changes but still asks about untrusted
 commands, while Full access runs without prompts using Codex's
 `danger-full-access` sandbox. The policy is reapplied when a Codex session is
-resumed. In a hosted session, only the operator can approve Codex's
-nested permission requests; shared contacts are always confined to read-only
-Codex runs with permission requests denied.
+resumed. Every authenticated participant receives the same selected session
+mode. Control-plane administrator authority remains separate from provider
+policy.
 
 An explicit request such as “run Codex”, “open Codex”, or `/codex …` always
 uses the native `codex()` adapter. Raw launches through `bash`, `shell`,

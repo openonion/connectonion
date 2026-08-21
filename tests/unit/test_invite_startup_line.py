@@ -10,8 +10,6 @@ refuses every invite code — correct direction, but the operator sees only that
 nobody can get in.
 """
 
-import pytest
-
 from connectonion.network.host.server import _invite_line
 
 
@@ -57,6 +55,24 @@ class TestWhatItPrints:
         from_env = _invite_line({"onboard": {"invite_code": ["$CO_INVITE_CODE"]}})
         assert ".env" in from_env
         assert "CO_INVITE_CODE" in from_env
+
+    def test_a_deployed_agent_names_the_systemd_env_file(self, monkeypatch):
+        """The server has no project .env: deploy writes a root-owned file
+        outside the rsync tree, and that is where the operator must look."""
+        env_file = "/etc/connectonion/myagent.env"
+        monkeypatch.setenv("CONNECTONION_ENV_FILE", env_file)
+        monkeypatch.setenv("CO_INVITE_CODE", "U262R-7WA6E")
+
+        configured = _invite_line(
+            {"onboard": {"invite_code": ["$CO_INVITE_CODE"]}}
+        )
+        assert f"CO_INVITE_CODE in {env_file}" in configured
+
+        monkeypatch.delenv("CO_INVITE_CODE")
+        missing = _invite_line(
+            {"onboard": {"invite_code": ["$CO_INVITE_CODE"]}}
+        )
+        assert f"Add it to {env_file}" in missing
 
     def test_a_dead_declaration_beside_a_live_one_is_still_mentioned(self, monkeypatch):
         """One working code does not make an unset variable stop mattering —

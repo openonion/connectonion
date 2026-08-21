@@ -52,7 +52,9 @@ def test_the_unit_reads_the_env_file_systemd_owns():
     and that must not be a boot failure.
     """
     unit = dts._unit_text("myagent", "agent.py")
-    assert f"EnvironmentFile=-{dts.ENV_FILE_TEMPLATE.format(agent='myagent')}" in unit
+    env_file = dts.ENV_FILE_TEMPLATE.format(agent="myagent")
+    assert f"EnvironmentFile=-{env_file}" in unit
+    assert f"Environment=CONNECTONION_ENV_FILE={env_file}" in unit
 
 
 def test_the_env_file_lives_outside_the_rsync_root(tmp_path):

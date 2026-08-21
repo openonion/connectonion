@@ -237,6 +237,13 @@ def _save_google_to_env(env_file: Path, credentials: dict) -> None:
     }, strip_prefix="GOOGLE_")
 
 
+def _print_oauth_url(auth_url: str) -> None:
+    """Print a copyable URL without Rich inserting terminal-width newlines."""
+    console.print("    URL:", style="dim")
+    console.print(auth_url, soft_wrap=True, markup=False, highlight=False)
+    console.print()
+
+
 def handle_google_auth():
     """Authenticate with Google OAuth for Gmail/Calendar access."""
 
@@ -281,8 +288,8 @@ def handle_google_auth():
     auth_url = response.json()['auth_url']
 
     # Open browser
-    console.print(f"\n🌐 Opening browser for Google authentication...")
-    console.print(f"    URL: {auth_url}\n", style="dim")
+    console.print("\n🌐 Opening browser for Google authentication...")
+    _print_oauth_url(auth_url)
 
     webbrowser.open(auth_url)
 
@@ -467,8 +474,8 @@ def handle_microsoft_auth():
         expected_state["value"] = state
 
         # Open browser
-        console.print(f"\n🌐 Opening browser for Microsoft authentication...")
-        console.print(f"    URL: {auth_url}\n", style="dim")
+        console.print("\n🌐 Opening browser for Microsoft authentication...")
+        _print_oauth_url(auth_url)
 
         webbrowser.open(auth_url)
 
