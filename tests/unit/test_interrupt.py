@@ -655,7 +655,9 @@ def test_interruptible_io_makes_request_approval_an_interrupted_tool():
 
 def test_completed_agent_tool_commits_its_session_snapshot():
     def change_mode(agent) -> str:
-        agent.current_session["mode"] = ":workspace"
+        from connectonion.core.mode import set_mode
+
+        set_mode(agent.current_session, "auto")
         agent.tools.remove("victim")
         return "changed"
 
@@ -677,7 +679,7 @@ def test_completed_agent_tool_commits_its_session_snapshot():
 
     assert trace["status"] == "success"
     assert agent.current_session is session
-    assert session["mode"] == ":workspace"
+    assert session["mode"] == "auto"
     assert "victim" not in agent.tools
 
 

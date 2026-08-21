@@ -64,8 +64,7 @@ agent = Agent("a", plugins=[re_act, logger])
 | `system_reminder` | Inject contextual reminders into tool results | [system_reminder.md](../useful_plugins/system_reminder.md) |
 | `auto_compact` | Compact conversation when context gets large | [auto_compact.md](../useful_plugins/auto_compact.md) |
 | `prefer_write_tool` | Guide agent to prefer write over edit for new files | [prefer_write_tool.md](../useful_plugins/prefer_write_tool.md) |
-| `full_access` | Approval-free autonomous work with bounded checkpoints | [full_access.md](../useful_plugins/full_access.md) |
-| `yolo` | Familiar shorthand for Full access | [yolo.md](../useful_plugins/yolo.md) |
+| `full_access` | Bounded approval bypass for user-driven turns | [full_access.md](../useful_plugins/full_access.md) |
 | `gmail_plugin` | Gmail OAuth flow | [gmail_plugin.md](../useful_plugins/gmail_plugin.md) |
 | `calendar_plugin` | Google Calendar OAuth flow | [calendar_plugin.md](../useful_plugins/calendar_plugin.md) |
 | `CodexPlugin` / `ClaudeCodePlugin` | Bounded coding-agent delegation with live child activity | [coding-agent-plugins.md](coding-agent-plugins.md) |

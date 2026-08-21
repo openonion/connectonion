@@ -2,10 +2,10 @@
 
 ConnectOnion provides multiple permission mechanisms to balance safety and automation. This guide explains how they work together.
 
-## Approval profiles
+## Permission modes
 
-New sessions use the versioned **Default** profile. Default runs a deterministic
-Auto Approve policy before the human approval hook:
+Every new session starts in **Auto**. Auto runs a deterministic policy before
+the human approval hook:
 
 - workspace reads and reversible workspace edits are allowed;
 - focused test, lint, type-check, and build commands are allowed;
@@ -18,14 +18,11 @@ version, reason, effect class, and scope. An `ask` uses the existing
 `approval_needed` protocol and the existing `session['permissions']` store; the
 policy does not maintain a second approval cache.
 
-**Safe** asks for every call that is not already explicitly permitted. **Full
-access** is an explicit local/Host-admin choice and remains bounded by Host
-authorization controls. The old names `accept_edits`, `ulw`, and `yolo` remain
-wire aliases. Old or unversioned sessions whose mode was `default` migrate to
-Safe so upgrading cannot silently grant more authority.
-
-Plan is a workflow state, not an approval profile. Entering or leaving a plan
-does not change Default, Safe, or Full access.
+**Read only** asks for every effectful call that is not already explicitly
+permitted. **Full access** skips routine approval for a positive `turns_left`
+budget and expires to Auto. The only accepted IDs are `read-only`, `auto`, and
+`full-access`; unknown stored values are discarded to Auto, never translated.
+Todo List remains progress data and grants no authority. Plan is not a mode.
 
 ## Unified Permission System
 
@@ -78,7 +75,7 @@ session['permissions'] = {
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 5. Auto policy + Tool Approval                             │
-│    :workspace deterministically allows/asks/denies         │
+│    auto deterministically allows/asks/denies               │
 │    an ask reuses the authenticated human approval path     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -158,7 +155,7 @@ agent.input("Update the docs")
 
 # Session memory - remember decisions
 agent.input("Run focused tests")
-# → in :workspace, bash("pytest tests/unit/test_api.py") is auto-approved ✓
+# → in auto, bash("pytest tests/unit/test_api.py") is auto-approved ✓
 
 # Unpermitted operations - authenticated human approval or fail closed
 agent.input("Delete all files")

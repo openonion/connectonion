@@ -353,7 +353,7 @@ def _create_route_handlers(
 
 def _host_mode_policy(sample) -> HostPermissionPolicy:
     """Capture only an explicitly configured positive Full access ceiling."""
-    turns = getattr(sample, "_yolo_turns", None)
+    turns = getattr(sample, "_full_access_turns", None)
     if (
         isinstance(turns, bool)
         or not isinstance(turns, int)

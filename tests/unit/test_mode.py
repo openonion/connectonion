@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from connectonion.core.mode import (
@@ -13,6 +16,21 @@ from connectonion.core.mode import (
     set_mode,
     skips_approval,
 )
+
+
+def test_shared_oip_fixture_matches_the_core_reader():
+    fixture = json.loads(
+        (Path(__file__).parents[1] / "fixtures" / "oip" / "mode-contract-v1.json")
+        .read_text(encoding="utf-8")
+    )
+
+    assert fixture["defaultMode"] == AUTO
+    assert [entry["id"] for entry in fixture["modes"]] == list(MODES)
+    for case in fixture["validStates"]:
+        assert mode_of(case["input"]) == case["mode"]
+        assert full_access_turns_left(case["input"]) == (case["turnsLeft"] or 0)
+    for stored in fixture["discardToAuto"]:
+        assert mode_of(stored) == AUTO
 
 
 def test_public_mode_vocabulary_has_exactly_three_values_and_defaults_to_auto():
