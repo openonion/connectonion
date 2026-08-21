@@ -144,8 +144,7 @@ Agent-owned plan/session events remain buffered until the tool succeeds. An
 interrupt or exception discards both, so a cancelled task cannot reappear in a
 later snapshot or leak a provisional plan to the browser.
 
-This progress state is observational. It is separate from `plan_review`, which
-is an interactive approval checkpoint. Seeing a TodoList plan never approves
+This progress state is observational. Seeing a TodoList plan never approves
 work or changes the Agent's mode. Calling TodoList directly without an Agent
 keeps the list local and sends nothing.
 

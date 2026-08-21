@@ -83,10 +83,10 @@ def prepare_provider_workroom_turn(
             agent = create_agent()
             agent.io = io
             agent.storage = storage
-            if hasattr(agent, "_yolo_turns"):
-                agent._yolo_turns = None
-            if hasattr(agent, "_yolo_needs_activation"):
-                agent._yolo_needs_activation = False
+            if hasattr(agent, "_full_access_turns"):
+                agent._full_access_turns = None
+            if hasattr(agent, "_full_access_needs_activation"):
+                agent._full_access_needs_activation = False
             agent._host_full_access_turns_ceiling = host_full_access_turns_ceiling
             agent.current_session = _direct_session(
                 session_id,

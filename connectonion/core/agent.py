@@ -19,16 +19,44 @@ from uuid import uuid4
 
 from ..logger import Logger
 from ..prompts import load_system_prompt
-from .approval_modes import normalize_runtime_approval_session
 from .events import EventHandler
 from .interrupt import run_interruptible
 from .llm import LLM, TokenUsage, create_llm
+from .mode import FULL_ACCESS, full_access_turns_left, mode_of, set_mode
 from .provider_messages import messages_for_provider
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
 from .usage import DEFAULT_MODEL, get_context_limit, turn_usage_from_trace
 from .wire_events import normalize_wire_event
+
+_REMOVED_MODE_FIELDS = {
+    "approval_profile",
+    "full_access_prompt",
+    "full_access_turns",
+    "full_access_turns_used",
+    "permission_profile",
+    "skip_tool_approval",
+    "ulw_prompt",
+    "ulw_turns",
+    "ulw_turns_used",
+    "workflow_mode",
+}
+
+
+def _normalized_runtime_mode_session(session: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply the 1.7 schema boundary without translating old authority."""
+
+    normalized = dict(session)
+    canonical = mode_of(normalized)
+    remaining = full_access_turns_left(normalized)
+    for field in _REMOVED_MODE_FIELDS:
+        normalized.pop(field, None)
+    if canonical == FULL_ACCESS:
+        set_mode(normalized, FULL_ACCESS, turns_left=remaining)
+    else:
+        set_mode(normalized, canonical)
+    return normalized
 
 
 def _normalized_plan(entries: Any) -> list[dict[str, str]]:
@@ -322,7 +350,7 @@ class Agent:
             # this point, in input_handler: a session arriving over the wire has
             # the server-owned ones stripped and re-applied from what the server
             # stored. Here we only restore what we were handed.
-            self.current_session = normalize_runtime_approval_session(session)
+            self.current_session = _normalized_runtime_mode_session(session)
             self.current_session['session_id'] = session.get('session_id')
             self.current_session['messages'] = list(session.get('messages', []))
             self.current_session['trace'] = list(session.get('trace', []))
@@ -336,6 +364,7 @@ class Agent:
                 'trace': [],
                 'turn': 0  # Track conversation turns
             }
+            set_mode(self.current_session, mode_of(self.current_session))
             start_logger_session = True
 
         # Session shape is the turn boundary: from here, preprocessing, model
@@ -545,6 +574,7 @@ class Agent:
                 'iteration': 1,
                 'user_prompt': 'Manual tool execution'
             }
+            set_mode(self.current_session, mode_of(self.current_session))
 
         # Execute using the tool_executor
         trace_entry = execute_single_tool(

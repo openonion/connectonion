@@ -24,7 +24,7 @@ from unittest.mock import Mock
 import pytest
 
 from connectonion.useful_plugins.tool_approval import (
-    VALID_PERMISSION_PROFILES,
+    VALID_PERMISSION_MODES,
     check_approval,
     poll_interrupt,
     poll_mode_changes,
@@ -106,8 +106,8 @@ def _isolate_project_lookup(tmp_path, monkeypatch):
 class TestToolClassification:
     """Test tool classification - DANGEROUS tools need approval."""
 
-    def test_main_approval_modes_stay_small(self):
-        assert VALID_PERMISSION_PROFILES == {':read-only', ':workspace'}
+    def test_public_modes_stay_small(self):
+        assert VALID_PERMISSION_MODES == {'read-only', 'auto'}
 
     def test_dangerous_tools_defined(self):
         """DANGEROUS_TOOLS should contain write/execute tools."""
@@ -266,6 +266,7 @@ class TestDangerousTools:
         """Non-command tools (write, edit) use tool name as approval key."""
         io = FakeIO(responses=[{'approved': True, 'scope': 'session'}])
         agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'read-only'
 
         agent.current_session['pending_tool'] = {
             'name': 'write',
@@ -632,7 +633,7 @@ class TestApprovalKey:
 class TestUnknownTools:
     """Test unknown tools behavior."""
 
-    @pytest.mark.parametrize("mode", [':read-only', ':workspace'])
+    @pytest.mark.parametrize("mode", ['read-only', 'auto'])
     def test_unknown_tool_requests_approval(self, mode):
         """Live unclassified tools require explicit approval in both modes."""
         io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
@@ -685,10 +686,8 @@ class TestUnknownTools:
         """Full access remains an explicit authority decision made by another plugin."""
         io = FakeIO()
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':danger-full-access'
-        agent.current_session['full_access_turns'] = 5
-        agent.current_session['full_access_turns_used'] = 1
-        agent.current_session['skip_tool_approval'] = True
+        agent.current_session['mode'] = 'full-access'
+        agent.current_session['turns_left'] = 4
         agent.current_session['pending_tool'] = {
             'name': 'my_custom_tool',
             'arguments': {},
@@ -702,7 +701,7 @@ class TestUnknownTools:
         """A mode label without its bounded grant is presentation, not authority."""
         io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':danger-full-access'
+        agent.current_session['mode'] = 'full-access'
         agent.current_session['pending_tool'] = {
             'name': 'my_custom_tool',
             'arguments': {},
@@ -716,7 +715,7 @@ class TestUnknownTools:
         """The fail-closed fallback must not redefine the workspace profile."""
         io = FakeIO()
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':workspace'
+        agent.current_session['mode'] = 'auto'
         agent.current_session['pending_tool'] = {
             'name': 'edit',
             'arguments': {'file_path': 'README.md'},
@@ -729,17 +728,19 @@ class TestUnknownTools:
     @pytest.mark.parametrize(
         ('mode', 'tool_name', 'arguments'),
         [
-            (':danger-full-access', 'third_party_tool', {}),
-            (':workspace', 'write', {'file_path': 'owned.txt', 'content': 'no'}),
+            ('full-access', 'third_party_tool', {}),
+            ('auto', 'write', {'file_path': 'owned.txt', 'content': 'no'}),
         ],
     )
-    def test_stale_elevated_mode_falls_back_to_contact_approval(
+    def test_contact_uses_the_same_mode_as_every_participant(
         self, mode, tool_name, arguments
     ):
-        """A stale profile cannot bypass the actor's ordinary approval dialog."""
+        """Participant identity does not silently reduce a canonical mode."""
         io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = mode
+        if mode == 'full-access':
+            agent.current_session['turns_left'] = 2
         agent.current_session['requester'] = {
             'address': '0x' + 'e' * 64,
             'level': 'contact',
@@ -751,7 +752,7 @@ class TestUnknownTools:
 
         check_approval(agent)
 
-        assert [event['type'] for event in io.sent] == ['approval_needed']
+        assert io.sent == []
 
 
 class TestSessionState:
@@ -799,82 +800,64 @@ class TestPollModeChanges:
         # Should not raise
         poll_mode_changes(agent)
 
-    def test_poll_mode_changes_handles_read_only_profile(self):
-        """The legacy frame reader accepts the canonical Read only profile."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': ':read-only'}])
+    def test_poll_mode_changes_handles_read_only(self):
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'read-only'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'auto'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'read-only'
+
+    def test_poll_mode_changes_rejects_removed_plan_mode(self):
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'auto'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'auto'
+        assert io.sent == []
+
+    def test_unknown_stored_mode_is_discarded_to_auto_on_a_valid_change(self):
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'read-only'}])
         agent = FakeAgent(io=io)
         agent.current_session['mode'] = ':workspace'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == ':read-only'
-
-    def test_poll_mode_changes_normalizes_legacy_plan_to_read_only(self):
-        """Old frontends cannot enter a plan state with no exit tools."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
-        agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':workspace'
-
-        poll_mode_changes(agent)
-
-        assert agent.current_session['mode'] == ':read-only'
+        assert agent.current_session['mode'] == 'read-only'
         assert io.sent == [
-            {'type': 'mode_changed', 'mode': ':read-only', 'triggered_by': 'agent'}
+            {'type': 'mode_changed', 'mode': 'read-only', 'triggered_by': 'agent'}
         ]
 
-    def test_legacy_plan_request_confirms_default_when_already_default(self):
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
+    def test_poll_mode_changes_handles_auto(self):
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'auto'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
+        agent.current_session['mode'] = 'read-only'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == ':read-only'
-        assert io.sent == [
-            {'type': 'mode_changed', 'mode': ':read-only', 'triggered_by': 'agent'}
-        ]
+        assert agent.current_session['mode'] == 'auto'
 
-    def test_persisted_plan_session_is_normalized_without_a_new_signal(self):
-        io = FakeIO()
+    def test_poll_mode_changes_handles_bounded_full_access(self):
+        io = FakeIO(pending_signals=[{
+            'type': 'mode_change', 'mode': 'full-access', 'turns_left': 50,
+        }])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = 'plan'
+        agent.current_session['mode'] = 'read-only'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == ':read-only'
-        assert io.sent == [
-            {'type': 'mode_changed', 'mode': ':read-only', 'triggered_by': 'agent'}
-        ]
+        assert agent.current_session['mode'] == 'full-access'
+        assert agent.current_session['turns_left'] == 50
 
-    def test_poll_mode_changes_handles_workspace_profile(self):
-        """The legacy frame reader accepts the canonical workspace profile."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': ':workspace'}])
-        agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
-
-        poll_mode_changes(agent)
-
-        assert agent.current_session['mode'] == ':workspace'
-
-    def test_poll_mode_changes_handles_full_access_profile(self):
-        """The legacy frame reader accepts the canonical Full access profile."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': ':danger-full-access', 'turns': 50}])
-        agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
-
-        poll_mode_changes(agent)
-
-        assert agent.current_session['mode'] == ':danger-full-access'
-        assert agent.current_session['full_access_turns'] == 50
-        assert agent.current_session['skip_tool_approval'] is True
-
-    def test_remote_contact_full_access_request_falls_back_to_approval(self):
-        """A contact cannot activate Full access but can approve their own call."""
+    def test_contact_can_activate_host_offered_full_access(self):
         io = FakeIO(pending_signals=[
-            {'type': 'mode_change', 'mode': ':danger-full-access', 'turns': 50},
-        ], responses=[{'approved': True, 'scope': 'once'}])
+            {'type': 'mode_change', 'mode': 'full-access', 'turns_left': 50},
+        ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
+        agent.current_session['mode'] = 'read-only'
         agent.current_session['requester'] = {
             'address': '0x' + 'e' * 64,
             'level': 'contact',
@@ -888,17 +871,16 @@ class TestPollModeChanges:
 
         check_approval(agent)
 
-        assert agent.current_session['mode'] == ':read-only'
-        assert 'skip_tool_approval' not in agent.current_session
-        assert [msg['type'] for msg in io.sent].count('approval_needed') == 1
+        assert agent.current_session['mode'] == 'full-access'
+        assert agent.current_session['turns_left'] == 50
+        assert not any(msg['type'] == 'approval_needed' for msg in io.sent)
 
-    def test_remote_contact_workspace_request_falls_back_to_approval(self):
-        """The edit bypass stays operator-only; a contact receives a dialog."""
+    def test_contact_can_select_auto(self):
         io = FakeIO(pending_signals=[
-            {'type': 'mode_change', 'mode': ':workspace'},
-        ], responses=[{'approved': True, 'scope': 'once'}])
+            {'type': 'mode_change', 'mode': 'auto'},
+        ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
+        agent.current_session['mode'] = 'read-only'
         agent.current_session['requester'] = {
             'address': '0x' + 'e' * 64,
             'level': 'contact',
@@ -912,35 +894,34 @@ class TestPollModeChanges:
 
         check_approval(agent)
 
-        assert agent.current_session['mode'] == ':read-only'
-        assert [msg['type'] for msg in io.sent].count('approval_needed') == 1
+        assert agent.current_session['mode'] == 'auto'
+        assert not any(msg['type'] == 'approval_needed' for msg in io.sent)
 
     def test_poll_mode_changes_handles_multiple_signals(self):
         """poll_mode_changes should process multiple mode_change signals."""
         io = FakeIO(pending_signals=[
-            {'type': 'mode_change', 'mode': 'plan'},
-            {'type': 'mode_change', 'mode': ':workspace'},
+            {'type': 'mode_change', 'mode': 'read-only'},
+            {'type': 'mode_change', 'mode': 'auto'},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
+        agent.current_session['mode'] = 'auto'
 
         poll_mode_changes(agent)
 
-        # Last mode wins, after the legacy request briefly confirms default.
-        assert agent.current_session['mode'] == ':workspace'
+        assert agent.current_session['mode'] == 'auto'
 
     def test_poll_mode_changes_ignores_other_message_types(self):
         """poll_mode_changes should only process mode_change messages."""
         io = FakeIO(pending_signals=[
             {'type': 'other_signal', 'data': 123},
-            {'type': 'mode_change', 'mode': 'plan'},
+            {'type': 'mode_change', 'mode': 'read-only'},
         ])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
+        agent.current_session['mode'] = 'auto'
 
         poll_mode_changes(agent)
 
-        assert agent.current_session['mode'] == ':read-only'
+        assert agent.current_session['mode'] == 'read-only'
         # Other signal should still be in pending
         assert len(io.pending_signals) == 1
         assert io.pending_signals[0]['type'] == 'other_signal'
@@ -949,12 +930,12 @@ class TestPollModeChanges:
         """poll_mode_changes should ignore invalid mode values."""
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'invalid_mode'}])
         agent = FakeAgent(io=io)
-        agent.current_session['mode'] = ':read-only'
+        agent.current_session['mode'] = 'read-only'
 
         poll_mode_changes(agent)
 
         # Mode unchanged
-        assert agent.current_session['mode'] == ':read-only'
+        assert agent.current_session['mode'] == 'read-only'
 
 
 class TestPluginExport:
@@ -1009,7 +990,7 @@ class TestPollInterrupt:
 
     def test_poll_interrupt_no_message_leaves_signal_unset(self):
         """Without an INTERRUPT, poll_interrupt must not stop the loop."""
-        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': ':read-only'}])
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'read-only'}])
         agent = FakeAgent(io=io)
 
         poll_interrupt(agent)

@@ -8,7 +8,7 @@ from connectonion.network.host.session import Session, SessionStorage
 
 def _stored_codex_session(*, owner="0xowner"):
     return {
-        "mode": ":workspace",
+        "mode": "auto",
         "requester": {"address": owner, "level": "admin"},
         "trace": [{
             "type": "provider_invocation",

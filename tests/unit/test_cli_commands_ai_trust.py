@@ -40,22 +40,22 @@ def test_handle_ai_calls_start_server(monkeypatch):
         port=1111,
         model="m",
         max_iterations=3,
-        yolo=True,
-        yolo_turns=7,
+        full_access=True,
+        full_access_turns=7,
         evaluate=True,
     )
 
     assert called["port"] == 1111
     assert called["model"] == "m"
     assert called["max_iterations"] == 3
-    assert called["yolo"] is True
-    assert called["yolo_turns"] == 7
+    assert called["full_access"] is True
+    assert called["full_access_turns"] == 7
     assert callable(called["agent_factory"])
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
-    assert created["yolo_turns"] == 7
+    assert created["full_access_turns"] is None
     assert created["extra_plugins"] == ()
 
 
@@ -64,6 +64,9 @@ def test_handle_ai_enables_eval_only_when_requested(monkeypatch, capsys):
 
     class FakeAgent:
         def input(self, prompt):
+            self.current_session = {
+                "trace": [{"type": "turn_result", "reason": "natural"}]
+            }
             return "done"
 
     def fake_create_agent(**kwargs):
@@ -87,6 +90,9 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
     class FakeAgent:
         def input(self, prompt):
             created["prompt"] = prompt
+            self.current_session = {
+                "trace": [{"type": "turn_result", "reason": "natural"}]
+            }
             return "done"
 
     def fake_create_agent(**kwargs):
@@ -98,11 +104,35 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
         fake_create_agent,
     )
 
-    ai_mod.handle_ai(prompt="task", yolo=False, yolo_turns=9)
+    ai_mod.handle_ai(prompt="task", full_access=False, full_access_turns=9)
 
     assert created["prompt"] == "task"
-    assert created["yolo_turns"] is None
+    assert created["full_access_turns"] is None
     assert capsys.readouterr().out.endswith("done\n")
+
+
+def test_plain_one_shot_exits_nonzero_when_iterations_are_exhausted(
+    monkeypatch, capsys
+):
+    class IncompleteAgent:
+        def input(self, prompt):
+            self.current_session = {
+                "trace": [
+                    {"type": "turn_result", "reason": "max_iterations"}
+                ]
+            }
+            return "Task incomplete: Maximum iterations (1) reached."
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent",
+        lambda **_: IncompleteAgent(),
+    )
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(prompt="task", max_iterations=1)
+
+    assert caught.value.exit_code == 1
+    assert "Task incomplete" in capsys.readouterr().out
 
 
 def test_isolated_agent_keeps_global_config_and_redirects_only_state(
