@@ -226,8 +226,17 @@ def test_the_docs_site_advertises_the_version_that_exists():
     is the honest limit of a cross-repo check that lives in one repo.
     """
     advertised = _docs_site_versions()
-    assert connectonion.__version__ in advertised.values(), (
-        f"the docs-site checkout advertises {advertised}, this release is "
+    if re.search(r"[a-zA-Z]", connectonion.__version__):
+        expected_channels = ("STABILIZING_VERSION", "PREVIEW_VERSION")
+    else:
+        expected_channels = ("STABLE_VERSION",)
+    release_channels = {
+        name: advertised[name] for name in expected_channels if name in advertised
+    }
+
+    assert connectonion.__version__ in release_channels.values(), (
+        f"the docs-site checkout advertises {release_channels} for this release "
+        f"phase, this release is "
         f"{connectonion.__version__}.\n"
         f"  file: {DOCS_SITE}\n"
         f"  If that checkout is simply behind, pull it. If it is current, the "
