@@ -206,6 +206,21 @@ def create_tool_from_function(func: Callable) -> Callable:
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
 
+    # The calling model supplies a short, user-facing description of the action.
+    # This is presentation metadata, not an argument to ordinary tool functions.
+    # If a tool already owns ``summary`` as a real parameter, it keeps receiving it.
+    properties["summary"] = {
+        "type": "string",
+        "description": (
+            "A short action phrase describing what this call is doing, written "
+            "for the person watching. Do not explain why."
+        ),
+        "minLength": 1,
+        "maxLength": 240,
+    }
+    if "summary" not in required:
+        required.append("summary")
+
     parameters_schema = {
         "type": "object",
         "properties": properties,
@@ -241,6 +256,7 @@ def create_tool_from_function(func: Callable) -> Callable:
     # Cache whether this tool needs agent injection (checked by tool_executor)
     # Convention: if the original function has 'agent' in its signature, the executor provides it.
     tool_func._needs_agent = 'agent' in sig.parameters
+    tool_func._summary_is_function_argument = 'summary' in sig.parameters
 
     # Preserve the exact owner of a bound method. The executor must not infer
     # ownership by scanning registered instances for a matching method name:

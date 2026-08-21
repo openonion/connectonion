@@ -15,6 +15,26 @@ class _LLM:
     model = "test"
 
 
+def test_replayed_tool_card_keeps_the_model_written_summary():
+    items = session_to_chat_items({
+        "messages": [{"role": "user", "content": "inspect it"}],
+        "trace": [{
+            "type": "tool_result",
+            "tool_id": "call-1",
+            "name": "read_file",
+            "args": {"path": "README.md"},
+            "summary": "Reading the project guide to find the documented behavior",
+            "status": "success",
+            "result": "contents",
+        }],
+    })
+
+    tool = next(item for item in items if item["type"] == "tool_call")
+    assert tool["summary"] == (
+        "Reading the project guide to find the documented behavior"
+    )
+
+
 @pytest.mark.parametrize(
     ("plugin", "tool_name"),
     [(CodexPlugin, "codex"), (ClaudeCodePlugin, "claude_code")],

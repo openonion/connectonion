@@ -213,6 +213,21 @@ class TestUIEventTransformation:
         assert agent.ui[0]["id"] == "tc1"
         assert agent.ui[0]["status"] == "running"
 
+    def test_handle_tool_call_keeps_the_model_written_summary(self):
+        agent = RemoteAgent("0x123")
+
+        agent._handle_stream_event({
+            "type": "tool_call",
+            "id": "tc1",
+            "name": "search",
+            "args": {"q": "duplicates"},
+            "summary": "Searching the order table to find duplicate rows",
+        })
+
+        assert agent.ui[0]["summary"] == (
+            "Searching the order table to find duplicate rows"
+        )
+
     def test_handle_tool_result_updates_existing_tool_call(self):
         """Test tool_result event updates existing tool_call item."""
         agent = RemoteAgent("0x123")
