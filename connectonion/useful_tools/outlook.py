@@ -2,9 +2,9 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() validates the ambient OpenOnion account and refreshes locally owned Microsoft tokens via oo-api → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  Data flow: Agent calls Outlook methods → _get_access_token() validates the ambient OpenOnion account and refreshes locally owned Microsoft tokens via oo-api → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh rewrites ~/.co/keys.env
-  Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()])
+  Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments) keeps send_at third positional for pre-attachment callers, so attachments is keyword-only
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
   Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
 
@@ -22,7 +22,7 @@ Usage:
     # - search_emails(query, max_results)
     # - get_email_body(email_id)
     # - send(to, subject, body, cc, bcc, attachments, send_at)
-    # - reply(email_id, body, send_at)
+    # - reply(email_id, body, send_at, *, attachments)
     # - get_scheduled(max_results)
     # - add_contact(name, email)
     # - list_contacts(max_results)
@@ -610,6 +610,34 @@ class Outlook:
             "contentBytes": base64.b64encode(content).decode(),
         }
 
+    def _encoded_attachments(self, attachments: list) -> list[dict]:
+        """Validate and encode every attachment before any Graph call.
+
+        Reading happens under the open descriptors _open_attachments checked,
+        so a file swapped after validation cannot smuggle its contents in.
+        """
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            opened = self._open_attachments(attachments, stack)
+            remaining = OUTLOOK_ATTACHMENT_LIMIT
+            encoded = []
+            for filename, handle in opened:
+                payload = handle.read(remaining + 1)
+                if len(payload) > remaining:
+                    raise ValueError("Attachments exceed Outlook's 3MB send limit.")
+                remaining -= len(payload)
+                encoded.append(self._file_attachment(filename, payload))
+        return encoded
+
+    @staticmethod
+    def _attachment_suffix(attachments: list) -> str:
+        """Name the attached files in a send/reply confirmation message."""
+        if not attachments:
+            return ""
+        names = ", ".join(os.path.basename(os.path.expanduser(p)) for p in attachments)
+        return f" with attachment(s): {names}"
+
     def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
              attachments: list = None, send_at: str = None) -> str:
         """Send email via Microsoft Graph API, immediately or at a scheduled time.
@@ -653,24 +681,9 @@ class Outlook:
             ]
 
         if attachments:
-            from contextlib import ExitStack
+            message["attachments"] = self._encoded_attachments(attachments)
 
-            with ExitStack() as stack:
-                opened = self._open_attachments(attachments, stack)
-                remaining = OUTLOOK_ATTACHMENT_LIMIT
-                encoded = []
-                for filename, handle in opened:
-                    payload = handle.read(remaining + 1)
-                    if len(payload) > remaining:
-                        raise ValueError("Attachments exceed Outlook's 3MB send limit.")
-                    remaining -= len(payload)
-                    encoded.append(self._file_attachment(filename, payload))
-            message["attachments"] = encoded
-
-        suffix = ""
-        if attachments:
-            names = ", ".join(os.path.basename(os.path.expanduser(p)) for p in attachments)
-            suffix = f" with attachment(s): {names}"
+        suffix = self._attachment_suffix(attachments)
 
         if send_at:
             # PidTagDeferredSendTime — Exchange holds delivery until this time.
@@ -685,14 +698,22 @@ class Outlook:
             return f"Email scheduled for {send_at} to {to}{suffix}"
         return f"Email sent successfully to {to}{suffix}"
 
-    def reply(self, email_id: str, body: str, send_at: str = None) -> str:
+    def reply(self, email_id: str, body: str, send_at: str = None, *,
+              attachments: list = None) -> str:
         """Reply to an email, immediately or at a scheduled time.
+
+        send_at stays third positional — callers written before attachments
+        existed pass reply(email_id, body, "2026-07-06T15:30:00Z"), and a
+        timestamp read as a file path would be a silent, mail-sending bug.
+        attachments is keyword-only so the argument order can never shift.
 
         Args:
             email_id: Outlook message ID to reply to
             body: Reply message body (plain text)
             send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
                 schedule delivery — Exchange holds the reply until then
+            attachments: Optional list of local file paths to attach — same
+                files and ~3MB total Graph limit as send()
 
         Returns:
             Confirmation message
@@ -703,23 +724,31 @@ class Outlook:
         body = "".join(f"<p>{p}</p>" for p in paragraphs)
 
         endpoint = f"/me/messages/{email_id}/reply"
-        data = {
-            "comment": body
-        }
+        # The reply action takes writable message properties beside the
+        # comment, so attachments ride along without giving up the threading
+        # Graph does for us (In-Reply-To, References, same conversation).
+        reply_message = {}
+        if attachments:
+            # Encode first: a rejected file must not leave a reply already
+            # sent and unattached.
+            reply_message["attachments"] = self._encoded_attachments(attachments)
         if send_at:
             # Same deferred-send property as send(); the reply action accepts
             # message properties alongside the comment.
-            data["message"] = {
-                "singleValueExtendedProperties": [
-                    {"id": "SystemTime 0x3FEF", "value": send_at}
-                ]
-            }
+            reply_message["singleValueExtendedProperties"] = [
+                {"id": "SystemTime 0x3FEF", "value": send_at}
+            ]
+
+        data = {"comment": body}
+        if reply_message:
+            data["message"] = reply_message
 
         self._request("POST", endpoint, json=data)
 
+        suffix = self._attachment_suffix(attachments)
         if send_at:
-            return f"Reply scheduled for {send_at}"
-        return "Reply sent successfully"
+            return f"Reply scheduled for {send_at}{suffix}"
+        return f"Reply sent successfully{suffix}"
 
     def get_scheduled(self, max_results: int = 25) -> list:
         """List emails waiting for scheduled delivery (deferred-send drafts).

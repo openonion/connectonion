@@ -1171,15 +1171,18 @@ def outlook_download(
     handle_outlook_download(email_id, out_dir)
 
 
-@outlook_app.command("reply")
+@outlook_app.command("reply", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "
+                                     "cat notes.txt | co outlook reply 3 -  |  "
+                                     "co outlook reply 3 \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+    attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
 ):
     """Reply to an email (threaded), now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, at=at)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at)
 
 
 @outlook_app.command("scheduled")
