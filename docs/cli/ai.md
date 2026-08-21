@@ -57,14 +57,16 @@ For scripts and other coding agents, request one stable JSON object:
 
 ```bash
 co ai "Fix the failing tests" --json
-# {"session_id":"...","result":"...","error":null}
+# {"session_id":"...","result":"...","outcome":"natural","error":null}
 
 co ai "Now update the docs" --resume <session-id> --json
 ```
 
 Human-oriented progress moves to stderr in JSON mode, so stdout is safe to
-parse. A successful run exits `0`; invalid sessions and execution failures put
-a concise message in `error` and exit non-zero. Resume never silently starts a
+parse. `outcome` is `natural`, `max_iterations`, or `error`. A naturally
+completed run exits `0`; hitting the iteration cap preserves the result with
+`outcome: "max_iterations"` and exits non-zero. Invalid sessions and execution
+failures put a concise message in `error` and exit non-zero. Resume never silently starts a
 new conversation when the requested session is missing or invalid. Resume must
 run from the same project directory, and concurrent turns for one session fail
 fast instead of overwriting each other.

@@ -52,7 +52,7 @@ def handle_ai(
     if not prompt and (json_output or resume):
         message = "--json and --resume require a one-shot prompt"
         if json_output:
-            _print_envelope(None, None, message)
+            _print_envelope(None, None, "error", message)
         else:
             console.print(f"[red]{message}[/red]")
         raise typer.Exit(2)
@@ -135,7 +135,10 @@ def _handle_plain_one_shot(agent, prompt: str) -> None:
     except LLMProviderError as exc:
         console.print(f"\n[red]✗ Model request failed:[/red] {exc}\n")
         raise typer.Exit(1) from None
+    outcome = _completed_outcome(agent)
     print("\n" + result)
+    if outcome == "max_iterations":
+        raise typer.Exit(1)
 
 
 def _handle_json_one_shot(
@@ -193,9 +196,12 @@ def _handle_json_one_shot(
                     )
     except Exception as exc:
         error_session_id = resume if persist_session else None
-        _print_envelope(error_session_id, None, str(exc))
+        _print_envelope(error_session_id, None, "error", str(exc))
         raise typer.Exit(1) from None
-    _print_envelope(session_id, result, None)
+    outcome = _completed_outcome(agent)
+    _print_envelope(session_id, result, outcome, None)
+    if outcome == "max_iterations":
+        raise typer.Exit(1)
 
 
 def _fresh_session(agent, session_id: str) -> dict:
@@ -208,6 +214,24 @@ def _fresh_session(agent, session_id: str) -> dict:
     }
 
 
-def _print_envelope(session_id, result, error) -> None:
-    envelope = {"session_id": session_id, "result": result, "error": error}
+def _completed_outcome(agent) -> str:
+    """Return the canonical terminal reason for the latest completed turn."""
+
+    for event in reversed(agent.current_session["trace"]):
+        if event.get("type") != "turn_result":
+            continue
+        outcome = event.get("reason")
+        if outcome not in {"natural", "max_iterations"}:
+            raise RuntimeError(f"Unexpected completed turn outcome: {outcome!r}")
+        return outcome
+    raise RuntimeError("Completed Agent turn has no turn_result outcome")
+
+
+def _print_envelope(session_id, result, outcome, error) -> None:
+    envelope = {
+        "session_id": session_id,
+        "result": result,
+        "outcome": outcome,
+        "error": error,
+    }
     print(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")))

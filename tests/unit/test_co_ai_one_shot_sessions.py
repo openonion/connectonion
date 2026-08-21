@@ -76,8 +76,9 @@ class _Todo:
 class _Agent:
     system_prompt = "system"
 
-    def __init__(self, noise="progress"):
+    def __init__(self, noise="progress", outcome="natural"):
         self.noise = noise
+        self.outcome = outcome
         self.current_session = None
         self.received_session = None
         self.tools = _ToolRegistry(_Todo())
@@ -94,7 +95,10 @@ class _Agent:
         self.current_session = {
             **base,
             "messages": messages,
-            "trace": list(base.get("trace", [])),
+            "trace": [
+                *base.get("trace", []),
+                {"type": "turn_result", "reason": self.outcome},
+            ],
             "turn": base.get("turn", 0) + 1,
             "mode": ":danger-full-access",
         }
@@ -870,6 +874,7 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     assert envelope == {
         "session_id": envelope["session_id"],
         "result": "done",
+        "outcome": "natural",
         "error": None,
     }
     assert captured.out.count("\n") == 1
@@ -881,6 +886,30 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     assert stored["mode"] == ":danger-full-access"
     assert stored["turn"] == 1
     assert tools == {"todolist": [_todo("first")]}
+
+
+def test_json_max_iterations_preserves_result_and_exits_nonzero(
+    tmp_path, monkeypatch, capsys
+):
+    agent = _Agent(outcome="max_iterations")
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", tmp_path)
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent", lambda **_: agent
+    )
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_commands.handle_ai(prompt="unfinished", json_output=True)
+
+    assert caught.value.exit_code == 1
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope == {
+        "session_id": envelope["session_id"],
+        "result": "done",
+        "outcome": "max_iterations",
+        "error": None,
+    }
+    stored, _ = load_snapshot(tmp_path, envelope["session_id"])
+    assert stored["trace"][-1]["reason"] == "max_iterations"
 
 
 def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, capsys):
@@ -947,6 +976,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
     assert envelope == {
         "session_id": session_id,
         "result": None,
+        "outcome": "error",
         "error": "follow-up failed",
     }
     stored, tools = load_snapshot(tmp_path, session_id)
@@ -973,6 +1003,7 @@ def test_json_failure_is_structured_and_nonzero(tmp_path, monkeypatch, capsys):
     assert json.loads(captured.out) == {
         "session_id": None,
         "result": None,
+        "outcome": "error",
         "error": "our bug",
     }
     assert "before failure" in captured.err
@@ -994,6 +1025,7 @@ def test_transient_one_shot_rejects_resume_without_echoing_the_session_id(capsys
     assert json.loads(capsys.readouterr().out) == {
         "session_id": None,
         "result": None,
+        "outcome": "error",
         "error": "A transient one-shot run cannot resume a session.",
     }
 
