@@ -128,8 +128,8 @@ def test_operator_workspace_is_not_model_visible(tmp_path):
 
 
 def test_agent_cannot_launch_outside_its_runtime_workspace(tmp_path):
-    workspace = tmp_path / "workspace"
-    outside = tmp_path / "outside"
+    workspace = tmp_path / "customer-secret-workspace"
+    outside = tmp_path / "private-host-directory"
     workspace.mkdir()
     outside.mkdir()
     agent = _agent()
@@ -142,13 +142,15 @@ def test_agent_cannot_launch_outside_its_runtime_workspace(tmp_path):
                 workspace=workspace,
             )
         )
-    assert "must stay inside workspace" in result["error"]
+    assert result["error"] == "Working directory must stay inside the configured workspace."
+    assert str(workspace) not in result["error"]
+    assert str(outside) not in result["error"]
     run.assert_not_called()
 
 
 def test_workspace_rejects_a_symlink_escape(tmp_path):
-    workspace = tmp_path / "workspace"
-    outside = tmp_path / "outside"
+    workspace = tmp_path / "customer-secret-workspace"
+    outside = tmp_path / "private-host-directory"
     workspace.mkdir()
     outside.mkdir()
     link = workspace / "escape"
@@ -159,7 +161,24 @@ def test_workspace_rejects_a_symlink_escape(tmp_path):
     result = json.loads(
         ClaudeCode(workspace=workspace).claude_code("inspect", cwd="escape")
     )
-    assert "must stay inside workspace" in result["error"]
+    assert result["error"] == "Working directory must stay inside the configured workspace."
+    assert str(workspace) not in result["error"]
+    assert str(outside) not in result["error"]
+
+
+def test_invalid_operator_workspace_does_not_expose_its_path(tmp_path):
+    missing = tmp_path / "customer-secret-missing-workspace"
+    with pytest.raises(ValueError) as missing_error:
+        ClaudeCode(workspace=missing)
+    assert str(missing_error.value) == "Claude Code workspace is unavailable."
+    assert str(missing) not in str(missing_error.value)
+
+    private_file = tmp_path / "customer-secret-workspace-file"
+    private_file.write_text("private", encoding="utf-8")
+    with pytest.raises(ValueError) as file_error:
+        ClaudeCode(workspace=private_file)
+    assert str(file_error.value) == "Claude Code workspace is not a directory."
+    assert str(private_file) not in str(file_error.value)
 
 
 def test_inner_tool_start_becomes_a_provider_labelled_native_card():
@@ -643,12 +662,15 @@ def test_oversized_stream_line_is_not_parsed():
 
 
 def test_cwd_must_exist_and_be_a_directory(tmp_path):
-    missing = json.loads(claude_code("fix", cwd=str(tmp_path / "missing")))
-    file_path = tmp_path / "file"
+    missing_path = tmp_path / "private-missing-directory"
+    missing = json.loads(claude_code("fix", cwd=str(missing_path)))
+    file_path = tmp_path / "private-host-file"
     file_path.write_text("x", encoding="utf-8")
     file_result = json.loads(claude_code("fix", cwd=str(file_path)))
-    assert "Working directory" in missing["error"]
-    assert "not a directory" in file_result["error"]
+    assert missing["error"] == "Working directory is unavailable."
+    assert str(missing_path) not in missing["error"]
+    assert file_result["error"] == "Working directory is not a directory."
+    assert str(file_path) not in file_result["error"]
 
 
 def test_missing_binary_is_one_structured_result(tmp_path):

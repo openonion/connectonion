@@ -262,9 +262,9 @@ def _resolve_workspace(workspace: str | Path | None) -> Path:
     try:
         resolved = root.expanduser().resolve(strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
-        raise ValueError(f"Claude Code workspace is unavailable: {exc}") from exc
+        raise ValueError("Claude Code workspace is unavailable.") from exc
     if not resolved.is_dir():
-        raise ValueError(f"Claude Code workspace is not a directory: {resolved}")
+        raise ValueError("Claude Code workspace is not a directory.")
     return resolved
 
 
@@ -273,16 +273,19 @@ def _working_directory(
 ) -> tuple[Path | None, str]:
     try:
         root = _resolve_workspace(workspace) if workspace is not None else None
+    except (OSError, RuntimeError, ValueError):
+        return None, "Claude Code workspace is unavailable."
+    try:
         requested = Path(cwd).expanduser() if cwd else (root or Path.cwd())
         if not requested.is_absolute():
             requested = (root or Path.cwd()) / requested
         directory = requested.resolve(strict=True)
-    except (OSError, RuntimeError, ValueError) as exc:
-        return None, f"Working directory is unavailable: {exc}"
+    except (OSError, RuntimeError, ValueError):
+        return None, "Working directory is unavailable."
     if not directory.is_dir():
-        return None, f"Working directory is not a directory: {directory}"
+        return None, "Working directory is not a directory."
     if root is not None and not directory.is_relative_to(root):
-        return None, f"Working directory must stay inside workspace: {root}"
+        return None, "Working directory must stay inside the configured workspace."
     return directory, ""
 
 
