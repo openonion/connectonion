@@ -121,12 +121,24 @@ outlook.send(
 )
 ```
 
-**`reply(email_id, body, send_at=None)`**
+**`reply(email_id, body, send_at=None, *, attachments=None)`**
 - Reply to an existing email (threaded), now or scheduled
 - `body` is plain text — paragraphs (blank-line separated) convert to HTML
   `<p>` blocks and single newlines to `<br>`, with HTML characters escaped,
   so replies keep their formatting in Outlook
-- `send_at`: Optional UTC ISO time — Exchange holds delivery until then
+- `send_at`: Optional UTC ISO time — Exchange holds delivery until then. It
+  keeps the third-positional slot it has always had, so
+  `reply(email_id, body, "2026-07-06T15:30:00Z")` still schedules
+- `attachments`: Keyword-only list of local file paths, validated and limited
+  exactly like `send()`. They travel on Graph's reply action, so the message
+  stays in the original conversation
+
+```python
+outlook.reply(
+    email_id, "Signed copy attached.",
+    attachments=["signed.pdf"],
+)
+```
 
 ### Scheduled sends
 
