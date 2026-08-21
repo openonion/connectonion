@@ -1,11 +1,11 @@
 """
 Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI requests to it over the platform transport (POSIX Unix socket / Windows named pipe), arbitrating concurrent agents through per-tab ownership.
 LLM-Note:
-  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.agent (resolve_api_key, build_browser_agent), browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: client sends wire-v1 JSON {v,caller,account,tab,line} (or a legacy plain line) → page verbs stay shared; model-backed `do` runs only when both public account addresses are present and equal (legacy/missing/mismatched payer data fails closed) → reply includes process exit code (2 usage, 3 unknown tab, 4 busy, 5 payer mismatch)
+  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.transport] | imported by [browser_agent.client (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: client sends wire-v1 JSON {v,caller,account,tab,line,raw} (or a legacy plain line) → one short browser verb runs → reply includes process exit code (2 usage, 3 unknown tab, 4 busy); `co browser do` runs its model loop in the client and reaches this daemon only through those short verb requests
   State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds the endpoint at default_sock_path() via `transport` — POSIX: a raw AF_UNIX socket (unchanged); Windows: a native named pipe (multiprocessing.connection) with an HMAC authkey — under a lifetime OS lock (transport.lock_path: fcntl.flock POSIX / msvcrt Windows, released by the OS on any death, so simultaneous cold-starts can't both bind) and records its owner pid in transport.pid_path so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes the listener (POSIX also unlinks the socket) + pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the endpoint) when browser._context_is_alive() goes false or _launch_failed()
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
-  Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
+  Performance: one short browser request at a time | browser launch overhead on first page verb (1-3s) | model latency never occupies the daemon | tab lifecycle/status verbs never launch Chrome
   Errors: dispatch/handler exceptions are caught at the request boundary in serve() and returned to THAT client (never unwind the loop and kill the shared browser) | a client that vanishes mid-reply is logged to ~/.co/browser.log, not fatal | bind race with a second daemon → loser exits
 """
 
@@ -27,7 +27,6 @@ from connectonion.useful_tools.browser_tools import BrowserAutomation
 from connectonion.useful_tools.browser_tools.browser import (
     driver_stealth_status, installed_browser_path,
 )
-from .agent import resolve_api_key, build_browser_agent
 from . import transport
 
 
@@ -114,26 +113,6 @@ def _key(name):
 
 def _tab_label(key) -> str:
     return "main" if key is None else key
-
-
-def _daemon_account() -> "str | None":
-    """The address whose credits `do` spends, or None if there is none to name.
-
-    The daemon is shared and long-lived, and `do` runs the agent inside it, so
-    the model is paid for out of *this process's* environment — the directory
-    whoever started the browser was standing in, not the caller's. Running `do`
-    from a worktree holding a different key charged 0x561605f3 and reported its
-    balance, an account the reader had no way to place (#728).
-
-    Page verbs touch no model and are unaffected; only `do` spends.
-
-    The address is public — an agent announces it to the relay — so naming it
-    here reveals nothing. The key is never read out.
-    """
-    from ... import address
-
-    data = address.load(Path.cwd() / ".co") or address.load(Path.home() / ".co")
-    return (data or {}).get("address")
 
 
 def _owner_alive(sock_path: str) -> bool:
@@ -243,11 +222,11 @@ class BrowserDaemon:
         self._next_tab = 1        # id allocator for auto-named tabs
 
     def _parse_envelope(self, raw: str) -> tuple:
-        """Wire v1: JSON {caller,account,tab,line} — quote-safe by construction
+        """Wire v1: JSON {caller,account,tab,line,raw} — quote-safe by construction
         (a caller or tab name can hold any character without breaking shlex). A plain
         line (old client) is accepted as an anonymous request for the main tab."""
         if not raw.startswith("{"):
-            return "", "", None, raw
+            return "", "", None, raw, False
         req = json.loads(raw)
         tab = req.get("tab")
         return (
@@ -255,6 +234,7 @@ class BrowserDaemon:
             str(req.get("account") or ""),
             (str(tab) if tab is not None else None),
             str(req.get("line") or ""),
+            bool(req.get("raw", False)),
         )
 
     # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
@@ -266,7 +246,7 @@ class BrowserDaemon:
         """Run one request. Returns (ok, payload); ok is True, False, or an int error
         code the client mirrors into its exit (2 usage · 3 unknown tab · 4 tab busy)."""
         try:
-            caller, caller_account, tab, line = self._parse_envelope(raw)
+            caller, _caller_account, tab, line, raw_result = self._parse_envelope(raw)
             tokens = shlex.split(line)
         except (ValueError, TypeError) as exc:  # malformed envelope/quoting is the CLIENT's error
             return 2, f"unparseable request: {exc}"
@@ -302,37 +282,17 @@ class BrowserDaemon:
 
         # A command that would execute nothing must not acquire anything: reject an
         # unknown verb BEFORE the claim, or a typo would hold the tab for GUARD_WINDOW.
-        if verb != "do" and not _is_verb(self.browser, verb):
+        if verb == "do":
+            return 2, (
+                "`do` runs in the CLI process so model waits do not block the shared "
+                "browser daemon. Upgrade this client and retry."
+            )
+        if not _is_verb(self.browser, verb):
             return False, (
                 f"unknown command: {verb}\n"
                 f"Run 'co browser help' to list functions, or "
                 f"'co browser do \"<instruction>\"' for natural language."
             )
-
-        # `do` spends credits in this long-lived process. Old clients have no
-        # account field, and a broken daemon identity cannot prove whose credits
-        # would be spent, so both cases must fail closed. Do this before claiming
-        # the tab: a rejected billing attempt must not make the page look busy.
-        if verb == "do":
-            try:
-                daemon_account = str(_daemon_account() or "").strip()
-            except Exception:
-                daemon_account = ""
-            caller_account = caller_account.strip()
-            if not caller_account or not daemon_account:
-                return 5, (
-                    "refusing `do`: cannot verify that the caller and browser "
-                    "daemon use the same OpenOnion billing account. Upgrade the "
-                    "client, then run `co status` or `co auth`; page commands "
-                    "remain available."
-                )
-            if caller_account.casefold() != daemon_account.casefold():
-                return 5, (
-                    "refusing `do`: this browser daemon bills "
-                    f"{daemon_account[:10]}…, but this command came from "
-                    f"{caller_account[:10]}…. Page commands remain available. "
-                    "Stop the daemon and retry from this project so the payer matches."
-                )
 
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
         # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
@@ -342,10 +302,7 @@ class BrowserDaemon:
             return 4, self._tab_busy(session, meta)
         self._stamp_claim(meta, caller, line)
         self.last_command = {"line": line, "at": time.time()}
-        if verb == "do":  # explicit natural-language agent — use the PARSED remainder,
-            command = " ".join(tokens[1:])  # not the still-quoted raw line
-            return self._run_nl(command)
-        return self._call_verb(verb, tokens[1:])
+        return self._call_verb(verb, tokens[1:], raw_result=raw_result)
 
     def _register_tab(self, key, caller: str) -> dict:
         """Return the tab's board entry, creating the shared main tab's on first use.
@@ -376,7 +333,7 @@ class BrowserDaemon:
             meta["caller"], meta["claim_at"] = caller, time.time()
         meta["last_line"], meta["last_at"] = line, time.time()
 
-    def _call_verb(self, verb: str, raw_args) -> tuple:
+    def _call_verb(self, verb: str, raw_args, raw_result: bool = False) -> tuple:
         """Match the verb to a browser method and execute it with coerced args."""
         method = getattr(self.browser, verb)
         positional, kwargs = _split_tokens(raw_args)
@@ -406,9 +363,9 @@ class BrowserDaemon:
             return False, f"{type(exc).__name__}: {exc}{hint}"
 
         payload = _stringify(result)
-        if payload.startswith("data:image/"):
+        if payload.startswith("data:image/") and not raw_result:
             # A human at the shell doesn't want a base64 blob — the image is on disk.
-            # (The NL agent path keeps the data URL for vision; it goes through _run_nl.)
+            # The client-side NL agent asks for raw results so vision still gets the data URL.
             return True, f"Screenshot saved to: {self.browser.last_screenshot_path}"
         return True, payload
 
@@ -432,15 +389,6 @@ class BrowserDaemon:
             binary = None  # status is what you run when things are already broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
                      "Browser binary: ✗ none installed — run: patchright install chromium")
-        # Whose credits `do` spends. Never lets status fail: this is the command
-        # you run when something is already wrong.
-        try:
-            account = _daemon_account()
-        except Exception:
-            account = None
-        if account:
-            lines.append(f"`do` is billed to: {account[:10]}… "
-                         f"(the account this daemon was started under, not the caller's)")
         if self.last_command:
             lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
         else:
@@ -637,17 +585,6 @@ class BrowserDaemon:
         message = self.browser.close_tab(_tab_label(key))
         return True, f"Closed tab {_tab_label(key)}. {message}"
 
-    def _run_nl(self, command: str) -> tuple:
-        """Hand the command to the NL agent driving the same live browser."""
-        api_key = resolve_api_key()
-        if not api_key:
-            return False, "Browser agent requires authentication. Run: co auth"
-        try:
-            result = build_browser_agent(self.browser, api_key).input(command)
-        except Exception as exc:
-            return False, f"{type(exc).__name__}: {exc}"
-        return True, _stringify(result)
-
     def serve(self):
         self._bind()
         atexit.register(self._cleanup)
@@ -728,7 +665,7 @@ class BrowserDaemon:
         fresh inode while a second still holds the old one.
 
         A refused probe is ambiguous: the owner died leaving a stale socket, OR the
-        owner is alive with a full backlog (a long `do` while clients hammer it — the
+        owner is alive with a full backlog (a long browser action while clients hammer it — the
         exact situation that spawns us). Unlinking a BUSY daemon's socket forks the
         world: two daemons, two Chromes fighting over one profile, and the original
         becomes an unreachable zombie. The pid file the owner wrote at bind time

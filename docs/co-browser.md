@@ -177,8 +177,10 @@ co browser -t scrape do "collect every plan name and monthly price into a list"
 
 Describe the **end state** you want ("download the June invoice PDF"), not the
 steps. `do` costs LLM calls and is slower than direct functions — use functions
-for anything deterministic, `do` for judgment. While a `do` runs, the daemon is
-busy: other commands queue behind it (or exit 4 if they target its tab).
+for anything deterministic, `do` for judgment. The model loop runs in the CLI
+process; each browser action takes one short daemon turn, so other tabs can make
+progress while the model thinks. A command targeting the same claimed tab still
+exits 4, preserving ownership instead of interleaving two tasks on one page.
 
 ## Visible or Headless
 
@@ -225,7 +227,7 @@ automatically on first use and exits when you `close` it (or when the browser is
 no longer usable).
 
 The daemon records its pid next to the socket, so a daemon that is merely **busy**
-(a long `do` holding the single-threaded loop) is never mistaken for a dead one:
+(for example, a slow navigation holding the single-threaded browser loop) is never mistaken for a dead one:
 clients wait up to ~15s for it to come free and then say so ("daemon is busy"),
 instead of spawning a rival daemon over a live browser. Startup itself is
 race-proof: a kernel lock makes two terminals' simultaneous first commands elect
@@ -245,7 +247,7 @@ exactly one daemon — the loser exits and its command is served by the winner.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
-- **"daemon is busy" after ~15s** — a long `do` is holding the single-threaded
+- **"daemon is busy" after ~15s** — a browser action is holding the single-threaded
   daemon. Wait for it, or find the culprit with `co browser status` once it frees up.
 - **Nuclear option** — kill the daemon and let the next command start fresh
   (logins survive: they live in the profile, not the daemon):

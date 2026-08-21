@@ -1,28 +1,32 @@
 """
-Purpose: Thin client for the browser daemon — wraps one command as a JSON envelope, sends it over the platform transport (POSIX Unix socket / Windows named pipe), and maps the reply to stdout/stderr/exit code.
+Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language `do` agent locally so model waits never occupy the daemon.
 LLM-Note:
-  Dependencies: imports from [socket, os, json, sys, time, pathlib, browser_agent.daemon (default_sock_path, _owner_alive), browser_agent.transport] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: send(line, headless, tab) → derive caller label and public billing address → build wire-v1 JSON {v,caller,account,tab,line} (no API key crosses the transport) → connect/spawn daemon → print reply and mirror its exit code
+  Dependencies: imports from [socket, os, json, sys, time, shlex, inspect, functools, pathlib, BrowserAutomation, browser_agent.daemon (default_sock_path, _owner_alive), browser_agent.agent (lazy), browser_agent.transport] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: direct verb → _request() → wire-v1 JSON {v,caller,account,tab,line,raw}; `do` → local Agent + DaemonBrowserProxy → each tool invocation becomes one short _request(raw=True) to the shared daemon
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
-  Performance: one connect + request/response | daemon spawn adds browser launch latency on first call
+  Performance: one connect + request/response per browser action | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
   Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | ALL setup RuntimeErrors (Windows authkey mismatch/corruption, daemon didn't start) are caught in send() → one clean stderr line + exit 1, NEVER a traceback (typer's pretty exceptions would print frame locals, which hold the HMAC secret on the connect path) | daemon dying mid-request → clean stderr line + exit 1
 """
 
 import os
+import functools
+import inspect
 import json
+import shlex
 import sys
 import time
 import socket
 from pathlib import Path
 
+from connectonion.useful_tools.browser_tools import BrowserAutomation
 from .daemon import default_sock_path, _owner_alive
 from . import transport
 
 
 def _connect(sock_path: str):
     """Connect to the daemon. Returns a live connection, or None if the daemon is
-    genuinely gone. A busy single-threaded daemon (mid `do` task) can momentarily
+    genuinely gone. A busy single-threaded daemon (during a browser action) can momentarily
     refuse while its accept backlog is full — that is NOT a dead daemon, so retry
     while its recorded owner is alive; a dead owner fails fast (the spawned daemon
     replaces it). POSIX uses a raw AF_UNIX socket (unchanged); Windows uses the
@@ -137,7 +141,7 @@ def _caller_account() -> str:
     except Exception:
         # Page-only commands and `status` must remain usable while diagnosing a
         # broken local identity. An empty account keeps compatibility; the
-        # daemon still names its payer in status.
+        # Page-only commands remain usable; `do` refuses before starting its model.
         return ""
     return str((data or {}).get("address") or "")
 
@@ -181,26 +185,22 @@ def _ensure_browser_ready(line: str) -> bool:
     return True
 
 
-def send(line: str, headless: bool = False, tab: str = None,
-         _provisioned: bool = False) -> int:
-    """Send one request; print the reply; return the process exit code.
+def _request(line: str, headless: bool = False, tab: str = None,
+             raw_result: bool = False, _provisioned: bool = False) -> tuple:
+    """Send one short daemon request and return ``(code, payload)``.
 
-    Wire v1 is a JSON envelope {caller, account, tab, line}. `account` is the
-    public address only; an API key never crosses the daemon transport."""
+    ``raw_result`` is for the client-side agent: image data must reach its vision
+    formatter, while an interactive shell should still receive a saved-file line.
+    The account address is public; the API key never crosses this transport.
+    """
     account = _caller_account()
-    if line.split()[:1] == ["do"] and not account:
-        print(
-            "cannot determine which OpenOnion account should pay for `do`; "
-            "run `co status` or `co auth` first",
-            file=sys.stderr,
-        )
-        return 5
     request = json.dumps({
         "v": 1,
         "caller": _caller(),
         "account": account,
         "tab": tab,
         "line": line,
+        "raw": raw_result,
     })
     sock_path = default_sock_path()
     try:
@@ -224,19 +224,15 @@ def send(line: str, headless: bool = False, tab: str = None,
                 # whether that pid lives — no spawn, no log, so the #356
                 # constraint above still holds.
                 if _owner_alive(sock_path):
-                    print("Browser daemon: running, busy with a long command "
-                          "— try again shortly")
-                else:
-                    print("Browser daemon: not running — the next page command starts one")
-                return 0
+                    return 0, "Browser daemon: running, busy with a long command — try again shortly"
+                return 0, "Browser daemon: not running — the next page command starts one"
             _ensure_browser_ready(line)  # cold start: provision the browser first
             conn = _spawn_daemon(sock_path, headless)
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
         # with a clean one-line error, NEVER a traceback: typer's pretty exceptions
         # print frame locals, and connect-path frames hold the HMAC secret.
-        print(str(exc), file=sys.stderr)
-        return 1
+        return 1, str(exc)
 
     if transport.IS_WINDOWS:
         # Named-pipe wire: one framed message each way (no half-close needed).
@@ -246,9 +242,8 @@ def send(line: str, headless: bool = False, tab: str = None,
         except (EOFError, OSError):
             # The daemon died mid-request (browser crash mid-command). Mirror the POSIX
             # empty-reply degradation: a clean error and exit 1, never a traceback.
-            print("browser daemon closed the connection mid-request — try again", file=sys.stderr)
             conn.close()
-            return 1
+            return 1, "browser daemon closed the connection mid-request — try again"
         conn.close()
     else:
         conn.sendall(request.encode())
@@ -264,9 +259,7 @@ def send(line: str, headless: bool = False, tab: str = None,
 
     header, _, payload = reply.decode().partition("\n")
     if header == "OK":
-        if payload:
-            print(payload)
-        return 0
+        return 0, payload
     # A warm daemon reached the launcher and found no browser. The cold-start
     # provisioning above was skipped because the connect succeeded, so without
     # this every page command on this box fails identically forever. The daemon's
@@ -274,7 +267,10 @@ def send(line: str, headless: bool = False, tab: str = None,
     # not something to guess at from a version-numbered cache path.
     if "No browser is installed for this user" in payload and not _provisioned:
         if _ensure_browser_ready(line):
-            return send(line, headless=headless, tab=tab, _provisioned=True)
+            return _request(
+                line, headless=headless, tab=tab, raw_result=raw_result,
+                _provisioned=True,
+            )
 
     # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
     # token — which, after shlex strips the quotes, is 'unknown command: {v:1,...'.
@@ -288,8 +284,105 @@ def send(line: str, headless: bool = False, tab: str = None,
             # command never runs. An agent reads this line and runs it that way.
             "restart it:  pkill -f 'connectonion.cli.browser_agent[.]daemon'"
         )
-    print(payload, file=sys.stderr)
     # "ERR" = generic failure (1); "ERR <n>" carries a distinct code so callers can
     # branch without parsing prose (2 = usage, 3 = unknown tab, 4 = tab busy).
     parts = header.split()
-    return int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
+    code = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
+    return code, payload
+
+
+def _tool_line(name: str, args: tuple, kwargs: dict) -> str:
+    """Serialize one proxy method call with the daemon's shell grammar."""
+    tokens = [name]
+    tokens.extend(str(value) for value in args if value is not None)
+    for key, value in kwargs.items():
+        if value is None:
+            continue
+        flag = "--" + key.replace("_", "-")
+        if isinstance(value, bool):
+            tokens.append(f"{flag}={'true' if value else 'false'}")
+        else:
+            tokens.append(f"{flag}={value}")
+    return shlex.join(tokens)
+
+
+class DaemonBrowserProxy:
+    """BrowserAutomation-shaped tools whose calls cross the daemon one at a time."""
+
+    def __init__(self, headless: bool = False, tab: str = None):
+        self._headless = headless
+        self._tab = tab
+
+    def _call(self, name: str, args: tuple, kwargs: dict):
+        code, payload = _request(
+            _tool_line(name, args, kwargs),
+            headless=self._headless,
+            tab=self._tab,
+            raw_result=True,
+        )
+        if code:
+            raise RuntimeError(payload)
+        return payload
+
+
+def _proxy_method(name, method):
+    @functools.wraps(method)
+    def call(self, *args, **kwargs):
+        return self._call(name, args, kwargs)
+
+    return call
+
+
+# Keep the agent's tool schema identical to BrowserAutomation without duplicating
+# dozens of signatures. functools.wraps preserves each original signature and
+# docstring for the tool factory; every implementation delegates to _call().
+for _name, _method in inspect.getmembers(BrowserAutomation, predicate=inspect.isfunction):
+    if not _name.startswith("_"):
+        setattr(DaemonBrowserProxy, _name, _proxy_method(_name, _method))
+
+
+def _run_do(line: str, headless: bool, tab: str) -> tuple:
+    """Run the model loop here; only its browser tool calls enter the daemon."""
+    account = _caller_account()
+    if not account:
+        return 5, (
+            "cannot determine which OpenOnion account should pay for `do`; "
+            "run `co status` or `co auth` first"
+        )
+    tokens = shlex.split(line)
+    command = " ".join(tokens[1:])
+    if not command:
+        return 2, 'usage: co browser do "<instruction>"'
+
+    from .agent import resolve_api_key, build_browser_agent
+
+    api_key = resolve_api_key()
+    if not api_key:
+        return 5, "Browser agent requires authentication. Run: co auth"
+    try:
+        result = build_browser_agent(
+            DaemonBrowserProxy(headless=headless, tab=tab), api_key
+        ).input(command)
+    except Exception as exc:
+        return 1, f"{type(exc).__name__}: {exc}"
+    return 0, "" if result is None else str(result)
+
+
+def send(line: str, headless: bool = False, tab: str = None,
+         _provisioned: bool = False) -> int:
+    """Run a CLI command, print its result, and return its process exit code."""
+    try:
+        verb = shlex.split(line)[:1]
+    except ValueError as exc:
+        print(f"unparseable request: {exc}", file=sys.stderr)
+        return 2
+
+    if verb == ["do"]:
+        code, payload = _run_do(line, headless, tab)
+    else:
+        code, payload = _request(
+            line, headless=headless, tab=tab, _provisioned=_provisioned
+        )
+    if payload:
+        print(payload, file=sys.stderr if code else sys.stdout)
+    return code
