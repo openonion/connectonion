@@ -24,7 +24,7 @@ class IO:
         return self.response
 
 
-def agent(*, mode="auto", permissions=None, requester=None):
+def agent(*, mode="auto", permissions=None, requester=None, io=True):
     session = {
         "messages": [],
         "trace": [],
@@ -33,7 +33,12 @@ def agent(*, mode="auto", permissions=None, requester=None):
     }
     if requester:
         session["requester"] = requester
-    return SimpleNamespace(current_session=session, io=IO(), storage=None, logger=None)
+    return SimpleNamespace(
+        current_session=session,
+        io=IO() if io else None,
+        storage=None,
+        logger=None,
+    )
 
 
 def call(instance, name, arguments):
@@ -179,3 +184,69 @@ def test_contact_uses_the_same_auto_contract_as_every_participant():
 
     assert result["decision"] == "allow"
     assert instance.io.sent == []
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments", "effect"),
+    [
+        ("write", {"path": "../outside.txt"}, "write_outside_workspace"),
+        ("read_file", {"path": "../outside.txt"}, "read_outside_workspace"),
+        ("new_plugin_tool", {}, "unknown"),
+    ],
+)
+def test_headless_auto_fails_closed_without_an_approval_channel(
+    tmp_path, monkeypatch, name, arguments, effect
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {
+        "name": name,
+        "arguments": arguments,
+    }
+
+    apply_auto_approve_policy(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "deny"
+    assert result["effect_class"] == effect
+    with pytest.raises(ValueError, match="denied by connectonion.auto"):
+        check_approval(instance)
+
+
+def test_headless_auto_still_allows_a_reversible_workspace_edit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {
+        "name": "write",
+        "arguments": {"path": str(tmp_path / "inside.txt")},
+    }
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments"),
+    [
+        ("write", {"path": "/outside.txt", "content": "verified"}),
+        ("add", {"content": "verify", "active_form": "verifying"}),
+        ("start", {"content": "verify"}),
+        ("complete", {"content": "verify"}),
+    ],
+)
+def test_headless_full_access_keeps_the_explicit_bounded_bypass(name, arguments):
+    instance = agent(mode="full-access", io=False)
+    instance.current_session["turns_left"] = 2
+    instance.current_session["pending_tool"] = {
+        "name": name,
+        "arguments": arguments,
+    }
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    assert "approval_policy" not in instance.current_session["pending_tool"]
