@@ -443,6 +443,24 @@ def check_approval(agent: 'Agent') -> None:
         tool_name = pending['name']
         tool_args = pending['arguments']
 
+        # A completed Work Room continuation has already passed the Host's
+        # owner + durable revision checks.  Consume its internal capability at
+        # the first tool boundary and bypass only the outer Codex wrapper.  It
+        # cannot authorize an arbitrary tool, cannot survive for a later call,
+        # and does not affect Codex's own command/file approval protocol.
+        direct_tool = agent.current_session.pop(
+            '_provider_direct_approved_tool', None
+        )
+        if direct_tool == tool_name == 'codex':
+            if getattr(getattr(agent, 'logger', None), 'console', None):
+                agent.logger.console.log_permission_granted(
+                    tool_name,
+                    tool_args,
+                    'host',
+                    'owned Work Room continuation',
+                )
+            return
+
         # Before the whitelist, and before the mode: these decide what this
         # agent may do and who may command it, so no configuration grants them.
         # is_tool_permitted has the same guard, but this is the path the agent's

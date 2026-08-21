@@ -185,6 +185,42 @@ class TestDangerousTools:
         assert io.sent[0]['arguments'] == {'command': 'npm install', 'description': 'Install dependencies'}
         assert io.sent[0]['description'] == 'Install dependencies'
 
+    def test_owned_workroom_continuation_skips_only_outer_codex_approval(self):
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['_provider_direct_approved_tool'] = 'codex'
+        agent.current_session['pending_tool'] = {
+            'name': 'codex',
+            'arguments': {'prompt': 'Continue the owned thread'},
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+        assert '_provider_direct_approved_tool' not in agent.current_session
+
+    def test_workroom_capability_cannot_approve_another_tool_or_later_call(self):
+        io = FakeIO(responses=[
+            {'approved': True, 'scope': 'once'},
+            {'approved': True, 'scope': 'once'},
+        ])
+        agent = FakeAgent(io=io)
+        agent.current_session['_provider_direct_approved_tool'] = 'codex'
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'pwd'},
+        }
+
+        check_approval(agent)
+        agent.current_session['pending_tool'] = {
+            'name': 'codex',
+            'arguments': {'prompt': 'A later unrelated call'},
+        }
+        check_approval(agent)
+
+        assert [event['tool'] for event in io.sent] == ['bash', 'codex']
+        assert '_provider_direct_approved_tool' not in agent.current_session
+
     def test_approved_once_continues(self):
         """Approved with scope=once should continue without saving."""
         io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
