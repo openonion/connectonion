@@ -28,6 +28,7 @@ from ..core.provider_events import (
     next_provider_state_revision,
     provider_activity_event,
     provider_artifact_event,
+    provider_message_event,
     provider_status_summary,
     remember_provider_activity,
     remember_provider_artifact,
@@ -190,6 +191,7 @@ def _run_claude_code(
 
     argv = _stream_command(command, prompt, session_id, permission_mode, model)
     forwarder = _ClaudeStreamForwarder(agent)
+    forwarder.emit_user_message(prompt)
     cancelled = _provider_cancellation_check(agent)
     try:
         completed = _run_process(
@@ -404,7 +406,12 @@ class _ClaudeStreamForwarder:
         )
         self._tools: dict[str, dict[str, Any]] = {}
         self._activity_sequences: dict[str, int] = {}
+        self._messages: dict[str, str] = {}
         self._event_count = 0
+
+    def emit_user_message(self, text: str) -> None:
+        """Publish the initiating prompt only inside a correlated Work Room."""
+        self._emit_message("user:initial", "user", text)
 
     def handle(self, event: dict[str, Any]) -> None:
         if self._io is None or not isinstance(event, dict):
@@ -416,6 +423,22 @@ class _ClaudeStreamForwarder:
             self._user(event)
 
     def _assistant(self, event: dict[str, Any]) -> None:
+        text = "\n".join(
+            block["text"]
+            for block in _content_blocks(event)
+            if block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+            and block["text"].strip()
+        )
+        if text:
+            message = event.get("message")
+            native_id = message.get("id") if isinstance(message, dict) else None
+            stable_id = (
+                _stable_identifier(native_id)
+                if isinstance(native_id, str) and native_id
+                else hashlib.sha256(text.encode("utf-8")).hexdigest()
+            )
+            self._emit_message(f"assistant:{stable_id}", "assistant", text)
         for block in _content_blocks(event):
             if block.get("type") != "tool_use":
                 continue
@@ -457,6 +480,25 @@ class _ClaudeStreamForwarder:
                 _safe_tool_result(block.get("content")),
             )
             self._tools.pop(tool_id, None)
+
+    def _emit_message(self, message_id: str, role: str, text: str) -> None:
+        if not self._correlation:
+            return
+        try:
+            event = provider_message_event(
+                provider="claude_code",
+                invocation_id=self._correlation["invocationId"],
+                parent_tool_call_id=self._correlation["parentToolCallId"],
+                message_id=message_id,
+                role=role,
+                text=text,
+            )
+        except ValueError:
+            return
+        if self._messages.get(message_id) == event["text"]:
+            return
+        self._messages[message_id] = event["text"]
+        self._emit("provider_message", **_without_event_type(event))
 
     def _emit_unknown_start(self, provider_id: str, metadata: dict[str, Any]) -> None:
         metadata["name"] = "Tool"

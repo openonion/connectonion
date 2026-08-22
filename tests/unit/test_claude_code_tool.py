@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -252,6 +252,50 @@ def test_inner_tool_also_emits_a_safe_oip_activity_when_parented():
     }
     assert "private" not in json.dumps(typed.kwargs)
     assert legacy.args == ("tool_call",)
+
+
+def test_parented_claude_stream_emits_attributed_conversation_without_reasoning():
+    agent = SimpleNamespace(
+        io=MagicMock(),
+        current_session={"_active_tool_call_id": "parent-claude-message"},
+    )
+    forwarder = claude_module._ClaudeStreamForwarder(agent)
+
+    forwarder.emit_user_message("Please inspect the reconnect boundary.")
+    assistant = {
+        "type": "assistant",
+        "message": {
+            "id": "msg_01",
+            "content": [
+                {"type": "thinking", "thinking": "private reasoning"},
+                {"type": "text", "text": "I’ll inspect the current flow first."},
+            ],
+        },
+    }
+    forwarder.handle(assistant)
+    forwarder.handle(assistant)
+
+    assert agent.io.log.call_args_list == [
+        call(
+            "provider_message",
+            provider="claude_code",
+            invocationId="claude_code:parent-claude-message",
+            parentToolCallId="parent-claude-message",
+            messageId="user:initial",
+            role="user",
+            text="Please inspect the reconnect boundary.",
+        ),
+        call(
+            "provider_message",
+            provider="claude_code",
+            invocationId="claude_code:parent-claude-message",
+            parentToolCallId="parent-claude-message",
+            messageId="assistant:msg_01",
+            role="assistant",
+            text="I’ll inspect the current flow first.",
+        ),
+    ]
+    assert "private reasoning" not in json.dumps(agent.io.log.call_args_list)
 
 
 def test_duplicate_assistant_messages_do_not_duplicate_tool_cards():
