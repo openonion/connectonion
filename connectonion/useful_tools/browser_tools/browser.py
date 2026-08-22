@@ -3,7 +3,7 @@ Purpose: Natural language browser automation via Patchright (a stealth-patched, 
 LLM-Note:
   Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
   Data flow: a caller binds its session via _bind_session(key) (key None = shared 'main') → every public method hops to ONE dedicated browser worker thread (_runs_on_browser_thread propagates the binding; Playwright's sync API is thread-bound) → _ensure_page gives the session its own tab in the shared context (restored to its remembered URL), then _reclaim_idle_tabs bounds memory (idle-TTL first, then max-tabs LRU — never the active tab) → go_to/newtab record who/purpose/hours on the tab REGISTRY _tab_meta (the first navigation on an unoccupied tab demands purpose+who — direct API/tool callers only; the co browser daemon registers tabs before dispatching) → tab_status renders the board → close_tab releases ONE tab, close() releases the bound tab or tears the whole context down
-  State/Effects: persistent profile at ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
+  State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
   Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
   Performance: browser launch is lazy (first page verb, 1-3s) | persistent context loads the profile instantly | element finding uses a vision LLM (slower but accurate) | auto-save adds ~500ms after critical actions
   Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
@@ -91,6 +91,14 @@ def _no_auto_tab(method):
     """
     method._no_auto_tab = True
     return method
+
+
+def _browser_profile_dir() -> Path:
+    """Resolve an optional isolated Chrome profile without replacing HOME."""
+    configured = os.environ.get("CO_BROWSER_PROFILE_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return Path.home() / ".co" / "browser_profile"
 
 
 # Playwright's sync API binds to the thread that started it and raises
@@ -717,7 +725,7 @@ class BrowserAutomation:
         # Resolve and unlock it BEFORE starting the driver: the profile can be driven by
         # only one browser at a time, so if a live one already owns it we fail fast here —
         # no driver started, nothing to leak.
-        profile_dir = Path.home() / ".co" / "browser_profile"
+        profile_dir = _browser_profile_dir()
         profile_dir.mkdir(parents=True, exist_ok=True)
 
         # A previous Chrome that died uncleanly can leave a SingletonLock that blocks this
@@ -1095,6 +1103,28 @@ class BrowserAutomation:
         humanize.type_text(self.page, text)
         self.page.wait_for_timeout(1000)
         return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
+
+    def fill_text_by_selector(self, selector: str, text: str, index: int = 0) -> str:
+        """Replace an input's value and emit the framework-visible input event.
+
+        Playwright's locator.fill() is intentionally used for controlled React/Vue
+        inputs: it updates the DOM value and dispatches the input event as one atomic
+        action, so a rerender cannot lose focus between humanized keystrokes.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        locator = self.page.locator(selector)
+        count = locator.count()
+        if count == 0:
+            return f"No element found for selector: {selector}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements; index {index} is out of range"
+
+        target = locator.nth(index)
+        target.fill(text)
+        self.page.wait_for_timeout(1000)
+        return f"Filled element {index + 1}/{count} matching selector: {selector}"
 
     def upload_file_by_selector(
         self,

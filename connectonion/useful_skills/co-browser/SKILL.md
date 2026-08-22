@@ -83,6 +83,7 @@ co browser get_links_from_page                    # every link, one per line
 co browser take_screenshot /tmp/page.png          # saves a PNG, prints its path
 co browser click_element_by_selector "button" --index=0 --text="Send message"
 co browser type_text_by_selector "#email" "user@example.com"
+co browser fill_text_by_selector "#invite" --stdin < invite.txt
 co browser scroll                                 # scroll the page (scroll 3 = fewer steps)
 co browser get_current_url
 ```
@@ -94,8 +95,9 @@ its usage line: self-correct from that.
 **Typing into whatever already has focus** — after a `mouse_click` into a field
 that no selector reaches cleanly — is `keyboard_type`, and pressing keys is
 `keyboard_press`. There is **no `type_text`**; that name returns
-"unknown command" and costs a round trip. Use `type_text_by_selector` when a
-selector works, `keyboard_type` when only focus is available.
+"unknown command" and costs a round trip. Use `fill_text_by_selector` to replace
+a controlled input atomically, `type_text_by_selector` for humanized appending
+when a selector works, and `keyboard_type` when only focus is available.
 
 `keyboard_type` **appends** — it does not replace. To overwrite a field: click
 into it, then `keyboard_press "Meta+a"` (macOS) and `keyboard_press "Backspace"`

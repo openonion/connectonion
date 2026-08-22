@@ -15,7 +15,9 @@ or network is needed. The daemon's lazy BrowserAutomation is swapped for the stu
 """
 
 import contextlib
+import io
 import os
+import shlex
 import socket
 import subprocess
 import threading
@@ -459,6 +461,46 @@ def test_handle_browser_no_args_is_usage_error(capsys):
     err = capsys.readouterr().err
     assert code == 2                     # usage error, matching the documented exit-code contract
     assert "co browser [-t TAB] <function>" in err
+
+
+def test_type_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "type_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "type_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
+def test_fill_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "fill_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "fill_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
+def test_stdin_text_is_restricted_to_text_entry_commands(monkeypatch, capsys):
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("secret"))
+    assert bc.handle_browser(["go_to", "--stdin"]) == 2
+    assert "--stdin is only supported" in capsys.readouterr().err
 
 
 # ---- full socket round-trip: client.send() ↔ daemon ----------------------
