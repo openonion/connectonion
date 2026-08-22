@@ -208,6 +208,7 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 
 - One browser per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
 - The daemon endpoint: a Unix socket under `$XDG_RUNTIME_DIR/co/browser.sock` on macOS/Linux, a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`.
+- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
 
 ## Error Messages
 
