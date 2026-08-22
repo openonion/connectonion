@@ -479,6 +479,22 @@ def test_type_text_can_read_secret_from_stdin_without_argv(monkeypatch):
     assert captured["tab"] == "release"
 
 
+def test_fill_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "fill_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "fill_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
 def test_stdin_text_is_restricted_to_text_entry_commands(monkeypatch, capsys):
     from connectonion.cli.commands import browser_commands as bc
 

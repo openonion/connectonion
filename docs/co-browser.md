@@ -157,7 +157,7 @@ co browser get_links_from_page                   # every link, one per line
 co browser take_screenshot                       # saves a PNG, prints its path
 co browser click_element_by_selector "#submit"   # deterministic click by CSS selector
 co browser type_text_by_selector "#email" "aaron@example.com"
-co browser type_text_by_selector "#invite" --stdin < invite.txt  # keep secrets out of argv
+co browser fill_text_by_selector "#invite" --stdin < invite.txt  # controlled input; keep secrets out of argv
 co browser save_state auth.json                  # export cookies/localStorage (keep it secret!)
 ```
 

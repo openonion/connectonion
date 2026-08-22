@@ -1104,6 +1104,28 @@ class BrowserAutomation:
         self.page.wait_for_timeout(1000)
         return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
 
+    def fill_text_by_selector(self, selector: str, text: str, index: int = 0) -> str:
+        """Replace an input's value and emit the framework-visible input event.
+
+        Playwright's locator.fill() is intentionally used for controlled React/Vue
+        inputs: it updates the DOM value and dispatches the input event as one atomic
+        action, so a rerender cannot lose focus between humanized keystrokes.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        locator = self.page.locator(selector)
+        count = locator.count()
+        if count == 0:
+            return f"No element found for selector: {selector}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements; index {index} is out of range"
+
+        target = locator.nth(index)
+        target.fill(text)
+        self.page.wait_for_timeout(1000)
+        return f"Filled element {index + 1}/{count} matching selector: {selector}"
+
     def upload_file_by_selector(
         self,
         selector: str,

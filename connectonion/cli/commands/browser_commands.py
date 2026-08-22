@@ -26,7 +26,7 @@ USAGE = (
     "  co browser tab close <NAME>              release your tab when the task is done\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser help                          list every browser function\n"
-    "  printf secret | co browser type_text_by_selector '#field' --stdin\n"
+    "  printf secret | co browser fill_text_by_selector '#field' --stdin\n"
     "\n"
     "One task = one tab. Solo use needs no -t at all. Running several agents on this\n"
     "browser? Each opens its own tab once, adds -t <name> to EVERY command (including\n"
@@ -105,8 +105,8 @@ def handle_browser(args, headless: bool = False) -> int:
         print(USAGE + "\n\nFunctions:\n" + list_functions())
         return 0
     if args[-1] == "--stdin":
-        if args[0] not in ("type_text_by_selector", "keyboard_type"):
-            print("--stdin is only supported by type_text_by_selector and keyboard_type", file=sys.stderr)
+        if args[0] not in ("fill_text_by_selector", "type_text_by_selector", "keyboard_type"):
+            print("--stdin is only supported by fill_text_by_selector, type_text_by_selector, and keyboard_type", file=sys.stderr)
             return 2
         if sys.stdin.isatty():
             print("--stdin needs piped or redirected text", file=sys.stderr)
