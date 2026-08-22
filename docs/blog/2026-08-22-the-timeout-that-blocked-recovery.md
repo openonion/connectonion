@@ -20,8 +20,9 @@ open and could be recovered by stopping the load.
 
 The daemon now returns a browser timeout without immediately asking the same
 browser another synchronous question. It records that a context existed and
-accepts the next command. Launch failures and later dead-context checks keep
-their previous behavior.
+accepts the recovery command sequence without inserting that probe between
+steps. A fresh successful navigation restores normal liveness checks; explicit
+closure and closed-target errors still release the daemon immediately.
 
 The regression makes the old trap explicit. A fake page command raises
 `TimeoutError`; its liveness method fails if called before recovery; the next

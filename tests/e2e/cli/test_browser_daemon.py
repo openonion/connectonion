@@ -550,6 +550,9 @@ class TimedOutNavigationBrowser(StubBrowser):
         self.recovered = True
         return f"Pressed {key}"
 
+    def get_current_url(self) -> str:
+        return "http://127.0.0.1:3100"
+
     def _context_is_alive(self) -> bool:
         self.liveness_calls += 1
         if not self.recovered:
@@ -572,10 +575,11 @@ def test_navigation_timeout_keeps_daemon_available_for_recovery(short_sock, monk
     assert c.send("keyboard_press Escape", headless=True) == 0
     assert capsys.readouterr().out.strip() == "Pressed Escape"
     assert browser.recovered is True
-    deadline = time.time() + 1
-    while browser.liveness_calls == 0 and time.time() < deadline:
-        time.sleep(0.01)
-    assert browser.liveness_calls == 1
+    assert browser.liveness_calls == 0
+
+    assert c.send("get_current_url", headless=True) == 0
+    assert capsys.readouterr().out.strip() == "http://127.0.0.1:3100"
+    assert browser.liveness_calls == 0
 
 
 class LaunchFailBrowser(StubBrowser):

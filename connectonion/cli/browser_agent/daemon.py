@@ -218,6 +218,7 @@ class BrowserDaemon:
         # stopping" from "the socket broke while we were meant to be serving".
         self._closing = False
         self._had_browser = False
+        self._defer_context_probe = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
         self._next_tab = 1        # id allocator for auto-named tabs
 
@@ -652,7 +653,32 @@ class BrowserDaemon:
             # it. Launch failures are handled above by _launch_failed().
             if ok is False and payload.startswith("TimeoutError:"):
                 self._had_browser = True
+                self._defer_context_probe = True
                 continue
+
+            # Recovery often takes more than one command: Escape, inspect the
+            # URL, screenshot, then query the DOM. Inserting the same synchronous
+            # context probe between any two of them recreates the deadlock. Stay
+            # in this bounded recovery window until a fresh navigation settles.
+            # Explicit closure and a closed-target error still release the socket
+            # immediately without another browser round trip.
+            if self._defer_context_probe:
+                closed = (
+                    payload == "Browser closed"
+                    or (
+                        ok is False
+                        and (
+                            payload.startswith("TargetClosedError:")
+                            or "context or browser has been closed" in payload
+                        )
+                    )
+                )
+                if self.browser._launch_failed() or closed:
+                    break
+                if ok is True and payload.startswith("Navigated to "):
+                    self._defer_context_probe = False
+                else:
+                    continue
 
             # Exit (releasing the socket) when the browser can no longer be driven, so the
             # next command spawns a fresh daemon instead of reusing a dead one. This is a
