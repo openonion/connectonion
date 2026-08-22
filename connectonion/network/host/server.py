@@ -117,6 +117,9 @@ def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     Returns YAML config dict if trust is a level or file path, None otherwise.
     Used to extract onboard info for /info endpoint.
     """
+    if isinstance(trust, TrustAgent):
+        return trust.config
+
     if not isinstance(trust, str):
         return None
 

@@ -36,6 +36,21 @@ Restarting `co ai` keeps the same invite, so clients already given the code are
 not locked out. An explicit `CO_INVITE_CODE` in the current project or process
 continues to take precedence.
 
+For a clean test run, provide an invite that exists only for that Host process:
+
+```bash
+co ai --invite-code-file /path/to/private-invite
+```
+
+`--invite-code-file` is recommended for automation because the value does not
+appear in shell history or the process argument list. The file should be
+readable only by its owner. `--invite-code <code>` is also available for an
+interactive local run. Both forms override `CO_INVITE_CODE` in memory without
+changing `.env`, `~/.co/keys.env`, `host.yaml`, or the process environment.
+They are web-server options only and cannot be combined with a one-shot prompt.
+Successful onboarding still creates the normal durable contact; only the
+temporary way into that Host disappears when `co ai` exits.
+
 The published `@connectonion/react` package owns the browser OIP client, browser
 identity, onboarding, reconnect, approvals, and session normalization. O Chat
 pins one exact preview version. The Host advertises OIP 0.1 in `CONNECTED`; an
@@ -89,6 +104,8 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 | `--eval` | | off | Debug a task with two extra model calls that score completion |
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
+| `--invite-code` | | | Use an in-memory invite for this web-server run |
+| `--invite-code-file` | | | Read this run's invite from a private file (recommended for automation) |
 
 ```bash
 co ai --port 9000
@@ -96,6 +113,7 @@ co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --full-access "Fix the failing suite" --full-access-turns 20
 co ai --eval "Check whether this agent really completed the task"
+co ai --invite-code-file /path/to/private-invite
 ```
 
 ## Full access (`--full-access`)

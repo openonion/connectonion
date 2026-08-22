@@ -110,6 +110,7 @@ def start_server(
     full_access: bool = False,
     full_access_turns: int = 100,
     agent_factory=None,
+    invite_code: str = None,
 ):
     """Start AI coding agent web server.
 
@@ -121,6 +122,7 @@ def start_server(
         full_access: Whether bounded Full access is configured
         full_access_turns: User-driven turns before Full access expires
         agent_factory: Reserved configured factory for hosted sessions
+        invite_code: Optional in-memory invite for this server invocation
 
     The server will be accessible at:
     - POST http://localhost:{port}/input
@@ -132,12 +134,16 @@ def start_server(
 
     # Use global ~/.co/ for consistent identity across all co ai sessions.
     co_dir = Path.home() / ".co"
-    if _prepare_owner_onboarding(co_dir):
+    if invite_code is None and _prepare_owner_onboarding(co_dir):
         from ..commands.project_cmd_lib import console
 
         console.print(
             "[green]Owner invite created.[/green] Run [bold]co keys --reveal[/bold] when onboarding your client."
         )
+    elif invite_code is not None:
+        from ..commands.project_cmd_lib import ensure_global_config
+
+        ensure_global_config()
     load_host_config(co_dir)
     addr_data = address.load(co_dir)
 
@@ -158,4 +164,9 @@ def start_server(
 
     # The first-party browser speaks OIP over /ws. Native Codex and Claude Code
     # delegation stay inside the Agent as provider adapters.
-    host(agent, port=port, trust="careful", co_dir=co_dir)
+    trust = "careful"
+    if invite_code is not None:
+        from ...network.trust import TrustAgent
+
+        trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
+    host(agent, port=port, trust=trust, co_dir=co_dir)

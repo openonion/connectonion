@@ -373,6 +373,12 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
+    invite_code: Optional[str] = typer.Option(
+        None, "--invite-code", help="Invite code for this web-server run only"
+    ),
+    invite_code_file: Optional[Path] = typer.Option(
+        None, "--invite-code-file", help="Read this run's invite code from a file"
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -386,6 +392,8 @@ def ai(
         evaluate=evaluate,
         json_output=json_output,
         resume=resume,
+        invite_code=invite_code,
+        invite_code_file=invite_code_file,
     )
 
 
