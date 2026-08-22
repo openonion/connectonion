@@ -1,31 +1,34 @@
 # The Workroom Lost the Conversation
 
-A Workroom could already show that Claude Code was running. It could list safe
-tool summaries and files, yet the two most basic parts of the exchange were
-missing: what the user asked and what Claude answered. The same UI appeared to
-work for Codex only because Codex had a separate message path. We had built one
-Workroom with two different definitions of a conversation.
+During the 1.7 beta review, I opened a Claude Code Workroom and saw all the
+signs of a healthy run. The header said Working. A green dot moved beside the
+current task. Safe tool summaries arrived in order. But the middle of the room
+was empty. I could not see what I had asked Claude to do, or what Claude had
+said back.
 
-The fix belongs at the provider boundary. After a native Codex turn actually
-starts, Core now publishes the initiating user message with the invocation that
-owns it. Claude Code publishes the same initiating message and the text blocks
-from its assistant stream. Both providers therefore use the same OIP
-`provider_message` contract, and clients no longer need to infer conversation
-content from tool calls or terminal output.
+Codex did not have this problem, which initially made the bug look like a small
+Claude rendering omission. Following the events backwards told a different
+story. The UI had quietly defined “conversation” as “the messages on Codex's
+direct-input path.” Claude was streaming perfectly good assistant text, but the
+shared Workroom had no shared definition of a provider message.
 
-That boundary also protects information that should not become interface copy.
-Claude thinking blocks are not assistant messages. Tool inputs and raw output
-are not assistant messages either. The adapter extracts only attributed text,
-bounds it through the shared event constructor, assigns stable native IDs when
-available, and deduplicates normalized updates. A reconnect can replay the same
-provider event without duplicating the transcript.
+The tempting fix was to make the UI recognize one more provider. That would
+have filled today's blank space and preserved tomorrow's architecture bug. We
+instead moved the decision to the boundary where provider output first becomes
+OIP state. Codex and Claude now identify the same two facts—the user's request
+and the provider's attributed reply—with the same message contract. The
+Workroom only has to display the truth it receives.
 
-The focused provider suite passes 153 tests. The paired O Chat browser test
-shows a Claude Code Workroom with its task, Working state, current summary,
-user message, and assistant message. It also verifies that the UI does not
-invent Codex's direct composer for a provider that has not exposed that input
-capability.
+That raised the harder question: what counts as a reply? Claude's stream mixes
+visible prose with thinking blocks, tool inputs, and raw tool output. Sending
+everything would make the room feel busy, but it would also expose material the
+user did not ask to read. We chose the narrower boundary: only attributed text
+becomes conversation. Tool work remains visible through its short summary, and
+private reasoning remains private. Stable message identities also let a
+reconnect replay events without making Claude appear to repeat itself.
 
-A unified client does not require every provider to have identical controls.
-It requires identical facts to travel through one contract, while native
-capabilities remain honest at the edges.
+The final browser view looks almost uneventful: a task, a Working state, one
+user bubble, and one Claude reply. That calm result is the point. A unified
+client does not make every provider pretend to have the same controls. It gives
+the facts they share one honest path, and leaves provider-specific capabilities
+at the edges where they belong.
