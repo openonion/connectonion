@@ -298,6 +298,52 @@ def test_parented_claude_stream_emits_attributed_conversation_without_reasoning(
     assert "private reasoning" not in json.dumps(agent.io.log.call_args_list)
 
 
+def test_direct_claude_turn_uses_request_message_id_and_acknowledges_after_start(tmp_path):
+    agent = SimpleNamespace(
+        io=MagicMock(),
+        current_session={
+            "_active_tool_call_id": "parent-claude-direct",
+            "_provider_workroom_id": "claude_code:root",
+            "_provider_continuation_of": "claude_code:source",
+            "_provider_direct_message": "Continue the reconnect work.",
+            "_provider_direct_message_id": "request-7",
+            "_provider_direct_state_revision": 4,
+        },
+    )
+    with patch.object(claude_module, "_base_command", return_value=["claude"]), patch.object(
+        claude_module, "_run_process", return_value=_completed()
+    ) as run:
+        claude_module._run_claude_code(
+            prompt="Continue the reconnect work.",
+            cwd=str(tmp_path),
+            agent=agent,
+            workspace=tmp_path,
+        )
+
+    agent.io.log.assert_not_called()
+    agent.io.send.assert_not_called()
+    run.call_args.kwargs["on_started"]()
+
+    agent.io.log.assert_called_once_with(
+        "provider_message",
+        provider="claude_code",
+        invocationId="claude_code:parent-claude-direct",
+        parentToolCallId="parent-claude-direct",
+        messageId="user:request-7",
+        role="user",
+        text="Continue the reconnect work.",
+        workroomId="claude_code:root",
+        continuationOf="claude_code:source",
+    )
+    agent.io.send.assert_called_once_with({
+        "type": "PROVIDER_INPUT_ACK",
+        "requestId": "request-7",
+        "invocationId": "claude_code:source",
+        "accepted": True,
+        "stateRevision": 4,
+    })
+
+
 def test_duplicate_assistant_messages_do_not_duplicate_tool_cards():
     agent = _agent()
     forwarder = claude_module._ClaudeStreamForwarder(agent)

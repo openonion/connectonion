@@ -414,13 +414,14 @@ def check_approval(agent: 'Agent') -> None:
 
         # A completed Work Room continuation has already passed the Host's
         # owner + durable revision checks.  Consume its internal capability at
-        # the first tool boundary and bypass only the outer Codex wrapper.  It
+        # the first tool boundary and bypass only the outer supported provider
+        # wrapper.  It
         # cannot authorize an arbitrary tool, cannot survive for a later call,
-        # and does not affect Codex's own command/file approval protocol.
+        # and does not affect the provider's own command/file approval protocol.
         direct_tool = agent.current_session.pop(
             '_provider_direct_approved_tool', None
         )
-        if direct_tool == tool_name == 'codex':
+        if direct_tool == tool_name and tool_name in {'codex', 'claude_code'}:
             if getattr(getattr(agent, 'logger', None), 'console', None):
                 agent.logger.console.log_permission_granted(
                     tool_name,

@@ -1,10 +1,10 @@
-"""Direct, owned Codex Work Room continuation for a hosted OIP session.
+"""Direct, owned provider Work Room continuation for a hosted OIP session.
 
 This module is deliberately narrower than a generic tool-execution endpoint:
-it can resume only a Codex thread already recorded in the caller's own durable
-session.  The browser supplies text and correlation IDs, never a local path,
-provider session ID, model, sandbox, or tool name.  The configured agent plugin
-continues to own those execution boundaries.
+it can resume only a supported provider session already recorded in the
+caller's own durable session.  The browser supplies text and correlation IDs,
+never a local path, provider session ID, model, sandbox, or tool name.  The
+configured agent plugin continues to own those execution boundaries.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _MAX_INPUT_LENGTH = 12_000
 
 
 class _ProviderWorkroomUnavailable(RuntimeError):
-    """The requested owned Codex continuation cannot be claimed."""
+    """The requested owned provider continuation cannot be claimed."""
 
 
 def prepare_provider_workroom_turn(
@@ -35,7 +35,7 @@ def prepare_provider_workroom_turn(
     *,
     host_full_access_turns_ceiling: int | None = None,
 ) -> dict[str, Any]:
-    """Claim an owned terminal Codex thread and return a native-only runner."""
+    """Claim an owned terminal provider session and return a native-only runner."""
     if not _valid_id(invocation_id) or not _valid_id(request_id):
         return {"reason": "invalid_request"}
     if (
@@ -60,7 +60,7 @@ def prepare_provider_workroom_turn(
             or current.status in SessionStorage.UNFINISHED
         ):
             return current
-        source = _codex_source(current.session, invocation_id)
+        source = _provider_source(current.session, invocation_id)
         if not source:
             return current
         return current.model_copy(update={"status": "running"})
@@ -73,6 +73,7 @@ def prepare_provider_workroom_turn(
         return {"reason": "not_active"}
 
     source_session_id = source["sessionId"]
+    provider = source["provider"]
     workroom_id = source.get("workroomId") or invocation_id
     source_revision = source.get("stateRevision")
 
@@ -96,8 +97,9 @@ def prepare_provider_workroom_turn(
                 text.strip(),
                 request_id,
                 source_revision,
+                provider,
             )
-            agent.execute_tool("codex", {
+            agent.execute_tool(provider, {
                 "prompt": text.strip(),
                 "cwd": "",
                 "session_id": source_session_id,
@@ -114,7 +116,7 @@ def prepare_provider_workroom_turn(
     return {"run": run, "stateRevision": source_revision}
 
 
-def _codex_source(session: object, invocation_id: str) -> dict[str, Any]:
+def _provider_source(session: object, invocation_id: str) -> dict[str, Any]:
     if not isinstance(session, dict):
         return {}
     trace = session.get("trace")
@@ -125,7 +127,7 @@ def _codex_source(session: object, invocation_id: str) -> dict[str, Any]:
         if isinstance(event, dict)
         and event.get("type") == "provider_invocation"
         and event.get("invocationId") == invocation_id
-        and event.get("provider") == "codex"
+        and event.get("provider") in {"codex", "claude_code"}
         and event.get("status") in _TERMINAL_PROVIDER_STATUSES
         and _valid_id(event.get("sessionId"))
     ]
@@ -150,6 +152,7 @@ def _direct_session(
     text: str,
     request_id: str,
     state_revision: int,
+    provider: str,
 ) -> dict[str, Any]:
     """Construct the minimum session a configured native tool needs to run."""
     return {
@@ -170,9 +173,10 @@ def _direct_session(
         "_provider_direct_state_revision": state_revision,
         # Ownership and the terminal source revision were validated while the
         # durable session lock was held.  Let the approval plugin consume this
-        # one-shot capability for the outer Codex wrapper only; Codex-native
-        # command and file approvals still travel through ``agent.io``.
-        "_provider_direct_approved_tool": "codex",
+        # one-shot capability for the outer native-provider wrapper only;
+        # provider-native command and file approvals still travel through
+        # ``agent.io``.
+        "_provider_direct_approved_tool": provider,
     }
 
 

@@ -185,12 +185,13 @@ class TestDangerousTools:
         assert io.sent[0]['arguments'] == {'command': 'npm install', 'description': 'Install dependencies'}
         assert io.sent[0]['description'] == 'Install dependencies'
 
-    def test_owned_workroom_continuation_skips_only_outer_codex_approval(self):
+    @pytest.mark.parametrize('provider_tool', ['codex', 'claude_code'])
+    def test_owned_workroom_continuation_skips_only_outer_provider_approval(self, provider_tool):
         io = FakeIO()
         agent = FakeAgent(io=io)
-        agent.current_session['_provider_direct_approved_tool'] = 'codex'
+        agent.current_session['_provider_direct_approved_tool'] = provider_tool
         agent.current_session['pending_tool'] = {
-            'name': 'codex',
+            'name': provider_tool,
             'arguments': {'prompt': 'Continue the owned thread'},
         }
 
