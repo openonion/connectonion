@@ -740,7 +740,10 @@ class Agent:
 
         # Record llm_result AFTER LLM completes (streams to client)
         # Convert usage to dict for JSON serialization (Pydantic objects need model_dump())
-        usage_dict = response.usage.model_dump() if response.usage else None
+        usage_dict = (
+            response.usage.model_dump(exclude_none=True)
+            if response.usage else None
+        )
         self._record_trace({
             'type': 'llm_result',
             'id': llm_id,
