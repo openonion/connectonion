@@ -52,6 +52,8 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
+  html, body { max-width: 100%; overflow-x: clip; }
+  main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
   main { width: min(100%, 860px); margin: 0 auto; }
   button, input, summary { font: inherit; }
   button, summary { min-height: 44px; }
@@ -86,10 +88,6 @@
   }
 
   .now { display: flex; align-items: flex-start; gap: 11px; }
-  .status-dot {
-    flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px;
-    background: var(--cc-accent); box-shadow: 0 0 0 5px var(--cc-accent-soft);
-  }
   .now strong { display: block; font-size: 15px; }
   .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
 
@@ -102,9 +100,9 @@
 
   .skill {
     position: relative; display: flex; flex-direction: column; justify-content: center;
-    width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
+    width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
     border: 0; border-radius: var(--cc-radius-sm); background: transparent;
-    color: var(--cc-text); cursor: pointer; text-align: left;
+    color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
   }
   .skill::after {
     content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
@@ -115,7 +113,7 @@
   .skill:active { background: var(--cc-accent-soft); }
   .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
   .skill .desc {
-    margin-top: 2px; color: var(--cc-muted); font-size: 12px;
+    min-width: 0; max-width: 100%; margin-top: 2px; color: var(--cc-muted); font-size: 12px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .skill .desc:empty { display: none; }
@@ -201,9 +199,9 @@
     </header>
 
     <div class="grid overview">
-      <section class="card card-pad" aria-labelledby="now-title">
-        <h2 class="section-title" id="now-title">Now</h2>
-        <div class="now"><span class="status-dot" aria-hidden="true"></span><div><strong>Ready</strong><p>Available for a new task.</p></div></div>
+      <section class="card card-pad" aria-labelledby="workspace-title">
+        <h2 class="section-title" id="workspace-title">Workspace</h2>
+        <div class="now"><div><strong>Use Chat for live status</strong><p>Current tasks, approvals, and results stay in the conversation.</p></div></div>
       </section>
 $quick_actions
     </div>
