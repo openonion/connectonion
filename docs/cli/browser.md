@@ -83,12 +83,13 @@ co browser get_text                        # print visible page text
 co browser take_screenshot /tmp/shot.png [--full-page]
 co browser click "<description or selector>"
 co browser type_text_by_selector <css> "<text>"
+co browser type_text_by_selector <css> --stdin < secret.txt  # secret stays out of argv
 co browser get_links_from_page             # one link per line
 co browser scroll                          # scroll the main content
 co browser close                           # close browser, stop daemon
 ```
 
-Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters.
+Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters. For `type_text_by_selector` and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments.
 
 > **Use absolute paths for files.** The daemon resolves relative paths against *its own* working directory (where it was first started), not the directory you run each command from. `take_screenshot /tmp/shot.png` is predictable; a bare `shot.png` lands in the daemon's `.tmp/` folder.
 
