@@ -34,37 +34,30 @@
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Sub-Agent Factory                                 │
-│                   (registry.py)                                      │
+│                    Subagents Plugin                                  │
+│              (useful_plugins/subagents.py)                           │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ SUBAGENTS = {                                                 │  │
-│  │   "explore": {                                                │  │
-│  │     "description": "Fast codebase exploration",               │  │
-│  │     "tools": [FileTools],  # glob, grep, read_file only      │  │
-│  │     "model": "co/gemini-3.7-flash",  # Fast & cheap          │  │
-│  │     "max_iterations": 15,                                     │  │
-│  │   },                                                          │  │
-│  │   "plan": {                                                   │  │
-│  │     "description": "Design implementation plans",             │  │
-│  │     "tools": [FileTools],  # Read-only                       │  │
-│  │     "model": "co/gemini-3.7-flash",  # Smart                   │  │
-│  │     "max_iterations": 10,                                     │  │
-│  │   },                                                          │  │
-│  │ }                                                             │  │
+│  │ Discovery order:                                              │  │
+│  │   1. .co/agents/{agent_type}/AGENT.md                         │  │
+│  │   2. ~/.co/agents/{agent_type}/AGENT.md                       │  │
+│  │   3. useful_plugins/builtin_agents/{agent_type}/AGENT.md      │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                       │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ def get_subagent(agent_type):                                 │  │
-│  │   config = SUBAGENTS[agent_type]                              │  │
-│  │   prompt = load_prompt(f"agents/{agent_type}.md")            │  │
-│  │   return Agent(                                               │  │
-│  │     name=f"oo-{agent_type}",                                  │  │
-│  │     tools=config["tools"],                                    │  │
-│  │     plugins=[],  # NO plugins!                                │  │
-│  │     system_prompt=prompt,                                     │  │
-│  │     model=config["model"],                                    │  │
-│  │     max_iterations=config["max_iterations"]                   │  │
+│  │ def task(agent, prompt, agent_type):                          │  │
+│  │   config = _load_agent(agent_type)                            │  │
+│  │   tools = _resolve_tools(                                     │  │
+│  │     config["frontmatter"]["tools"], agent_type                │  │
 │  │   )                                                           │  │
+│  │   sub_agent = Agent(                                          │  │
+│  │     name=f"sub-{agent_type}",                                 │  │
+│  │     tools=tools,                                              │  │
+│  │     plugins=[],  # NO plugins!                                │  │
+│  │     system_prompt=config["system_prompt"],                    │  │
+│  │     model=config["frontmatter"]["model"],                     │  │
+│  │     max_iterations=config["frontmatter"]["max_iterations"]    │  │
+│  │   )                                                           │  │
+│  │   return sub_agent.input(prompt)                              │  │
 │  └───────────────────────┬───────────────────────────────────────┘  │
 └────────────────────────────┼────────────────────────────────────────┘
                              │ (2) Creates fresh Agent instance
@@ -73,8 +66,8 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      Sub-Agent (Explore)                             │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ Name: "oo-explore"                                            │  │
-│  │ System Prompt: prompts/agents/explore.md                      │  │
+│  │ Name: "sub-explore"                                           │  │
+│  │ System Prompt: builtin_agents/explore/AGENT.md                │  │
 │  │   ┌────────────────────────────────────────────────────────┐  │  │
 │  │   │ # Explore Agent                                        │  │  │
 │  │   │ ## CRITICAL: READ-ONLY MODE                            │  │  │
@@ -213,7 +206,7 @@ Main Agent Log: ~/.co/logs/coder.log
 │  └─ Result: "## Files Found..."
 └─ Turn 1 complete
 
-Sub-Agent Log: ~/.co/logs/oo-explore.log (separate file)
+Sub-Agent Log: ~/.co/logs/sub-explore.log (separate file)
 ├─ Turn 1: User input "Find all files with auth..."
 ├─ Tool 1: glob("**/*auth*")
 ├─ Tool 2: grep("login|session|jwt")
@@ -221,7 +214,7 @@ Sub-Agent Log: ~/.co/logs/oo-explore.log (separate file)
 └─ Turn 1 complete: "## Files Found..."
 
 Main Agent Eval: ~/.co/evals/coder.yaml
-Sub-Agent Eval: ~/.co/evals/oo-explore.yaml (separate file)
+Sub-Agent Eval: ~/.co/evals/sub-explore.yaml (separate file)
 ```
 
 ## Communication Protocol
@@ -239,7 +232,7 @@ Main Agent                    task() function                Sub-Agent
     │  )                          │                             │
     ├─────────────────────────────>│                             │
     │                              │                             │
-    │                              │  get_subagent("explore")    │
+    │                              │  _load_agent("explore")     │
     │                              │  Creates Agent instance     │
     │                              ├─────────────────────────────>│
     │                              │                             │
