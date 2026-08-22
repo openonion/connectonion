@@ -535,6 +535,49 @@ def test_socket_round_trip_error_to_stderr(short_sock, monkeypatch, capsys):
     assert "unknown command: frobnicate" in err
 
 
+class TimedOutNavigationBrowser(StubBrowser):
+    """A timed-out page is recoverable, but a post-timeout round trip deadlocks it."""
+
+    def __init__(self):
+        super().__init__()
+        self.recovered = False
+        self.liveness_calls = 0
+
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        raise TimeoutError("Page.goto: Timeout 30000ms exceeded.")
+
+    def keyboard_press(self, key: str) -> str:
+        self.recovered = True
+        return f"Pressed {key}"
+
+    def _context_is_alive(self) -> bool:
+        self.liveness_calls += 1
+        if not self.recovered:
+            raise AssertionError("post-timeout liveness probe would block")
+        return True
+
+
+def test_navigation_timeout_keeps_daemon_available_for_recovery(short_sock, monkeypatch, capsys):
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+    browser = TimedOutNavigationBrowser()
+    daemon = make_daemon(sock_path, stub=browser)
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(sock_path)
+
+    assert c.send("go_to http://127.0.0.1:3100", headless=True) == 1
+    assert "TimeoutError: Page.goto" in capsys.readouterr().err
+    assert browser.liveness_calls == 0
+
+    assert c.send("keyboard_press Escape", headless=True) == 0
+    assert capsys.readouterr().out.strip() == "Pressed Escape"
+    assert browser.recovered is True
+    deadline = time.time() + 1
+    while browser.liveness_calls == 0 and time.time() < deadline:
+        time.sleep(0.01)
+    assert browser.liveness_calls == 1
+
+
 class LaunchFailBrowser(StubBrowser):
     """A browser whose launch aborts (e.g. Chrome SIGABRT): commands raise a huge
     patchright-style Call log, the context never comes up, and _launch_failed is True."""

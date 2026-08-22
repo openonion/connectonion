@@ -641,6 +641,19 @@ class BrowserDaemon:
             finally:
                 conn.close()
 
+            # A Playwright timeout proves the context existed, but not that it is
+            # currently safe to round-trip through. In particular, Page.goto can
+            # time out while Chromium is still trying to settle the navigation.
+            # Calling _context_is_alive() immediately submits context.cookies() to
+            # that same single browser worker and can block the daemon before it
+            # accepts the recovery command (Escape, inspect, screenshot, close).
+            # Keep the request boundary honest: return this timeout to its caller,
+            # remember that a browser did exist, and let the next command recover
+            # it. Launch failures are handled above by _launch_failed().
+            if ok is False and payload.startswith("TimeoutError:"):
+                self._had_browser = True
+                continue
+
             # Exit (releasing the socket) when the browser can no longer be driven, so the
             # next command spawns a fresh daemon instead of reusing a dead one. This is a
             # SHARED-context decision, not a per-session one: a command on a page-less tab
