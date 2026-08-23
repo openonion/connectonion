@@ -107,7 +107,7 @@ def test_commit_fails_closed_for_wrong_owner_stale_state_or_host_ceiling(
     assert error.value.code == code
 
 
-def test_full_access_requires_operator_and_separate_confirmation(tmp_path):
+def test_full_access_requires_separate_confirmation(tmp_path):
     storage = _storage(tmp_path, mode="full-access")
     with pytest.raises(ProviderPermissionError) as error:
         commit_provider_permission(
@@ -135,8 +135,29 @@ def test_full_access_requires_operator_and_separate_confirmation(tmp_path):
     assert accepted["providerPermission"]["activeOptionId"] == "codex:full-access"
 
 
-def test_non_operator_cannot_change_a_provider_profile(tmp_path):
-    storage = _storage(tmp_path, requester_level="contact")
+@pytest.mark.parametrize("requester_level", ["contact", "whitelist", "admin"])
+def test_authenticated_session_actor_can_change_its_own_provider_profile(
+    tmp_path, requester_level,
+):
+    storage = _storage(tmp_path, requester_level=requester_level)
+    accepted = commit_provider_permission(
+        storage,
+        "owned-session",
+        "0xowner",
+        "codex:call-7",
+        4,
+        "codex:read-only",
+        request_id="permission-1",
+        confirm_risk=False,
+    )
+    assert accepted["providerPermission"]["activeOptionId"] == "codex:read-only"
+
+
+@pytest.mark.parametrize("requester_level", ["stranger", "blocked", None])
+def test_untrusted_or_missing_session_actor_cannot_change_a_provider_profile(
+    tmp_path, requester_level,
+):
+    storage = _storage(tmp_path, requester_level=requester_level)
     with pytest.raises(ProviderPermissionError) as error:
         commit_provider_permission(
             storage,
