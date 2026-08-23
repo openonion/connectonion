@@ -48,6 +48,9 @@ from connectonion.useful_plugins import (
     tool_approval,
 )
 from connectonion.useful_plugins.skills import skills as skills_plugin
+from connectonion.useful_plugins.tool_approval.policy import (
+    managed_delegation_permission,
+)
 
 from .context import load_project_context
 from .plugins import native_coding_agent_routing, system_reminder
@@ -76,12 +79,7 @@ def grant_managed_delegation_permissions(agent: Agent) -> None:
     """
     permissions = agent.current_session.setdefault('permissions', {})
     for tool_name in ('codex', 'claude_code'):
-        permissions.setdefault(tool_name, {
-            'allowed': True,
-            'source': 'safe',
-            'reason': 'managed delegation owns inner approval',
-            'expires': {'type': 'never'},
-        })
+        permissions.setdefault(tool_name, managed_delegation_permission())
 
 
 def agent_name(co_dir: Path = Path(".co")) -> str:

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from connectonion.cli.co_ai.agent import grant_managed_delegation_permissions
 from connectonion.useful_plugins.tool_approval import check_approval, tool_approval
 from connectonion.useful_plugins.tool_approval.policy import (
     POLICY_ID,
@@ -163,6 +164,58 @@ def test_broad_config_cannot_silently_turn_deploy_into_auto(tmp_path, monkeypatc
     })
 
     result = call(instance, "bash", {"command": "co deploy"})
+
+    assert result["decision"] == "ask"
+    assert instance.io.sent[0]["type"] == "approval_needed"
+
+
+@pytest.mark.parametrize("provider_tool", ["codex", "claude_code"])
+def test_auto_honors_only_the_exact_co_ai_managed_delegation_grant(
+    tmp_path, monkeypatch, provider_tool
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent()
+    grant_managed_delegation_permissions(instance)
+
+    result = call(instance, provider_tool, {
+        "prompt": "Create and test the requested project",
+        "cwd": ".",
+    })
+
+    assert result["decision"] == "allow"
+    assert result["effect_class"] == "managed_delegation"
+    assert instance.io.sent == []
+
+
+@pytest.mark.parametrize(
+    "permission",
+    [
+        {
+            "allowed": True,
+            "source": "config",
+            "reason": "managed delegation owns inner approval",
+            "expires": {"type": "never"},
+        },
+        {
+            "allowed": True,
+            "source": "safe",
+            "reason": "arbitrary safe grant",
+            "expires": {"type": "never"},
+        },
+        {
+            "allowed": True,
+            "source": "safe",
+            "reason": "managed delegation owns inner approval",
+        },
+    ],
+)
+def test_auto_does_not_treat_near_match_claude_grants_as_managed_delegation(
+    tmp_path, monkeypatch, permission
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(permissions={"claude_code": permission})
+
+    result = call(instance, "claude_code", {"prompt": "inspect", "cwd": "."})
 
     assert result["decision"] == "ask"
     assert instance.io.sent[0]["type"] == "approval_needed"
