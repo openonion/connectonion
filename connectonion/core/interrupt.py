@@ -23,6 +23,12 @@ class InterruptibleIO:
         self._cancelled = threading.Event()
         self._gate = threading.Lock()
         self._deferred: list[tuple[bool, Any]] = []
+        # A tool transaction can emit hundreds of provider trace entries. Each
+        # one is followed by a full session_sync, but none of those snapshots is
+        # visible until commit. Retain only the newest superseding snapshot so
+        # the first post-tool approval is not trapped behind megabytes of stale
+        # session history.
+        self._deferred_session_sync: Any | None = None
         # Provider events need a live presentation lane: their canonical trace
         # still waits for the transactional tool session to commit, but a coding
         # Work Room must not wait minutes to say that work has started.  Keep the
@@ -44,6 +50,7 @@ class InterruptibleIO:
             self._live_provider_invocations.clear()
             self._cancelled.set()
             self._deferred.clear()
+            self._deferred_session_sync = None
 
     def commit(self) -> bool:
         """Publish Agent-owned state only after its tool transaction commits."""
@@ -59,7 +66,10 @@ class InterruptibleIO:
                     sender(event)
                 else:
                     self.__io.send(event)
+            if self._deferred_session_sync is not None:
+                self.__io.send(self._deferred_session_sync)
             self._deferred.clear()
+            self._deferred_session_sync = None
             return True
 
     def is_cancelled(self) -> bool:
@@ -102,7 +112,7 @@ class InterruptibleIO:
         with self._gate:
             if not self._cancelled.is_set():
                 if event.get("type") == "session_sync":
-                    self._deferred.append((False, copy.deepcopy(event)))
+                    self._deferred_session_sync = copy.deepcopy(event)
                 else:
                     self.__io.send(event)
 
