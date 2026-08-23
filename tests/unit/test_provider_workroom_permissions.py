@@ -318,6 +318,93 @@ def test_websocket_outer_auto_ack_streams_the_same_transaction_provider_downgrad
     assert [message["type"] for message in sent] == ["mode_changed"]
 
 
+@pytest.mark.parametrize(
+    ("target_mode", "expected_option"),
+    [
+        ("auto", "codex:workspace-ask"),
+        ("read-only", "codex:read-only"),
+    ],
+)
+def test_outer_downgrade_after_terminal_continuation_streams_only_final_ceiling(
+    tmp_path,
+    target_mode,
+    expected_option,
+):
+    """A stopped follow-up must not publish an old-ceiling repair first."""
+    storage = _storage(tmp_path, mode="full-access")
+    commit_provider_permission(
+        storage,
+        "owned-session",
+        "0xowner",
+        "codex:call-7",
+        4,
+        "codex:full-access",
+        request_id="permission-full",
+        confirm_risk=True,
+    )
+    current = storage.get("owned-session")
+    session = current.session
+    session["trace"].append({
+        "type": "provider_invocation",
+        "invocationId": "codex:call-8",
+        "parentToolCallId": "call-7",
+        "workroomId": "codex:call-7",
+        "continuationOf": "codex:call-7",
+        "provider": "codex",
+        "providerDisplayName": "Codex",
+        "status": "cancelled",
+        "sessionId": "thread-7",
+        "stateRevision": 2,
+        "resultSummary": "The provider stopped",
+    })
+    storage.save(current.model_copy(update={"session": session}))
+    sent = []
+
+    async def send_msg(message):
+        sent.append(message)
+
+    class IdleRegistry:
+        @staticmethod
+        def get(_session_id):
+            return None
+
+    conn = {
+        "authenticated": True,
+        "agent_address": "0xowner",
+        "session_id": "owned-session",
+        "session": session,
+        "mode_is_admin": True,
+    }
+    asyncio.run(handle_mode_change(
+        {"type": "mode_change", "mode": target_mode},
+        send_msg,
+        conn,
+        {"session_modes": HostPermissionPolicy(full_access_turns=2)},
+        storage,
+        IdleRegistry(),
+    ))
+
+    assert [message["type"] for message in sent] == [
+        "mode_changed",
+        "provider_invocation",
+    ]
+    narrowed = sent[1]
+    assert narrowed["invocationId"] == "codex:call-8"
+    assert narrowed["status"] == "cancelled"
+    assert narrowed["providerPermission"]["activeOptionId"] == expected_option
+    full_access = next(
+        option for option in narrowed["providerPermission"]["options"]
+        if option["id"] == "codex:full-access"
+    )
+    assert full_access["selectable"] is False
+    if target_mode == "read-only":
+        assert all(
+            option["id"] == "codex:read-only" or option["selectable"] is False
+            for option in narrowed["providerPermission"]["options"]
+        )
+    assert storage.get("owned-session").session["trace"][-1] == narrowed
+
+
 def _run_permission_frame(monkeypatch, storage, frame):
     from connectonion.network.host.ws_router import session as ws_session
 

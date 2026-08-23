@@ -94,7 +94,13 @@ class HostPermissionPolicy:
             ],
         }
 
-    def normalized(self, session: dict, *, is_admin: bool) -> dict:
+    def normalized(
+        self,
+        session: dict,
+        *,
+        is_admin: bool,
+        reconcile_provider_permissions: bool = True,
+    ) -> dict:
         """Return a detached 1.7 snapshot; old/invalid authority becomes Auto."""
 
         del is_admin
@@ -112,7 +118,8 @@ class HostPermissionPolicy:
             set_mode(normalized, FULL_ACCESS, turns_left=remaining)
         else:
             set_mode(normalized, canonical if canonical != FULL_ACCESS else AUTO)
-        reconcile_provider_permission_events(normalized, mode_of(normalized))
+        if reconcile_provider_permissions:
+            reconcile_provider_permission_events(normalized, mode_of(normalized))
         return normalized
 
     def apply(self, session: dict, requested_mode: Any, *, is_admin: bool) -> dict:
@@ -125,7 +132,16 @@ class HostPermissionPolicy:
         if canonical not in self.available_mode_ids(is_admin=is_admin):
             raise ModeTransactionError(-32602, "Permission mode is not available")
 
-        changed = self.normalized(session, is_admin=is_admin)
+        # A mode write is one authority transaction. Reconciling against the
+        # old ceiling first would append an intermediate provider snapshot and
+        # stream it before the final, narrower snapshot. Normalize the rest of
+        # the durable policy without publishing provider authority, commit the
+        # requested mode, then reconcile exactly once against that final mode.
+        changed = self.normalized(
+            session,
+            is_admin=is_admin,
+            reconcile_provider_permissions=False,
+        )
         if canonical == FULL_ACCESS:
             set_mode(
                 changed,
@@ -230,8 +246,7 @@ def commit_host_session_mode_with_events(
         current_session = current.session or {}
         current_trace = current_session.get("trace")
         trace_length = len(current_trace) if isinstance(current_trace, list) else 0
-        session = policy.normalized(current_session, is_admin=is_admin)
-        session = policy.apply(session, mode_id, is_admin=is_admin)
+        session = policy.apply(current_session, mode_id, is_admin=is_admin)
         trace = session.get("trace")
         appended_provider_events = tuple(
             copy.deepcopy(event)
