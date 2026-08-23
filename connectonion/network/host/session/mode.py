@@ -16,6 +16,7 @@ from ....core.mode import (
     mode_of,
     set_mode,
 )
+from ....core.provider_permissions import reconcile_provider_permission_events
 from .storage import Session, SessionStorage, session_owner
 
 _DISCARDED_MODE_KEYS = {
@@ -111,6 +112,7 @@ class HostPermissionPolicy:
             set_mode(normalized, FULL_ACCESS, turns_left=remaining)
         else:
             set_mode(normalized, canonical if canonical != FULL_ACCESS else AUTO)
+        reconcile_provider_permission_events(normalized, mode_of(normalized))
         return normalized
 
     def apply(self, session: dict, requested_mode: Any, *, is_admin: bool) -> dict:
@@ -132,6 +134,7 @@ class HostPermissionPolicy:
             )
         else:
             set_mode(changed, canonical)
+        reconcile_provider_permission_events(changed, mode_of(changed))
         return changed
 
 

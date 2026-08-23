@@ -155,6 +155,12 @@ def _direct_session(
     provider: str,
 ) -> dict[str, Any]:
     """Construct the minimum session a configured native tool needs to run."""
+    stored_permissions = source_session.get("_provider_permission_options")
+    selected_permission = (
+        stored_permissions.get(workroom_id)
+        if isinstance(stored_permissions, dict)
+        else None
+    )
     return {
         "messages": [],
         "trace": [],
@@ -171,6 +177,11 @@ def _direct_session(
         # invocation. Keep that exact durable revision so only a successful
         # native ``turn/start`` can acknowledge the original request.
         "_provider_direct_state_revision": state_revision,
+        **(
+            {"_provider_permission_options": {workroom_id: selected_permission}}
+            if isinstance(selected_permission, str)
+            else {}
+        ),
         # Ownership and the terminal source revision were validated while the
         # durable session lock was held.  Let the approval plugin consume this
         # one-shot capability for the outer native-provider wrapper only;
