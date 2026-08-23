@@ -349,6 +349,29 @@ def test_hosted_contact_uses_the_same_claude_mode_contract(monkeypatch, tmp_path
     assert seen["permission_mode"] == "auto"
 
 
+def test_claude_plugin_defaults_to_its_configured_workspace(monkeypatch, tmp_path):
+    import connectonion.plugins.coding_agents as module
+
+    seen = {}
+
+    def fake_claude(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"provider": "claude_code", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
+    agent = SimpleNamespace(
+        current_session={"_active_tool_call_id": "call-default-cwd"},
+        io=SimpleNamespace(log=MagicMock()),
+    )
+
+    result = json.loads(
+        ClaudeCodePlugin(workspace=tmp_path).claude_code("inspect", agent=agent)
+    )
+
+    assert result["exit_code"] == 0
+    assert seen["cwd"] == str(tmp_path.resolve())
+
+
 def test_public_signature_matches_the_provider_contract(tmp_path):
     for method in (
         CodexPlugin(workspace=tmp_path).codex,
@@ -361,6 +384,9 @@ def test_public_signature_matches_the_provider_contract(tmp_path):
     assert inspect.signature(CodexPlugin(workspace=tmp_path).codex).parameters[
         "timeout"
     ].default == 1800
+    assert inspect.signature(
+        ClaudeCodePlugin(workspace=tmp_path).claude_code
+    ).parameters["cwd"].default == "."
 
 
 def test_codex_prompt_is_optional_so_open_does_not_invent_a_task(tmp_path):

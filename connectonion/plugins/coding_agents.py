@@ -289,7 +289,7 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
     def claude_code(
         self,
         prompt: str,
-        cwd: str,
+        cwd: str = ".",
         session_id: str = "",
         model: str = "",
         timeout: int = 600,
