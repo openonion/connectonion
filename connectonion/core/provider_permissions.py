@@ -24,7 +24,7 @@ _OPTION_DEFINITIONS = {
 }
 _DEFAULT_OPTIONS = {
     "codex": {READ_ONLY: "codex:read-only", AUTO: "codex:workspace-ask", FULL_ACCESS: "codex:full-access"},
-    "claude_code": {READ_ONLY: "claude:plan", AUTO: "claude:accept-edits", FULL_ACCESS: "claude:auto"},
+    "claude_code": {READ_ONLY: "claude:plan", AUTO: "claude:auto", FULL_ACCESS: "claude:auto"},
 }
 _CEILING = {READ_ONLY: 0, AUTO: 1, FULL_ACCESS: 2}
 _CEILING_LABEL = {READ_ONLY: "Read Only", AUTO: "Auto", FULL_ACCESS: "Full Access"}

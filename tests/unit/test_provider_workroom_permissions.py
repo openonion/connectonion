@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from connectonion.core.provider_permissions import default_provider_permission_option
 from connectonion.network.host.provider_permissions import (
     ProviderPermissionError,
     commit_provider_permission,
@@ -12,7 +13,7 @@ from connectonion.network.host.provider_permissions import (
 from connectonion.network.host.session import Session, SessionStorage
 from connectonion.network.host.session.mode import HostPermissionPolicy
 from connectonion.network.host.ws_router.mode import handle_mode_change
-from connectonion.plugins.coding_agents import CodexPlugin, PermissionMode
+from connectonion.plugins.coding_agents import ClaudeCodePlugin, CodexPlugin, PermissionMode
 
 
 def _storage(tmp_path: Path, *, mode: str = "auto", requester_level: str = "admin"):
@@ -54,6 +55,19 @@ def test_codex_state_keeps_workspace_boundary_and_reviewer_separate():
     assert options["codex:workspace-auto"]["reviewer"] == "auto"
     assert options["codex:full-access"]["selectable"] is False
     assert options["codex:full-access"]["disabledReason"] == "Host permission ceiling is Auto."
+
+
+def test_claude_auto_default_keeps_accept_edits_as_a_narrower_choice():
+    assert default_provider_permission_option("claude_code", "auto") == "claude:auto"
+
+    state = provider_permission_state("claude_code", "claude:auto", "auto")
+    options = {option["id"]: option for option in state["options"]}
+    assert state["activeOptionId"] == "claude:auto"
+    assert options["claude:auto"]["nativeProfileId"] == "auto"
+    assert options["claude:auto"]["reviewer"] == "auto"
+    assert options["claude:accept-edits"]["nativeProfileId"] == "acceptEdits"
+    assert options["claude:accept-edits"]["selectable"] is True
+    assert options["claude:bypass-permissions"]["selectable"] is False
 
 
 def test_commit_is_revision_bound_persisted_and_applies_to_subsequent_work(tmp_path):
@@ -189,6 +203,20 @@ def test_direct_codex_continuation_uses_the_committed_provider_option(tmp_path):
         "auto",
         PermissionMode.AUTO,
     )
+
+
+def test_direct_claude_continuation_keeps_explicit_accept_edits_narrower(tmp_path):
+    plugin = ClaudeCodePlugin(workspace=tmp_path, use_host_permissions=True)
+    agent = type("Agent", (), {})()
+    agent.current_session = {
+        "mode": "auto",
+        "_provider_workroom_id": "claude_code:call-8",
+        "_provider_permission_options": {
+            "claude_code:call-8": "claude:accept-edits",
+        },
+    }
+
+    assert plugin._policy(agent) == ("acceptEdits", PermissionMode.AUTO)
 
 
 def test_lowering_outer_mode_downgrades_stored_provider_authority_and_replay(tmp_path):
