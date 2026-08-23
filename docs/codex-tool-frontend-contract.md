@@ -115,7 +115,10 @@ retroactively alter an active action or replace an individual approval.
 
 Old or malformed clients fail closed: missing catalogs render no selector,
 unadvertised and stale choices are rejected, and lowering the outer COAI mode
-immediately reconciles any stored provider profile to the narrower ceiling.
+immediately reconciles any stored provider profile to the narrower ceiling. A
+single outer-mode transaction streams at most one new permission revision for
+each Work Room: the final committed ceiling. Terminal continuations without a
+catalog never cause an intermediate old-ceiling repair to reach the browser.
 
 ## What the frontend team should know
 

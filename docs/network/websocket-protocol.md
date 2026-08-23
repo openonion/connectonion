@@ -107,6 +107,12 @@ and invocation IDs, a strictly newer revision, and the complete authoritative
 `ceiling_denied`, `operator_required`, or `confirmation_required`; it never
 changes durable state.
 
+When an outer `mode_change` also narrows one or more Work Rooms, the Host sends
+`mode_changed` followed by one canonical `provider_invocation` per affected
+Work Room. Each provider frame reflects only the transaction's final ceiling;
+the Host never streams an intermediate repair under the previous mode, even if
+the latest completed, failed, or cancelled continuation omitted its catalog.
+
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                    WebSocket Lifecycle                          │
