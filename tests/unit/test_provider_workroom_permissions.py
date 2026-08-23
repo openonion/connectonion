@@ -11,6 +11,7 @@ from connectonion.network.host.provider_permissions import (
 )
 from connectonion.network.host.session import Session, SessionStorage
 from connectonion.network.host.session.mode import HostPermissionPolicy
+from connectonion.network.host.ws_router.mode import handle_mode_change
 from connectonion.plugins.coding_agents import CodexPlugin, PermissionMode
 
 
@@ -219,6 +220,74 @@ def test_lowering_outer_mode_downgrades_stored_provider_authority_and_replay(tmp
         option["id"] == "codex:read-only" or option["selectable"] is False
         for option in latest["providerPermission"]["options"]
     )
+
+
+def test_websocket_outer_auto_ack_streams_the_same_transaction_provider_downgrade(
+    tmp_path,
+):
+    storage = _storage(tmp_path, mode="full-access")
+    committed = commit_provider_permission(
+        storage,
+        "owned-session",
+        "0xowner",
+        "codex:call-7",
+        4,
+        "codex:full-access",
+        request_id="permission-full",
+        confirm_risk=True,
+    )
+    sent = []
+
+    async def send_msg(message):
+        sent.append(message)
+
+    class IdleRegistry:
+        @staticmethod
+        def get(_session_id):
+            return None
+
+    conn = {
+        "authenticated": True,
+        "agent_address": "0xowner",
+        "session_id": "owned-session",
+        "session": storage.get("owned-session").session,
+        "mode_is_admin": True,
+    }
+    asyncio.run(handle_mode_change(
+        {"type": "mode_change", "mode": "auto"},
+        send_msg,
+        conn,
+        {"session_modes": HostPermissionPolicy(full_access_turns=2)},
+        storage,
+        IdleRegistry(),
+    ))
+
+    assert [message["type"] for message in sent] == [
+        "mode_changed",
+        "provider_invocation",
+    ]
+    assert sent[0]["mode"] == "auto"
+    narrowed = sent[1]
+    assert narrowed["stateRevision"] > committed["stateRevision"]
+    assert narrowed["providerPermission"]["activeOptionId"] == "codex:workspace-ask"
+    full_access = next(
+        option for option in narrowed["providerPermission"]["options"]
+        if option["id"] == "codex:full-access"
+    )
+    assert full_access["selectable"] is False
+    assert full_access["disabledReason"] == "Host permission ceiling is Auto."
+    assert conn["session"] == storage.get("owned-session").session
+
+    sent.clear()
+    asyncio.run(handle_mode_change(
+        {"type": "mode_change", "mode": "auto"},
+        send_msg,
+        conn,
+        {"session_modes": HostPermissionPolicy(full_access_turns=2)},
+        storage,
+        IdleRegistry(),
+    ))
+    assert [message["type"] for message in sent] == ["mode_changed"]
 
 
 def _run_permission_frame(monkeypatch, storage, frame):

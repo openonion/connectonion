@@ -190,22 +190,60 @@ def commit_host_session_mode(
 ) -> Session:
     """Commit one idle mode change under the cross-worker storage lock."""
 
+    record, _ = commit_host_session_mode_with_events(
+        storage,
+        registry,
+        session_id,
+        owner,
+        mode_id,
+        policy,
+        is_admin,
+    )
+    return record
+
+
+def commit_host_session_mode_with_events(
+    storage: SessionStorage,
+    registry,
+    session_id: str,
+    owner: str,
+    mode_id: Any,
+    policy: HostPermissionPolicy,
+    is_admin: bool,
+) -> tuple[Session, tuple[dict[str, Any], ...]]:
+    """Commit a mode change and return provider revisions it appended."""
+
     active = registry.get(session_id) if registry is not None else None
     if active is not None and getattr(active, "owner", None) not in (None, owner):
         raise _not_found()
     if active is not None and getattr(active, "status", None) == "running":
         raise _busy()
 
+    appended_provider_events: tuple[dict[str, Any], ...] = ()
+
     def commit(current: Session | None) -> Session:
+        nonlocal appended_provider_events
         if current is None or session_owner(current) != owner:
             raise _not_found()
         if current.status in SessionStorage.UNFINISHED:
             raise _busy()
-        session = policy.normalized(current.session or {}, is_admin=is_admin)
+        current_session = current.session or {}
+        current_trace = current_session.get("trace")
+        trace_length = len(current_trace) if isinstance(current_trace, list) else 0
+        session = policy.normalized(current_session, is_admin=is_admin)
         session = policy.apply(session, mode_id, is_admin=is_admin)
+        trace = session.get("trace")
+        appended_provider_events = tuple(
+            copy.deepcopy(event)
+            for event in (trace[trace_length:] if isinstance(trace, list) else [])
+            if isinstance(event, dict)
+            and event.get("type") == "provider_invocation"
+            and isinstance(event.get("providerPermission"), dict)
+        )
         return current.model_copy(update={"session": session})
 
-    return storage.atomic_update(session_id, commit)
+    record = storage.atomic_update(session_id, commit)
+    return record, appended_provider_events
 
 
 def session_with_durable_policy(client_session: dict | None, durable: dict) -> dict:
