@@ -78,6 +78,35 @@ it is not the terminal outcome. The matching `provider_invocation` event with
 the client can restore a retry action. Legacy requests without `requestId`
 retain the older no-ack behaviour during the rolling compatibility window.
 
+### Provider-native permission change
+
+`PROVIDER_PERMISSION_CHANGE` selects one Host-advertised Codex or Claude Code
+profile for subsequent work in the exact Work Room on screen:
+
+```json
+{
+  "type": "PROVIDER_PERMISSION_CHANGE",
+  "requestId": "permission-1",
+  "invocationId": "codex:call-7",
+  "stateRevision": 4,
+  "optionId": "codex:workspace-auto",
+  "confirmRisk": false
+}
+```
+
+The authenticated requester must own the session and be its Operator. The
+option must exist in the latest durable invocation catalog and fit inside the
+outer Host mode ceiling. An elevated Full Access option additionally requires
+`confirmRisk: true`. Browser state is never authority.
+
+An accepted request returns `PROVIDER_PERMISSION_ACK` with the matching request
+and invocation IDs, a strictly newer revision, and the complete authoritative
+`providerPermission` state. Host then streams that same revision as a canonical
+`provider_invocation` for replay and other readers. A rejection has
+`accepted: false` and one safe reason code such as `stale_revision`,
+`ceiling_denied`, `operator_required`, or `confirmation_required`; it never
+changes durable state.
+
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                    WebSocket Lifecycle                          │

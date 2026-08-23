@@ -17,6 +17,12 @@ from typing import Any
 
 from ..core.events import on_agent_ready
 from ..core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_of
+from ..core.provider_permissions import (
+    default_provider_permission_option,
+    provider_permission_option,
+    provider_permission_state,
+    selected_provider_permission_option,
+)
 from ..core.provider_events import (
     clear_provider_activity_history,
     clear_provider_artifact,
@@ -238,6 +244,19 @@ class CodexPlugin(_CodingAgentPlugin):
 
         session = getattr(agent, "current_session", {}) or {}
         current = mode_of(session)
+        selected = _selected_workroom_permission(session)
+        if selected:
+            try:
+                option = provider_permission_option("codex", selected, current)
+            except ValueError:
+                option = None
+            if option:
+                return {
+                    "codex:read-only": ("read-only", "manual", PermissionMode.READ_ONLY),
+                    "codex:workspace-ask": ("workspace-write", "manual", PermissionMode.AUTO),
+                    "codex:workspace-auto": ("workspace-write", "auto", PermissionMode.AUTO),
+                    "codex:full-access": ("danger-full-access", "auto", PermissionMode.FULL_ACCESS),
+                }[option["id"]]
         return {
             READ_ONLY: (
                 "read-only", "manual", PermissionMode.READ_ONLY
@@ -307,6 +326,21 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
 
         session = getattr(agent, "current_session", {}) or {}
         current = mode_of(session)
+        selected = _selected_workroom_permission(session)
+        if selected:
+            try:
+                option = provider_permission_option("claude_code", selected, current)
+            except ValueError:
+                option = None
+            if option:
+                effective = (
+                    PermissionMode.READ_ONLY
+                    if option["id"] == "claude:plan"
+                    else PermissionMode.FULL_ACCESS
+                    if option["id"] == "claude:bypass-permissions"
+                    else PermissionMode.AUTO
+                )
+                return option["nativeProfileId"], effective
         return {
             READ_ONLY: ("manual", PermissionMode.READ_ONLY),
             AUTO: (
@@ -333,6 +367,14 @@ def _emit(agent, event_type: str, **fields: Any) -> dict[str, Any]:
                 agent, invocation_id
             )
             fields.update(_provider_workroom_fields(agent, invocation_id))
+            permission = _provider_permission_for_event(
+                agent,
+                fields.get("provider"),
+                fields["workroomId"],
+                fields["stateRevision"],
+            )
+            if permission is not None:
+                fields["providerPermission"] = permission
     entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
@@ -364,6 +406,45 @@ def _provider_workroom_fields(agent, invocation_id: str) -> dict[str, str]:
     if isinstance(continuation_of, str) and continuation_of:
         fields["continuationOf"] = continuation_of
     return fields
+
+
+def _selected_workroom_permission(session: object) -> str | None:
+    if not isinstance(session, dict):
+        return None
+    workroom_id = session.get("_provider_workroom_id")
+    return selected_provider_permission_option(session, workroom_id)
+
+
+def _provider_permission_for_event(
+    agent,
+    provider: object,
+    workroom_id: object,
+    state_revision: int,
+) -> dict[str, Any] | None:
+    if provider not in {"codex", "claude_code"} or not isinstance(workroom_id, str):
+        return None
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return None
+    host_mode = mode_of(session)
+    selected = (
+        selected_provider_permission_option(session, workroom_id)
+        or default_provider_permission_option(provider, host_mode)
+    )
+    try:
+        return provider_permission_state(
+            provider,
+            selected,
+            host_mode,
+            state_revision=state_revision,
+        )
+    except ValueError:
+        return provider_permission_state(
+            provider,
+            default_provider_permission_option(provider, host_mode),
+            host_mode,
+            state_revision=state_revision,
+        )
 
 
 def _emit_cached_provider_artifact(agent, lifecycle: dict[str, Any]) -> None:

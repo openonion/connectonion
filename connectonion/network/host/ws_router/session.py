@@ -14,6 +14,7 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
+from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
 from .connect import establish_connection, handle_authenticated_reconnect, handle_connect
 from .exec import run_exec
@@ -72,6 +73,36 @@ async def _send_provider_input_ack(
         and state_revision > 0
     ):
         frame["stateRevision"] = state_revision
+    if reason:
+        frame["reason"] = reason
+    await send_msg(frame)
+
+
+async def _send_provider_permission_ack(
+    send_msg,
+    *,
+    request_id: str,
+    invocation_id: str | None,
+    accepted: bool,
+    state_revision: int | None = None,
+    provider_permission: dict | None = None,
+    reason: str | None = None,
+):
+    """Settle one revision-bound Work Room provider-profile request."""
+    frame = {
+        "type": "PROVIDER_PERMISSION_ACK",
+        "requestId": request_id,
+        "invocationId": invocation_id,
+        "accepted": accepted,
+    }
+    if (
+        not isinstance(state_revision, bool)
+        and isinstance(state_revision, int)
+        and state_revision > 0
+    ):
+        frame["stateRevision"] = state_revision
+    if provider_permission is not None:
+        frame["providerPermission"] = provider_permission
     if reason:
         frame["reason"] = reason
     await send_msg(frame)
@@ -462,6 +493,53 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 # native adapter only after ``thread/resume`` + ``turn/start``
                 # succeed. Starting a Host worker is deliberately not enough
                 # to let the composer clear its unsent text.
+
+            elif msg_type == "PROVIDER_PERMISSION_CHANGE":
+                request_id = data.get("requestId")
+                invocation_id = data.get("invocationId")
+                try:
+                    committed = await asyncio.to_thread(
+                        commit_provider_permission,
+                        storage,
+                        conn.get("session_id"),
+                        conn.get("agent_address"),
+                        invocation_id,
+                        data.get("stateRevision"),
+                        data.get("optionId"),
+                        request_id=request_id,
+                        confirm_risk=data.get("confirmRisk") is True,
+                    )
+                except ProviderPermissionError as exc:
+                    await _send_provider_permission_ack(
+                        send_msg,
+                        request_id=request_id if isinstance(request_id, str) else "",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason=exc.code,
+                    )
+                    continue
+                except Exception:
+                    await _send_provider_permission_ack(
+                        send_msg,
+                        request_id=request_id if isinstance(request_id, str) else "",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason="unavailable",
+                    )
+                    continue
+                await _send_provider_permission_ack(
+                    send_msg,
+                    request_id=request_id,
+                    invocation_id=invocation_id,
+                    accepted=True,
+                    state_revision=committed["stateRevision"],
+                    provider_permission=committed["providerPermission"],
+                )
+                # Other readers and a same-tab reconnect consume the same
+                # canonical lifecycle event. The requesting React client has
+                # already committed the ACK and idempotently ignores this equal
+                # revision when it arrives immediately afterwards.
+                await send_msg(committed["event"])
 
             elif msg_type == "APPROVAL_RESPONSE" and active_io:
                 resolver = getattr(active_io, "resolve_legacy_permission", None)
