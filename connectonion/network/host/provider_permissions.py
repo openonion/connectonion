@@ -20,6 +20,7 @@ from .session import SessionStorage, session_owner
 
 
 _SUPPORTED_PROVIDERS = frozenset({"codex", "claude_code"})
+_SESSION_ACTOR_LEVELS = frozenset({"contact", "whitelist", "admin"})
 
 
 class ProviderPermissionError(RuntimeError):
@@ -56,8 +57,20 @@ def commit_provider_permission(
             raise ProviderPermissionError("not_owner", "The Work Room is not owned by this requester.")
         session = copy.deepcopy(current.session or {})
         requester = session.get("requester")
-        if not isinstance(requester, dict) or requester.get("level") != "admin":
-            raise ProviderPermissionError("operator_required", "Only the Host Operator can change provider permissions.")
+        if (
+            not isinstance(requester, dict)
+            or requester.get("address") != requester_address
+            or requester.get("level") not in _SESSION_ACTOR_LEVELS
+        ):
+            # ``operator_required`` is retained as the wire code for rolling
+            # React compatibility. Provider profiles are session execution
+            # controls, not Host control-plane settings: an invited contact may
+            # change its own Work Room within the already-authoritative outer
+            # ceiling, while a forged/missing requester still fails closed.
+            raise ProviderPermissionError(
+                "operator_required",
+                "Only the authenticated session owner can change provider permissions.",
+            )
         source = _latest_invocation(session, invocation_id)
         if not source:
             raise ProviderPermissionError("not_found", "The provider Work Room is unavailable.")
