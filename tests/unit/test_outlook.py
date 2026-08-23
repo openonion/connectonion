@@ -390,6 +390,7 @@ class TestOutlookSendOperations:
 
             assert "sent successfully" in result
             assert "recipient@example.com" in result
+            assert mock_httpx.request.call_args.args[1].endswith("/me/sendMail")
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_send_email_with_attachment(self, mock_httpx, tmp_path):
@@ -530,12 +531,13 @@ class TestOutlookSendOperations:
     def test_send_email_scheduled(self, mock_httpx):
         """Test scheduled send sets the deferred-send extended property."""
         mock_response = MagicMock()
-        mock_response.status_code = 202
-        mock_response.text = ""  # Graph sendMail returns 202 with an empty body
+        mock_response.status_code = 201
+        mock_response.text = '{"id": "draft-1"}'
+        mock_response.json.return_value = {"id": "draft-1"}
         mock_httpx.request.return_value = mock_response
 
         with patch.dict(os.environ, {
-            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "test-token",
             "MICROSOFT_REFRESH_TOKEN": "test-refresh",
             "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
@@ -555,12 +557,30 @@ class TestOutlookSendOperations:
 
             method, url = mock_httpx.request.call_args.args[:2]
             assert method == "POST"
-            assert url.endswith("/me/sendMail")
+            assert url.endswith("/me/messages")
 
-            sent_message = mock_httpx.request.call_args.kwargs["json"]["message"]
+            sent_message = mock_httpx.request.call_args.kwargs["json"]
             assert sent_message["singleValueExtendedProperties"] == [
                 {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
             ]
+            assert mock_httpx.request.call_count == 1
+
+    def test_send_email_scheduled_requires_readwrite_scope(self):
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+
+            with pytest.raises(ValueError, match="Mail.ReadWrite"):
+                Outlook().send(
+                    "recipient@example.com",
+                    "Test Subject",
+                    "Test Body",
+                    send_at="2026-07-06T15:30:00Z",
+                )
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_send_email_missing_attachment(self, mock_httpx):

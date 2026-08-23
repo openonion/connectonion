@@ -686,16 +686,23 @@ class Outlook:
         suffix = self._attachment_suffix(attachments)
 
         if send_at:
+            self._require_scope("Mail.ReadWrite")
             # PidTagDeferredSendTime — Exchange holds delivery until this time.
-            # Works through sendMail with only the Mail.Send scope.
+            # Draft creation requires Mail.ReadWrite; see the scope check above.
             message["singleValueExtendedProperties"] = [
                 {"id": "SystemTime 0x3FEF", "value": send_at}
             ]
 
-        self._request("POST", "/me/sendMail", json={"message": message})
-
         if send_at:
+            # A deferred-send property belongs on a draft.  Calling sendMail
+            # creates and sends the message in one operation, so Exchange can
+            # deliver it immediately while also retaining the deferred copy.
+            # Creating the draft leaves Exchange responsible for delivering it
+            # at the requested time and keeps it visible to get_scheduled().
+            self._request("POST", "/me/messages", json=message)
             return f"Email scheduled for {send_at} to {to}{suffix}"
+
+        self._request("POST", "/me/sendMail", json={"message": message})
         return f"Email sent successfully to {to}{suffix}"
 
     def reply(self, email_id: str, body: str, send_at: str = None, *,
