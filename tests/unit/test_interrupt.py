@@ -442,6 +442,51 @@ def test_live_provider_trace_is_visible_before_transaction_commit():
     assert WebSocketIO.is_persisted_trace_event(io._msgs_from_agent[1])
 
 
+def test_interruptible_io_commits_only_the_latest_transactional_session_snapshot():
+    """Committed trace order survives without replaying superseded snapshots."""
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    first = {"id": "trace-1", "type": "provider_activity", "status": "running"}
+    second = {"id": "trace-2", "type": "provider_activity", "status": "completed"}
+    stale_session = {"trace": [first]}
+    latest_session = {"trace": [first, second], "plan": [{"content": "done"}]}
+
+    lease._send_persisted_trace(first)
+    lease.send({"type": "session_sync", "session": stale_session})
+    lease._send_persisted_trace(second)
+    lease.send({"type": "session_sync", "session": latest_session})
+    latest_session["plan"][0]["content"] = "mutated after send"
+
+    assert io._msgs_from_agent == []
+    assert lease.commit() is True
+
+    assert [event["type"] for event in io._msgs_from_agent] == [
+        "provider_activity",
+        "provider_activity",
+        "session_sync",
+    ]
+    assert all(
+        WebSocketIO.is_persisted_trace_event(event)
+        for event in io._msgs_from_agent[:2]
+    )
+    assert io._msgs_from_agent[-1]["session"] == {
+        "trace": [first, second],
+        "plan": [{"content": "done"}],
+    }
+
+
+def test_interruptible_io_cancel_drops_the_coalesced_session_snapshot():
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    lease._send_persisted_trace({"id": "trace-1", "type": "tool_call"})
+    lease.send({"type": "session_sync", "session": {"trace": ["private"]}})
+
+    lease.cancel()
+
+    assert lease.commit() is False
+    assert io._msgs_from_agent == []
+
+
 def test_interruptible_io_cancels_a_live_provider_card_without_committing_trace():
     io = WebSocketIO()
     lease = InterruptibleIO(io)
