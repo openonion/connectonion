@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 POLICY_ID = "connectonion.auto"
 POLICY_VERSION = 1
+MANAGED_DELEGATION_TOOLS = frozenset({"codex", "claude_code"})
+MANAGED_DELEGATION_REASON = "managed delegation owns inner approval"
 
 READ_TOOLS = {
     "read", "read_file", "glob", "grep", "search", "list", "ls",
@@ -70,6 +72,28 @@ def canonical_mode(value: object) -> str | None:
         return mode_id(value)
     except ValueError:
         return None
+
+
+def managed_delegation_permission() -> dict:
+    """Build the exact co ai grant consumed by the Auto classifier."""
+    return {
+        "allowed": True,
+        "source": "safe",
+        "reason": MANAGED_DELEGATION_REASON,
+        "expires": {"type": "never"},
+    }
+
+
+def _has_managed_delegation_grant(session: dict, tool_name: object) -> bool:
+    """Recognize only the runtime grant injected by co ai for native adapters."""
+    name = str(tool_name)
+    if name not in MANAGED_DELEGATION_TOOLS:
+        return False
+    permissions = session.get("permissions")
+    return (
+        isinstance(permissions, dict)
+        and permissions.get(name) == managed_delegation_permission()
+    )
 
 
 def ensure_approval_mode(agent: "Agent") -> str:
@@ -225,7 +249,17 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
     if ensure_approval_mode(agent) != AUTO:
         return None
     try:
-        result = evaluate_auto_approve(pending["name"], pending.get("arguments") or {})
+        if _has_managed_delegation_grant(agent.current_session, pending.get("name")):
+            result = decision(
+                "managed_delegation",
+                "allow",
+                MANAGED_DELEGATION_REASON,
+                "session",
+            )
+        else:
+            result = evaluate_auto_approve(
+                pending["name"], pending.get("arguments") or {}
+            )
     except Exception as exc:
         result = decision(
             "policy_failure",
