@@ -270,7 +270,7 @@ def test_codex_plugin_can_follow_the_authenticated_host_permission_ceiling(
     ("session", "permission_mode"),
     [
         ({"mode": "read-only"}, "manual"),
-        ({"mode": "auto"}, "acceptEdits"),
+        ({"mode": "auto"}, "auto"),
         (
             {
                 "mode": "full-access",

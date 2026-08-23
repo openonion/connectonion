@@ -343,12 +343,8 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
                 return option["nativeProfileId"], effective
         return {
             READ_ONLY: ("manual", PermissionMode.READ_ONLY),
-            AUTO: (
-                "acceptEdits", PermissionMode.AUTO
-            ),
-            FULL_ACCESS: (
-                "auto", PermissionMode.FULL_ACCESS
-            ),
+            AUTO: ("auto", PermissionMode.AUTO),
+            FULL_ACCESS: ("auto", PermissionMode.FULL_ACCESS),
         }[current]
 
 def _parent_tool_call_id(agent) -> str | None:
