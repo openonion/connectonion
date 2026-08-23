@@ -218,6 +218,7 @@ class BrowserDaemon:
         # stopping" from "the socket broke while we were meant to be serving".
         self._closing = False
         self._had_browser = False
+        self._skip_liveness_probe = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
         self._next_tab = 1        # id allocator for auto-named tabs
 
@@ -350,6 +351,12 @@ class BrowserDaemon:
         try:
             result = method(*args, **kw)
         except Exception as exc:  # dispatch boundary: report to client as ERR
+            # A timed-out navigation can leave the page's driver call blocked while
+            # the browser context itself remains usable. Do not immediately issue a
+            # second synchronous context probe in serve(), or the daemon can wedge
+            # before it accepts the next recovery command.
+            if verb == "go_to" and type(exc).__name__ == "TimeoutError":
+                self._skip_liveness_probe = True
             if self.browser._launch_failed():
                 # Chrome aborted at startup: str(exc) is a huge patchright "Call log".
                 # Keep the first line and point at the full log instead of dumping it.
@@ -645,6 +652,9 @@ class BrowserDaemon:
             # next command spawns a fresh daemon instead of reusing a dead one. This is a
             # SHARED-context decision, not a per-session one: a command on a page-less tab
             # must not be read as "browser dead" and tear down every other session's tabs.
+            if self._skip_liveness_probe:
+                self._skip_liveness_probe = False
+                continue
             alive = self.browser._context_is_alive()
             self._had_browser = self._had_browser or alive
             #   - a launch that never produced a context (Chrome aborted at startup) — a

@@ -113,6 +113,9 @@ class StubBrowser:
     def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
         return f"shot path={path} full={full_page}"
 
+    def keyboard_press(self, key: str) -> str:
+        return f"Pressed {key}"
+
     def get_links_from_page(self, domain_filter: str = "") -> list:
         return ["https://a.com", "https://b.com"]
 
@@ -551,6 +554,36 @@ class LaunchFailBrowser(StubBrowser):
 
     def _launch_failed(self) -> bool:
         return True
+
+
+class TimedOutNavigationBrowser(StubBrowser):
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        raise TimeoutError("Page.goto: Timeout 30000ms exceeded")
+
+    def _context_is_alive(self) -> bool:
+        # The regression must prove serve() does not call this after the timeout.
+        raise AssertionError("timed-out navigation must skip the liveness probe")
+
+
+def test_page_timeout_does_not_block_following_recovery_command(short_sock, monkeypatch):
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+
+    daemon = make_daemon(sock_path, stub=TimedOutNavigationBrowser())
+    thread = threading.Thread(target=daemon.serve, daemon=True)
+    thread.start()
+    _wait_until_listening(sock_path)
+
+    code = c.send("go_to https://slow.example", headless=True)
+    assert code == 1
+
+    # The recovery command must reach the daemon instead of waiting behind a second,
+    # unsafe browser round trip. It deliberately does not probe context liveness.
+    code = c.send("keyboard_press Escape", headless=True)
+    assert code == 0
+
+    daemon._cleanup()
+    thread.join(timeout=2)
 
 
 def test_launch_failure_makes_daemon_exit(short_sock, monkeypatch, capsys):
