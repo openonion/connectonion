@@ -10,13 +10,20 @@ compiled C, C++, and Rust, stopped provider work, narrowed permissions,
 restarted the Host, and reconnected without sending the prompt twice. I copied
 the candidate into a Stable branch expecting the last check to be ceremonial.
 
-It failed twice.
+It failed three times.
 
 The first failure said a final `1.7.0` package was still Beta. The second said
 the release did not exist on the documentation site, which still called
 1.6.12 Stable. Neither failure concerned the code RC10 had exercised. Both
 were telling us that changing a version number is a user-visible operation,
 not clerical cleanup.
+
+The third failure came from ancestry, not the release script. The 1.6.12 line
+contained a bounded set of operational fixes that had never reached the 1.7
+branch. Calling RC10 unchanged would therefore have made Stable newer in name
+but older in those behaviours. We forward-ported the missing fixes, published
+RC11, and repeated the public-artifact checks instead of hiding the difference
+inside the Stable commit.
 
 That exposed an awkward phrase in our own release plan: “promote RC10
 unchanged.” I had been reading unchanged as identical files. But a Stable wheel
@@ -29,7 +36,7 @@ not the behavior. No new retry, adapter event, permission rule, or UI contract
 may hide inside the version commit. The package metadata and the public channel
 must change together because they are two surfaces of the same promise.
 
-After those two failures, the release check passed 59 assertions across the
+After those failures, the RC11 release check passed 66 assertions across the
 version sources, lock, artifact provenance, workflow, history, and docs
 contract. The new wheel and source archive passed `twine check`. More
 importantly, the failure changed how we stage the release: the Stable React
@@ -37,7 +44,8 @@ reader and final O Chat head are prepared first, the package tag comes only
 after that client gate, and the documentation switches only after PyPI serves
 the package it names.
 
-RC10 remains the name of the artifact that earned acceptance. 1.7.0 is the
+RC11 is the candidate that contains the accepted 1.7 behaviour and the complete
+applicable 1.6.12 fix set. 1.7.0 is the
 promise that ordinary users may now depend on the same behavior. The last code
 change was no code change at all; the last lesson was that names are part of
 the product boundary.
