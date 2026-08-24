@@ -164,6 +164,11 @@ When releasing a new version:
 - [ ] Refresh `uv.lock`
 - [ ] Keep the one PyPI `Development Status` classifier aligned with the phase:
       Alpha for `aN`, Beta for `bN`/`rcN`, and Production/Stable for a final
+- [ ] For every stable patch, open a dedicated forward-integration issue labelled
+      `forward-port-required`. List every active higher release line (at minimum
+      the current preview), the patch commits that apply there, and the PR that
+      carries each one. Version-only metadata is not a product fix and must not
+      be copied into a newer line.
 - [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
 - [ ] Draft or substantially update a Design Journal post for a feature-train
       launch, first beta, first RC, stable release, or material architecture or
@@ -190,12 +195,33 @@ When releasing a new version:
       version state and Design Journal. Verify the canonical URL, social and
       structured metadata, sitemap, AI-readable indexes, internal links, and
       mobile layout.
+- [ ] After a stable patch is verified, forward-port every applicable fix into
+      every active higher line and close its `forward-port-required` issue only
+      after those PRs merge and pass their own CI. No later preview, RC, or
+      next-minor Stable may publish while such an issue remains open.
 
 Replace `X.Y.Z` with the complete canonical version, including `aN`, `bN`, or
 `rcN`. Manual workflow dispatch may retry an existing reviewed tag; it is not
 an arbitrary-branch release path. This procedure has no workstation publication
 path. Recovery must preserve the reviewed tag and artifacts and be implemented
 as a separate reviewed workflow change, not an ad hoc second registry writer.
+
+### Stable patches move forward
+
+A stable patch fixes the oldest supported line first; it must not make the
+newest testable line older in behaviour. Once `X.Y.Z` with `Z > 0` is public,
+each applicable product, test, documentation, migration, and operational fix
+must be forward-ported to every active higher line, including the current
+preview. Use reviewed commits or a focused PR and resolve newer-line conflicts
+deliberately. Do not merge stable version numbers, channel metadata, or release
+notes into the preview merely to manufacture ancestry.
+
+The patch's dedicated `forward-port-required` issue is the durable ledger. It
+stays open until every active line has either a merged PR with CI evidence or a
+maintainer-reviewed explanation that the fix is inapplicable. The protected
+release workflow refuses a new preview, RC, or next-minor Stable while any such
+ledger remains open. Retrying an already-published immutable tag remains a
+recovery operation and is not blocked by work discovered later.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to

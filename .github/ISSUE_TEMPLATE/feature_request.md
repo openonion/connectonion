@@ -95,7 +95,13 @@ Add any other context, screenshots, or examples about the feature request here.
 - [ ] Publish only through the protected GitHub Preview/Release workflow explicitly
       authorized above.
 - [ ] Re-test the public artifact and deployed Preview.
-- [ ] After a stable release is verified, forward-merge that stable line into
-      `main`; preserve newer OIP authority and resolve conflicts explicitly.
+- [ ] If this is a stable patch, open a separate `forward-port-required` issue
+      naming every active higher line before the patch PR merges.
+- [ ] After a stable patch is verified, forward-port every applicable fix,
+      regression test, migration, documentation change, and operational
+      contract into every active higher line; preserve newer OIP authority and
+      resolve conflicts explicitly instead of copying version metadata.
+- [ ] Keep that tracker open until every forward-port PR merges and passes CI.
+      No newer preview, RC, or next-minor Stable publishes first.
 - [ ] Link rollback instructions, immutable versions/hashes, PRs, screenshots, and
       public release.
