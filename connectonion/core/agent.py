@@ -47,6 +47,24 @@ _POST_PROVIDER_LLM_TIMEOUT_SECONDS = 90.0
 _NATIVE_PROVIDER_TOOL_NAMES = frozenset({"claude_code", "codex"})
 
 
+def _has_unsettled_native_provider_result(trace: list[dict[str, Any]]) -> bool:
+    """Whether the latest model decision completed native-provider work.
+
+    The durable trace is the hosted runtime's authoritative record.  Scan only
+    back to the latest LLM call: an older provider result must not put an
+    unrelated later tool batch on the settlement deadline.
+    """
+    for entry in reversed(trace):
+        if entry.get("type") == "llm_call":
+            return False
+        if (
+            entry.get("type") == "tool_result"
+            and entry.get("name") in _NATIVE_PROVIDER_TOOL_NAMES
+        ):
+            return True
+    return False
+
+
 def _normalized_runtime_mode_session(session: Mapping[str, Any]) -> dict[str, Any]:
     """Apply the 1.7 schema boundary without translating old authority."""
 
@@ -641,6 +659,19 @@ class Agent:
             # Fire before_iteration (poll IO, check mode changes)
             self._invoke_events('before_iteration')
 
+            # Hosted provider plugins publish their completed tool result into
+            # the durable trace.  Re-derive the bound here as a fail-safe for
+            # any observer that normalized the in-memory ToolCall after the
+            # original decision.  RC9's public Work Room gate proved that the
+            # post-execution-only name check was not sufficient in this path.
+            if (
+                not provider_settlement_required
+                and _has_unsettled_native_provider_result(
+                    self.current_session.get('trace', [])
+                )
+            ):
+                provider_settlement_required = True
+
             # Get LLM response
             try:
                 response = self._get_llm_decision(
@@ -677,14 +708,22 @@ class Agent:
                             "id": self._next_trace_id(),
                         })
                 else:
+                    # Arm the settlement bound from the model's immutable
+                    # decision before tool execution.  The hosted co-ai path
+                    # lets provider plugins and event handlers observe and
+                    # normalize a call while it runs; detecting the provider
+                    # only after that path returned left the real Work Room
+                    # continuation unbounded even though minimal Agent tests
+                    # retained the original ToolCall name.
+                    native_provider_batch = any(
+                        getattr(call, "name", "") in _NATIVE_PROVIDER_TOOL_NAMES
+                        for call in response.tool_calls
+                    )
+                    if native_provider_batch:
+                        provider_settlement_required = True
                     # Process tool calls
                     self._execute_and_record_tools(response.tool_calls)
                     completed_tools = True
-                    if any(
-                        getattr(call, "name", "") in _NATIVE_PROVIDER_TOOL_NAMES
-                        for call in response.tool_calls
-                    ):
-                        provider_settlement_required = True
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
@@ -762,6 +801,11 @@ class Agent:
             'model': self.llm.model,
             'iteration': self.current_session['iteration'],
             'status': 'running',
+            **(
+                {'timeout_seconds': timeout_seconds}
+                if timeout_seconds is not None
+                else {}
+            ),
         })
 
         start = time.time()
