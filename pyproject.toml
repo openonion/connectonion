@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.7.0rc9"
+version = "1.7.0rc10"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "Apache-2.0"}
