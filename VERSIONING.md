@@ -49,6 +49,7 @@ Pre-releases are opt-in and must be marked as pre-releases on PyPI and GitHub.
 
 ### Version History
 - 1.8.0a1 (**the first 1.8 preview**: cut from `main` once 1.7 was feature-frozen (see the 1.7.0b1 entry) — new feature work resumes here rather than on the stabilising 1.7 line. `co server new --region` lets an operator pick a region and route around a single region's server-address quota instead of having nowhere to go once it fills (#713); `co email share`/`unshare` let one account grant another send access to one of its addresses without transferring ownership or sharing a private key (#1137), with `resolve_email_owner` also fixed to recognise addresses added after the original multi-address work shipped; and the signed proxy-grant primitives (`connectonion.network.proxy`) that a future `co proxy` will use land as a library module with no CLI surface yet.)
+- 1.6.12 (**the stable line absorbs proven operational work**: `co server new --region`, email share/unshare, explicit provider network bounds, Outlook attachment downloads, stronger implementation templates and FDE documentation, plus permanent visual release evidence.)
 - 1.7.0a18 (**a native Work Room message is not outer-agent input**: direct Codex follow-ups now receive a successful OIP acknowledgement only after native `turn/steer` or resumed `turn/start` succeeds, so a browser retains its draft across a terminal race. Provider messages flow through the React reader without a hidden event drop, while O Chat reduces a long coding run to one current state, optional genuine preview, and one focused approval surface. A real native C11 implementation run completed through the provider lifecycle and its independently compiled six-fixture test suite passed. Pairs with `@connectonion/react` 0.4.2-alpha.16.)
 - 1.7.0a17 (**a Work Room preview is evidence for one exact state, never a decorative stale image**: OIP provider lifecycle events now carry a per-invocation monotonic `stateRevision`; a browser Stop asks for the revision it observed and receives an ACK only when the Host proves that exact live state. Core introduces the bounded `provider_artifact` contract for a Host-owned PNG/JPEG capture, validates it again during session replay, and never invents a Codex thumbnail when no capture producer exists. Pairs with `@connectonion/react` 0.4.2-alpha.15 and O Chat's compact optional current-preview renderer.)
 - 1.7.0a16 (**a Stop request is not a stopped provider**: OIP now correlates each browser Stop request to one live native provider invocation and replies with an explicit accepted/rejected acknowledgement. The browser waits for that acknowledgement, restores a clear retry action after refusal or loss, and treats the terminal provider event—not a local button press—as the authoritative stopped state. Pairs with `@connectonion/react` 0.4.2-alpha.14 and O Chat's verified Work Room Stop state.)
@@ -152,6 +153,11 @@ When releasing a new version:
       workflow decision. Maintenance-only patches need release notes unless
       they contain a reusable design lesson.
 - [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
+- [ ] Record the release's visual evidence: `python scripts/check_release_visuals.py vX.Y.Z`
+      must pass — a reviewed image set under docs/releases/assets/vX.Y.Z/ (a
+      per-release directory; the contract lives in `docs/releases/README.md`)
+      for user-visible changes, or an explicit `no_visual_change` reason for a
+      backend-only patch (#1124)
 - [ ] Remove artifacts from older releases: `rm -rf dist/`
 - [ ] Build package: `python -m build`
 - [ ] Validate both current-version artifacts: `python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl`

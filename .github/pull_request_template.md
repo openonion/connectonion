@@ -98,6 +98,9 @@ from connectonion import Agent
 - [ ] This PR ships its dev-blog post under docs/blog/ (or a maintainer applied `no-blog`)
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged and published
+- [ ] Every piece of evidence the linked issue's **AI implementation contract**
+      requires is attached or linked here (tests, journeys, screenshots,
+      exact commands) — see docs/ai-implementation-contract.md
 
 ## Screenshots (if applicable)
 Add screenshots to help explain your changes.

@@ -1285,3 +1285,49 @@ class TestDownloadAttachments:
         ])
 
         assert outlook.download_attachments("msg-id", tmp_path / "out") == []
+
+    def test_inline_signature_images_are_skipped_by_default(self, monkeypatch, tmp_path):
+        """One real PDF and a corporate signature must save one file, not five (#924)."""
+        import base64
+
+        encoded = lambda value: base64.b64encode(value).decode()
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "invoice.pdf", "contentBytes": encoded(b"pdf")},
+            {"name": "logo.png", "contentBytes": encoded(b"png"), "isInline": True},
+            {"name": "banner.png", "contentBytes": encoded(b"png"), "isInline": True},
+        ])
+
+        saved = outlook.download_attachments("msg-id", tmp_path / "out")
+
+        assert saved == [str(tmp_path / "out" / "invoice.pdf")]
+        assert not (tmp_path / "out" / "logo.png").exists()
+
+    def test_include_inline_saves_the_embedded_images_too(self, monkeypatch, tmp_path):
+        import base64
+
+        encoded = lambda value: base64.b64encode(value).decode()
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "invoice.pdf", "contentBytes": encoded(b"pdf")},
+            {"name": "logo.png", "contentBytes": encoded(b"png"), "isInline": True},
+        ])
+
+        saved = outlook.download_attachments(
+            "msg-id", tmp_path / "out", include_inline=True
+        )
+
+        assert saved == [
+            str(tmp_path / "out" / "invoice.pdf"),
+            str(tmp_path / "out" / "logo.png"),
+        ]
+
+    def test_an_inline_only_mail_reports_no_attachments(self, monkeypatch, tmp_path):
+        """The signature-only mail is the everyday case the default protects."""
+        import base64
+
+        outlook = self._outlook(monkeypatch, tmp_path, [
+            {"name": "logo.png",
+             "contentBytes": base64.b64encode(b"png").decode(),
+             "isInline": True},
+        ])
+
+        assert outlook.download_attachments("msg-id", tmp_path / "out") == []

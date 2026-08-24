@@ -1165,10 +1165,14 @@ def outlook_read(
 def outlook_download(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
+    include_inline: bool = typer.Option(
+        False, "--include-inline",
+        help="Also save embedded signature images and logos (skipped by default)",
+    ),
 ):
     """Save an email's attachments to disk."""
     from .commands.outlook_commands import handle_outlook_download
-    handle_outlook_download(email_id, out_dir)
+    handle_outlook_download(email_id, out_dir, include_inline=include_inline)
 
 
 @outlook_app.command("reply", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "

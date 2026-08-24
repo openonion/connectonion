@@ -1,5 +1,9 @@
 # 🧅 ConnectOnion
 
+**Keep simple things simple, make complicated things possible.**
+
+A template-first toolkit for FDEs building, debugging, deploying, and operating real AI agents.
+
 <div align="center">
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
@@ -22,6 +26,36 @@
 > ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
 > 
 > This is the core principle that drives every design decision in ConnectOnion.
+
+## Start from a working agent
+
+You do not need to assemble a framework stack before doing useful work. Start
+from the same working agent that powers `co ai`, specialise it with skills, and
+use one CLI across the delivery path:
+
+```bash
+pip install connectonion
+
+co create sales-agent
+cd sales-agent
+co ai
+co doctor
+co deploy
+co status
+```
+
+`co create` supplies files, shell, browser, planning, todos, and sub-agents.
+`co ai` works in the project from a terminal or the web client. `co deploy`
+ships the agent, while `co status` and `co doctor` explain what is running and
+what needs attention. The Python runtime below remains directly available when
+you need a custom tool, hook, provider, or host boundary.
+
+Common delivery commands include:
+
+- `co browser` for a persistent browser;
+- `co server new --region <region>` and `co deploy --to <server>` for owned infrastructure;
+- `co email share` and `co email unshare` for scoped mailbox delegation;
+- `co gmail`, `co outlook`, and `co gdrive` for operator-connected services.
 
 ## 🎯 Living Our Philosophy
 
