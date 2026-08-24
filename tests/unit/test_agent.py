@@ -256,6 +256,156 @@ def test_repeated_empty_terminal_after_tool_fails_instead_of_hanging():
         agent.input("Calculate 2+2")
     assert mock_llm.call_count == 3
 
+
+def test_post_provider_llm_timeout_gets_one_bounded_recovery_call(monkeypatch):
+    import threading
+    import time
+
+    import connectonion.core.agent as agent_module
+
+    release = threading.Event()
+
+    def claude_code(prompt: str) -> str:
+        """Run a native Claude Code task."""
+        return "verified provider result"
+
+    class HangingSettlementLLM:
+        model = "fake/post-provider-timeout"
+
+        def __init__(self):
+            self.calls = 0
+            self.last_call = None
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            self.last_call = {"messages": messages, "tools": tools}
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="claude_code",
+                        arguments={"prompt": "build it"},
+                        id="provider-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            if self.calls == 2:
+                release.wait(timeout=2)
+                return LLMResponse(
+                    content="late answer",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            return LLMResponse(
+                content="Provider work completed and was verified.",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    monkeypatch.setattr(agent_module, "_POST_PROVIDER_LLM_TIMEOUT_SECONDS", 0.03)
+    llm = HangingSettlementLLM()
+    agent = Agent(
+        name="provider-timeout-recovery",
+        llm=llm,
+        tools=[claude_code],
+        log=False,
+        quiet=True,
+    )
+
+    before = time.monotonic()
+    result = agent.input("Delegate this")
+    elapsed = time.monotonic() - before
+    release.set()
+
+    assert result == "Provider work completed and was verified."
+    assert elapsed < 0.5
+    assert llm.calls == 3
+    assert [
+        entry["status"]
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_result"
+    ] == ["success", "error", "success"]
+    assert any(
+        "bounded settlement window" in str(message.get("content", ""))
+        for message in llm.last_call["messages"]
+    )
+
+
+def test_repeated_post_provider_llm_timeout_fails_with_terminal_outcome(monkeypatch):
+    import threading
+    import time
+
+    import connectonion.core.agent as agent_module
+
+    release = threading.Event()
+
+    def codex(prompt: str) -> str:
+        """Run a native Codex task."""
+        return "verified provider result"
+
+    class RepeatedHangingSettlementLLM:
+        model = "fake/repeated-post-provider-timeout"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="codex",
+                        arguments={"prompt": "build it"},
+                        id="provider-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            release.wait(timeout=2)
+            return LLMResponse(
+                content="late answer",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    monkeypatch.setattr(agent_module, "_POST_PROVIDER_LLM_TIMEOUT_SECONDS", 0.03)
+    llm = RepeatedHangingSettlementLLM()
+    agent = Agent(
+        name="provider-timeout-failure",
+        llm=llm,
+        tools=[codex],
+        log=False,
+        quiet=True,
+    )
+
+    before = time.monotonic()
+    with pytest.raises(TimeoutError, match="one bounded retry"):
+        agent.input("Delegate this")
+    elapsed = time.monotonic() - before
+    release.set()
+
+    assert elapsed < 0.5
+    assert llm.calls == 3
+    assert [
+        entry["status"]
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_result"
+    ] == ["success", "error", "error"]
+    terminal = [
+        entry
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "turn_result"
+    ]
+    assert len(terminal) == 1
+    assert terminal[0]["reason"] == "error"
+    assert terminal[0]["error_type"] == "TimeoutError"
+
+
 def test_mixed_functions_and_class_instance():
         """Test that agent can accept both functions and class instances."""
         

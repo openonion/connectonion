@@ -2,6 +2,7 @@
 
 import copy
 import threading
+import time
 from typing import Any, Callable, Optional, Tuple
 
 from .provider_events import (
@@ -13,6 +14,10 @@ from .provider_events import (
 
 class UserInterrupt(Exception):
     """Internal control flow for an interrupt consumed by a blocking gate."""
+
+
+class InterruptibleStepTimeout(TimeoutError):
+    """A disposable blocking step exceeded its caller-owned settlement bound."""
 
 
 class InterruptibleIO:
@@ -213,6 +218,7 @@ def run_interruptible(
     io: Any,
     poll_seconds: float = 0.2,
     on_interrupt: Optional[Callable[[], None]] = None,
+    timeout_seconds: Optional[float] = None,
 ) -> Tuple[Any, bool]:
     """Return ``(result, False)`` or abandon ``fn`` on user interrupt.
 
@@ -221,10 +227,14 @@ def run_interruptible(
     the selective INTERRUPT mailbox. The abandoned callable may keep running,
     but its late return value is never committed by the caller.
     """
-    if io is None or not hasattr(io, "receive_all"):
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+
+    has_interrupt_mailbox = io is not None and hasattr(io, "receive_all")
+    if not has_interrupt_mailbox and timeout_seconds is None:
         return fn(), False
 
-    if _take_interrupt(io, on_interrupt):
+    if has_interrupt_mailbox and _take_interrupt(io, on_interrupt):
         return None, True
 
     box = {}
@@ -242,13 +252,26 @@ def run_interruptible(
     )
     worker.start()
 
+    deadline = (
+        time.monotonic() + timeout_seconds
+        if timeout_seconds is not None
+        else None
+    )
     while worker.is_alive():
-        worker.join(timeout=poll_seconds)
+        wait_seconds = poll_seconds
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise InterruptibleStepTimeout(
+                    f"Blocking step exceeded {timeout_seconds:g} seconds"
+                )
+            wait_seconds = min(wait_seconds, remaining)
+        worker.join(timeout=wait_seconds)
         # Completed work wins the race. Leave a simultaneous interrupt queued
         # for the next step or the existing iteration-boundary backstop.
         if not worker.is_alive():
             break
-        if _take_interrupt(io, on_interrupt):
+        if has_interrupt_mailbox and _take_interrupt(io, on_interrupt):
             return None, True
 
     if "error" in box:
