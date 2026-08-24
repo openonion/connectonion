@@ -9,7 +9,12 @@ import pytest
 
 from connectonion import Agent, CodexPlugin, before_each_tool
 from connectonion.cli.co_ai.tools.claude_code import claude_code as co_ai_claude_code
-from connectonion.core.interrupt import InterruptibleIO, UserInterrupt, run_interruptible
+from connectonion.core.interrupt import (
+    InterruptibleIO,
+    InterruptibleStepTimeout,
+    UserInterrupt,
+    run_interruptible,
+)
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.logger import Logger
 from connectonion.network.io.websocket import WebSocketIO
@@ -117,6 +122,30 @@ def test_worker_exception_is_reraised_on_caller_thread():
 
     with pytest.raises(ValueError, match="boom"):
         run_interruptible(fail, MailboxIO(), poll_seconds=0.01)
+
+
+def test_timeout_abandons_slow_step_without_waiting_for_its_late_result():
+    release = threading.Event()
+    finished = threading.Event()
+
+    def step():
+        release.wait(timeout=2)
+        finished.set()
+        return "late"
+
+    before = time.monotonic()
+    with pytest.raises(InterruptibleStepTimeout, match="exceeded"):
+        run_interruptible(
+            step,
+            MailboxIO(),
+            poll_seconds=0.01,
+            timeout_seconds=0.03,
+        )
+    elapsed = time.monotonic() - before
+
+    release.set()
+    assert finished.wait(timeout=1)
+    assert elapsed < 0.3
 
 
 def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():

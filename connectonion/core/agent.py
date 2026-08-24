@@ -20,7 +20,7 @@ from uuid import uuid4
 from ..logger import Logger
 from ..prompts import load_system_prompt
 from .events import EventHandler
-from .interrupt import run_interruptible
+from .interrupt import InterruptibleStepTimeout, run_interruptible
 from .llm import LLM, TokenUsage, create_llm
 from .mode import FULL_ACCESS, full_access_turns_left, mode_of, set_mode
 from .provider_messages import messages_for_provider
@@ -42,6 +42,9 @@ _REMOVED_MODE_FIELDS = {
     "ulw_turns_used",
     "workflow_mode",
 }
+
+_POST_PROVIDER_LLM_TIMEOUT_SECONDS = 90.0
+_NATIVE_PROVIDER_TOOL_NAMES = frozenset({"claude_code", "codex"})
 
 
 def _normalized_runtime_mode_session(session: Mapping[str, Any]) -> dict[str, Any]:
@@ -630,6 +633,8 @@ class Agent:
         """Return the existing response string and its private terminal reason."""
         completed_tools = False
         empty_terminal_retries = 0
+        provider_settlement_required = False
+        provider_timeout_retries = 0
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
@@ -637,7 +642,30 @@ class Agent:
             self._invoke_events('before_iteration')
 
             # Get LLM response
-            response = self._get_llm_decision()
+            try:
+                response = self._get_llm_decision(
+                    timeout_seconds=(
+                        _POST_PROVIDER_LLM_TIMEOUT_SECONDS
+                        if provider_settlement_required
+                        else None
+                    )
+                )
+            except InterruptibleStepTimeout as error:
+                if provider_settlement_required and provider_timeout_retries == 0:
+                    from ..useful_plugins.system_reminder import reminder_message
+
+                    self.current_session['messages'].append(reminder_message(
+                        "The previous model call did not return within the bounded "
+                        "settlement window after native provider work. Return a concise "
+                        "user-facing final answer based only on the recorded tool results. "
+                        "Do not claim work that those results do not prove."
+                    ))
+                    provider_timeout_retries += 1
+                    max_iterations += 1
+                    continue
+                raise TimeoutError(
+                    "LLM did not settle native provider tool results after one bounded retry"
+                ) from error
 
             if response is not None:
                 if not response.tool_calls:
@@ -652,6 +680,11 @@ class Agent:
                     # Process tool calls
                     self._execute_and_record_tools(response.tool_calls)
                     completed_tools = True
+                    if any(
+                        getattr(call, "name", "") in _NATIVE_PROVIDER_TOOL_NAMES
+                        for call in response.tool_calls
+                    ):
+                        provider_settlement_required = True
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
@@ -707,7 +740,7 @@ class Agent:
             'max_iterations',
         )
 
-    def _get_llm_decision(self):
+    def _get_llm_decision(self, timeout_seconds: float | None = None):
         """Get the next action/decision from the LLM."""
         # Get tool schemas
         tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
@@ -733,10 +766,24 @@ class Agent:
 
         start = time.time()
         messages = messages_for_provider(self.current_session['messages'])
-        response, interrupted = run_interruptible(
-            lambda: self.llm.complete(messages, tools=tool_schemas),
-            self.io,
-        )
+        try:
+            response, interrupted = run_interruptible(
+                lambda: self.llm.complete(messages, tools=tool_schemas),
+                self.io,
+                timeout_seconds=timeout_seconds,
+            )
+        except InterruptibleStepTimeout:
+            duration = (time.time() - start) * 1000
+            self._record_trace({
+                'type': 'llm_result',
+                'id': llm_id,
+                'model': self.llm.model,
+                'iteration': self.current_session['iteration'],
+                'duration_ms': duration,
+                'status': 'error',
+                'error_type': 'TimeoutError',
+            })
+            raise
         duration = (time.time() - start) * 1000  # milliseconds
 
         if interrupted:
