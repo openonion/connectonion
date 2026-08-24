@@ -332,6 +332,103 @@ def test_post_provider_llm_timeout_gets_one_bounded_recovery_call(monkeypatch):
         "bounded settlement window" in str(message.get("content", ""))
         for message in llm.last_call["messages"]
     )
+    bounded_calls = [
+        entry for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_call" and "timeout_seconds" in entry
+    ]
+    assert [entry["timeout_seconds"] for entry in bounded_calls] == [0.03, 0.03]
+
+
+def test_provider_settlement_is_armed_before_hosted_tool_observers_normalize_the_call(monkeypatch):
+    """The real co-ai path must not rediscover provider identity after execution."""
+    import threading
+
+    import connectonion.core.agent as agent_module
+
+    release = threading.Event()
+
+    def claude_code(prompt: str) -> str:
+        """Run a native Claude Code task."""
+        return "verified provider result"
+
+    class HangingSettlementLLM:
+        model = "fake/hosted-provider-timeout"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="claude_code",
+                        arguments={"prompt": "build it"},
+                        id="provider-hosted-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            if self.calls == 2:
+                release.wait(timeout=2)
+                return LLMResponse(
+                    content="late answer",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            return LLMResponse(
+                content="Provider work completed and was verified.",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    monkeypatch.setattr(agent_module, "_POST_PROVIDER_LLM_TIMEOUT_SECONDS", 0.03)
+    llm = HangingSettlementLLM()
+    agent = Agent(
+        name="hosted-provider-timeout",
+        llm=llm,
+        tools=[claude_code],
+        log=False,
+        quiet=True,
+    )
+    execute = agent._execute_and_record_tools
+
+    def execute_like_hosted_observers(tool_calls):
+        execute(tool_calls)
+        for call in tool_calls:
+            call.name = "normalized_after_execution"
+
+    monkeypatch.setattr(agent, "_execute_and_record_tools", execute_like_hosted_observers)
+
+    result = agent.input("Delegate this")
+    release.set()
+
+    assert result == "Provider work completed and was verified."
+    assert llm.calls == 3
+    assert [
+        entry["status"]
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_result"
+    ] == ["success", "error", "success"]
+
+
+def test_durable_provider_result_rearms_the_hosted_settlement_bound():
+    from connectonion.core.agent import _has_unsettled_native_provider_result
+
+    assert _has_unsettled_native_provider_result([
+        {"type": "llm_call", "id": "decision"},
+        {"type": "provider_invocation", "provider": "claude_code"},
+        {"type": "tool_result", "name": "claude_code", "status": "success"},
+        {"type": "thinking", "kind": "runtime"},
+    ]) is True
+    assert _has_unsettled_native_provider_result([
+        {"type": "tool_result", "name": "claude_code", "status": "success"},
+        {"type": "llm_call", "id": "later-decision"},
+        {"type": "tool_result", "name": "bash", "status": "success"},
+    ]) is False
 
 
 def test_repeated_post_provider_llm_timeout_fails_with_terminal_outcome(monkeypatch):
