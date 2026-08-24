@@ -189,6 +189,73 @@ def test_methods_share_state_through_self():
         assert scraper.scraped_data[0] == "Title of example.com"
         assert result == "Scraped the title successfully."
 
+
+def test_empty_terminal_after_tool_gets_one_bounded_recovery_call():
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCall(
+                name="calculator",
+                arguments={"expression": "2+2"},
+                id="call_1",
+            )],
+            raw_response={},
+            usage=TokenUsage(),
+        ),
+        LLMResponse(content="", tool_calls=[], raw_response={}, usage=TokenUsage()),
+        LLMResponse(
+            content="The result is 4.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        ),
+    ])
+    agent = Agent(
+        name="empty-terminal-recovery",
+        llm=mock_llm,
+        tools=[calculator],
+        log=False,
+    )
+
+    assert agent.input("Calculate 2+2") == "The result is 4."
+    assert mock_llm.call_count == 3
+    recovery_messages = mock_llm.calls[2]["messages"]
+    assert any(
+        "previous model response was empty" in message.get("content", "")
+        for message in recovery_messages
+    )
+    assert all(
+        message.get("content") != ""
+        for message in agent.current_session["messages"]
+    )
+
+
+def test_repeated_empty_terminal_after_tool_fails_instead_of_hanging():
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCall(
+                name="calculator",
+                arguments={"expression": "2+2"},
+                id="call_1",
+            )],
+            raw_response={},
+            usage=TokenUsage(),
+        ),
+        LLMResponse(content=None, tool_calls=[], raw_response={}, usage=TokenUsage()),
+        LLMResponse(content="   ", tool_calls=[], raw_response={}, usage=TokenUsage()),
+    ])
+    agent = Agent(
+        name="empty-terminal-failure",
+        llm=mock_llm,
+        tools=[calculator],
+        log=False,
+    )
+
+    with pytest.raises(RuntimeError, match="empty terminal response"):
+        agent.input("Calculate 2+2")
+    assert mock_llm.call_count == 3
+
 def test_mixed_functions_and_class_instance():
         """Test that agent can accept both functions and class instances."""
         
