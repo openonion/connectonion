@@ -11,6 +11,7 @@ Fixes #(issue number)
 - **Estimated release window:** [e.g. next alpha, next stable, future roadmap, or unknown]
 - **Milestone:** [maintainer assigns the confirmed release milestone]
 - **Why this release:** Explain urgency, dependencies, compatibility, and rollback risk.
+- **Forward-port tracking issue (stable patches only):** [link an open `forward-port-required` issue, for example #123; use N/A for non-patch work]
 
 > The author's target is an estimate. Maintainers confirm the release by applying labels and assigning a milestone.
 
@@ -98,6 +99,9 @@ from connectonion import Agent
 - [ ] This PR ships its dev-blog post under docs/blog/ (or a maintainer applied `no-blog`)
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged and published
+- [ ] If this targets a stable patch, its separate `forward-port-required`
+      tracker names every active higher line, at minimum the current preview,
+      and will remain open until all applicable forward-port PRs merge and pass CI
 - [ ] Every piece of evidence the linked issue's **AI implementation contract**
       requires is attached or linked here (tests, journeys, screenshots,
       exact commands) — see docs/ai-implementation-contract.md

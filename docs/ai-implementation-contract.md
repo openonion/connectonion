@@ -24,7 +24,15 @@ must retain the same vocabulary. Tracked in #1123.
   Windows/Linux, and installed artifacts.
 - If a change can alter browser-visible behavior, Core unit tests are
   insufficient: require the React/O Chat consumer journey.
-- After verified stable publication, forward-merge the stable line into `main`.
+- Every stable patch opens a dedicated `forward-port-required` tracking issue
+  before its PR merges. After verified publication, forward-port every
+  applicable fix, regression test, migration, documentation change, and
+  operational contract into every active higher line, at minimum the current
+  preview. Keep the tracker open until each PR merges and passes CI.
+- Do not copy stable version/channel metadata into a preview merely to create
+  ancestry. Resolve the product commits against the newer architecture.
+- A newer preview, RC, or next-minor Stable cannot publish while any
+  `forward-port-required` tracker remains open.
 
 ### `@connectonion/react`
 
