@@ -13,6 +13,7 @@ import copy
 import time
 from typing import Any, Callable
 
+from ...core.mode import FULL_ACCESS, full_access_turns_left, mode_of
 from .session import SessionStorage, session_owner
 
 
@@ -155,6 +156,8 @@ def _direct_session(
     provider: str,
 ) -> dict[str, Any]:
     """Construct the minimum session a configured native tool needs to run."""
+    outer_mode = mode_of(source_session)
+    turns_left = full_access_turns_left(source_session)
     stored_permissions = source_session.get("_provider_permission_options")
     selected_permission = (
         stored_permissions.get(workroom_id)
@@ -167,7 +170,12 @@ def _direct_session(
         "turn": 0,
         "iteration": 1,
         "session_id": session_id,
-        "mode": source_session.get("mode"),
+        "mode": outer_mode,
+        **(
+            {"turns_left": turns_left}
+            if outer_mode == FULL_ACCESS
+            else {}
+        ),
         "requester": copy.deepcopy(source_session.get("requester")),
         "_provider_workroom_id": workroom_id,
         "_provider_continuation_of": continuation_of,
