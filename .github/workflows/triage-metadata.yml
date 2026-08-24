@@ -61,6 +61,7 @@ jobs:
             const body = item.body || '';
             const target = body.match(/\*\*Proposed target version:\*\*\s*([^\n\r]+)/i)?.[1]?.trim();
             const window = body.match(/\*\*Estimated release window:\*\*\s*([^\n\r]+)/i)?.[1]?.trim();
+            const forwardTracker = body.match(/\*\*Forward-port tracking issue \(stable patches only\):\*\*\s*([^\n\r]+)/i)?.[1]?.trim();
             const placeholder = value => !value || /^\[/.test(value) || /^(tbd|unknown)$/i.test(value);
 
             if (placeholder(target) || placeholder(window)) {
@@ -68,4 +69,27 @@ jobs:
                 'Fill in Proposed target version and Estimated release window in the PR template. ' +
                 'Use an honest estimate such as “1.8.0 / next alpha” or “future roadmap / unknown date”.'
               );
+            }
+
+            const stablePatchTarget = /\bnext patch\b/i.test(target || '') ||
+              /\b\d+\.\d+\.[1-9]\d*\b/.test(target || '');
+            if (stablePatchTarget) {
+              const issueMatch = (forwardTracker || '').match(/(?:#|\/issues\/)(\d+)\b/);
+              if (!issueMatch) {
+                core.setFailed(
+                  'Stable patch PRs must link a separate open forward-port tracking issue.'
+                );
+                return;
+              }
+              const tracker = await github.rest.issues.get({
+                owner, repo, issue_number: Number(issueMatch[1]),
+              });
+              const trackerLabels = tracker.data.labels.map(label =>
+                typeof label === 'string' ? label : label.name
+              );
+              if (tracker.data.state !== 'open' || !trackerLabels.includes('forward-port-required')) {
+                core.setFailed(
+                  'The stable patch forward-port tracker must be open and labelled forward-port-required.'
+                );
+              }
             }
