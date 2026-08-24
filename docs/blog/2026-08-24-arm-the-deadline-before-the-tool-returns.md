@@ -26,6 +26,16 @@ enough to bound settlement. The trace records the applied timeout so a hosted
 acceptance run can prove the safety boundary was active, rather than infer it
 from elapsed wall time.
 
+The first installed-wheel smoke refined the boundary again. Claude returned,
+the parent quickly called `glob`, then the following model response requested
+another tool and stalled before that tool reached a visible execution or
+approval state. The LLM calls were fast; timing only those calls could never
+close the turn. Post-provider settlement is therefore terminal-only. The parent
+may summarize the recorded provider result, but it cannot open a new outer tool
+chain. One attempted tool batch is discarded with a final-only reminder; a
+second attempt fails explicitly so the Host can publish a terminal outcome and
+restore the composer.
+
 The tradeoff is deliberate: every remaining model call in that provider turn is
 bounded, including the single grounded recovery attempt. A very slow but healthy
 settlement may be abandoned. That is preferable to an indefinitely unusable
