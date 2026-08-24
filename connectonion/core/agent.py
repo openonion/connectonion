@@ -653,6 +653,7 @@ class Agent:
         empty_terminal_retries = 0
         provider_settlement_required = False
         provider_timeout_retries = 0
+        provider_tool_retries = 0
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
@@ -719,11 +720,44 @@ class Agent:
                         getattr(call, "name", "") in _NATIVE_PROVIDER_TOOL_NAMES
                         for call in response.tool_calls
                     )
-                    if native_provider_batch:
-                        provider_settlement_required = True
-                    # Process tool calls
-                    self._execute_and_record_tools(response.tool_calls)
-                    completed_tools = True
+                    settlement_tools_rejected = False
+                    if provider_settlement_required and not native_provider_batch:
+                        if provider_tool_retries == 0:
+                            from ..useful_plugins.system_reminder import reminder_message
+
+                            attempted = ", ".join(
+                                getattr(call, "name", "unknown")
+                                for call in response.tool_calls
+                            )
+                            self.current_session['messages'].append(reminder_message(
+                                "Native provider work is already complete. The parent "
+                                "settlement attempted additional tool calls "
+                                f"({attempted}); those calls were not executed. Return "
+                                "a concise user-facing final answer based only on the "
+                                "recorded provider result. Do not call any tools."
+                            ))
+                            provider_tool_retries += 1
+                            max_iterations += 1
+                            settlement_tools_rejected = True
+                        else:
+                            raise RuntimeError(
+                                "Native provider settlement attempted tools after one "
+                                "final-only retry"
+                            )
+                    if not settlement_tools_rejected:
+                        if native_provider_batch:
+                            provider_settlement_required = True
+                        # Process tool calls
+                        self._execute_and_record_tools(response.tool_calls)
+                        completed_tools = True
+                        if native_provider_batch:
+                            from ..useful_plugins.system_reminder import reminder_message
+
+                            self.current_session['messages'].append(reminder_message(
+                                "Native provider work has completed. Return a concise "
+                                "user-facing final answer based only on its recorded result. "
+                                "Do not call any additional tools."
+                            ))
 
             # Fire after_iteration
             self._invoke_events('after_iteration')

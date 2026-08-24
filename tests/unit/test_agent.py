@@ -431,6 +431,76 @@ def test_durable_provider_result_rearms_the_hosted_settlement_bound():
     ]) is False
 
 
+def test_post_provider_settlement_rejects_a_new_tool_chain_and_returns_final_answer():
+    executed = []
+
+    def claude_code(prompt: str) -> str:
+        """Run a native Claude Code task."""
+        executed.append("claude_code")
+        return "verified provider result"
+
+    def glob(pattern: str) -> str:
+        """Search the workspace."""
+        executed.append("glob")
+        return "must not run"
+
+    class ToolHappySettlementLLM:
+        model = "fake/provider-terminal-settlement"
+
+        def __init__(self):
+            self.calls = 0
+            self.last_messages = None
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            self.last_messages = messages
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="claude_code",
+                        arguments={"prompt": "build it"},
+                        id="provider-terminal-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            if self.calls == 2:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="glob",
+                        arguments={"pattern": "*"},
+                        id="post-provider-glob",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            return LLMResponse(
+                content="Claude completed the verified project.",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    llm = ToolHappySettlementLLM()
+    agent = Agent(
+        name="provider-terminal-settlement",
+        llm=llm,
+        tools=[claude_code, glob],
+        log=False,
+        quiet=True,
+    )
+
+    assert agent.input("Delegate this") == "Claude completed the verified project."
+    assert executed == ["claude_code"]
+    assert llm.calls == 3
+    assert any(
+        "those calls were not executed" in str(message.get("content", ""))
+        for message in llm.last_messages
+    )
+
+
 def test_repeated_post_provider_llm_timeout_fails_with_terminal_outcome(monkeypatch):
     import threading
     import time
