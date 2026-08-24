@@ -95,7 +95,7 @@ Add any other context, screenshots, or examples about the feature request here.
 - [ ] Publish only through the protected GitHub Preview/Release workflow explicitly
       authorized above.
 - [ ] Re-test the public artifact and deployed Preview.
-- [ ] After a stable 1.6.x release is verified, forward-merge that stable line into
+- [ ] After a stable release is verified, forward-merge that stable line into
       `main`; preserve newer OIP authority and resolve conflicts explicitly.
 - [ ] Link rollback instructions, immutable versions/hashes, PRs, screenshots, and
       public release.
