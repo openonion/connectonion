@@ -628,6 +628,8 @@ class Agent:
 
     def _run_iteration_loop(self, max_iterations: int) -> tuple[str, str]:
         """Return the existing response string and its private terminal reason."""
+        completed_tools = False
+        empty_terminal_retries = 0
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
@@ -640,14 +642,16 @@ class Agent:
             if response is not None:
                 if not response.tool_calls:
                     content = response.content or ""
-                    self.current_session['messages'].append({
-                        "role": "assistant",
-                        "content": content,
-                        "id": self._next_trace_id(),
-                    })
+                    if content.strip():
+                        self.current_session['messages'].append({
+                            "role": "assistant",
+                            "content": content,
+                            "id": self._next_trace_id(),
+                        })
                 else:
                     # Process tool calls
                     self._execute_and_record_tools(response.tool_calls)
+                    completed_tools = True
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
@@ -681,6 +685,20 @@ class Agent:
                     # needs even when the original request used its full budget.
                     max_iterations += 1
                     continue
+                if not content.strip():
+                    if completed_tools and empty_terminal_retries == 0:
+                        from ..useful_plugins.system_reminder import reminder_message
+
+                        self.current_session['messages'].append(reminder_message(
+                            "The previous model response was empty after tool execution. "
+                            "Return a concise user-facing final answer based only on the "
+                            "recorded tool results. Do not claim work that those results "
+                            "do not prove."
+                        ))
+                        empty_terminal_retries += 1
+                        max_iterations += 1
+                        continue
+                    raise RuntimeError("LLM returned an empty terminal response")
                 return content, 'natural'
 
         # Hit max iterations
