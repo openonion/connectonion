@@ -4,38 +4,40 @@ date: 2026-08-24
 author: ConnectOnion Team
 ---
 
-RC10 had already done the hard work. A clean public install had opened real
-Codex and Claude Code Work Rooms, driven a browser download, compiled C, C++,
-and Rust, stopped provider work, narrowed permissions, restarted the Host, and
-reconnected without sending the prompt twice. The code had earned release.
+RC10 had survived the run we kept failing to finish. A clean public install
+opened real Codex and Claude Code Work Rooms, downloaded through a real browser,
+compiled C, C++, and Rust, stopped provider work, narrowed permissions,
+restarted the Host, and reconnected without sending the prompt twice. I copied
+the candidate into a Stable branch expecting the last check to be ceremonial.
 
-But `pip install connectonion` still selected 1.6.12. That was correct. A
-candidate can pass every test and still not be the version ordinary users
-receive. The last release change was not another behavior fix; it was changing
-the promise attached to those already-reviewed sources.
+It failed twice.
 
-That distinction matters because “unchanged promotion” cannot mean identical
-archive bytes. The version inside a Stable wheel must be `1.7.0`, its package
-classifier must say Production/Stable, and the public docs must point normal
-installs at it. Those metadata changes necessarily produce new archives. What
-stays unchanged is the product source and its behavior.
+The first failure said a final `1.7.0` package was still Beta. The second said
+the release did not exist on the documentation site, which still called
+1.6.12 Stable. Neither failure concerned the code RC10 had exercised. Both
+were telling us that changing a version number is a user-visible operation,
+not clerical cleanup.
 
-The first local promotion check caught both sides of that boundary. It rejected
-the old Beta classifier, then rejected the documentation site while it still
-advertised 1.6.12. We changed the classifier, staged the docs channel beside
-the package, and reran the release contract: 59 version, provenance, workflow,
-history, and checklist tests passed. The 1.7.0 wheel and source archive built,
-and `twine check` accepted both.
+That exposed an awkward phrase in our own release plan: “promote RC10
+unchanged.” I had been reading unchanged as identical files. But a Stable wheel
+cannot be identical to an RC wheel. It must identify itself as `1.7.0`, carry
+the Production/Stable classifier, and make an ordinary install resolve to the
+new line. Its archive bytes must change even when its product source does not.
 
-The release remains ordered. The stable React reader publishes first. O Chat
-then consumes that public reader and completes its final visual declaration.
-Only after that frontend head merges does this metadata commit receive the
-`v1.7.0` tag. The protected workflow builds once, publishes through Trusted
-Publishing, downloads what PyPI actually serves, and attaches those exact bytes
-to the GitHub release. Documentation switches its Stable channel only after
-the package exists.
+The useful invariant is narrower and stronger: promotion changes the promise,
+not the behavior. No new retry, adapter event, permission rule, or UI contract
+may hide inside the version commit. The package metadata and the public channel
+must change together because they are two surfaces of the same promise.
 
-This is slower than changing a dropdown to “latest,” but it gives every name a
-referent. RC10 names the artifact that survived acceptance. 1.7.0 names the
-same reviewed product source after the coordinated clients and public channels
-are ready to make that promise to everyone.
+After those two failures, the release check passed 59 assertions across the
+version sources, lock, artifact provenance, workflow, history, and docs
+contract. The new wheel and source archive passed `twine check`. More
+importantly, the failure changed how we stage the release: the Stable React
+reader and final O Chat head are prepared first, the package tag comes only
+after that client gate, and the documentation switches only after PyPI serves
+the package it names.
+
+RC10 remains the name of the artifact that earned acceptance. 1.7.0 is the
+promise that ordinary users may now depend on the same behavior. The last code
+change was no code change at all; the last lesson was that names are part of
+the product boundary.
