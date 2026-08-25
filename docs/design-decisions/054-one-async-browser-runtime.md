@@ -67,6 +67,14 @@ extraction; viewport changes; text and duration waits; raw selector extraction; 
 platform shortcut guidance. Signature checks and exact result assertions compare
 this boundary to `BrowserAutomation`; sharing a method name is not treated as parity.
 
+The third boundary makes the deterministic core frame-aware. Page and frame
+scripts share one local-path and JSON-validation contract. Direct file inputs and
+file-chooser uploads enumerate the same filtered frame set, preserve global match
+indexes, and await the locator, chooser, post-upload wait, and context save. It
+deliberately does not port selector clicks: the public click path is humanized, so
+substituting a raw async locator click would match the signature while changing the
+observable behavior.
+
 ## Invariants
 
 - one persistent browser context and profile per runtime;
@@ -86,7 +94,10 @@ Every migration PR must include isolated async contract tests. The real-driver
 gate holds a native two-second wait on one session page while requiring a text
 read on another page to finish within 500 ms and before the wait completes. A
 globally serialized driver cannot satisfy that liveness condition. The gate also
-checks page isolation and focused-element behavior.
+checks page isolation and focused-element behavior. Its frame fixture executes a
+local script in a named `srcdoc` iframe, uploads one file directly, uploads another
+through a real file-chooser event, and reads both selected filenames back from the
+native DOM.
 
 The macOS native gate runs with Chrome's mock keychain because the repository's
 autouse fixture gives every test a disposable `HOME`. Production keeps the
@@ -102,9 +113,9 @@ shutdown load tests must pass on POSIX and Windows. Before #500 closes, repeated
 sync and running-event-loop callers must leave no loop thread, task, page,
 process, socket, or pipe behind.
 
-The deterministic review boundary additionally runs against native Chrome. It
-proves selector counts and text, repeated-item bounds, link filtering, text waits,
-raw extraction, and viewport changes on a real DOM. Frames, click variants,
-downloads/upload-after-click, scrolling, humanized typing, model-backed matching,
-context capture, and remaining dead-context/profile behavior stay explicit #498
-work; this boundary does not make the async core public.
+The deterministic review boundaries additionally run against native Chrome. They
+prove selector counts and text, repeated-item bounds, link filtering, text waits,
+raw extraction, viewport changes, page/frame scripts, and both upload paths on a
+real DOM. Click variants, downloads, scrolling, humanized typing, model-backed
+matching, context capture, and remaining dead-context/profile behavior stay
+explicit #498 work; these boundaries do not make the async core public.

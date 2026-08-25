@@ -215,6 +215,27 @@ browser.upload_file_after_click_by_selector(
 
 Both upload helpers accept `frame_url_contains` and `frame_name` for editors that render upload controls inside iframes. Pass `index` when the selector matches multiple file inputs or upload buttons.
 
+### Local Page and Frame Scripts
+
+Keep site-specific extraction or verification logic in a reviewed local
+JavaScript file, then execute it in the current authenticated page:
+
+```python
+# verify.js: (args) => ({ ok: document.title === args.title })
+browser.run_page_script("verify.js", '{"title": "Dashboard"}')
+
+browser.run_frame_script(
+    "verify.js",
+    '{"title": "Composer"}',
+    frame_name="editor",
+)
+```
+
+`run_frame_script()` scans matching frames and, by default, stops at the first
+object that returns `{"ok": true}`. Set `first_ok=False` to retain results from
+every matching frame. Relative script paths resolve from the current working
+directory; arguments must be valid JSON.
+
 ### Waiting
 
 ```python
@@ -260,9 +281,10 @@ cross-platform daemon have equivalent coverage; do not import it as an
 application API yet. The lifecycle, concurrency, cancellation, and compatibility
 boundaries are recorded in [DD-054](../design-decisions/054-one-async-browser-runtime.md).
 The internal core now covers the deterministic selector, extraction, viewport,
-wait, system-info, and tab-status contracts, but frames, downloads, humanized
-input, model-backed element finding, concurrent IPC, and the synchronous facade
-are still migration work. `BrowserAutomation` remains the supported API.
+wait, system-info, tab-status, page/frame-script, and file-upload contracts, but
+click variants, downloads, humanized input, model-backed element finding,
+concurrent IPC, and the synchronous facade are still migration work.
+`BrowserAutomation` remains the supported API.
 
 ## Common Patterns
 

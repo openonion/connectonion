@@ -839,33 +839,239 @@ class AsyncBrowserCore:
             await self.page.wait_for_timeout(1000)
             return f"Filled element {index + 1}/{count} matching selector: {selector}"
 
-    async def upload_file_by_selector(self, selector: str, file_path: str, index: int = 0) -> str:
+    async def upload_file_by_selector(
+        self,
+        selector: str,
+        file_path: str,
+        index: int = 0,
+        frame_url_contains: str = "",
+        frame_name: str = "",
+    ) -> str:
+        """Upload a local file into a frame-aware file-input selector."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
-            path = Path(file_path).expanduser().resolve()
-            if not path.is_file():
+            path = self._local_path(file_path)
+            if not path.exists():
                 return f"File not found: {path}"
-            locator = self.page.locator(selector)
-            count = await locator.count()
-            if index < 0 or index >= count:
-                return f"No element {index + 1}/{count} matching selector: {selector}"
-            await locator.nth(index).set_input_files(str(path))
-            return f"Uploaded {path.name} to element {index + 1}/{count} matching selector: {selector}"
+            if not path.is_file():
+                return f"Path is not a file: {path}"
+
+            matches = []
+            for frame_index, frame, name, url in self._matching_frames(
+                frame_url_contains,
+                frame_name,
+            ):
+                locator = frame.locator(selector)
+                count = await locator.count()
+                for locator_index in range(count):
+                    matches.append(
+                        (frame_index, name, url, locator.nth(locator_index))
+                    )
+
+            if not matches:
+                return f"No file input found for selector: {selector}"
+            if index < 0 or index >= len(matches):
+                return (
+                    f"Selector matched {len(matches)} file input(s); "
+                    f"index {index} is out of range"
+                )
+
+            frame_index, name, url, target = matches[index]
+            await target.set_input_files(str(path))
+            await self.page.wait_for_timeout(1500)
+            await self._save_context()
+            return json.dumps(
+                {
+                    "ok": True,
+                    "uploaded": True,
+                    "file": str(path),
+                    "selector": selector,
+                    "index": index,
+                    "frame": {"index": frame_index, "name": name, "url": url},
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+
+    async def upload_file_after_click_by_selector(
+        self,
+        click_selector: str,
+        file_path: str,
+        index: int = 0,
+        text: str = "",
+        frame_url_contains: str = "",
+        frame_name: str = "",
+        timeout_ms: int = 5000,
+    ) -> str:
+        """Click a frame-aware upload control and handle its file chooser."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            path = self._local_path(file_path)
+            if not path.exists():
+                return f"File not found: {path}"
+            if not path.is_file():
+                return f"Path is not a file: {path}"
+
+            matches = []
+            for frame_index, frame, name, url in self._matching_frames(
+                frame_url_contains,
+                frame_name,
+            ):
+                locator = frame.locator(click_selector)
+                count = await locator.count()
+                for locator_index in range(count):
+                    target = locator.nth(locator_index)
+                    if text:
+                        try:
+                            candidate_text = (
+                                (await target.inner_text())
+                                .replace("\u00a0", " ")
+                                .strip()
+                            )
+                        except Exception:
+                            candidate_text = ""
+                        if candidate_text != text:
+                            continue
+                    matches.append((frame_index, name, url, target))
+
+            if not matches:
+                suffix = f" with text: {text}" if text else ""
+                return (
+                    f"No upload trigger found for selector: "
+                    f"{click_selector}{suffix}"
+                )
+            if index < 0 or index >= len(matches):
+                return (
+                    f"Selector matched {len(matches)} upload trigger(s); "
+                    f"index {index} is out of range"
+                )
+
+            frame_index, name, url, target = matches[index]
+            async with self.page.expect_file_chooser(
+                timeout=timeout_ms
+            ) as chooser_info:
+                await target.click(force=True)
+            chooser = await chooser_info.value
+            await chooser.set_files(str(path))
+            await self.page.wait_for_timeout(2500)
+            await self._save_context()
+            return json.dumps(
+                {
+                    "ok": True,
+                    "uploaded": True,
+                    "file": str(path),
+                    "click_selector": click_selector,
+                    "text": text,
+                    "index": index,
+                    "frame": {"index": frame_index, "name": name, "url": url},
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+
+    @staticmethod
+    def _local_path(value: str) -> Path:
+        path = Path(value).expanduser()
+        return path if path.is_absolute() else Path.cwd() / path
+
+    def _matching_frames(
+        self,
+        frame_url_contains: str = "",
+        frame_name: str = "",
+    ):
+        for frame_index, frame in enumerate(self.page.frames):
+            url = getattr(frame, "url", "") or ""
+            raw_name = getattr(frame, "name", "") or ""
+            name = raw_name() if callable(raw_name) else raw_name
+            if frame_url_contains and frame_url_contains not in url:
+                continue
+            if frame_name and frame_name != name:
+                continue
+            yield frame_index, frame, name, url
+
+    def _load_script_args(
+        self,
+        script_path: str,
+        args_json: str,
+    ) -> tuple[Optional[str], Optional[dict], Optional[str]]:
+        path = self._local_path(script_path)
+        if not path.exists():
+            return None, None, f"Script not found: {path}"
+        if not path.is_file():
+            return None, None, f"Script path is not a file: {path}"
+        try:
+            args = json.loads(args_json or "{}")
+        except json.JSONDecodeError as exc:
+            return None, None, f"Invalid args_json: {exc}"
+        return path.read_text(encoding="utf-8"), args, None
 
     async def run_page_script(self, script_path: str, args_json: str = "{}") -> str:
+        """Run a local JavaScript file in the main page and return JSON."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
-            path = Path(script_path).expanduser().resolve()
-            if not path.is_file():
-                return f"Script not found: {path}"
-            try:
-                args = json.loads(args_json)
-            except json.JSONDecodeError as exc:
-                return f"Invalid args_json: {exc}"
-            result = await self.page.evaluate(path.read_text(encoding="utf-8"), args)
-            return json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True)
+            script, args, error = self._load_script_args(script_path, args_json)
+            if error:
+                return error
+            result = await self.page.evaluate(script, args)
+            return json.dumps(result, indent=2, ensure_ascii=False)
+
+    async def run_frame_script(
+        self,
+        script_path: str,
+        args_json: str = "{}",
+        frame_url_contains: str = "",
+        frame_name: str = "",
+        first_ok: bool = True,
+    ) -> str:
+        """Run a local JavaScript file in matching frames and return JSON."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            script, args, error = self._load_script_args(script_path, args_json)
+            if error:
+                return error
+
+            frames = []
+            matched = None
+            for frame_index, frame, name, url in self._matching_frames(
+                frame_url_contains,
+                frame_name,
+            ):
+                frame_info = {
+                    "index": frame_index,
+                    "name": name,
+                    "url": url,
+                    "ok": False,
+                    "result": None,
+                    "error": None,
+                }
+                try:
+                    result = await frame.evaluate(script, args)
+                    frame_info["result"] = result
+                    frame_info["ok"] = bool(
+                        isinstance(result, dict) and result.get("ok") is True
+                    )
+                except Exception as exc:
+                    frame_info["error"] = str(exc)
+                frames.append(frame_info)
+                if frame_info["ok"] and matched is None:
+                    matched = frame_info
+                    if first_ok:
+                        break
+
+            response = {
+                "ok": matched is not None,
+                "matched_frame": matched,
+                "frames": frames,
+            }
+            if not frames:
+                response["reason"] = "no frames matched filters"
+            elif matched is None:
+                response["reason"] = "no frame returned ok: true"
+            return json.dumps(response, indent=2, ensure_ascii=False)
 
     async def take_screenshot(self, path: Optional[str] = None, full_page: bool = False) -> str:
         async with self._tab_operation():

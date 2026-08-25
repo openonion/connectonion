@@ -64,3 +64,25 @@ exercises selectors, visible-item extraction, links, waits, and viewport changes
 This is intentionally narrower than copying every method at once: frame routing,
 downloads, humanized input, and model-backed matching each introduce different
 failure modes and retain their own review boundary.
+
+## An iframe is a routing boundary
+
+The next four methods looked mechanical: run a page script, run a frame script,
+set files on an input, or click a control that opens a chooser. In practice, the
+important contract was the route to the DOM. Editors commonly hide their upload
+controls in an iframe, frame names may be properties or callables depending on
+the driver object, and an upload index applies across all filtered frames—not
+independently inside each one.
+
+The async core now enumerates that boundary once. It preserves frame filters and
+global match order, awaits every locator and chooser transition, and does not
+report success until the context-save step finishes. Page and frame scripts also
+share exact local-path and JSON validation, so making the driver asynchronous
+does not silently normalize paths or reorder returned JSON.
+
+Mocks freeze those details, but native Chrome supplies the meaningful proof. The
+acceptance page contains a named iframe. One script verifies its DOM, one upload
+sets a hidden file input directly, and another clicks a real control and waits for
+the browser's file-chooser event. The test reads both selected filenames back out
+of the frame. Selector clicking remains outside this slice because the supported
+path is humanized; a raw locator click would be faster to port and false parity.

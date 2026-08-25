@@ -38,7 +38,7 @@ class FakeLocator:
     def nth(self, index):
         return FakeLocator(self.page, self.selector, index=index)
 
-    async def click(self):
+    async def click(self, force=False):
         self.page.clicked.append((self.selector, self.index))
 
     async def inner_text(self):
@@ -67,9 +67,13 @@ class FakePage:
         self.clicked = []
         self.filled = []
         self.uploaded = []
+        self.name = ""
+        self.frames = [self]
         self.waited_selectors = []
         self.evaluate_calls = []
         self.evaluate_result = None
+        self.file_chooser = FakeFileChooser()
+        self.file_chooser_timeouts = []
 
     def set_default_navigation_timeout(self, timeout):
         self.navigation_timeout = timeout
@@ -97,6 +101,10 @@ class FakePage:
     def locator(self, selector):
         return FakeLocator(self, selector)
 
+    def expect_file_chooser(self, timeout=0):
+        self.file_chooser_timeouts.append(timeout)
+        return FakeFileChooserContext(self.file_chooser)
+
     async def evaluate(self, script, arg=None):
         if "document.activeElement" in script:
             return dict(self.focused)
@@ -105,6 +113,41 @@ class FakePage:
 
     async def screenshot(self, **kwargs):
         return b"png"
+
+
+class FakeFileChooser:
+    def __init__(self):
+        self.files = []
+
+    async def set_files(self, path):
+        self.files.append(path)
+
+
+class FakeFileChooserContext:
+    def __init__(self, chooser):
+        self.chooser = chooser
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    @property
+    def value(self):
+        async def resolve():
+            return self.chooser
+
+        return resolve()
+
+
+class FakeFrame(FakePage):
+    def __init__(self, result, *, url="https://example.com/frame", name=""):
+        super().__init__()
+        self.url = url
+        self.name = name
+        self.frames = []
+        self.evaluate_result = result
 
 
 class FakeContext:
@@ -527,7 +570,11 @@ async def test_selector_methods_use_async_locator_contract(tmp_path):
     assert "Clicked element 2/2" in await browser.click_element_by_selector("button", 1)
     assert "Filled element 1/1" in await browser.fill_text_by_selector("input", "hello")
     assert page.waits == [1000]
-    assert "Uploaded report.txt" in await browser.upload_file_by_selector("input", str(upload))
+    uploaded = json.loads(
+        await browser.upload_file_by_selector("input", str(upload))
+    )
+    assert uploaded["file"] == str(upload)
+    assert uploaded["frame"]["index"] == 0
     assert page.clicked == [("button", 1)]
     assert page.filled == [("input", 0, "hello")]
 
@@ -638,6 +685,188 @@ async def test_tab_status_renders_registry_before_page_creation():
         "  *[worker-1] (reserved — no page yet)  who=agent  purpose='research'\n"
         "   [worker-2] https://example.com  who=peer  purpose='verification'"
     )
+
+
+@pytest.mark.asyncio
+async def test_async_frame_and_upload_verbs_preserve_sync_signatures():
+    for name in (
+        "run_page_script",
+        "run_frame_script",
+        "upload_file_by_selector",
+        "upload_file_after_click_by_selector",
+    ):
+        async_method = getattr(async_mod.AsyncBrowserCore, name)
+        sync_method = getattr(BrowserAutomation, name)
+        assert inspect.iscoroutinefunction(async_method), name
+        assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+@pytest.mark.asyncio
+async def test_async_page_and_frame_scripts_keep_validation_and_result_contracts(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "verify.js"
+    script.write_text("(args) => ({ ok: args.ok })", encoding="utf-8")
+    page = FakePage()
+    first = FakeFrame({"ok": False}, url="https://example.com/main", name="main")
+    second = FakeFrame(
+        {"ok": True, "z": 1},
+        url="https://example.com/composer",
+        name=lambda: "composer",
+    )
+    third = FakeFrame({"ok": True}, url="https://example.com/other", name="other")
+    page.frames = [first, second, third]
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+
+    page.evaluate_result = {"z": 1, "a": 2}
+    assert await browser.run_page_script("verify.js", '{"ok": true}') == (
+        '{\n  "z": 1,\n  "a": 2\n}'
+    )
+    assert await browser.run_page_script("missing.js") == (
+        f"Script not found: {tmp_path / 'missing.js'}"
+    )
+    assert await browser.run_page_script(".") == f"Script path is not a file: {tmp_path}"
+    assert (await browser.run_page_script("verify.js", "{")).startswith(
+        "Invalid args_json:"
+    )
+
+    result = json.loads(await browser.run_frame_script("verify.js", '{"ok": true}'))
+    assert result["ok"] is True
+    assert result["matched_frame"]["name"] == "composer"
+    assert len(result["frames"]) == 2
+    assert third.evaluate_calls == []
+
+    filtered = json.loads(
+        await browser.run_frame_script(
+            "verify.js",
+            "{}",
+            frame_url_contains="composer",
+            frame_name="composer",
+            first_ok=False,
+        )
+    )
+    assert filtered["matched_frame"]["url"] == "https://example.com/composer"
+    assert len(filtered["frames"]) == 1
+
+    missing = json.loads(
+        await browser.run_frame_script("verify.js", "{}", frame_name="missing")
+    )
+    assert missing["ok"] is False
+    assert missing["reason"] == "no frames matched filters"
+
+
+@pytest.mark.asyncio
+async def test_async_direct_upload_is_frame_aware_and_returns_sync_json(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    upload = tmp_path / "cover.png"
+    upload.write_bytes(b"png")
+    directory = tmp_path / "folder"
+    directory.mkdir()
+    page = FakePage()
+    page.selector_counts['input[type="file"]'] = 0
+    child = FakeFrame({}, url="https://example.com/editor", name=lambda: "editor")
+    child.selector_counts['input[type="file"]'] = 1
+    page.frames = [page, child]
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+
+    result = json.loads(
+        await browser.upload_file_by_selector(
+            'input[type="file"]',
+            "cover.png",
+            frame_url_contains="editor",
+            frame_name="editor",
+        )
+    )
+    assert result == {
+        "ok": True,
+        "uploaded": True,
+        "file": str(upload),
+        "selector": 'input[type="file"]',
+        "index": 0,
+        "frame": {
+            "index": 1,
+            "name": "editor",
+            "url": "https://example.com/editor",
+        },
+    }
+    assert child.uploaded == [('input[type="file"]', 0, str(upload))]
+    assert 1500 in page.waits
+    assert await browser.upload_file_by_selector("input", "missing.png") == (
+        f"File not found: {tmp_path / 'missing.png'}"
+    )
+    assert await browser.upload_file_by_selector("input", "folder") == (
+        f"Path is not a file: {directory}"
+    )
+    assert await browser.upload_file_by_selector(
+        'input[type="file"]',
+        "cover.png",
+        frame_name="missing",
+    ) == 'No file input found for selector: input[type="file"]'
+    assert await browser.upload_file_by_selector(
+        'input[type="file"]',
+        "cover.png",
+        index=1,
+        frame_name="editor",
+    ) == 'Selector matched 1 file input(s); index 1 is out of range'
+
+
+@pytest.mark.asyncio
+async def test_async_upload_after_click_filters_frame_text_and_awaits_chooser(tmp_path):
+    upload = tmp_path / "cover.png"
+    upload.write_bytes(b"png")
+    page = FakePage()
+    page.selector_counts["button"] = 0
+    child = FakeFrame({}, url="https://example.com/editor", name="editor")
+    child.selector_counts["button"] = 1
+    child.text_by_selector["button"] = "Upload from computer"
+    page.frames = [page, child]
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+
+    result = json.loads(
+        await browser.upload_file_after_click_by_selector(
+            "button",
+            str(upload),
+            text="Upload from computer",
+            frame_name="editor",
+            timeout_ms=4321,
+        )
+    )
+    assert result["uploaded"] is True
+    assert result["frame"]["name"] == "editor"
+    assert child.clicked == [("button", 0)]
+    assert page.file_chooser_timeouts == [4321]
+    assert page.file_chooser.files == [str(upload)]
+    assert 2500 in page.waits
+
+    assert await browser.upload_file_after_click_by_selector(
+        "button",
+        str(upload),
+        text="Different",
+        frame_name="editor",
+    ) == "No upload trigger found for selector: button with text: Different"
+    assert await browser.upload_file_after_click_by_selector(
+        "button",
+        str(upload),
+        index=1,
+        frame_name="editor",
+    ) == "Selector matched 1 upload trigger(s); index 1 is out of range"
 
 
 @pytest.mark.asyncio

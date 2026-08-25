@@ -10,6 +10,7 @@ this against an installed wheel and browser before an alpha is promoted.
 
 import asyncio
 import gc
+import html
 import json
 import urllib.parse
 
@@ -40,20 +41,46 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
     loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
 
     try:
+        page_script = tmp_path / "verify-page.js"
+        page_script.write_text(
+            "(args) => ({ ok: document.title === args.title, title: document.title })",
+            encoding="utf-8",
+        )
+        frame_script = tmp_path / "verify-frame.js"
+        frame_script.write_text(
+            "(args) => ({ ok: document.querySelector(args.selector)?.textContent "
+            "=== args.text, text: document.querySelector(args.selector)?.textContent })",
+            encoding="utf-8",
+        )
+        direct_upload = tmp_path / "direct.txt"
+        direct_upload.write_text("direct upload", encoding="utf-8")
+        chooser_upload = tmp_path / "chooser.txt"
+        chooser_upload.write_text("chooser upload", encoding="utf-8")
+
         await browser.open_browser()
         timings["opened"] = loop.time()
         try:
             pages = {}
             for session, marker in (("A", "alpha"), ("B", "beta")):
                 browser._bind_session(session)
-                html = (
+                frame_html = (
+                    f"<span id=frame-marker>{marker} frame</span>"
+                    "<input id=direct-upload type=file>"
+                    "<input id=chooser-upload type=file style='display:none'>"
+                    "<button id=upload-trigger "
+                    "onclick=\"document.querySelector('#chooser-upload').click()\">"
+                    "Upload from computer</button>"
+                )
+                page_html = (
                     f"<title>{marker}</title><p>{marker}</p>"
                     f"<input id=editor value={marker}>"
                     f"<article class=item><span class=body>{marker} item</span></article>"
                     "<a href=https://example.com/one>one</a>"
+                    f"<iframe name=editor srcdoc=\"{html.escape(frame_html, quote=True)}\">"
+                    "</iframe>"
                 )
                 await browser.go_to(
-                    "data:text/html," + urllib.parse.quote(html),
+                    "data:text/html," + urllib.parse.quote(page_html),
                     purpose="async core acceptance",
                     who=session,
                 )
@@ -101,6 +128,54 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             assert extracted[0]["text"] == "beta item"
             assert extracted[0]["visible_bounds"]["width"] > 0
             assert await browser.set_viewport(1280, 720) == "Viewport set to 1280x720"
+
+            page_result = json.loads(
+                await browser.run_page_script(
+                    str(page_script),
+                    json.dumps({"title": "beta"}),
+                )
+            )
+            assert page_result == {"ok": True, "title": "beta"}
+
+            frame_result = json.loads(
+                await browser.run_frame_script(
+                    str(frame_script),
+                    json.dumps(
+                        {"selector": "#frame-marker", "text": "beta frame"}
+                    ),
+                    frame_name="editor",
+                )
+            )
+            assert frame_result["ok"] is True
+            assert frame_result["matched_frame"]["name"] == "editor"
+
+            direct_result = json.loads(
+                await browser.upload_file_by_selector(
+                    "#direct-upload",
+                    str(direct_upload),
+                    frame_name="editor",
+                )
+            )
+            assert direct_result["uploaded"] is True
+            editor_frame = next(
+                frame for frame in browser.page.frames if frame.name == "editor"
+            )
+            assert await editor_frame.locator("#direct-upload").evaluate(
+                "element => element.files[0].name"
+            ) == direct_upload.name
+
+            chooser_result = json.loads(
+                await browser.upload_file_after_click_by_selector(
+                    "#upload-trigger",
+                    str(chooser_upload),
+                    text="Upload from computer",
+                    frame_name="editor",
+                )
+            )
+            assert chooser_result["uploaded"] is True
+            assert await editor_frame.locator("#chooser-upload").evaluate(
+                "element => element.files[0].name"
+            ) == chooser_upload.name
         finally:
             browser._bind_session(None)
             close_result = await browser.close()
