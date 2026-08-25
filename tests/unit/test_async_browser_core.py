@@ -10,10 +10,12 @@ import asyncio
 import inspect
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from connectonion.useful_tools.browser_tools import _async_browser as async_mod
+from connectonion.useful_tools.browser_tools import element_finder as finder_rules
 from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
 
 
@@ -40,12 +42,19 @@ class FakeLocator:
     def nth(self, index):
         return FakeLocator(self.page, self.selector, index=index)
 
+    @property
+    def first(self):
+        return FakeLocator(self.page, self.selector, index=0)
+
     async def click(self, force=False):
         self.page.clicked.append((self.selector, self.index))
         self.page.clicked_forces.append(force)
 
     async def bounding_box(self):
         return self.page.box_by_selector.get((self.selector, self.index))
+
+    async def hover(self):
+        self.page.hovered.append((self.selector, self.index))
 
     async def inner_text(self):
         return self.page.text_by_selector.get(self.selector, f"text:{self.index}")
@@ -74,6 +83,10 @@ class FakePage:
         self.clicked = []
         self.clicked_forces = []
         self.filled = []
+        self.hovered = []
+        self.selected = []
+        self.checked = []
+        self.unchecked = []
         self.uploaded = []
         self.name = ""
         self.frames = [self]
@@ -99,6 +112,15 @@ class FakePage:
 
     async def wait_for_selector(self, selector, **kwargs):
         self.waited_selectors.append((selector, kwargs))
+
+    async def select_option(self, selector, **kwargs):
+        self.selected.append((selector, kwargs))
+
+    async def check(self, selector):
+        self.checked.append(selector)
+
+    async def uncheck(self, selector):
+        self.unchecked.append(selector)
 
     def is_closed(self):
         return self.closed
@@ -757,6 +779,240 @@ async def test_async_humanized_selector_verbs_preserve_sync_signatures():
         assert async_method is not None, name
         assert inspect.iscoroutinefunction(async_method), name
         assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+@pytest.mark.asyncio
+async def test_async_model_selected_verbs_preserve_sync_signatures():
+    for name in (
+        "find_element_by_description",
+        "click",
+        "hover",
+        "right_click",
+        "double_click",
+        "select_option",
+        "check_checkbox",
+        "wait_for_element",
+    ):
+        async_method = getattr(async_mod.AsyncBrowserCore, name, None)
+        sync_method = getattr(BrowserAutomation, name)
+        assert async_method is not None, name
+        assert inspect.iscoroutinefunction(async_method), name
+        assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+@pytest.mark.asyncio
+async def test_model_selected_click_paths_preserve_main_frame_shadow_and_fallbacks(
+    monkeypatch,
+):
+    page = FakePage()
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+    pointer = []
+
+    async def human_click(_page, x, y, **kwargs):
+        pointer.append((x, y, kwargs))
+
+    async def human_double_click(_page, x, y, **kwargs):
+        pointer.append(("double", x, y, kwargs))
+
+    selected = SimpleNamespace(
+        index=4,
+        tag="button",
+        text="Publish",
+        frame="main",
+        locator='[data-browser-agent-id="4"]',
+        x=10,
+        y=20,
+        width=100,
+        height=40,
+    )
+
+    async def find(_page, _description):
+        return selected
+
+    monkeypatch.setattr(async_mod.element_finder, "find_element", find)
+    monkeypatch.setattr(async_mod.humanize, "click", human_click)
+    monkeypatch.setattr(async_mod.humanize, "double_click", human_double_click)
+
+    page.box_by_selector[(selected.locator, 0)] = {
+        "x": 100,
+        "y": 200,
+        "width": 80,
+        "height": 40,
+    }
+    assert await browser.find_element_by_description("publish") == selected.locator
+    assert await browser.click("publish") == "Clicked [4] button 'Publish'"
+    assert pointer[-1] == (
+        140.0,
+        220.0,
+        {"box": {"x": 100, "y": 200, "width": 80, "height": 40}},
+    )
+
+    page.box_by_selector.clear()
+    assert await browser.click("publish") == "Clicked [4] button 'Publish' (force)"
+    assert page.clicked[-1] == (selected.locator, 0)
+    assert page.clicked_forces[-1] is True
+
+    selected.frame = "shadow-editor"
+    assert await browser.right_click("publish") == (
+        "Right-clicked [4] button 'Publish' (shadow DOM)"
+    )
+    assert pointer[-1] == (60, 40, {"button": "right"})
+
+    selected.frame = "editor"
+    page.url = "data:text/html,<iframe name=editor>"
+    frame = FakeFrame(None, name="editor")
+    frame.box_by_selector[(selected.locator, 0)] = {
+        "x": 20,
+        "y": 30,
+        "width": 40,
+        "height": 20,
+    }
+    page.frames = [page, frame]
+    assert await browser.double_click("publish") == (
+        "Double-clicked [4] button 'Publish'"
+    )
+    assert pointer[-1] == (
+        "double",
+        40.0,
+        40.0,
+        {"box": {"x": 20, "y": 30, "width": 40, "height": 20}},
+    )
+
+    frame.name = ""
+    frame.url = "https://example.com/editor/content"
+    assert await browser.right_click("publish") == (
+        "Right-clicked [4] button 'Publish'"
+    )
+    assert pointer[-1] == (
+        40.0,
+        40.0,
+        {
+            "button": "right",
+            "box": {"x": 20, "y": 30, "width": 40, "height": 20},
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_model_selected_hover_and_coordinate_fallback_are_awaited(monkeypatch):
+    page = FakePage()
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+    moves = []
+    selected = SimpleNamespace(
+        index=2,
+        tag="a",
+        text="Account",
+        frame="main",
+        locator="#missing",
+        x=30,
+        y=50,
+        width=60,
+        height=20,
+    )
+
+    async def find(_page, _description):
+        return selected
+
+    async def move(_page, x, y):
+        moves.append((x, y))
+
+    monkeypatch.setattr(async_mod.element_finder, "find_element", find)
+    monkeypatch.setattr(async_mod.humanize, "move", move)
+    page.selector_counts["#missing"] = 0
+
+    assert await browser.hover("account") == "Hovered [2] a 'Account'"
+    assert moves == [(60, 60)]
+
+    page.selector_counts["#missing"] = 1
+    assert await browser.hover("account") == "Hovered [2] a 'Account'"
+    assert page.hovered == [("#missing", 0)]
+
+
+@pytest.mark.asyncio
+async def test_model_selected_form_and_wait_results_match_sync_contract(monkeypatch):
+    page = FakePage()
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+    selected = finder_rules.InteractiveElement(
+        index=0,
+        tag="select",
+        text="Country",
+        locator="#country",
+    )
+
+    async def find(_page, description):
+        return None if description == "eventually visible" else selected
+
+    monkeypatch.setattr(async_mod.element_finder, "find_element", find)
+
+    assert await browser.select_option("country", "Australia") == (
+        "Selected 'Australia' in country"
+    )
+    assert page.selected == [("#country", {"label": "Australia"})]
+    assert await browser.check_checkbox("terms") == "Checked terms"
+    assert await browser.check_checkbox("terms", checked=False) == "Unchecked terms"
+    assert page.checked == ["#country"]
+    assert page.unchecked == ["#country"]
+    assert await browser.wait_for_element("country", timeout=7) == (
+        "Element appeared: country"
+    )
+    assert await browser.wait_for_element("eventually visible", timeout=3) == (
+        "Found text: 'eventually visible'"
+    )
+    assert page.waited_selectors == [
+        ("#country", {"timeout": 7000}),
+        ("text='eventually visible'", {"timeout": 3000}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slow_model_match_on_one_tab_does_not_block_another_tab(monkeypatch):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages["A"] = FakePage()
+    browser._pages["B"] = FakePage()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def find(_page, description):
+        if description == "slow":
+            started.set()
+            await release.wait()
+        return finder_rules.InteractiveElement(
+            index=0,
+            tag="button",
+            text=description,
+            locator="#target",
+        )
+
+    monkeypatch.setattr(async_mod.element_finder, "find_element", find)
+
+    async def slow_find():
+        browser._bind_session("A")
+        return await browser.find_element_by_description("slow")
+
+    async def fast_read():
+        browser._bind_session("B")
+        browser._pages["B"].text_by_selector["body"] = "tab B"
+        return await browser.get_text()
+
+    task = asyncio.create_task(slow_find())
+    await started.wait()
+    assert await asyncio.wait_for(fast_read(), timeout=0.2) == "tab B"
+    assert task.done() is False
+    release.set()
+    assert await task == "#target"
 
 
 @pytest.mark.asyncio

@@ -12,10 +12,12 @@ import asyncio
 import gc
 import html
 import json
+import threading
 import urllib.parse
 
 import pytest
 
+from connectonion.useful_tools.browser_tools import _async_element_finder
 from connectonion.useful_tools.browser_tools._async_browser import (
     ASYNC_BROWSER_AVAILABLE,
     AsyncBrowserCore,
@@ -67,7 +69,10 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                 browser._bind_session(session)
                 frame_html = (
                     f"<span id=frame-marker>{marker} frame</span>"
-                    "<button id=frame-action onclick=\"this.dataset.clicked='yes'\">Frame action</button>"
+                    "<button id=frame-action onclick=\"this.dataset.clicked='yes'\" "
+                    "ondblclick=\"this.dataset.doubled='yes'\" "
+                    "oncontextmenu=\"event.preventDefault();this.dataset.context='yes'\" "
+                    "onmouseover=\"this.dataset.hovered='yes'\">Frame action</button>"
                     "<input id=direct-upload type=file>"
                     "<input id=chooser-upload type=file style='display:none'>"
                     "<button id=upload-trigger "
@@ -78,6 +83,12 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                     f"<title>{marker}</title><p>{marker}</p>"
                     f"<input id=editor value={marker}>"
                     "<button class=publish onclick=\"this.dataset.clicked='yes'\">Publish</button>"
+                    "<select id=country><option>Australia</option></select>"
+                    "<label><input id=terms type=checkbox>Accept terms</label>"
+                    "<div id=shadow-host></div>"
+                    "<script>const root=document.querySelector('#shadow-host').attachShadow({mode:'open'});"
+                    "const button=document.createElement('button');button.textContent='Shadow action';"
+                    "button.onclick=()=>button.dataset.clicked='yes';root.append(button)</script>"
                     "<div class=row><span class=draft>Draft</span>"
                     "<button class=near onclick=\"this.previousElementSibling.textContent=''\">Send</button></div>"
                     f"<article class=item><span class=body>{marker} item</span></article>"
@@ -91,6 +102,33 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                     who=session,
                 )
                 pages[session] = browser.page
+
+            matcher_started = threading.Event()
+            release_matcher = threading.Event()
+
+            def deterministic_match(_page, description, elements):
+                if description == "slow publish":
+                    matcher_started.set()
+                    release_matcher.wait(timeout=3)
+                    description = "Publish"
+                by_description = {
+                    "Publish": lambda element: element.text == "Publish",
+                    "Frame action": lambda element: element.text == "Frame action",
+                    "Shadow action": lambda element: element.text == "Shadow action",
+                    "country": lambda element: element.element_id == "country",
+                    "terms": lambda element: element.element_id == "terms",
+                }
+                return next(
+                    element
+                    for element in elements
+                    if by_description[description](element)
+                )
+
+            monkeypatch.setattr(
+                _async_element_finder.rules,
+                "find_element",
+                deterministic_match,
+            )
 
             async def hold_tab_a():
                 browser._bind_session("A")
@@ -147,6 +185,29 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             )
             assert await browser.page.locator("#editor").input_value() == "beta-typed"
 
+            assert (await browser.click("Publish")).endswith("button 'Publish'")
+            assert (
+                await browser.page.locator(".publish").get_attribute("data-clicked")
+                == "yes"
+            )
+            assert await browser.select_option("country", "Australia") == (
+                "Selected 'Australia' in country"
+            )
+            assert await browser.check_checkbox("terms") == "Checked terms"
+            assert await browser.page.locator("#terms").is_checked() is True
+            assert await browser.wait_for_element("country", timeout=1) == (
+                "Element appeared: country"
+            )
+
+            shadow_result = await browser.click("Shadow action")
+            assert shadow_result.endswith("(shadow DOM)")
+            assert (
+                await browser.page.locator("#shadow-host").evaluate(
+                    "host => host.shadowRoot.querySelector('button').dataset.clicked"
+                )
+                == "yes"
+            )
+
             assert (
                 "in frames matching 'editor'"
                 in await browser.click_element_by_selector(
@@ -159,6 +220,33 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             assert (
                 await editor_frame.locator("#frame-action").get_attribute(
                     "data-clicked"
+                )
+                == "yes"
+            )
+            assert (await browser.double_click("Frame action")).endswith(
+                "button 'Frame action'"
+            )
+            assert (
+                await editor_frame.locator("#frame-action").get_attribute(
+                    "data-doubled"
+                )
+                == "yes"
+            )
+            assert (await browser.right_click("Frame action")).endswith(
+                "button 'Frame action'"
+            )
+            assert (
+                await editor_frame.locator("#frame-action").get_attribute(
+                    "data-context"
+                )
+                == "yes"
+            )
+            assert (await browser.hover("Frame action")).endswith(
+                "button 'Frame action'"
+            )
+            assert (
+                await editor_frame.locator("#frame-action").get_attribute(
+                    "data-hovered"
                 )
                 == "yes"
             )
@@ -185,6 +273,18 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             assert "beta" in await asyncio.wait_for(browser.get_text(), timeout=0.5)
             assert clicking.done() is False
             assert (await clicking).startswith("Clicked at (")
+
+            browser._bind_session("A")
+            matching = asyncio.create_task(
+                browser.find_element_by_description("slow publish")
+            )
+            while not matcher_started.is_set():
+                await asyncio.sleep(0)
+            browser._bind_session("B")
+            assert "beta" in await asyncio.wait_for(browser.get_text(), timeout=0.5)
+            assert matching.done() is False
+            release_matcher.set()
+            assert (await matching).startswith('[data-browser-agent-id="')
 
             page_result = json.loads(
                 await browser.run_page_script(
