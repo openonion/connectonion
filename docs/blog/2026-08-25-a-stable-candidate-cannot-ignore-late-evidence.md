@@ -1,25 +1,32 @@
 # A Stable Candidate Cannot Ignore Late Evidence
 
-RC11 had completed the broad 1.7 acceptance journey. Then two narrower reports
-arrived while Stable was being prepared.
+The Stable pull request already had a comforting sentence: promote RC11
+unchanged. The long browser and provider journey had passed, the artifact was
+public, and the remaining work looked administrative.
 
-One report showed that a shortened `data:image/...;base64,...` excerpt could be
-mistaken for an uploadable image. The decode failed inside the post-tool
-formatter and ended an otherwise successful agent run. The other showed that
-an unattended Auto session denied `co browser status` even though the operator
-had already granted that command in configuration. A live dialog could recover;
-a cron or CI process could not.
+Then a scheduled agent stopped before its first browser command.
 
-Neither finding changes the feature train. Both change whether the candidate is
-safe to promote.
+It was not waiting for a person. There was no person: this run came from cron.
+The operator had already granted `co browser status`, but Auto asked for live
+approval anyway and then denied the command because stdin was closed. The same
+job had worked on 1.6. Calling this a future patch would make the first Stable
+1.7 upgrade knowingly break unattended users.
 
-RC12 therefore replaces the unchanged-RC11 premise. Image candidates now need
-strict base64 decoding and a complete supported file structure. Headless Auto
-can honor deliberate ordinary-command grants, while the historical broad
-`Bash(co *)` entry restores only `co status` and `co browser ...`; publishing,
-deployment, credentials, deletion, and unknown effects keep their stronger
-verdicts.
+While reproducing that boundary, a second report removed the easier escape.
+A browser result contained a shortened `data:image/...;base64,...` excerpt.
+The text merely looked like an image, yet the formatter tried to upload it and
+ended an otherwise successful run. It was small, local, and tempting to defer.
+It was also another way for ordinary tool output to kill automation without a
+useful recovery path.
 
-The release rule is simple: late evidence is still evidence. A candidate that
-changes after acceptance needs a new name, new immutable artifacts, and focused
-acceptance of the changed boundary before Stable can inherit it.
+That changed the release decision. We restored configured headless commands,
+but did not let the historical broad `Bash(co *)` rule authorize publishing or
+deployment. We required image candidates to decode strictly and reach the real
+end of a supported file, rather than trusting a familiar prefix. The focused
+tests then proved both halves: the intended browser command proceeds, while
+stronger effects and truncated images remain safely outside the fast path.
+
+RC11 could no longer be called unchanged, so it could no longer be the Stable
+source. RC12 gives those fixes new immutable bytes and a new acceptance run.
+That is the useful meaning of a release candidate: not that testing is over,
+but that any late evidence is allowed to change the answer.
