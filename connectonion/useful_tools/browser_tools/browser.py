@@ -946,6 +946,7 @@ class BrowserAutomation:
                 "reason": "not_started",
                 "next_action": "Open the browser to resolve an engine.",
                 "browser_revision": browser_engine.BROWSER_REVISION,
+                "onionwright_version": None,
                 "artifact_id": None,
             }
         status = self._engine_resolution.public_status()
