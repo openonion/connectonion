@@ -300,6 +300,25 @@ class TestCodexRun:
             "stateRevision": 7,
         }]
 
+    def test_started_native_turn_emits_the_initiating_user_message(self):
+        io = _WorkroomIO()
+        agent = _Agent(io, {"_active_tool_call_id": "outer"})
+
+        codex_module._confirm_started_workroom_turn(
+            agent,
+            "Inspect the reconnect boundary.",
+        )
+
+        assert io.events == [("provider_message", {
+            "provider": "codex",
+            "invocationId": "codex:outer",
+            "parentToolCallId": "outer",
+            "messageId": "user:initial",
+            "role": "user",
+            "text": "Inspect the reconnect boundary.",
+            "workroomId": "codex:outer",
+        })]
+
     def test_failed_native_steer_keeps_the_workroom_message_unacknowledged(self):
         io = _WorkroomIO([{
             "type": "PROVIDER_INPUT",

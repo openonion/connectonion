@@ -15,7 +15,9 @@ or network is needed. The daemon's lazy BrowserAutomation is swapped for the stu
 """
 
 import contextlib
+import io
 import os
+import shlex
 import socket
 import subprocess
 import threading
@@ -461,6 +463,46 @@ def test_handle_browser_no_args_is_usage_error(capsys):
     assert "co browser [-t TAB] <function>" in err
 
 
+def test_type_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "type_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "type_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
+def test_fill_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "fill_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "fill_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
+def test_stdin_text_is_restricted_to_text_entry_commands(monkeypatch, capsys):
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("secret"))
+    assert bc.handle_browser(["go_to", "--stdin"]) == 2
+    assert "--stdin is only supported" in capsys.readouterr().err
+
+
 # ---- full socket round-trip: client.send() ↔ daemon ----------------------
 
 def test_socket_round_trip(short_sock, monkeypatch, capsys):
@@ -533,6 +575,53 @@ def test_socket_round_trip_error_to_stderr(short_sock, monkeypatch, capsys):
     err = capsys.readouterr().err.strip()
     assert code == 1
     assert "unknown command: frobnicate" in err
+
+
+class TimedOutNavigationBrowser(StubBrowser):
+    """A timed-out page is recoverable, but a post-timeout round trip deadlocks it."""
+
+    def __init__(self):
+        super().__init__()
+        self.recovered = False
+        self.liveness_calls = 0
+
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        raise TimeoutError("Page.goto: Timeout 30000ms exceeded.")
+
+    def keyboard_press(self, key: str) -> str:
+        self.recovered = True
+        return f"Pressed {key}"
+
+    def get_current_url(self) -> str:
+        return "http://127.0.0.1:3100"
+
+    def _context_is_alive(self) -> bool:
+        self.liveness_calls += 1
+        if not self.recovered:
+            raise AssertionError("post-timeout liveness probe would block")
+        return True
+
+
+def test_navigation_timeout_keeps_daemon_available_for_recovery(short_sock, monkeypatch, capsys):
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+    browser = TimedOutNavigationBrowser()
+    daemon = make_daemon(sock_path, stub=browser)
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(sock_path)
+
+    assert c.send("go_to http://127.0.0.1:3100", headless=True) == 1
+    assert "TimeoutError: Page.goto" in capsys.readouterr().err
+    assert browser.liveness_calls == 0
+
+    assert c.send("keyboard_press Escape", headless=True) == 0
+    assert capsys.readouterr().out.strip() == "Pressed Escape"
+    assert browser.recovered is True
+    assert browser.liveness_calls == 0
+
+    assert c.send("get_current_url", headless=True) == 0
+    assert capsys.readouterr().out.strip() == "http://127.0.0.1:3100"
+    assert browser.liveness_calls == 0
 
 
 class LaunchFailBrowser(StubBrowser):

@@ -1,27 +1,39 @@
 """
 Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language `do` agent locally so model waits never occupy the daemon.
 LLM-Note:
-  Dependencies: imports from [socket, os, json, sys, time, shlex, inspect, functools, pathlib, BrowserAutomation, browser_agent.daemon (default_sock_path, _owner_alive), browser_agent.agent (lazy), browser_agent.transport] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Dependencies: imports from [socket, os, json, sys, time, shlex, inspect, functools, pathlib, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: direct verb → _request() → wire-v1 JSON {v,caller,account,tab,line,raw}; `do` → local Agent + DaemonBrowserProxy → each tool invocation becomes one short _request(raw=True) to the shared daemon
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
-  Performance: one connect + request/response per browser action | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
+  Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
   Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | ALL setup RuntimeErrors (Windows authkey mismatch/corruption, daemon didn't start) are caught in send() → one clean stderr line + exit 1, NEVER a traceback (typer's pretty exceptions would print frame locals, which hold the HMAC secret on the connect path) | daemon dying mid-request → clean stderr line + exit 1
 """
 
-import os
 import functools
 import inspect
 import json
+import os
 import shlex
+import socket
 import sys
 import time
-import socket
 from pathlib import Path
 
-from connectonion.useful_tools.browser_tools import BrowserAutomation
-from .daemon import default_sock_path, _owner_alive
 from . import transport
+
+
+def default_sock_path() -> str:
+    """Resolve the endpoint without importing the browser-owning daemon module."""
+    return transport.default_address()
+
+
+def _owner_alive(sock_path: str) -> bool:
+    """Read the daemon pid sidecar without importing Playwright or browser tools."""
+    pid_file = Path(transport.pid_path(sock_path))
+    if not pid_file.exists():
+        return False
+    raw = pid_file.read_text(encoding="utf-8").strip()
+    return raw.isdigit() and transport.pid_alive(int(raw))
 
 
 def _connect(sock_path: str):
@@ -333,12 +345,28 @@ def _proxy_method(name, method):
     return call
 
 
-# Keep the agent's tool schema identical to BrowserAutomation without duplicating
-# dozens of signatures. functools.wraps preserves each original signature and
-# docstring for the tool factory; every implementation delegates to _call().
-for _name, _method in inspect.getmembers(BrowserAutomation, predicate=inspect.isfunction):
-    if not _name.startswith("_"):
-        setattr(DaemonBrowserProxy, _name, _proxy_method(_name, _method))
+_proxy_methods_installed = False
+
+
+def _install_proxy_methods() -> None:
+    """Mirror BrowserAutomation's tool schema only for the natural-language `do` path.
+
+    Direct verbs already know their wire command and must not spend seconds importing
+    Playwright, Agent, TUI, and provider integrations before they can connect to the
+    persistent daemon. The daemon loads BrowserAutomation in its own long-lived process.
+    """
+    global _proxy_methods_installed
+    if _proxy_methods_installed:
+        return
+    from connectonion.useful_tools.browser_tools import BrowserAutomation
+
+    # Keep the agent's tool schema identical without duplicating dozens of signatures.
+    # functools.wraps preserves each original signature and docstring for the tool
+    # factory; every implementation delegates to _call().
+    for name, method in inspect.getmembers(BrowserAutomation, predicate=inspect.isfunction):
+        if not name.startswith("_"):
+            setattr(DaemonBrowserProxy, name, _proxy_method(name, method))
+    _proxy_methods_installed = True
 
 
 def _run_do(line: str, headless: bool, tab: str) -> tuple:
@@ -354,7 +382,9 @@ def _run_do(line: str, headless: bool, tab: str) -> tuple:
     if not command:
         return 2, 'usage: co browser do "<instruction>"'
 
-    from .agent import resolve_api_key, build_browser_agent
+    from .agent import build_browser_agent, resolve_api_key
+
+    _install_proxy_methods()
 
     api_key = resolve_api_key()
     if not api_key:

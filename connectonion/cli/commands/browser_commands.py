@@ -1,20 +1,19 @@
 """
 Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwards one command to the persistent browser daemon, and serves self-describing help.
 LLM-Note:
-  Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send, browser_agent.daemon.list_functions] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send | lazy: browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: receives args: list[str] (+ headless: bool) from CLI → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab → client.send(line, headless, tab=NAME) → daemon runs it → payload/exit code surfaced by the client
   State/Effects: no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False) -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle and the exit-code contract
-  Performance: `help` is import-only (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
+  Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
 """
 
-import sys
 import shlex
+import sys
 from pathlib import Path
 
 from ..browser_agent.client import send
-from ..browser_agent.daemon import list_functions
 
 USAGE = (
     "co browser — drive one persistent browser from the shell\n"
@@ -26,6 +25,7 @@ USAGE = (
     "  co browser tab close <NAME>              release your tab when the task is done\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser help                          list every browser function\n"
+    "  printf secret | co browser fill_text_by_selector '#field' --stdin\n"
     "\n"
     "One task = one tab. Solo use needs no -t at all. Running several agents on this\n"
     "browser? Each opens its own tab once, adds -t <name> to EVERY command (including\n"
@@ -101,8 +101,17 @@ def handle_browser(args, headless: bool = False) -> int:
         print("usage: -t targets a command, e.g.  co browser -t mytask go_to <url>", file=sys.stderr)
         return 2
     if args[0] in ("help", "--list", "list"):  # after -t extraction: `-t x help` is still help
+        from ..browser_agent.daemon import list_functions
         print(USAGE + "\n\nFunctions:\n" + list_functions())
         return 0
+    if args[-1] == "--stdin":
+        if args[0] not in ("fill_text_by_selector", "type_text_by_selector", "keyboard_type"):
+            print("--stdin is only supported by fill_text_by_selector, type_text_by_selector, and keyboard_type", file=sys.stderr)
+            return 2
+        if sys.stdin.isatty():
+            print("--stdin needs piped or redirected text", file=sys.stderr)
+            return 2
+        args = [*args[:-1], sys.stdin.read()]
     code = send(shlex.join(args), headless=headless, tab=tab)
     if code == 0 and sys.stdout.isatty():
         print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)

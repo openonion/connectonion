@@ -50,6 +50,23 @@ class FakeContext:
         self.closed = True
 
 
+def test_browser_profile_dir_defaults_to_the_real_home(monkeypatch, tmp_path):
+    monkeypatch.delenv("CO_BROWSER_PROFILE_DIR", raising=False)
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
+
+    assert browser_mod._browser_profile_dir() == tmp_path / ".co" / "browser_profile"
+
+
+def test_browser_profile_dir_can_be_isolated_without_replacing_home(monkeypatch, tmp_path):
+    real_home = tmp_path / "real-home"
+    isolated_profile = tmp_path / "release-profile"
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: real_home)
+    monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(isolated_profile))
+
+    assert browser_mod._browser_profile_dir() == isolated_profile
+    assert browser_mod.Path.home() == real_home
+
+
 def test_open_browser_is_noop_when_context_is_already_open(monkeypatch, tmp_path):
     contexts = []
     playwrights = []

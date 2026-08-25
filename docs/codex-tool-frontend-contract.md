@@ -93,6 +93,33 @@ command output in the provider conversation. User and assistant text are emitted
 as bounded `provider_message` entries; commands and local paths remain semantic
 activity or private provider state.
 
+## Provider-native permission profiles
+
+Work Room permissions do not reuse or rename the outer three COAI modes. The
+outer mode remains the authoritative Host ceiling; each typed
+`provider_invocation` may additionally carry a finite `providerPermission`
+catalog for the native provider. Codex keeps sandbox boundary and reviewer as
+separate fields, so **Ask for approval** and **Approve for me** both map to the
+native `:workspace` boundary without becoming the same policy. Claude Code
+exposes its own native Plan, Default, Accept edits, Auto, and Bypass permissions
+profiles through the same bounded shape.
+
+The browser changes a profile with a signed `PROVIDER_PERMISSION_CHANGE`
+containing the invocation ID, observed positive `stateRevision`, advertised
+option ID, and a separate elevated-risk confirmation when required. Host checks
+session ownership, Operator level, the latest durable revision, and the outer
+mode ceiling before persisting the selection. Only then does it return
+`PROVIDER_PERMISSION_ACK` and append a newer canonical `provider_invocation`.
+The selected profile applies to subsequent native provider work; it cannot
+retroactively alter an active action or replace an individual approval.
+
+Old or malformed clients fail closed: missing catalogs render no selector,
+unadvertised and stale choices are rejected, and lowering the outer COAI mode
+immediately reconciles any stored provider profile to the narrower ceiling. A
+single outer-mode transaction streams at most one new permission revision for
+each Work Room: the final committed ceiling. Terminal continuations without a
+catalog never cause an intermediate old-ceiling repair to reach the browser.
+
 ## What the frontend team should know
 
 - The React package owns normalization and child correlation. O Chat consumes

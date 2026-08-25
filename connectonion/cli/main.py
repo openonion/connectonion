@@ -351,12 +351,16 @@ def ai(
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
-    yolo: bool = typer.Option(False, "--yolo", help="Skip approvals and keep working autonomously"),
-    yolo_turns: int = typer.Option(
+    full_access: bool = typer.Option(
+        False,
+        "--full-access",
+        help="Bypass tool approvals for this bounded user-driven turn budget",
+    ),
+    full_access_turns: int = typer.Option(
         100,
-        "--yolo-turns",
+        "--full-access-turns",
         min=1,
-        help="Autonomous turns before a checkpoint (requires --yolo)",
+        help="User-driven turns before Full access expires to Auto",
     ),
     evaluate: bool = typer.Option(
         False,
@@ -369,6 +373,12 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
+    invite_code: Optional[str] = typer.Option(
+        None, "--invite-code", help="Invite code for this web-server run only"
+    ),
+    invite_code_file: Optional[Path] = typer.Option(
+        None, "--invite-code-file", help="Read this run's invite code from a file"
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -377,11 +387,13 @@ def ai(
         port=port,
         model=model,
         max_iterations=max_iterations,
-        yolo=yolo,
-        yolo_turns=yolo_turns,
+        full_access=full_access,
+        full_access_turns=full_access_turns,
         evaluate=evaluate,
         json_output=json_output,
         resume=resume,
+        invite_code=invite_code,
+        invite_code_file=invite_code_file,
     )
 
 

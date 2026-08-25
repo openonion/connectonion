@@ -108,7 +108,8 @@ class TrustAgent:
     """
 
     def __init__(self, trust: str = "careful", *, api_key: str = None,
-                 model: str = "co/gemini-3.7-flash", co_dir: Path = None):
+                 model: str = "co/gemini-3.7-flash", co_dir: Path = None,
+                 invite_code: str = None):
         """
         Create a TrustAgent.
 
@@ -118,6 +119,7 @@ class TrustAgent:
             model: Model to use for LLM decisions
             co_dir: Project .co directory. Bound at construction so trust state
                 does not move with, or disappear with, the process cwd.
+            invite_code: Optional in-memory override for this instance.
         """
         self.trust = trust
         self.api_key = api_key
@@ -126,6 +128,13 @@ class TrustAgent:
 
         # Load policy and parse config
         self._config, self._prompt = self._load_policy(trust)
+        if invite_code is not None:
+            invite_code = invite_code.strip()
+            if not invite_code:
+                raise ValueError("invite_code cannot be empty")
+            onboard = dict(self._config.get("onboard") or {})
+            onboard["invite_code"] = [invite_code]
+            self._config = {**self._config, "onboard": onboard}
 
         # Lazy-loaded LLM agent (only created if needed)
         self._llm_agent = None

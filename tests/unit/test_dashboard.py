@@ -189,7 +189,7 @@ def test_control_center_semantic_golden_layout_is_present():
     })
 
     for landmark in (
-        "Control Center", 'id="now-title"', "Quick actions", "Capabilities",
+        "Control Center", 'id="workspace-title"', "Quick actions", "Capabilities",
         "Recent", "Diagnostics", "Host details",
     ):
         # Recent is allowed to be absent without history; all other day-zero
@@ -200,6 +200,24 @@ def test_control_center_semantic_golden_layout_is_present():
     assert '<co-filter target="#capability-list"' in html
     assert 'id="capability-list"' in html
     assert "co/example" in html and "careful" in html and ADDRESS in html
+
+
+def test_control_center_never_claims_a_static_runtime_state():
+    """The dashboard snapshot does not receive turn lifecycle frames. Calling it
+    Ready while Chat is working or awaiting approval contradicts the live client."""
+    html = render_starter({"name": "Operations", "skills": []})
+
+    assert "Available for a new task" not in html
+    assert "<strong>Ready</strong>" not in html
+    assert "Use Chat for live status" in html
+
+
+def test_quick_actions_cannot_set_the_iframe_minimum_width():
+    template = (Path(dashboard_module.__file__).parent / "starter.html").read_text()
+
+    assert "html, body { max-width: 100%; overflow-x: clip; }" in template
+    assert "width: 100%; min-width: 0; max-width: 100%;" in template
+    assert "min-width: 0; max-width: 100%; margin-top" in template
 
 
 def test_control_center_accessibility_contract_is_in_the_shipped_template():

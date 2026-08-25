@@ -1,9 +1,15 @@
 # Control Center
 
 Every hosted agent has a **Control Center** beside the conversation. The Host renders
-a current day-zero view—identity and state, Now, quick actions, recent activity,
-schedules, searchable capabilities, and diagnostics—before you type anything.
+a current day-zero view—identity, quick actions, recent activity, searchable
+capabilities, and diagnostics—before you type anything.
 Custom pages keep the stable filename `.co/dashboard.html` for compatibility.
+
+The HTML snapshot is not the source of truth for a running task. It does not receive
+thinking, approval, input-wait, Stop, failure, or completion frames. The client owns
+that live status and renders it outside the sandboxed page, while the starter directs
+the reader back to Chat for the current task, approvals, and results. A custom
+Control Center should not hard-code runtime claims such as “Ready” or “Working”.
 
 ```
 my-agent/

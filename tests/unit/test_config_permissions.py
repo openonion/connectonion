@@ -132,7 +132,8 @@ def test_simple_tool_name_pattern_matching(tmp_path, monkeypatch):
     agent.current_session = {
         'messages': [],
         'trace': [],
-        'turn': 0
+        'turn': 0,
+        'mode': 'read-only',
     }
 
     # Trigger permission loading
@@ -335,7 +336,8 @@ def test_parameter_matching_rejects_non_matching(tmp_path, monkeypatch):
     agent.current_session = {
         'messages': [],
         'trace': [],
-        'turn': 0
+        'turn': 0,
+        'mode': 'read-only',
     }
 
     # Test non-matching - should NOT auto-approve write to .py file

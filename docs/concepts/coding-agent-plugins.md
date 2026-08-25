@@ -10,8 +10,8 @@ from connectonion import Agent, ClaudeCodePlugin, CodexPlugin
 agent = Agent(
     "developer",
     plugins=[
-        CodexPlugin(permission_mode="manual", workspace="."),
-        ClaudeCodePlugin(permission_mode="manual", workspace="."),
+        CodexPlugin(permission_mode="auto", workspace="."),
+        ClaudeCodePlugin(permission_mode="auto", workspace="."),
     ],
 )
 ```
@@ -29,13 +29,12 @@ symlink escapes fail closed.
 
 | Mode | Boundary |
 | --- | --- |
-| `manual` | The provider asks when its automation interface supports the action; unsupported prompts fail closed. |
-| `auto_approve` | Work may proceed within the configured workspace and provider sandbox. |
-| `full_access` | Per-action prompts are disabled inside the explicit Host launch ceiling. Configure this only for a trusted workspace. |
+| `read-only` | The provider reads under its private read-only policy. |
+| `auto` | Work may proceed within the configured workspace and provider sandbox. |
+| `full-access` | Per-action prompts are disabled inside the explicit Host launch ceiling. Configure this only for a trusted workspace. |
 
-The compatibility names `:read-only`, `:workspace`, and
-`:danger-full-access` normalize to these three modes. Resuming a provider
-session reapplies the plugin's current operator-owned mode.
+No aliases are accepted. Resuming a provider session reapplies the plugin's
+current mode, translated to provider-private values only at the adapter edge.
 
 ## Live invocation contract
 
@@ -54,10 +53,8 @@ without starting a model turn. This is the backend half of O Chat's “Open Work
 Room” behavior: the room can exist before it has a task.
 
 `co ai` installs both plugins, so Codex and Claude Code share the same native
-provider-card and Work Room lifecycle. In hosted sessions, Claude Code remains
-operator-only: a signature-verified non-admin is rejected before workspace
-resolution or process launch. Admin permission profiles select the provider
-mode again on every first turn and resume.
+provider-card and Work Room lifecycle. Every authenticated participant uses the
+same selected session mode. Administrative control-plane authority is separate.
 
 `co ai` also installs a Codex routing interceptor. Explicit run/use/start/open
 Codex intent receives a hidden native-route reminder, and any attempt to execute

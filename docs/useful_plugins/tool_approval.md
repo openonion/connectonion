@@ -1,19 +1,18 @@
 # tool_approval
 
-Versioned OIP permission profiles plus WebSocket approval for calls that need a
+Canonical OIP permission modes plus WebSocket approval for calls that need a
 human decision.
 
-## Profiles
+## Modes
 
-| Profile | Behaviour |
+| Mode | Behaviour |
 |---|---|
-| `:read-only` | Manual approval for every live-IO call not explicitly permitted |
-| `:workspace` | Auto-approves workspace reads/edits and focused verification; asks or denies higher-impact calls |
-| `:danger-full-access` | Explicit local/Host-admin bypass, still bounded by Host control files |
+| `read-only` | Manual approval for every effectful live-IO call not explicitly permitted |
+| `auto` | Auto-approves reversible workspace work and focused verification; asks or denies higher-impact calls |
+| `full-access` | Explicit bounded approval bypass under the Host launch ceiling |
 
-Legacy `default`/`safe` map to Read only; `auto_approve`/`accept_edits` map to
-Auto; `ulw` and `yolo` map to Full access. Planning uses `workflow_mode: plan`
-and never grants a permission profile.
+No aliases are accepted or translated. Unknown stored values become Auto.
+Todo List progress never grants a permission mode; Plan is not a mode.
 
 ## Quick Start
 
@@ -32,8 +31,8 @@ agent.input("Install dependencies")
 
 ## Lifecycle
 
-This example shows a local/admin operator session. Hosted non-admin requesters
-are rejected before an approval request is sent.
+This example applies to every authenticated participant. Administrative
+control-plane authorization is separate from an ordinary session mode.
 
 ```
 User sends prompt
@@ -155,9 +154,9 @@ send_email, post, delete, remove
 
 Unknown and dynamically registered tools are never silently allowed. In Auto,
 they ask through the existing approval protocol; without an approval channel,
-they fail closed. Auto applies only to the Host-authorized `:workspace` profile
-for a local/admin operator. Authenticated contacts can answer manual approval
-requests but cannot elevate their profile.
+they fail closed. Auto applies whenever the canonical session mode is `auto`.
+Authenticated participants can answer their own approval requests and use the
+same Host-advertised modes.
 
 ## Config-Based Auto-Approval
 

@@ -2,6 +2,7 @@
 
 import copy
 import threading
+import time
 from typing import Any, Callable, Optional, Tuple
 
 from .provider_events import (
@@ -15,6 +16,10 @@ class UserInterrupt(Exception):
     """Internal control flow for an interrupt consumed by a blocking gate."""
 
 
+class InterruptibleStepTimeout(TimeoutError):
+    """A disposable blocking step exceeded its caller-owned settlement bound."""
+
+
 class InterruptibleIO:
     """Revocable IO view held by one agent-injected tool invocation."""
 
@@ -23,6 +28,12 @@ class InterruptibleIO:
         self._cancelled = threading.Event()
         self._gate = threading.Lock()
         self._deferred: list[tuple[bool, Any]] = []
+        # A tool transaction can emit hundreds of provider trace entries. Each
+        # one is followed by a full session_sync, but none of those snapshots is
+        # visible until commit. Retain only the newest superseding snapshot so
+        # the first post-tool approval is not trapped behind megabytes of stale
+        # session history.
+        self._deferred_session_sync: Any | None = None
         # Provider events need a live presentation lane: their canonical trace
         # still waits for the transactional tool session to commit, but a coding
         # Work Room must not wait minutes to say that work has started.  Keep the
@@ -44,6 +55,7 @@ class InterruptibleIO:
             self._live_provider_invocations.clear()
             self._cancelled.set()
             self._deferred.clear()
+            self._deferred_session_sync = None
 
     def commit(self) -> bool:
         """Publish Agent-owned state only after its tool transaction commits."""
@@ -59,7 +71,10 @@ class InterruptibleIO:
                     sender(event)
                 else:
                     self.__io.send(event)
+            if self._deferred_session_sync is not None:
+                self.__io.send(self._deferred_session_sync)
             self._deferred.clear()
+            self._deferred_session_sync = None
             return True
 
     def is_cancelled(self) -> bool:
@@ -102,7 +117,7 @@ class InterruptibleIO:
         with self._gate:
             if not self._cancelled.is_set():
                 if event.get("type") == "session_sync":
-                    self._deferred.append((False, copy.deepcopy(event)))
+                    self._deferred_session_sync = copy.deepcopy(event)
                 else:
                     self.__io.send(event)
 
@@ -203,6 +218,7 @@ def run_interruptible(
     io: Any,
     poll_seconds: float = 0.2,
     on_interrupt: Optional[Callable[[], None]] = None,
+    timeout_seconds: Optional[float] = None,
 ) -> Tuple[Any, bool]:
     """Return ``(result, False)`` or abandon ``fn`` on user interrupt.
 
@@ -211,10 +227,14 @@ def run_interruptible(
     the selective INTERRUPT mailbox. The abandoned callable may keep running,
     but its late return value is never committed by the caller.
     """
-    if io is None or not hasattr(io, "receive_all"):
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+
+    has_interrupt_mailbox = io is not None and hasattr(io, "receive_all")
+    if not has_interrupt_mailbox and timeout_seconds is None:
         return fn(), False
 
-    if _take_interrupt(io, on_interrupt):
+    if has_interrupt_mailbox and _take_interrupt(io, on_interrupt):
         return None, True
 
     box = {}
@@ -232,13 +252,26 @@ def run_interruptible(
     )
     worker.start()
 
+    deadline = (
+        time.monotonic() + timeout_seconds
+        if timeout_seconds is not None
+        else None
+    )
     while worker.is_alive():
-        worker.join(timeout=poll_seconds)
+        wait_seconds = poll_seconds
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise InterruptibleStepTimeout(
+                    f"Blocking step exceeded {timeout_seconds:g} seconds"
+                )
+            wait_seconds = min(wait_seconds, remaining)
+        worker.join(timeout=wait_seconds)
         # Completed work wins the race. Leave a simultaneous interrupt queued
         # for the next step or the existing iteration-boundary backstop.
         if not worker.is_alive():
             break
-        if _take_interrupt(io, on_interrupt):
+        if has_interrupt_mailbox and _take_interrupt(io, on_interrupt):
             return None, True
 
     if "error" in box:

@@ -1,0 +1,24 @@
+{
+  "schema": "connectonion.mode.v1",
+  "defaultMode": "auto",
+  "modes": [
+    {"id": "read-only", "name": "Read only", "requiresTurnsLeft": false},
+    {"id": "auto", "name": "Auto", "requiresTurnsLeft": false},
+    {"id": "full-access", "name": "Full access", "requiresTurnsLeft": true}
+  ],
+  "validStates": [
+    {"input": {"mode": "read-only"}, "mode": "read-only", "turnsLeft": null},
+    {"input": {"mode": "auto"}, "mode": "auto", "turnsLeft": null},
+    {"input": {"mode": "full-access", "turns_left": 3}, "mode": "full-access", "turnsLeft": 3}
+  ],
+  "discardToAuto": [
+    {},
+    {"mode": "plan"},
+    {"mode": ":read-only"},
+    {"mode": ":workspace"},
+    {"mode": ":danger-full-access"},
+    {"mode": "full-access"},
+    {"mode": "full-access", "turns_left": 0},
+    {"mode": "full-access", "turns_left": true}
+  ]
+}

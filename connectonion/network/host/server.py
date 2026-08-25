@@ -117,6 +117,9 @@ def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     Returns YAML config dict if trust is a level or file path, None otherwise.
     Used to extract onboard info for /info endpoint.
     """
+    if isinstance(trust, TrustAgent):
+        return trust.config
+
     if not isinstance(trust, str):
         return None
 
@@ -353,7 +356,7 @@ def _create_route_handlers(
 
 def _host_mode_policy(sample) -> HostPermissionPolicy:
     """Capture only an explicitly configured positive Full access ceiling."""
-    turns = getattr(sample, "_yolo_turns", None)
+    turns = getattr(sample, "_full_access_turns", None)
     if (
         isinstance(turns, bool)
         or not isinstance(turns, int)
@@ -596,6 +599,10 @@ def _invite_line(trust_config) -> str | None:
     from_env = [str(c)[1:] for c in declared if str(c).startswith("$")]
     literals = [c for c in declared if not str(c).startswith("$")]
     live = _resolve_codes(declared)
+    # `co deploy --to` loads secrets from a root-owned systemd EnvironmentFile,
+    # not from the project tree. Its unit sets this non-secret marker so the
+    # generic Host diagnostic can send the operator to the file actually read.
+    env_file = os.environ.get("CONNECTONION_ENV_FILE", "").strip() or ".env"
 
     if live:
         # Say *where* the code is, not just that there is one. Telling an
@@ -603,9 +610,12 @@ def _invite_line(trust_config) -> str | None:
         # sends them looking for something that is not there.
         resolved_from_env = [n for n in from_env if os.environ.get(n, "").strip()]
         if resolved_from_env and literals:
-            where = f"{', '.join(resolved_from_env)} in .env, and one in the trust policy"
+            where = (
+                f"{', '.join(resolved_from_env)} in {env_file}, "
+                "and one in the trust policy"
+            )
         elif resolved_from_env:
-            where = f"{', '.join(resolved_from_env)} in .env"
+            where = f"{', '.join(resolved_from_env)} in {env_file}"
         else:
             where = "in the trust policy"
         dead = [n for n in from_env if not os.environ.get(n, "").strip()]
@@ -614,7 +624,7 @@ def _invite_line(trust_config) -> str | None:
 
     if from_env:
         return (f"Invite: no one can onboard — {', '.join(from_env)} is not set. "
-                f"Add it to .env, or run `co init` to mint one.")
+                f"Add it to {env_file}, or run `co init` to mint one.")
     return None
 
 

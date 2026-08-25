@@ -344,6 +344,11 @@ myagent → prod (co@1.2.3.4)
 ```
 
 Everything else in `.env` — your Gemini key, your database URL — travels unchanged.
+Deploy stores those values in the root-owned
+`/etc/connectonion/<agent>.env` (`0600`) and systemd loads that file. It is
+outside `/srv/<agent>/`, so rsync cannot expose or overwrite it. When Host
+startup reports an invite setting such as `CO_INVITE_CODE`, it names this exact
+file; edit it with root privileges, then restart the agent service.
 
 `--own-identity` mints the key on the machine, so this laptop cannot authenticate as
 that agent and no account is written. The deploy says so and the agent has no access

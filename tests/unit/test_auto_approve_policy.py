@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from connectonion.cli.co_ai.agent import grant_managed_delegation_permissions
 from connectonion.useful_plugins.tool_approval import check_approval, tool_approval
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 from connectonion.useful_plugins.tool_approval.policy import (
@@ -25,7 +26,7 @@ class IO:
         return self.response
 
 
-def agent(*, mode=":workspace", permissions=None, requester=None, io=True):
+def agent(*, mode="auto", permissions=None, requester=None, io=True):
     session = {
         "messages": [],
         "trace": [],
@@ -169,8 +170,60 @@ def test_broad_config_cannot_silently_turn_deploy_into_auto(tmp_path, monkeypatc
     assert instance.io.sent[0]["type"] == "approval_needed"
 
 
-def test_read_only_profile_keeps_the_manual_approval_contract():
-    instance = agent(mode=":read-only")
+@pytest.mark.parametrize("provider_tool", ["codex", "claude_code"])
+def test_auto_honors_only_the_exact_co_ai_managed_delegation_grant(
+    tmp_path, monkeypatch, provider_tool
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent()
+    grant_managed_delegation_permissions(instance)
+
+    result = call(instance, provider_tool, {
+        "prompt": "Create and test the requested project",
+        "cwd": ".",
+    })
+
+    assert result["decision"] == "allow"
+    assert result["effect_class"] == "managed_delegation"
+    assert instance.io.sent == []
+
+
+@pytest.mark.parametrize(
+    "permission",
+    [
+        {
+            "allowed": True,
+            "source": "config",
+            "reason": "managed delegation owns inner approval",
+            "expires": {"type": "never"},
+        },
+        {
+            "allowed": True,
+            "source": "safe",
+            "reason": "arbitrary safe grant",
+            "expires": {"type": "never"},
+        },
+        {
+            "allowed": True,
+            "source": "safe",
+            "reason": "managed delegation owns inner approval",
+        },
+    ],
+)
+def test_auto_does_not_treat_near_match_claude_grants_as_managed_delegation(
+    tmp_path, monkeypatch, permission
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(permissions={"claude_code": permission})
+
+    result = call(instance, "claude_code", {"prompt": "inspect", "cwd": "."})
+
+    assert result["decision"] == "ask"
+    assert instance.io.sent[0]["type"] == "approval_needed"
+
+
+def test_read_only_mode_keeps_the_manual_approval_contract():
+    instance = agent(mode="read-only")
 
     result = call(instance, "write", {"path": "owned.txt"})
 
@@ -178,13 +231,13 @@ def test_read_only_profile_keeps_the_manual_approval_contract():
     assert instance.io.sent[0]["type"] == "approval_needed"
 
 
-def test_contact_cannot_use_auto_without_host_authorization():
+def test_contact_uses_the_same_auto_contract_as_every_participant():
     instance = agent(requester={"address": "0x" + "a" * 64, "level": "contact"})
 
     result = call(instance, "write", {"path": "owned.txt"})
 
-    assert result is None
-    assert instance.io.sent[0]["type"] == "approval_needed"
+    assert result["decision"] == "allow"
+    assert instance.io.sent == []
 
 
 @pytest.mark.parametrize(
@@ -210,7 +263,7 @@ def test_headless_auto_fails_closed_without_an_approval_channel(
     result = instance.current_session["pending_tool"]["approval_policy"]
     assert result["decision"] == "deny"
     assert result["effect_class"] == effect
-    with pytest.raises(ValueError, match="denied by connectonion.workspace-auto-approve"):
+    with pytest.raises(ValueError, match=f"denied by {POLICY_ID}"):
         check_approval(instance)
 
 

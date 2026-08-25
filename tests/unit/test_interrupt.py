@@ -9,7 +9,12 @@ import pytest
 
 from connectonion import Agent, CodexPlugin, before_each_tool
 from connectonion.cli.co_ai.tools.claude_code import claude_code as co_ai_claude_code
-from connectonion.core.interrupt import InterruptibleIO, UserInterrupt, run_interruptible
+from connectonion.core.interrupt import (
+    InterruptibleIO,
+    InterruptibleStepTimeout,
+    UserInterrupt,
+    run_interruptible,
+)
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.logger import Logger
 from connectonion.network.io.websocket import WebSocketIO
@@ -117,6 +122,30 @@ def test_worker_exception_is_reraised_on_caller_thread():
 
     with pytest.raises(ValueError, match="boom"):
         run_interruptible(fail, MailboxIO(), poll_seconds=0.01)
+
+
+def test_timeout_abandons_slow_step_without_waiting_for_its_late_result():
+    release = threading.Event()
+    finished = threading.Event()
+
+    def step():
+        release.wait(timeout=2)
+        finished.set()
+        return "late"
+
+    before = time.monotonic()
+    with pytest.raises(InterruptibleStepTimeout, match="exceeded"):
+        run_interruptible(
+            step,
+            MailboxIO(),
+            poll_seconds=0.01,
+            timeout_seconds=0.03,
+        )
+    elapsed = time.monotonic() - before
+
+    release.set()
+    assert finished.wait(timeout=1)
+    assert elapsed < 0.3
 
 
 def test_abandoned_agent_tool_cannot_commit_session_or_registry_changes():
@@ -442,6 +471,51 @@ def test_live_provider_trace_is_visible_before_transaction_commit():
     assert WebSocketIO.is_persisted_trace_event(io._msgs_from_agent[1])
 
 
+def test_interruptible_io_commits_only_the_latest_transactional_session_snapshot():
+    """Committed trace order survives without replaying superseded snapshots."""
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    first = {"id": "trace-1", "type": "provider_activity", "status": "running"}
+    second = {"id": "trace-2", "type": "provider_activity", "status": "completed"}
+    stale_session = {"trace": [first]}
+    latest_session = {"trace": [first, second], "plan": [{"content": "done"}]}
+
+    lease._send_persisted_trace(first)
+    lease.send({"type": "session_sync", "session": stale_session})
+    lease._send_persisted_trace(second)
+    lease.send({"type": "session_sync", "session": latest_session})
+    latest_session["plan"][0]["content"] = "mutated after send"
+
+    assert io._msgs_from_agent == []
+    assert lease.commit() is True
+
+    assert [event["type"] for event in io._msgs_from_agent] == [
+        "provider_activity",
+        "provider_activity",
+        "session_sync",
+    ]
+    assert all(
+        WebSocketIO.is_persisted_trace_event(event)
+        for event in io._msgs_from_agent[:2]
+    )
+    assert io._msgs_from_agent[-1]["session"] == {
+        "trace": [first, second],
+        "plan": [{"content": "done"}],
+    }
+
+
+def test_interruptible_io_cancel_drops_the_coalesced_session_snapshot():
+    io = WebSocketIO()
+    lease = InterruptibleIO(io)
+    lease._send_persisted_trace({"id": "trace-1", "type": "tool_call"})
+    lease.send({"type": "session_sync", "session": {"trace": ["private"]}})
+
+    lease.cancel()
+
+    assert lease.commit() is False
+    assert io._msgs_from_agent == []
+
+
 def test_interruptible_io_cancels_a_live_provider_card_without_committing_trace():
     io = WebSocketIO()
     lease = InterruptibleIO(io)
@@ -655,7 +729,9 @@ def test_interruptible_io_makes_request_approval_an_interrupted_tool():
 
 def test_completed_agent_tool_commits_its_session_snapshot():
     def change_mode(agent) -> str:
-        agent.current_session["mode"] = ":workspace"
+        from connectonion.core.mode import set_mode
+
+        set_mode(agent.current_session, "auto")
         agent.tools.remove("victim")
         return "changed"
 
@@ -677,7 +753,7 @@ def test_completed_agent_tool_commits_its_session_snapshot():
 
     assert trace["status"] == "success"
     assert agent.current_session is session
-    assert session["mode"] == ":workspace"
+    assert session["mode"] == "auto"
     assert "victim" not in agent.tools
 
 
