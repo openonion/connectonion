@@ -14,7 +14,10 @@ def ready_resolution():
             artifact=SimpleNamespace(artifact_id="chrome/150/linux-x86_64.tar.zst"),
         ),
     )
-    client = SimpleNamespace(prepare=lambda revision: prepared)
+    client = SimpleNamespace(
+        client_version=engine.MIN_ONIONWRIGHT_VERSION,
+        prepare=lambda revision: prepared,
+    )
     return engine.resolve(
         engine.ONION,
         token_loader=lambda: "token",
@@ -62,7 +65,9 @@ def test_client_constructor_import_failure_is_auto_fallback():
     result = engine.resolve(
         engine.AUTO,
         token_loader=lambda: "token",
-        client_factory=lambda token, home: (_ for _ in ()).throw(ImportError("missing")),
+        client_factory=lambda token, home: (_ for _ in ()).throw(
+            ModuleNotFoundError("No module named 'onionwright'")
+        ),
     )
     assert result.resolved == engine.SYSTEM
     assert result.reason == engine.Reason.ONIONWRIGHT_MISSING
@@ -70,6 +75,8 @@ def test_client_constructor_import_failure_is_auto_fallback():
 
 def test_prepare_exception_is_typed_and_explicit_onion_fails():
     class FailedClient:
+        client_version = engine.MIN_ONIONWRIGHT_VERSION
+
         def prepare(self, revision):
             exc = RuntimeError("offline")
             exc.code = "api_unavailable"

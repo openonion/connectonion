@@ -15,6 +15,7 @@ class Client:
     def __init__(self, result):
         self.result = result
         self.calls = []
+        self.client_version = engine.MIN_ONIONWRIGHT_VERSION
 
     def prepare(self, revision):
         self.calls.append(revision)
@@ -100,6 +101,19 @@ def test_invalid_mode_is_never_guessed():
     assert caught.value.reason == engine.Reason.INVALID_MODE
 
 
+def test_installed_old_onionwright_is_typed_incompatible_before_preflight():
+    client = Client(prepared())
+    client.client_version = "0.0.10"
+    result = engine.resolve(
+        engine.AUTO,
+        token_loader=lambda: "token",
+        client_factory=lambda token, home: client,
+    )
+    assert result.resolved == engine.SYSTEM
+    assert result.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
+    assert client.calls == []
+
+
 def test_public_status_contains_no_client_token_or_local_path(tmp_path):
     client = Client(prepared())
     result = engine.resolve(
@@ -110,5 +124,6 @@ def test_public_status_contains_no_client_token_or_local_path(tmp_path):
     )
     status = result.public_status()
     assert status["resolved_engine"] == engine.ONION
+    assert status["onionwright_version"] == engine.MIN_ONIONWRIGHT_VERSION
     assert "super-secret" not in repr(status)
     assert str(tmp_path) not in repr(status)
