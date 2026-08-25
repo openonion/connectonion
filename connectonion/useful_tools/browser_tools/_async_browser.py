@@ -1,11 +1,11 @@
 """
 Purpose: Internal Patchright async browser core for the 1.8 driver migration.
 LLM-Note:
-  Dependencies: imports only patchright.async_api plus browser_config/chrome_finder and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py]
-  Data flow: caller binds a session in a ContextVar → each async operation acquires that tab's lock → the shared persistent context lazily creates/restores one page per session → independent tab operations may interleave on one event loop
+  Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/e2e/test_async_browser_core_real_driver.py]
+  Data flow: caller binds a session in a ContextVar → each async operation acquires that tab's lock → the shared persistent context lazily creates/restores one page per session → model-selected actions await extraction and worker-thread matching → independent tab operations may interleave on one event loop
   State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
   Integration: internal AsyncBrowserCore; the public synchronous BrowserAutomation remains unchanged until #500 adds its compatibility facade
-  Errors: live profile ownership fails before driver start | launch/cancellation tears down partially-created driver state | destructive keyboard shortcuts fail closed outside editable focus
+  Errors: live profile ownership fails before driver start | launch/cancellation tears down partially-created driver state | destructive keyboard shortcuts fail closed outside editable focus | element ambiguity and non-match errors preserve the synchronous finder contract
 
 This module is deliberately internal while #498 is in progress. It must never
 import or call patchright.sync_api: the old public class remains the compatibility
@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
@@ -701,6 +702,172 @@ class AsyncBrowserCore:
                 return "Browser not open"
             return await self.page.locator("body").inner_text()
 
+    def _element_locator(self, element):
+        """Resolve an extracted element in its main-page or iframe context."""
+        if element.frame != "main":
+            frames = []
+            for frame in self.page.frames:
+                raw_name = getattr(frame, "name", "") or ""
+                name = raw_name() if callable(raw_name) else raw_name
+                url = getattr(frame, "url", "") or ""
+                frames.append((frame, url))
+                if name == element.frame:
+                    return frame.locator(element.locator)
+            # Playwright orders page.frames with the main frame first. A
+            # non-main extracted target must never fall back to that frame just
+            # because a data/document URL happens to contain the frame label.
+            for frame, url in frames[1:]:
+                if element.frame in url:
+                    return frame.locator(element.locator)
+        return self.page.locator(element.locator)
+
+    async def find_element_by_description(self, description: str) -> str:
+        """Find a pre-built locator selected from the extracted DOM."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            element = await element_finder.find_element(self.page, description)
+            if element:
+                return element.locator
+            return f"Could not find element matching: {description}"
+
+    async def click(self, description: str) -> str:
+        """Humanize a click on a model-selected element."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            element = await element_finder.find_element(self.page, description)
+            if element.frame.startswith("shadow-"):
+                x = element.x + element.width // 2
+                y = element.y + element.height // 2
+                await humanize.click(self.page, x, y)
+                await self._save_context()
+                await asyncio.sleep(1)
+                return (
+                    f"Clicked [{element.index}] {element.tag} "
+                    f"'{element.text}' (shadow DOM)"
+                )
+
+            locator = self._element_locator(element)
+            if await locator.count() > 0:
+                box = await locator.first.bounding_box()
+                if box:
+                    x = box["x"] + box["width"] / 2
+                    y = box["y"] + box["height"] / 2
+                    await humanize.click(self.page, x, y, box=box)
+                    await self._save_context()
+                    await asyncio.sleep(1)
+                    return f"Clicked [{element.index}] {element.tag} '{element.text}'"
+                await locator.first.click(force=True)
+                await self._save_context()
+                await asyncio.sleep(1)
+                return (
+                    f"Clicked [{element.index}] {element.tag} "
+                    f"'{element.text}' (force)"
+                )
+
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            await humanize.click(self.page, x, y)
+            await self._save_context()
+            await asyncio.sleep(1)
+            return f"Clicked [{element.index}] '{element.text}' at ({x}, {y})"
+
+    async def hover(self, description: str) -> str:
+        """Hover over a model-selected element."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            element = await element_finder.find_element(self.page, description)
+            if element.frame.startswith("shadow-"):
+                await humanize.move(
+                    self.page,
+                    element.x + element.width // 2,
+                    element.y + element.height // 2,
+                )
+            else:
+                locator = self._element_locator(element)
+                if await locator.count() > 0:
+                    await locator.first.hover()
+                else:
+                    await humanize.move(
+                        self.page,
+                        element.x + element.width // 2,
+                        element.y + element.height // 2,
+                    )
+            await asyncio.sleep(1)
+            return f"Hovered [{element.index}] {element.tag} '{element.text}'"
+
+    async def right_click(self, description: str) -> str:
+        """Humanize a right click on a model-selected element."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            element = await element_finder.find_element(self.page, description)
+            if element.frame.startswith("shadow-"):
+                x = element.x + element.width // 2
+                y = element.y + element.height // 2
+                await humanize.click(self.page, x, y, button="right")
+                await asyncio.sleep(1)
+                return (
+                    f"Right-clicked [{element.index}] {element.tag} "
+                    f"'{element.text}' (shadow DOM)"
+                )
+
+            locator = self._element_locator(element)
+            if await locator.count() > 0:
+                box = await locator.first.bounding_box()
+                if box:
+                    x = box["x"] + box["width"] / 2
+                    y = box["y"] + box["height"] / 2
+                    await humanize.click(self.page, x, y, button="right", box=box)
+                    await asyncio.sleep(1)
+                    return (
+                        f"Right-clicked [{element.index}] {element.tag} "
+                        f"'{element.text}'"
+                    )
+
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            await humanize.click(self.page, x, y, button="right")
+            await asyncio.sleep(1)
+            return f"Right-clicked [{element.index}] '{element.text}' at ({x}, {y})"
+
+    async def double_click(self, description: str) -> str:
+        """Humanize a double click on a model-selected element."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            element = await element_finder.find_element(self.page, description)
+            if element.frame.startswith("shadow-"):
+                x = element.x + element.width // 2
+                y = element.y + element.height // 2
+                await humanize.double_click(self.page, x, y)
+                await asyncio.sleep(1)
+                return (
+                    f"Double-clicked [{element.index}] {element.tag} "
+                    f"'{element.text}' (shadow DOM)"
+                )
+
+            locator = self._element_locator(element)
+            if await locator.count() > 0:
+                box = await locator.first.bounding_box()
+                if box:
+                    x = box["x"] + box["width"] / 2
+                    y = box["y"] + box["height"] / 2
+                    await humanize.double_click(self.page, x, y, box=box)
+                    await asyncio.sleep(1)
+                    return (
+                        f"Double-clicked [{element.index}] {element.tag} "
+                        f"'{element.text}'"
+                    )
+
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            await humanize.double_click(self.page, x, y)
+            await asyncio.sleep(1)
+            return f"Double-clicked [{element.index}] '{element.text}' at ({x}, {y})"
+
     async def extract_items_by_selector(
         self,
         container_selector: str,
@@ -1349,6 +1516,42 @@ class AsyncBrowserCore:
                 return "Browser not open"
             await self.page.set_viewport_size({"width": width, "height": height})
             return f"Viewport set to {width}x{height}"
+
+    async def select_option(self, field_description: str, option: str) -> str:
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            selector = await self.find_element_by_description(field_description)
+            if selector.startswith("Could not"):
+                return selector
+            await self.page.select_option(selector, label=option)
+            return f"Selected '{option}' in {field_description}"
+
+    async def check_checkbox(self, description: str, checked: bool = True) -> str:
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            selector = await self.find_element_by_description(description)
+            if selector.startswith("Could not"):
+                return selector
+            if checked:
+                await self.page.check(selector)
+                return f"Checked {description}"
+            await self.page.uncheck(selector)
+            return f"Unchecked {description}"
+
+    async def wait_for_element(self, description: str, timeout: int = 30) -> str:
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            selector = await self.find_element_by_description(description)
+            if selector.startswith("Could not"):
+                await self.page.wait_for_selector(
+                    f"text='{description}'", timeout=timeout * 1000
+                )
+                return f"Found text: '{description}'"
+            await self.page.wait_for_selector(selector, timeout=timeout * 1000)
+            return f"Element appeared: {description}"
 
     async def wait_for_text(self, text: str, timeout: int = 30) -> str:
         async with self._tab_operation():

@@ -85,6 +85,17 @@ runtime lock across tabs, and restore the previous clipboard before cancellation
 escapes. Natural-language element matching, AI-selected scrolling, and form verbs
 remain later #498 boundaries rather than being mixed into known-target input.
 
+The fifth boundary ports model-selected element actions as one unit. DOM
+extraction is awaited on the owning page, while debug-file writes and the
+synchronous `llm_do` matcher run in worker threads. The matcher still uses the
+existing prompt, `InteractiveElement` schema, ambiguity rules, and pre-built
+locators; the async runtime does not invent a second selection policy. Exact
+frame names take precedence over URL-substring fallback so a main `data:` URL
+that happens to contain an iframe name cannot steal the target. Click, hover,
+right-click, double-click, select, checkbox, and element-wait behavior preserve
+their existing result and fallback contracts across the main DOM, named
+iframes, and open shadow roots.
+
 ## Invariants
 
 - one persistent browser context and profile per runtime;
@@ -127,7 +138,8 @@ The completed review boundaries additionally run against native Chrome. They
 prove selector counts and text, repeated-item bounds, link filtering, text waits,
 raw extraction, viewport changes, page/frame scripts, both upload paths,
 exact-text/frame selector clicks, known-selector typing, anchor-relative clicks,
-and independent-tab progress during humanized input on a real DOM. Downloads,
-AI-selected scrolling, model-backed matching, form verbs, context capture, and
-remaining dead-context/profile behavior stay explicit #498 work; these boundaries
-do not make the async core public.
+model-selected actions across main/iframe/shadow DOMs, main-document forms, and
+independent-tab progress during humanized input and a stalled matcher on a real
+DOM. Downloads, AI-selected scrolling, context capture, manual-login waiting,
+and remaining dead-context/profile behavior stay explicit #498 work; these
+boundaries do not make the async core public.

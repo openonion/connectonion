@@ -98,6 +98,11 @@ browser.click("email input field")       # Uses AI to find by description
 ```
 
 Element finding uses a vision LLM — describe what you see, not a CSS selector.
+The 1.8 async core keeps that same selection contract: it awaits DOM extraction,
+then runs the synchronous model match outside the browser event loop. A slow
+provider may delay the requesting tab, but it does not stop unrelated tabs from
+reading or acting. Main-page, named-iframe, and open-shadow-root targets retain
+their extracted locators or coordinate fallbacks.
 
 When you have a stable CSS selector, click it directly:
 
