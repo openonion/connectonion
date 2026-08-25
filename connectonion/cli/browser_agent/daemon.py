@@ -230,6 +230,7 @@ class BrowserDaemon:
         # Set by _cleanup before it closes the listener, so serve() can tell "we are
         # stopping" from "the socket broke while we were meant to be serving".
         self._closing = False
+        self._shutdown_started = False
         self._had_browser = False
         self._defer_context_probe = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
@@ -943,8 +944,9 @@ class BrowserDaemon:
             return self._launch_failed() or closed or (self._had_browser and not alive)
 
     def _begin_shutdown(self) -> None:
-        if self._closing:
+        if self._shutdown_started:
             return
+        self._shutdown_started = True
         self._closing = True
         if (
             transport.IS_WINDOWS
