@@ -153,7 +153,26 @@ browser.keyboard_press("Escape")
 browser.keyboard_press("Tab")
 ```
 
-After `keyboard_type()`, call `take_screenshot()` to verify the text landed in the right field.
+Before replacing text, inspect focus instead of typing a canary or discovering a
+missed click after state has been destroyed:
+
+```python
+focus = browser.get_focused_element()
+# JSON includes tag, role, aria_label, contenteditable, and is_editable.
+# Password values are never returned.
+browser.keyboard_press("Meta+a")
+browser.keyboard_press("Backspace")
+```
+
+`keyboard_press()` refuses select-all, Backspace, and Delete when the focused
+element is not editable. For an intentional page-level shortcut, pass
+`allow_non_editable=True`. After `keyboard_type()`, call `take_screenshot()` to
+verify the text landed in the expected field.
+
+Inspection covers the top-level document and open shadow roots. Focus inside an
+iframe is reported as the iframe and fails the editable check; closed shadow
+roots are likewise opaque. Target the field directly in those cases, and only
+use the override after independently verifying the destination.
 
 ### Scrolling
 

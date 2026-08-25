@@ -156,6 +156,18 @@ class FakeRunScriptPage(FakePage):
         return self.result
 
 
+class FakeFocusedPage(FakePage):
+    def __init__(self, focused):
+        self.focused = focused
+        self.evaluate_calls = []
+        self.pressed = []
+        self.keyboard = SimpleNamespace(press=lambda key: self.pressed.append(key))
+
+    def evaluate(self, script, arg=None):
+        self.evaluate_calls.append((script, arg))
+        return dict(self.focused)
+
+
 class FakeFrame:
     def __init__(self, result, url="https://example.com/frame", name=""):
         self.result = result
@@ -349,6 +361,65 @@ def test_run_page_script_reports_invalid_json(tmp_path):
     result = browser.run_page_script(str(script), "{bad")
 
     assert result.startswith("Invalid args_json:")
+
+
+def test_get_focused_element_returns_bounded_machine_readable_state():
+    page = FakeFocusedPage({
+        "tag": "div",
+        "type": None,
+        "id": "headline",
+        "name": None,
+        "role": "textbox",
+        "aria_label": "Headline",
+        "contenteditable": "true",
+        "is_editable": True,
+        "disabled": False,
+        "read_only": False,
+        "sensitive": False,
+        "value_preview": "Open-source browser",
+        "value_truncated": False,
+    })
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+
+    result = browser.get_focused_element(value_preview_chars=42)
+
+    assert '"aria_label": "Headline"' in result
+    assert '"is_editable": true' in result
+    assert page.evaluate_calls[0][1] == 42
+
+
+def test_destructive_keyboard_shortcuts_are_refused_outside_an_editor():
+    page = FakeFocusedPage({"tag": "body", "is_editable": False})
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+
+    for key in ("Meta+a", "Control+A", "ControlOrMeta+a", "Backspace", "Shift+Delete"):
+        result = browser.keyboard_press(key)
+        assert result.startswith(f"Refused '{key}'")
+
+    assert page.pressed == []
+    assert len(page.evaluate_calls) == 5
+
+
+def test_keyboard_shortcut_safety_preserves_normal_keys_and_has_explicit_override():
+    page = FakeFocusedPage({"tag": "body", "is_editable": False})
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+
+    assert browser.keyboard_press("Escape") == "Pressed: 'Escape'"
+    assert page.evaluate_calls == []
+    assert browser.keyboard_press("Meta+a", allow_non_editable=True) == "Pressed: 'Meta+a'"
+    assert page.pressed == ["Escape", "Meta+a"]
+
+
+def test_destructive_keyboard_shortcut_runs_when_focus_is_editable():
+    page = FakeFocusedPage({"tag": "textarea", "is_editable": True})
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+
+    assert browser.keyboard_press("Control+a") == "Pressed: 'Control+a'"
+    assert page.pressed == ["Control+a"]
 
 
 def test_run_frame_script_returns_first_ok_frame(tmp_path):

@@ -84,12 +84,36 @@ co browser take_screenshot /tmp/shot.png [--full-page]
 co browser click "<description or selector>"
 co browser type_text_by_selector <css> "<text>"
 co browser fill_text_by_selector <css> --stdin < secret.txt  # replace controlled input; secret stays out of argv
+co browser get_focused_element             # bounded JSON; password values are redacted
+co browser keyboard_press Meta+a           # refused unless focus is editable
 co browser get_links_from_page             # one link per line
 co browser scroll                          # scroll the main content
 co browser close                           # close browser, stop daemon
 ```
 
 Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters. For `fill_text_by_selector`, `type_text_by_selector`, and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments. Prefer `fill_text_by_selector` when replacing a controlled framework input; use `type_text_by_selector` when appending human-shaped keystrokes is required.
+
+Before replacing focused text with a keyboard shortcut, inspect the target:
+
+```bash
+co browser get_focused_element
+co browser keyboard_press Meta+a       # macOS
+co browser keyboard_press Control+a    # Windows/Linux
+co browser keyboard_press Backspace
+```
+
+`get_focused_element` follows focus into open shadow roots and reports whether
+the target is editable. Its value preview is bounded, and password values are
+always redacted. `keyboard_press` refuses select-all, Backspace, and Delete when
+focus is outside an editable input, textarea, or contenteditable element. For a
+deliberate page-level shortcut, acknowledge the risk explicitly with
+`--allow-non-editable`.
+
+Focus inspection is scoped to the top-level document and open shadow roots. If
+focus is inside an iframe, the result describes the iframe itself and treats it
+as non-editable; closed shadow roots cannot be inspected. These cases fail safe:
+target the field by selector, or use the explicit override only after verifying
+the frame and intended page-level action.
 
 > **Use absolute paths for files.** The daemon resolves relative paths against *its own* working directory (where it was first started), not the directory you run each command from. `take_screenshot /tmp/shot.png` is predictable; a bare `shot.png` lands in the daemon's `.tmp/` folder.
 

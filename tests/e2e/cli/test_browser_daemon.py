@@ -118,6 +118,14 @@ class StubBrowser:
     def get_links_from_page(self, domain_filter: str = "") -> list:
         return ["https://a.com", "https://b.com"]
 
+    def get_focused_element(self, value_preview_chars: int = 160) -> str:
+        self.calls.append(("get_focused_element", value_preview_chars))
+        return '{"tag":"input","is_editable":true}'
+
+    def keyboard_press(self, key: str, allow_non_editable: bool = False) -> str:
+        self.calls.append(("keyboard_press", key, allow_non_editable))
+        return f"Pressed {key} allow_non_editable={allow_non_editable}"
+
     def _browser_is_usable(self) -> bool:
         return True
 
@@ -188,6 +196,20 @@ def test_dispatch_coerces_bool_flag(tmp_path):
     ok, payload = daemon.dispatch("take_screenshot --full-page")
     assert ok is True
     assert payload == "shot path=None full=True"
+
+
+def test_dispatch_exposes_focus_json_and_destructive_shortcut_override(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+
+    ok, payload = daemon.dispatch("get_focused_element --value-preview-chars=42")
+    assert ok is True
+    assert payload == '{"tag":"input","is_editable":true}'
+    assert daemon.browser.calls[-1] == ("get_focused_element", 42)
+
+    ok, payload = daemon.dispatch("keyboard_press Meta+a --allow-non-editable")
+    assert ok is True
+    assert payload == "Pressed Meta+a allow_non_editable=True"
+    assert daemon.browser.calls[-1] == ("keyboard_press", "Meta+a", True)
 
 
 def test_dispatch_image_payload_shows_path_not_base64(tmp_path):

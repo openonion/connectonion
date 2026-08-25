@@ -186,7 +186,9 @@ Keep responses concise and informative:
 
 `keyboard_type(text)` wraps Playwright's `page.keyboard.type()` — inputs text character by character into the focused element.
 
-`keyboard_press(key)` wraps Playwright's `page.keyboard.press()` — presses a key or chord. Accepts key names (`"Enter"`, `"Escape"`, `"Tab"`) and combos (`"Control+Enter"`, `"Control+x"`, `"Meta+a"`, `"Shift+Tab"`). Modifier keys are held down for the duration of the chord then released.
+`get_focused_element()` returns JSON for the current focus target, including `is_editable`; password values are redacted. Call it before replacing text.
+
+`keyboard_press(key)` wraps Playwright's `page.keyboard.press()` — presses a key or chord. Accepts key names (`"Enter"`, `"Escape"`, `"Tab"`) and combos (`"Control+Enter"`, `"Control+x"`, `"Meta+a"`, `"Shift+Tab"`). Modifier keys are held down for the duration of the chord then released. Select-all, Backspace, and Delete are refused while focus is not editable; only pass `allow_non_editable=True` for an intentional page-level action.
 
 ## How Element Finding Works
 
