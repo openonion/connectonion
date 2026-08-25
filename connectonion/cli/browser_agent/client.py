@@ -244,6 +244,7 @@ def _request_with_identity(
     target=None,
     engine_mode: str = "auto",
     _protocol_checked: bool = False,
+    _connection=None,
 ) -> tuple:
     """Send one short daemon request and return ``(code, payload)``.
 
@@ -267,11 +268,13 @@ def _request_with_identity(
     authkey_path = target.authkey_path if target is not None else None
     owner_pid = None
     try:
-        conn = (
-            _connect(sock_path, authkey_path=authkey_path)
-            if authkey_path is not None
-            else _connect(sock_path)
-        )
+        conn = _connection
+        if conn is None:
+            conn = (
+                _connect(sock_path, authkey_path=authkey_path)
+                if authkey_path is not None
+                else _connect(sock_path)
+            )
         if (conn is not None and effective_engine == "onion"
                 and not _protocol_checked and line != "engine_status"):
             # A pre-1.8 daemon ignores unknown envelope fields. Sending an
@@ -281,7 +284,6 @@ def _request_with_identity(
             # requested command has any browser effect. Auto/system preserve
             # wire-v1 compatibility: an old daemon's system browser is a safe
             # realization of both modes and does not risk an unintended charge.
-            conn.close()
             probe_code, _probe_payload = _request_with_identity(
                 "engine_status",
                 caller=caller,
@@ -290,6 +292,7 @@ def _request_with_identity(
                 target=target,
                 engine_mode=effective_engine,
                 _protocol_checked=True,
+                _connection=conn,
             )
             if probe_code:
                 return 1, (
@@ -443,6 +446,7 @@ def _request(
     _provisioned: bool = False,
     engine_mode: str = "auto",
     _protocol_checked: bool = False,
+    _connection=None,
 ) -> tuple:
     """Send a request owned by this local CLI process."""
     return _request_with_identity(
@@ -455,6 +459,7 @@ def _request(
         _provisioned=_provisioned,
         engine_mode=engine_mode,
         _protocol_checked=_protocol_checked,
+        _connection=_connection,
     )
 
 

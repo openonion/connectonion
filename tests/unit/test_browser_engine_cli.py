@@ -71,9 +71,8 @@ def test_warm_daemon_refuses_engine_hot_swap():
 
 
 def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
-    initial = _FakeConnection()
     probe = _FakeConnection(b"ERR\nunknown command: engine_status")
-    connections = iter([initial, probe])
+    connections = iter([probe])
     monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
     monkeypatch.setattr(client, "_caller", lambda: "test")
     monkeypatch.setattr(client, "_caller_account", lambda: "0xtest")
@@ -85,7 +84,7 @@ def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
 
     assert code == 1
     assert "predates 1.8 engine pinning" in message
-    assert initial.closed
+    assert probe.closed
     probe_request = json.loads(probe.sent)
     assert probe_request["line"] == "engine_status"
     assert probe_request["engine"] == "onion"
@@ -93,10 +92,9 @@ def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
 
 
 def test_client_sends_command_only_after_successful_protocol_probe(monkeypatch):
-    initial = _FakeConnection()
     probe = _FakeConnection(b'OK\n{"requested": "onion"}')
     command = _FakeConnection(b"OK\ndone")
-    connections = iter([initial, probe, command])
+    connections = iter([probe, command])
     monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
     monkeypatch.setattr(client, "_caller", lambda: "test")
     monkeypatch.setattr(client, "_caller_account", lambda: "0xtest")
