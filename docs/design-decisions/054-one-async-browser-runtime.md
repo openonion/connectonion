@@ -60,6 +60,13 @@ The internal core is not exported as a public user API while #498 is incomplete.
 The current synchronous API and daemon remain authoritative until the complete
 contract and cross-platform transport matrices are green.
 
+The second #498 review boundary ports deterministic contracts that do not depend
+on frames, downloads, humanized input, or model-backed element matching. It covers
+tab-registry status; exact selector count/text/fill results; repeated-item and link
+extraction; viewport changes; text and duration waits; raw selector extraction; and
+platform shortcut guidance. Signature checks and exact result assertions compare
+this boundary to `BrowserAutomation`; sharing a method name is not treated as parity.
+
 ## Invariants
 
 - one persistent browser context and profile per runtime;
@@ -94,3 +101,10 @@ disconnect, same-tab conflict, independent-tab progress, cold-start, and
 shutdown load tests must pass on POSIX and Windows. Before #500 closes, repeated
 sync and running-event-loop callers must leave no loop thread, task, page,
 process, socket, or pipe behind.
+
+The deterministic review boundary additionally runs against native Chrome. It
+proves selector counts and text, repeated-item bounds, link filtering, text waits,
+raw extraction, and viewport changes on a real DOM. Frames, click variants,
+downloads/upload-after-click, scrolling, humanized typing, model-backed matching,
+context capture, and remaining dead-context/profile behavior stay explicit #498
+work; this boundary does not make the async core public.

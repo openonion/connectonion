@@ -180,6 +180,41 @@ def _occupancy_help(verb: str, url: str) -> str:
     )
 
 
+def _age(seconds: float) -> str:
+    """Render tab age with the same compact units as BrowserAutomation."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 86400}d"
+
+
+def _occupancy_note(meta: Dict[str, Any]) -> str:
+    """Describe when a peer-owned tab becomes eligible for reclamation."""
+    until = meta.get("needs_until") or 0
+    if not until:
+        hours, opened_at = meta.get("hours") or 0, meta.get("opened_at")
+        if hours > 0 and opened_at:
+            until = opened_at.timestamp() + hours * 3600
+    if not until:
+        return ""
+
+    left = until - time.time()
+    when = datetime.fromtimestamp(until).strftime("%H:%M")
+    if left > 0:
+        return (
+            f"owner expects to finish by {when} ({_age(left)} left) — "
+            "leave it alone until then"
+        )
+    return (
+        f"owner expected to finish by {when} ({_age(-left)} ago) — "
+        "free for another agent to close"
+    )
+
+
 async def _complete_cleanup(awaitable):
     """Finish cleanup even if the caller is cancelled while awaiting it.
 
@@ -572,6 +607,40 @@ class AsyncBrowserCore:
                 return await self.go_to(url, purpose=purpose, who=who, hours=hours)
             return f"Opened new tab · who={who} · purpose={purpose!r}"
 
+    async def tab_status(self) -> str:
+        """Render registered tabs, including reservations without a live page."""
+        async with self._tab_operation(ensure_page=False):
+            if not self._tab_meta:
+                return "Tabs: none"
+            active = self._bound_session_key()
+            lines = [f"Tabs ({len(self._tab_meta)}):"]
+            for key, meta in list(self._tab_meta.items()):
+                page = self._pages.get(key)
+                if (
+                    page is not None
+                    and callable(getattr(page, "is_closed", None))
+                    and page.is_closed()
+                ):
+                    page = None
+                where = page.url if page is not None else "(reserved — no page yet)"
+                marker = "*" if key == active else " "
+                name = "main" if key is None else key
+                who = meta.get("who") or "-"
+                purpose = meta.get("purpose") or "-"
+                line = f"  {marker}[{name}] {where}  who={who}  purpose={purpose!r}"
+                opened_at = meta.get("opened_at")
+                if opened_at:
+                    line += f"  open {_age((datetime.now() - opened_at).total_seconds())}"
+                last_at = meta.get("last_at")
+                if last_at:
+                    last_line = (meta.get("last_line") or "")[:60]
+                    line += f'\n      last: "{last_line}" · {_age(time.time() - last_at)} ago'
+                note = _occupancy_note(meta)
+                if note:
+                    line += f"\n      {note}"
+                lines.append(line)
+            return "\n".join(lines)
+
     async def close_tab(self, key: Optional[str] = None) -> str:
         if key is None:
             key = self._bound_session_key()
@@ -587,11 +656,120 @@ class AsyncBrowserCore:
         async with self._tab_operation():
             return self.page.url if self.page else "Browser not open"
 
+    async def get_system_info(self) -> str:
+        system = platform.system()
+        if system == "Darwin":
+            return (
+                "OS: macOS. Use Meta for shortcuts (Meta+a select all, Meta+c copy, "
+                "Meta+v paste, Meta+z undo)."
+            )
+        if system == "Windows":
+            return (
+                "OS: Windows. Use Control for shortcuts (Control+a select all, "
+                "Control+c copy, Control+v paste, Control+z undo)."
+            )
+        return (
+            "OS: Linux. Use Control for shortcuts (Control+a select all, Control+c copy, "
+            "Control+v paste, Control+z undo)."
+        )
+
     async def get_text(self) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
             return await self.page.locator("body").inner_text()
+
+    async def extract_items_by_selector(
+        self,
+        container_selector: str,
+        text_selector: str,
+        max_items: int = 3,
+        author_selector: str = "",
+        author_attribute: str = "",
+        action_selector: str = "",
+        action_text: str = "",
+        exclude_text_pattern: str = "",
+    ) -> str:
+        """Extract repeated visible items using caller-provided selectors."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            items = await self.page.evaluate(
+                """
+                (options) => {
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            rect.width > 0 && rect.height > 0 &&
+                            rect.bottom > 0 && rect.top < window.innerHeight;
+                    };
+                    const textOf = (el) => (el?.innerText || el?.textContent || '')
+                        .replace(/\\u00a0/g, ' ')
+                        .replace(/[ \\t]+/g, ' ')
+                        .replace(/\\n{3,}/g, '\\n\\n')
+                        .trim();
+                    const textMatches = (el, expectedText) =>
+                        !expectedText || textOf(el) === expectedText;
+                    const excludePattern = options.exclude_text_pattern
+                        ? new RegExp(options.exclude_text_pattern, 'i') : null;
+                    const actions = options.action_selector
+                        ? Array.from(document.querySelectorAll(options.action_selector))
+                            .filter((action) => isVisible(action) &&
+                                textMatches(action, options.action_text))
+                        : [];
+                    const result = [];
+                    const containers = Array.from(
+                        document.querySelectorAll(options.container_selector)
+                    );
+                    for (const container of containers) {
+                        const rect = container.getBoundingClientRect();
+                        if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
+                        const containerText = textOf(container);
+                        if (excludePattern && excludePattern.test(containerText)) continue;
+                        const textNode = container.querySelector(options.text_selector);
+                        const text = textOf(textNode);
+                        if (!text) continue;
+                        let author = '';
+                        if (options.author_selector) {
+                            const authorNode = container.querySelector(options.author_selector);
+                            author = options.author_attribute
+                                ? (authorNode?.getAttribute(options.author_attribute) || '').trim()
+                                : textOf(authorNode);
+                        }
+                        const action = actions.find((candidate) =>
+                            container.contains(candidate)
+                        );
+                        result.push({
+                            item_index: result.length,
+                            author,
+                            text,
+                            action_index: action ? actions.indexOf(action) : null,
+                            has_action: Boolean(action),
+                            visible_bounds: {
+                                x: Math.round(rect.x), y: Math.round(rect.y),
+                                width: Math.round(rect.width), height: Math.round(rect.height)
+                            }
+                        });
+                        if (result.length >= options.max_items) break;
+                    }
+                    return result;
+                }
+                """,
+                {
+                    "container_selector": container_selector,
+                    "text_selector": text_selector,
+                    "max_items": max_items,
+                    "author_selector": author_selector,
+                    "author_attribute": author_attribute,
+                    "action_selector": action_selector,
+                    "action_text": action_text,
+                    "exclude_text_pattern": exclude_text_pattern,
+                },
+            )
+            return json.dumps(items or [], indent=2, ensure_ascii=False)
 
     async def get_focused_element(self, value_preview_chars: int = 160) -> str:
         async with self._tab_operation():
@@ -628,11 +806,12 @@ class AsyncBrowserCore:
             await locator.nth(index).click()
             return f"Clicked element {index + 1}/{count} matching selector: {selector}"
 
-    async def count_elements_by_selector(self, selector: str) -> int:
+    async def count_elements_by_selector(self, selector: str) -> str:
         async with self._tab_operation():
             if self.page is None:
-                return 0
-            return await self.page.locator(selector).count()
+                return "Browser not open"
+            count = await self.page.locator(selector).count()
+            return f"{count} element{'s' if count != 1 else ''} match selector: {selector}"
 
     async def get_element_text_by_selector(self, selector: str, index: int = 0) -> str:
         async with self._tab_operation():
@@ -640,8 +819,10 @@ class AsyncBrowserCore:
                 return "Browser not open"
             locator = self.page.locator(selector)
             count = await locator.count()
+            if count == 0:
+                return f"No element found for selector: {selector}"
             if index < 0 or index >= count:
-                return f"No element {index + 1}/{count} matching selector: {selector}"
+                return f"Selector matched {count} elements; index {index} is out of range"
             return await locator.nth(index).inner_text()
 
     async def fill_text_by_selector(self, selector: str, text: str, index: int = 0) -> str:
@@ -650,9 +831,12 @@ class AsyncBrowserCore:
                 return "Browser not open"
             locator = self.page.locator(selector)
             count = await locator.count()
+            if count == 0:
+                return f"No element found for selector: {selector}"
             if index < 0 or index >= count:
-                return f"No element {index + 1}/{count} matching selector: {selector}"
+                return f"Selector matched {count} elements; index {index} is out of range"
             await locator.nth(index).fill(text)
+            await self.page.wait_for_timeout(1000)
             return f"Filled element {index + 1}/{count} matching selector: {selector}"
 
     async def upload_file_by_selector(self, selector: str, file_path: str, index: int = 0) -> str:
@@ -701,12 +885,57 @@ class AsyncBrowserCore:
             await self.page.wait_for_timeout(1000)
             return f"data:{mime};base64,{base64.b64encode(screenshot).decode('utf-8')}"
 
+    async def set_viewport(self, width: int, height: int) -> str:
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            await self.page.set_viewport_size({"width": width, "height": height})
+            return f"Viewport set to {width}x{height}"
+
+    async def wait_for_text(self, text: str, timeout: int = 30) -> str:
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            await self.page.wait_for_selector(f"text='{text}'", timeout=timeout * 1000)
+            return f"Found text: '{text}'"
+
     async def wait(self, seconds: float) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
             await self.page.wait_for_timeout(int(seconds * 1000))
-            return f"Waited {seconds} seconds"
+            return f"Waited for {seconds} seconds"
+
+    async def extract_data(self, selector: str) -> list[str]:
+        async with self._tab_operation():
+            if self.page is None:
+                return []
+            elements = self.page.locator(selector)
+            count = await elements.count()
+            return [await elements.nth(index).inner_text() for index in range(count)]
+
+    async def get_links_from_page(self, domain_filter: str = "") -> list[str]:
+        async with self._tab_operation():
+            if self.page is None:
+                return []
+            urls = await self.page.evaluate(
+                """
+                (filter) => {
+                    const seen = new Set();
+                    const result = [];
+                    for (const a of document.querySelectorAll('a[href]')) {
+                        const href = a.href;
+                        if (href && !seen.has(href) && (!filter || href.includes(filter))) {
+                            seen.add(href);
+                            result.push(href);
+                        }
+                    }
+                    return result;
+                }
+                """,
+                domain_filter,
+            )
+            return urls or []
 
     async def _save_context(self) -> None:
         if self.browser is not None and self.page is not None:
