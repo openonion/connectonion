@@ -429,6 +429,30 @@ def test_status_does_not_become_the_last_command(tmp_path):
     assert daemon.last_command["line"] == "go_to x.com"
 
 
+def test_engine_status_is_a_no_claim_no_launch_protocol_probe(tmp_path):
+    class EngineBrowser(StubBrowser):
+        def engine_status(self):
+            return {"requested_engine": "onion", "resolved_engine": None}
+
+    daemon = make_daemon(str(tmp_path / "s.sock"), stub=EngineBrowser())
+    daemon.last_command = {"line": "go_to x.com", "at": 1}
+
+    ok, payload = daemon.dispatch(_json.dumps({
+        "v": 1,
+        "caller": "probe",
+        "account": "0xtest",
+        "tab": None,
+        "line": "engine_status",
+        "raw": False,
+        "engine": "auto",
+    }))
+
+    assert ok is True
+    assert "requested_engine" in payload
+    assert daemon.last_command["line"] == "go_to x.com"
+    assert daemon.browser._tab_meta == {}
+
+
 def test_status_before_any_command(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("status")
