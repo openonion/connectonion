@@ -75,6 +75,16 @@ deliberately does not port selector clicks: the public click path is humanized, 
 substituting a raw async locator click would match the signature while changing the
 observable behavior.
 
+The fourth boundary ports known-target pointer and text input. It reuses the
+synchronous layer's pure geometry, timing distributions, personas, text
+segmentation, and clipboard rules, but every browser event and pause is awaited.
+Selector clicks preserve exact-text filtering, global indexes across matching
+frames, bounding-box pointer input, forced-click fallback, result strings, and
+context-save ordering. CJK clipboard round trips run off the event loop, share one
+runtime lock across tabs, and restore the previous clipboard before cancellation
+escapes. Natural-language element matching, AI-selected scrolling, and form verbs
+remain later #498 boundaries rather than being mixed into known-target input.
+
 ## Invariants
 
 - one persistent browser context and profile per runtime;
@@ -113,9 +123,11 @@ shutdown load tests must pass on POSIX and Windows. Before #500 closes, repeated
 sync and running-event-loop callers must leave no loop thread, task, page,
 process, socket, or pipe behind.
 
-The deterministic review boundaries additionally run against native Chrome. They
+The completed review boundaries additionally run against native Chrome. They
 prove selector counts and text, repeated-item bounds, link filtering, text waits,
-raw extraction, viewport changes, page/frame scripts, and both upload paths on a
-real DOM. Click variants, downloads, scrolling, humanized typing, model-backed
-matching, context capture, and remaining dead-context/profile behavior stay
-explicit #498 work; these boundaries do not make the async core public.
+raw extraction, viewport changes, page/frame scripts, both upload paths,
+exact-text/frame selector clicks, known-selector typing, anchor-relative clicks,
+and independent-tab progress during humanized input on a real DOM. Downloads,
+AI-selected scrolling, model-backed matching, form verbs, context capture, and
+remaining dead-context/profile behavior stay explicit #498 work; these boundaries
+do not make the async core public.

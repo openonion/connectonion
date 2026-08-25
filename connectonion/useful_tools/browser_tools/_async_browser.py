@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from . import _async_humanize as humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 
@@ -165,7 +166,9 @@ def _requires_editable_focus(key: str) -> bool:
 
 
 def _normalize_url(url: str) -> str:
-    if url.startswith(("http://", "https://", "file://", "about:", "data:", "chrome://")):
+    if url.startswith(
+        ("http://", "https://", "file://", "about:", "data:", "chrome://")
+    ):
         return url
     return f"https://{url}" if "." in url else f"http://{url}"
 
@@ -269,9 +272,14 @@ class AsyncBrowserCore:
         self.last_screenshot_path: Optional[str] = None
 
         suffix = hex(id(self))
-        self._session_key = contextvars.ContextVar(f"co_browser_session_{suffix}", default=None)
-        self._operation_depth = contextvars.ContextVar(f"co_browser_depth_{suffix}", default=0)
+        self._session_key = contextvars.ContextVar(
+            f"co_browser_session_{suffix}", default=None
+        )
+        self._operation_depth = contextvars.ContextVar(
+            f"co_browser_depth_{suffix}", default=0
+        )
         self._lifecycle_lock = asyncio.Lock()
+        self._clipboard_lock = asyncio.Lock()
         self._page_state_lock = asyncio.Lock()
         self._tab_locks: Dict[Optional[str], asyncio.Lock] = {}
         self._operation_state_lock = asyncio.Lock()
@@ -351,7 +359,9 @@ class AsyncBrowserCore:
                 restore_url = self._page_url.get(key)
                 if restore_url:
                     try:
-                        await page.goto(restore_url, wait_until="domcontentloaded", timeout=30000)
+                        await page.goto(
+                            restore_url, wait_until="domcontentloaded", timeout=30000
+                        )
                     except Exception:
                         pass
                 self._pages[key] = page
@@ -418,14 +428,18 @@ class AsyncBrowserCore:
             return False
         return True
 
-    async def open_browser(self, headless: Optional[bool] = None, force: bool = False) -> str:
+    async def open_browser(
+        self, headless: Optional[bool] = None, force: bool = False
+    ) -> str:
         """Open/reuse the runtime while participating in tab and shutdown admission."""
         if self._operation_depth.get():
             return await self._open_browser(headless=headless, force=force)
         async with self._tab_operation(ensure_page=False):
             return await self._open_browser(headless=headless, force=force)
 
-    async def _open_browser(self, headless: Optional[bool] = None, force: bool = False) -> str:
+    async def _open_browser(
+        self, headless: Optional[bool] = None, force: bool = False
+    ) -> str:
         if headless is None:
             headless = self._headless
         if not ASYNC_BROWSER_AVAILABLE:
@@ -458,7 +472,9 @@ class AsyncBrowserCore:
                 await self._teardown_unlocked()
                 had_previous_state = True
             else:
-                had_previous_state = bool(self.browser or self.playwright or self._pages)
+                had_previous_state = bool(
+                    self.browser or self.playwright or self._pages
+                )
                 if had_previous_state:
                     await self._teardown_unlocked()
 
@@ -569,7 +585,9 @@ class AsyncBrowserCore:
             if self.page is None:
                 await self.open_browser()
 
-            await self.page.goto(_normalize_url(url), wait_until="domcontentloaded", timeout=30000)
+            await self.page.goto(
+                _normalize_url(url), wait_until="domcontentloaded", timeout=30000
+            )
             await self.page.wait_for_timeout(2000)
             self.current_url = self.page.url
             meta = self._tab_meta.setdefault(
@@ -630,7 +648,9 @@ class AsyncBrowserCore:
                 line = f"  {marker}[{name}] {where}  who={who}  purpose={purpose!r}"
                 opened_at = meta.get("opened_at")
                 if opened_at:
-                    line += f"  open {_age((datetime.now() - opened_at).total_seconds())}"
+                    line += (
+                        f"  open {_age((datetime.now() - opened_at).total_seconds())}"
+                    )
                 last_at = meta.get("last_at")
                 if last_at:
                     last_line = (meta.get("last_line") or "")[:60]
@@ -648,7 +668,9 @@ class AsyncBrowserCore:
             key = None
         async with self._tab_lock(key):
             if key not in self._pages and key not in self._tab_meta:
-                return f"No open tab for {key!r}" if self.browser else "Browser not open"
+                return (
+                    f"No open tab for {key!r}" if self.browser else "Browser not open"
+                )
             error = await self._release_tab(key)
             return error or "Tab closed"
 
@@ -795,23 +817,245 @@ class AsyncBrowserCore:
             await self.page.keyboard.press(key)
             return f"Pressed: '{key}'"
 
-    async def click_element_by_selector(self, selector: str, index: int = 0) -> str:
+    async def click_element_by_selector(
+        self,
+        selector: str,
+        index: int = 0,
+        text: str = "",
+        frame_url_contains: str = "",
+        frame_name: str = "",
+    ) -> str:
+        """Click a stable selector through humanized pointer input."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+
+            if text:
+                matches = await self.page.evaluate(
+                    """
+                    (options) => {
+                        const normalize = (el) => (el?.innerText || el?.textContent || '')
+                            .replace(/\\u00a0/g, ' ').replace(/[ \\t\\n]+/g, ' ').trim();
+                        const isVisible = (el) => {
+                            if (!el) return false;
+                            const style = window.getComputedStyle(el);
+                            const rect = el.getBoundingClientRect();
+                            return style.display !== 'none' && style.visibility !== 'hidden' &&
+                                rect.width > 0 && rect.height > 0 && rect.bottom > 0 &&
+                                rect.top < window.innerHeight;
+                        };
+                        return Array.from(document.querySelectorAll(options.selector))
+                            .filter((el) => isVisible(el) && normalize(el) === options.text)
+                            .map((el) => {
+                                const rect = el.getBoundingClientRect();
+                                return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2};
+                            });
+                    }
+                    """,
+                    {"selector": selector, "text": text},
+                )
+                count = len(matches)
+                if count == 0:
+                    return f"No visible element found for selector: {selector} with text: {text}"
+                if index < 0 or index >= count:
+                    return f"Selector matched {count} elements with text {text!r}; index {index} is out of range"
+                await humanize.click(
+                    self.page, matches[index]["x"], matches[index]["y"]
+                )
+                await self._save_context()
+                await self.page.wait_for_timeout(1000)
+                return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
+
+            if frame_url_contains or frame_name:
+                candidates = []
+                for frame in self.page.frames:
+                    url = getattr(frame, "url", "") or ""
+                    name = getattr(frame, "name", "") or ""
+                    if callable(name):
+                        name = name()
+                    if frame_url_contains and frame_url_contains not in url:
+                        continue
+                    if frame_name and frame_name != name:
+                        continue
+                    locator = frame.locator(selector)
+                    candidates.extend(
+                        locator.nth(i) for i in range(await locator.count())
+                    )
+                where = f" in frames matching {(frame_url_contains or frame_name)!r}"
+            else:
+                locator = self.page.locator(selector)
+                candidates = [locator.nth(i) for i in range(await locator.count())]
+                where = ""
+
+            count = len(candidates)
+            if count == 0:
+                return f"No element found for selector: {selector}{where}"
+            if index < 0 or index >= count:
+                return f"Selector matched {count} elements{where}; index {index} is out of range"
+            target = candidates[index]
+            box = await target.bounding_box()
+            if box:
+                await humanize.click(self.page, 0, 0, box=box)
+            else:
+                await target.click(force=True)
+            await self._save_context()
+            await self.page.wait_for_timeout(1000)
+            return f"Clicked element {index + 1}/{count} matching selector: {selector}{where}"
+
+    async def type_text_by_selector(
+        self, selector: str, text: str, index: int = 0
+    ) -> str:
+        """Focus a stable selector and type through async humanized input."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
             locator = self.page.locator(selector)
             count = await locator.count()
+            if count == 0:
+                return f"No element found for selector: {selector}"
             if index < 0 or index >= count:
-                return f"No element {index + 1}/{count} matching selector: {selector}"
-            await locator.nth(index).click()
-            return f"Clicked element {index + 1}/{count} matching selector: {selector}"
+                return (
+                    f"Selector matched {count} elements; index {index} is out of range"
+                )
+            await locator.nth(index).click(force=True)
+            await humanize.type_text(self.page, text, self._clipboard_lock)
+            await self.page.wait_for_timeout(1000)
+            return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
+
+    async def mouse_click(self, x: int, y: int) -> str:
+        """Humanize an exact coordinate click without blocking the event loop."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            await humanize.click(self.page, x, y)
+            await asyncio.sleep(1)
+            return f"Clicked at ({x}, {y})"
+
+    async def click_element_near_selector(
+        self,
+        anchor_selector: str,
+        target_selector: str,
+        target_text: str = "",
+        anchor_index: int = -1,
+        container_selector: str = "",
+        require_anchor_text: bool = False,
+        wait_ms: int = 1000,
+        verify_anchor_text_cleared: bool = False,
+    ) -> str:
+        """Click the nearest visible target below a stable visible anchor."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            target = await self.page.evaluate(
+                """
+                (options) => {
+                    const normalize = (el) => (el?.innerText || el?.textContent || '')
+                        .replace(/\\u00a0/g, ' ').replace(/[ \\t\\n]+/g, ' ').trim();
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' && style.visibility !== 'hidden' &&
+                            rect.width > 0 && rect.height > 0 && rect.bottom > 0 &&
+                            rect.top < window.innerHeight;
+                    };
+                    const isEnabled = (button) =>
+                        !button.disabled && button.getAttribute('aria-disabled') !== 'true';
+                    const textMatches = (el) => !options.target_text || normalize(el) === options.target_text;
+                    const anchors = Array.from(document.querySelectorAll(options.anchor_selector))
+                        .filter((anchor) => isVisible(anchor))
+                        .filter((anchor) => !options.require_anchor_text || normalize(anchor).length > 0);
+                    if (!anchors.length) {
+                        return {ok: false, error: `No visible anchor found for selector: ${options.anchor_selector}`};
+                    }
+                    let anchorIndex = options.anchor_index;
+                    if (anchorIndex < 0) anchorIndex = anchors.length + anchorIndex;
+                    if (anchorIndex < 0 || anchorIndex >= anchors.length) {
+                        return {ok: false, error: `Anchor selector matched ${anchors.length} elements; index ${options.anchor_index} is out of range`};
+                    }
+                    const anchor = anchors[anchorIndex];
+                    const anchorRect = anchor.getBoundingClientRect();
+                    let container = options.container_selector ? anchor.closest(options.container_selector) : null;
+                    container = container || anchor.closest('form') || anchor.parentElement || document.body;
+                    const targets = Array.from(container.querySelectorAll(options.target_selector))
+                        .filter((candidate) => isVisible(candidate) && isEnabled(candidate) && textMatches(candidate));
+                    let target = targets
+                        .map((candidate) => ({candidate, rect: candidate.getBoundingClientRect()}))
+                        .filter(({rect}) => rect.top >= anchorRect.top - 8)
+                        .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)[0]?.candidate;
+                    if (!target) {
+                        target = Array.from(document.querySelectorAll(options.target_selector))
+                            .filter((candidate) => isVisible(candidate) && isEnabled(candidate) && textMatches(candidate))
+                            .map((candidate) => ({candidate, rect: candidate.getBoundingClientRect()}))
+                            .filter(({rect}) => rect.top >= anchorRect.top - 8)
+                            .sort((a, b) => Math.abs(a.rect.top - anchorRect.top) -
+                                Math.abs(b.rect.top - anchorRect.top) || a.rect.left - b.rect.left)[0]?.candidate;
+                    }
+                    if (!target) {
+                        return {ok: false, error: `No visible enabled target found near anchor for selector: ${options.target_selector}`, anchor_text: normalize(anchor)};
+                    }
+                    const rect = target.getBoundingClientRect();
+                    return {ok: true, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
+                        anchor_text: normalize(anchor), target_text: normalize(target)};
+                }
+                """,
+                {
+                    "anchor_selector": anchor_selector,
+                    "target_selector": target_selector,
+                    "target_text": target_text,
+                    "anchor_index": anchor_index,
+                    "container_selector": container_selector,
+                    "require_anchor_text": require_anchor_text,
+                },
+            )
+            if not target or not target.get("ok"):
+                return (
+                    target.get("error", "Could not find target near anchor")
+                    if target
+                    else "Could not find target near anchor"
+                )
+            await humanize.click(self.page, target["x"], target["y"])
+            await self.page.wait_for_timeout(wait_ms)
+            await self._save_context()
+            state = "clicked"
+            if verify_anchor_text_cleared:
+                state = await self.page.evaluate(
+                    """
+                    (options) => {
+                        const normalize = (el) => (el?.innerText || el?.textContent || '')
+                            .replace(/\\u00a0/g, ' ').replace(/[ \\t\\n]+/g, ' ').trim();
+                        const isVisible = (el) => {
+                            if (!el) return false;
+                            const style = window.getComputedStyle(el);
+                            const rect = el.getBoundingClientRect();
+                            return style.display !== 'none' && style.visibility !== 'hidden' &&
+                                rect.width > 0 && rect.height > 0 && rect.bottom > 0 &&
+                                rect.top < window.innerHeight;
+                        };
+                        const matchingAnchor = Array.from(document.querySelectorAll(options.anchor_selector))
+                            .find((anchor) => isVisible(anchor) && normalize(anchor) === options.anchor_text);
+                        return matchingAnchor ? 'uncertain_anchor_still_contains_text' : 'anchor_text_cleared';
+                    }
+                    """,
+                    {
+                        "anchor_selector": anchor_selector,
+                        "anchor_text": target["anchor_text"],
+                    },
+                )
+            return (
+                "Clicked target near anchor; "
+                f"state={state}; anchor_text={target['anchor_text']!r}; "
+                f"target_text={target['target_text']!r}"
+            )
 
     async def count_elements_by_selector(self, selector: str) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
             count = await self.page.locator(selector).count()
-            return f"{count} element{'s' if count != 1 else ''} match selector: {selector}"
+            return (
+                f"{count} element{'s' if count != 1 else ''} match selector: {selector}"
+            )
 
     async def get_element_text_by_selector(self, selector: str, index: int = 0) -> str:
         async with self._tab_operation():
@@ -822,10 +1066,14 @@ class AsyncBrowserCore:
             if count == 0:
                 return f"No element found for selector: {selector}"
             if index < 0 or index >= count:
-                return f"Selector matched {count} elements; index {index} is out of range"
+                return (
+                    f"Selector matched {count} elements; index {index} is out of range"
+                )
             return await locator.nth(index).inner_text()
 
-    async def fill_text_by_selector(self, selector: str, text: str, index: int = 0) -> str:
+    async def fill_text_by_selector(
+        self, selector: str, text: str, index: int = 0
+    ) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
@@ -834,7 +1082,9 @@ class AsyncBrowserCore:
             if count == 0:
                 return f"No element found for selector: {selector}"
             if index < 0 or index >= count:
-                return f"Selector matched {count} elements; index {index} is out of range"
+                return (
+                    f"Selector matched {count} elements; index {index} is out of range"
+                )
             await locator.nth(index).fill(text)
             await self.page.wait_for_timeout(1000)
             return f"Filled element {index + 1}/{count} matching selector: {selector}"
@@ -865,9 +1115,7 @@ class AsyncBrowserCore:
                 locator = frame.locator(selector)
                 count = await locator.count()
                 for locator_index in range(count):
-                    matches.append(
-                        (frame_index, name, url, locator.nth(locator_index))
-                    )
+                    matches.append((frame_index, name, url, locator.nth(locator_index)))
 
             if not matches:
                 return f"No file input found for selector: {selector}"
@@ -1073,7 +1321,9 @@ class AsyncBrowserCore:
                 response["reason"] = "no frame returned ok: true"
             return json.dumps(response, indent=2, ensure_ascii=False)
 
-    async def take_screenshot(self, path: Optional[str] = None, full_page: bool = False) -> str:
+    async def take_screenshot(
+        self, path: Optional[str] = None, full_page: bool = False
+    ) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
@@ -1086,7 +1336,9 @@ class AsyncBrowserCore:
             self.last_screenshot_path = path
             mime = "image/png"
             if len(screenshot) > 600_000:
-                screenshot = await self.page.screenshot(full_page=full_page, type="jpeg", quality=85)
+                screenshot = await self.page.screenshot(
+                    full_page=full_page, type="jpeg", quality=85
+                )
                 mime = "image/jpeg"
             await self.page.wait_for_timeout(1000)
             return f"data:{mime};base64,{base64.b64encode(screenshot).decode('utf-8')}"

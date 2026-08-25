@@ -131,6 +131,13 @@ browser.double_click("the file name")   # Double-click to open/select
 
 `mouse_click(x, y)` is useful after `hover()` — clicking by description would re-scan the DOM and dismiss the hover menu.
 
+Stable workflows can avoid a page rescan with
+`click_element_by_selector(selector, index=0, text="")` and
+`type_text_by_selector(selector, text, index=0)`. Selector clicks use humanized
+pointer input when an element exposes a bounding box and retain a forced locator
+fallback for elements without one. Use `frame_url_contains` or `frame_name` when
+the target lives in an iframe; the index applies across all matching frames.
+
 ### System Info
 
 ```python
