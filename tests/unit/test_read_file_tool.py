@@ -113,7 +113,10 @@ class TestImageReachesVisionModel:
 
     def test_image_output_becomes_image_url_message(self, tmp_path, monkeypatch):
         f = tmp_path / "shot.png"
-        f.write_bytes(b"\x89PNG\r\n\x1a\nfake-image-bytes")
+        f.write_bytes(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+            "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        ))
         data_url = read_file(str(f))
         assert data_url.startswith("data:image/png;base64,")
 
