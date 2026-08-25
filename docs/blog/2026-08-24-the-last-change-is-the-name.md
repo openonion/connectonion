@@ -25,6 +25,13 @@ but older in those behaviours. We forward-ported the missing fixes, published
 RC11, and repeated the public-artifact checks instead of hiding the difference
 inside the Stable commit.
 
+The repeated gate then produced late evidence of its own. A truncated
+image-looking tool result could crash formatting, and an unattended Auto run
+ignored a configured browser-command grant because no live approval channel
+existed. Both were release blockers, so we fixed them on 1.7, forward-ported
+them to main/1.8, and published RC12. Stable is promoted from that newer
+accepted source, not from the branch we had already prepared around RC11.
+
 That exposed an awkward phrase in our own release plan: “promote RC10
 unchanged.” I had been reading unchanged as identical files. But a Stable wheel
 cannot be identical to an RC wheel. It must identify itself as `1.7.0`, carry
@@ -36,7 +43,7 @@ not the behavior. No new retry, adapter event, permission rule, or UI contract
 may hide inside the version commit. The package metadata and the public channel
 must change together because they are two surfaces of the same promise.
 
-After those failures, the RC11 release check passed 66 assertions across the
+After those failures, the RC12 release check passed the release-contract suite across the
 version sources, lock, artifact provenance, workflow, history, and docs
 contract. The new wheel and source archive passed `twine check`. More
 importantly, the failure changed how we stage the release: the Stable React
@@ -44,8 +51,8 @@ reader and final O Chat head are prepared first, the package tag comes only
 after that client gate, and the documentation switches only after PyPI serves
 the package it names.
 
-RC11 is the candidate that contains the accepted 1.7 behaviour and the complete
-applicable 1.6.12 fix set. 1.7.0 is the
+RC12 is the candidate that contains the accepted 1.7 behaviour, the complete
+applicable 1.6.12 fix set, and the two late blocker fixes. 1.7.0 is the
 promise that ordinary users may now depend on the same behavior. The last code
 change was no code change at all; the last lesson was that names are part of
 the product boundary.

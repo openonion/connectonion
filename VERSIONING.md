@@ -46,7 +46,8 @@ marked as pre-releases on PyPI and GitHub.
 ## Current Version: 1.7.0
 
 ### Version History
-- 1.7.0 (**OIP Work Rooms are ready for stable use as remote Codex and Claude Code clients.** This promotes the unchanged source accepted as RC11: authenticated Direct/Relay sessions; attributed provider conversation and a persistent composer; action-summary-led activity with expandable details; native provider permissions bounded by the outer Host ceiling; approval, Stop, follow-up, terminal settlement, restart, and reconnect without duplicate input; invocation-scoped invite onboarding; real Co-browser download work; strict C11/C++20/Rust builds; Outlook attachment safety; the complete applicable 1.6.12 operational fix set; and responsive desktop/mobile UI. The coordinated reader is `@connectonion/react@0.4.3`; O Chat owns the presentation layer. Provider-specific follow-ups that do not invalidate the accepted candidate are tracked for 1.7.1.)
+- 1.7.0 (**OIP Work Rooms are ready for stable use as remote Codex and Claude Code clients.** This promotes the product source accepted as RC12: authenticated Direct/Relay sessions; attributed provider conversation and a persistent composer; action-summary-led activity with expandable details; native provider permissions bounded by the outer Host ceiling; approval, Stop, follow-up, terminal settlement, restart, and reconnect without duplicate input; invocation-scoped invite onboarding; real Co-browser download work; strict C11/C++20/Rust builds; Outlook attachment safety; the complete applicable 1.6.12 operational fix set; strict image-result validation; and safe configured headless command grants. The RC12 fixes and tests are also present on main/1.8. The coordinated reader is `@connectonion/react@0.4.3`; O Chat owns the presentation layer. Provider-specific follow-ups that do not invalidate the accepted candidate are tracked for 1.7.1.)
+- 1.7.0rc12 (**the final candidate must contain the fixes found while preparing Stable.** RC11 exposed two release blockers after its public gate: truncated image-looking tool text could crash the image formatter, and unattended Auto ignored deliberate command grants when no approval channel existed. Image candidates now require strict decoding plus complete PNG, JPEG, GIF, or WebP structure; headless Auto restores configured `co browser ...` and `co status` workflows while deployment, publication, credentials, destructive actions, and broader legacy `co *` effects remain fail-closed. Both fixes and their tests are also forward-ported to main/1.8. This is a new opt-in candidate, not an unchanged RC11 promotion and not Stable/Latest; its exact public bytes must repeat the affected image and unattended-browser acceptance before Stable can proceed.)
 - 1.7.0rc11 (**the complete 1.6.12 operational fix set now reaches the 1.7 release line.** An ancestry audit before Stable promotion found that RC10 lacked server-region selection, scoped mailbox share/unshare, explicit provider network bounds, Outlook inline-signature filtering, the AI implementation contract, template-first delivery guidance, and permanent release-evidence tooling. Each applicable behaviour, test, and contract is now forward-ported without copying 1.6 version metadata; the same missing subset is repaired on main/1.8. This is a new opt-in candidate, not an unchanged RC10 promotion and not Stable/Latest. Its exact installed public bytes must pass the complete `co ai` + `co browser`, native Codex/Claude Code, Stop/reconnect, compiled-language, responsive-layout, and permanent-evidence gate before Stable can proceed.)
 - 1.7.0rc10 (**native-provider completion is now a terminal settlement boundary for the parent Workroom.** RC9's installed-wheel gate proved that Claude Code could finish its real project while the parent opened another outer tool chain and stranded the composer. After Codex or Claude Code returns, the Agent now asks only for a concise final response grounded in the recorded provider result; one attempted non-provider tool batch is discarded and retried once, while a repeated attempt fails explicitly so Host can publish a terminal outcome. The exact installed candidate passed invite onboarding, real Co-browser work, strict C11/C++20/Rust, native Codex and Claude Code projects and provider-scoped Stop, Codex permission ceilings, voice recovery, outer Stop, reconnect, responsive layout, and review of 28 hashed screenshots with O Chat `aa435040be6166dd946afff9cee63b59cfb68057`. This is an opt-in RC10 testing candidate, not Stable/Latest; its exact public bytes must repeat the same complete gate before unchanged promotion.)
 - 1.7.0rc9 (**native-provider completion can no longer leave the parent turn hanging indefinitely.** RC8's exact live gate completed real browser work, compiled-language agents, Codex permission/Stop flows, and a real Claude Code project. Claude returned successfully, but the following parent-model settlement never completed, leaving the Work Room stopped without a composer. Post-Codex and post-Claude settlement calls now have a 90-second bound, abandon late results, and make one grounded concise retry before failing explicitly. This is an opt-in RC9 testing candidate, not Stable/Latest; its exact public bytes must repeat the complete end-to-end gate before unchanged promotion.)
@@ -165,6 +166,11 @@ When releasing a new version:
 - [ ] Refresh `uv.lock`
 - [ ] Keep the one PyPI `Development Status` classifier aligned with the phase:
       Alpha for `aN`, Beta for `bN`/`rcN`, and Production/Stable for a final
+- [ ] For every stable patch, open a dedicated forward-integration issue labelled
+      `forward-port-required`. List every active higher release line (at minimum
+      the current preview), the patch commits that apply there, and the PR that
+      carries each one. Version-only metadata is not a product fix and must not
+      be copied into a newer line.
 - [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
 - [ ] Draft or substantially update a Design Journal post for a feature-train
       launch, first beta, first RC, stable release, or material architecture or
@@ -191,12 +197,33 @@ When releasing a new version:
       version state and Design Journal. Verify the canonical URL, social and
       structured metadata, sitemap, AI-readable indexes, internal links, and
       mobile layout.
+- [ ] After a stable patch is verified, forward-port every applicable fix into
+      every active higher line and close its `forward-port-required` issue only
+      after those PRs merge and pass their own CI. No later preview, RC, or
+      next-minor Stable may publish while such an issue remains open.
 
 Replace `X.Y.Z` with the complete canonical version, including `aN`, `bN`, or
 `rcN`. Manual workflow dispatch may retry an existing reviewed tag; it is not
 an arbitrary-branch release path. This procedure has no workstation publication
 path. Recovery must preserve the reviewed tag and artifacts and be implemented
 as a separate reviewed workflow change, not an ad hoc second registry writer.
+
+### Stable patches move forward
+
+A stable patch fixes the oldest supported line first; it must not make the
+newest testable line older in behaviour. Once `X.Y.Z` with `Z > 0` is public,
+each applicable product, test, documentation, migration, and operational fix
+must be forward-ported to every active higher line, including the current
+preview. Use reviewed commits or a focused PR and resolve newer-line conflicts
+deliberately. Do not merge stable version numbers, channel metadata, or release
+notes into the preview merely to manufacture ancestry.
+
+The patch's dedicated `forward-port-required` issue is the durable ledger. It
+stays open until every active line has either a merged PR with CI evidence or a
+maintainer-reviewed explanation that the fix is inapplicable. The protected
+release workflow refuses a new preview, RC, or next-minor Stable while any such
+ledger remains open. Retrying an already-published immutable tag remains a
+recovery operation and is not blocked by work discovered later.
 
 The suite above it runs against the source tree, where every file is present
 whether or not it is packaged. Nothing else looks at the artifact that goes to

@@ -7,39 +7,47 @@ assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Describe the bug
+A clear and concise description of what is broken.
 
-**To Reproduce**
-Steps to reproduce the behavior:
+## Release planning
+- **Affected ConnectOnion version:** [e.g. 1.7.0a3]
+- **Suggested target version:** [e.g. next patch, 1.8.0, 2.x, or TBD]
+- **Estimated release window:** [e.g. urgent patch, next alpha, future roadmap, or unknown]
+- **Why this priority:** Explain the user impact and whether a workaround exists.
+- **Forward-port tracking issue (stable patches only):** [link the separate open issue labelled `forward-port-required`; use N/A otherwise]
+
+> The reporter's target is an estimate. Maintainers confirm the release by assigning a milestone.
+
+## To reproduce
 1. Install ConnectOnion version '...'
-2. Run code '....'
+2. Run code '...'
 3. See error
 
-**Expected behavior**
+## Expected behavior
 A clear and concise description of what you expected to happen.
 
-**Code Example**
+## Code example
 ```python
-# Minimal code example that reproduces the issue
 from connectonion import Agent
 
-# Your code here
+# Minimal reproduction
 ```
 
-**Error Output**
+## Error output
 ```
 # Paste the full error traceback here
 ```
 
-**Environment (please complete the following information):**
- - OS: [e.g. macOS, Ubuntu, Windows]
- - Python Version: [e.g. 3.10, 3.11, 3.12]
- - ConnectOnion Version: [e.g. 0.0.5]
- - OpenAI API Key configured: [yes/no]
+## Environment
+- OS: [e.g. macOS, Ubuntu, Windows]
+- Python version: [e.g. 3.10, 3.11, 3.12]
+- ConnectOnion version: [e.g. 1.7.0a3]
+- OpenAI API key configured: [yes/no]
 
-**Additional context**
-Add any other context about the problem here.
+## Additional context
+Add any other context, screenshots, or examples.
+
 ## AI implementation contract
 
 <!-- The bug-sized subset. Full guidance, repository defaults, and
@@ -73,3 +81,12 @@ Add any other context about the problem here.
 - [ ] The regression test's red run (pre-patch) is recorded in the PR.
 - [ ] Before/After behavior is shown, not asserted.
 - [ ] If user-visible: screenshots attached directly to the PR.
+
+### Stable-patch forward integration
+- [ ] A separate `forward-port-required` issue names every active higher line,
+      at minimum the current preview.
+- [ ] Each applicable fix, regression test, migration, documentation change,
+      and operational contract has a focused forward-port PR or an explicit
+      maintainer-reviewed inapplicability decision.
+- [ ] The tracker remains open until those PRs merge and pass CI; no newer
+      preview, RC, or next-minor Stable publishes first.

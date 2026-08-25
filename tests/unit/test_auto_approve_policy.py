@@ -6,6 +6,7 @@ import pytest
 
 from connectonion.cli.co_ai.agent import grant_managed_delegation_permissions
 from connectonion.useful_plugins.tool_approval import check_approval, tool_approval
+from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 from connectonion.useful_plugins.tool_approval.policy import (
     POLICY_ID,
     apply_auto_approve_policy,
@@ -280,6 +281,88 @@ def test_headless_auto_still_allows_a_reversible_workspace_edit(
     check_approval(instance)
 
     assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["co browser status", "co browser status && co status"],
+)
+def test_headless_auto_honors_the_operator_command_allowlist(
+    tmp_path, monkeypatch, command
+):
+    """Regression for #1270: cron has no dialog, but does have standing grants."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions={
+        "Bash(co *)": {
+            "allowed": True,
+            "source": "config",
+            "reason": "operator standing grant",
+            "when": {"command": "co *"},
+        }
+    })
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": command},
+    }
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow"
+    assert result["effect_class"] == "configured_command"
+    assert result["reason"] == "operator-configured command allowlist"
+
+
+def test_packaged_permissions_keep_headless_co_browser_status_working(
+    tmp_path, monkeypatch
+):
+    """Exercise the same shipped permission source used by a fresh 1.7 install."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": "co browser status"},
+    }
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    ("command", "effect"),
+    [
+        ("co deploy", "publication"),
+        ("co publish", "publication"),
+        ("co email send --to a@example.com hi", "command"),
+    ],
+)
+def test_headless_broad_co_grant_cannot_authorize_stronger_effects(
+    tmp_path, monkeypatch, command, effect
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions={
+        "Bash(co *)": {
+            "allowed": True,
+            "source": "config",
+            "reason": "legacy broad CLI permission",
+            "when": {"command": "co *"},
+        }
+    })
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": command},
+    }
+
+    apply_auto_approve_policy(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "deny"
+    assert result["effect_class"] == effect
+    with pytest.raises(ValueError, match="denied by connectonion.auto"):
+        check_approval(instance)
 
 
 @pytest.mark.parametrize(
