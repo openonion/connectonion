@@ -2,55 +2,65 @@
 
 *2026-08-26*
 
-The last browser method to become asynchronous did not talk to the browser at
-all. It waited for a person to type “yes.”
+The browser was closed. The task was cancelled. Nothing was running in the
+terminal.
 
-That made it more dangerous than it looked.
+One thread was still waiting for me to type “yes.”
 
-## A worker thread does not make input cancellable
+It came from the least browser-like method in the driver. When a site requires
+2FA, `wait_for_manual_login()` pauses automation while a person signs in, then
+asks for confirmation in the terminal. The synchronous implementation used
+`input()`. During the async migration, the obvious replacement was:
 
-The obvious port of `input()` is `asyncio.to_thread(input, prompt)`. It keeps the
-event loop moving, but cancellation only stops waiting for the worker. The worker
-itself remains blocked on stdin. Repeat that operation and a runtime can collect
-threads that can neither finish nor be reclaimed. One future line of terminal
-input may also wake an abandoned prompt instead of the active one.
+```python
+await asyncio.to_thread(input, "Ready to continue? ")
+```
 
-The async browser now waits on stdin readiness directly on POSIX and unregisters
-the file descriptor on every success, error, and cancellation path. Windows uses
-short, awaited console polls so cancellation has a boundary between key presses.
-One runtime-wide lock serializes prompts across tabs: pages are independent, but
-the terminal is not. Hosted deployments still refuse immediately and point to
-the state-seeding workflow because they have no interactive stdin.
+The event loop stayed responsive. The test looked green. Then we cancelled the
+task.
 
-## Cancellation must wait for the side effect
+## The future stopped; the input did not
 
-Page-context capture has the inverse problem. HTML, CSS, and element extraction
-are naturally awaited, but filesystem writes are blocking. Moving them to a
-thread protects the event loop; it does not make the write disappear when the
-caller is cancelled.
+Cancellation stopped the coroutine that was waiting for the worker thread. It
+could not stop the thread inside `input()`. That worker still owned a read from
+stdin, with no useful way to interrupt or reclaim it.
 
-Letting cancellation return immediately would leave a snapshot changing after
-the tool reported that it had stopped. The capture path therefore finishes an
-in-flight write before cancellation escapes. Concurrent tabs also reserve
-distinct directories atomically, even when they use the same name in the same
-second. A saved context is complete and attributable, not whichever tab won a
-timestamp race.
+The leak was quiet. There was no busy loop and almost no CPU usage. It became
+visible only when another manual-login request arrived. Two tabs now believed
+they were waiting for the same terminal. A line intended for the live prompt
+could wake the abandoned one instead. Repeating the sequence could leave more
+blocked workers behind each time.
 
-## The fallback chain is part of the contract
+This was not a thread-pool sizing problem. More workers would merely allow more
+uncancellable reads.
 
-Scrolling brought a different trap. ConnectOnion first emits real humanized
-wheel input, then falls back to an AI-selected strategy, a scrollable element,
-and finally the page. Each attempt is verified by comparing screenshots. An
-async port that jumped straight to JavaScript would work mechanically while
-discarding the human-input policy.
+## Wait for readiness, not for a worker
 
-The new path preserves that order. Browser calls and pauses are awaited; model
-selection and image comparison run off the event loop; cancellation stops later
-mutations; and each verification image has a unique attempt identifier. A native
-gate checks that wheel input changes the real page, not merely that a helper
-returned a success string.
+On POSIX, stdin is a file descriptor. The event loop can register interest in
+that descriptor and call `readline()` only after the terminal says data is
+ready. Cancellation now unregisters the reader in `finally`; no thread exists to
+outlive the task.
 
-These were the final four missing verbs in the async driver surface. Their lesson
-is the same one that shaped the earlier slices: `async def` is syntax. The real
-contract is which state can be shared, when side effects are complete, and what
-cancellation is allowed to leave behind.
+Windows console input has a different boundary, so it uses short awaited polls
+for available key presses. Between polls, cancellation behaves like any other
+async operation. Backspace, Enter, and Ctrl-C retain their terminal meanings.
+
+There was one more ownership mistake to fix. Browser pages belong to sessions,
+but stdin belongs to the process. Per-tab locks cannot protect it. The runtime
+now has one manual-login lock, so only one tab may display and consume a prompt
+at a time. Hosted deployments still refuse immediately and direct callers to
+the saved-state workflow because they have no interactive terminal to own.
+
+## The test that matters
+
+The regression test does not merely assert that the method is declared with
+`async def`. It starts a POSIX read, cancels it, and verifies that the exact file
+descriptor was removed. A second test starts prompts from two tabs and proves
+the second cannot read until the first has confirmed and released the shared
+terminal.
+
+The final browser verb turned out not to be about browser automation at all. It
+was about naming the resource correctly. Moving a blocking call to a thread can
+protect an event loop, but it cannot invent cancellation. When the resource is
+global and the operation cannot be stopped, the async boundary has to move
+closer to the resource itself.
