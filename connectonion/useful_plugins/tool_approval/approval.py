@@ -1,10 +1,10 @@
 """
-Purpose: Orchestrate WebSocket-based tool approval with permission-profile validation
+Purpose: Orchestrate WebSocket-based tool approval with canonical mode validation
 LLM-Note:
-  Dependencies: imports from [../../core/events.py (before_each_tool, before_iteration, after_user_input), ./constants.py (VALID_PERMISSION_PROFILES, FILE_EDIT_TOOLS), ./bash_parser.py (check_bash_chain_permitted), ../skills.py (matches_permission_pattern), pathlib.Path, typing.TYPE_CHECKING] | imported by [tool_approval/__init__.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_shell_approval.py]
+  Dependencies: imports from [../../core/events.py (before_each_tool, before_iteration, after_user_input), ../../core/mode.py, ./constants.py (FILE_EDIT_TOOLS), ./bash_parser.py (check_bash_chain_permitted), ../skills.py (matches_permission_pattern), pathlib.Path, typing.TYPE_CHECKING] | imported by [tool_approval/__init__.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_shell_approval.py]
   Data flow: after_user_input → load_config_permissions() loads .co/host.yaml permissions into session['permissions'] | before_iteration → poll_mode_changes() checks for mode_change messages | before_each_tool → check_approval() validates tool against mode+permissions → if unpermitted with live IO: agent.io.send(approval_needed) → agent.io.receive() blocks for client response → if approved: return (execute tool) | if rejected: raise ValueError (LLM sees rejection message)
   State/Effects: modifies session['permissions'] (permission cache), session['approval']['approved_tools'] (session-scoped approvals), session['mode'] (the durable permission profile compatibility field) | reads .co/host.yaml file | writes to agent.logger for approval logs | sends WebSocket messages via agent.io | blocks execution waiting for user approval
-  Integration: exposes check_approval (before_each_tool hook), load_config_permissions (after_user_input hook), poll_mode_changes (before_iteration compatibility hook), handle_permission_profile_change(agent, profile), get_current_permission_profile(agent) | uses agent.io.send/receive for client communication | integrates with skills plugin for permission matching | integrates with full_access plugin for bounded Full access handling
+  Integration: exposes approval hooks plus exact mode helpers | uses agent.io.send/receive for client communication | integrates with bounded Full access
   Performance: yaml file loaded once per session (cached) | permission checks are O(n) where n=number of permission patterns | WebSocket receive() blocks until user responds (can be seconds/minutes)
   Errors: ValueError raised when tool rejected → LLM sees error message with feedback | raises ValueError if connection closed during approval | bubbles up bashlex.ParsingError from bash_parser
 
@@ -27,19 +27,19 @@ Architecture:
     └─────────────────────────────────────────────────────────────────┘
 
 Permission profiles (stored in session['mode'] for wire compatibility):
-    :read-only:
+    read-only:
         - Explicitly permitted tools are auto-approved
         - Every remaining tool needs approval when live IO is present
         - Used for: normal coding assistance
 
-    :workspace:
+    auto:
         - File edit tools: auto-approved (write, edit, multi_edit)
         - Every other unpermitted tool needs approval
         - Used for: rapid editing with approval only for risky ops
 
-    :danger-full-access (handled by full_access plugin):
-        - Sets skip_tool_approval=True → bypasses all checks
-        - Used for: trusted operator sessions with bounded autonomous checkpoints
+    full-access (handled by full_access plugin):
+        - Canonical bounded state bypasses routine approval
+        - Each completed user-driven turn consumes one unit
 
 Unified Permissions (session['permissions']):
     All permissions use unified format with single key per tool:
@@ -77,7 +77,7 @@ Unified Permissions (session['permissions']):
         - "config": Project .co/host.yaml using Bash() patterns
         - "skill": Skill-granted using Bash() patterns (turn-scoped)
         - "user": Runtime approvals (tool-level, session-scoped)
-        - "mode": Profile-specific auto-approvals (`:workspace`)
+        - "mode": Mode-specific auto-approvals (`auto`)
 
     Pattern Matching (matches_permission_pattern):
         - Simple: "read" → matches tool_name
@@ -177,8 +177,8 @@ Event Handlers:
     @before_each_tool: check_approval
 
 Public Functions:
-    handle_permission_profile_change(agent, profile) → changes the profile, logs transition
-    get_current_permission_profile(agent) → returns the canonical profile string
+    handle_mode_change(agent, mode) → changes the mode, logs transition
+    get_current_mode(agent) → returns the canonical mode string
 
 File Relationships:
     tool_approval/
@@ -196,21 +196,11 @@ File Relationships:
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...core.approval_modes import (
-    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
-    READ_ONLY_PERMISSION_PROFILE,
-    WORKSPACE_PERMISSION_PROFILE,
-    has_valid_full_access_grant,
-    legacy_permission_profile_id,
-)
 from ...core.events import after_iteration, after_user_input, before_each_tool, before_iteration
+from ...core.mode import AUTO, FULL_ACCESS, mode_id, mode_of, set_mode, skips_approval
 from ...project import project_co_dir
 from .bash_parser import check_bash_chain_permitted
-from .constants import (
-    DANGEROUS_TOOLS,
-    FILE_EDIT_TOOLS,
-    VALID_PERMISSION_PROFILES,
-)
+from .constants import FILE_EDIT_TOOLS, VALID_PERMISSION_MODES
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
@@ -326,46 +316,25 @@ def _log(agent: 'Agent', message: str, style: str = None) -> None:
 
 
 def _get_mode(agent: 'Agent') -> str:
-    """Get and immediately canonicalize the current permission profile.
+    """Return the exact canonical mode; malformed state reads as Auto."""
 
-    Modes:
-        ':read-only': Unpermitted tools need approval
-        ':workspace': Named file edits are auto-approved
-    """
-    raw_profile = agent.current_session.get(
-        'mode', READ_ONLY_PERMISSION_PROFILE
-    )
-    if raw_profile == 'plan':
-        profile = READ_ONLY_PERMISSION_PROFILE
-    else:
-        try:
-            profile = legacy_permission_profile_id(raw_profile)
-        except ValueError:
-            profile = READ_ONLY_PERMISSION_PROFILE
-    agent.current_session['mode'] = profile
-    return profile
-
-
-def _requester_is_operator(agent: 'Agent') -> bool:
-    """Whether this session may select a mode that bypasses approvals."""
-    requester = agent.current_session.get('requester')
-    return not requester or requester.get('level') == 'admin'
+    return mode_of(agent.current_session)
 
 
 def _set_mode(agent: 'Agent', mode: str) -> None:
-    """Set a bounded permission profile and notify the frontend."""
+    """Set Read only or Auto through the canonical state writer."""
     try:
-        profile = legacy_permission_profile_id(mode)
+        canonical = mode_id(mode)
     except ValueError:
-        profile = READ_ONLY_PERMISSION_PROFILE
-    if profile not in VALID_PERMISSION_PROFILES:
-        profile = READ_ONLY_PERMISSION_PROFILE
-    agent.current_session['mode'] = profile
+        canonical = AUTO
+    if canonical not in VALID_PERMISSION_MODES:
+        canonical = AUTO
+    set_mode(agent.current_session, canonical)
     # Notify frontend of mode change
     if agent.io:
         agent.io.send({
             'type': 'mode_changed',
-            'mode': profile,
+            'mode': canonical,
             'triggered_by': 'agent',
         })
 
@@ -427,8 +396,8 @@ def check_approval(agent: 'Agent') -> None:
     """Check if a tool is allowed by the current permission profile.
 
     Mode behavior:
-        ':read-only': Every unpermitted tool needs approval with live IO
-        ':workspace': Named file edits are automatic; other calls still ask
+        'read-only': Every unpermitted tool needs approval with live IO
+        'auto': Named file edits are automatic; other calls still ask
 
     The explicit full_access mode bypasses checks only for the local/admin operator.
 
@@ -445,13 +414,14 @@ def check_approval(agent: 'Agent') -> None:
 
         # A completed Work Room continuation has already passed the Host's
         # owner + durable revision checks.  Consume its internal capability at
-        # the first tool boundary and bypass only the outer Codex wrapper.  It
+        # the first tool boundary and bypass only the outer supported provider
+        # wrapper.  It
         # cannot authorize an arbitrary tool, cannot survive for a later call,
-        # and does not affect Codex's own command/file approval protocol.
+        # and does not affect the provider's own command/file approval protocol.
         direct_tool = agent.current_session.pop(
             '_provider_direct_approved_tool', None
         )
-        if direct_tool == tool_name == 'codex':
+        if direct_tool == tool_name and tool_name in {'codex', 'claude_code'}:
             if getattr(getattr(agent, 'logger', None), 'console', None):
                 agent.logger.console.log_permission_granted(
                     tool_name,
@@ -558,8 +528,7 @@ def check_approval(agent: 'Agent') -> None:
 
     # Check the explicit Full access profile (local/admin operator only)
     # =================================================================
-    requester_is_operator = _requester_is_operator(agent)
-    if has_valid_full_access_grant(agent.current_session) and requester_is_operator:
+    if skips_approval(agent.current_session):
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
@@ -585,22 +554,13 @@ def check_approval(agent: 'Agent') -> None:
     tool_name = pending['name']
     tool_args = pending['arguments']
     # =================================================================
-    # PROFILE: :workspace - edits auto-approved, others need approval
+    # MODE: auto - edits auto-approved, others need approval
     # =================================================================
-    if agent.current_session.get('workflow_mode') == 'plan':
-        if tool_name in DANGEROUS_TOOLS:
-            raise ValueError(
-                f"Tool '{tool_name}' is blocked in Plan Mode. "
-                "Use read-only tools to explore, write your plan with write_plan(), "
-                "then call exit_plan_and_implement() when ready for approval."
-            )
-        return
-
-    if mode == WORKSPACE_PERMISSION_PROFILE:
-        if tool_name in FILE_EDIT_TOOLS and requester_is_operator:
+    if mode == AUTO:
+        if tool_name in FILE_EDIT_TOOLS:
             if getattr(getattr(agent, 'logger', None), 'console', None):
                 agent.logger.console.log_permission_granted(
-                    tool_name, tool_args, 'profile', ':workspace'
+                    tool_name, tool_args, 'mode', AUTO
                 )
             return
         # Every other unpermitted tool falls through to approval logic.
@@ -946,45 +906,27 @@ def load_config_permissions(agent: 'Agent') -> None:
 
 @before_iteration
 def poll_mode_changes(agent: 'Agent') -> None:
-    """Poll compatibility ``mode_change`` frames at iteration start.
-
-    Handles Read only, Auto, Full access, and a legacy Plan request. New clients
-    use the Host-acknowledged OIP permission-profile transaction instead.
-    """
-    if agent.current_session.get('mode') == 'plan':
-        handle_permission_profile_change(agent, 'plan')
-
-    if (
-        not _requester_is_operator(agent)
-        and _get_mode(agent) != READ_ONLY_PERMISSION_PROFILE
-    ):
-        handle_permission_profile_change(agent, READ_ONLY_PERMISSION_PROFILE)
-
+    """Poll exact three-mode compatibility frames at iteration start."""
     if not agent.io:
         return
 
     for msg in agent.io.receive_all('mode_change'):
-        requested_profile = msg.get('mode')
-        if requested_profile == 'plan':
-            handle_permission_profile_change(agent, requested_profile)
-            continue
+        requested_mode = msg.get('mode')
         try:
-            profile = legacy_permission_profile_id(requested_profile)
+            canonical = mode_id(requested_mode)
         except ValueError:
             continue
-        if profile in VALID_PERMISSION_PROFILES:
-            handle_permission_profile_change(agent, profile)
-        elif profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
-            if _requester_is_operator(agent):
-                from ..full_access import handle_full_access_permission_profile_change
-                try:
-                    handle_full_access_permission_profile_change(agent, msg.get('turns'))
-                except ValueError:
-                    _set_mode(agent, READ_ONLY_PERMISSION_PROFILE)
-                    _log(agent, "[yellow]Full access requires a positive integer turn budget[/yellow]")
-            else:
-                _set_mode(agent, READ_ONLY_PERMISSION_PROFILE)
-                _log(agent, "[yellow]Only the operator can enable Full access[/yellow]")
+        if canonical in VALID_PERMISSION_MODES:
+            handle_mode_change(agent, canonical)
+        elif canonical == FULL_ACCESS:
+            from ..full_access import handle_full_access_mode_change
+            try:
+                handle_full_access_mode_change(
+                    agent, msg.get('turns_left')
+                )
+            except ValueError:
+                _set_mode(agent, AUTO)
+                _log(agent, "[yellow]Full access requires a positive integer turn budget[/yellow]")
 
 
 @after_iteration
@@ -1008,62 +950,23 @@ def poll_interrupt(agent: 'Agent') -> None:
 # Utility Functions
 # =============================================================================
 
-def handle_permission_profile_change(agent: 'Agent', profile: str) -> None:
-    """Handle a permission-profile request from a compatibility frame.
-
-    Called when frontend sends { type: 'mode_change', mode: '...' }
-    Handles Read only and Auto. Legacy Plan requests fall back to Read only so
-    old frontends cannot leave the backend in a local workflow state with no exit.
-    Full access is handled by its bounded-grant plugin.
-
-    Args:
-        agent: Agent instance
-        profile: Canonical permission profile or legacy boundary value
-    """
-    requested_profile = profile
-    if profile == 'plan':
-        profile = READ_ONLY_PERMISSION_PROFILE
-    else:
-        try:
-            profile = legacy_permission_profile_id(profile)
-        except ValueError:
-            return
-
-    if profile == WORKSPACE_PERMISSION_PROFILE and not _requester_is_operator(agent):
-        _set_mode(agent, READ_ONLY_PERMISSION_PROFILE)
-        _log(agent, "[yellow]Only the operator can enable Auto[/yellow]")
-        return
-
-    if profile not in VALID_PERMISSION_PROFILES:
-        # Full access is handled by the bounded-grant plugin.
-        return
-
-    old_profile = _get_mode(agent)
-    if old_profile == profile:
-        if requested_profile == 'plan':
-            _set_mode(agent, profile)
-        return
-
-    # Clear skip_tool_approval when switching to a mode we handle
-    agent.current_session.pop('skip_tool_approval', None)
-
-    _set_mode(agent, profile)
-    if requested_profile == 'plan':
-        _log(agent, f"[cyan]Legacy Plan permission request is unavailable; changed: {old_profile} → {profile}[/cyan]")
-    else:
-        _log(agent, f"[cyan]Permission profile changed: {old_profile} → {profile}[/cyan]")
-
-
 def handle_mode_change(agent: 'Agent', mode: str) -> None:
-    """Deprecated alias for :func:`handle_permission_profile_change`."""
-    handle_permission_profile_change(agent, mode)
+    """Handle an exact Read only or Auto request from a compatibility frame."""
+    try:
+        canonical = mode_id(mode)
+    except ValueError:
+        return
+    if canonical not in VALID_PERMISSION_MODES:
+        return
+
+    old_mode = _get_mode(agent)
+    if old_mode == canonical:
+        return
+
+    _set_mode(agent, canonical)
+    _log(agent, f"[cyan]Permission mode changed: {old_mode} → {canonical}[/cyan]")
 
 
 def get_current_mode(agent: 'Agent') -> str:
-    """Deprecated alias for :func:`get_current_permission_profile`."""
-    return get_current_permission_profile(agent)
-
-
-def get_current_permission_profile(agent: 'Agent') -> str:
-    """Get the current canonical permission profile."""
+    """Get the current canonical permission mode."""
     return _get_mode(agent)

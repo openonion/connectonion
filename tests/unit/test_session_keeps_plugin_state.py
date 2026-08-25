@@ -2,8 +2,8 @@
 
 `Agent.input(session=…)` rebuilt current_session from four keys — session_id,
 messages, trace, turn — and dropped everything else. Plugins keep their state
-there, so Full access lost `mode` and `skip_tool_approval` on every turn and silently
-fell back to Safe: the web client visibly stepped back to "Safe" after a turn
+there, so Full access lost `mode` and `turns_left` on every turn and silently
+fell back to Auto: the web client visibly stepped back after a turn
 or two, and over HTTP, where mode_change messages do not exist, Full access never
 worked at all. #191.
 
@@ -13,7 +13,7 @@ unknown — which is the path that behaves as before.
 
 Keeping everything is not the fix. `merge_sessions` picks the client's session
 or the server's wholesale, so a client that wins the merge would be handing the
-agent its own `skip_tool_approval: True`. A defined set of keys is therefore
+agent its own authority state. A defined set of keys is therefore
 the server's to state, taken from what it stored and never from what arrived.
 """
 
@@ -30,15 +30,13 @@ class TestInputKeepsWhatItIsGiven:
 
         agent.input("hi", session={
             'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0,
-            'mode': ':danger-full-access', 'full_access_turns': 5, 'full_access_turns_used': 1,
-            'skip_tool_approval': True,
+            'mode': 'full-access', 'turns_left': 4,
         })
 
-        assert agent.current_session.get('mode') == ':danger-full-access'
-        assert agent.current_session.get('full_access_turns') == 5
-        assert agent.current_session.get('skip_tool_approval') is True
+        assert agent.current_session.get('mode') == 'full-access'
+        assert agent.current_session.get('turns_left') == 4
 
-    def test_legacy_plugin_fields_normalize_before_the_turn_runs(self):
+    def test_legacy_plugin_fields_are_discarded_before_the_turn_runs(self):
         agent = Agent("a", llm=MockLLM())
 
         agent.input("hi", session={
@@ -47,8 +45,8 @@ class TestInputKeepsWhatItIsGiven:
             'skip_tool_approval': True,
         })
 
-        assert agent.current_session.get('mode') == ':danger-full-access'
-        assert agent.current_session.get('full_access_turns') == 5
+        assert agent.current_session.get('mode') == 'auto'
+        assert 'full_access_turns' not in agent.current_session
         assert 'ulw_turns' not in agent.current_session
 
     def test_malformed_full_access_state_is_removed_before_the_turn_runs(self):
@@ -60,7 +58,7 @@ class TestInputKeepsWhatItIsGiven:
             'full_access_turns_used': 5, 'skip_tool_approval': True,
         })
 
-        assert agent.current_session.get('mode') == ':read-only'
+        assert agent.current_session.get('mode') == 'auto'
         assert 'skip_tool_approval' not in agent.current_session
 
     def test_the_requester_survives_a_restore(self):
@@ -138,9 +136,8 @@ class TestTheClientDoesNotGrantItself:
             tmp_path,
             {'session_id': 's1', 'messages': [], 'trace': [], 'turn': 0},
             stored_session={'session_id': 's1', 'messages': [], 'trace': [],
-                            'turn': 0, 'mode': ':danger-full-access', 'full_access_turns': 5,
-                            'skip_tool_approval': True},
+                            'turn': 0, 'mode': 'full-access', 'turns_left': 5},
         )
 
-        assert seen.get('mode') == ':danger-full-access'
-        assert seen.get('skip_tool_approval') is True
+        assert seen.get('mode') == 'full-access'
+        assert seen.get('turns_left') == 5

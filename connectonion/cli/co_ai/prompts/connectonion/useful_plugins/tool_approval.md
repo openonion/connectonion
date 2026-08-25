@@ -9,15 +9,13 @@ The plugin is the same in every mode; what moves is the gate.
 
 | mode | behaviour |
 |---|---|
-| `:read-only` (legacy `default`/`safe`) | every unpermitted live-IO call asks an authenticated user |
-| `:workspace` (legacy `auto_approve`/`accept_edits`) | deterministic Auto permits workspace reads, reversible edits, and focused verification; higher-impact calls ask or deny |
-| `:danger-full-access` (legacy `full_access`/`ulw`/`yolo`) | explicit, Host-bounded bypass — see `useful_plugins/full_access` |
-| `plan` | workflow state; it does not grant a permission profile |
+| `read-only` | every effectful unpermitted live-IO call asks an authenticated user |
+| `auto` | deterministic Auto permits reversible workspace work and focused verification; higher-impact calls ask or deny |
+| `full-access` | explicit, bounded Host approval bypass — see `useful_plugins/full_access` |
 
 Mode changes arrive over the WebSocket, so a client can move between them
-mid-session without restarting the agent. In a hosted session, only the admin
-operator can enable Auto or Full access; authenticated contacts can still
-answer their own manual approval requests.
+mid-session without restarting the agent. Every authenticated participant uses
+the same selected mode; admin control-plane authority is separate.
 
 ## Scope of an approval
 
@@ -38,5 +36,5 @@ config, or skill rule; only a prior human session grant can reuse it.
 The co ai `codex` and `claude_code` wrappers receive explicit grants only inside
 the outer LLM-loop session because their inner runtimes own action approval.
 That scope applies to CLI and hosted co-ai sessions, but the grants never enter
-the shared remote-EXEC whitelist. Hosted non-admin Claude delegation is refused;
-hosted non-admin Codex is read-only with nested approvals denied.
+the shared remote-EXEC whitelist. Provider-private values are translated only
+at the Codex or Claude Code adapter boundary.

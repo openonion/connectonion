@@ -10,6 +10,7 @@ Components under test:
 """
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -103,7 +104,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "timeout",
         "summary",
     }
-    assert claude_schema["required"] == ["prompt", "cwd", "summary"]
+    assert claude_schema["required"] == ["prompt", "summary"]
     assert "acp_agent" not in agent.tools._tools
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
@@ -157,7 +158,7 @@ def test_co_ai_codex_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path)
     agent = agent_mod.create_agent(model="fake", max_iterations=1)
     agent.current_session = {
         "trace": [],
-        "mode": ":read-only",
+        "mode": "read-only",
         "_active_tool_call_id": "call-1",
     }
 
@@ -193,7 +194,7 @@ def test_co_ai_claude_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path
     agent = agent_mod.create_agent(model="fake", max_iterations=1)
     agent.current_session = {
         "trace": [],
-        "mode": ":read-only",
+        "mode": "read-only",
         "_active_tool_call_id": "call-2",
     }
 
@@ -230,6 +231,27 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert "acp_agent_factory" not in called
 
 
+def test_start_server_offers_full_access_without_activating_it(monkeypatch):
+    agent = SimpleNamespace(name="agent")
+    hosted = {}
+
+    def fake_host(value, **kwargs):
+        hosted["agent"] = value
+        hosted.update(kwargs)
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+
+    main_mod.start_server(
+        agent,
+        full_access=True,
+        full_access_turns=7,
+    )
+
+    assert hosted["agent"] is agent
+    assert agent._full_access_turns == 7
+    assert agent._full_access_needs_activation is False
+
+
 def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
     agent = SimpleNamespace(name="agent")
     printed = []
@@ -254,6 +276,40 @@ def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
     output = " ".join(printed)
     assert "co keys --reveal" in output
     assert secret not in output
+
+
+def test_start_server_uses_runtime_invite_without_persisting_or_exporting(
+    monkeypatch,
+):
+    agent = SimpleNamespace(name="agent")
+    hosted = {}
+    prepared = []
+    configured = []
+    secret = "RUN-ONLY-NEVER-PRINT"
+
+    monkeypatch.delenv("CO_INVITE_CODE", raising=False)
+    monkeypatch.setattr(
+        main_mod,
+        "_prepare_owner_onboarding",
+        lambda co_dir: prepared.append(co_dir),
+    )
+    monkeypatch.setattr(
+        "connectonion.cli.commands.project_cmd_lib.ensure_global_config",
+        lambda: configured.append(True),
+    )
+    monkeypatch.setattr(
+        main_mod,
+        "host",
+        lambda value, **kwargs: hosted.update({"agent": value, **kwargs}),
+    )
+
+    main_mod.start_server(agent, invite_code=secret)
+
+    assert prepared == []
+    assert configured == [True]
+    assert "CO_INVITE_CODE" not in os.environ
+    assert hosted["trust"].config["onboard"]["invite_code"] == [secret]
+    assert hosted["trust"].verify_invite("someone", "wrong") is False
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):

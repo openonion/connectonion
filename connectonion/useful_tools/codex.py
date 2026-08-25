@@ -225,8 +225,9 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                 sid,
                 turn_id,
             )
-            turn_options["on_turn_started"] = lambda _turn_id: _confirm_direct_workroom_turn(
+            turn_options["on_turn_started"] = lambda _turn_id: _confirm_started_workroom_turn(
                 agent,
+                prompt,
             )
         turn = client.run_turn(sid, prompt, **turn_options)
     except _ProviderCancelled as e:
@@ -666,6 +667,27 @@ def _confirm_direct_workroom_turn(agent):
         target_invocation,
         request_id,
         state_revision,
+    )
+
+
+def _confirm_started_workroom_turn(agent, prompt):
+    """Publish user text only after the native Codex turn starts."""
+    session = getattr(agent, "current_session", None)
+    if isinstance(session, dict) and session.get("_provider_direct_message"):
+        _confirm_direct_workroom_turn(agent)
+        return
+    parent_id = _active_parent_tool_call_id(agent)
+    if not isinstance(parent_id, str) or not parent_id:
+        return
+    _emit_workroom_message(
+        agent,
+        {
+            "invocationId": f"codex:{parent_id}",
+            "parentToolCallId": parent_id,
+        },
+        role="user",
+        text=prompt,
+        message_id="user:initial",
     )
 
 

@@ -40,6 +40,7 @@ class FakeLocatorItem:
         self.box = box or {"x": 10, "y": 20, "width": 100, "height": 40}
         self.force_clicked = False
         self.uploaded_files = []
+        self.filled = []
 
     def bounding_box(self):
         return self.box
@@ -52,6 +53,9 @@ class FakeLocatorItem:
 
     def set_input_files(self, file_path):
         self.uploaded_files.append(file_path)
+
+    def fill(self, text):
+        self.filled.append(text)
 
 
 class FakeLocator:
@@ -264,6 +268,19 @@ def test_type_text_by_selector_focuses_and_types():
     assert page.keyboard.typed == list("Great point.")
     assert page.waits == [1000]
     assert "Typed text into element 1/1" in result
+
+
+def test_fill_text_by_selector_updates_controlled_input_atomically():
+    item = FakeLocatorItem(text="")
+    page = FakeSelectorPage([item])
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+
+    result = browser.fill_text_by_selector("#invite", "one-run-code")
+
+    assert item.filled == ["one-run-code"]
+    assert page.waits == [1000]
+    assert "Filled element 1/1" in result
 
 
 def test_upload_file_by_selector_sets_input_file(tmp_path, monkeypatch):

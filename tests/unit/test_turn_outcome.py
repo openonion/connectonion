@@ -145,6 +145,42 @@ def test_multiple_llm_calls_use_explicit_or_reconciled_totals(tmp_path):
     }
 
 
+def test_turn_usage_keeps_measured_cache_classes_and_status(tmp_path):
+    usage = TokenUsage(
+        input_tokens=600,
+        output_tokens=50,
+        cached_tokens=200,
+        cache_write_tokens=300,
+        total_tokens=650,
+        cost=0.002685,
+        input_tokens_total=600,
+        input_tokens_uncached=100,
+        cache_read_input_tokens=200,
+        cache_write_input_tokens=300,
+        cache_write_5m_input_tokens=100,
+        cache_write_1h_input_tokens=200,
+        cache_metadata_status="reported",
+    )
+    agent = Agent(
+        name="cache-contract",
+        llm=MockLLM(responses=[response("answer", usage=usage)]),
+        log=False,
+        quiet=True,
+        co_dir=tmp_path / ".co",
+    )
+
+    agent.input("question")
+
+    turn_usage = outcomes(agent)[0]["usage"]
+    assert turn_usage["input_tokens_total"] == 600
+    assert turn_usage["input_tokens_uncached"] == 100
+    assert turn_usage["cache_read_input_tokens"] == 200
+    assert turn_usage["cache_write_input_tokens"] == 300
+    assert turn_usage["cache_write_5m_input_tokens"] == 100
+    assert turn_usage["cache_write_1h_input_tokens"] == 200
+    assert turn_usage["cache_metadata_status"] == "reported"
+
+
 def test_missing_usage_remains_null(tmp_path):
     agent = Agent(
         name="no-usage",
