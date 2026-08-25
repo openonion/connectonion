@@ -96,6 +96,17 @@ right-click, double-click, select, checkbox, and element-wait behavior preserve
 their existing result and fallback contracts across the main DOM, named
 iframes, and open shadow roots.
 
+The sixth and final driver-parity boundary covers the four verbs left by the
+whole-surface audit. Focused typing uses the same awaited humanization layer and
+runtime clipboard lock. Scrolling preserves the human, AI, element, and page
+fallback order while moving model calls and image comparison off the event
+loop; every attempt gets a unique screenshot name. Page-context capture awaits
+DOM reads, writes files off-loop into collision-safe directories, and does not
+let cancellation escape while a write is still running. Manual login uses an
+event-loop stdin reader on POSIX and cancellable console polling on Windows,
+rather than leaving a blocked `input()` worker behind. Prompts are serialized
+across tabs because the terminal, like the clipboard, is runtime-global state.
+
 ## Invariants
 
 - one persistent browser context and profile per runtime;
@@ -140,6 +151,8 @@ raw extraction, viewport changes, page/frame scripts, both upload paths,
 exact-text/frame selector clicks, known-selector typing, anchor-relative clicks,
 model-selected actions across main/iframe/shadow DOMs, main-document forms, and
 independent-tab progress during humanized input and a stalled matcher on a real
-DOM. Downloads, AI-selected scrolling, context capture, manual-login waiting,
-and remaining dead-context/profile behavior stay explicit #498 work; these
-boundaries do not make the async core public.
+DOM. The final gate also exercises focused typing, verified human scrolling,
+context files, and hosted manual-login refusal. The whole public surface now has
+an exact signature-parity test; #498 still closes only after the full regression,
+installed-wheel, native-browser, hosted, cancellation, profile, stealth, and
+recovery evidence is reviewed. These boundaries do not make the async core public.

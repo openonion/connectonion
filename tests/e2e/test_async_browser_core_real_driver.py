@@ -14,10 +14,11 @@ import html
 import json
 import threading
 import urllib.parse
+from pathlib import Path
 
 import pytest
 
-from connectonion.useful_tools.browser_tools import _async_element_finder
+from connectonion.useful_tools.browser_tools import _async_browser, _async_element_finder
 from connectonion.useful_tools.browser_tools._async_browser import (
     ASYNC_BROWSER_AVAILABLE,
     AsyncBrowserCore,
@@ -94,7 +95,7 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                     f"<article class=item><span class=body>{marker} item</span></article>"
                     "<a href=https://example.com/one>one</a>"
                     f'<iframe name=editor srcdoc="{html.escape(frame_html, quote=True)}">'
-                    "</iframe>"
+                    "</iframe><div style='height:2000px'>scroll target</div>"
                 )
                 await browser.go_to(
                     "data:text/html," + urllib.parse.quote(page_html),
@@ -337,6 +338,42 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                 )
                 == chooser_upload.name
             )
+
+            await browser.page.locator("#editor").focus()
+            typed = await browser.keyboard_type("-raw")
+            assert typed.startswith("Typed: '-raw'")
+            assert (await browser.page.locator("#editor").input_value()).endswith(
+                "-raw"
+            )
+
+            await browser.page.evaluate("window.scrollTo(0, 0)")
+            browser.screenshots_dir = str(tmp_path / "scroll-shots")
+            scroll_result = await browser.scroll(1)
+            assert scroll_result == "Scrolled using Human wheel"
+            assert await browser.page.evaluate("window.scrollY") > 0
+
+            monkeypatch.setattr(Path, "home", lambda: tmp_path)
+            context_result = await browser.save_page_context("native final verbs")
+            captures = list(
+                (tmp_path / ".co" / "browser_context").glob("*_native_final_verbs")
+            )
+            assert len(captures) == 1
+            assert "- URL: data:text/html" in context_result
+            assert (captures[0] / "page.html").read_text(encoding="utf-8")
+            assert (captures[0] / "styles.css").exists()
+            assert json.loads(
+                (captures[0] / "elements.json").read_text(encoding="utf-8")
+            )
+
+            class NoTTY:
+                @staticmethod
+                def isatty():
+                    return False
+
+            monkeypatch.setattr(_async_browser.sys, "stdin", NoTTY())
+            manual_result = await browser.wait_for_manual_login("Example")
+            assert "interactive terminal" in manual_result
+            assert "seed_state" in manual_result
         finally:
             browser._bind_session(None)
             close_result = await browser.close()
