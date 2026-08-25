@@ -4,9 +4,9 @@ LLM-Note:
   Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
   Data flow: a caller binds its session via _bind_session(key) (key None = shared 'main') → every public method hops to ONE dedicated browser worker thread (_runs_on_browser_thread propagates the binding; Playwright's sync API is thread-bound) → _ensure_page gives the session its own tab in the shared context (restored to its remembered URL), then _reclaim_idle_tabs bounds memory (idle-TTL first, then max-tabs LRU — never the active tab) → go_to/newtab record who/purpose/hours on the tab REGISTRY _tab_meta (the first navigation on an unoccupied tab demands purpose+who — direct API/tool callers only; the co browser daemon registers tabs before dispatching) → tab_status renders the board → close_tab releases ONE tab, close() releases the bound tab or tears the whole context down
   State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
-  Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
+  Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, get_focused_element, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
   Performance: browser launch is lazy (first page verb, 1-3s) | persistent context loads the profile instantly | element finding uses a vision LLM (slower but accurate) | auto-save adds ~500ms after critical actions
-  Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
+  Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | destructive select-all/delete shortcuts fail closed outside an editable focus unless explicitly overridden | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
 Browser Agent for CLI - Natural language browser automation.
 
 Two stacks drive this class — same code, different process, DIFFERENT Chrome
@@ -134,6 +134,73 @@ def _public_methods_run_on_browser_thread(cls):
         if not name.startswith("_") and inspect.isfunction(method):
             setattr(cls, name, _runs_on_browser_thread(method))
     return cls
+
+
+_FOCUSED_ELEMENT_SCRIPT = """
+(previewLimit) => {
+    let element = document.activeElement;
+    while (element && element.shadowRoot && element.shadowRoot.activeElement) {
+        element = element.shadowRoot.activeElement;
+    }
+    if (!element) {
+        return {
+            tag: null, type: null, id: null, name: null, role: null,
+            aria_label: null, contenteditable: null, is_editable: false,
+            disabled: false, read_only: false, sensitive: false,
+            value_preview: null, value_truncated: false,
+        };
+    }
+
+    const tag = element.tagName.toLowerCase();
+    const type = (element.getAttribute('type') || '').toLowerCase() || null;
+    const disabled = Boolean(element.disabled);
+    const readOnly = Boolean(element.readOnly);
+    const nonTextInputTypes = new Set([
+        'button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio',
+        'range', 'reset', 'submit',
+    ]);
+    const textInput = tag === 'input' && !nonTextInputTypes.has(type || 'text');
+    const isEditable = !disabled && !readOnly && (
+        textInput || tag === 'textarea' || element.isContentEditable
+    );
+    const sensitive = tag === 'input' && type === 'password';
+    let value = null;
+    if (!sensitive && (tag === 'input' || tag === 'textarea')) {
+        value = String(element.value || '');
+    } else if (!sensitive && element.isContentEditable) {
+        value = String(element.innerText || element.textContent || '');
+    }
+
+    return {
+        tag,
+        type,
+        id: element.id || null,
+        name: element.getAttribute('name'),
+        role: element.getAttribute('role'),
+        aria_label: element.getAttribute('aria-label'),
+        contenteditable: element.getAttribute('contenteditable'),
+        is_editable: isEditable,
+        disabled,
+        read_only: readOnly,
+        sensitive,
+        value_preview: value === null ? null : value.slice(0, previewLimit),
+        value_truncated: value === null ? false : value.length > previewLimit,
+    };
+}
+"""
+
+
+def _keyboard_press_requires_editable_focus(key: str) -> bool:
+    """Whether sending this key outside an editor risks destructive page action."""
+    parts = [part.strip().casefold() for part in key.split("+") if part.strip()]
+    if not parts:
+        return False
+    if parts[-1] in {"backspace", "delete"}:
+        return True
+    modifiers = set(parts[:-1])
+    return parts[-1] == "a" and bool(
+        modifiers.intersection({"control", "ctrl", "meta", "controlormeta"})
+    )
 
 
 def _browser_proxy_from_env():
@@ -1768,7 +1835,27 @@ class BrowserAutomation:
 
 SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
 
-    def keyboard_press(self, key: str) -> str:
+    def _focused_element(self, value_preview_chars: int = 160) -> Dict[str, Any]:
+        """Read focused-element state on the browser-owning thread."""
+        limit = max(0, min(int(value_preview_chars), 1000))
+        return self.page.evaluate(_FOCUSED_ELEMENT_SCRIPT, limit)
+
+    def get_focused_element(self, value_preview_chars: int = 160) -> str:
+        """Return bounded JSON describing the focused element and whether it is editable.
+
+        Password values are always redacted. Focus inside an open shadow root is
+        followed to its deepest active element.
+        """
+        if not self.page:
+            return "Browser not open"
+        return json.dumps(
+            self._focused_element(value_preview_chars),
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    def keyboard_press(self, key: str, allow_non_editable: bool = False) -> str:
         """Press a keyboard key or key combination.
 
         Use for special keys and shortcuts — NOT for typing text.
@@ -1777,12 +1864,25 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         Args:
             key: Key name or combo, e.g. "Enter", "Escape", "Tab",
                  "Control+Enter", "Control+x", "Meta+a", "Shift+Tab"
+            allow_non_editable: Explicitly allow select-all/delete outside an
+                 editable element. Defaults to False to prevent page-wide data loss.
 
         Returns:
             Success message
         """
         if not self.page:
             return "Browser not open"
+
+        if _keyboard_press_requires_editable_focus(key) and not allow_non_editable:
+            focused = self._focused_element()
+            if not focused.get("is_editable", False):
+                return (
+                    f"Refused '{key}': the focused element is not editable. "
+                    "Focus the intended input and call get_focused_element() before "
+                    "retrying. For an intentional page-level shortcut, pass "
+                    "allow_non_editable=True.\n"
+                    + json.dumps(focused, ensure_ascii=False, sort_keys=True)
+                )
 
         self.page.keyboard.press(key)
         return f"Pressed: '{key}'"
