@@ -121,6 +121,28 @@ YOLO is the familiar CLI shorthand for Full access. It selects the canonical
 `:danger-full-access` permission profile and uses `full_access_turns` for the
 bounded autonomous checkpoint.
 
+## Unattended one-shot permissions
+
+One-shot commands launched by cron or CI have no approval dialog. Auto still
+fails closed for unknown, destructive, credential, publication, deployment,
+and external-effect calls, but it honors operator-authored `Bash(...)` command
+permissions from the active `.co/host.yaml` for ordinary commands.
+
+The shipped compatibility grant allows unattended `co status` and
+`co browser ...` commands, including browser workflows that already ran under
+1.6.x:
+
+```bash
+co ai -m co/gemini-3.7-flash "/linkedin-notifications ..." < /dev/null
+```
+
+The broad historical `Bash(co *)` entry does not silently authorize other
+framework effects such as `co deploy`, `co publish`, or `co email send` in
+headless Auto. Add a narrower project permission when an operator deliberately
+wants a particular ordinary command. Use bounded `--full-access` only when the
+whole unattended task is trusted to perform effects that still require a human
+under Auto.
+
 ## What the Agent Can Do
 
 The agent has a full suite of tools for coding tasks:
