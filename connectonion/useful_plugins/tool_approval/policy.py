@@ -19,7 +19,7 @@ from ...core.approval_modes import (
 )
 from ...core.events import before_each_tool
 from ...project import project_root
-from .bash_parser import _extract_subcommands
+from .bash_parser import _extract_subcommands, check_bash_chain_permitted
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
@@ -253,15 +253,68 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             requires_human=bool(agent.io),
         )
     if not agent.io and result["decision"] == "ask":
-        result = decision(
-            result["effect_class"],
-            "deny",
-            f"{result['reason']}; no approval channel is available",
-            result["scope"],
-        )
+        configured = _headless_configured_command(agent, pending, result)
+        if configured is not None:
+            result = configured
+        else:
+            result = decision(
+                result["effect_class"],
+                "deny",
+                f"{result['reason']}; no approval channel is available",
+                result["scope"],
+            )
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
     return result
+
+
+def _headless_configured_command(
+    agent: "Agent", pending: dict, result: dict
+) -> dict | None:
+    """Honor an operator's standing command grant without weakening Auto.
+
+    Only ordinary commands reach this path. Publication, deployment, network,
+    credential, deletion, and unknown effects keep their stronger verdict even
+    when a broad legacy pattern such as ``Bash(co *)`` happens to match.
+    """
+    if result.get("effect_class") != "command" or pending.get("name") != "bash":
+        return None
+    permissions = agent.current_session.get("permissions")
+    if not isinstance(permissions, dict):
+        return None
+    configured = {
+        pattern: permission
+        for pattern, permission in permissions.items()
+        if isinstance(permission, dict) and permission.get("source") == "config"
+    }
+    # The shipped historical Bash(co *) grant is broader than its "safe CLI"
+    # description. Preserve the unattended browser/status compatibility users
+    # relied on without silently authorizing email, account, server, or payment
+    # commands. Operators can still name a narrower command explicitly.
+    broad_co = configured.pop("Bash(co *)", None)
+    if broad_co is not None:
+        subcommands = _extract_subcommands(
+            str((pending.get("arguments") or {}).get("command", ""))
+        )
+        if subcommands and all(
+            full == "co status" or full.startswith("co browser ")
+            for _, full in subcommands
+        ):
+            configured["Bash(co *)"] = broad_co
+    try:
+        permitted, _, _ = check_bash_chain_permitted(
+            str((pending.get("arguments") or {}).get("command", "")), configured
+        )
+    except Exception:
+        return None
+    if not permitted:
+        return None
+    return decision(
+        "configured_command",
+        "allow",
+        "operator-configured command allowlist",
+        "call",
+    )
 
 
 @before_each_tool

@@ -163,6 +163,13 @@ requests but cannot elevate their profile.
 
 Auto-approve safe commands permanently via `host.yaml` configuration. Config permissions never expire and apply to all sessions.
 
+In a headless one-shot run, a matching operator-configured `Bash(...)` rule can
+approve an ordinary command even though no dialog exists. Auto continues to
+deny destructive, credential, publication, deployment, external-effect, and
+unknown calls. For compatibility, the shipped broad `Bash(co *)` rule is
+narrowed at this boundary to `co status` and `co browser ...`; commands such as
+`co deploy`, `co publish`, and `co email send` do not inherit silent authority.
+
 ### Configuration
 
 Add permissions to `.co/host.yaml`:
