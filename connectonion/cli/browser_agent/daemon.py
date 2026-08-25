@@ -807,7 +807,7 @@ class BrowserDaemon:
                 raise TimeoutError("request timed out")
             try:
                 chunk = await asyncio.wait_for(reader.read(65536), timeout=remaining)
-            except TimeoutError as exc:
+            except asyncio.TimeoutError as exc:
                 raise TimeoutError("request timed out") from exc
             if not chunk:
                 return b"".join(chunks).decode().strip()
@@ -827,10 +827,20 @@ class BrowserDaemon:
             await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
             if await self._should_stop(ok, payload):
                 self._begin_shutdown()
-        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+        except (
+            BrokenPipeError,
+            ConnectionResetError,
+            TimeoutError,
+            asyncio.TimeoutError,
+        ):
             print(f"client vanished before reply: {request[:80]!r}", file=sys.stderr)
         except ValueError as exc:
-            with contextlib.suppress(BrokenPipeError, ConnectionResetError, TimeoutError):
+            with contextlib.suppress(
+                BrokenPipeError,
+                ConnectionResetError,
+                TimeoutError,
+                asyncio.TimeoutError,
+            ):
                 writer.write(self._reply_bytes(2, str(exc)))
                 await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
         finally:
