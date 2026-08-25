@@ -23,6 +23,10 @@ co browser --engine system go_to example.com  # always Patchright + system Chrom
 co browser --engine onion go_to example.com   # strict paid Onion Browser
 ```
 
+The paid path requires Onionwright 0.0.11 or newer. Its real wheel is delivered
+through the licence-gated OpenOnion artifact endpoint, not the public PyPI
+placeholder.
+
 | mode | behavior |
 |---|---|
 | `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |

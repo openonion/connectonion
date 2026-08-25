@@ -6,12 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from packaging.version import InvalidVersion, Version
+
 
 AUTO = "auto"
 SYSTEM = "system"
 ONION = "onion"
 MODES = (AUTO, SYSTEM, ONION)
 BROWSER_REVISION = "150.0.7871.187"
+MIN_ONIONWRIGHT_VERSION = "0.0.11"
 
 
 class Reason:
@@ -53,6 +56,14 @@ class Resolution:
         artifact = getattr(capability, "artifact", None)
         return getattr(artifact, "artifact_id", None)
 
+    @property
+    def onionwright_version(self) -> str | None:
+        capability = getattr(self.prepared, "capability", None)
+        version = getattr(capability, "client_version", None)
+        if version is None:
+            version = getattr(self.client, "client_version", None)
+        return version if isinstance(version, str) else None
+
     def public_status(self) -> dict[str, Any]:
         """Safe status/audit fields; never includes tokens, licence bytes, or paths."""
         return {
@@ -62,6 +73,7 @@ class Resolution:
             "reason": self.reason,
             "next_action": self.next_action,
             "browser_revision": self.browser_revision,
+            "onionwright_version": self.onionwright_version,
             "artifact_id": self.artifact_id,
         }
 
@@ -77,9 +89,9 @@ def _default_token() -> str:
 def _default_client(token: str, home: Path):
     # Onionwright remains optional. Presence of the paid package is not a
     # requirement for the free/system product.
-    from onionwright import PaidSessionClient
+    import onionwright
 
-    return PaidSessionClient(token=token, home=home)
+    return onionwright.PaidSessionClient(token=token, home=home)
 
 
 def _system(requested: str, reason: str, next_action: str) -> Resolution:
@@ -136,17 +148,32 @@ def resolve(
         )
     try:
         client = client_factory(token, paid_home)
-    except (ImportError, ModuleNotFoundError):
+    except ModuleNotFoundError:
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_MISSING,
             "Install the compatible Onionwright package, or request the system browser.",
         )
-    except (AttributeError, TypeError):
+    except (ImportError, AttributeError, TypeError):
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_INCOMPATIBLE,
             "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
+        )
+
+    client_version = getattr(client, "client_version", None)
+    try:
+        compatible = (
+            isinstance(client_version, str)
+            and Version(client_version) >= Version(MIN_ONIONWRIGHT_VERSION)
+        )
+    except InvalidVersion:
+        compatible = False
+    if not compatible:
+        return _unavailable(
+            requested,
+            Reason.ONIONWRIGHT_INCOMPATIBLE,
+            f"Install Onionwright {MIN_ONIONWRIGHT_VERSION} or newer.",
         )
 
     try:
