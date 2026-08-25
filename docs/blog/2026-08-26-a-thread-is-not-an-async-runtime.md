@@ -47,3 +47,20 @@ Humanized input, LLM element finding, the remaining browser verbs, concurrent
 IPC, and the synchronous facade still have separate review boundaries. Keeping
 those boundaries visible is how 1.8 gains concurrency without trading away the
 browser behavior and cross-platform security it already has.
+
+## Async parity is observable behavior
+
+The next slice exposed a quieter migration risk. An async method existed for
+counting selectors, but it returned an integer while the public method returned
+`"2 elements match selector: button"`. Missing and out-of-range elements also
+used different messages, and `wait(2)` omitted one word from its result. Each
+implementation could drive the page correctly while still breaking an agent,
+test, or caller that relied on the existing tool contract.
+
+We now freeze three things for each deterministic verb: parameter names and
+defaults, exact result shapes, and native DOM behavior. Contract tests compare
+the old and async signatures and pin edge-case strings. A real-Chrome test then
+exercises selectors, visible-item extraction, links, waits, and viewport changes.
+This is intentionally narrower than copying every method at once: frame routing,
+downloads, humanized input, and model-backed matching each introduce different
+failure modes and retain their own review boundary.

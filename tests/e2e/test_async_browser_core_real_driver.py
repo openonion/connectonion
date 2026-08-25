@@ -11,6 +11,7 @@ this against an installed wheel and browser before an alpha is promoted.
 import asyncio
 import gc
 import json
+import urllib.parse
 
 import pytest
 
@@ -45,9 +46,14 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             pages = {}
             for session, marker in (("A", "alpha"), ("B", "beta")):
                 browser._bind_session(session)
+                html = (
+                    f"<title>{marker}</title><p>{marker}</p>"
+                    f"<input id=editor value={marker}>"
+                    f"<article class=item><span class=body>{marker} item</span></article>"
+                    "<a href=https://example.com/one>one</a>"
+                )
                 await browser.go_to(
-                    f"data:text/html,<title>{marker}</title><p>{marker}</p>"
-                    f"<input id=editor value={marker}>",
+                    "data:text/html," + urllib.parse.quote(html),
                     purpose="async core acceptance",
                     who=session,
                 )
@@ -67,7 +73,7 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
 
             assert "beta" in text_b
             assert held.done() is False
-            assert await held == "Waited 2 seconds"
+            assert await held == "Waited for 2 seconds"
             timings["interleaved"] = loop.time()
             assert pages["A"] is not pages["B"]
 
@@ -76,6 +82,25 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             focused = json.loads(await browser.get_focused_element())
             assert focused["is_editable"] is True
             assert focused["value_preview"] == "alpha"
+
+            browser._bind_session("B")
+            assert await browser.count_elements_by_selector(".item") == (
+                "1 element match selector: .item"
+            )
+            assert await browser.get_element_text_by_selector(".body") == "beta item"
+            assert await browser.extract_data(".body") == ["beta item"]
+            assert await browser.wait_for_text("beta item", timeout=1) == (
+                "Found text: 'beta item'"
+            )
+            assert await browser.get_links_from_page("example.com") == [
+                "https://example.com/one"
+            ]
+            extracted = json.loads(
+                await browser.extract_items_by_selector(".item", ".body")
+            )
+            assert extracted[0]["text"] == "beta item"
+            assert extracted[0]["visible_bounds"]["width"] > 0
+            assert await browser.set_viewport(1280, 720) == "Viewport set to 1280x720"
         finally:
             browser._bind_session(None)
             close_result = await browser.close()

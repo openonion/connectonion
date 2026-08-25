@@ -8,12 +8,14 @@ and cleans up deterministically before #499 puts concurrent IPC in front of it.
 import asyncio
 import ast
 import inspect
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from connectonion.useful_tools.browser_tools import _async_browser as async_mod
+from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
 
 
 class FakeKeyboard:
@@ -65,6 +67,9 @@ class FakePage:
         self.clicked = []
         self.filled = []
         self.uploaded = []
+        self.waited_selectors = []
+        self.evaluate_calls = []
+        self.evaluate_result = None
 
     def set_default_navigation_timeout(self, timeout):
         self.navigation_timeout = timeout
@@ -79,6 +84,9 @@ class FakePage:
     async def wait_for_timeout(self, milliseconds):
         self.waits.append(milliseconds)
 
+    async def wait_for_selector(self, selector, **kwargs):
+        self.waited_selectors.append((selector, kwargs))
+
     def is_closed(self):
         return self.closed
 
@@ -92,7 +100,8 @@ class FakePage:
     async def evaluate(self, script, arg=None):
         if "document.activeElement" in script:
             return dict(self.focused)
-        return {"arg": arg}
+        self.evaluate_calls.append((script, arg))
+        return self.evaluate_result if self.evaluate_result is not None else {"arg": arg}
 
     async def screenshot(self, **kwargs):
         return b"png"
@@ -498,6 +507,7 @@ async def test_selector_methods_use_async_locator_contract(tmp_path):
     upload.write_text("ok")
     page = FakePage()
     page.selector_counts["button"] = 2
+    page.selector_counts["missing"] = 0
     page.text_by_selector["button"] = "Publish"
     context = FakeContext()
     context.pages_created.append(page)
@@ -505,13 +515,129 @@ async def test_selector_methods_use_async_locator_contract(tmp_path):
     browser.browser = context
     browser._pages[None] = page
 
-    assert await browser.count_elements_by_selector("button") == 2
+    assert await browser.count_elements_by_selector("button") == "2 elements match selector: button"
     assert await browser.get_element_text_by_selector("button", 1) == "Publish"
+    assert await browser.get_element_text_by_selector("missing") == (
+        "No element found for selector: missing"
+    )
+    assert (
+        await browser.get_element_text_by_selector("button", 2)
+        == "Selector matched 2 elements; index 2 is out of range"
+    )
     assert "Clicked element 2/2" in await browser.click_element_by_selector("button", 1)
     assert "Filled element 1/1" in await browser.fill_text_by_selector("input", "hello")
+    assert page.waits == [1000]
     assert "Uploaded report.txt" in await browser.upload_file_by_selector("input", str(upload))
     assert page.clicked == [("button", 1)]
     assert page.filled == [("input", 0, "hello")]
+
+
+@pytest.mark.asyncio
+async def test_deterministic_async_verbs_preserve_sync_signatures_and_results(monkeypatch):
+    methods = (
+        "tab_status",
+        "count_elements_by_selector",
+        "get_element_text_by_selector",
+        "fill_text_by_selector",
+        "get_system_info",
+        "extract_items_by_selector",
+        "set_viewport",
+        "wait_for_text",
+        "wait",
+        "extract_data",
+        "get_links_from_page",
+    )
+    for name in methods:
+        async_method = getattr(async_mod.AsyncBrowserCore, name)
+        sync_method = getattr(BrowserAutomation, name)
+        assert inspect.iscoroutinefunction(async_method), name
+        assert list(inspect.signature(async_method).parameters) == list(
+            inspect.signature(sync_method).parameters
+        ), name
+
+    page = FakePage()
+    page.selector_counts["article"] = 2
+    page.text_by_selector["article"] = "Story"
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+
+    assert await browser.set_viewport(1280, 720) == "Viewport set to 1280x720"
+    assert page.viewport == {"width": 1280, "height": 720}
+    assert await browser.wait_for_text("Ready", timeout=7) == "Found text: 'Ready'"
+    assert page.waited_selectors == [("text='Ready'", {"timeout": 7000})]
+    assert await browser.wait(1.25) == "Waited for 1.25 seconds"
+    assert page.waits[-1] == 1250
+    assert await browser.extract_data("article") == ["Story", "Story"]
+
+    monkeypatch.setattr(async_mod.platform, "system", lambda: "Darwin")
+    assert await browser.get_system_info() == (
+        "OS: macOS. Use Meta for shortcuts (Meta+a select all, Meta+c copy, "
+        "Meta+v paste, Meta+z undo)."
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_extraction_and_link_contracts_return_sync_shapes():
+    page = FakePage()
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+
+    items = [{"item_index": 0, "author": "Ada", "text": "Hello"}]
+    page.evaluate_result = items
+    result = await browser.extract_items_by_selector(
+        ".card",
+        ".body",
+        max_items=4,
+        author_selector=".author",
+        author_attribute="data-name",
+        action_selector="button",
+        action_text="Open",
+        exclude_text_pattern="Sponsored",
+    )
+    assert result == json.dumps(items, indent=2, ensure_ascii=False)
+    assert page.evaluate_calls[-1][1] == {
+        "container_selector": ".card",
+        "text_selector": ".body",
+        "max_items": 4,
+        "author_selector": ".author",
+        "author_attribute": "data-name",
+        "action_selector": "button",
+        "action_text": "Open",
+        "exclude_text_pattern": "Sponsored",
+    }
+
+    page.evaluate_result = ["https://example.com/a", "https://example.com/b"]
+    assert await browser.get_links_from_page("example.com") == page.evaluate_result
+    assert page.evaluate_calls[-1][1] == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_tab_status_renders_registry_before_page_creation():
+    browser = async_mod.AsyncBrowserCore()
+    browser._bind_session("worker-1")
+    browser._tab_meta["worker-1"] = {
+        "who": "agent",
+        "purpose": "research",
+    }
+    browser._tab_meta["worker-2"] = {
+        "who": "peer",
+        "purpose": "verification",
+    }
+    live = FakePage()
+    live.url = "https://example.com"
+    browser._pages["worker-2"] = live
+
+    assert await browser.tab_status() == (
+        "Tabs (2):\n"
+        "  *[worker-1] (reserved — no page yet)  who=agent  purpose='research'\n"
+        "   [worker-2] https://example.com  who=peer  purpose='verification'"
+    )
 
 
 @pytest.mark.asyncio

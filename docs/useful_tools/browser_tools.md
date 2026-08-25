@@ -259,6 +259,10 @@ migration. The replacement core is internal until every browser verb and the
 cross-platform daemon have equivalent coverage; do not import it as an
 application API yet. The lifecycle, concurrency, cancellation, and compatibility
 boundaries are recorded in [DD-054](../design-decisions/054-one-async-browser-runtime.md).
+The internal core now covers the deterministic selector, extraction, viewport,
+wait, system-info, and tab-status contracts, but frames, downloads, humanized
+input, model-backed element finding, concurrent IPC, and the synchronous facade
+are still migration work. `BrowserAutomation` remains the supported API.
 
 ## Common Patterns
 
