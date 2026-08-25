@@ -1,104 +1,114 @@
-"""Which engine `co browser` drives, given what the account is entitled to.
-
-The decision is a pure function on purpose. Everything around it -- fetching an
-attestation, downloading a binary -- can fail, and the one thing that must not
-acquire a new way to fail is the free path: a default install drives system
-Chrome through patchright today with no licence call at all, and that is
-measured, not assumed (see the e2e run on openonion/connectonion#511).
-
-So the rule the tests below encode is: **there is no input for which a browser
-refuses to start.** Every branch ends in an engine.
-"""
+from types import SimpleNamespace
 
 import pytest
 
 from connectonion.useful_tools.browser_tools import engine
 
 
-def att(tier="pro", active=True):
-    """The fields of an attestation this decision reads, and nothing else."""
-    return {"tier": tier, "active": active}
+def prepared(*, ready=True, reason="ready", action="start", artifact_id="chrome/150/linux"):
+    artifact = SimpleNamespace(artifact_id=artifact_id)
+    capability = SimpleNamespace(reason=reason, next_action=action, artifact=artifact)
+    return SimpleNamespace(ready=ready, capability=capability)
 
 
-# --- free is a product, not a refusal -------------------------------------
+class Client:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    def prepare(self, revision):
+        self.calls.append(revision)
+        return self.result
 
 
-def test_no_attestation_at_all_still_browses():
-    """No licence, no account, oo-api unreachable — all the same shape, and
-    none of them may stop a free user from opening a browser. This is the
-    behaviour a default install has today and must keep."""
-    chosen, _ = engine.choose(attestation=None, onion_present=False)
+def test_system_returns_before_token_or_onionwright():
+    def forbidden(*args):
+        pytest.fail("system mode touched the paid path")
 
-    assert chosen == engine.PATCHRIGHT
-
-
-def test_the_free_tier_is_told_what_unlocks_the_other_one():
-    """The $5 signup grant is the common case: not broken, not yet enough."""
-    chosen, note = engine.choose(attestation=att(tier="free"), onion_present=False)
-
-    assert chosen == engine.PATCHRIGHT
-    assert note is not None
-    assert "10" in note, "the note has to name the number that unlocks it"
+    result = engine.resolve(
+        engine.SYSTEM,
+        token_loader=forbidden,
+        client_factory=forbidden,
+    )
+    assert result.resolved == engine.SYSTEM
+    assert result.reason == engine.Reason.SYSTEM_REQUESTED
+    assert not result.fallback
 
 
-def test_the_note_is_absent_when_there_is_nothing_to_say():
-    """A pro user driving the pro engine does not need a sales line on every
-    command."""
-    _, note = engine.choose(attestation=att(tier="pro"), onion_present=True)
-
-    assert note is None
-
-
-# --- paid gets what it paid for -------------------------------------------
-
-
-def test_pro_with_the_binary_present_drives_it():
-    chosen, _ = engine.choose(attestation=att(tier="pro"), onion_present=True)
-
-    assert chosen == engine.ONION
+def test_auto_ready_selects_exact_prepared_onion_artifact(tmp_path):
+    client = Client(prepared(artifact_id="chrome/150.0/linux-x86_64.tar.zst"))
+    result = engine.resolve(
+        engine.AUTO,
+        token_loader=lambda: "token",
+        client_factory=lambda token, home: client,
+        home=tmp_path,
+    )
+    assert result.resolved == engine.ONION
+    assert result.client is client
+    assert result.artifact_id == "chrome/150.0/linux-x86_64.tar.zst"
+    assert client.calls == [engine.BROWSER_REVISION]
 
 
-def test_pro_without_the_binary_falls_back_rather_than_failing():
-    """`onionwright` is not a dependency of connectonion — a fresh install has
-    no paid binary on disk. A pro attestation with nothing to launch must not
-    leave the customer worse off than a free one, so it falls back and says
-    why."""
-    chosen, note = engine.choose(attestation=att(tier="pro"), onion_present=False)
-
-    assert chosen == engine.PATCHRIGHT
-    assert note is not None
-
-
-def test_an_inactive_pro_licence_still_browses():
-    """Entitled to the engine, refused the session — an empty balance. The
-    session refusal belongs to the licence layer; it is not a reason to leave
-    someone without a browser."""
-    chosen, _ = engine.choose(attestation=att(tier="pro", active=False),
-                              onion_present=True)
-
-    assert chosen == engine.PATCHRIGHT
-
-
-# --- nothing gets through without an engine -------------------------------
-
-
-@pytest.mark.parametrize("tier", ["free", "pro", "team", "mystery", None])
-@pytest.mark.parametrize("active", [True, False])
-@pytest.mark.parametrize("present", [True, False])
-def test_every_combination_yields_an_engine(tier, active, present):
-    """The property that matters more than any single branch: whatever the
-    server says, whatever is on disk, a browser starts."""
-    attestation = None if tier is None else att(tier=tier, active=active)
-
-    chosen, _ = engine.choose(attestation=attestation, onion_present=present)
-
-    assert chosen in (engine.ONION, engine.PATCHRIGHT)
+@pytest.mark.parametrize("reason", [
+    "unsupported_platform",
+    "unsupported_arch",
+    "unsupported_os_version",
+    "artifact_unavailable",
+    "download_failed",
+    "checksum_mismatch",
+    "insufficient_balance",
+])
+def test_auto_preflight_failure_falls_back_before_billing(reason, tmp_path):
+    client = Client(prepared(ready=False, reason=reason, action="use system"))
+    result = engine.resolve(
+        engine.AUTO,
+        token_loader=lambda: "token",
+        client_factory=lambda token, home: client,
+        home=tmp_path,
+    )
+    assert result.resolved == engine.SYSTEM
+    assert result.fallback
+    assert result.reason == reason
+    assert result.client is None
 
 
-def test_a_malformed_attestation_is_treated_as_no_licence():
-    """A payload missing the fields we read is a server we do not understand.
-    Guessing 'pro' would launch a binary we may not have; guessing 'free' just
-    works."""
-    chosen, _ = engine.choose(attestation={"unexpected": True}, onion_present=True)
+def test_explicit_onion_never_falls_back(tmp_path):
+    client = Client(prepared(ready=False, reason="insufficient_balance", action="top up"))
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.ONION,
+            token_loader=lambda: "token",
+            client_factory=lambda token, home: client,
+            home=tmp_path,
+        )
+    assert caught.value.reason == "insufficient_balance"
+    assert caught.value.next_action == "top up"
 
-    assert chosen == engine.PATCHRIGHT
+
+def test_auto_without_credentials_is_typed_system_fallback():
+    result = engine.resolve(
+        engine.AUTO,
+        token_loader=lambda: (_ for _ in ()).throw(RuntimeError("no token")),
+    )
+    assert result.resolved == engine.SYSTEM
+    assert result.reason == engine.Reason.LICENSE_UNAVAILABLE
+
+
+def test_invalid_mode_is_never_guessed():
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve("default")
+    assert caught.value.reason == engine.Reason.INVALID_MODE
+
+
+def test_public_status_contains_no_client_token_or_local_path(tmp_path):
+    client = Client(prepared())
+    result = engine.resolve(
+        engine.AUTO,
+        token_loader=lambda: "super-secret",
+        client_factory=lambda token, home: client,
+        home=tmp_path,
+    )
+    status = result.public_status()
+    assert status["resolved_engine"] == engine.ONION
+    assert "super-secret" not in repr(status)
+    assert str(tmp_path) not in repr(status)

@@ -13,11 +13,45 @@ co browser close                         # done
 
 The browser stays open **between commands**. Each `co browser ...` call drives the *same* window — your navigation, cookies, and logged-in session persist until you `close`.
 
+## Choosing the browser engine
+
+ConnectOnion 1.8 resolves the engine once when the browser daemon starts:
+
+```bash
+co browser --engine auto go_to example.com    # default
+co browser --engine system go_to example.com  # always Patchright + system Chrome
+co browser --engine onion go_to example.com   # strict paid Onion Browser
+```
+
+| mode | behavior |
+|---|---|
+| `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
+| `system` | Return before importing Onionwright, reading paid credentials, calling oo-api, downloading an artifact, or creating a paid session. Cost: $0 browser runtime. |
+| `onion` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
+
+Artifact checking and download do not charge. A paid session starts only after
+the complete artifact is locally ready, then prepays $0.025 for one 15-minute
+interval. Renewal occurs before the signed deadline. If renewal fails, that
+exact Onion process stops at `paid_until`; it is never changed into system
+Chrome mid-session.
+
+The daemon is pinned to its chosen engine. Close it before changing modes:
+
+```bash
+co browser close
+co browser --engine system go_to example.com
+```
+
+System Chrome and Onion Browser use separate persistent profiles. Cookies and
+fingerprint state are not silently copied between them. `co browser status`
+shows requested/resolved engine, typed reason, and exact artifact when paid;
+it never prints tokens, licence bytes, or paid-cache paths.
+
 ## Why Use This
 
 Two ways to use a browser from the CLI, and you pick per command:
 
-- **Direct function call** — `co browser go_to x.com`. Deterministic, instant, free (no LLM). Great for scripting and exact steps you already know.
+- **Direct function call** — `co browser go_to x.com`. Deterministic and instant, with no LLM charge; browser runtime cost follows the selected engine. Great for scripting and exact steps you already know.
 - **Natural language** — `co browser do "find the cheapest flight"`. The AI agent figures out the steps. Great when you don't want to spell them out.
 
 Both drive the **same live browser**, so you can mix them: script the boring parts, let the agent handle the hard part.
