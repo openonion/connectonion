@@ -187,6 +187,12 @@ with the tab still open means that agent crashed, not that it is still working.
 A tab opened without `--needs` frees up after ~2 minutes of silence, which is
 wrong whenever you are waiting on a slow page or a human. Say the number.
 
+Named tabs are also the concurrency boundary. The daemon owns one asyncio browser
+runtime: two operations aimed at `scrape` queue behind each other, while `scrape`
+and `inbox` may run at the same time. A registry lock decides claim races before
+either operation touches a page, so concurrency never means two agents silently
+sharing one tab.
+
 Set `CO_WHO` so your commands carry your identity:
 
 ```bash
@@ -231,8 +237,10 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 
 ## Sessions & Profile
 
-- One browser per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
+- One async browser runtime per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
 - The daemon endpoint: a Unix socket under `$XDG_RUNTIME_DIR/co/browser.sock` on macOS/Linux, a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`.
+- Client work is bounded: 1 MiB request cap, 120-second read/reply deadlines,
+  32 admitted connections, and eight blocking transport workers on Windows.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
 
 ## Error Messages

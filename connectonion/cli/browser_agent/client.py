@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
   Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
-  Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | ALL setup RuntimeErrors (Windows authkey mismatch/corruption, daemon didn't start) are caught in send() → one clean stderr line + exit 1, NEVER a traceback (typer's pretty exceptions would print frame locals, which hold the HMAC secret on the connect path) | daemon dying mid-request → clean stderr line + exit 1
+  Errors: _connect() retries transient refusal/backpressure and never unlinks an endpoint whose recorded owner is alive; only a truly stale POSIX socket is removed | missing endpoint → spawn daemon and wait until ready or timeout | setup RuntimeErrors become one clean stderr line, never a traceback containing HMAC-path locals | daemon death, overload shedding, or disconnect mid-request becomes a clean exit 1
 """
 
 import functools
@@ -38,8 +38,8 @@ def _owner_alive(sock_path: str) -> bool:
 
 def _connect(sock_path: str):
     """Connect to the daemon. Returns a live connection, or None if the daemon is
-    genuinely gone. A busy single-threaded daemon (during a browser action) can momentarily
-    refuse while its accept backlog is full — that is NOT a dead daemon, so retry
+    genuinely gone. A daemon at its bounded connection cap can momentarily refuse —
+    that is NOT a dead daemon, so retry
     while its recorded owner is alive; a dead owner fails fast (the spawned daemon
     replaces it). POSIX uses a raw AF_UNIX socket (unchanged); Windows uses the
     authenticated named-pipe client from `transport`. Raises RuntimeError only for
@@ -123,8 +123,8 @@ def _spawn_daemon(sock_path: str, headless: bool):
         time.sleep(0.1)
     if _owner_alive(sock_path):
         # A daemon IS running — it just can't take our connection right now (its
-        # backlog is full behind a long-running command). "Did not start" would lie.
-        raise RuntimeError("browser daemon is busy (a long command is holding it) — try again")
+        # bounded client capacity is full). "Did not start" would lie.
+        raise RuntimeError("browser daemon is at connection capacity — try again")
     raise RuntimeError(f"browser daemon did not start (see {log_path})")
 
 
@@ -229,14 +229,14 @@ def _request(line: str, headless: bool = False, tab: str = None,
                 # (#356).
                 #
                 # A failed connect is not "nobody listening": a daemon whose
-                # backlog is full behind a long command refuses connections too.
+                # bounded client capacity can refuse connections too.
                 # Saying "not running — the next page command starts one" then
                 # sends the reader in the wrong direction, and every command they
                 # try answers "busy". _owner_alive reads the pidfile and asks
                 # whether that pid lives — no spawn, no log, so the #356
                 # constraint above still holds.
                 if _owner_alive(sock_path):
-                    return 0, "Browser daemon: running, busy with a long command — try again shortly"
+                    return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
             _ensure_browser_ready(line)  # cold start: provision the browser first
             conn = _spawn_daemon(sock_path, headless)

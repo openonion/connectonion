@@ -14,8 +14,10 @@ Strategy: a StubBrowser stands in for BrowserAutomation so no real Chrome/Playwr
 or network is needed. The daemon's lazy BrowserAutomation is swapped for the stub.
 """
 
+import asyncio
 import contextlib
 import io
+import json as _json
 import os
 import shlex
 import socket
@@ -27,9 +29,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from connectonion.cli.browser_agent import daemon as d
 from connectonion.cli.browser_agent import client as c
+from connectonion.cli.browser_agent import daemon as d
 from connectonion.cli.browser_agent import transport as tp
+from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserCore
 
 IS_WINDOWS = tp.IS_WINDOWS
 posix_only = pytest.mark.skipif(IS_WINDOWS, reason="exercises the raw AF_UNIX socket mechanism (POSIX)")
@@ -437,6 +440,7 @@ def test_handle_browser_help_needs_no_browser(capsys):
 def test_next_tip_rotates(tmp_path, monkeypatch):
     """Each run surfaces the next tip; the index wraps around and persists in ~/.co."""
     import pathlib
+
     from connectonion.cli.commands import browser_commands as bc
 
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
@@ -464,6 +468,7 @@ def test_tip_hidden_when_not_a_tty(monkeypatch, capsys):
 def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
     """On an interactive terminal a successful command appends a rotating tip."""
     import pathlib
+
     from connectonion.cli.commands import browser_commands as bc
 
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
@@ -542,6 +547,22 @@ def test_socket_round_trip(short_sock, monkeypatch, capsys):
     assert code == 0
     assert out == "Navigated to example.com"
     assert daemon.browser.calls == [("go_to", "example.com")]
+
+
+def test_close_stops_a_fresh_async_daemon_without_launching_chrome(short_sock, monkeypatch):
+    """The real async core returns a longer close message than the old stub."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    daemon = d.BrowserDaemon(short_sock, headless=True)
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    code, payload = c._request("close", headless=True)
+
+    assert code == 0
+    assert payload.startswith("Browser closed")
+    server.join(timeout=2)
+    assert not server.is_alive()
 
 
 def test_do_model_wait_does_not_hold_the_daemon_lane(short_sock, monkeypatch):
@@ -700,8 +721,6 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
 
 
 # --- the -t / tab noun grammar (one task = one tab) ---
-
-import json as _json
 
 
 def _env(line, caller="", tab=None, account=""):
@@ -999,6 +1018,7 @@ def test_do_instruction_is_not_quote_mangled(monkeypatch):
     """Fix: the NL instruction was re-derived from the shlex-joined line, leaking quotes.
     A multi-word instruction must reach the agent as clean text."""
     import shlex as _shlex
+
     from connectonion.cli.browser_agent import agent as agent_module
 
     captured = {}
@@ -1163,7 +1183,8 @@ def test_close_reserved_tab_before_browser_launch_forgets_it(tmp_path):
 
     ok, _ = daemon.dispatch(_env("tab open research", caller="agent-b"))
     assert ok is True                                       # name free immediately
-    daemon.browser._executor.shutdown(wait=False)
+    # The 1.8 daemon owns the asyncio core directly; there is deliberately no
+    # synchronous one-worker executor left to shut down in this no-launch test.
 
 
 def test_newtab_with_tab_target_is_rejected(tmp_path):
@@ -1196,11 +1217,11 @@ def test_bind_holds_an_exclusive_lock_for_life(short_sock):
     fresh_lock.close()
 
 
-# ---- concurrency: many clients, one single-threaded daemon ----------------
+# ---- concurrency: many clients, one asyncio-owned daemon ------------------
 
 def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
-    """8 clients firing at once against the single-threaded daemon: every request
-    must be served (queued, not dropped or deadlocked) and every reply delivered.
+    """8 clients firing at once against the asyncio daemon: every request
+    must be served (bounded, not dropped or deadlocked) and every reply delivered.
     On Windows this drives real named-pipe contention (mpc PIPE_BUSY waits); on
     POSIX the AF_UNIX accept backlog. This is the multi-agent daily reality."""
     monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
@@ -1220,6 +1241,153 @@ def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
 
     assert len(codes) == 8 and all(code == 0 for code in codes)
     assert len(daemon.browser.calls) == 8  # nothing dropped under contention
+
+
+class AsyncSocketBrowser(AsyncBrowserCore):
+    """Real per-tab scheduling, with no Chrome needed for transport E2E."""
+
+    def __init__(self):
+        super().__init__(headless=True)
+        self.intervals = []
+        self.started = threading.Event()
+
+    async def slow(self, seconds: float = 0.2) -> str:
+        async with self._tab_operation(ensure_page=False):
+            key = self._bound_session_key()
+            start = time.monotonic()
+            self.started.set()
+            try:
+                await asyncio.sleep(seconds)
+            finally:
+                self.intervals.append((key, start, time.monotonic()))
+            return f"finished {key}"
+
+
+def test_independent_tabs_overlap_through_the_native_transport(short_sock, monkeypatch):
+    """The issue's end-to-end claim: concurrency survives the actual IPC boundary."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setattr(c, "_caller", lambda: threading.current_thread().name)
+    daemon = make_daemon(short_sock, stub=AsyncSocketBrowser())
+    assert daemon.dispatch(_env("tab open left", caller="left-agent"))[0] is True
+    assert daemon.dispatch(_env("tab open right", caller="right-agent"))[0] is True
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    replies = []
+
+    def drive(tab):
+        replies.append(c._request("slow 0.2", headless=True, tab=tab))
+
+    workers = [
+        threading.Thread(target=drive, name="left-agent", args=("left",)),
+        threading.Thread(target=drive, name="right-agent", args=("right",)),
+    ]
+    started = time.monotonic()
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=3)
+    elapsed = time.monotonic() - started
+
+    assert sorted(code for code, _ in replies) == [0, 0]
+    assert elapsed < 1.5, "parallel clients did not finish promptly"
+    left, right = daemon.browser.intervals
+    assert min(left[2], right[2]) > max(left[1], right[1])
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_same_tab_stays_ordered_through_the_native_transport(short_sock, monkeypatch):
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setattr(c, "_caller", lambda: "owner")
+    daemon = make_daemon(short_sock, stub=AsyncSocketBrowser())
+    assert daemon.dispatch(_env("tab open work", caller="owner"))[0] is True
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    replies = []
+    workers = [
+        threading.Thread(
+            target=lambda: replies.append(
+                c._request("slow 0.08", headless=True, tab="work")
+            )
+        )
+        for _ in range(2)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert sorted(code for code, _ in replies) == [0, 0]
+    first, second = daemon.browser.intervals
+    assert first[2] <= second[1]
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_claim_race_through_native_transport_has_one_winner(short_sock, monkeypatch):
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setattr(c, "_caller", lambda: threading.current_thread().name)
+    daemon = make_daemon(short_sock, stub=AsyncSocketBrowser())
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+    gate = threading.Barrier(3)
+    replies = []
+
+    def contend():
+        gate.wait(timeout=2)
+        replies.append(c._request("slow 0.05", headless=True))
+
+    workers = [
+        threading.Thread(target=contend, name="agent-a"),
+        threading.Thread(target=contend, name="agent-b"),
+    ]
+    for worker in workers:
+        worker.start()
+    gate.wait(timeout=2)
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert sorted(code for code, _ in replies) == [0, 4]
+    assert len(daemon.browser.intervals) == 1
+    assert daemon.browser._tab_meta[None]["caller"] in {"agent-a", "agent-b"}
+    assert "active_requests" not in daemon.browser._tab_meta[None]
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_disconnect_does_not_orphan_the_active_request_lease(short_sock, monkeypatch):
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    browser = AsyncSocketBrowser()
+    daemon = make_daemon(short_sock, stub=browser)
+    assert daemon.dispatch(_env("tab open work", caller="owner"))[0] is True
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    conn = c._connect(short_sock)
+    request = _env("slow 0.05", caller="owner", tab="work").encode()
+    if IS_WINDOWS:
+        conn.send_bytes(request)
+    else:
+        conn.sendall(request)
+        conn.shutdown(socket.SHUT_WR)
+    conn.close()  # disappear before the reply
+
+    assert browser.started.wait(timeout=1)
+    deadline = time.time() + 2
+    while time.time() < deadline and "active_requests" in browser._tab_meta["work"]:
+        time.sleep(0.01)
+    meta = browser._tab_meta["work"]
+    assert "active_requests" not in meta
+    assert meta["caller"] == "owner"
+    assert browser._active_operations == 0
+    daemon._cleanup()
+    server.join(timeout=2)
 
 
 def test_second_daemon_yields_at_the_singleton_lock(short_sock, monkeypatch):

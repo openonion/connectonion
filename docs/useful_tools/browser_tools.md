@@ -287,16 +287,14 @@ agent.input("Fill in the contact form on example.com with test data")
 
 One `BrowserAutomation` instance is safe to reuse across turns and concurrent hosted sessions. Public methods are serialized onto one internal browser worker thread, so Playwright's sync API is always called from the thread that owns it. When `bind_browser_session` is enabled, each hosted session gets its own tab in the shared browser context.
 
-That worker-thread behavior remains the public contract during the 1.8 async
-migration. The replacement core is internal until every browser verb and the
-cross-platform daemon have equivalent coverage; do not import it as an
-application API yet. The lifecycle, concurrency, cancellation, and compatibility
-boundaries are recorded in [DD-054](../design-decisions/054-one-async-browser-runtime.md).
-The internal core now covers the deterministic selector, extraction, viewport,
-wait, system-info, tab-status, page/frame-script, and file-upload contracts, but
-click variants, downloads, humanized input, model-backed element finding,
-concurrent IPC, and the synchronous facade are still migration work.
-`BrowserAutomation` remains the supported API.
+That worker-thread behavior remains the public Python contract until #500 adds
+the compatibility facade. The replacement core is still internal; do not import
+it as an application API. The `co browser` daemon now owns that async core
+directly: independent tabs interleave, same-tab operations serialize, and the
+POSIX/Windows transports bound connections, reads, writes, and shutdown. The
+lifecycle, concurrency, cancellation, and compatibility boundaries are recorded
+in [DD-054](../design-decisions/054-one-async-browser-runtime.md).
+`BrowserAutomation` remains the supported Python API.
 
 ## Common Patterns
 
