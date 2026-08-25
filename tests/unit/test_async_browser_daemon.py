@@ -229,3 +229,59 @@ async def test_connection_cap_sheds_excess_without_spawning_more_work(daemon):
     for task in blockers:
         task.cancel()
     await asyncio.gather(*blockers, return_exceptions=True)
+
+
+class WakeConnection:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_windows_shutdown_discards_the_connection_that_wakes_accept(
+    daemon, monkeypatch
+):
+    connection = WakeConnection()
+
+    async def accepted(_fn):
+        daemon._closing = True
+        return connection
+
+    monkeypatch.setattr(daemon, "_transport_call", accepted)
+
+    await daemon._serve_windows()
+
+    assert connection.closed is True
+    assert daemon._client_tasks == set()
+
+
+def test_windows_shutdown_wakes_accept_before_closing_the_listener(
+    daemon, monkeypatch
+):
+    submitted = []
+
+    class Loop:
+        def run_in_executor(self, pool, fn):
+            submitted.append((pool, fn))
+
+    class Listener:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    listener = Listener()
+    pool = object()
+    daemon._loop = Loop()
+    daemon._transport_pool = pool
+    daemon._srv = listener
+    monkeypatch.setattr(daemon_module.transport, "IS_WINDOWS", True)
+
+    daemon._begin_shutdown()
+
+    assert daemon._closing is True
+    assert listener.closed is False
+    assert submitted == [(pool, daemon._wake_windows_accept)]

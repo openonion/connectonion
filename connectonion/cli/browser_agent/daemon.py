@@ -851,6 +851,14 @@ class BrowserDaemon:
             if conn is None:
                 slots.release()
                 continue
+            # Listener.close() does not interrupt an already-blocked Windows
+            # named-pipe accept. Shutdown authenticates one internal connection
+            # to wake it; discard that sentinel instead of starting a request
+            # reader that would keep the transport pool alive for 120 seconds.
+            if self._closing:
+                conn.close()
+                slots.release()
+                return
             task = asyncio.create_task(self._handle_windows_client(conn, slots))
             self._track_client(task)
 
@@ -935,9 +943,38 @@ class BrowserDaemon:
             return self._launch_failed() or closed or (self._had_browser and not alive)
 
     def _begin_shutdown(self) -> None:
+        if self._closing:
+            return
         self._closing = True
-        if self._srv:
+        if (
+            transport.IS_WINDOWS
+            and self._srv
+            and self._loop is not None
+            and self._transport_pool is not None
+        ):
+            # multiprocessing.connection.Listener.close() does not wake a
+            # ConnectNamedPipe already blocked in another thread. Connect with
+            # our own key before closing the listener; _serve_windows discards
+            # this sentinel and can then enter deterministic shutdown.
+            self._loop.run_in_executor(
+                self._transport_pool, self._wake_windows_accept
+            )
+        elif self._srv:
             self._srv.close()
+
+    def _wake_windows_accept(self) -> None:
+        """Authenticate one no-payload client so a blocked pipe accept returns."""
+        try:
+            conn = transport.win_connect(self.sock_path, self._authkey)
+        except (
+            transport.AuthenticationError,
+            EOFError,
+            FileNotFoundError,
+            ConnectionError,
+            OSError,
+        ):
+            return
+        conn.close()
 
     async def _shutdown_async(self) -> None:
         self._closing = True
