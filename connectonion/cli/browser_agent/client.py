@@ -27,13 +27,31 @@ def default_sock_path() -> str:
     return transport.default_address()
 
 
-def _owner_alive(sock_path: str) -> bool:
-    """Read the daemon pid sidecar without importing Playwright or browser tools."""
+def _owner_pid(sock_path: str) -> int | None:
+    """Return the live daemon pid recorded beside the endpoint, if there is one."""
     pid_file = Path(transport.pid_path(sock_path))
     if not pid_file.exists():
-        return False
+        return None
     raw = pid_file.read_text(encoding="utf-8").strip()
-    return raw.isdigit() and transport.pid_alive(int(raw))
+    if not raw.isdigit():
+        return None
+    pid = int(raw)
+    return pid if transport.pid_alive(pid) else None
+
+
+def _owner_alive(sock_path: str) -> bool:
+    """Read the daemon pid sidecar without importing Playwright or browser tools."""
+    return _owner_pid(sock_path) is not None
+
+
+def _wait_for_pid_exit(pid: int, timeout: float = 15.0) -> bool:
+    """Wait for one exact daemon process, never a replacement using its endpoint."""
+    deadline = time.monotonic() + timeout
+    while transport.pid_alive(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
 
 
 def _connect(sock_path: str):
@@ -215,6 +233,7 @@ def _request(line: str, headless: bool = False, tab: str = None,
         "raw": raw_result,
     })
     sock_path = default_sock_path()
+    owner_pid = None
     try:
         conn = _connect(sock_path)
         if conn is None:
@@ -240,6 +259,11 @@ def _request(line: str, headless: bool = False, tab: str = None,
                 return 0, "Browser daemon: not running — the next page command starts one"
             _ensure_browser_ready(line)  # cold start: provision the browser first
             conn = _spawn_daemon(sock_path, headless)
+        # A successful whole-browser close is a lifecycle barrier on Windows.
+        # Record the exact process serving this connection so a concurrently
+        # started replacement is never mistaken for the daemon being closed.
+        if transport.IS_WINDOWS and tab is None and line.split() == ["close"]:
+            owner_pid = _owner_pid(sock_path)
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
         # with a clean one-line error, NEVER a traceback: typer's pretty exceptions
@@ -271,6 +295,11 @@ def _request(line: str, headless: bool = False, tab: str = None,
 
     header, _, payload = reply.decode().partition("\n")
     if header == "OK":
+        if owner_pid is not None and not _wait_for_pid_exit(owner_pid):
+            return 1, (
+                "Browser closed, but its daemon did not stop within 15 seconds — "
+                "try again"
+            )
         return 0, payload
     # A warm daemon reached the launcher and found no browser. The cold-start
     # provisioning above was skipped because the connect succeeded, so without

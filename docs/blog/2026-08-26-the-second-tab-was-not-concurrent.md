@@ -34,6 +34,9 @@ Windows accept, authentication, read, and write calls cross a dedicated bounded
 worker pool and submit to the same async dispatch path. Both sides cap admitted
 clients, request bytes, read time, and reply time. Concurrency without those
 bounds would only trade one global queue for an unlimited pile of tasks.
+On Windows, a successful whole-browser `close` also waits for the exact daemon
+PID that served it to exit. The next command can therefore cold-start against a
+new named pipe instead of reaching the old daemon during its shutdown window.
 
 The useful test is still the original stopwatch. Two independent 200 ms
 operations go through the real local socket and overlap. The same-tab test takes

@@ -241,6 +241,8 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 - The daemon endpoint: a Unix socket under `$XDG_RUNTIME_DIR/co/browser.sock` on macOS/Linux, a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`.
 - Client work is bounded: 1 MiB request cap, 120-second read/reply deadlines,
   32 admitted connections, and eight blocking transport workers on Windows.
+- On Windows, `co browser close` returns only after the serving daemon exits, so
+  an immediate next command can safely start a fresh daemon.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
 
 ## Error Messages
