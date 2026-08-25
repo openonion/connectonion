@@ -220,7 +220,8 @@ def _ensure_browser_ready(line: str) -> bool:
 
 def _request(line: str, headless: bool = False, tab: str = None,
              raw_result: bool = False, _provisioned: bool = False,
-             engine_mode: str = "auto", _protocol_checked: bool = False) -> tuple:
+             engine_mode: str = "auto", _protocol_checked: bool = False,
+             _connection=None) -> tuple:
     """Send one short daemon request and return ``(code, payload)``.
 
     ``raw_result`` is for the client-side agent: image data must reach its vision
@@ -240,7 +241,7 @@ def _request(line: str, headless: bool = False, tab: str = None,
     sock_path = default_sock_path()
     owner_pid = None
     try:
-        conn = _connect(sock_path)
+        conn = _connection if _connection is not None else _connect(sock_path)
         if (conn is not None and engine_mode == "onion"
                 and not _protocol_checked and line != "engine_status"):
             # A pre-1.8 daemon ignores unknown envelope fields. Sending an
@@ -250,12 +251,12 @@ def _request(line: str, headless: bool = False, tab: str = None,
             # requested command has any browser effect. Auto/system preserve
             # wire-v1 compatibility: an old daemon's system browser is a safe
             # realization of both modes and does not risk an unintended charge.
-            conn.close()
             probe_code, probe_payload = _request(
                 "engine_status",
                 headless=headless,
                 engine_mode=engine_mode,
                 _protocol_checked=True,
+                _connection=conn,
             )
             if probe_code:
                 return 1, (
