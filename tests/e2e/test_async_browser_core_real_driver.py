@@ -23,7 +23,9 @@ from connectonion.useful_tools.browser_tools._async_browser import (
 
 
 @pytest.mark.slow
-def test_real_async_driver_keeps_sessions_isolated_and_interleaves(tmp_path, monkeypatch):
+def test_real_async_driver_keeps_sessions_isolated_and_interleaves(
+    tmp_path, monkeypatch
+):
     asyncio.run(_exercise_real_async_driver(tmp_path, monkeypatch))
 
 
@@ -65,6 +67,7 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                 browser._bind_session(session)
                 frame_html = (
                     f"<span id=frame-marker>{marker} frame</span>"
+                    "<button id=frame-action onclick=\"this.dataset.clicked='yes'\">Frame action</button>"
                     "<input id=direct-upload type=file>"
                     "<input id=chooser-upload type=file style='display:none'>"
                     "<button id=upload-trigger "
@@ -74,9 +77,12 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                 page_html = (
                     f"<title>{marker}</title><p>{marker}</p>"
                     f"<input id=editor value={marker}>"
+                    "<button class=publish onclick=\"this.dataset.clicked='yes'\">Publish</button>"
+                    "<div class=row><span class=draft>Draft</span>"
+                    "<button class=near onclick=\"this.previousElementSibling.textContent=''\">Send</button></div>"
                     f"<article class=item><span class=body>{marker} item</span></article>"
                     "<a href=https://example.com/one>one</a>"
-                    f"<iframe name=editor srcdoc=\"{html.escape(frame_html, quote=True)}\">"
+                    f'<iframe name=editor srcdoc="{html.escape(frame_html, quote=True)}">'
                     "</iframe>"
                 )
                 await browser.go_to(
@@ -129,6 +135,57 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             assert extracted[0]["visible_bounds"]["width"] > 0
             assert await browser.set_viewport(1280, 720) == "Viewport set to 1280x720"
 
+            assert "with text: Publish" in await browser.click_element_by_selector(
+                ".publish", text="Publish"
+            )
+            assert (
+                await browser.page.locator(".publish").get_attribute("data-clicked")
+                == "yes"
+            )
+            assert "Typed text" in await browser.type_text_by_selector(
+                "#editor", "-typed"
+            )
+            assert await browser.page.locator("#editor").input_value() == "beta-typed"
+
+            assert (
+                "in frames matching 'editor'"
+                in await browser.click_element_by_selector(
+                    "#frame-action", frame_name="editor"
+                )
+            )
+            editor_frame = next(
+                frame for frame in browser.page.frames if frame.name == "editor"
+            )
+            assert (
+                await editor_frame.locator("#frame-action").get_attribute(
+                    "data-clicked"
+                )
+                == "yes"
+            )
+
+            near_result = await browser.click_element_near_selector(
+                ".draft",
+                ".near",
+                target_text="Send",
+                wait_ms=50,
+                verify_anchor_text_cleared=True,
+            )
+            assert "state=anchor_text_cleared" in near_result
+
+            browser._bind_session("A")
+            box = await browser.page.locator("#editor").bounding_box()
+            clicking = asyncio.create_task(
+                browser.mouse_click(
+                    int(box["x"] + box["width"] / 2),
+                    int(box["y"] + box["height"] / 2),
+                )
+            )
+            await asyncio.sleep(0.05)
+            browser._bind_session("B")
+            assert "beta" in await asyncio.wait_for(browser.get_text(), timeout=0.5)
+            assert clicking.done() is False
+            assert (await clicking).startswith("Clicked at (")
+
             page_result = json.loads(
                 await browser.run_page_script(
                     str(page_script),
@@ -140,9 +197,7 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             frame_result = json.loads(
                 await browser.run_frame_script(
                     str(frame_script),
-                    json.dumps(
-                        {"selector": "#frame-marker", "text": "beta frame"}
-                    ),
+                    json.dumps({"selector": "#frame-marker", "text": "beta frame"}),
                     frame_name="editor",
                 )
             )
@@ -160,9 +215,12 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             editor_frame = next(
                 frame for frame in browser.page.frames if frame.name == "editor"
             )
-            assert await editor_frame.locator("#direct-upload").evaluate(
-                "element => element.files[0].name"
-            ) == direct_upload.name
+            assert (
+                await editor_frame.locator("#direct-upload").evaluate(
+                    "element => element.files[0].name"
+                )
+                == direct_upload.name
+            )
 
             chooser_result = json.loads(
                 await browser.upload_file_after_click_by_selector(
@@ -173,9 +231,12 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                 )
             )
             assert chooser_result["uploaded"] is True
-            assert await editor_frame.locator("#chooser-upload").evaluate(
-                "element => element.files[0].name"
-            ) == chooser_upload.name
+            assert (
+                await editor_frame.locator("#chooser-upload").evaluate(
+                    "element => element.files[0].name"
+                )
+                == chooser_upload.name
+            )
         finally:
             browser._bind_session(None)
             close_result = await browser.close()
@@ -186,15 +247,20 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
         loop.set_exception_handler(previous_handler)
 
     assert close_result == "Browser closed. Session saved for next time."
-    assert not loop_errors, {"timings": timings, "errors": [
-        {
-            "message": error.get("message"),
-            "exception": repr(error.get("exception")),
-            "origin": [
-                f"{frame.name}:{frame.lineno}"
-                for frame in (getattr(error.get("future"), "_source_traceback", None) or [])
-                if "patchright" in frame.filename
-            ][-4:],
-        }
-        for error in loop_errors
-    ]}
+    assert not loop_errors, {
+        "timings": timings,
+        "errors": [
+            {
+                "message": error.get("message"),
+                "exception": repr(error.get("exception")),
+                "origin": [
+                    f"{frame.name}:{frame.lineno}"
+                    for frame in (
+                        getattr(error.get("future"), "_source_traceback", None) or []
+                    )
+                    if "patchright" in frame.filename
+                ][-4:],
+            }
+            for error in loop_errors
+        ],
+    }

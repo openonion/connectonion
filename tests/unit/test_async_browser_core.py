@@ -5,12 +5,11 @@ tests prove the new core itself is genuinely async, preserves per-session tabs,
 and cleans up deterministically before #499 puts concurrent IPC in front of it.
 """
 
-import asyncio
 import ast
+import asyncio
 import inspect
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -24,6 +23,9 @@ class FakeKeyboard:
 
     async def press(self, key):
         self.pressed.append(key)
+
+    async def type(self, text):
+        self.pressed.append(("type", text))
 
 
 class FakeLocator:
@@ -40,6 +42,10 @@ class FakeLocator:
 
     async def click(self, force=False):
         self.page.clicked.append((self.selector, self.index))
+        self.page.clicked_forces.append(force)
+
+    async def bounding_box(self):
+        return self.page.box_by_selector.get((self.selector, self.index))
 
     async def inner_text(self):
         return self.page.text_by_selector.get(self.selector, f"text:{self.index}")
@@ -63,8 +69,10 @@ class FakePage:
         self.keyboard = FakeKeyboard()
         self.focused = {"tag": "body", "is_editable": False, "sensitive": False}
         self.selector_counts = {}
+        self.box_by_selector = {}
         self.text_by_selector = {"body": "page body"}
         self.clicked = []
+        self.clicked_forces = []
         self.filled = []
         self.uploaded = []
         self.name = ""
@@ -72,6 +80,7 @@ class FakePage:
         self.waited_selectors = []
         self.evaluate_calls = []
         self.evaluate_result = None
+        self.evaluate_results = []
         self.file_chooser = FakeFileChooser()
         self.file_chooser_timeouts = []
 
@@ -109,7 +118,11 @@ class FakePage:
         if "document.activeElement" in script:
             return dict(self.focused)
         self.evaluate_calls.append((script, arg))
-        return self.evaluate_result if self.evaluate_result is not None else {"arg": arg}
+        if self.evaluate_results:
+            return self.evaluate_results.pop(0)
+        return (
+            self.evaluate_result if self.evaluate_result is not None else {"arg": arg}
+        )
 
     async def screenshot(self, **kwargs):
         return b"png"
@@ -223,9 +236,7 @@ def test_async_core_has_no_sync_patchright_dependency():
     tree = ast.parse(source)
 
     imported_modules = {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     }
     assert "patchright.sync_api" not in imported_modules
     assert not any(
@@ -244,9 +255,13 @@ def test_async_core_has_no_sync_patchright_dependency():
 
 
 @pytest.mark.asyncio
-async def test_open_reuses_one_async_context_and_seeds_before_navigation(monkeypatch, tmp_path):
+async def test_open_reuses_one_async_context_and_seeds_before_navigation(
+    monkeypatch, tmp_path
+):
     seed = tmp_path / "state.json"
-    seed.write_text('{"cookies":[{"name":"sid","value":"one","domain":"example.com","path":"/"}]}')
+    seed.write_text(
+        '{"cookies":[{"name":"sid","value":"one","domain":"example.com","path":"/"}]}'
+    )
     context, playwright = install_fake_runtime(monkeypatch, tmp_path)
     browser = async_mod.AsyncBrowserCore(headless=True, seed_state=str(seed))
 
@@ -258,7 +273,10 @@ async def test_open_reuses_one_async_context_and_seeds_before_navigation(monkeyp
     assert len(context.pages_created) == 1
     assert context.cookies_added[0]["name"] == "sid"
     assert playwright.chromium.launch_kwargs["no_viewport"] is True
-    assert "--use-mock-keychain" in playwright.chromium.launch_kwargs["ignore_default_args"]
+    assert (
+        "--use-mock-keychain"
+        in playwright.chromium.launch_kwargs["ignore_default_args"]
+    )
     assert browser.page.viewport == {"width": 1920, "height": 1200}
 
     await browser.close()
@@ -275,7 +293,10 @@ async def test_isolated_runtime_can_keep_chromes_mock_keychain(monkeypatch, tmp_
 
     await browser.open_browser()
 
-    assert "--use-mock-keychain" not in playwright.chromium.launch_kwargs["ignore_default_args"]
+    assert (
+        "--use-mock-keychain"
+        not in playwright.chromium.launch_kwargs["ignore_default_args"]
+    )
     await browser.close()
 
 
@@ -318,7 +339,10 @@ async def test_contextvar_sessions_make_progress_on_independent_tabs():
         navigate("B", "b.example"),
     )
 
-    assert results == ["Navigated to https://a.example", "Navigated to https://b.example"]
+    assert results == [
+        "Navigated to https://a.example",
+        "Navigated to https://b.example",
+    ]
     assert browser._pages["A"] is not browser._pages["B"]
 
 
@@ -347,7 +371,9 @@ async def test_same_tab_operations_are_serialized():
 
 
 @pytest.mark.asyncio
-async def test_cancelled_launch_closes_partial_context_and_driver(monkeypatch, tmp_path):
+async def test_cancelled_launch_closes_partial_context_and_driver(
+    monkeypatch, tmp_path
+):
     page_started = asyncio.Event()
 
     class BlockingContext(FakeContext):
@@ -371,7 +397,9 @@ async def test_cancelled_launch_closes_partial_context_and_driver(monkeypatch, t
 
 
 @pytest.mark.asyncio
-async def test_cancel_during_driver_start_waits_for_driver_then_stops_it(monkeypatch, tmp_path):
+async def test_cancel_during_driver_start_waits_for_driver_then_stops_it(
+    monkeypatch, tmp_path
+):
     start_entered = asyncio.Event()
     release_start = asyncio.Event()
     context = FakeContext()
@@ -402,7 +430,9 @@ async def test_cancel_during_driver_start_waits_for_driver_then_stops_it(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_cancel_during_context_launch_waits_for_context_then_closes_it(monkeypatch, tmp_path):
+async def test_cancel_during_context_launch_waits_for_context_then_closes_it(
+    monkeypatch, tmp_path
+):
     launch_entered = asyncio.Event()
     release_launch = asyncio.Event()
     context = FakeContext()
@@ -436,7 +466,9 @@ async def test_cancel_during_context_launch_waits_for_context_then_closes_it(mon
 
 
 @pytest.mark.asyncio
-async def test_close_waits_for_an_active_operation_before_teardown(monkeypatch, tmp_path):
+async def test_close_waits_for_an_active_operation_before_teardown(
+    monkeypatch, tmp_path
+):
     navigation_started = asyncio.Event()
     release_navigation = asyncio.Event()
 
@@ -470,7 +502,9 @@ async def test_close_waits_for_an_active_operation_before_teardown(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_cancelled_close_finishes_cleanup_before_propagating(monkeypatch, tmp_path):
+async def test_cancelled_close_finishes_cleanup_before_propagating(
+    monkeypatch, tmp_path
+):
     close_started = asyncio.Event()
     release_close = asyncio.Event()
 
@@ -545,7 +579,7 @@ async def test_focus_guard_refuses_destructive_shortcut_and_allows_override():
 
 
 @pytest.mark.asyncio
-async def test_selector_methods_use_async_locator_contract(tmp_path):
+async def test_selector_methods_use_async_locator_contract(tmp_path, monkeypatch):
     upload = tmp_path / "report.txt"
     upload.write_text("ok")
     page = FakePage()
@@ -558,7 +592,15 @@ async def test_selector_methods_use_async_locator_contract(tmp_path):
     browser.browser = context
     browser._pages[None] = page
 
-    assert await browser.count_elements_by_selector("button") == "2 elements match selector: button"
+    async def click(_page, _x, _y, **_kwargs):
+        page.clicked.append(("humanized", 1, True))
+
+    monkeypatch.setattr(async_mod.humanize, "click", click)
+
+    assert (
+        await browser.count_elements_by_selector("button")
+        == "2 elements match selector: button"
+    )
     assert await browser.get_element_text_by_selector("button", 1) == "Publish"
     assert await browser.get_element_text_by_selector("missing") == (
         "No element found for selector: missing"
@@ -569,18 +611,19 @@ async def test_selector_methods_use_async_locator_contract(tmp_path):
     )
     assert "Clicked element 2/2" in await browser.click_element_by_selector("button", 1)
     assert "Filled element 1/1" in await browser.fill_text_by_selector("input", "hello")
-    assert page.waits == [1000]
-    uploaded = json.loads(
-        await browser.upload_file_by_selector("input", str(upload))
-    )
+    assert page.waits == [500, 1000, 1000]
+    uploaded = json.loads(await browser.upload_file_by_selector("input", str(upload)))
     assert uploaded["file"] == str(upload)
     assert uploaded["frame"]["index"] == 0
     assert page.clicked == [("button", 1)]
+    assert page.clicked_forces == [True]
     assert page.filled == [("input", 0, "hello")]
 
 
 @pytest.mark.asyncio
-async def test_deterministic_async_verbs_preserve_sync_signatures_and_results(monkeypatch):
+async def test_deterministic_async_verbs_preserve_sync_signatures_and_results(
+    monkeypatch,
+):
     methods = (
         "tab_status",
         "count_elements_by_selector",
@@ -702,6 +745,117 @@ async def test_async_frame_and_upload_verbs_preserve_sync_signatures():
 
 
 @pytest.mark.asyncio
+async def test_async_humanized_selector_verbs_preserve_sync_signatures():
+    for name in (
+        "click_element_by_selector",
+        "click_element_near_selector",
+        "type_text_by_selector",
+        "mouse_click",
+    ):
+        async_method = getattr(async_mod.AsyncBrowserCore, name, None)
+        sync_method = getattr(BrowserAutomation, name)
+        assert async_method is not None, name
+        assert inspect.iscoroutinefunction(async_method), name
+        assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+@pytest.mark.asyncio
+async def test_humanized_selector_click_supports_exact_text_and_frame_global_index(
+    monkeypatch,
+):
+    page = FakePage()
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+    clicks = []
+
+    async def click(_page, x, y, **kwargs):
+        clicks.append((x, y, kwargs))
+
+    monkeypatch.setattr(async_mod.humanize, "click", click)
+    page.evaluate_result = [{"x": 12, "y": 34}, {"x": 56, "y": 78}]
+    result = await browser.click_element_by_selector("button", 1, text="Publish")
+    assert result == "Clicked element 2/2 matching selector: button with text: Publish"
+    assert clicks == [(56, 78, {})]
+    assert page.waits == [500, 1000]
+
+    page.waits.clear()
+    first = FakeFrame(None, url="https://pay.example/one", name="checkout")
+    second = FakeFrame(None, url="https://pay.example/two", name="checkout")
+    first.selector_counts["button"] = 1
+    second.selector_counts["button"] = 1
+    second.box_by_selector[("button", 0)] = {
+        "x": 10,
+        "y": 20,
+        "width": 30,
+        "height": 40,
+    }
+    page.frames = [first, second]
+    result = await browser.click_element_by_selector(
+        "button", 1, frame_url_contains="pay.example"
+    )
+    assert (
+        result
+        == "Clicked element 2/2 matching selector: button in frames matching 'pay.example'"
+    )
+    assert clicks[-1] == (0, 0, {"box": {"x": 10, "y": 20, "width": 30, "height": 40}})
+
+
+@pytest.mark.asyncio
+async def test_humanized_type_mouse_and_near_anchor_are_fully_awaited(monkeypatch):
+    page = FakePage()
+    context = FakeContext()
+    context.pages_created.append(page)
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = context
+    browser._pages[None] = page
+    events = []
+
+    async def click(_page, x, y, **_kwargs):
+        events.append(("click", x, y))
+
+    async def type_text(_page, text, lock):
+        assert lock is browser._clipboard_lock
+        events.append(("type", text))
+
+    async def sleep(delay):
+        events.append(("sleep", delay))
+
+    monkeypatch.setattr(async_mod.humanize, "click", click)
+    monkeypatch.setattr(async_mod.humanize, "type_text", type_text)
+    monkeypatch.setattr(async_mod.asyncio, "sleep", sleep)
+
+    assert await browser.type_text_by_selector("input", "hello") == (
+        "Typed text into element 1/1 matching selector: input"
+    )
+    assert page.clicked == [("input", 0)]
+    assert page.clicked_forces == [True]
+    assert ("type", "hello") in events
+    assert await browser.mouse_click(20, 30) == "Clicked at (20, 30)"
+    assert events[-2:] == [("click", 20, 30), ("sleep", 1)]
+
+    page.evaluate_results = [
+        {"ok": True, "x": 7, "y": 9, "anchor_text": "Draft", "target_text": "Publish"},
+        "anchor_text_cleared",
+    ]
+    result = await browser.click_element_near_selector(
+        ".draft",
+        "button",
+        target_text="Publish",
+        wait_ms=42,
+        verify_anchor_text_cleared=True,
+    )
+    assert result == (
+        "Clicked target near anchor; state=anchor_text_cleared; "
+        "anchor_text='Draft'; target_text='Publish'"
+    )
+    assert ("click", 7, 9) in events
+    assert page.waits[-2:] == [42, 500]
+
+
+@pytest.mark.asyncio
 async def test_async_page_and_frame_scripts_keep_validation_and_result_contracts(
     tmp_path,
     monkeypatch,
@@ -731,7 +885,9 @@ async def test_async_page_and_frame_scripts_keep_validation_and_result_contracts
     assert await browser.run_page_script("missing.js") == (
         f"Script not found: {tmp_path / 'missing.js'}"
     )
-    assert await browser.run_page_script(".") == f"Script path is not a file: {tmp_path}"
+    assert (
+        await browser.run_page_script(".") == f"Script path is not a file: {tmp_path}"
+    )
     assert (await browser.run_page_script("verify.js", "{")).startswith(
         "Invalid args_json:"
     )
@@ -810,17 +966,23 @@ async def test_async_direct_upload_is_frame_aware_and_returns_sync_json(
     assert await browser.upload_file_by_selector("input", "folder") == (
         f"Path is not a file: {directory}"
     )
-    assert await browser.upload_file_by_selector(
-        'input[type="file"]',
-        "cover.png",
-        frame_name="missing",
-    ) == 'No file input found for selector: input[type="file"]'
-    assert await browser.upload_file_by_selector(
-        'input[type="file"]',
-        "cover.png",
-        index=1,
-        frame_name="editor",
-    ) == 'Selector matched 1 file input(s); index 1 is out of range'
+    assert (
+        await browser.upload_file_by_selector(
+            'input[type="file"]',
+            "cover.png",
+            frame_name="missing",
+        )
+        == 'No file input found for selector: input[type="file"]'
+    )
+    assert (
+        await browser.upload_file_by_selector(
+            'input[type="file"]',
+            "cover.png",
+            index=1,
+            frame_name="editor",
+        )
+        == "Selector matched 1 file input(s); index 1 is out of range"
+    )
 
 
 @pytest.mark.asyncio
@@ -855,18 +1017,24 @@ async def test_async_upload_after_click_filters_frame_text_and_awaits_chooser(tm
     assert page.file_chooser.files == [str(upload)]
     assert 2500 in page.waits
 
-    assert await browser.upload_file_after_click_by_selector(
-        "button",
-        str(upload),
-        text="Different",
-        frame_name="editor",
-    ) == "No upload trigger found for selector: button with text: Different"
-    assert await browser.upload_file_after_click_by_selector(
-        "button",
-        str(upload),
-        index=1,
-        frame_name="editor",
-    ) == "Selector matched 1 upload trigger(s); index 1 is out of range"
+    assert (
+        await browser.upload_file_after_click_by_selector(
+            "button",
+            str(upload),
+            text="Different",
+            frame_name="editor",
+        )
+        == "No upload trigger found for selector: button with text: Different"
+    )
+    assert (
+        await browser.upload_file_after_click_by_selector(
+            "button",
+            str(upload),
+            index=1,
+            frame_name="editor",
+        )
+        == "Selector matched 1 upload trigger(s); index 1 is out of range"
+    )
 
 
 @pytest.mark.asyncio
