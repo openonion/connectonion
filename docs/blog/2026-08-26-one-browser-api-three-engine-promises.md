@@ -1,50 +1,53 @@
-# One browser API, three different promises
+# The command we had to send before the command
 
-The awkward part of adding a paid browser was not choosing an executable. It
-was deciding exactly when ConnectOnion is allowed to change its mind.
+The paid browser integration looked finished. `co browser --engine onion`
+carried `"engine": "onion"` in its JSON envelope, the new daemon pinned that
+choice, and the launch seam refused to fall back after billing. Then one
+question spoiled the neat picture: what if the daemon was already running?
 
-`co browser` already has a useful promise: type a command and a browser opens.
-Making Onion Browser available could easily have weakened that promise. A
-missing package, unsupported CPU, unavailable artifact, or empty balance would
-become a new reason ordinary automation did not work. Silently falling back
-everywhere would be worse: a task could start with one fingerprint and continue
-with another after money had crossed the boundary.
+That is normal for `co browser`. The daemon survives between shell commands so
+the window, cookies, and tabs survive too. It may also survive a package
+upgrade. A 1.8 client can therefore spend its first request talking to a 1.7
+daemon.
 
-The 1.8 contract therefore has three explicit meanings. `system` is the hard
-free path and returns before ConnectOnion imports Onionwright, reads a paid
-credential, downloads an artifact, calls the billing API, or creates a session.
-`onion` is strict: either the exact compatible artifact starts or the command
-returns a typed failure. `auto` may choose system Chrome, but only before a paid
-session exists.
+The old daemon accepts the JSON envelope. It simply ignores fields it does not
+know. That is usually a pleasant kind of compatibility, but here it changed the
+meaning of a strict request. A user could type `--engine onion`, the client
+could send exactly that, and the old daemon could drive system Chrome before
+anyone noticed. Nothing crashed. The dangerous part was that everything looked
+successful.
 
-That last sentence determines the architecture. Resolution first asks
-Onionwright to prepare Chromium `150.0.7871.187`: normalize the host, obtain the
-signed manifest entry, verify and unpack the artifact, and prove the executable
-is ready. None of that charges. Only then does the real persistent-browser
-launch seam call `launch_paid()` with that same prepared result. From that
-point, the supervised Onion process owns renewal and release. Failure is
-visible; ConnectOnion does not hot-swap it into system Chrome.
+The obvious repair was to probe the daemon before every command. I added a new
+`engine_status` verb and made the client call it first. The real socket suite
+immediately exposed the cost of that shortcut: ordinary default commands now
+made an extra round trip, and compatibility stubs without the new verb were
+rejected even though their system-browser behavior was still correct. Worse,
+the supposedly harmless probe went through normal dispatch, so it claimed the
+main tab and replaced the recorded last command. A diagnostic check had become
+a browser action in everything but name.
 
-The process boundary mattered too. `co browser` keeps a daemon alive between
-commands. An old daemon ignores new JSON fields, so merely adding
-`"engine": "onion"` would let an explicit paid request reach the old system
-browser before the client noticed. The new client sends a read-only
-`engine_status` probe first for explicit Onion requests. An incompatible daemon
-is refused before the requested page action is sent. The probe itself is
-page-less: it neither launches a browser, claims a tab, nor overwrites the last
-command.
+That failure clarified which promise actually needed protection. Only explicit
+`onion` is unsafe against an old daemon. `system` already means system Chrome;
+an old daemon honors the intent. `auto` is allowed to resolve to system before
+billing, so the same old behavior is a safe fallback. There was no reason to
+tax or reject those paths.
 
-The result was measured at the boundaries that can betray the design. The
-combined browser, tab/session, CLI, engine, paid-launch, and real Unix-socket
-daemon suite passes 209 tests. A separate source-level integration check imports
-Onionwright's public `PaidSessionClient` and `launch_paid`; ConnectOnion never
-scans its cache. Tests also prove `system` cannot touch the paid path, preflight
-failure in `auto` falls back before billing, strict `onion` never falls back,
-and paid launch failure never starts system Chrome.
+The final handshake is consequently narrow. Before sending an explicit Onion
+page command to a warm daemon, the client sends `engine_status`. The daemon
+handles it before tab registration and before last-command bookkeeping. If the
+verb is unknown, the client refuses the original request and tells the user to
+restart the daemon. The page command never crosses the socket. Default and
+system commands keep their old one-request behavior.
 
-The remaining work is deliberately outside this green result. Onionwright must
-be released, and an architecture-specific browser artifact must be signed,
-notarized where applicable, published immutably, downloaded again, and exercised
-through the production licence path. Until then the paid catalogue stays empty.
-Passing client tests proves the choice is safe; it does not manufacture a
-browser we can honestly sell.
+Two small tests now describe the boundary better than the implementation does.
+One gives the client an old daemon reply and asserts that the bytes containing
+`go_to` were never sent. The other lets the probe succeed and asserts that the
+real command follows with `engine=onion`. A daemon-side test proves the probe
+leaves both the tab board and last command untouched. The complete real-socket
+daemon regression suite passes 106 tests after the change.
+
+The lesson was not “version your protocol”; the envelope was already versioned.
+Compatibility has to preserve intent before the first irreversible effect. An
+unknown field is safe only when ignoring it cannot turn one product promise
+into another. Sometimes the most important browser command is the one that
+proves it is safe to send the browser command at all.
