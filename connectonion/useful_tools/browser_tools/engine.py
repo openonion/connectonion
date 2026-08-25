@@ -1,182 +1,206 @@
-"""Which browser binary `co browser` drives: the free one, or the one you paid for.
+"""Resolve the 1.8 browser engine once, before a browser session can charge."""
 
-    free   patchright + the Chrome already on this machine
-    pro    the onion browser, a patched Chromium
+from __future__ import annotations
 
-The split is decided by the server (`service.entitlement()` in oo-api, keyed on
-cumulative credit) and carried in a signed attestation. This module does not
-decide *whether* someone paid -- it only reads the answer and picks a binary.
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
 
-One rule runs through all of it, and it is the reason the decision is a pure
-function with no network in it:
 
-**Nothing here may stop a browser from starting.**
-
-A default install drives system Chrome through patchright today, with no licence
-call anywhere on the path -- measured on a clean Ubuntu box, not assumed. So it
-cannot currently be blocked by billing, an expired attestation, or an oo-api
-outage, and adding tiering must not hand a free user a new way to fail. Every
-branch below ends in an engine; the only thing that varies is which one, and
-whether we say something about it.
-
-The `note` exists because the interesting case is not an error either: an
-account holding only the $5 signup grant is not broken, it is not yet enough.
-That deserves one line saying what unlocks the other engine, not a traceback and
-not silence.
-"""
-
+AUTO = "auto"
+SYSTEM = "system"
 ONION = "onion"
-PATCHRIGHT = "patchright"
-
-# Kept in step with license_api.billing.PRO_MIN_CREDIT_USD in oo-api. Written
-# here as a display string only -- the client never enforces the threshold, it
-# just repeats it, because the account is the server's to judge.
-PRO_MIN_CREDIT_USD = 10.00
+MODES = (AUTO, SYSTEM, ONION)
+BROWSER_REVISION = "150.0.7871.187"
 
 
-def _tier_of(attestation):
-    """The attested tier, or None if there isn't one we understand.
+class Reason:
+    SYSTEM_REQUESTED = "system_requested"
+    ONION_READY = "onion_ready"
+    INVALID_MODE = "invalid_engine_mode"
+    ONIONWRIGHT_MISSING = "onionwright_missing"
+    ONIONWRIGHT_INCOMPATIBLE = "onionwright_incompatible"
+    LICENSE_UNAVAILABLE = "license_unavailable"
+    PREFLIGHT_FAILED = "preflight_failed"
 
-    A payload missing the fields we read is a server we do not understand, and
-    the safe reading of "do not understand" is "no licence": guessing `pro`
-    would try to launch a binary that may not be on disk, guessing `free` just
-    works.
+
+class BrowserEngineError(RuntimeError):
+    """An explicit Onion request could not start; it never becomes system."""
+
+    def __init__(self, reason: str, next_action: str):
+        self.reason = reason
+        self.next_action = next_action
+        super().__init__(f"{reason}: {next_action}")
+
+
+@dataclass(frozen=True)
+class Resolution:
+    requested: str
+    resolved: str
+    reason: str
+    next_action: str
+    browser_revision: str = BROWSER_REVISION
+    client: Any | None = None
+    prepared: Any | None = None
+
+    @property
+    def fallback(self) -> bool:
+        return self.requested == AUTO and self.resolved == SYSTEM
+
+    @property
+    def artifact_id(self) -> str | None:
+        capability = getattr(self.prepared, "capability", None)
+        artifact = getattr(capability, "artifact", None)
+        return getattr(artifact, "artifact_id", None)
+
+    def public_status(self) -> dict[str, Any]:
+        """Safe status/audit fields; never includes tokens, licence bytes, or paths."""
+        return {
+            "requested_engine": self.requested,
+            "resolved_engine": self.resolved,
+            "fallback": self.fallback,
+            "reason": self.reason,
+            "next_action": self.next_action,
+            "browser_revision": self.browser_revision,
+            "artifact_id": self.artifact_id,
+        }
+
+
+def _default_token() -> str:
+    # Imported only after the explicit system return below. This may read the
+    # normal ConnectOnion credential sources; system mode must touch none of it.
+    from connectonion.credentials import require_ambient_api_key
+
+    return require_ambient_api_key()
+
+
+def _default_client(token: str, home: Path):
+    # Onionwright remains optional. Presence of the paid package is not a
+    # requirement for the free/system product.
+    from onionwright import PaidSessionClient
+
+    return PaidSessionClient(token=token, home=home)
+
+
+def _system(requested: str, reason: str, next_action: str) -> Resolution:
+    return Resolution(
+        requested=requested,
+        resolved=SYSTEM,
+        reason=reason,
+        next_action=next_action,
+    )
+
+
+def _unavailable(requested: str, reason: str, next_action: str) -> Resolution:
+    if requested == ONION:
+        raise BrowserEngineError(reason, next_action)
+    return _system(requested, reason, next_action)
+
+
+def resolve(
+    requested: str = AUTO,
+    *,
+    browser_revision: str = BROWSER_REVISION,
+    token_loader: Callable[[], str] = _default_token,
+    client_factory: Callable[[str, Path], Any] = _default_client,
+    home: Path | None = None,
+) -> Resolution:
+    """Resolve one immutable engine choice without starting a paid session.
+
+    `system` returns before importing Onionwright, loading a token, calling the
+    server, or touching the paid cache. `auto` and `onion` run Onionwright's
+    complete non-billing `prepare`: exact signed manifest, compatibility,
+    download, checksum, extraction, and executable readiness. Only the later
+    `launch()` call is allowed to create and charge a session.
     """
-    if not isinstance(attestation, dict):
-        return None
-    tier = attestation.get("tier")
-    return tier if isinstance(tier, str) else None
-
-
-def choose(attestation, onion_present):
-    """Pick an engine. Returns `(engine, note)` and never raises.
-
-    `attestation` is the decoded licence payload, or None when there isn't one
-    — no account, no licence, or oo-api was unreachable. All three mean the
-    same thing here, deliberately: they are all "we could not establish that
-    this is a paying customer", and none of them is a reason to withhold a
-    browser.
-
-    `note` is a single line for the person, or None when there is nothing worth
-    saying. It is not an error channel.
-    """
-    tier = _tier_of(attestation)
-
-    if tier != "pro":
-        if tier == "free":
-            return PATCHRIGHT, (
-                f"Using Chrome via patchright — the free engine. "
-                f"The privacy browser unlocks at ${PRO_MIN_CREDIT_USD:.2f} of credit."
-            )
-        # No licence at all, or a shape we do not recognise. Say nothing: an
-        # offline machine printing a sales line on every command is noise, and
-        # we have not established there is anything to sell to.
-        return PATCHRIGHT, None
-
-    # Entitled to the paid engine. Two things can still send us back to
-    # patchright, and neither is a failure the customer should see as one.
-    if not attestation.get("active", False):
-        # Entitled, but the session was refused — an empty balance. That is the
-        # licence layer's business; it is not a reason to leave someone with no
-        # browser at all.
-        return PATCHRIGHT, (
-            "Your balance is empty, so the privacy browser could not start a "
-            "session. Running on Chrome via patchright until it is topped up."
+    if requested not in MODES:
+        raise BrowserEngineError(
+            Reason.INVALID_MODE,
+            f"choose one of: {', '.join(MODES)}",
+        )
+    if requested == SYSTEM:
+        return _system(
+            SYSTEM,
+            Reason.SYSTEM_REQUESTED,
+            "Start Patchright with the installed system Chrome.",
         )
 
-    if not onion_present:
-        # `onionwright` is not a dependency of connectonion, so a fresh install
-        # has no paid binary on disk. A pro customer with nothing to launch must
-        # not end up worse off than a free one.
-        return PATCHRIGHT, (
-            "The privacy browser is not installed yet — running on Chrome via "
-            "patchright for now."
+    paid_home = home or Path.home() / ".onionwright"
+    try:
+        token = token_loader()
+    except Exception:
+        return _unavailable(
+            requested,
+            Reason.LICENSE_UNAVAILABLE,
+            "Run `co auth`, or request the system browser.",
+        )
+    try:
+        client = client_factory(token, paid_home)
+    except (ImportError, ModuleNotFoundError):
+        return _unavailable(
+            requested,
+            Reason.ONIONWRIGHT_MISSING,
+            "Install the compatible Onionwright package, or request the system browser.",
+        )
+    except (AttributeError, TypeError):
+        return _unavailable(
+            requested,
+            Reason.ONIONWRIGHT_INCOMPATIBLE,
+            "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
         )
 
-    return ONION, None
-
-
-# The paid engine is not reachable from here yet, and this names exactly what
-# is missing rather than leaving a stub that reads as finished.
-#
-# `onionwright.licence.license.load(path, server_key)` needs a cache path and
-# the pinned server key; `onionwright.launcher.resolve_binary(token,
-# server_key, pin)` needs an authenticated token and a Chromium revision.
-# connectonion holds none of those three today. Supplying them is the open
-# work in openonion/connectonion#511 — not something to fake here.
-#
-# Until then the defaults below raise, `resolve()` reads that as "no licence"
-# the same way it reads an offline machine, and everyone gets the free engine.
-# That is the right failure direction and the wrong end state, so
-# test_the_paid_path_is_not_wired_up_yet asserts it out loud: when the wiring
-# lands, that test fails and has to be deleted, which is the point of it.
-PAID_WIRING_PENDING = (
-    "onionwright is installed but connectonion has no licence configuration "
-    "yet (cache path, pinned server key, Chromium revision) — see "
-    "openonion/connectonion#511"
-)
-
-
-def _cached_attestation():
-    """The licence this machine already holds, or None.
-
-    The import is load-bearing. `onionwright` is not a dependency of
-    connectonion, so on a default install this raises ImportError immediately
-    and we are done -- no token read, no HTTP, no clock check. A free machine
-    reaches the network exactly as often as it did before tiering existed,
-    which is never.
-
-    Reading the *cache* rather than refreshing is also deliberate: a browser
-    command is not the right place to discover that oo-api is slow. The
-    refresh belongs to the licence client's own schedule (it renews at the
-    12-hour half-life of a 24-hour attestation), not to `co browser go_to`.
-    """
-    import onionwright.licence  # noqa: F401
-
-    raise NotImplementedError(PAID_WIRING_PENDING)
-
-
-def _onion_path():
-    """Where the paid binary is, or None.
-
-    Deliberately no `getattr(..., default)` probe. An earlier version guessed
-    at `launcher.installed_path`, which does not exist, and the default made
-    it answer "absent" on every machine including a paid one -- a silent
-    permanent downgrade that the tests could not see because they inject this
-    function. A name that is wrong should fail loudly enough to notice.
-    """
-    import onionwright.launcher  # noqa: F401
-
-    raise NotImplementedError(PAID_WIRING_PENDING)
-
-
-def resolve(load_attestation=_cached_attestation, onion_path=_onion_path,
-            with_path=False):
-    """Decide the engine against the real machine. Never raises.
-
-    Returns `(engine, note)`, or `(engine, note, path)` when `with_path`.
-
-    Both lookups are injected so the policy above stays testable without a
-    paid install, and both are wrapped: an exception from either means "we
-    could not establish a licence", which `choose()` already treats as free.
-    Every failure mode of asking therefore lands on the branch that works.
-
-    The path is only returned for the paid engine. patchright and system
-    Chrome are already resolved by `installed_browser_path()`, and duplicating
-    that here would give the machine two answers to one question.
-    """
     try:
-        attestation = load_attestation()
-    except Exception:
-        attestation = None
+        prepared = client.prepare(browser_revision)
+    except Exception as exc:
+        reason = getattr(exc, "code", Reason.PREFLIGHT_FAILED)
+        message = getattr(exc, "message", None) or (
+            "Paid browser preflight failed before session creation; use system Chrome."
+        )
+        return _unavailable(requested, reason, message)
 
+    if not getattr(prepared, "ready", False):
+        capability = getattr(prepared, "capability", None)
+        reason = getattr(capability, "reason", Reason.PREFLIGHT_FAILED)
+        next_action = getattr(capability, "next_action", None) or (
+            "Use system Chrome; no paid browser session was created."
+        )
+        return _unavailable(requested, reason, next_action)
+
+    return Resolution(
+        requested=requested,
+        resolved=ONION,
+        reason=Reason.ONION_READY,
+        next_action="Start the exact prepared Onion Browser session.",
+        browser_revision=browser_revision,
+        client=client,
+        prepared=prepared,
+    )
+
+
+def launch(
+    resolution: Resolution,
+    playwright,
+    idempotency_key: str,
+    **launch_kwargs,
+):
+    """Cross the billing boundary for a previously prepared Onion resolution."""
+    if resolution.resolved != ONION or resolution.client is None or resolution.prepared is None:
+        raise BrowserEngineError(
+            Reason.PREFLIGHT_FAILED,
+            "Only a ready Onion resolution can start a paid session.",
+        )
     try:
-        path = onion_path()
-    except Exception:
-        path = None
-
-    chosen, note = choose(attestation=attestation, onion_present=bool(path))
-
-    if with_path:
-        return chosen, note, (path if chosen == ONION else None)
-    return chosen, note
+        from onionwright import launch_paid
+    except (ImportError, AttributeError) as exc:
+        raise BrowserEngineError(
+            Reason.ONIONWRIGHT_INCOMPATIBLE,
+            "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
+        ) from exc
+    return launch_paid(
+        playwright,
+        resolution.client,
+        resolution.browser_revision,
+        idempotency_key,
+        prepared=resolution.prepared,
+        **launch_kwargs,
+    )
