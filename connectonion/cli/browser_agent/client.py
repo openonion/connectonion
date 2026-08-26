@@ -264,6 +264,12 @@ def _request(line: str, headless: bool = False, tab: str = None,
         # started replacement is never mistaken for the daemon being closed.
         if transport.IS_WINDOWS and tab is None and line.split() == ["close"]:
             owner_pid = _owner_pid(sock_path)
+            # Embedded users and socket round-trip tests may run the daemon in
+            # another thread of this process. That process cannot exit while the
+            # caller is waiting inside it; production's detached daemon always
+            # has a different pid.
+            if owner_pid == os.getpid():
+                owner_pid = None
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
         # with a clean one-line error, NEVER a traceback: typer's pretty exceptions

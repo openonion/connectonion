@@ -1,5 +1,7 @@
 """A successful whole-browser close waits until that daemon has actually exited."""
 
+import os
+
 from connectonion.cli.browser_agent import client
 
 
@@ -56,6 +58,18 @@ def test_targeted_tab_close_does_not_wait_for_daemon_exit(monkeypatch):
     )
 
     assert client._request("close", tab="work")[0] == 0
+    assert checked == []
+
+
+def test_in_process_embedded_daemon_does_not_wait_for_its_caller(monkeypatch):
+    _windows_client(monkeypatch)
+    monkeypatch.setattr(client, "_owner_pid", lambda _path: os.getpid())
+    checked = []
+    monkeypatch.setattr(
+        client.transport, "pid_alive", lambda pid: checked.append(pid) or True
+    )
+
+    assert client._request("close")[0] == 0
     assert checked == []
 
 
