@@ -114,6 +114,29 @@ def test_installed_old_onionwright_is_typed_incompatible_before_preflight():
     assert client.calls == []
 
 
+def test_installed_sync_only_onionwright_is_rejected_before_client_or_preflight(
+    monkeypatch,
+):
+    constructed = []
+
+    def paid_client(**kwargs):
+        constructed.append(kwargs)
+        return Client(prepared())
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "onionwright",
+        SimpleNamespace(PaidSessionClient=paid_client),
+    )
+    result = engine.resolve(
+        engine.AUTO,
+        token_loader=lambda: "token",
+    )
+    assert result.resolved == engine.SYSTEM
+    assert result.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
+    assert constructed == []
+
+
 def test_public_status_contains_no_client_token_or_local_path(tmp_path):
     client = Client(prepared())
     result = engine.resolve(

@@ -71,8 +71,10 @@ def test_public_surface_and_signatures_stay_identical():
         if not name.startswith("_")
     }
 
-    assert set(public) == set(legacy)
+    assert set(public) == set(legacy) | {"engine_status"}
     for name, method in public.items():
+        if name == "engine_status":
+            continue
         assert inspect.signature(method) == inspect.signature(legacy[name]), name
 
 

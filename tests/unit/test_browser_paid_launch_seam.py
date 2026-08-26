@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from connectonion.useful_tools.browser_tools import browser as mod
+from connectonion.useful_tools.browser_tools import _async_browser as async_mod
 from connectonion.useful_tools.browser_tools import engine
 
 
@@ -11,6 +12,12 @@ class FakePage:
         return False
 
     def close(self):
+        self.closed = True
+
+    def set_default_navigation_timeout(self, milliseconds):
+        pass
+
+    async def set_viewport_size(self, viewport):
         pass
 
     def wait_for_timeout(self, milliseconds):
@@ -22,15 +29,15 @@ class FakeContext:
         self.pages = [page] if page else []
         self.closed = 0
 
-    def new_page(self):
+    async def new_page(self):
         page = FakePage()
         self.pages.append(page)
         return page
 
-    def cookies(self):
+    async def cookies(self):
         return []
 
-    def close(self):
+    async def close(self):
         self.closed += 1
 
 
@@ -42,7 +49,7 @@ class FakePlaywright:
             launch_persistent_context=lambda *args, **kwargs: self.context,
         )
 
-    def stop(self):
+    async def stop(self):
         self.stopped += 1
 
 
@@ -50,7 +57,7 @@ class FakeManager:
     def __init__(self, playwright):
         self.playwright = playwright
 
-    def start(self):
+    async def start(self):
         return self.playwright
 
 
@@ -66,9 +73,9 @@ class FakePaidRun:
         self.terminal_reason = None
         self.close_calls = 0
 
-    def close(self):
+    async def close(self):
         self.close_calls += 1
-        self.closable.close()
+        await self.closable.close()
 
 
 def onion_resolution():
@@ -90,14 +97,14 @@ def test_real_launch_seam_uses_supervised_paid_handle(monkeypatch):
     paid = FakePaidRun()
     playwright = FakePlaywright()
     calls = []
-    monkeypatch.setattr(mod, "BROWSER_AVAILABLE", True)
-    monkeypatch.setattr(mod, "sync_playwright", lambda: FakeManager(playwright))
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
 
-    def launch(resolution, owner, key, **kwargs):
+    async def launch(resolution, owner, key, **kwargs):
         calls.append((resolution, owner, key, kwargs))
         return paid
 
-    monkeypatch.setattr(mod.browser_engine, "launch", launch)
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
     browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
 
     message = browser.open_browser()
@@ -119,12 +126,16 @@ def test_real_launch_seam_uses_supervised_paid_handle(monkeypatch):
 
 def test_paid_launch_failure_never_hot_swaps_to_system(monkeypatch):
     playwright = FakePlaywright()
-    monkeypatch.setattr(mod, "BROWSER_AVAILABLE", True)
-    monkeypatch.setattr(mod, "sync_playwright", lambda: FakeManager(playwright))
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def fail(*args, **kwargs):
+        raise RuntimeError("paid launch failed")
+
     monkeypatch.setattr(
-        mod.browser_engine,
-        "launch",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("paid launch failed")),
+        async_mod.browser_engine,
+        "launch_async",
+        fail,
     )
     browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
 
