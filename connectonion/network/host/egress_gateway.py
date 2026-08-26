@@ -1,8 +1,9 @@
 """Bounded loopback egress gateway for future Remote Browser navigation.
 
-The gateway owns hostname resolution and numeric socket selection.  It has no
-Chromium integration and is not reachable through OIP yet; keeping that seam
-closed lets the proxy boundary be tested before a browser can depend on it.
+The gateway owns hostname resolution and numeric socket selection.  A private
+launch policy can request this proxy, but Remote Browser page commands remain
+unavailable until the credential-enabled paid artifact and native preflight
+both pass their installed-artifact acceptance suite.
 """
 
 from __future__ import annotations

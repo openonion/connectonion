@@ -33,6 +33,7 @@ from . import _async_terminal as terminal
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 from .launch_policy import BrowserLaunchPolicy
+from .native_egress import run_native_egress_preflight
 
 try:
     from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
@@ -578,6 +579,12 @@ class AsyncBrowserCore:
                     raise
                 self.playwright = playwright
                 self.browser = context
+
+                if policy is not None and policy.native_preflight is not None:
+                    await run_native_egress_preflight(
+                        policy.native_preflight,
+                        context,
+                    )
 
                 if self._seed_state and not self._seeded:
                     cookies = json.loads(

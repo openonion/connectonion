@@ -67,4 +67,5 @@ def remote_browser_launch_policy(profile_dir: Path, endpoint: ProxyEndpoint) -> 
         ignore_default_args=tuple(IGNORE_DEFAULT_ARGS) + ("--use-mock-keychain",),
         service_workers="block",
         accept_downloads=True,
+        native_preflight="remote-egress-v1",
     )
