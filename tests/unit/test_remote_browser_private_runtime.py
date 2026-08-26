@@ -1,7 +1,9 @@
 """Isolation and launch contracts for the Host-private browser runtime."""
 
 import contextlib
+import json
 import os
+import stat
 import threading
 import time
 from pathlib import Path
@@ -13,9 +15,13 @@ from connectonion.cli.browser_agent import client, transport
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
 from connectonion.network.host.egress_gateway import ProxyEndpoint
 from connectonion.network.host.private_browser_runtime import (
+    PROXY_AUTH_REALM,
     REMOTE_BROWSER_CHROME_ARGS,
     PrivateBrowserTarget,
+    canonical_proxy_auth,
+    proxy_auth_path_for_profile,
     remote_browser_launch_policy,
+    write_proxy_auth_file,
 )
 from connectonion.network.host.remote_browser import RemoteBrowserService
 from connectonion.useful_tools.browser_tools import _async_browser as async_browser
@@ -43,7 +49,7 @@ class LifecycleBrowser:
 
 
 class RecordingGateway:
-    def __init__(self, events, password="gateway-secret"):
+    def __init__(self, events, password="A" * 43):
         self.events = events
         self.endpoint = ProxyEndpoint("127.0.0.1", 43123, "connectonion", password)
         self.is_running = False
@@ -84,6 +90,7 @@ def test_private_target_is_stable_short_and_separate_from_local(tmp_path, monkey
     assert Path(first.address).is_relative_to(short_root)
     assert first.profile_dir != other.profile_dir
     assert first.log_path.parent == first.authkey_path.parent
+    assert first.proxy_auth_path == first.profile_dir.parent / "proxy-auth.json"
     assert transport.pid_path(first.address) != transport.pid_path(transport.default_address())
     assert transport.lock_path(first.address) != transport.lock_path(transport.default_address())
     if os.name != "nt":
@@ -104,27 +111,77 @@ def test_windows_namespaces_include_user_and_stable_digest(monkeypatch):
 
 
 def test_launch_policy_is_fixed_fail_closed_and_secret_safe(tmp_path):
-    endpoint = ProxyEndpoint("127.0.0.1", 43123, "connectonion", "proxy-secret")
-    policy = remote_browser_launch_policy(tmp_path / "profile", endpoint)
+    password = "A" * 43
+    endpoint = ProxyEndpoint("127.0.0.1", 43123, "connectonion", password)
+    auth_file = tmp_path / "proxy-auth.json"
+    policy = remote_browser_launch_policy(tmp_path / "profile", endpoint, auth_file)
     options = policy.playwright_options()
 
-    assert options["proxy"] == {
-        "server": "http://127.0.0.1:43123",
-        "username": "connectonion",
-        "password": "proxy-secret",
-    }
+    assert options["proxy"] == {"server": "http://127.0.0.1:43123"}
     assert options["service_workers"] == "block"
     assert options["accept_downloads"] is True
     assert policy.native_preflight == "remote-egress-v1"
-    assert tuple(options["args"]) == REMOTE_BROWSER_CHROME_ARGS
+    assert tuple(options["args"][:-1]) == REMOTE_BROWSER_CHROME_ARGS
+    assert options["args"][-1] == f"--connectonion-proxy-auth-file={auth_file}"
     assert "--proxy-bypass-list=<-loopback>" in options["args"]
     assert "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" in options["args"]
     assert "--disable-quic" in options["args"]
     assert "--force-webrtc-ip-handling-policy=disable_non_proxied_udp" in options["args"]
     assert "--disable-extensions" in options["args"]
     assert "direct" not in options["proxy"]["server"].lower()
-    assert "proxy-secret" not in repr(endpoint)
-    assert "proxy-secret" not in repr(policy)
+    assert password not in repr(endpoint)
+    assert password not in repr(policy)
+    assert password not in repr(options)
+
+
+def test_proxy_auth_file_matches_native_contract_and_is_private(tmp_path):
+    password = "A" * 43
+    endpoint = ProxyEndpoint("127.0.0.1", 43123, "connectonion", password)
+    auth_file = tmp_path / "proxy-auth.json"
+
+    written = write_proxy_auth_file(auth_file, endpoint)
+
+    assert written == auth_file
+    assert json.loads(auth_file.read_text(encoding="ascii")) == {
+        "challenger": "127.0.0.1:43123",
+        "password": password,
+        "realm": PROXY_AUTH_REALM,
+        "scheme": "basic",
+        "username": "connectonion",
+        "v": 1,
+    }
+    assert auth_file.read_bytes() == canonical_proxy_auth(endpoint)
+    assert list(tmp_path.iterdir()) == [auth_file]
+    if os.name != "nt":
+        assert stat.S_IMODE(auth_file.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        ProxyEndpoint("localhost", 43123, "connectonion", "A" * 43),
+        ProxyEndpoint("127.0.0.1", 0, "connectonion", "A" * 43),
+        ProxyEndpoint("127.0.0.1", 43123, "other", "A" * 43),
+        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "short"),
+    ),
+)
+def test_proxy_auth_file_rejects_noncanonical_native_credentials(tmp_path, endpoint):
+    with pytest.raises(ValueError, match="native proxy credentials are not canonical"):
+        write_proxy_auth_file(tmp_path / "proxy-auth.json", endpoint)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX private-directory modes")
+def test_proxy_auth_file_rejects_public_parent(tmp_path):
+    os.chmod(tmp_path, 0o755)
+
+    with pytest.raises(ValueError, match="root must be private"):
+        write_proxy_auth_file(
+            tmp_path / "proxy-auth.json",
+            ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
+        )
+
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize(
@@ -138,8 +195,8 @@ def test_launch_policy_is_fixed_fail_closed_and_secret_safe(tmp_path):
     ),
 )
 def test_launch_proxy_rejects_every_noncanonical_or_fallback_server(server):
-    with pytest.raises(ValueError, match="authenticated loopback"):
-        BrowserProxySettings(server, "connectonion", "secret")
+    with pytest.raises(ValueError, match="canonical loopback"):
+        BrowserProxySettings(server)
 
 
 @pytest.mark.asyncio
@@ -165,6 +222,10 @@ async def test_daemon_starts_gateway_before_browser_and_stops_it_after_browser(
     await daemon._prepare_runtime()
     assert events == ["gateway.start", "browser.create"]
     assert daemon.browser.launch_policy.profile_dir == (tmp_path / "profile").resolve()
+    auth_file = proxy_auth_path_for_profile(tmp_path / "profile")
+    assert auth_file.is_file()
+    assert gateway.endpoint.password in auth_file.read_text(encoding="ascii")
+    assert gateway.endpoint.password not in repr(daemon.browser.launch_policy)
     await daemon._prepare_runtime()
     assert events == ["gateway.start", "browser.create"]
     await daemon._shutdown_async()
@@ -174,6 +235,7 @@ async def test_daemon_starts_gateway_before_browser_and_stops_it_after_browser(
         "browser.stop",
         "gateway.stop",
     ]
+    assert not auth_file.exists()
 
 
 @pytest.mark.asyncio
@@ -196,6 +258,7 @@ async def test_browser_construction_failure_closes_gateway_before_ipc_bind(tmp_p
         await daemon._prepare_runtime()
 
     assert events == ["gateway.start", "browser.fail", "gateway.stop"]
+    assert not proxy_auth_path_for_profile(tmp_path / "profile").exists()
     assert not Path(daemon.sock_path).exists()
     assert not Path(transport.pid_path(daemon.sock_path)).exists()
 
@@ -286,7 +349,8 @@ async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, mo
     monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
     policy = remote_browser_launch_policy(
         tmp_path / "private-profile",
-        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "secret"),
+        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
+        tmp_path / "proxy-auth.json",
     )
     browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
 
@@ -333,7 +397,8 @@ async def test_native_preflight_failure_closes_partial_context_and_driver(
     monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
     policy = remote_browser_launch_policy(
         tmp_path / "private-profile",
-        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "secret"),
+        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
+        tmp_path / "proxy-auth.json",
     )
     browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
 

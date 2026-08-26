@@ -244,6 +244,7 @@ class BrowserDaemon:
         self._authkey_path = Path(authkey_path) if authkey_path is not None else None
         self._gateway_factory = gateway_factory
         self._browser_factory = browser_factory
+        self._proxy_auth_path = None
         if self._remote_egress and self._profile_dir is None:
             raise ValueError("remote browser daemon requires an explicit profile")
         self._gateway = None
@@ -819,7 +820,10 @@ class BrowserDaemon:
             raise RuntimeError("private browser runtime is only prepared once")
         from connectonion.network.host.egress_gateway import EgressGateway
         from connectonion.network.host.private_browser_runtime import (
+            proxy_auth_path_for_profile,
             remote_browser_launch_policy,
+            remove_proxy_auth_file,
+            write_proxy_auth_file,
         )
 
         gateway = (
@@ -828,15 +832,23 @@ class BrowserDaemon:
             else EgressGateway()
         )
         endpoint = await gateway.start()
+        proxy_auth_path = proxy_auth_path_for_profile(self._profile_dir)
         try:
-            policy = remote_browser_launch_policy(self._profile_dir, endpoint)
+            write_proxy_auth_file(proxy_auth_path, endpoint)
+            policy = remote_browser_launch_policy(
+                self._profile_dir,
+                endpoint,
+                proxy_auth_path,
+            )
             browser = self._browser_factory(
                 headless=self._headless, launch_policy=policy
             )
         except BaseException:
+            remove_proxy_auth_file(proxy_auth_path)
             await gateway.stop()
             raise
         self._gateway = gateway
+        self._proxy_auth_path = proxy_auth_path
         self.browser = browser
 
     def _accept_posix_client(self, reader, writer) -> None:
@@ -1075,6 +1087,12 @@ class BrowserDaemon:
                     f"browser cleanup failed: {type(exc).__name__}: {exc}",
                     file=sys.stderr,
                 )
+        from connectonion.network.host.private_browser_runtime import (
+            remove_proxy_auth_file,
+        )
+
+        remove_proxy_auth_file(self._proxy_auth_path)
+        self._proxy_auth_path = None
         if self._gateway is not None:
             try:
                 await self._gateway.stop()

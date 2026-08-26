@@ -7,7 +7,7 @@ profile authority cannot drift through process environment variables.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -15,11 +15,9 @@ from urllib.parse import urlsplit
 
 @dataclass(frozen=True)
 class BrowserProxySettings:
-    """Playwright proxy settings whose credential is safe to repr or log."""
+    """One loopback proxy server; native code owns its credentials."""
 
     server: str
-    username: str
-    password: str = field(repr=False)
 
     def __post_init__(self) -> None:
         try:
@@ -38,19 +36,11 @@ class BrowserProxySettings:
             and parsed.fragment == ""
             and port is not None
             and parsed.netloc == f"127.0.0.1:{port}"
-            and isinstance(self.username, str)
-            and isinstance(self.password, str)
-            and self.username
-            and self.password
         ):
-            raise ValueError("browser proxy must be one authenticated loopback server")
+            raise ValueError("browser proxy must be one canonical loopback server")
 
     def playwright_value(self) -> dict[str, str]:
-        return {
-            "server": self.server,
-            "username": self.username,
-            "password": self.password,
-        }
+        return {"server": self.server}
 
 
 @dataclass(frozen=True)
@@ -59,6 +49,7 @@ class BrowserLaunchPolicy:
 
     profile_dir: Path
     proxy: BrowserProxySettings
+    proxy_auth_file: Path
     args: tuple[str, ...]
     ignore_default_args: tuple[str, ...] = ()
     service_workers: Literal["allow", "block"] = "block"
@@ -67,9 +58,16 @@ class BrowserLaunchPolicy:
 
     def __post_init__(self) -> None:
         profile = Path(self.profile_dir).expanduser().resolve()
+        proxy_auth_file = Path(self.proxy_auth_file).expanduser()
+        if not proxy_auth_file.is_absolute():
+            raise ValueError("native proxy auth file must be absolute")
         object.__setattr__(self, "profile_dir", profile)
+        object.__setattr__(self, "proxy_auth_file", proxy_auth_file)
         if not self.args or len(set(self.args)) != len(self.args):
             raise ValueError("browser launch arguments must be nonempty and unique")
+        expected_switch = f"--connectonion-proxy-auth-file={proxy_auth_file}"
+        if self.args.count(expected_switch) != 1:
+            raise ValueError("private browser policy must name its native proxy auth file")
         if self.service_workers != "block":
             raise ValueError("private browser launch policy must block Service Workers")
         if self.native_preflight not in (None, "remote-egress-v1"):
