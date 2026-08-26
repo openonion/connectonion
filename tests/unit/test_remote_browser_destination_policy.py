@@ -122,6 +122,37 @@ def test_invalid_operator_network_fails_before_a_decision():
 
 
 @pytest.mark.parametrize(
+    ("operation", "secret"),
+    [
+        (lambda: policy.classify_address("secret-dns-payload"), "secret-dns"),
+        (
+            lambda: policy.normalize_web_destination("http://[secret-url-payload"),
+            "secret-url",
+        ),
+        (
+            lambda: policy.normalize_web_destination(
+                "https://\u200dsecret-idna.tested/"
+            ),
+            "secret-idna",
+        ),
+        (
+            lambda: policy.classify_address(
+                "8.8.8.8", deny_networks=["secret-operator-payload"]
+            ),
+            "secret-operator",
+        ),
+    ],
+)
+def test_policy_errors_do_not_retain_parser_payloads(operation, secret):
+    with pytest.raises(policy.DestinationPolicyError) as raised:
+        operation()
+
+    assert secret not in repr(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+
+
+@pytest.mark.parametrize(
     "network",
     [*policy._FORBIDDEN_V4, *policy._FORBIDDEN_V6],
     ids=str,
@@ -232,7 +263,7 @@ def test_ports_can_only_be_expanded_by_an_explicit_policy():
     assert authority.port == 9443
 
 
-@pytest.mark.parametrize("allowed_ports", [{True}, {"443"}, {0}, {65536}])
+@pytest.mark.parametrize("allowed_ports", [{True}, {"443"}, {0}, {65536}, None])
 def test_invalid_explicit_port_policies_fail_closed(allowed_ports):
     with pytest.raises(policy.DestinationPolicyError) as raised:
         policy.normalize_web_destination(

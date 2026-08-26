@@ -145,13 +145,16 @@ def _has_forbidden_character(value: str) -> bool:
 def _split_url(url: str) -> SplitResult:
     if not isinstance(url, str) or not url or _has_forbidden_character(url):
         raise DestinationPolicyError(INVALID, "URL contains invalid characters")
+    split: SplitResult | None
     try:
         split = urlsplit(url)
         # Accessors perform bracket and port validation lazily.
         split.hostname
         split.port
-    except (TypeError, ValueError) as exc:
-        raise DestinationPolicyError(INVALID, "URL authority is malformed") from exc
+    except (TypeError, ValueError):
+        split = None
+    if split is None:
+        raise DestinationPolicyError(INVALID, "URL authority is malformed")
     return split
 
 
@@ -213,20 +216,26 @@ def _normalize_host(host: str) -> tuple[str, IPAddress | None]:
         raise DestinationPolicyError(INVALID, "hostname is empty")
 
     if ":" in host:
+        literal: ipaddress.IPv6Address | None
         try:
             literal = ipaddress.IPv6Address(host)
-        except ipaddress.AddressValueError as exc:
-            raise DestinationPolicyError(INVALID, "IPv6 address is malformed") from exc
+        except ipaddress.AddressValueError:
+            literal = None
+        if literal is None:
+            raise DestinationPolicyError(INVALID, "IPv6 address is malformed")
         return literal.compressed, literal
 
     ipv4 = _whatwg_ipv4(host)
     if ipv4 is not None:
         return str(ipv4), ipv4
 
+    normalized: str | None
     try:
         normalized = idna.encode(host, uts46=True, std3_rules=True).decode("ascii")
-    except idna.IDNAError as exc:
-        raise DestinationPolicyError(INVALID, "hostname IDNA is invalid") from exc
+    except idna.IDNAError:
+        normalized = None
+    if normalized is None:
+        raise DestinationPolicyError(INVALID, "hostname IDNA is invalid")
     normalized = normalized.lower()
     if len(normalized) > 253:
         raise DestinationPolicyError(INVALID, "hostname is too long")
@@ -247,7 +256,13 @@ def normalize_web_destination(
         raise DestinationPolicyError(INVALID, "userinfo or empty authority is denied")
     host, literal = _normalize_host(split.hostname or "")
     port = split.port if split.port is not None else DEFAULT_PORTS[scheme]
-    allowed = frozenset(allowed_ports)
+    allowed: frozenset[int] | None
+    try:
+        allowed = frozenset(allowed_ports)
+    except TypeError:
+        allowed = None
+    if allowed is None:
+        raise DestinationPolicyError(INVALID, "allowed port policy is invalid")
     if any(
         isinstance(candidate, bool)
         or not isinstance(candidate, int)
@@ -263,12 +278,14 @@ def normalize_web_destination(
 def _operator_networks(
     values: Iterable[str | ipaddress.IPv4Network | ipaddress.IPv6Network],
 ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] | None
     try:
-        return tuple(ipaddress.ip_network(value, strict=False) for value in values)
-    except (TypeError, ValueError) as exc:
-        raise DestinationPolicyError(
-            INVALID, "operator deny network is invalid"
-        ) from exc
+        networks = tuple(ipaddress.ip_network(value, strict=False) for value in values)
+    except (TypeError, ValueError):
+        networks = None
+    if networks is None:
+        raise DestinationPolicyError(INVALID, "operator deny network is invalid")
+    return networks
 
 
 def classify_address(
@@ -277,12 +294,15 @@ def classify_address(
     deny_networks: Iterable[str | ipaddress.IPv4Network | ipaddress.IPv6Network] = (),
 ) -> AddressClassification:
     """Classify one numeric address against frozen and operator deny ranges."""
+    if not isinstance(value, (str, ipaddress.IPv4Address, ipaddress.IPv6Address)):
+        raise DestinationPolicyError(INVALID, "DNS answer is not an IP address")
+    address: IPAddress | None
     try:
         address = ipaddress.ip_address(value)
-    except (TypeError, ValueError) as exc:
-        raise DestinationPolicyError(
-            INVALID, "DNS answer is not an IP address"
-        ) from exc
+    except (TypeError, ValueError):
+        address = None
+    if address is None:
+        raise DestinationPolicyError(INVALID, "DNS answer is not an IP address")
 
     for network in _operator_networks(deny_networks):
         if address.version == network.version and address in network:
