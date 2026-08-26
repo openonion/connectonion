@@ -106,7 +106,14 @@ def namespaced_address(namespace: str) -> str:
     # bind, so use a deliberately short per-user 0700 fallback before the limit.
     if len(os.fsencode(candidate)) >= 100:
         who = hashlib.sha1(_current_user().encode()).hexdigest()[:12]
-        candidate = _SHORT_RUNTIME_ROOT / f"co-{who}" / filename
+        fallback = _SHORT_RUNTIME_ROOT / f"co-{who}"
+        fallback.mkdir(parents=True, exist_ok=True)
+        # Unlike an explicit legacy socket directly under /tmp, this directory
+        # is ours and is the private endpoint's trust boundary. Re-apply the
+        # mode even when it already exists; a directory owned by someone else
+        # makes chmod fail closed instead of exposing the daemon socket.
+        os.chmod(fallback, 0o700)
+        candidate = fallback / filename
     return str(candidate)
 
 

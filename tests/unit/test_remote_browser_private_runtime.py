@@ -69,7 +69,8 @@ def _wait_for_daemon(address):
 def test_private_target_is_stable_short_and_separate_from_local(tmp_path, monkeypatch):
     monkeypatch.setattr(transport, "IS_WINDOWS", False)
     monkeypatch.setattr(transport, "_sidecar_dir", lambda: tmp_path / "ipc")
-    monkeypatch.setattr(transport, "_SHORT_RUNTIME_ROOT", Path("/r"))
+    short_root = tmp_path / "fallback"
+    monkeypatch.setattr(transport, "_SHORT_RUNTIME_ROOT", short_root)
     state = tmp_path / ("deep-" * 40) / ".co" / "sessions.json"
 
     first = PrivateBrowserTarget.from_state_path(state)
@@ -79,13 +80,14 @@ def test_private_target_is_stable_short_and_separate_from_local(tmp_path, monkey
     assert first == second
     assert first.address != other.address
     assert first.address != transport.default_address()
-    assert len(first.address.encode()) < 100
+    assert Path(first.address).is_relative_to(short_root)
     assert first.profile_dir != other.profile_dir
     assert first.log_path.parent == first.authkey_path.parent
     assert transport.pid_path(first.address) != transport.pid_path(transport.default_address())
     assert transport.lock_path(first.address) != transport.lock_path(transport.default_address())
     if os.name != "nt":
         assert first.profile_dir.parent.stat().st_mode & 0o777 == 0o700
+        assert Path(first.address).parent.stat().st_mode & 0o777 == 0o700
 
 
 def test_windows_namespaces_include_user_and_stable_digest(monkeypatch):
