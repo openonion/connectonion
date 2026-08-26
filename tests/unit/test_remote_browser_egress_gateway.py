@@ -90,7 +90,9 @@ async def test_concurrent_start_and_stop_share_one_listener_and_cleanup_once():
     endpoints = await asyncio.gather(*(gateway.start() for _ in range(10)))
 
     assert len({(endpoint.host, endpoint.port) for endpoint in endpoints}) == 1
+    assert gateway.is_running is True
     await asyncio.gather(*(gateway.stop() for _ in range(10)))
+    assert gateway.is_running is False
     assert gateway._server is None
     assert gateway._client_tasks == set()
     with pytest.raises(RuntimeError):
