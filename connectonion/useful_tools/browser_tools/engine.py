@@ -91,6 +91,8 @@ def _default_client(token: str, home: Path):
     # requirement for the free/system product.
     import onionwright
 
+    if not callable(getattr(onionwright, "launch_paid_async", None)):
+        raise AttributeError("installed Onionwright has no async paid launcher")
     return onionwright.PaidSessionClient(token=token, home=home)
 
 
@@ -224,6 +226,35 @@ def launch(
             "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
         ) from exc
     return launch_paid(
+        playwright,
+        resolution.client,
+        resolution.browser_revision,
+        idempotency_key,
+        prepared=resolution.prepared,
+        **launch_kwargs,
+    )
+
+
+async def launch_async(
+    resolution: Resolution,
+    playwright,
+    idempotency_key: str,
+    **launch_kwargs,
+):
+    """Cross the billing boundary through Onionwright's async driver contract."""
+    if resolution.resolved != ONION or resolution.client is None or resolution.prepared is None:
+        raise BrowserEngineError(
+            Reason.PREFLIGHT_FAILED,
+            "Only a ready Onion resolution can start a paid session.",
+        )
+    try:
+        from onionwright import launch_paid_async
+    except (ImportError, AttributeError) as exc:
+        raise BrowserEngineError(
+            Reason.ONIONWRIGHT_INCOMPATIBLE,
+            "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
+        ) from exc
+    return await launch_paid_async(
         playwright,
         resolution.client,
         resolution.browser_revision,
