@@ -1,6 +1,7 @@
 """Isolation and launch contracts for the Host-private browser runtime."""
 
 import contextlib
+import os
 import threading
 import time
 from pathlib import Path
@@ -83,7 +84,8 @@ def test_private_target_is_stable_short_and_separate_from_local(tmp_path, monkey
     assert first.log_path.parent == first.authkey_path.parent
     assert transport.pid_path(first.address) != transport.pid_path(transport.default_address())
     assert transport.lock_path(first.address) != transport.lock_path(transport.default_address())
-    assert first.profile_dir.parent.stat().st_mode & 0o777 == 0o700
+    if os.name != "nt":
+        assert first.profile_dir.parent.stat().st_mode & 0o777 == 0o700
 
 
 def test_windows_namespaces_include_user_and_stable_digest(monkeypatch):
