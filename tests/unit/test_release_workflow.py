@@ -31,7 +31,19 @@ def test_every_pull_request_runs_the_test_workflow():
 
 
 def test_pytest_jobs_install_the_declared_dev_extra():
-    assert TESTS.count('pip install -e ".[dev]"') == 2
+    pytest_jobs = ("test", "remote-browser-egress", "windows-browser")
+    lines = TESTS.splitlines()
+    for job in pytest_jobs:
+        start = lines.index(f"  {job}:")
+        job_lines = []
+        for line in lines[start + 1 :]:
+            if line.startswith("  ") and not line.startswith("    "):
+                break
+            job_lines.append(line)
+        job_body = "\n".join(job_lines)
+        assert 'pip install -e ".[dev]"' in job_body
+
+    assert TESTS.count('pip install -e ".[dev]"') == len(pytest_jobs)
     assert "pip install pytest" not in TESTS
 
 
