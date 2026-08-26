@@ -36,6 +36,30 @@ from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserC
 
 IS_WINDOWS = tp.IS_WINDOWS
 posix_only = pytest.mark.skipif(IS_WINDOWS, reason="exercises the raw AF_UNIX socket mechanism (POSIX)")
+_CREATED_DAEMONS = []
+
+
+@pytest.fixture(autouse=True)
+def stop_created_daemons():
+    """Every test-created daemon must release its loop and Windows worker pool.
+
+    The server thread is daemonized in these socket tests, but the bounded named-
+    pipe executor deliberately is not. Letting a test return without stopping its
+    daemon therefore leaves pytest alive forever on Windows even though all tests
+    passed. Keep cleanup centralized so assertion failures take the same path.
+    """
+    start = len(_CREATED_DAEMONS)
+    yield
+    created = _CREATED_DAEMONS[start:]
+    del _CREATED_DAEMONS[start:]
+    for daemon in reversed(created):
+        daemon._cleanup()
+    deadline = time.time() + 5
+    while time.time() < deadline and any(
+        daemon._transport_pool is not None for daemon in created
+    ):
+        time.sleep(0.01)
+    assert all(daemon._transport_pool is None for daemon in created)
 
 
 @pytest.fixture
@@ -159,6 +183,7 @@ def make_daemon(sock_path, stub=None):
     """Build a daemon whose lazy BrowserAutomation is replaced by a stub."""
     daemon = d.BrowserDaemon(sock_path, headless=True)
     daemon.browser = stub or StubBrowser()
+    _CREATED_DAEMONS.append(daemon)
     return daemon
 
 
