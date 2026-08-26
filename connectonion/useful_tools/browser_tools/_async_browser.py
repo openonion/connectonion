@@ -33,7 +33,7 @@ from . import _async_terminal as terminal
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 from .launch_policy import BrowserLaunchPolicy
-from .native_egress import run_native_egress_preflight
+from .native_egress import native_egress_failure, run_native_egress_preflight
 
 try:
     from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
@@ -595,7 +595,7 @@ class AsyncBrowserCore:
                     self._seeded = True
 
                 await self._ensure_page(key)
-            except BaseException:
+            except BaseException as exc:
                 self.browser = None
                 self.playwright = None
                 if context is not None:
@@ -612,6 +612,10 @@ class AsyncBrowserCore:
                         )
                     except BaseException:
                         pass
+                if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                    raise
+                if policy is not None and policy.native_preflight is not None:
+                    raise native_egress_failure() from None
                 raise
 
             if force and had_previous_state:

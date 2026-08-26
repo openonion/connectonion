@@ -23,6 +23,11 @@ class NativeEgressPreflightError(RuntimeError):
     """Stable, non-secret failure returned when effective egress is uncertain."""
 
 
+def native_egress_failure() -> NativeEgressPreflightError:
+    """Construct the one public error for private launch or preflight uncertainty."""
+    return NativeEgressPreflightError(_PREFLIGHT_MESSAGE)
+
+
 class LoopbackSentinel:
     """Owned HTTP sentinel whose accepted sockets prove a proxy bypass."""
 
@@ -165,7 +170,7 @@ async def run_native_egress_preflight(
     subresource, WebSocket, and worker attempts repeat the zero-socket check.
     """
     if name != REMOTE_EGRESS_PREFLIGHT:
-        raise NativeEgressPreflightError(_PREFLIGHT_MESSAGE)
+        raise native_egress_failure()
 
     page = None
     try:
@@ -186,7 +191,7 @@ async def run_native_egress_preflight(
                 timeout=timeout,
             )
             if response is None or response.status != 502:
-                raise NativeEgressPreflightError(_PREFLIGHT_MESSAGE)
+                raise native_egress_failure()
             loopback_response = await asyncio.wait_for(
                 page.goto(
                     sentinel.origin + "/main-frame",
@@ -196,20 +201,20 @@ async def run_native_egress_preflight(
                 timeout=timeout,
             )
             if loopback_response is None or loopback_response.status != 403:
-                raise NativeEgressPreflightError(_PREFLIGHT_MESSAGE)
+                raise native_egress_failure()
             await asyncio.wait_for(
                 _exercise_subresource_paths(page, sentinel.origin),
                 timeout=timeout,
             )
             await asyncio.sleep(0.1)
             if sentinel.accepted_connections or sentinel.accepted_bytes:
-                raise NativeEgressPreflightError(_PREFLIGHT_MESSAGE)
+                raise native_egress_failure()
     except asyncio.CancelledError:
         raise
     except NativeEgressPreflightError:
         raise
     except BaseException:
-        raise NativeEgressPreflightError(_PREFLIGHT_MESSAGE) from None
+        raise native_egress_failure() from None
     finally:
         if page is not None:
             with contextlib.suppress(BaseException):
