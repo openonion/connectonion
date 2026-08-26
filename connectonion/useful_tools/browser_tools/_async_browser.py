@@ -21,6 +21,7 @@ import platform
 import sys
 import time
 import urllib.parse
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
 from . import _async_scroll as async_scroll
 from . import _async_terminal as terminal
+from . import engine as browser_engine
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 
@@ -296,6 +298,8 @@ class AsyncBrowserCore:
         tab_idle_ttl: float = 3600.0,
         max_tabs: int = 10,
         use_mock_keychain: bool = False,
+        engine_mode: str = browser_engine.AUTO,
+        engine_resolver=browser_engine.resolve,
     ) -> None:
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[BrowserContext] = None
@@ -311,6 +315,10 @@ class AsyncBrowserCore:
         self._seed_state = seed_state
         self._seeded = False
         self._use_mock_keychain = use_mock_keychain
+        self._engine_mode = engine_mode
+        self._engine_resolver = engine_resolver
+        self._engine_resolution = None
+        self._paid_run = None
         self.current_url = ""
         self.screenshots_dir = str(Path.cwd() / ".tmp")
         self.last_screenshot_path: Optional[str] = None
@@ -521,6 +529,73 @@ class AsyncBrowserCore:
                 if had_previous_state:
                     await self._teardown_unlocked()
 
+            resolution = await asyncio.to_thread(
+                self._engine_resolver, self._engine_mode
+            )
+            self._engine_resolution = resolution
+
+            if resolution.resolved == browser_engine.ONION:
+                manager = async_playwright()
+                playwright = None
+                paid_run = None
+                try:
+                    start_task = asyncio.create_task(
+                        asyncio.wait_for(manager.start(), timeout=30)
+                    )
+                    try:
+                        playwright = await asyncio.shield(start_task)
+                    except asyncio.CancelledError:
+                        playwright, _ = await _complete_cleanup(start_task)
+                        raise
+                    paid_run = await browser_engine.launch_async(
+                        resolution,
+                        playwright,
+                        f"connectonion-start:{uuid.uuid4()}",
+                        user_data_dir=True,
+                        headless=headless,
+                        args=CHROME_DEFAULT_ARGS,
+                        ignore_default_args=(
+                            IGNORE_DEFAULT_ARGS
+                            if self._use_mock_keychain
+                            else IGNORE_DEFAULT_ARGS + ["--use-mock-keychain"]
+                        ),
+                        proxy=_proxy_from_env(),
+                        timeout=120000,
+                    )
+                    self.playwright = playwright
+                    self.browser = paid_run.closable
+                    self._paid_run = paid_run
+                    if self._seed_state and not self._seeded:
+                        cookies = json.loads(
+                            Path(self._seed_state).read_text(encoding="utf-8")
+                        ).get("cookies", [])
+                        if cookies:
+                            await self.browser.add_cookies(cookies)
+                        self._seeded = True
+                    await self._ensure_page(key)
+                except BaseException:
+                    self.browser = None
+                    self.playwright = None
+                    self._paid_run = None
+                    if paid_run is not None:
+                        try:
+                            await _complete_cleanup(paid_run.close())
+                        except BaseException:
+                            pass
+                    if playwright is not None:
+                        try:
+                            await _complete_cleanup(
+                                asyncio.wait_for(playwright.stop(), timeout=30)
+                            )
+                        except BaseException:
+                            pass
+                    raise
+                status = resolution.public_status()
+                return (
+                    "Onion Browser opened with a prepaid supervised session: "
+                    f"artifact={status['artifact_id']}"
+                )
+
             profile_dir = _profile_dir()
             profile_dir.mkdir(parents=True, exist_ok=True)
             _clear_stale_profile_lock(profile_dir)
@@ -601,6 +676,28 @@ class AsyncBrowserCore:
             if had_previous_state:
                 return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
             return f"Browser opened with persistent profile: {profile_dir}"
+
+    async def engine_status(self) -> dict:
+        """Return the immutable engine decision without secrets or local paths."""
+        if self._engine_resolution is None:
+            return {
+                "requested_engine": self._engine_mode,
+                "resolved_engine": None,
+                "fallback": False,
+                "reason": "not_started",
+                "next_action": "Open the browser to resolve an engine.",
+                "browser_revision": browser_engine.BROWSER_REVISION,
+                "onionwright_version": None,
+                "artifact_id": None,
+            }
+        status = self._engine_resolution.public_status()
+        if self._paid_run is not None:
+            status.update({
+                "paid_session_id": self._paid_run.session.session_id,
+                "paid_until": self._paid_run.session.paid_until,
+                "terminal_reason": self._paid_run.terminal_reason,
+            })
+        return status
 
     async def save_state(self, path: str) -> str:
         async with self._tab_operation(ensure_page=False):
@@ -1785,10 +1882,11 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """Clear state even when one close operation fails; caller owns lifecycle lock."""
         warnings = []
         interrupted = False
-        context, playwright = self.browser, self.playwright
+        context, playwright, paid_run = self.browser, self.playwright, self._paid_run
         pages = list(self._pages.values())
         self.browser = None
         self.playwright = None
+        self._paid_run = None
         self._pages.clear()
         self._page_used.clear()
         self._page_url.clear()
@@ -1813,7 +1911,13 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                     interrupted = interrupted or was_cancelled
                 except BaseException as exc:
                     warnings.append(f"close page failed: {exc}")
-        if context is not None:
+        if paid_run is not None:
+            try:
+                _, was_cancelled = await _complete_cleanup(paid_run.close())
+                interrupted = interrupted or was_cancelled
+            except BaseException as exc:
+                warnings.append(f"close paid browser failed: {exc}")
+        elif context is not None:
             try:
                 _, was_cancelled = await _complete_cleanup(
                     asyncio.wait_for(context.close(), timeout=30)

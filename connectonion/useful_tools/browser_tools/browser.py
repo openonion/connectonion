@@ -1,7 +1,7 @@
 """
-Purpose: Natural language browser automation with one immutable 1.8 engine choice (paid Onion or Patchright/system Chrome), one persistent context, and one TAB PER SESSION so concurrent agents never drive each other's page
+Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) — one shared persistent context, one TAB PER SESSION, so concurrent agents never drive each other's page
 LLM-Note:
-  Dependencies: imports from [patchright.sync_api, browser_tools.engine, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv | optional at paid preflight/launch: onionwright public API] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py, tests/unit/test_browser_paid_launch_seam.py]
+  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
   Data flow: a caller binds its session via _bind_session(key) (key None = shared 'main') → every public method hops to ONE dedicated browser worker thread (_runs_on_browser_thread propagates the binding; Playwright's sync API is thread-bound) → _ensure_page gives the session its own tab in the shared context (restored to its remembered URL), then _reclaim_idle_tabs bounds memory (idle-TTL first, then max-tabs LRU — never the active tab) → go_to/newtab record who/purpose/hours on the tab REGISTRY _tab_meta (the first navigation on an unoccupied tab demands purpose+who — direct API/tool callers only; the co browser daemon registers tabs before dispatching) → tab_status renders the board → close_tab releases ONE tab, close() releases the bound tab or tears the whole context down
   State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
   Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, get_focused_element, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
@@ -46,7 +46,6 @@ import sys
 import threading
 import time
 import urllib.parse
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
@@ -57,7 +56,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from . import element_finder
 from . import humanize
-from . import engine as browser_engine
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 
@@ -487,9 +485,7 @@ class BrowserAutomation:
     """
 
     def __init__(self, use_chrome_profile: bool = True, headless: bool = False, seed_state: Optional[str] = None,
-                 tab_idle_ttl: float = 3600.0, max_tabs: int = 10,
-                 engine_mode: str = browser_engine.AUTO,
-                 engine_resolver=browser_engine.resolve):
+                 tab_idle_ttl: float = 3600.0, max_tabs: int = 10):
         """Initialize browser automation.
 
         Args:
@@ -533,10 +529,6 @@ class BrowserAutomation:
         self._headless = headless_without_a_display(headless)
         self._seed_state = seed_state
         self._seeded = False
-        self._engine_mode = engine_mode
-        self._engine_resolver = engine_resolver
-        self._engine_resolution = None
-        self._paid_run = None
         self.screenshots_dir = str(SCREENSHOTS_DIR)
         self.last_screenshot_path = None  # file path of the most recent screenshot
         # All public methods run on this one thread (see _public_methods_run_on_browser_thread).
@@ -684,13 +676,6 @@ class BrowserAutomation:
         page = self._pages.get(key)
         if page is None or (callable(getattr(page, "is_closed", None)) and page.is_closed()):
             page = self.browser.new_page()
-            if self._paid_run is not None:
-                from onionwright import humanize as humanize_page
-
-                page = humanize_page(
-                    page,
-                    identity=self._paid_run.session.licence.license_address,
-                )
             page.set_default_navigation_timeout(60000)
             page.set_viewport_size({"width": 1920, "height": 1200})
             # No navigator.webdriver init script: Patchright hides it at the driver level,
@@ -802,52 +787,7 @@ class BrowserAutomation:
             if had_previous_browser_state:
                 self._teardown()   # context is dead/unusable — full cleanup before relaunch
 
-        # Resolve once at session creation. This entire operation is preflight:
-        # Onionwright verifies/downloads the exact artifact but cannot charge
-        # until browser_engine.launch() below. An explicit Onion failure raises;
-        # auto records the typed reason and continues into the system branch.
-        resolution = self._engine_resolver(self._engine_mode)
-        self._engine_resolution = resolution
-
-        if resolution.resolved == browser_engine.ONION:
-            self.playwright = sync_playwright().start()
-            try:
-                self._paid_run = browser_engine.launch(
-                    resolution,
-                    self.playwright,
-                    f"connectonion-start:{uuid.uuid4()}",
-                    user_data_dir=True,
-                    headless=headless,
-                    args=CHROME_DEFAULT_ARGS,
-                    ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],
-                    proxy=_browser_proxy_from_env(),
-                    timeout=120000,
-                )
-            except Exception:
-                # launch_paid already releases a charged session on failure.
-                # Do not silently hot-swap to system Chrome after crossing the
-                # billing boundary; stop this driver and surface the paid error.
-                self.playwright.stop()
-                self.playwright = None
-                self._paid_run = None
-                raise
-            self.browser = self._paid_run.closable
-            self.page = self._paid_run.page
-            if self._seed_state and not self._seeded:
-                cookies = json.loads(Path(self._seed_state).read_text(encoding="utf-8")).get("cookies", [])
-                if cookies:
-                    self.browser.add_cookies(cookies)
-                self._seeded = True
-            self._ensure_page(self._bound_session_key())
-            status = resolution.public_status()
-            return (
-                "Onion Browser opened with a prepaid supervised session: "
-                f"artifact={status['artifact_id']}"
-            )
-
-        # Dedicated persistent system-Chrome profile owned by co. Paid Onion
-        # profiles live under Onionwright's account-keyed home and never share
-        # cookies or fingerprint state with this directory.
+        # Dedicated persistent profile owned by co
         # First run: fresh profile, user logs in once. All later runs reuse saved cookies.
         # Resolve and unlock it BEFORE starting the driver: the profile can be driven by
         # only one browser at a time, so if a live one already owns it we fail fast here —
@@ -874,6 +814,8 @@ class BrowserAutomation:
                 f"remove {profile_dir / 'SingletonLock'} and retry.)"
             )
 
+        self.playwright = sync_playwright().start()
+
         # Remove --no-sandbox from args since Playwright adds it by default
         # Just keep the flags we actually need
         # NOTE: --use-mock-keychain removed to fix cookie persistence on macOS
@@ -894,7 +836,6 @@ class BrowserAutomation:
         # Patchright supplies the anti-detection defaults; we pass only run-environment
         # flags (see browser_config.py). executable_path pins real Chrome, which Patchright
         # recommends over bundled Chromium.
-        self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch_persistent_context(
             str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
             headless=headless,
@@ -925,38 +866,11 @@ class BrowserAutomation:
         # and anti-detection init script when it creates the tab.
         self._ensure_page(self._bound_session_key())
 
-        fallback = (
-            f" (auto fallback: {resolution.reason})"
-            if resolution.fallback else ""
-        )
         if force and had_previous_browser_state:
-            return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}{fallback}"
+            return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}"
         if had_previous_browser_state:
-            return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}{fallback}"
-        return f"Browser opened with persistent profile: {profile_dir}{fallback}"
-
-    @_no_auto_tab
-    def engine_status(self) -> dict:
-        """Return the immutable engine decision without secrets or local paths."""
-        if self._engine_resolution is None:
-            return {
-                "requested_engine": self._engine_mode,
-                "resolved_engine": None,
-                "fallback": False,
-                "reason": "not_started",
-                "next_action": "Open the browser to resolve an engine.",
-                "browser_revision": browser_engine.BROWSER_REVISION,
-                "onionwright_version": None,
-                "artifact_id": None,
-            }
-        status = self._engine_resolution.public_status()
-        if self._paid_run is not None:
-            status.update({
-                "paid_session_id": self._paid_run.session.session_id,
-                "paid_until": self._paid_run.session.paid_until,
-                "terminal_reason": self._paid_run.terminal_reason,
-            })
-        return status
+            return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
+        return f"Browser opened with persistent profile: {profile_dir}"
 
     @_no_auto_tab
     def save_state(self, path: str) -> str:
@@ -2396,9 +2310,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             if err:
                 cleanup_errors.append(err)
         try:
-            if self._paid_run is not None:
-                self._paid_run.close()
-            elif self.browser:
+            if self.browser:
                 self.browser.close()
         except Exception as exc:
             cleanup_errors.append(f"close browser failed: {exc}")
@@ -2413,7 +2325,6 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         self._page_url.clear()
         self._tab_meta.clear()   # reserved (page-less) tabs too — no ghost registry entries
         self.browser = None
-        self._paid_run = None
         self.playwright = None
         if cleanup_errors:
             return "Browser closed with cleanup warnings: " + "; ".join(cleanup_errors)

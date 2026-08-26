@@ -55,6 +55,37 @@ def test_launch_passes_the_same_prepared_result_to_onionwright(monkeypatch):
     )]
 
 
+@pytest.mark.asyncio
+async def test_async_launch_passes_same_prepared_result_to_onionwright(monkeypatch):
+    result = ready_resolution()
+    calls = []
+
+    async def fake_launch(playwright, client, revision, key, **kwargs):
+        calls.append((playwright, client, revision, key, kwargs))
+        return "async-paid-run"
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "onionwright",
+        SimpleNamespace(launch_paid_async=fake_launch),
+    )
+    launched = await engine.launch_async(
+        result,
+        "async-playwright",
+        "stable-idempotency-key",
+        user_data_dir=True,
+        headless=True,
+    )
+    assert launched == "async-paid-run"
+    assert calls == [(
+        "async-playwright",
+        result.client,
+        engine.BROWSER_REVISION,
+        "stable-idempotency-key",
+        {"prepared": result.prepared, "user_data_dir": True, "headless": True},
+    )]
+
+
 def test_system_resolution_cannot_cross_the_billing_boundary():
     result = engine.resolve(engine.SYSTEM)
     with pytest.raises(engine.BrowserEngineError):
