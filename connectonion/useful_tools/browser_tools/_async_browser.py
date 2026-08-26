@@ -1,9 +1,9 @@
 """
 Purpose: Internal Patchright async browser core for the 1.8 driver migration.
 LLM-Note:
-  Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/e2e/test_async_browser_core_real_driver.py]
+  Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, immutable BrowserLaunchPolicy, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/unit/test_remote_browser_private_runtime.py, tests/e2e/test_async_browser_core_real_driver.py]
   Data flow: caller binds a session in a ContextVar → each async operation acquires that tab's lock → the shared persistent context lazily creates/restores one page per session → model-selected actions await extraction and worker-thread matching → independent tab operations may interleave on one event loop
-  State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
+  State/Effects: ordinary mode keeps its persistent profile and proxy environment compatibility; private mode uses only the explicit policy profile/proxy/args/service-worker/download settings | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
   Integration: internal AsyncBrowserCore; used directly by the daemon and through the public synchronous BrowserAutomation compatibility facade
   Errors: live profile ownership fails before driver start | launch/cancellation tears down partially-created driver state | destructive keyboard shortcuts fail closed outside editable focus | element ambiguity and non-match errors preserve the synchronous finder contract
 
@@ -32,6 +32,7 @@ from . import _async_scroll as async_scroll
 from . import _async_terminal as terminal
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
+from .launch_policy import BrowserLaunchPolicy
 
 try:
     from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
@@ -296,6 +297,7 @@ class AsyncBrowserCore:
         tab_idle_ttl: float = 3600.0,
         max_tabs: int = 10,
         use_mock_keychain: bool = False,
+        launch_policy: BrowserLaunchPolicy | None = None,
     ) -> None:
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[BrowserContext] = None
@@ -311,6 +313,7 @@ class AsyncBrowserCore:
         self._seed_state = seed_state
         self._seeded = False
         self._use_mock_keychain = use_mock_keychain
+        self._launch_policy = launch_policy
         self.current_url = ""
         self.screenshots_dir = str(Path.cwd() / ".tmp")
         self.last_screenshot_path: Optional[str] = None
@@ -521,7 +524,8 @@ class AsyncBrowserCore:
                 if had_previous_state:
                     await self._teardown_unlocked()
 
-            profile_dir = _profile_dir()
+            policy = self._launch_policy
+            profile_dir = policy.profile_dir if policy is not None else _profile_dir()
             profile_dir.mkdir(parents=True, exist_ok=True)
             _clear_stale_profile_lock(profile_dir)
             holder = _profile_lock_holder(profile_dir)
@@ -544,20 +548,27 @@ class AsyncBrowserCore:
                     playwright, _ = await _complete_cleanup(start_task)
                     raise
 
-                launch_task = asyncio.create_task(
-                    playwright.chromium.launch_persistent_context(
-                        str(profile_dir),
-                        headless=headless,
-                        executable_path=find_system_chrome(),
+                launch_options = {
+                    "headless": headless,
+                    "executable_path": find_system_chrome(),
+                    "no_viewport": True,
+                    "timeout": 120000,
+                }
+                if policy is None:
+                    launch_options.update(
                         args=CHROME_DEFAULT_ARGS,
                         ignore_default_args=(
                             IGNORE_DEFAULT_ARGS
                             if self._use_mock_keychain
                             else IGNORE_DEFAULT_ARGS + ["--use-mock-keychain"]
                         ),
-                        no_viewport=True,
                         proxy=_proxy_from_env(),
-                        timeout=120000,
+                    )
+                else:
+                    launch_options.update(policy.playwright_options())
+                launch_task = asyncio.create_task(
+                    playwright.chromium.launch_persistent_context(
+                        str(profile_dir), **launch_options
                     )
                 )
                 try:

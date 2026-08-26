@@ -16,7 +16,7 @@ import math
 import re
 import secrets
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Iterable, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
@@ -118,7 +118,7 @@ class ProxyEndpoint:
     host: str
     port: int
     username: str
-    password: str
+    password: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -265,6 +265,11 @@ class EgressGateway:
         if self._port is None:
             raise RuntimeError("egress gateway is not started")
         return ProxyEndpoint("127.0.0.1", self._port, self.username, self.password)
+
+    @property
+    def is_running(self) -> bool:
+        """Whether this instance still owns a serving listener."""
+        return self._server is not None and self._server.is_serving()
 
     async def start(self) -> ProxyEndpoint:
         async with self._lifecycle_lock:

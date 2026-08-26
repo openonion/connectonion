@@ -84,10 +84,15 @@ class RemoteBrowserService:
         self.state_path = Path(state_path)
         self.clock = clock
         self._lock = threading.RLock()
+        self.daemon_target = None
         if daemon_request is None:
-            from ...cli.browser_agent.client import request_as
+            from ...cli.browser_agent.client import request_target_as
+            from .private_browser_runtime import PrivateBrowserTarget
 
-            daemon_request = request_as
+            self.daemon_target = PrivateBrowserTarget.from_state_path(self.state_path)
+
+            def daemon_request(line, **identity):
+                return request_target_as(self.daemon_target, line, **identity)
         self.daemon_request = daemon_request
 
     def _load(self) -> dict:

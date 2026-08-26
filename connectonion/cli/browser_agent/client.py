@@ -2,8 +2,8 @@
 Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language `do` agent locally so model waits never occupy the daemon.
 LLM-Note:
   Dependencies: imports from [socket, os, json, sys, time, shlex, inspect, functools, pathlib, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: direct verb → _request() → wire-v1 JSON {v,caller,account,tab,line,raw}; `do` → local Agent + DaemonBrowserProxy → each tool invocation becomes one short _request(raw=True) to the shared daemon
-  State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
+  Data flow: direct verb → _request() → wire-v1 JSON {v,caller,account,tab,line,raw}; Host request_target_as() selects an explicit private endpoint/profile/authkey/log without putting proxy credentials on argv; `do` → local Agent + DaemonBrowserProxy → each tool invocation becomes one short _request(raw=True) to the shared daemon
+  State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log or the explicit private target log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
   Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
   Errors: _connect() retries transient refusal/backpressure and never unlinks an endpoint whose recorded owner is alive; only a truly stale POSIX socket is removed | missing endpoint → spawn daemon and wait until ready or timeout | setup RuntimeErrors become one clean stderr line, never a traceback containing HMAC-path locals | daemon death, overload shedding, or disconnect mid-request becomes a clean exit 1
@@ -54,7 +54,7 @@ def _wait_for_pid_exit(pid: int, timeout: float = 15.0) -> bool:
     return True
 
 
-def _connect(sock_path: str):
+def _connect(sock_path: str, authkey_path: str | Path | None = None):
     """Connect to the daemon. Returns a live connection, or None if the daemon is
     genuinely gone. A daemon at its bounded connection cap can momentarily refuse —
     that is NOT a dead daemon, so retry
@@ -63,7 +63,7 @@ def _connect(sock_path: str):
     authenticated named-pipe client from `transport`. Raises RuntimeError only for
     an authkey mismatch against a live daemon (send() turns it into a clean line)."""
     if transport.IS_WINDOWS:
-        return _connect_windows(sock_path)
+        return _connect_windows(sock_path, authkey_path=authkey_path)
     return _connect_posix(sock_path)
 
 
@@ -94,8 +94,8 @@ def _connect_posix(sock_path: str):
     return None  # still refusing after the window — let the caller spawn a fresh daemon
 
 
-def _connect_windows(sock_path: str):
-    authkey = transport.load_or_create_authkey()  # one 64-byte read, hoisted off the loop
+def _connect_windows(sock_path: str, authkey_path: str | Path | None = None):
+    authkey = transport.load_or_create_authkey(authkey_path)  # one 64-byte read, hoisted off the loop
     # Retry window for a briefly-unavailable pipe. (mpc's Client additionally waits out
     # PIPE_BUSY internally, so a genuinely busy daemon behaves like the POSIX backlog:
     # the client waits rather than erroring.)
@@ -121,13 +121,18 @@ def _connect_windows(sock_path: str):
     return None  # still unavailable after the window — let the caller spawn a fresh daemon
 
 
-def _spawn_daemon(sock_path: str, headless: bool):
+def _spawn_daemon(sock_path: str, headless: bool, target=None):
     """Launch the daemon detached and wait until its socket accepts connections."""
-    log_path = Path.home() / ".co" / "browser.log"
+    log_path = Path(target.log_path) if target is not None else Path.home() / ".co" / "browser.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-m", "connectonion.cli.browser_agent.daemon", sock_path]
     if headless:
         cmd.append("--headless")
+    if target is not None:
+        cmd.extend(["--profile-dir", str(target.profile_dir)])
+        cmd.extend(["--authkey-file", str(target.authkey_path)])
+        if target.remote_egress:
+            cmd.append("--remote-egress")
     with open(log_path, "a", encoding="utf-8") as log:  # the child dups the handle; ours closes right away
         transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS
 
@@ -135,7 +140,11 @@ def _spawn_daemon(sock_path: str, headless: bool):
     # can itself take ~2s of refused-retries, so counting attempts multiplies silently.
     deadline = time.time() + 15
     while time.time() < deadline:
-        conn = _connect(sock_path)
+        conn = (
+            _connect(sock_path, authkey_path=target.authkey_path)
+            if target is not None
+            else _connect(sock_path)
+        )
         if conn:
             return conn
         time.sleep(0.1)
@@ -224,6 +233,7 @@ def _request_with_identity(
     tab: str = None,
     raw_result: bool = False,
     _provisioned: bool = False,
+    target=None,
 ) -> tuple:
     """Send one short daemon request and return ``(code, payload)``.
 
@@ -239,10 +249,15 @@ def _request_with_identity(
         "line": line,
         "raw": raw_result,
     })
-    sock_path = default_sock_path()
+    sock_path = target.address if target is not None else default_sock_path()
+    authkey_path = target.authkey_path if target is not None else None
     owner_pid = None
     try:
-        conn = _connect(sock_path)
+        conn = (
+            _connect(sock_path, authkey_path=authkey_path)
+            if authkey_path is not None
+            else _connect(sock_path)
+        )
         if conn is None:
             if line.split()[:1] == ["status"]:
                 # Asking whether the browser is running must not start it. With
@@ -265,7 +280,7 @@ def _request_with_identity(
                     return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
             _ensure_browser_ready(line)  # cold start: provision the browser first
-            conn = _spawn_daemon(sock_path, headless)
+            conn = _spawn_daemon(sock_path, headless, target=target)
         # A successful whole-browser close is a lifecycle barrier on Windows.
         # Record the exact process serving this connection so a concurrently
         # started replacement is never mistaken for the daemon being closed.
@@ -329,6 +344,7 @@ def _request_with_identity(
                 tab=tab,
                 raw_result=raw_result,
                 _provisioned=True,
+                target=target,
             )
 
     # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
@@ -391,6 +407,28 @@ def request_as(
         account=account,
         headless=headless,
         tab=tab,
+    )
+
+
+def request_target_as(
+    target,
+    line: str,
+    *,
+    caller: str,
+    account: str,
+    headless: bool = False,
+    tab: str = None,
+) -> tuple:
+    """Send an authenticated Host command only to an explicit daemon target."""
+    if not caller or not account:
+        return 3, "authenticated caller and account are required"
+    return _request_with_identity(
+        line,
+        caller=caller,
+        account=account,
+        headless=headless,
+        tab=tab,
+        target=target,
     )
 
 
