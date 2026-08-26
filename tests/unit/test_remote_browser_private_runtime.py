@@ -5,6 +5,7 @@ import os
 import threading
 import time
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -117,6 +118,7 @@ def test_launch_policy_is_fixed_fail_closed_and_secret_safe(tmp_path):
     }
     assert options["service_workers"] == "block"
     assert options["accept_downloads"] is True
+    assert policy.native_preflight == "remote-egress-v1"
     assert tuple(options["args"]) == REMOTE_BROWSER_CHROME_ARGS
     assert "--proxy-bypass-list=<-loopback>" in options["args"]
     assert "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" in options["args"]
@@ -229,6 +231,7 @@ async def test_gateway_loss_rejects_lifecycle_before_browser_mutation(tmp_path):
 class FakeContext:
     def __init__(self):
         self.pages = []
+        self.closed = False
 
     async def cookies(self):
         return []
@@ -239,7 +242,7 @@ class FakeContext:
         return page
 
     async def close(self):
-        return None
+        self.closed = True
 
 
 class FakePage:
@@ -258,6 +261,7 @@ class FakePlaywright:
         self.context = FakeContext()
         self.profile = None
         self.options = None
+        self.stopped = False
         self.chromium = self
 
     async def launch_persistent_context(self, profile, **options):
@@ -266,7 +270,7 @@ class FakePlaywright:
         return self.context
 
     async def stop(self):
-        return None
+        self.stopped = True
 
 
 class FakeManager:
@@ -280,10 +284,12 @@ class FakeManager:
 @pytest.mark.asyncio
 async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, monkeypatch):
     playwright = FakePlaywright()
+    preflight = AsyncMock()
     monkeypatch.setenv("BROWSER_PROXY", "http://environment.invalid:9999")
     monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
+    monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
     policy = remote_browser_launch_policy(
         tmp_path / "private-profile",
         ProxyEndpoint("127.0.0.1", 43123, "connectonion", "secret"),
@@ -296,17 +302,20 @@ async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, mo
     assert playwright.options["proxy"]["server"] == "http://127.0.0.1:43123"
     assert "environment.invalid" not in repr(playwright.options)
     assert playwright.options["service_workers"] == "block"
+    preflight.assert_awaited_once_with("remote-egress-v1", playwright.context)
     await browser.close()
 
 
 @pytest.mark.asyncio
 async def test_ordinary_async_core_keeps_environment_proxy_compatibility(tmp_path, monkeypatch):
     playwright = FakePlaywright()
+    preflight = AsyncMock()
     monkeypatch.setenv("BROWSER_PROXY", "http://local-proxy.example:8080")
     monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(tmp_path / "local-profile"))
     monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
+    monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
     browser = async_browser.AsyncBrowserCore(headless=True)
 
     await browser.open_browser()
@@ -314,7 +323,33 @@ async def test_ordinary_async_core_keeps_environment_proxy_compatibility(tmp_pat
     assert playwright.profile == str((tmp_path / "local-profile").resolve())
     assert playwright.options["proxy"]["server"] == "http://local-proxy.example:8080"
     assert "service_workers" not in playwright.options
+    preflight.assert_not_awaited()
     await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_native_preflight_failure_closes_partial_context_and_driver(
+    tmp_path, monkeypatch
+):
+    playwright = FakePlaywright()
+    preflight = AsyncMock(side_effect=RuntimeError("preflight failed"))
+    monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
+    monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
+    monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
+    policy = remote_browser_launch_policy(
+        tmp_path / "private-profile",
+        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "secret"),
+    )
+    browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
+
+    with pytest.raises(RuntimeError, match="preflight failed"):
+        await browser.open_browser()
+
+    assert browser.browser is None
+    assert browser.playwright is None
+    assert playwright.context.closed is True
+    assert playwright.stopped is True
 
 
 def test_default_remote_service_targets_private_daemon(tmp_path, monkeypatch):

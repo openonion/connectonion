@@ -76,6 +76,7 @@ class BrowserLaunchPolicy:
     ignore_default_args: tuple[str, ...] = ()
     service_workers: Literal["allow", "block"] = "block"
     accept_downloads: bool = True
+    native_preflight: Literal["remote-egress-v1"] | None = None
 
     def __post_init__(self) -> None:
         profile = Path(self.profile_dir).expanduser().resolve()
@@ -91,6 +92,8 @@ class BrowserLaunchPolicy:
             )
         if any(arg == "--proxy-server" or arg.startswith("--proxy-server=") for arg in self.args):
             raise ValueError("proxy authority belongs to `proxy`, not to a bare argument")
+        if self.native_preflight not in (None, "remote-egress-v1"):
+            raise ValueError("unknown native browser preflight")
 
     def playwright_options(self) -> dict:
         """Return a fresh mapping so a driver cannot mutate the frozen policy."""
