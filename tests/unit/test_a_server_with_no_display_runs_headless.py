@@ -94,7 +94,7 @@ class TestTheBrowserItselfHonoursIt:
         try:
             assert automation._headless is True
         finally:
-            automation._executor.shutdown(wait=False)
+            automation.close()
 
     @pytest.mark.skipif(platform.system() != "Darwin", reason="desktop-only claim")
     def test_a_desktop_still_gets_a_window(self):
@@ -102,7 +102,7 @@ class TestTheBrowserItselfHonoursIt:
         try:
             assert automation._headless is False
         finally:
-            automation._executor.shutdown(wait=False)
+            automation.close()
 
 
 # The advice for a launch failure is not tested here. It moved to

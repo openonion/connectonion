@@ -34,6 +34,25 @@ with BrowserAutomation() as browser:
     browser.close()
 ```
 
+### Synchronous API, async runtime
+
+`BrowserAutomation` remains synchronous in 1.8: existing calls, context managers,
+method names, signatures, and return values do not require an `await`. Internally,
+the class owns one async browser core on a private event-loop thread. This removes
+the old synchronous Patchright implementation from the execution path while
+preserving existing Python and Agent integrations.
+
+Calling these synchronous methods from a thread that already runs an asyncio loop
+is supported; the call blocks that caller until its browser operation completes.
+Calling from the browser's own private runtime thread raises a clear `RuntimeError`
+instead of deadlocking. An unbound `close()` closes the shared browser and joins the
+runtime thread; a session-bound `close()` releases only that session's tab.
+
+Compatibility policy for 1.8: no public `BrowserAutomation` method is deprecated,
+and the async core remains internal. `LegacyBrowserAutomation` is an internal test
+oracle for comparing the 1.7 contract; it is not a supported import and may be
+removed after the 1.8 transition without a deprecation period.
+
 ## Persistent Profile
 
 Browser state (cookies, sessions, localStorage) is saved automatically to `~/.co/browser_profile/`. On subsequent runs the browser is already logged into any site you've previously authenticated.

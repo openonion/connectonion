@@ -2338,3 +2338,14 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """Context manager exit - ensures browser closes and saves context."""
         self.close()
         return False
+
+
+# Keep the implementation available for one release as an internal comparison
+# oracle while the public name moves to the async-core compatibility facade.
+LegacyBrowserAutomation = BrowserAutomation
+from ._sync_browser_facade import (  # noqa: E402
+    BrowserAutomation,
+    adopt_legacy_contract,
+)
+
+adopt_legacy_contract(LegacyBrowserAutomation)
