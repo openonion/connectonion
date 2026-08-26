@@ -322,6 +322,21 @@ def browser(
     raise typer.Exit(handle_browser(args or [], headless=headless))
 
 
+@app.command(
+    "remote-browser",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def remote_browser(
+    args: List[str] = typer.Argument(
+        None, help="[options] <address> <start|status|sessions|stop|diagnose>"
+    ),
+):
+    """Manage an owner-bound browser session on a remote agent over OIP."""
+    from .commands.remote_browser_commands import handle_remote_browser
+
+    raise typer.Exit(handle_remote_browser(args or []))
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def call(
     args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),

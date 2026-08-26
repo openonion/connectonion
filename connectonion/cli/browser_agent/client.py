@@ -215,18 +215,25 @@ def _ensure_browser_ready(line: str) -> bool:
     return True
 
 
-def _request(line: str, headless: bool = False, tab: str = None,
-             raw_result: bool = False, _provisioned: bool = False) -> tuple:
+def _request_with_identity(
+    line: str,
+    *,
+    caller: str,
+    account: str,
+    headless: bool = False,
+    tab: str = None,
+    raw_result: bool = False,
+    _provisioned: bool = False,
+) -> tuple:
     """Send one short daemon request and return ``(code, payload)``.
 
     ``raw_result`` is for the client-side agent: image data must reach its vision
     formatter, while an interactive shell should still receive a saved-file line.
     The account address is public; the API key never crosses this transport.
     """
-    account = _caller_account()
     request = json.dumps({
         "v": 1,
-        "caller": _caller(),
+        "caller": caller,
         "account": account,
         "tab": tab,
         "line": line,
@@ -314,8 +321,13 @@ def _request(line: str, headless: bool = False, tab: str = None,
     # not something to guess at from a version-numbered cache path.
     if "No browser is installed for this user" in payload and not _provisioned:
         if _ensure_browser_ready(line):
-            return _request(
-                line, headless=headless, tab=tab, raw_result=raw_result,
+            return _request_with_identity(
+                line,
+                caller=caller,
+                account=account,
+                headless=headless,
+                tab=tab,
+                raw_result=raw_result,
                 _provisioned=True,
             )
 
@@ -336,6 +348,50 @@ def _request(line: str, headless: bool = False, tab: str = None,
     parts = header.split()
     code = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
     return code, payload
+
+
+def _request(
+    line: str,
+    headless: bool = False,
+    tab: str = None,
+    raw_result: bool = False,
+    _provisioned: bool = False,
+) -> tuple:
+    """Send a request owned by this local CLI process."""
+    return _request_with_identity(
+        line,
+        caller=_caller(),
+        account=_caller_account(),
+        headless=headless,
+        tab=tab,
+        raw_result=raw_result,
+        _provisioned=_provisioned,
+    )
+
+
+def request_as(
+    line: str,
+    *,
+    caller: str,
+    account: str,
+    headless: bool = False,
+    tab: str = None,
+) -> tuple:
+    """Host-only daemon seam using an already authenticated remote identity.
+
+    The caller value comes from OIP authentication, never from remote request
+    arguments. Keeping this separate from ``_request`` prevents a local CLI
+    option from spoofing another tab owner.
+    """
+    if not caller or not account:
+        return 3, "authenticated caller and account are required"
+    return _request_with_identity(
+        line,
+        caller=caller,
+        account=account,
+        headless=headless,
+        tab=tab,
+    )
 
 
 def _tool_line(name: str, args: tuple, kwargs: dict) -> str:
