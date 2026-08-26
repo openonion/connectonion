@@ -29,6 +29,9 @@ from connectonion.useful_tools.browser_tools.launch_policy import (
     BrowserLaunchPolicy,
     BrowserProxySettings,
 )
+from connectonion.useful_tools.browser_tools.native_egress import (
+    NativeEgressPreflightError,
+)
 
 
 class LifecycleBrowser:
@@ -336,6 +339,17 @@ class FakePlaywright:
         self.stopped = True
 
 
+class FailingLaunchPlaywright(FakePlaywright):
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    async def launch_persistent_context(self, profile, **options):
+        self.profile = profile
+        self.options = options
+        raise self.error
+
+
 class FakeManager:
     def __init__(self, playwright):
         self.playwright = playwright
@@ -396,7 +410,11 @@ async def test_native_preflight_failure_closes_partial_context_and_driver(
     tmp_path, monkeypatch
 ):
     playwright = FakePlaywright()
-    preflight = AsyncMock(side_effect=RuntimeError("preflight failed"))
+    preflight = AsyncMock(
+        side_effect=RuntimeError(
+            f"driver echoed --connectonion-proxy-auth-file={tmp_path}/proxy-auth.json"
+        )
+    )
     monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
@@ -408,13 +426,49 @@ async def test_native_preflight_failure_closes_partial_context_and_driver(
     )
     browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
 
-    with pytest.raises(RuntimeError, match="preflight failed"):
+    with pytest.raises(NativeEgressPreflightError) as raised:
         await browser.open_browser()
 
+    assert str(raised.value) == (
+        "EGRESS_PREFLIGHT_FAILED: native browser egress boundary could not be proven"
+    )
+    assert str(tmp_path) not in str(raised.value)
     assert browser.browser is None
     assert browser.playwright is None
     assert playwright.context.closed is True
     assert playwright.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_private_driver_launch_error_cannot_echo_auth_path(tmp_path, monkeypatch):
+    auth_file = tmp_path / "proxy-auth.json"
+    playwright = FailingLaunchPlaywright(
+        RuntimeError(f"failed argv --connectonion-proxy-auth-file={auth_file}")
+    )
+    preflight = AsyncMock()
+    monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
+    monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
+    monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
+    policy = remote_browser_launch_policy(
+        tmp_path / "private-profile",
+        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
+        auth_file,
+    )
+    browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
+
+    with pytest.raises(NativeEgressPreflightError) as raised:
+        await browser.open_browser()
+
+    assert str(raised.value) == (
+        "EGRESS_PREFLIGHT_FAILED: native browser egress boundary could not be proven"
+    )
+    assert str(auth_file) not in str(raised.value)
+    assert browser.browser is None
+    assert browser.playwright is None
+    assert playwright.context.closed is False
+    assert playwright.stopped is True
+    preflight.assert_not_awaited()
 
 
 def test_default_remote_service_targets_private_daemon(tmp_path, monkeypatch):
