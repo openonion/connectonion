@@ -1,14 +1,20 @@
 """Remote Browser lifecycle through the real native daemon transport."""
 
+import asyncio
 import contextlib
+import json
 import os
 import threading
 import time
 
+from connectonion import address
 from connectonion.cli.browser_agent import transport
 from connectonion.cli.browser_agent.client import request_as
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
+from connectonion.network.connect import RemoteAgent
 from connectonion.network.host.remote_browser import RemoteBrowserService
+from connectonion.network.host.server import _make_remote_browser
+from connectonion.network.host.ws_router import session as ws_session
 
 
 class LifecycleBrowser:
@@ -27,6 +33,70 @@ class LifecycleBrowser:
 
     def close(self):
         return "Browser closed"
+
+
+class ContactTrust:
+    def is_admin(self, owner):
+        return False
+
+    def get_level(self, owner):
+        return "contact"
+
+
+async def _signed_start(service, monkeypatch):
+    keys = address.generate()
+    host = "0x" + "12" * 20
+    command = RemoteAgent(host, keys=keys)._build_command_message(
+        {
+            "type": "REMOTE_BROWSER",
+            "request_id": "native-start",
+            "command": "start",
+            "args": {"headless": True, "proxy": "direct"},
+        },
+        is_direct=True,
+    )
+    frames = [{"type": "CONNECT", "from": keys["address"]}, command]
+    result_sent = asyncio.Event()
+    sent = []
+
+    async def fake_connect(data, send, conn, *args):
+        conn.update(
+            authenticated=True,
+            agent_address=keys["address"],
+            signed_commands=True,
+            recipient_address=host,
+            session_id="native-oip",
+        )
+
+    async def recv():
+        if frames:
+            return frames.pop(0)
+        await result_sent.wait()
+        return None
+
+    async def send(message):
+        sent.append(message)
+        if message.get("type") == "REMOTE_BROWSER_RESULT":
+            result_sent.set()
+
+    monkeypatch.setattr(ws_session, "handle_connect", fake_connect)
+    await ws_session.run_ws_session(
+        send,
+        recv,
+        route_handlers={
+            "remote_browser": _make_remote_browser(service, ContactTrust()),
+        },
+        storage=None,
+        registry=None,
+        trust=None,
+        enable_ping=False,
+        transport="direct",
+    )
+    result = next(
+        message for message in sent if message.get("type") == "REMOTE_BROWSER_RESULT"
+    )
+    assert json.loads(json.dumps(result))["request_id"] == "native-start"
+    return result, keys["address"]
 
 
 def _wait_for_daemon(socket_path):
@@ -51,18 +121,11 @@ def test_remote_lifecycle_uses_one_native_daemon_and_survives_host_restart(
         _wait_for_daemon(socket_path)
         state_path = tmp_path / "remote-browser-sessions.json"
         service = RemoteBrowserService(state_path, daemon_request=request_as)
-        started = service.handle(
-            {
-                "request_id": "native-start",
-                "command": "start",
-                "args": {"headless": True, "proxy": "direct"},
-            },
-            owner="0xowner",
-            transport="direct",
-        )
+        started, owner = asyncio.run(_signed_start(service, monkeypatch))
         assert started["ok"] is True
         session_id = started["result"]["session_id"]
         assert len(daemon.browser._tab_meta) == 1
+        assert next(iter(daemon.browser._tab_meta.values()))["opened_by"] == owner
 
         restarted_host_service = RemoteBrowserService(
             state_path, daemon_request=request_as
@@ -73,7 +136,7 @@ def test_remote_lifecycle_uses_one_native_daemon_and_survives_host_restart(
                 "command": "status",
                 "session_id": session_id,
             },
-            owner="0xowner",
+            owner=owner,
             transport="direct",
         )
         assert status["state"]["session"] == "active"
@@ -84,7 +147,7 @@ def test_remote_lifecycle_uses_one_native_daemon_and_survives_host_restart(
                 "command": "stop",
                 "session_id": session_id,
             },
-            owner="0xowner",
+            owner=owner,
             transport="direct",
         )
         assert stopped["state"]["session"] == "stopped"
