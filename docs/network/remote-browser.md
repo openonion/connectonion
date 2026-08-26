@@ -41,6 +41,12 @@ Continue to use local `co browser` for page actions while that policy is being
 specified and tested in
 [#1297](https://github.com/openonion/connectonion/issues/1297).
 
+Remote Browser lifecycle now targets a Host-private BrowserDaemon namespace,
+profile, IPC credential, and loopback egress gateway. This isolation does not
+enable navigation: it establishes the runtime boundary required before native
+Chromium bypass tests can make that claim. See
+[Remote Browser private runtime](remote-browser-private-runtime.md).
+
 See [DD-055](../design-decisions/055-owner-bound-remote-browser-lifecycle.md)
 for the lifecycle decision and
 [DD-056](../design-decisions/056-remote-browser-egress-gateway.md) for the

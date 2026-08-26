@@ -283,6 +283,9 @@ OAuth redirects, WebSockets, and downloads remain usable.
 
 The executable limits and protocol contract for step 2 are documented in
 [Remote Browser egress gateway](../network/remote-browser-egress-gateway.md).
+The namespace, profile, launch-policy, and shutdown contract for step 3 is
+documented in
+[Remote Browser private runtime](../network/remote-browser-private-runtime.md).
 
 Each step is its own reviewable PR with documentation, unit tests, native E2E,
 and a rollback that leaves navigation unavailable rather than bypassing the
