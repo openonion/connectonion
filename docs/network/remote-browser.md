@@ -42,4 +42,6 @@ specified and tested in
 [#1297](https://github.com/openonion/connectonion/issues/1297).
 
 See [DD-055](../design-decisions/055-owner-bound-remote-browser-lifecycle.md)
-for the decision and follow-up gates.
+for the lifecycle decision and
+[DD-056](../design-decisions/056-remote-browser-egress-gateway.md) for the
+fail-closed navigation design and executable negative-vector plan.
