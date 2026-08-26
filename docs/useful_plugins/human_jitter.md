@@ -20,7 +20,7 @@ agent.input("open the menu and click Settings")
 
 1. On `before_each_tool`, reads `agent.current_session['pending_tool']`.
 2. If its name starts with `click`, grabs the `BrowserAutomation` instance off the tool registry (`agent.tools.browserautomation`).
-3. Dispatches `jitter()` onto the browser's single worker thread: the cursor moves to a random point, then random-walks through a few more, with short pauses.
+3. Dispatches an async jitter routine onto the browser core's owning event loop: the cursor moves to a random point, then random-walks through a few more, with short pauses.
 
 Jitter is best-effort. If the page is mid-navigation when it reads the viewport, the failure is caught and logged so the click the agent asked for can still proceed.
 

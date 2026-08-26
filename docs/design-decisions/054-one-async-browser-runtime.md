@@ -56,9 +56,10 @@ The migration has three review boundaries:
    `BrowserAutomation` methods submit to an owned loop thread without nesting a
    caller's running event loop. The facade is compatibility, not a second driver.
 
-The internal core is not exported as a public user API. The daemon now owns it
-directly; the current synchronous Python API remains authoritative until #500's
-facade and cross-platform compatibility matrices are green.
+The internal core is not exported as a public user API. The daemon owns it
+directly; the synchronous Python API remains authoritative and now delegates
+through #500's facade. That facade still requires green cross-platform matrices
+before merge.
 
 The #499 transport boundary keeps claim admission separate from page execution.
 A registry lock performs unknown-tab validation, claim takeover/refusal, and a
