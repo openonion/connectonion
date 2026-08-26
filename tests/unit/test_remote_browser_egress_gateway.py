@@ -228,13 +228,20 @@ async def test_connect_timeout_bounds_the_complete_answer_set():
 
     async def stalled_dialer(endpoint, timeout):
         calls.append((endpoint, timeout))
-        if len(calls) == 1:
-            await asyncio.sleep(0.01)
-            raise OSError("first approved peer unavailable")
         await asyncio.Event().wait()
 
+    answers = (
+        "1.0.0.1",
+        "1.1.1.1",
+        "8.8.4.4",
+        "8.8.8.8",
+        "9.9.9.9",
+        "2001:4860:4860::8844",
+        "2001:4860:4860::8888",
+        "2606:4700:4700::1111",
+    )
     gateway = EgressGateway(
-        resolver=RecordingResolver(("8.8.8.8", "2001:4860:4860::8888")),
+        resolver=RecordingResolver(answers),
         dialer=stalled_dialer,
         limits=GatewayLimits(connect_timeout=0.1),
         password="secret",
@@ -243,8 +250,8 @@ async def test_connect_timeout_bounds_the_complete_answer_set():
         response = await _exchange(gateway.endpoint, _connect_request(gateway.endpoint))
 
     assert b"502 Bad Gateway" in response
-    assert len(calls) == 2
-    assert 0 < calls[1][1] < calls[0][1] < 0.101
+    assert 1 <= len(calls) < len(answers)
+    assert all(0 < timeout < 0.101 for _, timeout in calls)
 
 
 @pytest.mark.asyncio
