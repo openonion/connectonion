@@ -1,14 +1,15 @@
 """
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
-  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; BrowserAutomation is imported only to preserve the public CLI help/schema until #500 installs the sync facade | imported by browser_agent.client and browser_commands | tested by test_async_browser_daemon.py, test_browser_daemon.py, test_transport.py
+  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation is imported only to preserve the public CLI help/schema until #500 installs the sync facade | imported by browser_agent.client and browser_commands | tested by test_async_browser_daemon.py, test_browser_daemon.py, test_transport.py, test_remote_browser_private_runtime.py
   Data flow: wire-v1 JSON {v,caller,account,tab,line,raw} (legacy plain line accepted) → atomic registry/claim admission → request-scoped audit lease → awaited async browser verb → bounded reply with exit code 2 usage / 3 unknown tab / 4 busy; `do` keeps model latency in the client and sends only its short tool calls
-  State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | independent tab tasks interleave; AsyncBrowserCore's per-tab locks serialize one tab | registry lock makes conflicting claims deterministic and clears each request lease in finally | POSIX uses asyncio.start_unix_server with a 1 MiB request cap, absolute 120s read/write deadlines, 32-client cap, and immediate overload shedding | Windows preserves the HMAC named-pipe handshake and bridges accept/read/write through an 8-worker bounded executor into the same loop | lifetime OS lock + pid sidecar preserve cold-start/stale-owner rules | shutdown stops admission, cancels owned connection tasks, closes the runtime, and removes only its own endpoint
+  State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its egress gateway and fixed launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser before gateway | independent tab tasks interleave; AsyncBrowserCore's per-tab locks serialize one tab | registry lock makes conflicting claims deterministic and clears each request lease in finally | POSIX uses asyncio.start_unix_server with a 1 MiB request cap, absolute 120s read/write deadlines, 32-client cap, and immediate overload shedding | Windows preserves the HMAC named-pipe handshake and bridges accept/read/write through an 8-worker bounded executor into the same loop | lifetime OS lock + pid sidecar preserve cold-start/stale-owner rules | shutdown stops admission, cancels owned connection tasks, closes the runtime, and removes only its own endpoint
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main(); launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless]`; dispatch() is a non-loop compatibility seam for existing pure tests, production awaits dispatch_async()
   Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
   Errors: malformed/oversized/stalled clients are bounded at their own connection boundary; cancellation clears only its request lease; vanished readers are logged and cannot stop the daemon; launch failure or closed shared runtime releases the endpoint
 """
 
+import argparse
 import asyncio
 import atexit
 import contextlib
@@ -223,9 +224,32 @@ def launch_failure_advice(first_line: str) -> str:
 class BrowserDaemon:
     """Concurrent server owning one asyncio-native browser runtime."""
 
-    def __init__(self, sock_path: str, headless: bool = False):
+    def __init__(
+        self,
+        sock_path: str,
+        headless: bool = False,
+        *,
+        profile_dir: str | Path | None = None,
+        remote_egress: bool = False,
+        authkey_path: str | Path | None = None,
+        gateway_factory=None,
+        browser_factory=AsyncBrowserCore,
+    ):
         self.sock_path = sock_path
-        self.browser = AsyncBrowserCore(headless=headless)
+        self._headless = headless
+        self._profile_dir = (
+            Path(profile_dir).expanduser().resolve() if profile_dir is not None else None
+        )
+        self._remote_egress = remote_egress
+        self._authkey_path = Path(authkey_path) if authkey_path is not None else None
+        self._gateway_factory = gateway_factory
+        self._browser_factory = browser_factory
+        if self._remote_egress and self._profile_dir is None:
+            raise ValueError("remote browser daemon requires an explicit profile")
+        self._gateway = None
+        self.browser = (
+            None if self._remote_egress else self._browser_factory(headless=headless)
+        )
         self._srv = None
         # Set by _cleanup before it closes the listener, so serve() can tell "we are
         # stopping" from "the socket broke while we were meant to be serving".
@@ -290,6 +314,10 @@ class BrowserDaemon:
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return 2, "empty request"
+        if self._remote_egress and (
+            self._gateway is None or not self._gateway.is_running
+        ):
+            return False, "EGRESS_GATEWAY_UNAVAILABLE"
         verb = tokens[0]
 
         # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
@@ -746,13 +774,13 @@ class BrowserDaemon:
 
     async def serve_async(self):
         self._loop = asyncio.get_running_loop()
-        self._bind()
-        atexit.register(self._cleanup)
-        if threading.current_thread() is threading.main_thread():
-            with contextlib.suppress(NotImplementedError, RuntimeError):
-                self._loop.add_signal_handler(signal.SIGTERM, self._begin_shutdown)
-
         try:
+            await self._prepare_runtime()
+            self._bind()
+            atexit.register(self._cleanup)
+            if threading.current_thread() is threading.main_thread():
+                with contextlib.suppress(NotImplementedError, RuntimeError):
+                    self._loop.add_signal_handler(signal.SIGTERM, self._begin_shutdown)
             if transport.IS_WINDOWS:
                 self._transport_pool = ThreadPoolExecutor(
                     max_workers=WINDOWS_TRANSPORT_WORKERS,
@@ -776,6 +804,40 @@ class BrowserDaemon:
                 raise
         finally:
             await self._shutdown_async()
+
+    async def _prepare_runtime(self) -> None:
+        """Start private network authority before exposing the daemon endpoint."""
+        if not self._remote_egress:
+            return
+        if self._gateway is not None or self.browser is not None:
+            if (
+                self._gateway is not None
+                and self.browser is not None
+                and self._gateway.is_running
+            ):
+                return
+            raise RuntimeError("private browser runtime is only prepared once")
+        from connectonion.network.host.egress_gateway import EgressGateway
+        from connectonion.network.host.private_browser_runtime import (
+            remote_browser_launch_policy,
+        )
+
+        gateway = (
+            self._gateway_factory()
+            if self._gateway_factory is not None
+            else EgressGateway()
+        )
+        endpoint = await gateway.start()
+        try:
+            policy = remote_browser_launch_policy(self._profile_dir, endpoint)
+            browser = self._browser_factory(
+                headless=self._headless, launch_policy=policy
+            )
+        except BaseException:
+            await gateway.stop()
+            raise
+        self._gateway = gateway
+        self.browser = browser
 
     def _accept_posix_client(self, reader, writer) -> None:
         """Admit at most ``MAX_IN_FLIGHT`` clients; shed excess immediately."""
@@ -1013,6 +1075,15 @@ class BrowserDaemon:
                     f"browser cleanup failed: {type(exc).__name__}: {exc}",
                     file=sys.stderr,
                 )
+        if self._gateway is not None:
+            try:
+                await self._gateway.stop()
+            except Exception as exc:
+                print(
+                    f"egress gateway cleanup failed: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+            self._gateway = None
         if self._transport_pool is not None:
             self._transport_pool.shutdown(wait=True, cancel_futures=True)
             self._transport_pool = None
@@ -1039,11 +1110,14 @@ class BrowserDaemon:
         The lifetime lock, pid-file location, and (on Windows) the named-pipe wire live
         behind `transport` so POSIX behavior is byte-identical while Windows gets native
         named pipes with an HMAC-authenticated handshake."""
+        transport.ensure_endpoint_parent(self.sock_path)
         self._bind_lock = transport.acquire_singleton_lock(transport.lock_path(self.sock_path))
         if self._bind_lock is None:
             sys.exit(0)  # another daemon is binding or already serving
         if transport.IS_WINDOWS:
-            self._authkey = transport.load_or_create_authkey()  # the pipe wire's HMAC secret
+            self._authkey = transport.load_or_create_authkey(
+                self._authkey_path
+            )  # the pipe wire's HMAC secret
             self._bind_windows()
         else:
             self._bind_posix()
@@ -1195,9 +1269,20 @@ def main():
         for stream in (sys.stdout, sys.stderr):
             if hasattr(stream, "reconfigure"):
                 stream.reconfigure(encoding="utf-8", errors="replace")
-    sock_path = sys.argv[1] if len(sys.argv) > 1 else default_sock_path()
-    headless = "--headless" in sys.argv[2:]
-    BrowserDaemon(sock_path, headless=headless).serve()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("sock_path", nargs="?", default=default_sock_path())
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--profile-dir")
+    parser.add_argument("--authkey-file")
+    parser.add_argument("--remote-egress", action="store_true")
+    args = parser.parse_args()
+    BrowserDaemon(
+        args.sock_path,
+        headless=args.headless,
+        profile_dir=args.profile_dir,
+        authkey_path=args.authkey_file,
+        remote_egress=args.remote_egress,
+    ).serve()
 
 
 if __name__ == "__main__":
