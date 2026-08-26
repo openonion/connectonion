@@ -63,7 +63,10 @@ def test_complete_dns_answer_sets_fail_when_any_answer_is_denied(vector):
     result = policy.decide_destination(authority, vector["answers"])
     assert result.ok is vector["ok"]
     assert result.code == vector["code"]
-    assert set(result.addresses) == set(vector["answers"])
+    expected_addresses = {
+        str(ipaddress.ip_address(address)) for address in vector["answers"]
+    }
+    assert set(result.addresses) == expected_addresses
     serialized = repr(result)
     assert "hidden" not in serialized
     assert "secret=yes" not in serialized
