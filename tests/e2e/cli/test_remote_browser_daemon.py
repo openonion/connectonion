@@ -3,15 +3,15 @@
 import asyncio
 import contextlib
 import json
-import os
 import threading
 import time
+from pathlib import Path
 
 from connectonion import address
 from connectonion.cli.browser_agent import transport
-from connectonion.cli.browser_agent.client import request_as
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
 from connectonion.network.connect import RemoteAgent
+from connectonion.network.host.private_browser_runtime import PrivateBrowserTarget
 from connectonion.network.host.remote_browser import RemoteBrowserService
 from connectonion.network.host.server import _make_remote_browser
 from connectonion.network.host.ws_router import session as ws_session
@@ -20,7 +20,7 @@ from connectonion.network.host.ws_router import session as ws_session
 class LifecycleBrowser:
     """Small runtime seam: the test targets transport/claims, not Chrome."""
 
-    def __init__(self):
+    def __init__(self, **_kwargs):
         self._tab_meta = {}
         self._pages = {}
 
@@ -31,7 +31,7 @@ class LifecycleBrowser:
         self._tab_meta.pop(name, None)
         return f"Closed tab {name}"
 
-    def close(self):
+    async def close(self):
         return "Browser closed"
 
 
@@ -102,7 +102,7 @@ async def _signed_start(service, monkeypatch):
 def _wait_for_daemon(socket_path):
     deadline = time.time() + 5
     while time.time() < deadline:
-        if os.path.exists(transport.pid_path(socket_path)):
+        if Path(transport.pid_path(socket_path)).exists():
             return
         time.sleep(0.02)
     raise RuntimeError("daemon did not bind in time")
@@ -111,25 +111,28 @@ def _wait_for_daemon(socket_path):
 def test_remote_lifecycle_uses_one_native_daemon_and_survives_host_restart(
     tmp_path, monkeypatch
 ):
-    socket_path = f"/tmp/co_remote_{os.getpid()}_{time.time_ns()}.sock"
-    monkeypatch.setenv("CO_BROWSER_SOCK", socket_path)
-    daemon = BrowserDaemon(socket_path, headless=True)
-    daemon.browser = LifecycleBrowser()
+    state_path = tmp_path / "remote-browser-sessions.json"
+    target = PrivateBrowserTarget.from_state_path(state_path)
+    daemon = BrowserDaemon(
+        target.address,
+        headless=True,
+        profile_dir=target.profile_dir,
+        authkey_path=target.authkey_path,
+        remote_egress=True,
+        browser_factory=LifecycleBrowser,
+    )
     thread = threading.Thread(target=daemon.serve, daemon=True)
     thread.start()
     try:
-        _wait_for_daemon(socket_path)
-        state_path = tmp_path / "remote-browser-sessions.json"
-        service = RemoteBrowserService(state_path, daemon_request=request_as)
+        _wait_for_daemon(target.address)
+        service = RemoteBrowserService(state_path)
         started, owner = asyncio.run(_signed_start(service, monkeypatch))
         assert started["ok"] is True
         session_id = started["result"]["session_id"]
         assert len(daemon.browser._tab_meta) == 1
         assert next(iter(daemon.browser._tab_meta.values()))["opened_by"] == owner
 
-        restarted_host_service = RemoteBrowserService(
-            state_path, daemon_request=request_as
-        )
+        restarted_host_service = RemoteBrowserService(state_path)
         status = restarted_host_service.handle(
             {
                 "request_id": "native-status",
@@ -156,10 +159,9 @@ def test_remote_lifecycle_uses_one_native_daemon_and_survives_host_restart(
         daemon._cleanup()
         thread.join(timeout=2)
         for path in (
-            socket_path,
-            transport.pid_path(socket_path),
-            transport.lock_path(socket_path),
+            target.address,
+            transport.pid_path(target.address),
+            transport.lock_path(target.address),
         ):
             with contextlib.suppress(OSError):
-                if os.path.exists(path):
-                    os.unlink(path)
+                Path(path).unlink(missing_ok=True)
