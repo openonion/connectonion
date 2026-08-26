@@ -280,7 +280,11 @@ def _request_with_identity(
                     return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
             _ensure_browser_ready(line)  # cold start: provision the browser first
-            conn = _spawn_daemon(sock_path, headless, target=target)
+            conn = (
+                _spawn_daemon(sock_path, headless, target=target)
+                if target is not None
+                else _spawn_daemon(sock_path, headless)
+            )
         # A successful whole-browser close is a lifecycle barrier on Windows.
         # Record the exact process serving this connection so a concurrently
         # started replacement is never mistaken for the daemon being closed.
