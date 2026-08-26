@@ -1,5 +1,6 @@
 """RemoteAgent's typed Remote Browser request/response contract."""
 
+import asyncio
 import json
 
 import pytest
@@ -39,6 +40,17 @@ class FakeConnection:
 
     async def __aexit__(self, *args):
         return False
+
+
+class WaitingConnection(FakeConnection):
+    def __init__(self):
+        super().__init__()
+        self.waiting = asyncio.Event()
+
+    async def recv(self):
+        if self.replies:
+            return json.dumps(self.replies.pop(0))
+        await self.waiting.wait()
 
 
 @pytest.mark.asyncio
@@ -87,3 +99,46 @@ async def test_connection_failure_returns_stable_error_envelope(monkeypatch):
     assert result["code"] == "CONNECTION_FAILED"
     assert result["retryable"] is True
     assert result["warnings"] == []
+
+
+@pytest.mark.asyncio
+async def test_response_timeout_returns_stable_error_envelope(monkeypatch):
+    remote = RemoteAgent("0x" + "12" * 20, keys=address.generate())
+    connection = WaitingConnection()
+
+    async def no_resolve():
+        return None
+
+    async def open_connection(websockets):
+        return connection, True
+
+    monkeypatch.setattr(remote, "_try_resolve_endpoint", no_resolve)
+    monkeypatch.setattr(remote, "_open_best_connection", open_connection)
+
+    result = await remote.remote_browser_async("sessions", timeout=0.01)
+
+    assert result["ok"] is False
+    assert result["code"] == "TIMEOUT"
+    assert result["retryable"] is True
+
+
+@pytest.mark.asyncio
+async def test_python_cancellation_propagates_without_becoming_a_retry(monkeypatch):
+    remote = RemoteAgent("0x" + "12" * 20, keys=address.generate())
+    connection = WaitingConnection()
+
+    async def no_resolve():
+        return None
+
+    async def open_connection(websockets):
+        return connection, True
+
+    monkeypatch.setattr(remote, "_try_resolve_endpoint", no_resolve)
+    monkeypatch.setattr(remote, "_open_best_connection", open_connection)
+    task = asyncio.create_task(remote.remote_browser_async("sessions", timeout=60))
+    while len(connection.sent) < 2:
+        await asyncio.sleep(0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task

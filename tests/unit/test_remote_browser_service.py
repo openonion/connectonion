@@ -2,6 +2,8 @@ import json
 
 from connectonion.network.host.remote_browser import RemoteBrowserService
 
+UNSET = object()
+
 
 class Daemon:
     def __init__(self):
@@ -27,11 +29,11 @@ def service(tmp_path, daemon=None):
     )
 
 
-def request(command, request_id="req-1", session_id=None, args=None):
+def request(command, request_id="req-1", session_id=None, args=UNSET):
     value = {"request_id": request_id, "command": command}
     if session_id is not None:
         value["session_id"] = session_id
-    if args is not None:
+    if args is not UNSET:
         value["args"] = args
     return value
 
@@ -143,6 +145,59 @@ def test_non_direct_proxy_and_navigation_are_not_silently_enabled(tmp_path):
     assert shared["code"] == "REMOTE_SESSION_PROXY_LOCKED"
     assert navigation["code"] == "INVALID_ARGUMENT"
     assert daemon.calls == []
+
+
+def test_explicit_non_object_args_are_rejected(tmp_path):
+    remote, daemon = service(tmp_path)
+
+    for index, args in enumerate((None, [], "", 0, False)):
+        result = remote.handle(
+            request("start", request_id=f"req-invalid-{index}", args=args),
+            owner="0xalice",
+            transport="direct",
+        )
+        assert result["code"] == "INVALID_ARGUMENT"
+    assert daemon.calls == []
+
+
+def test_different_owners_receive_distinct_daemon_tabs(tmp_path):
+    remote, daemon = service(tmp_path)
+
+    alice = remote.handle(
+        request("start", request_id="req-alice"),
+        owner="0xalice",
+        transport="direct",
+    )
+    bob = remote.handle(
+        request("start", request_id="req-bob"),
+        owner="0xbob",
+        transport="direct",
+    )
+
+    assert alice["result"]["session_id"] != bob["result"]["session_id"]
+    opened = [line for line, _ in daemon.calls if line.startswith("tab open")]
+    assert len(opened) == 2
+    assert opened[0].split()[2] != opened[1].split()[2]
+
+    remote.handle(
+        request(
+            "stop",
+            request_id="req-stop-alice",
+            session_id=alice["result"]["session_id"],
+        ),
+        owner="0xalice",
+        transport="direct",
+    )
+    bob_status = remote.handle(
+        request(
+            "status",
+            request_id="req-status-bob",
+            session_id=bob["result"]["session_id"],
+        ),
+        owner="0xbob",
+        transport="direct",
+    )
+    assert bob_status["state"]["session"] == "active"
 
 
 def test_diagnose_states_the_incomplete_navigation_boundary(tmp_path):

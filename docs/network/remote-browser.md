@@ -15,7 +15,8 @@ Use `--json` for the complete stable envelope. A successful envelope includes
 `schema_version`, `ok`, `command`, `request_id`, `summary`, `result`, `state`,
 `tips`, `warnings`, and `next_actions`. Failures add a stable `code`, `message`,
 `retryable`, and `retry_after_seconds`; scripts should branch on `ok` and `code`,
-not English text.
+not English text. With `--json`, local validation failures use that envelope too
+and write no human usage text to stderr.
 
 `start` is idempotent for the same authenticated owner and request ID. Session
 IDs are identifiers, not bearer secrets. Status, listing, diagnosis, and Stop
@@ -27,6 +28,11 @@ This preview accepts direct OIP transport and `proxy=direct` only. A Relay path
 returns `SECURE_CHANNEL_UNAVAILABLE` until the reviewed OIP secure channel is
 available. It never downgrades to plaintext browser control. Other proxy modes
 return `REMOTE_SESSION_PROXY_LOCKED`.
+
+The Python async API returns a `TIMEOUT` envelope when its response deadline
+expires. Cancelling the calling task remains normal Python cancellation: it
+raises `asyncio.CancelledError` instead of turning cancellation into a retryable
+remote failure.
 
 Navigation is intentionally unavailable. Validating only the initial URL would
 leave redirects, DNS changes, and subresources able to cross the intended

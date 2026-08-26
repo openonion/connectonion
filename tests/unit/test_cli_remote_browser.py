@@ -71,6 +71,16 @@ def test_json_is_the_stable_envelope(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == expected
 
 
+def test_json_validation_failure_emits_only_one_json_envelope(capsys):
+    assert handle_remote_browser(["--json", "0xhost", "status"]) == 2
+
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["ok"] is False
+    assert result["code"] == "INVALID_ARGUMENT"
+    assert captured.err == ""
+
+
 def test_session_command_requires_exactly_one_session_id(capsys):
     assert handle_remote_browser(["0xhost", "status"]) == 2
     assert "session-id" in capsys.readouterr().err

@@ -77,8 +77,38 @@ def _print_human(result):
         print(f"{session['session_id']}\t{session['status']}")
 
 
+def _invalid_argument(message):
+    return {
+        "schema_version": "1",
+        "ok": False,
+        "command": "remote-browser",
+        "request_id": "",
+        "code": "INVALID_ARGUMENT",
+        "message": message,
+        "retryable": False,
+        "retry_after_seconds": None,
+        "state": {},
+        "tips": [],
+        "warnings": [],
+        "next_actions": [],
+    }
+
+
+def _print_invalid_argument(message, *, json_output):
+    if json_output:
+        print(
+            json.dumps(
+                _invalid_argument(message), sort_keys=True, separators=(",", ":")
+            )
+        )
+    else:
+        print(f"usage: {message}", file=sys.stderr)
+    return 2
+
+
 def handle_remote_browser(args) -> int:
     args = list(args or [])
+    json_requested = "--json" in args
     if not args:
         print(USAGE, file=sys.stderr)
         return 2
@@ -88,24 +118,26 @@ def handle_remote_browser(args) -> int:
     try:
         positional, options = _parse(args)
     except ValueError as exc:
-        print(f"usage: {exc}", file=sys.stderr)
-        return 2
+        return _print_invalid_argument(str(exc), json_output=json_requested)
 
     if len(positional) < 2:
-        print("usage: co remote-browser <address> <command>", file=sys.stderr)
-        return 2
+        return _print_invalid_argument(
+            "co remote-browser <address> <command>",
+            json_output=options["json_output"],
+        )
     address, command, *rest = positional
     if command not in {"start", "status", "sessions", "stop", "diagnose"}:
-        print(f"usage: unknown Remote Browser command '{command}'", file=sys.stderr)
-        return 2
+        return _print_invalid_argument(
+            f"unknown Remote Browser command '{command}'",
+            json_output=options["json_output"],
+        )
     needs_session = command in {"status", "stop", "diagnose"}
     if len(rest) != (1 if needs_session else 0):
         suffix = " <session-id>" if needs_session else ""
-        print(
-            f"usage: co remote-browser <address> {command}{suffix}",
-            file=sys.stderr,
+        return _print_invalid_argument(
+            f"co remote-browser <address> {command}{suffix}",
+            json_output=options["json_output"],
         )
-        return 2
 
     from connectonion import connect
     from connectonion.network.connect import _this_callers_identity

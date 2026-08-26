@@ -175,7 +175,7 @@ class RemoteBrowserService:
             )
         try:
             if command == "start":
-                return self._start(request_id, request.get("args") or {}, owner)
+                return self._start(request_id, request.get("args", {}), owner)
             if command == "sessions":
                 return self._sessions(request_id, owner)
             session_id = request.get("session_id")
