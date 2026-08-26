@@ -103,6 +103,13 @@ connection failure; it cannot fall back to direct egress. Host shutdown closes
 admission, browser traffic, gateway connections, resolver tasks, and the
 private daemon in that order.
 
+Loopback is not authentication. The gateway requires a random, daemon-scoped
+proxy credential stored only in the Host-private runtime directory and supplied
+through Chromium's proxy-auth configuration. It rejects unauthenticated local
+clients in constant time and consumes `Proxy-Authorization` rather than
+forwarding it. The credential selects no broader network authority; it only
+prevents another local process from borrowing the bounded public-web gateway.
+
 The Host-private daemon uses the same BrowserDaemon and AsyncBrowserCore code as
 `co browser`, but a different socket/pipe namespace, lock, PID sidecar, and
 persistent profile directory. All Remote Browser Direct sessions share this one
@@ -131,17 +138,18 @@ For every new authority the gateway:
 
 1. parses a bounded request line and authority before reading or forwarding a
    body;
-2. rejects userinfo, control characters, invalid ports, overlong names, invalid
+2. authenticates the local proxy client and strips proxy credentials;
+3. rejects userinfo, control characters, invalid ports, overlong names, invalid
    IDNA, ambiguous syntax, and unsupported schemes;
-3. normalizes the hostname once, including a single trailing dot and IPv6
+4. normalizes the hostname once, including a single trailing dot and IPv6
    brackets;
-4. canonicalizes IP literals before classification, including IPv4-mapped IPv6;
-5. resolves hostnames with a bounded resolver and response-size limit;
-6. denies the request if **any** returned address is prohibited;
-7. selects only from the approved answer set and connects to that numeric
+5. canonicalizes IP literals before classification, including IPv4-mapped IPv6;
+6. resolves hostnames with a bounded resolver and response-size limit;
+7. denies the request if **any** returned address is prohibited;
+8. selects only from the approved answer set and connects to that numeric
    socket address without another hostname lookup;
-8. applies connection, idle, byte, concurrency, and header limits;
-9. tunnels bytes only after the numeric connection succeeds.
+9. applies connection, idle, byte, concurrency, and header limits;
+10. tunnels bytes only after the numeric connection succeeds.
 
 Denying a mixed public/private DNS answer set avoids choosing a public address
 on the first connection and a private one on a retry. Every new connection
@@ -162,6 +170,7 @@ The exact flags/options must be asserted against both the system and Onion
 engines, rather than assumed from documentation:
 
 - fixed loopback proxy for every relevant scheme;
+- daemon-scoped proxy authentication with no credential forwarded upstream;
 - proxy bypass subtraction for Chromium's implicit localhost/link-local rules;
 - no `DIRECT` fallback in the proxy list;
 - resolver rules that stop Chromium target-host DNS and exempt only the numeric
