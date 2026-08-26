@@ -324,7 +324,7 @@ class BrowserDaemon:
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return 2, "empty request"
-        if self._remote_egress and (
+        if getattr(self, "_remote_egress", False) and (
             self._gateway is None or not self._gateway.is_running
         ):
             return False, "EGRESS_GATEWAY_UNAVAILABLE"

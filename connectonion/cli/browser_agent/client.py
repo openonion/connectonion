@@ -341,12 +341,17 @@ def _request_with_identity(
                 return 0, "Browser daemon: not running — the next page command starts one"
             if effective_engine != "onion":
                 _ensure_browser_ready(line)  # system or auto fallback needs this
-            conn = _spawn_daemon(
-                sock_path,
-                headless,
-                effective_engine,
-                target=target,
-            )
+            if target is None and effective_engine == "auto":
+                # Keep the long-standing local auto-mode embedding seam: small
+                # test/host adapters may implement the original two arguments.
+                conn = _spawn_daemon(sock_path, headless)
+            else:
+                conn = _spawn_daemon(
+                    sock_path,
+                    headless,
+                    effective_engine,
+                    target=target,
+                )
         # A successful whole-browser close is a lifecycle barrier on Windows.
         # Record the exact process serving this connection so a concurrently
         # started replacement is never mistaken for the daemon being closed.

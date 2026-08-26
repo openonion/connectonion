@@ -7,6 +7,7 @@ import stat
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -32,9 +33,12 @@ from connectonion.useful_tools.browser_tools.native_egress import (
 
 
 class LifecycleBrowser:
-    def __init__(self, *, headless=True, launch_policy=None, events=None):
+    def __init__(
+        self, *, headless=True, launch_policy=None, engine_mode="auto", events=None
+    ):
         self._headless = headless
         self.launch_policy = launch_policy
+        self.engine_mode = engine_mode
         self.events = events
         self._tab_meta = {}
         self._pages = {}
@@ -49,6 +53,14 @@ class LifecycleBrowser:
     async def close(self):
         if self.events is not None:
             self.events.append("browser.stop")
+
+    async def engine_status(self):
+        return {
+            "requested_engine": self.engine_mode,
+            "resolved_engine": None,
+            "reason": "not_started",
+            "artifact_id": None,
+        }
 
 
 class RecordingGateway:
@@ -137,6 +149,19 @@ def test_launch_policy_is_fixed_fail_closed_and_secret_safe(tmp_path):
     assert password not in repr(options)
 
 
+@pytest.mark.parametrize("engine_mode", ("auto", "system"))
+def test_private_daemon_rejects_every_non_onion_engine_before_runtime(
+    tmp_path, engine_mode
+):
+    with pytest.raises(ValueError, match="requires engine=onion"):
+        BrowserDaemon(
+            str(tmp_path / "private.sock"),
+            engine_mode=engine_mode,
+            profile_dir=tmp_path / "profile",
+            remote_egress=True,
+        )
+
+
 def test_proxy_auth_file_matches_native_contract_and_is_private(tmp_path):
     password = "A" * 43
     endpoint = ProxyEndpoint("127.0.0.1", 43123, "connectonion", password)
@@ -216,6 +241,7 @@ async def test_daemon_starts_gateway_before_browser_and_stops_it_after_browser(
     daemon = BrowserDaemon(
         str(tmp_path / "private.sock"),
         headless=True,
+        engine_mode="onion",
         profile_dir=tmp_path / "profile",
         remote_egress=True,
         gateway_factory=lambda: gateway,
@@ -252,6 +278,7 @@ async def test_browser_construction_failure_closes_gateway_before_ipc_bind(tmp_p
 
     daemon = BrowserDaemon(
         str(tmp_path / "never-bound.sock"),
+        engine_mode="onion",
         profile_dir=tmp_path / "profile",
         remote_egress=True,
         gateway_factory=lambda: gateway,
@@ -272,6 +299,7 @@ async def test_gateway_loss_rejects_lifecycle_before_browser_mutation(tmp_path):
     gateway = RecordingGateway(events)
     daemon = BrowserDaemon(
         str(tmp_path / "private.sock"),
+        engine_mode="onion",
         profile_dir=tmp_path / "profile",
         remote_egress=True,
         gateway_factory=lambda: gateway,
@@ -333,17 +361,6 @@ class FakePlaywright:
         self.stopped = True
 
 
-class FailingLaunchPlaywright(FakePlaywright):
-    def __init__(self, error):
-        super().__init__()
-        self.error = error
-
-    async def launch_persistent_context(self, profile, **options):
-        self.profile = profile
-        self.options = options
-        raise self.error
-
-
 class FakeManager:
     def __init__(self, playwright):
         self.playwright = playwright
@@ -352,30 +369,125 @@ class FakeManager:
         return self.playwright
 
 
+class FakePaidRun:
+    def __init__(self, context):
+        self.closable = context
+        self.session = SimpleNamespace(session_id="paid-private", paid_until=1234)
+        self.terminal_reason = None
+        self.close_calls = 0
+
+    async def close(self):
+        self.close_calls += 1
+        await self.closable.close()
+
+
+def onion_resolution():
+    return async_browser.browser_engine.Resolution(
+        requested=async_browser.browser_engine.ONION,
+        resolved=async_browser.browser_engine.ONION,
+        reason=async_browser.browser_engine.Reason.ONION_READY,
+        next_action="start",
+        client=object(),
+        prepared=SimpleNamespace(
+            capability=SimpleNamespace(
+                artifact=SimpleNamespace(artifact_id="chrome/151/test")
+            )
+        ),
+    )
+
+
+def install_paid_launch(monkeypatch, playwright, calls):
+    async def launch(resolution, owner, key, **kwargs):
+        calls.append((resolution, owner, key, kwargs))
+        return FakePaidRun(playwright.context)
+
+    monkeypatch.setattr(async_browser.browser_engine, "launch_async", launch)
+
+
 @pytest.mark.asyncio
 async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, monkeypatch):
     playwright = FakePlaywright()
-    preflight = AsyncMock()
+    paid_calls = []
+
+    async def prove_before_user_page(_name, context):
+        assert context.pages == []
+
+    preflight = AsyncMock(side_effect=prove_before_user_page)
     monkeypatch.setenv("BROWSER_PROXY", "http://environment.invalid:9999")
     monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
-    monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
+    monkeypatch.setattr(
+        async_browser,
+        "find_system_chrome",
+        lambda: pytest.fail("private runtime must not discover system Chrome"),
+    )
     monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
+    install_paid_launch(monkeypatch, playwright, paid_calls)
     policy = remote_browser_launch_policy(
         tmp_path / "private-profile",
         ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
         tmp_path / "proxy-auth.json",
     )
-    browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
+    browser = async_browser.AsyncBrowserCore(
+        headless=True,
+        launch_policy=policy,
+        engine_mode="onion",
+        engine_resolver=lambda mode: onion_resolution(),
+    )
 
     await browser.open_browser()
 
-    assert playwright.profile == str((tmp_path / "private-profile").resolve())
-    assert playwright.options["proxy"]["server"] == "http://127.0.0.1:43123"
-    assert "environment.invalid" not in repr(playwright.options)
-    assert playwright.options["service_workers"] == "block"
+    launch_options = paid_calls[0][3]
+    assert launch_options["user_data_dir"] == (tmp_path / "private-profile").resolve()
+    assert launch_options["proxy"] == {"server": "http://127.0.0.1:43123"}
+    assert "environment.invalid" not in repr(launch_options)
+    assert launch_options["service_workers"] == "block"
+    assert launch_options["accept_downloads"] is True
+    assert launch_options["args"][-1] == (
+        f"--connectonion-proxy-auth-file={tmp_path / 'proxy-auth.json'}"
+    )
+    assert "username" not in repr(launch_options["proxy"])
+    assert "password" not in repr(launch_options["proxy"])
     preflight.assert_awaited_once_with("remote-egress-v1", playwright.context)
+    assert len(playwright.context.pages) == 1
     await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_private_core_rejects_system_resolution_before_driver_or_charge(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(
+        async_browser,
+        "async_playwright",
+        lambda: pytest.fail("private fallback must fail before driver startup"),
+    )
+    monkeypatch.setattr(
+        async_browser.browser_engine,
+        "launch_async",
+        AsyncMock(side_effect=AssertionError("private fallback must not charge")),
+    )
+    policy = remote_browser_launch_policy(
+        tmp_path / "private-profile",
+        ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
+        tmp_path / "proxy-auth.json",
+    )
+    resolution = async_browser.browser_engine.Resolution(
+        requested="onion",
+        resolved="system",
+        reason="unavailable",
+        next_action="do not fall back",
+    )
+    browser = async_browser.AsyncBrowserCore(
+        headless=True,
+        launch_policy=policy,
+        engine_mode="onion",
+        engine_resolver=lambda mode: resolution,
+    )
+
+    with pytest.raises(NativeEgressPreflightError, match="EGRESS_PREFLIGHT_FAILED"):
+        await browser.open_browser()
 
 
 @pytest.mark.asyncio
@@ -413,12 +525,18 @@ async def test_native_preflight_failure_closes_partial_context_and_driver(
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
     monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
+    install_paid_launch(monkeypatch, playwright, [])
     policy = remote_browser_launch_policy(
         tmp_path / "private-profile",
         ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
         tmp_path / "proxy-auth.json",
     )
-    browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
+    browser = async_browser.AsyncBrowserCore(
+        headless=True,
+        launch_policy=policy,
+        engine_mode="onion",
+        engine_resolver=lambda mode: onion_resolution(),
+    )
 
     with pytest.raises(NativeEgressPreflightError) as raised:
         await browser.open_browser()
@@ -436,20 +554,28 @@ async def test_native_preflight_failure_closes_partial_context_and_driver(
 @pytest.mark.asyncio
 async def test_private_driver_launch_error_cannot_echo_auth_path(tmp_path, monkeypatch):
     auth_file = tmp_path / "proxy-auth.json"
-    playwright = FailingLaunchPlaywright(
-        RuntimeError(f"failed argv --connectonion-proxy-auth-file={auth_file}")
-    )
+    playwright = FakePlaywright()
     preflight = AsyncMock()
     monkeypatch.setattr(async_browser, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
     monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
+
+    async def fail_paid_launch(*_args, **_kwargs):
+        raise RuntimeError(f"failed argv --connectonion-proxy-auth-file={auth_file}")
+
+    monkeypatch.setattr(async_browser.browser_engine, "launch_async", fail_paid_launch)
     policy = remote_browser_launch_policy(
         tmp_path / "private-profile",
         ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
         auth_file,
     )
-    browser = async_browser.AsyncBrowserCore(headless=True, launch_policy=policy)
+    browser = async_browser.AsyncBrowserCore(
+        headless=True,
+        launch_policy=policy,
+        engine_mode="onion",
+        engine_resolver=lambda mode: onion_resolution(),
+    )
 
     with pytest.raises(NativeEgressPreflightError) as raised:
         await browser.open_browser()
@@ -541,6 +667,7 @@ def test_local_and_private_native_daemons_run_and_stop_independently(tmp_path):
     private = BrowserDaemon(
         private_target.address,
         headless=True,
+        engine_mode="onion",
         profile_dir=private_target.profile_dir,
         authkey_path=private_target.authkey_path,
         remote_egress=True,

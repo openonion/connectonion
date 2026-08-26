@@ -595,7 +595,9 @@ class AsyncBrowserCore:
                         resolution,
                         playwright,
                         f"connectonion-start:{uuid.uuid4()}",
-                        user_data_dir=(policy.profile_dir if policy is not None else True),
+                        user_data_dir=(
+                            policy.profile_dir if policy is not None else True
+                        ),
                         **launch_options,
                     )
                     self.playwright = playwright
