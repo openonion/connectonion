@@ -20,9 +20,10 @@ from connectonion.network.host.ws_router import session as ws_session
 class LifecycleBrowser:
     """Small runtime seam: the test targets transport/claims, not Chrome."""
 
-    def __init__(self, **_kwargs):
+    def __init__(self, **kwargs):
         self._tab_meta = {}
         self._pages = {}
+        self._engine_mode = kwargs.get("engine_mode", "auto")
 
     def _bind_session(self, session):
         self.session = session
@@ -33,6 +34,14 @@ class LifecycleBrowser:
 
     async def close(self):
         return "Browser closed"
+
+    async def engine_status(self):
+        return {
+            "requested_engine": self._engine_mode,
+            "resolved_engine": None,
+            "reason": "not_started",
+            "artifact_id": None,
+        }
 
 
 class ContactTrust:
@@ -116,6 +125,7 @@ def test_remote_lifecycle_uses_one_native_daemon_and_survives_host_restart(
     daemon = BrowserDaemon(
         target.address,
         headless=True,
+        engine_mode="onion",
         profile_dir=target.profile_dir,
         authkey_path=target.authkey_path,
         remote_egress=True,
