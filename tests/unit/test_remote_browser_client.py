@@ -47,6 +47,12 @@ class WaitingConnection(FakeConnection):
         super().__init__()
         self.waiting = asyncio.Event()
 
+    async def send(self, raw):
+        frame = json.loads(raw)
+        self.sent.append(frame)
+        if frame["type"] == "CONNECT":
+            self.replies.append({"type": "CONNECTED", "session_id": "oip-1"})
+
     async def recv(self):
         if self.replies:
             return json.dumps(self.replies.pop(0))
