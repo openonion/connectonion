@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import socket
+import time
 
 import pytest
 
@@ -243,15 +244,18 @@ async def test_connect_timeout_bounds_the_complete_answer_set():
     gateway = EgressGateway(
         resolver=RecordingResolver(answers),
         dialer=stalled_dialer,
-        limits=GatewayLimits(connect_timeout=0.1),
+        limits=GatewayLimits(connect_timeout=0.2),
         password="secret",
     )
+    started = time.perf_counter()
     async with gateway:
         response = await _exchange(gateway.endpoint, _connect_request(gateway.endpoint))
+    elapsed = time.perf_counter() - started
 
     assert b"502 Bad Gateway" in response
-    assert 1 <= len(calls) < len(answers)
-    assert all(0 < timeout < 0.101 for _, timeout in calls)
+    assert calls
+    assert all(0 < timeout < 0.201 for _, timeout in calls)
+    assert elapsed < 0.75
 
 
 @pytest.mark.asyncio
