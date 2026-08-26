@@ -6,7 +6,9 @@
 
 **Related:** [#991](https://github.com/openonion/connectonion/issues/991),
 [#1297](https://github.com/openonion/connectonion/issues/1297),
+[#1306](https://github.com/openonion/connectonion/issues/1306),
 [#1036](https://github.com/openonion/connectonion/issues/1036),
+[browser#103](https://github.com/openonion/browser/issues/103),
 [DD-054](054-one-async-browser-runtime.md),
 [DD-055](055-owner-bound-remote-browser-lifecycle.md)
 
@@ -104,11 +106,30 @@ admission, browser traffic, gateway connections, resolver tasks, and the
 private daemon in that order.
 
 Loopback is not authentication. The gateway requires a random, daemon-scoped
-proxy credential stored only in the Host-private runtime directory and supplied
-through Chromium's proxy-auth configuration. It rejects unauthenticated local
-clients in constant time and consumes `Proxy-Authorization` rather than
-forwarding it. The credential selects no broader network authority; it only
-prevents another local process from borrowing the bounded public-web gateway.
+proxy credential stored only in the Host-private runtime directory. It rejects
+unauthenticated local clients in constant time and consumes
+`Proxy-Authorization` rather than forwarding it. The credential selects no
+broader network authority; it only prevents another local process from
+borrowing the bounded public-web gateway.
+
+Chromium deliberately ignores credentials embedded in manual proxy settings.
+A native macOS persistent-context reproduction also showed Patchright's proxy
+username/password reaching the gateway without `Proxy-Authorization`; neither
+Playwright routing nor a page-scoped CDP Fetch auth handler received the proxy
+challenge. Therefore system Chrome is not a Remote Browser engine merely
+because the requested proxy flags look correct.
+
+The paid Onion Browser reads an absolute path from
+`--connectonion-proxy-auth-file`, validates a bounded private credential file in
+the browser process, and supplies the credential only through Chromium's HTTP
+authentication delegate when the proxy flag, exact `127.0.0.1:<port>`
+challenger, Basic scheme, fixed Remote Browser realm, and first attempt all
+match. A mismatched or repeated proxy challenge cancels instead of opening a
+dialog or trying another credential source. Origin authentication never
+receives the proxy credential. The password itself is absent from argv,
+environment variables, logs, errors, telemetry, crash annotations, CDP events,
+and origin headers. [browser#103](https://github.com/openonion/browser/issues/103)
+owns this closed-browser hook and its compile/native verification.
 
 The Host-private daemon uses the same BrowserDaemon and AsyncBrowserCore code as
 `co browser`, but a different socket/pipe namespace, lock, PID sidecar, and
@@ -166,11 +187,13 @@ certificate verification.
 
 ## Chromium launch invariants
 
-The exact flags/options must be asserted against both the system and Onion
-engines, rather than assumed from documentation:
+The exact flags/options must be asserted against the Onion engine, rather than
+assumed from documentation. A system engine is eligible only if it later passes
+the identical authenticated effective-runtime suite without a weaker shim:
 
 - fixed loopback proxy for every relevant scheme;
-- daemon-scoped proxy authentication with no credential forwarded upstream;
+- daemon-scoped proxy authentication through the exact native challenge hook,
+  with no credential forwarded upstream;
 - proxy bypass subtraction for Chromium's implicit localhost/link-local rules;
 - no `DIRECT` fallback in the proxy list;
 - resolver rules that stop Chromium target-host DNS and exempt only the numeric
@@ -269,10 +292,13 @@ OAuth redirects, WebSockets, and downloads remain usable.
 3. Give BrowserDaemon an explicit namespace/profile/launch-policy contract;
    verify local and Host-private daemons can run concurrently without sharing
    sockets, locks, profile files, or proxy settings.
-4. Wire the gateway to the system engine and run native negative vectors on all
-   supported operating systems.
-5. Pass the identical launch contract and vectors through Onionwright's paid
-   engine and installed production-shaped artifacts.
+4. Add the private proxy-auth credential-file hook to the paid Onion Browser,
+   compile it at the pinned Chromium revision, and keep system Chrome
+   unavailable for Remote Browser navigation.
+5. Wire the gateway through Onionwright's paid engine and run the identical
+   negative vectors through installed production-shaped Linux, macOS, and
+   Windows artifacts. A platform without a passing paid artifact remains
+   unavailable; it does not fall back to system Chrome.
 6. Add Remote Browser `open` only; map primary and subresource decisions into
    stable envelopes and diagnosis.
 7. Add screenshots and actions after `open` proves the policy under parallel
@@ -301,6 +327,23 @@ Rejected because these APIs authorize a URL before Chromium's socket selection;
 they do not pin the address actually dialed. They remain useful as an additional
 attribution/error layer.
 
+### Trust Playwright proxy username/password with system Chrome
+
+Rejected because Chromium documents that manual proxy settings do not carry
+credentials, and the native macOS persistent-context reproduction reached the
+gateway without `Proxy-Authorization`. Requested configuration is not evidence
+of effective authentication. System Chrome remains a valid ordinary local
+engine, but not a Remote Browser navigation engine until it independently
+passes the same authenticated zero-socket suite.
+
+### Load a credential extension or inject an authorization header
+
+Rejected because an extension adds a second mutable network authority and
+profile surface, while header injection risks placing a proxy secret on an
+origin request. The browser's existing proxy-auth challenge delegate already
+distinguishes proxy authentication from origin authentication and can scope the
+credential to the exact challenger, realm, scheme, and first attempt.
+
 ### Apply the proxy to the ordinary local browser context
 
 Rejected because proxy configuration is context-scoped. It would change local
@@ -324,8 +367,19 @@ the portable gateway.
 ## Evidence consulted
 
 - Chromium proxy documentation describes implicit localhost/link-local bypasses
-  and the subtractive `<-loopback>` rule:
+  and the subtractive `<-loopback>` rule. It also states that Chrome does not
+  use credentials embedded in manual proxy settings:
   <https://chromium.googlesource.com/chromium/src/+/main/net/docs/proxy.md>
+- Chromium 151's `ChromeContentBrowserClient::CreateLoginDelegate()` receives
+  the proxy challenge and `first_auth_attempt`, while ChromeOS's
+  `SystemProxyLoginHandler` demonstrates asynchronous, policy-scoped credential
+  delivery through `content::LoginDelegate`:
+  <https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.137/chrome/browser/chrome_content_browser_client.cc>
+  and
+  <https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.137/chrome/browser/ash/net/system_proxy_manager.cc>
+- The Playwright Chromium proxy-auth report was closed as not reproducible
+  after a Linux success report, not with a confirmed fix:
+  <https://github.com/microsoft/playwright/issues/37444>
 - Chromium's SOCKS guidance uses host-resolver rules to prevent browser-side DNS
   leakage through a proxy:
   <https://chromium.googlesource.com/experimental/website/+/HEAD/site/developers/design-documents/network-stack/socks-proxy.md>

@@ -39,6 +39,29 @@ could restore direct traffic. The release gate therefore has to observe the
 effective runtime: start private sentinel servers, attempt every private path,
 and prove they accepted zero connections.
 
+## The credential that the proxy setting did not carry
+
+The first native preflight found a third boundary. macOS Chrome reached the
+gateway, received its authentication challenge, and never sent the configured
+proxy credential. The private sentinel still accepted zero connections, which
+proved the launch failed closed. It did not prove the browser was usable.
+
+That result matches a less obvious line in Chromium's own documentation:
+credentials embedded in manual proxy settings are ignored. Playwright routing
+could not repair it because the proxy challenge lives below a page request, and
+a page-scoped CDP auth handler never received the challenge.
+
+The secure fix belongs in the closed Onion Browser. It will read a credential
+from a private file, then use Chromium's existing HTTP-auth delegate only when
+the challenge is for the exact loopback proxy, fixed realm, Basic scheme, and
+first attempt. A different proxy or a retry is canceled. An origin challenge
+never sees the proxy password.
+
+That discovery changes the delivery order. Remote Browser will not fall back to
+system Chrome merely because it is installed. The paid browser hook and its
+native zero-socket suite must pass first; a platform without that artifact keeps
+navigation unavailable.
+
 ## One more boundary moved
 
 The ordinary `co browser` daemon already has a persistent profile and shared
