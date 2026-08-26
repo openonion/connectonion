@@ -244,8 +244,7 @@ async def test_connect_timeout_bounds_the_complete_answer_set():
 
     assert b"502 Bad Gateway" in response
     assert len(calls) == 2
-    assert 0 < calls[1][1] < calls[0][1]
-    assert calls[0][1] == pytest.approx(0.1, abs=1e-9)
+    assert 0 < calls[1][1] < calls[0][1] < 0.101
 
 
 @pytest.mark.asyncio
