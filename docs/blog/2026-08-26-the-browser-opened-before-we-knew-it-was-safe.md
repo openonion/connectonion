@@ -53,6 +53,14 @@ Browser must answer only the exact first challenge from the pinned loopback
 proxy, using a credential file owned by the Host-private runtime. A mismatched
 realm, scheme, challenger, or repeated challenge must be cancelled.
 
+The daemon now writes that file atomically beside the private profile. On
+POSIX, its parent must be owned by the current user with no group or world
+access, and the file is mode 0600. The launch policy gives Playwright only the
+loopback proxy server—never its username or password—and passes the browser a
+path-only switch. Construction failures and orderly shutdown both remove the
+file. This still is not native-browser evidence; it is the exact producer side
+of the contract that the pinned Onion Browser must consume.
+
 This PR therefore stops at a fail-closed checkpoint. Its unit and lifecycle
 tests pass, but it makes no installed-browser claim. The release gate remains
 closed until the paid Onionwright engine, native credential hook, and exact
