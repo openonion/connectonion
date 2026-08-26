@@ -32,19 +32,11 @@ one address is prohibited, and hands only canonical numeric endpoints to the
 dialer. There is still no Chromium flag and no `open` command. We want proxy
 mistakes to fail in isolation before a browser can depend on them.
 
-The same test pass found a more serious shutdown problem. Python 3.14 waits for
-accepted connections in `Server.wait_closed()`. Waiting for the server before
-cancelling a resolver meant shutdown waited on the very task it was responsible
-for stopping. Reversing that order—close admission, cancel owned handlers, then
-wait for the listener—made cleanup deterministic across the supported Python
-versions.
-
-Other tests attack places where proxies become ambiguous: duplicate
-authorization, a `Connection: content-length` token that tries to strip message
-framing, a second pipelined authority after a declared request body, a WebSocket
-Upgrade, mixed public/private DNS answers, and a hostname smuggled into the
-numeric dialer. The important assertion is usually not the returned status. It
-is that the dialer saw zero calls.
+The useful turn was realizing that “refused” has two observable halves. The
+protected side must see no dial, while the browser side must receive one clear,
+bounded answer. We had asserted the first and assumed the second because the
+server called `write()`. The failing client made us measure both ends of the
+same refusal instead.
 
 A security proxy has two jobs: refuse the wrong connection and make that refusal
 boringly observable. The missing 429 was small, but it reminded us to test both.
