@@ -104,7 +104,10 @@ The remote browser runs as a separate instance from your local `co browser` —
 same code, its own profile and socket namespace. Two reasons: a remote caller's
 session must not sit in the browser holding your logins, and Chromium's proxy
 setting is per-browser, not per-tab, so pinning the gateway on your everyday
-browser would cut off your own local browsing.
+browser would cut off your own local browsing. The namespace, profile, IPC
+credential and gateway are described in
+[Remote Browser private runtime](remote-browser-private-runtime.md); that
+isolation is the runtime boundary navigation needs, not navigation itself.
 
 TLS stays end to end. The gateway installs no root certificate and reads no page
 content; for `CONNECT` it dials the approved address while the browser's own
