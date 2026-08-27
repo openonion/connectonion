@@ -8,13 +8,12 @@ from typing import Any, Callable
 
 from packaging.version import InvalidVersion, Version
 
-
 AUTO = "auto"
 SYSTEM = "system"
 ONION = "onion"
 MODES = (AUTO, SYSTEM, ONION)
 BROWSER_REVISION = "151.0.7922.137"
-MIN_ONIONWRIGHT_VERSION = "0.0.11"
+MIN_ONIONWRIGHT_VERSION = "0.0.12"
 
 
 class Reason:
@@ -154,13 +153,13 @@ def resolve(
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_MISSING,
-            "Install the compatible Onionwright package, or request the system browser.",
+            "Run `co browser install-onion`, or request the system browser.",
         )
     except (ImportError, AttributeError, TypeError):
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_INCOMPATIBLE,
-            "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
+            "Run `co browser install-onion` to upgrade Onionwright.",
         )
 
     client_version = getattr(client, "client_version", None)
@@ -175,7 +174,7 @@ def resolve(
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_INCOMPATIBLE,
-            f"Install Onionwright {MIN_ONIONWRIGHT_VERSION} or newer.",
+            f"Run `co browser install-onion` for Onionwright {MIN_ONIONWRIGHT_VERSION} or newer.",
         )
 
     try:

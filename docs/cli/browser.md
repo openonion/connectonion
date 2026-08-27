@@ -23,9 +23,19 @@ co browser --engine system go_to example.com  # always Patchright + system Chrom
 co browser --engine onion go_to example.com   # strict paid Onion Browser
 ```
 
-The paid path requires Onionwright 0.0.11 or newer. Its real wheel is delivered
-through the licence-gated OpenOnion artifact endpoint, not the public PyPI
-placeholder.
+The paid path requires Onionwright 0.0.12 or newer. Install or upgrade the real
+private wheel explicitly:
+
+```bash
+co browser install-onion
+```
+
+This command uses the current ConnectOnion login, verifies the release feed
+with ConnectOnion's pinned Ed25519 public key, verifies the wheel checksum from
+that signed manifest, and only then invokes this Python interpreter's pip. It
+does not start the browser daemon or a paid session, and downloading/installing
+the client costs $0. The real wheel comes from OpenOnion's authenticated
+artifact endpoint, not the public PyPI placeholder.
 
 | mode | behavior |
 |---|---|
