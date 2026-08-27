@@ -9,6 +9,7 @@ import ast
 import asyncio
 import inspect
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -94,6 +95,7 @@ class FakePage:
         self.evaluate_calls = []
         self.evaluate_result = None
         self.evaluate_results = []
+        self.content_result = "<html><body>page</body></html>"
         self.file_chooser = FakeFileChooser()
         self.file_chooser_timeouts = []
 
@@ -148,6 +150,9 @@ class FakePage:
 
     async def screenshot(self, **kwargs):
         return b"png"
+
+    async def content(self):
+        return self.content_result
 
 
 class FakeFileChooser:
@@ -798,6 +803,315 @@ async def test_async_model_selected_verbs_preserve_sync_signatures():
         assert async_method is not None, name
         assert inspect.iscoroutinefunction(async_method), name
         assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+@pytest.mark.asyncio
+async def test_final_async_verbs_preserve_sync_signatures():
+    for name in (
+        "keyboard_type",
+        "scroll",
+        "save_page_context",
+        "wait_for_manual_login",
+    ):
+        async_method = getattr(async_mod.AsyncBrowserCore, name, None)
+        sync_method = getattr(BrowserAutomation, name)
+        assert async_method is not None, name
+        assert inspect.iscoroutinefunction(async_method), name
+        assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+def test_complete_public_surface_has_exact_async_signature_parity():
+    sync_methods = {
+        name: method
+        for name, method in inspect.getmembers(BrowserAutomation, inspect.isfunction)
+        if not name.startswith("_")
+    }
+    async_methods = {
+        name: method
+        for name, method in inspect.getmembers(
+            async_mod.AsyncBrowserCore, inspect.isfunction
+        )
+        if not name.startswith("_")
+    }
+
+    assert set(sync_methods) - set(async_methods) == set()
+    assert set(async_methods) - set(sync_methods) == {"is_alive"}
+    for name, sync_method in sync_methods.items():
+        async_method = async_methods[name]
+        assert inspect.iscoroutinefunction(async_method), name
+        assert inspect.signature(async_method) == inspect.signature(sync_method), name
+
+
+def test_page_context_css_script_keeps_javascript_escape_sequences():
+    assert 'join("\\n")' in async_mod._PAGE_CSS_SCRIPT
+    assert 'join("\\n\\n")' in async_mod._PAGE_CSS_SCRIPT
+
+
+@pytest.mark.asyncio
+async def test_keyboard_type_uses_runtime_clipboard_lock_and_exact_result(monkeypatch):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages[None] = FakePage()
+    calls = []
+
+    async def type_text(page, text, lock):
+        calls.append((page, text, lock))
+
+    monkeypatch.setattr(async_mod.humanize, "type_text", type_text)
+    result = await browser.keyboard_type("hello 世界")
+
+    assert calls == [(browser.page, "hello 世界", browser._clipboard_lock)]
+    assert (
+        result
+        == """Typed: 'hello 世界'
+
+SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
+    )
+
+
+@pytest.mark.asyncio
+async def test_scroll_delegates_to_async_strategy_and_saves_context(monkeypatch):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages[None] = FakePage()
+    calls = []
+
+    async def run(page, take_screenshot, times, description, screenshots_dir):
+        calls.append((page, take_screenshot, times, description, screenshots_dir))
+        return "Scrolled using Human wheel"
+
+    monkeypatch.setattr(async_mod.async_scroll, "scroll", run)
+    result = await browser.scroll(3, "the feed")
+
+    assert result == "Scrolled using Human wheel"
+    assert calls == [
+        (
+            browser.page,
+            browser.take_screenshot,
+            3,
+            "the feed",
+            Path(browser.screenshots_dir),
+        )
+    ]
+    assert browser.page.waits == [500]
+
+
+@pytest.mark.asyncio
+async def test_stalled_scroll_model_on_one_tab_does_not_block_another(
+    monkeypatch, tmp_path
+):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    page_a = FakePage(1)
+    page_b = FakePage(2)
+    page_a.evaluate_results = [[{"tag": "DIV"}], "<main>feed</main>"]
+    page_b.text_by_selector["body"] = "tab B remains live"
+    browser._pages.update({"A": page_a, "B": page_b})
+    browser.screenshots_dir = str(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+    differences = iter([False, True])
+
+    async def no_op(*_args):
+        return None
+
+    def choose(*_args):
+        started.set()
+        release.wait(timeout=2)
+        return async_mod.async_scroll.rules.ScrollStrategy(
+            method="window",
+            selector="",
+            javascript="window.scrollBy(0, 10)",
+            explanation="page",
+        )
+
+    monkeypatch.setattr(async_mod.async_scroll, "_human_scroll", no_op)
+    monkeypatch.setattr(async_mod.async_scroll, "_pause", no_op)
+    monkeypatch.setattr(async_mod.async_scroll, "_choose_strategy", choose)
+    monkeypatch.setattr(
+        async_mod.async_scroll,
+        "_screenshots_different",
+        lambda *_args: next(differences),
+    )
+
+    browser._bind_session("A")
+    scrolling = asyncio.create_task(browser.scroll(1, "the feed"))
+    while not started.is_set():
+        await asyncio.sleep(0)
+
+    browser._bind_session("B")
+    assert await asyncio.wait_for(browser.get_text(), timeout=0.5) == (
+        "tab B remains live"
+    )
+    assert scrolling.done() is False
+    release.set()
+    assert await scrolling == "Scrolled using AI strategy"
+
+
+@pytest.mark.asyncio
+async def test_save_page_context_writes_complete_sanitized_capture(
+    tmp_path, monkeypatch
+):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    page = FakePage()
+    page.url = "https://example.com/feed"
+    page.content_result = "<html><body><button>Like</button></body></html>"
+    page.evaluate_result = "button { color: blue; }"
+    browser._pages[None] = page
+    element = finder_rules.InteractiveElement(
+        index=0,
+        tag="button",
+        text="Like",
+        locator='[data-browser-agent-id="0"]',
+    )
+
+    async def extract(_page):
+        return [element]
+
+    monkeypatch.setattr(async_mod.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(async_mod.element_finder, "extract_elements", extract)
+
+    result = await browser.save_page_context("../linkedin feed")
+    captures = list((tmp_path / ".co" / "browser_context").glob("*_linkedin_feed"))
+    assert len(captures) == 1
+    capture = captures[0]
+    assert (capture / "page.html").read_text() == page.content_result
+    assert (capture / "styles.css").read_text() == "button { color: blue; }"
+    assert json.loads((capture / "elements.json").read_text())[0]["text"] == "Like"
+    assert f"Saved page context to {capture}" in result
+    assert "- URL: https://example.com/feed" in result
+    assert "- Elements: 1" in result
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_name_context_captures_are_unique(tmp_path, monkeypatch):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages["A"] = FakePage(1)
+    browser._pages["B"] = FakePage(2)
+    browser._pages["A"].content_result = "<html>A</html>"
+    browser._pages["B"].content_result = "<html>B</html>"
+    browser._pages["A"].evaluate_result = "a{}"
+    browser._pages["B"].evaluate_result = "b{}"
+
+    async def extract(page):
+        return [
+            finder_rules.InteractiveElement(
+                index=page.idx,
+                tag="button",
+                text=str(page.idx),
+                locator=f"#{page.idx}",
+            )
+        ]
+
+    async def capture(session):
+        browser._bind_session(session)
+        return await browser.save_page_context("same")
+
+    monkeypatch.setattr(async_mod.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(async_mod.element_finder, "extract_elements", extract)
+    await asyncio.gather(capture("A"), capture("B"))
+
+    captures = list((tmp_path / ".co" / "browser_context").glob("*_same*"))
+    assert len(captures) == 2
+    assert {path.joinpath("page.html").read_text() for path in captures} == {
+        "<html>A</html>",
+        "<html>B</html>",
+    }
+
+
+@pytest.mark.asyncio
+async def test_context_write_finishes_before_cancellation_escapes(monkeypatch):
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages[None] = FakePage()
+    started = threading.Event()
+    release = threading.Event()
+
+    async def extract(_page):
+        return []
+
+    def write(*_args):
+        started.set()
+        release.wait(timeout=2)
+        return Path("/tmp/capture")
+
+    monkeypatch.setattr(async_mod.element_finder, "extract_elements", extract)
+    monkeypatch.setattr(async_mod, "_write_page_context_files", write)
+    task = asyncio.create_task(browser.save_page_context("page"))
+    while not started.is_set():
+        await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.sleep(0)
+    assert task.done() is False
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_manual_login_non_tty_refuses_immediately(monkeypatch):
+    class NoTTY:
+        @staticmethod
+        def isatty():
+            return False
+
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages[None] = FakePage()
+    monkeypatch.setattr(async_mod.sys, "stdin", NoTTY())
+
+    result = await browser.wait_for_manual_login("Example")
+    assert "interactive terminal" in result
+    assert "seed_state" in result
+
+
+@pytest.mark.asyncio
+async def test_manual_login_serializes_prompts_and_saves_only_after_yes(monkeypatch):
+    class TTY:
+        @staticmethod
+        def isatty():
+            return True
+
+    browser = async_mod.AsyncBrowserCore()
+    browser.browser = FakeContext()
+    browser._pages["A"] = FakePage(1)
+    browser._pages["B"] = FakePage(2)
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    prompts = []
+    saves = []
+
+    async def read_line(prompt):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            first_started.set()
+            await release_first.wait()
+            return "no"
+        return "y"
+
+    async def save():
+        saves.append(browser._bound_session_key())
+
+    async def login(session):
+        browser._bind_session(session)
+        return await browser.wait_for_manual_login(session)
+
+    monkeypatch.setattr(async_mod.sys, "stdin", TTY())
+    monkeypatch.setattr(async_mod.terminal, "read_line", read_line)
+    monkeypatch.setattr(browser, "_save_context", save)
+    first = asyncio.create_task(login("A"))
+    await first_started.wait()
+    second = asyncio.create_task(login("B"))
+    await asyncio.sleep(0)
+    assert len(prompts) == 1
+    release_first.set()
+
+    assert await first == "User confirmed login to A - continuing"
+    assert await second == "User confirmed login to B - continuing"
+    assert len(prompts) == 3
+    assert saves == ["A", "B"]
 
 
 @pytest.mark.asyncio

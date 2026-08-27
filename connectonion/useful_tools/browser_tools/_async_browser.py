@@ -18,15 +18,18 @@ import contextvars
 import json
 import os
 import platform
+import sys
 import time
 import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
+from . import _async_scroll as async_scroll
+from . import _async_terminal as terminal
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 
@@ -91,6 +94,17 @@ _FOCUSED_ELEMENT_SCRIPT = """
         value_truncated: value === null ? false : value.length > previewLimit,
     };
 }
+"""
+
+_PAGE_CSS_SCRIPT = r"""
+() => Array.from(document.styleSheets).map((sheet, i) => {
+    try {
+        return `/* ${sheet.href || `inline-${i}`} */\n` +
+            Array.from(sheet.cssRules || []).map(rule => rule.cssText).join("\n");
+    } catch (error) {
+        return `/* ${sheet.href || `stylesheet-${i}`} unavailable: ${error.name} */`;
+    }
+}).join("\n\n")
 """
 
 
@@ -242,6 +256,35 @@ async def _complete_cleanup(awaitable):
     return task.result(), interrupted
 
 
+def _write_page_context_files(
+    base_dir: Path,
+    timestamp: str,
+    safe_name: str,
+    html: str,
+    css: str,
+    element_dicts: list[Dict[str, Any]],
+) -> Path:
+    """Write one collision-safe page-context snapshot outside the event loop."""
+    root = base_dir / ".co" / "browser_context"
+    root.mkdir(parents=True, exist_ok=True)
+    stem = f"{timestamp}_{safe_name}"
+    suffix = 0
+    while True:
+        out_dir = root / (stem if suffix == 0 else f"{stem}_{suffix}")
+        try:
+            out_dir.mkdir()
+            break
+        except FileExistsError:
+            suffix += 1
+
+    (out_dir / "page.html").write_text(html, encoding="utf-8")
+    (out_dir / "styles.css").write_text(css, encoding="utf-8")
+    (out_dir / "elements.json").write_text(
+        json.dumps(element_dicts, indent=2), encoding="utf-8"
+    )
+    return out_dir
+
+
 class AsyncBrowserCore:
     """Internal async browser runtime with one persistent context and one tab per session."""
 
@@ -281,6 +324,7 @@ class AsyncBrowserCore:
         )
         self._lifecycle_lock = asyncio.Lock()
         self._clipboard_lock = asyncio.Lock()
+        self._manual_login_lock = asyncio.Lock()
         self._page_state_lock = asyncio.Lock()
         self._tab_locks: Dict[Optional[str], asyncio.Lock] = {}
         self._operation_state_lock = asyncio.Lock()
@@ -429,9 +473,7 @@ class AsyncBrowserCore:
             return False
         return True
 
-    async def open_browser(
-        self, headless: Optional[bool] = None, force: bool = False
-    ) -> str:
+    async def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open/reuse the runtime while participating in tab and shutdown admission."""
         if self._operation_depth.get():
             return await self._open_browser(headless=headless, force=force)
@@ -984,6 +1026,16 @@ class AsyncBrowserCore:
             await self.page.keyboard.press(key)
             return f"Pressed: '{key}'"
 
+    async def keyboard_type(self, text: str) -> str:
+        """Type into the focused element without blocking the event loop."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            await humanize.type_text(self.page, text, self._clipboard_lock)
+            return f"""Typed: '{text}'
+
+SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
+
     async def click_element_by_selector(
         self,
         selector: str,
@@ -1488,9 +1540,7 @@ class AsyncBrowserCore:
                 response["reason"] = "no frame returned ok: true"
             return json.dumps(response, indent=2, ensure_ascii=False)
 
-    async def take_screenshot(
-        self, path: Optional[str] = None, full_page: bool = False
-    ) -> str:
+    async def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
@@ -1509,6 +1559,55 @@ class AsyncBrowserCore:
                 mime = "image/jpeg"
             await self.page.wait_for_timeout(1000)
             return f"data:{mime};base64,{base64.b64encode(screenshot).decode('utf-8')}"
+
+    async def save_page_context(self, name: str = "page") -> str:
+        """Save HTML, CSS, and interactive-element data without loop-bound I/O."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+
+            page = self.page
+            html = await page.content()
+            css = await page.evaluate(_PAGE_CSS_SCRIPT)
+            elements = await element_finder.extract_elements(page)
+            element_dicts = [
+                (
+                    element.model_dump()
+                    if hasattr(element, "model_dump")
+                    else element.dict()
+                )
+                for element in elements
+            ]
+            safe_name = (
+                "".join(
+                    character if character.isalnum() or character in "._-" else "_"
+                    for character in name
+                ).strip("._-")
+                or "page"
+            )
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_dir, interrupted = await _complete_cleanup(
+                asyncio.to_thread(
+                    _write_page_context_files,
+                    Path.home(),
+                    timestamp,
+                    safe_name,
+                    html,
+                    css,
+                    element_dicts,
+                )
+            )
+            if interrupted:
+                raise asyncio.CancelledError
+
+            return (
+                f"Saved page context to {out_dir}\n"
+                f"- HTML: {out_dir / 'page.html'}\n"
+                f"- CSS: {out_dir / 'styles.css'}\n"
+                f"- Elements: {out_dir / 'elements.json'}\n"
+                f"- URL: {page.url}\n"
+                f"- Elements: {len(element_dicts)}"
+            )
 
     async def set_viewport(self, width: int, height: int) -> str:
         async with self._tab_operation():
@@ -1567,7 +1666,57 @@ class AsyncBrowserCore:
             await self.page.wait_for_timeout(int(seconds * 1000))
             return f"Waited for {seconds} seconds"
 
-    async def extract_data(self, selector: str) -> list[str]:
+    async def scroll(
+        self, times: int = 5, description: str = "the main content area"
+    ) -> str:
+        """Scroll using the async human/AI/element/page strategy chain."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            result = await async_scroll.scroll(
+                self.page,
+                self.take_screenshot,
+                times,
+                description,
+                Path(self.screenshots_dir),
+            )
+            await self._save_context()
+            return result
+
+    async def wait_for_manual_login(self, site_name: str = "the website") -> str:
+        """Wait for interactive confirmation without blocking the event loop."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            if not sys.stdin or not sys.stdin.isatty():
+                return (
+                    "Manual login needs an interactive terminal, which a hosted deploy "
+                    "doesn't have. Capture the login locally with save_state(path) and "
+                    "start the deployed browser with seed_state=<path>."
+                )
+
+            async with self._manual_login_lock:
+                print(f"\n{'='*60}")
+                print("  MANUAL LOGIN REQUIRED")
+                print(f"{'='*60}")
+                print(f"Please login to {site_name} in the browser window.")
+                print("Once you're logged in and ready to continue:")
+                print("  Type 'yes' or 'Y' and press Enter")
+                print(f"{'='*60}\n")
+
+                while True:
+                    response = (
+                        (await terminal.read_line("Ready to continue? (yes/Y): "))
+                        .strip()
+                        .lower()
+                    )
+                    if response in {"yes", "y"}:
+                        print("Continuing automation...\n")
+                        await self._save_context()
+                        return f"User confirmed login to {site_name} - continuing"
+                    print("Please type 'yes' or 'Y' when ready.")
+
+    async def extract_data(self, selector: str) -> List[str]:
         async with self._tab_operation():
             if self.page is None:
                 return []
@@ -1575,7 +1724,7 @@ class AsyncBrowserCore:
             count = await elements.count()
             return [await elements.nth(index).inner_text() for index in range(count)]
 
-    async def get_links_from_page(self, domain_filter: str = "") -> list[str]:
+    async def get_links_from_page(self, domain_filter: str = "") -> List[str]:
         async with self._tab_operation():
             if self.page is None:
                 return []
