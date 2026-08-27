@@ -8,4 +8,4 @@ is what lets the entry point keep that promise.
 Kept in step with pyproject.toml by a test.
 """
 
-__version__ = "1.8.0a2"
+__version__ = "1.9.0a1"

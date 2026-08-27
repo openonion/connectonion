@@ -24,25 +24,26 @@ from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 from packaging.version import InvalidVersion, Version
 
-from connectonion.backend import backend_url
-from connectonion.credentials import require_ambient_api_key
-
-ONIONWRIGHT_VERSION = "0.0.12"
-ONIONWRIGHT_ARTIFACT = (
-    "onionwright/0.0.12/onionwright-0.0.12-py3-none-any.whl"
+from connectonion.browser_preview import (
+    BrowserPreviewConfigError,
+    ONIONWRIGHT_ARTIFACT,
+    ONIONWRIGHT_VERSION,
+    RELEASE_CHANNEL,
+    api_url,
 )
+from connectonion.credentials import require_ambient_api_key
 
 # This is the public half of oo-api's production licence-signing key.  Fetching
 # a verification key beside the manifest would let a compromised delivery path
 # bless its own wheel, so releases intentionally require a ConnectOnion update
 # when this trust root changes.
 RELEASE_VERIFY_KEY_HEX = (
-    "be8cca51dcbb9c51af19e3f18ef1d355"
-    "abbc0e6549b017c2932ab2bdc25c7fb3"
+    "be8cca51dcbb9c51af19e3f18ef1d355" "abbc0e6549b017c2932ab2bdc25c7fb3"
 )
 
 REQUEST_TIMEOUT = (10, 120)
 MAX_WHEEL_BYTES = 100 * 1024 * 1024
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 class OnionwrightInstallError(RuntimeError):
@@ -66,7 +67,10 @@ def _is_compatible(version: str | None) -> bool:
     if version is None:
         return False
     try:
-        return Version(version) >= Version(ONIONWRIGHT_VERSION)
+        # Preview semantics are part of these immutable bytes. A newer final
+        # may be a production-channel client and must not be accepted merely
+        # because PEP 440 sorts it after this preview.
+        return Version(version) == Version(ONIONWRIGHT_VERSION)
     except InvalidVersion:
         return False
 
@@ -111,6 +115,8 @@ def _verified_manifest_digest(signed: dict) -> str:
         signature = bytes.fromhex(signed["signature"])
         VerifyKey(bytes.fromhex(RELEASE_VERIFY_KEY_HEX)).verify(payload, signature)
         document = json.loads(payload)
+        if document["channel"] != RELEASE_CHANNEL:
+            raise ValueError("release manifest is not the preview channel")
         artifacts = document["artifacts"]
         digest = artifacts[ONIONWRIGHT_ARTIFACT]
     except (
@@ -134,16 +140,35 @@ def _verified_manifest_digest(signed: dict) -> str:
     return digest
 
 
-def _download_wheel(url: str, destination: Path, expected_sha256: str) -> None:
+def _download_wheel(
+    url: str,
+    destination: Path,
+    expected_sha256: str,
+    *,
+    preview_api_url: str | None = None,
+) -> None:
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         raise OnionwrightInstallError(
             "OpenOnion release service returned an invalid download URL."
         )
-    if backend_url().startswith("https://") and parsed.scheme != "https":
-        raise OnionwrightInstallError(
-            "OpenOnion release service attempted an insecure download."
+    if parsed.scheme != "https":
+        preview = urlparse(preview_api_url or "")
+        local_e2e = (
+            parsed.scheme == "http"
+            and parsed.hostname in LOOPBACK_HOSTS
+            and preview.scheme == "http"
+            and preview.hostname in LOOPBACK_HOSTS
         )
+        if not local_e2e:
+            raise OnionwrightInstallError(
+                "OpenOnion release service attempted an insecure download."
+            )
 
     try:
         response = requests.get(
@@ -193,11 +218,16 @@ def install_onionwright() -> InstallResult:
     """Install the current private client into this exact Python environment."""
     current = _installed_version()
     if _is_compatible(current):
-        return InstallResult(version=current or ONIONWRIGHT_VERSION, already_installed=True)
+        return InstallResult(
+            version=current or ONIONWRIGHT_VERSION, already_installed=True
+        )
 
     token = require_ambient_api_key()
     headers = {"Authorization": f"Bearer {token}"}
-    base = backend_url()
+    try:
+        base = api_url()
+    except BrowserPreviewConfigError as exc:
+        raise OnionwrightInstallError(str(exc)) from exc
     signed = _request_json(
         "get",
         f"{base}/api/v1/license/manifest",
@@ -217,7 +247,12 @@ def install_onionwright() -> InstallResult:
 
     with tempfile.TemporaryDirectory(prefix="co-onionwright-") as temp_dir:
         wheel = Path(temp_dir) / Path(ONIONWRIGHT_ARTIFACT).name
-        _download_wheel(grant["url"], wheel, expected_sha256)
+        _download_wheel(
+            grant["url"],
+            wheel,
+            expected_sha256,
+            preview_api_url=base,
+        )
         command = [
             sys.executable,
             "-m",
@@ -241,6 +276,9 @@ def install_onionwright() -> InstallResult:
     installed = _installed_version()
     if not _is_compatible(installed):
         raise OnionwrightInstallError(
-            f"pip completed but Onionwright {ONIONWRIGHT_VERSION} or newer is not installed."
+            f"pip completed but exact preview Onionwright {ONIONWRIGHT_VERSION} "
+            "is not installed."
         )
-    return InstallResult(version=installed or ONIONWRIGHT_VERSION, already_installed=False)
+    return InstallResult(
+        version=installed or ONIONWRIGHT_VERSION, already_installed=False
+    )

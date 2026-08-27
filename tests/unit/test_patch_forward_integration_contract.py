@@ -21,7 +21,7 @@ def test_a_stable_patch_can_publish_before_its_forward_ports(version):
 
 @pytest.mark.parametrize(
     "version",
-    ["1.8.0a2", "1.8.0b1", "1.8.0rc1", "1.8.0", "2.0.0"],
+    ["1.8.0a2", "1.8.0b1", "1.8.0rc1", "1.8.0", "1.9.0a1", "2.0.0"],
 )
 def test_every_newer_channel_requires_a_clear_forward_port_ledger(version):
     assert release_needs_clear_forward_ports(version) is True

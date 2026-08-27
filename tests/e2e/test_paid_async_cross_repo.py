@@ -93,6 +93,7 @@ class Session:
 
 class Client:
     client_version = engine.MIN_ONIONWRIGHT_VERSION
+    release_channel = engine.ONIONWRIGHT_RELEASE_CHANNEL
 
     def __init__(self, home, prepared):
         self.home = home
@@ -129,6 +130,7 @@ def prepared_browser(tmp_path):
         architecture="x86_64",
         browser_revision=engine.BROWSER_REVISION,
         client_version=engine.MIN_ONIONWRIGHT_VERSION,
+        release_channel=engine.ONIONWRIGHT_RELEASE_CHANNEL,
         artifact=artifact,
         cache_state="ready",
         paid_capable=True,
@@ -174,7 +176,9 @@ def test_sync_facade_reaches_real_async_paid_boundary(tmp_path, monkeypatch):
     profile, kwargs = chromium.calls[0]
     assert profile == str(tmp_path / "profiles" / "0xaccount")
     assert kwargs["executable_path"] == str(prepared.executable)
-    assert kwargs["args"][-1] == f"--license-file={client.session.licence_path.resolve()}"
+    assert (
+        kwargs["args"][-1] == f"--license-file={client.session.licence_path.resolve()}"
+    )
     assert status["resolved_engine"] == engine.ONION
     assert status["paid_session_id"] == client.session.session_id
     assert client.session.release_calls == 1

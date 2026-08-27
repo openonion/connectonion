@@ -16,6 +16,7 @@ def ready_resolution():
     )
     client = SimpleNamespace(
         client_version=engine.MIN_ONIONWRIGHT_VERSION,
+        release_channel=engine.ONIONWRIGHT_RELEASE_CHANNEL,
         prepare=lambda revision: prepared,
     )
     return engine.resolve(
@@ -46,13 +47,15 @@ def test_launch_passes_the_same_prepared_result_to_onionwright(monkeypatch):
         headless=True,
     )
     assert launched == "paid-run"
-    assert calls == [(
-        "playwright",
-        result.client,
-        engine.BROWSER_REVISION,
-        "stable-idempotency-key",
-        {"prepared": result.prepared, "user_data_dir": True, "headless": True},
-    )]
+    assert calls == [
+        (
+            "playwright",
+            result.client,
+            engine.BROWSER_REVISION,
+            "stable-idempotency-key",
+            {"prepared": result.prepared, "user_data_dir": True, "headless": True},
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -77,13 +80,15 @@ async def test_async_launch_passes_same_prepared_result_to_onionwright(monkeypat
         headless=True,
     )
     assert launched == "async-paid-run"
-    assert calls == [(
-        "async-playwright",
-        result.client,
-        engine.BROWSER_REVISION,
-        "stable-idempotency-key",
-        {"prepared": result.prepared, "user_data_dir": True, "headless": True},
-    )]
+    assert calls == [
+        (
+            "async-playwright",
+            result.client,
+            engine.BROWSER_REVISION,
+            "stable-idempotency-key",
+            {"prepared": result.prepared, "user_data_dir": True, "headless": True},
+        )
+    ]
 
 
 def test_system_resolution_cannot_cross_the_billing_boundary():
@@ -107,6 +112,7 @@ def test_client_constructor_import_failure_is_auto_fallback():
 def test_prepare_exception_is_typed_and_explicit_onion_fails():
     class FailedClient:
         client_version = engine.MIN_ONIONWRIGHT_VERSION
+        release_channel = engine.ONIONWRIGHT_RELEASE_CHANNEL
 
         def prepare(self, revision):
             exc = RuntimeError("offline")
