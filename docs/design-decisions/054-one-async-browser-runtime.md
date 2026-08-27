@@ -56,9 +56,29 @@ The migration has three review boundaries:
    `BrowserAutomation` methods submit to an owned loop thread without nesting a
    caller's running event loop. The facade is compatibility, not a second driver.
 
-The internal core is not exported as a public user API while #498 is incomplete.
-The current synchronous API and daemon remain authoritative until the complete
-contract and cross-platform transport matrices are green.
+The internal core is not exported as a public user API. The daemon owns it
+directly; the synchronous Python API remains authoritative and now delegates
+through #500's facade. That facade still requires green cross-platform matrices
+before merge.
+
+The #499 transport boundary keeps claim admission separate from page execution.
+A registry lock performs unknown-tab validation, claim takeover/refusal, and a
+request-scoped audit lease as one transition. The lease is keyed by a unique
+request id and cleared in `finally`, so cancellation removes only the request
+that was cancelled; it does not erase a durable owner or another in-flight
+request. Once admitted, the async core's tab lock orders that page while other
+tab locks remain free.
+
+POSIX hands the already race-checked AF_UNIX listener to
+`asyncio.start_unix_server`. It admits at most 32 connection tasks, rejects
+excess connections without spawning more tasks, limits each request to 1 MiB,
+and applies absolute 120-second read and reply deadlines. Windows retains the
+authenticated `multiprocessing.connection` named-pipe wire. Its blocking
+accept/read/write calls run through a dedicated eight-worker executor and feed
+the same asyncio dispatch path; a 32-slot admission semaphore bounds queued
+connections. Shutdown stops admission, cancels owned connection tasks, awaits
+the browser runtime cleanup, and removes the endpoint only if its pid sidecar
+still names this process.
 
 The second #498 review boundary ports deterministic contracts that do not depend
 on frames, downloads, humanized input, or model-backed element matching. It covers
@@ -139,11 +159,18 @@ home with the real macOS keychain makes Chrome hang during context shutdown.
 Before #498 closes, the async core must cover every current public browser verb,
 the humanized-input acceptance suite, profile seeding/export, dead-context
 recovery, downloads/uploads, screenshot payload bounds, and stealth checks.
-Before #499 closes, slow-reader/writer, stalled client, cancellation,
-disconnect, same-tab conflict, independent-tab progress, cold-start, and
-shutdown load tests must pass on POSIX and Windows. Before #500 closes, repeated
+Before #499 closes, slow-reader/writer, oversized/stalled client, admission-cap,
+cancellation, disconnect, same-tab conflict, independent-tab progress,
+cold-start, and shutdown load tests must pass on POSIX and Windows. Before #500 closes, repeated
 sync and running-event-loop callers must leave no loop thread, task, page,
 process, socket, or pipe behind.
+
+The #499 native gate exercises the complete path rather than composing two mock
+claims: a real socket client asks the real daemon to hold one real Chrome tab for
+two seconds, then another client must read a second real tab within one second
+and before the hold finishes. The transport-only matrix separately proves
+same-tab ordering, a two-caller claim race, disconnect cleanup, and parallel
+client admission without paying Chrome launch cost in every platform job.
 
 The completed review boundaries additionally run against native Chrome. They
 prove selector counts and text, repeated-item bounds, link filtering, text waits,

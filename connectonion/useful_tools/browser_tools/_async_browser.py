@@ -4,12 +4,12 @@ LLM-Note:
   Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/e2e/test_async_browser_core_real_driver.py]
   Data flow: caller binds a session in a ContextVar → each async operation acquires that tab's lock → the shared persistent context lazily creates/restores one page per session → model-selected actions await extraction and worker-thread matching → independent tab operations may interleave on one event loop
   State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
-  Integration: internal AsyncBrowserCore; the public synchronous BrowserAutomation remains unchanged until #500 adds its compatibility facade
+  Integration: internal AsyncBrowserCore; used directly by the daemon and through the public synchronous BrowserAutomation compatibility facade
   Errors: live profile ownership fails before driver start | launch/cancellation tears down partially-created driver state | destructive keyboard shortcuts fail closed outside editable focus | element ambiguity and non-match errors preserve the synchronous finder contract
 
-This module is deliberately internal while #498 is in progress. It must never
-import or call patchright.sync_api: the old public class remains the compatibility
-implementation until the async contract is complete and #500 installs the facade.
+This module is deliberately internal. It must never import or call
+``patchright.sync_api``: synchronous callers use the compatibility facade, which
+submits work to this core's owned event loop.
 """
 
 import asyncio

@@ -509,46 +509,9 @@ class RemoteAgent:
         try:
             async with connection as ws:
                 await ws.send(json.dumps(connect_msg))
-
-                # Wait for CONNECTED (EXEC needs the same auth gate as INPUT).
-                while True:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=30)
-                    event = json.loads(raw)
-                    etype = event.get("type")
-                    if etype == "CONNECTED":
-                        break
-                    if etype == "ONBOARD_REQUIRED":
-                        # The same exchange input() does, on the same socket: submit
-                        # credentials and keep waiting. The host finishes the CONNECT
-                        # its trust gate interrupted (ws_router/session.py pops the
-                        # stashed pending_connect and calls establish_connection), so
-                        # CONNECTED arrives on this loop and the EXEC goes out below.
-                        #
-                        # This used to answer "run input() once to onboard" — the
-                        # Python API, which is no help to whoever typed `co call`.
-                        methods = event.get("methods", [])
-                        if not sys.stdin.isatty():
-                            # A script has no stdin to answer with, and prompting
-                            # would hang it. Fail, but say what the agent asked for.
-                            return ExecResult(
-                                text="", status="error",
-                                error=f"agent requires onboarding ({', '.join(methods) or 'no methods offered'})"
-                                      " — run this from a terminal to enter an invite code")
-                        try:
-                            credentials = self._prompt_onboard(methods, event.get("payment_amount"))
-                        except ValueError as declined:
-                            # Entering nothing is an answer, and a normal one.
-                            # _prompt_onboard raises for it, and every other refusal
-                            # call() can meet — a blacklist, a bad code, a tool that
-                            # is not whitelisted — comes back as an ExecResult. This
-                            # is that same channel, not a swallowed error.
-                            return ExecResult(text="", status="error",
-                                              error=f"onboarding not completed: {declined}")
-                        await ws.send(json.dumps(self._build_onboard_submit(credentials)))
-                        continue
-                    if etype == "ERROR":
-                        return ExecResult(text="", status="error",
-                                          error=event.get("message", "connect failed"))
+                connect_error = await self._wait_for_direct_command_connected(ws)
+                if connect_error:
+                    return ExecResult(text="", status="error", error=connect_error)
 
                 await ws.send(json.dumps(exec_msg))
 
@@ -571,6 +534,154 @@ class RemoteAgent:
                                           error=event.get("message", "exec failed"))
         except asyncio.TimeoutError:
             return ExecResult(text="", status="error", error=f"exec timed out after {timeout}s")
+
+    def remote_browser(
+        self,
+        command: str,
+        *,
+        session_id: str | None = None,
+        timeout: float = 60.0,
+        **args,
+    ) -> Dict[str, Any]:
+        """Run one typed, owner-bound Remote Browser lifecycle command."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "remote_browser() cannot be used inside async context. "
+                "Use 'await agent.remote_browser_async()' instead."
+            )
+        except RuntimeError as exc:
+            if "remote_browser() cannot be used" in str(exc):
+                raise
+        return asyncio.run(
+            self.remote_browser_async(
+                command,
+                session_id=session_id,
+                timeout=timeout,
+                **args,
+            )
+        )
+
+    async def remote_browser_async(
+        self,
+        command: str,
+        *,
+        session_id: str | None = None,
+        timeout: float = 60.0,
+        **args,
+    ) -> Dict[str, Any]:
+        """Async Remote Browser lifecycle request over authenticated OIP."""
+        import websockets
+
+        await self._try_resolve_endpoint()
+        request_id = str(uuid.uuid4())
+        request = {
+            "type": "REMOTE_BROWSER",
+            "request_id": request_id,
+            "command": command,
+            "args": args,
+        }
+        if session_id is not None:
+            request["session_id"] = session_id
+
+        try:
+            connection, is_direct = await self._open_best_connection(websockets)
+            async with connection as ws:
+                await ws.send(json.dumps(self._build_connect_message(is_direct)))
+                connect_error = await self._wait_for_direct_command_connected(ws)
+                if connect_error:
+                    return self._remote_browser_client_error(
+                        request_id, command, "CONNECTION_FAILED", connect_error
+                    )
+                await ws.send(json.dumps(
+                    self._build_command_message(request, is_direct)
+                ))
+                while True:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                    event = json.loads(raw)
+                    event_type = event.get("type")
+                    if (
+                        event_type == "REMOTE_BROWSER_RESULT"
+                        and event.get("request_id") == request_id
+                    ):
+                        event.pop("type", None)
+                        return event
+                    if event_type == "PING":
+                        await ws.send(json.dumps({"type": "PONG"}))
+                    elif event_type == "ERROR":
+                        return self._remote_browser_client_error(
+                            request_id,
+                            command,
+                            "CONNECTION_FAILED",
+                            event.get("message", "remote browser request failed"),
+                        )
+        except asyncio.TimeoutError:
+            return self._remote_browser_client_error(
+                request_id,
+                command,
+                "TIMEOUT",
+                f"remote browser request timed out after {timeout}s",
+                retryable=True,
+            )
+        except OSError as exc:
+            return self._remote_browser_client_error(
+                request_id,
+                command,
+                "CONNECTION_FAILED",
+                str(exc),
+                retryable=True,
+            )
+
+    async def _wait_for_direct_command_connected(self, ws) -> str | None:
+        """Complete CONNECT/onboarding for non-LLM command APIs."""
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            event = json.loads(raw)
+            event_type = event.get("type")
+            if event_type == "CONNECTED":
+                return None
+            if event_type == "ONBOARD_REQUIRED":
+                methods = event.get("methods", [])
+                if not sys.stdin.isatty():
+                    offered = ", ".join(methods) or "no methods offered"
+                    return (
+                        f"agent requires onboarding ({offered}) — run this from "
+                        "a terminal to enter an invite code"
+                    )
+                try:
+                    credentials = self._prompt_onboard(
+                        methods, event.get("payment_amount")
+                    )
+                except ValueError as declined:
+                    return f"onboarding not completed: {declined}"
+                await ws.send(json.dumps(self._build_onboard_submit(credentials)))
+                continue
+            if event_type == "ERROR":
+                return event.get("message", "connect failed")
+
+    @staticmethod
+    def _remote_browser_client_error(
+        request_id: str,
+        command: str,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+    ) -> Dict[str, Any]:
+        return {
+            "schema_version": "1",
+            "ok": False,
+            "command": f"remote-browser.{command}",
+            "request_id": request_id,
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+            "retry_after_seconds": None,
+            "state": {},
+            "tips": [],
+            "warnings": [],
+            "next_actions": [],
+        }
 
     def reset(self) -> None:
         """Clear conversation and start fresh."""

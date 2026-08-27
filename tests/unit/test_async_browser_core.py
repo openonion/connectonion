@@ -1,8 +1,8 @@
 """Contract tests for the internal 1.8 Patchright async browser core.
 
-The public synchronous BrowserAutomation remains unchanged until #500. These
-tests prove the new core itself is genuinely async, preserves per-session tabs,
-and cleans up deterministically before #499 puts concurrent IPC in front of it.
+The public synchronous BrowserAutomation delegates through the #500 facade. These
+tests prove the underlying core itself is genuinely async, preserves per-session
+tabs, and cleans up deterministically behind #499's concurrent IPC.
 """
 
 import ast

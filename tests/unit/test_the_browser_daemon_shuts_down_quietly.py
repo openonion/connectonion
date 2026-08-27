@@ -29,7 +29,6 @@ supposed to be serving is a real failure and must not be swallowed.
 """
 
 import shutil
-import socket
 import tempfile
 import threading
 from pathlib import Path
@@ -93,11 +92,11 @@ class TestClosingTheListenerStopsIt:
 class TestARealFailureStillRaises:
     """Swallowing every socket error would hide a daemon that broke while serving."""
 
-    def test_an_accept_error_while_serving_is_not_swallowed(self, server):
+    def test_a_bind_error_while_serving_is_not_swallowed(self, server):
         def explode():
             raise OSError("the listener broke while we were serving")
 
-        server._accept = explode
+        server._bind = explode
 
         with pytest.raises(OSError):
             server.serve()
@@ -106,7 +105,7 @@ class TestARealFailureStillRaises:
         def explode():
             raise ValueError("something else entirely")
 
-        server._accept = explode
+        server._bind = explode
 
         with pytest.raises(ValueError):
             server.serve()

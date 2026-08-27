@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int | FIRST-RUN AUTO-INSTALL: on the cold-start path (no daemon yet) AND when a warm daemon answers "No browser is installed for this user" (send retries once), a page-driving verb with no system Chrome triggers `python -m patchright install chromium` right in the user's terminal (chromium: per-user dir, never needs admin — the branded chrome channel runs a system installer) (_ensure_browser_ready) — `co browser` just works with zero setup commands; PAGELESS_VERBS (status/tab/close/...) never provision
   Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
-  Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | ALL setup RuntimeErrors (Windows authkey mismatch/corruption, daemon didn't start) are caught in send() → one clean stderr line + exit 1, NEVER a traceback (typer's pretty exceptions would print frame locals, which hold the HMAC secret on the connect path) | daemon dying mid-request → clean stderr line + exit 1
+  Errors: _connect() retries transient refusal/backpressure and never unlinks an endpoint whose recorded owner is alive; only a truly stale POSIX socket is removed | missing endpoint → spawn daemon and wait until ready or timeout | setup RuntimeErrors become one clean stderr line, never a traceback containing HMAC-path locals | daemon death, overload shedding, or disconnect mid-request becomes a clean exit 1
 """
 
 import functools
@@ -27,19 +27,37 @@ def default_sock_path() -> str:
     return transport.default_address()
 
 
-def _owner_alive(sock_path: str) -> bool:
-    """Read the daemon pid sidecar without importing Playwright or browser tools."""
+def _owner_pid(sock_path: str) -> int | None:
+    """Return the live daemon pid recorded beside the endpoint, if there is one."""
     pid_file = Path(transport.pid_path(sock_path))
     if not pid_file.exists():
-        return False
+        return None
     raw = pid_file.read_text(encoding="utf-8").strip()
-    return raw.isdigit() and transport.pid_alive(int(raw))
+    if not raw.isdigit():
+        return None
+    pid = int(raw)
+    return pid if transport.pid_alive(pid) else None
+
+
+def _owner_alive(sock_path: str) -> bool:
+    """Read the daemon pid sidecar without importing Playwright or browser tools."""
+    return _owner_pid(sock_path) is not None
+
+
+def _wait_for_pid_exit(pid: int, timeout: float = 15.0) -> bool:
+    """Wait for one exact daemon process, never a replacement using its endpoint."""
+    deadline = time.monotonic() + timeout
+    while transport.pid_alive(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
 
 
 def _connect(sock_path: str):
     """Connect to the daemon. Returns a live connection, or None if the daemon is
-    genuinely gone. A busy single-threaded daemon (during a browser action) can momentarily
-    refuse while its accept backlog is full — that is NOT a dead daemon, so retry
+    genuinely gone. A daemon at its bounded connection cap can momentarily refuse —
+    that is NOT a dead daemon, so retry
     while its recorded owner is alive; a dead owner fails fast (the spawned daemon
     replaces it). POSIX uses a raw AF_UNIX socket (unchanged); Windows uses the
     authenticated named-pipe client from `transport`. Raises RuntimeError only for
@@ -123,8 +141,8 @@ def _spawn_daemon(sock_path: str, headless: bool):
         time.sleep(0.1)
     if _owner_alive(sock_path):
         # A daemon IS running — it just can't take our connection right now (its
-        # backlog is full behind a long-running command). "Did not start" would lie.
-        raise RuntimeError("browser daemon is busy (a long command is holding it) — try again")
+        # bounded client capacity is full). "Did not start" would lie.
+        raise RuntimeError("browser daemon is at connection capacity — try again")
     raise RuntimeError(f"browser daemon did not start (see {log_path})")
 
 
@@ -197,24 +215,32 @@ def _ensure_browser_ready(line: str) -> bool:
     return True
 
 
-def _request(line: str, headless: bool = False, tab: str = None,
-             raw_result: bool = False, _provisioned: bool = False) -> tuple:
+def _request_with_identity(
+    line: str,
+    *,
+    caller: str,
+    account: str,
+    headless: bool = False,
+    tab: str = None,
+    raw_result: bool = False,
+    _provisioned: bool = False,
+) -> tuple:
     """Send one short daemon request and return ``(code, payload)``.
 
     ``raw_result`` is for the client-side agent: image data must reach its vision
     formatter, while an interactive shell should still receive a saved-file line.
     The account address is public; the API key never crosses this transport.
     """
-    account = _caller_account()
     request = json.dumps({
         "v": 1,
-        "caller": _caller(),
+        "caller": caller,
         "account": account,
         "tab": tab,
         "line": line,
         "raw": raw_result,
     })
     sock_path = default_sock_path()
+    owner_pid = None
     try:
         conn = _connect(sock_path)
         if conn is None:
@@ -229,17 +255,28 @@ def _request(line: str, headless: bool = False, tab: str = None,
                 # (#356).
                 #
                 # A failed connect is not "nobody listening": a daemon whose
-                # backlog is full behind a long command refuses connections too.
+                # bounded client capacity can refuse connections too.
                 # Saying "not running — the next page command starts one" then
                 # sends the reader in the wrong direction, and every command they
                 # try answers "busy". _owner_alive reads the pidfile and asks
                 # whether that pid lives — no spawn, no log, so the #356
                 # constraint above still holds.
                 if _owner_alive(sock_path):
-                    return 0, "Browser daemon: running, busy with a long command — try again shortly"
+                    return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
             _ensure_browser_ready(line)  # cold start: provision the browser first
             conn = _spawn_daemon(sock_path, headless)
+        # A successful whole-browser close is a lifecycle barrier on Windows.
+        # Record the exact process serving this connection so a concurrently
+        # started replacement is never mistaken for the daemon being closed.
+        if transport.IS_WINDOWS and tab is None and line.split() == ["close"]:
+            owner_pid = _owner_pid(sock_path)
+            # Embedded users and socket round-trip tests may run the daemon in
+            # another thread of this process. That process cannot exit while the
+            # caller is waiting inside it; production's detached daemon always
+            # has a different pid.
+            if owner_pid == os.getpid():
+                owner_pid = None
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
         # with a clean one-line error, NEVER a traceback: typer's pretty exceptions
@@ -271,6 +308,11 @@ def _request(line: str, headless: bool = False, tab: str = None,
 
     header, _, payload = reply.decode().partition("\n")
     if header == "OK":
+        if owner_pid is not None and not _wait_for_pid_exit(owner_pid):
+            return 1, (
+                "Browser closed, but its daemon did not stop within 15 seconds — "
+                "try again"
+            )
         return 0, payload
     # A warm daemon reached the launcher and found no browser. The cold-start
     # provisioning above was skipped because the connect succeeded, so without
@@ -279,8 +321,13 @@ def _request(line: str, headless: bool = False, tab: str = None,
     # not something to guess at from a version-numbered cache path.
     if "No browser is installed for this user" in payload and not _provisioned:
         if _ensure_browser_ready(line):
-            return _request(
-                line, headless=headless, tab=tab, raw_result=raw_result,
+            return _request_with_identity(
+                line,
+                caller=caller,
+                account=account,
+                headless=headless,
+                tab=tab,
+                raw_result=raw_result,
                 _provisioned=True,
             )
 
@@ -301,6 +348,50 @@ def _request(line: str, headless: bool = False, tab: str = None,
     parts = header.split()
     code = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
     return code, payload
+
+
+def _request(
+    line: str,
+    headless: bool = False,
+    tab: str = None,
+    raw_result: bool = False,
+    _provisioned: bool = False,
+) -> tuple:
+    """Send a request owned by this local CLI process."""
+    return _request_with_identity(
+        line,
+        caller=_caller(),
+        account=_caller_account(),
+        headless=headless,
+        tab=tab,
+        raw_result=raw_result,
+        _provisioned=_provisioned,
+    )
+
+
+def request_as(
+    line: str,
+    *,
+    caller: str,
+    account: str,
+    headless: bool = False,
+    tab: str = None,
+) -> tuple:
+    """Host-only daemon seam using an already authenticated remote identity.
+
+    The caller value comes from OIP authentication, never from remote request
+    arguments. Keeping this separate from ``_request`` prevents a local CLI
+    option from spoofing another tab owner.
+    """
+    if not caller or not account:
+        return 3, "authenticated caller and account are required"
+    return _request_with_identity(
+        line,
+        caller=caller,
+        account=account,
+        headless=headless,
+        tab=tab,
+    )
 
 
 def _tool_line(name: str, args: tuple, kwargs: dict) -> str:

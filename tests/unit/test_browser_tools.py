@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
 from connectonion.useful_tools.browser_tools import browser as browser_module
-from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
+from connectonion.useful_tools.browser_tools.browser import (
+    LegacyBrowserAutomation as BrowserAutomation,
+)
 
 
 class FakePage:

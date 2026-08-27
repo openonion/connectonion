@@ -13,8 +13,8 @@ skip cleanly in a plain CI shell with no DISPLAY, and skip an individual site if
 third party is down (5xx / unreachable) rather than failing on someone else's outage.
 """
 
-import os
 import json
+import os
 import platform
 import re
 import statistics
@@ -56,8 +56,8 @@ def stealth_browser():
 
 
 def _eval(browser, js):
-    """Evaluate JS on the browser worker thread (the page is thread-bound)."""
-    return browser._executor.submit(lambda: browser.page.evaluate(js)).result()
+    """Evaluate JS on the async-core runtime thread (the page is loop-bound)."""
+    return browser._run_on_runtime(lambda core: core.page.evaluate(js))
 
 
 def _text(browser):

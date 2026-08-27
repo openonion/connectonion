@@ -68,6 +68,7 @@ from .http_router import (
     admin_admins_remove_handler,
 )
 from .provider_workroom import prepare_provider_workroom_turn
+from .remote_browser import RemoteBrowserService
 
 
 EXEC_REQUIRES = ("admin", "whitelist", "contact")
@@ -109,6 +110,71 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
         return exec_handler(create_agent, exec_permissions, tool_name, args)
 
     return handle_ws_exec
+
+
+def _make_remote_browser(remote_browser_service, trust_agent):
+    """Bind Remote Browser to authenticated contact-or-admin authority."""
+    def handle_remote_browser(request, requester_address=None, transport="unknown"):
+        if not requester_address:
+            return {
+                "schema_version": "1",
+                "ok": False,
+                "command": "remote-browser",
+                "request_id": request.get("request_id", ""),
+                "code": "AUTH_REQUIRED",
+                "message": "Remote Browser requires an authenticated caller.",
+                "retryable": False,
+                "retry_after_seconds": None,
+                "state": {},
+                "tips": [],
+                "warnings": [],
+                "next_actions": [],
+            }
+        level = (
+            "admin"
+            if trust_agent.is_admin(requester_address)
+            else trust_agent.get_level(requester_address)
+        )
+        if level not in EXEC_REQUIRES:
+            return {
+                "schema_version": "1",
+                "ok": False,
+                "command": "remote-browser",
+                "request_id": request.get("request_id", ""),
+                "code": "FORBIDDEN",
+                "message": (
+                    "Remote Browser requires a contact or admin; "
+                    f"the authenticated caller is {level}."
+                ),
+                "retryable": False,
+                "retry_after_seconds": None,
+                "state": {},
+                "tips": [],
+                "warnings": [],
+                "next_actions": [],
+            }
+        if remote_browser_service is None:
+            return {
+                "schema_version": "1",
+                "ok": False,
+                "command": "remote-browser",
+                "request_id": request.get("request_id", ""),
+                "code": "REMOTE_BROWSER_UNAVAILABLE",
+                "message": "Remote Browser is not configured on this host.",
+                "retryable": False,
+                "retry_after_seconds": None,
+                "state": {},
+                "tips": [],
+                "warnings": [],
+                "next_actions": [],
+            }
+        return remote_browser_service.handle(
+            request,
+            owner=requester_address,
+            transport=transport,
+        )
+
+    return handle_remote_browser
 
 
 def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
@@ -227,6 +293,7 @@ def _create_route_handlers(
     exec_permissions: dict | None = None,
     replay_check=None,
     mode_policy: HostPermissionPolicy | None = None,
+    remote_browser_service=None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -287,6 +354,7 @@ def _create_route_handlers(
                              is_admin=bool(requester and requester["level"] == "admin"))
 
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
+    handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent)
 
     def handle_prepare_provider_workroom_turn(
         storage,
@@ -331,6 +399,7 @@ def _create_route_handlers(
         "replay": replay_check,
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,
+        "remote_browser": handle_remote_browser,
         "prepare_provider_workroom_turn": handle_prepare_provider_workroom_turn,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
@@ -1046,10 +1115,14 @@ def host(
     exec_permissions = load_permission_patterns(co_dir)
 
     replay_store = SignatureReplayStore(co_dir / "replay.sqlite3")
+    remote_browser_service = RemoteBrowserService(
+        co_dir / "remote-browser-sessions.json"
+    )
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent, config,
         exec_permissions, replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
+        remote_browser_service=remote_browser_service,
     )
 
     # Parse trust config for /info onboard info
@@ -1183,11 +1256,15 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
     replay_store = SignatureReplayStore(replay_dir / "replay.sqlite3")
+    remote_browser_service = RemoteBrowserService(
+        replay_dir / "remote-browser-sessions.json"
+    )
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent,
         DEFAULT_FILE_LIMITS, load_permission_patterns(),
         replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
+        remote_browser_service=remote_browser_service,
     )
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
