@@ -21,8 +21,8 @@ one logical conversation. What disappeared is the false coupling *between*
 conversations — session B's screenshot no longer waits for session A's
 forty-minute errand.
 
-The same release carries the first owner-bound Remote Browser lifecycle
-over OIP: start, status, and stop settle deterministically, and the daemon
-knows which owner a remote session answers to — groundwork the 1.8 train's
-remote-browser product stands on, shipped as an alpha so the shape gets
-exercised before anything is promised on top of it.
+The lesson generalizes past browsers: when one worker serves many
+conversations, the coupling you must break is *between* conversations, and
+the compatibility you must not break is *within* one. Getting those the
+right way round is the whole difference between a rewrite users celebrate
+and one they have to migrate through.
