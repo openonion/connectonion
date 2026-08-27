@@ -21,7 +21,7 @@ reader-before-writer deployment:
 
 Within 0.1, new non-authoritative fields and events are additive. Readers ignore
 what they do not understand and retain generic provider/tool rendering. Identity,
-session ownership, permission profiles, approvals, cancellation, terminal state,
+session ownership, modes, approvals, cancellation, terminal state,
 and protocol/version are authoritative: malformed or unknown values are rejected
 instead of guessed.
 
@@ -77,6 +77,41 @@ it is not the terminal outcome. The matching `provider_invocation` event with
 `accepted: false` with the stable reason `not_active` or `invalid_request`, so
 the client can restore a retry action. Legacy requests without `requestId`
 retain the older no-ack behaviour during the rolling compatibility window.
+
+### Provider-native permission change
+
+`PROVIDER_PERMISSION_CHANGE` selects one Host-advertised Codex or Claude Code
+profile for subsequent work in the exact Work Room on screen:
+
+```json
+{
+  "type": "PROVIDER_PERMISSION_CHANGE",
+  "requestId": "permission-1",
+  "invocationId": "codex:call-7",
+  "stateRevision": 4,
+  "optionId": "codex:workspace-auto",
+  "confirmRisk": false
+}
+```
+
+The authenticated requester must own the session and be its Operator. The
+option must exist in the latest durable invocation catalog and fit inside the
+outer Host mode ceiling. An elevated Full Access option additionally requires
+`confirmRisk: true`. Browser state is never authority.
+
+An accepted request returns `PROVIDER_PERMISSION_ACK` with the matching request
+and invocation IDs, a strictly newer revision, and the complete authoritative
+`providerPermission` state. Host then streams that same revision as a canonical
+`provider_invocation` for replay and other readers. A rejection has
+`accepted: false` and one safe reason code such as `stale_revision`,
+`ceiling_denied`, `operator_required`, or `confirmation_required`; it never
+changes durable state.
+
+When an outer `mode_change` also narrows one or more Work Rooms, the Host sends
+`mode_changed` followed by one canonical `provider_invocation` per affected
+Work Room. Each provider frame reflects only the transaction's final ceiling;
+the Host never streams an intermediate repair under the previous mode, even if
+the latest completed, failed, or cancelled continuation omitted its catalog.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -452,24 +487,25 @@ request.
 
 #### mode_change
 
-An authenticated client selects one Host-advertised permission profile:
+An authenticated client selects one Host-advertised permission mode:
 
 ```json
 {
   "type": "mode_change",
-  "mode": ":workspace"
+  "mode": "auto"
 }
 ```
 
 The request is accepted only while the durable session is idle and owned by
-the authenticated caller. `:read-only` is always available; `:workspace` and
-`:danger-full-access` are identity- and launch-authority-bounded. No client
-field can supply or extend Full access turns. Success is `mode_changed` and
+the authenticated caller. `read-only` and `auto` are always available;
+`full-access` is offered only under a positive Host launch ceiling. Every
+authenticated participant receives the same available modes. No client field
+can supply or extend Full access turns. Success is `mode_changed` and
 means the durable commit completed; busy, policy, ownership, and persistence
 failures return `ERROR`.
 `@connectonion/react` owns this browser operation; O Chat consumes it without
-constructing protocol frames. Default and Plan are separate client
-collaboration modes and do not appear in this Host permission list.
+constructing protocol frames. Plan is not a mode; Todo List progress carries
+no authority.
 
 #### ONBOARD_SUBMIT
 
@@ -511,11 +547,12 @@ Response to CONNECT.
   "status": "new",
   "protocol": {"name": "oip", "version": "0.1"},
   "session_modes": {
-    "currentModeId": ":read-only",
+    "currentModeId": "auto",
+    "turnsLeft": null,
     "availableModes": [
-      {"id": ":read-only", "name": "Read only", "description": "Read freely; ask before edits, commands, or broader access."},
-      {"id": ":workspace", "name": "Auto", "description": "Edit the workspace automatically; broader actions still ask."},
-      {"id": ":danger-full-access", "name": "Full access", "description": "Run without approval prompts within the Host launch ceiling."}
+      {"id": "read-only", "name": "Read only"},
+      {"id": "auto", "name": "Auto"},
+      {"id": "full-access", "name": "Full access"}
     ]
   },
   "server_newer": true,
@@ -567,8 +604,8 @@ After a successful TodoList state change, the Host sends one complete plan:
 ```
 
 Every update replaces the complete plan; an empty `entries` list clears it.
-The plan has no message or plan ID. The event is observational and
-cannot answer `plan_review` or grant execution permission.
+The plan has no message or plan ID. The event is observational and cannot
+grant execution permission or change the session mode.
 
 #### EXEC_RESULT
 
@@ -605,7 +642,6 @@ Keep-alive. Sent every 30 seconds.
 | `ask_user` | Agent needs human input |
 | `approval_needed` | Tool requires approval |
 | `plan` | Complete observational TodoList replacement |
-| `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
 #### AGENT_PROFILE

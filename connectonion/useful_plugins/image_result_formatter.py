@@ -22,6 +22,7 @@ tests/e2e/test_image_formatter_plugin.py.
 import os
 import re
 import base64
+import binascii
 import requests
 from typing import TYPE_CHECKING
 from ..core.events import after_tools
@@ -44,21 +45,49 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
 
     # Check for data URL format: data:image/png;base64,iVBORw0KGgo...
     data_url_pattern = r'data:image/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)'
-    match = re.search(data_url_pattern, text)
-
-    if match:
+    for match in re.finditer(data_url_pattern, text):
         image_type = match.group(1)
         base64_data = match.group(2)
         mime_type = f"image/{image_type}"
-        return True, mime_type, base64_data
+        if _decode_complete_image(base64_data, mime_type) is not None:
+            return True, mime_type, base64_data
 
     # Check if entire result is base64 (common for screenshot tools)
     # Base64 strings are typically long and contain only valid base64 characters
-    if len(text) > 100 and re.match(r'^[A-Za-z0-9+/=\s]+$', text):
+    if len(text) > 32 and re.fullmatch(r'[A-Za-z0-9+/=\s]+', text):
         # Likely a base64 image, default to PNG
-        return True, "image/png", text.strip()
+        base64_data = "".join(text.split())
+        if _decode_complete_image(base64_data, "image/png") is not None:
+            return True, "image/png", base64_data
 
     return _image_from_path(text)
+
+
+def _decode_complete_image(base64_data: str, mime_type: str) -> bytes | None:
+    """Decode only a complete image, not a base64-looking text fragment."""
+    try:
+        image = base64.b64decode(base64_data, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+    if mime_type == "image/png":
+        complete = image.startswith(b"\x89PNG\r\n\x1a\n") and image.endswith(
+            b"IEND\xaeB`\x82"
+        )
+    elif mime_type in {"image/jpeg", "image/jpg"}:
+        complete = image.startswith(b"\xff\xd8\xff") and image.endswith(b"\xff\xd9")
+    elif mime_type == "image/gif":
+        complete = image.startswith((b"GIF87a", b"GIF89a")) and image.endswith(b";")
+    elif mime_type == "image/webp":
+        complete = (
+            len(image) >= 12
+            and image.startswith(b"RIFF")
+            and image[8:12] == b"WEBP"
+            and int.from_bytes(image[4:8], "little") + 8 == len(image)
+        )
+    else:
+        complete = False
+    return image if complete else None
 
 
 # `co browser take_screenshot` deliberately returns a path rather than base64 —
@@ -159,7 +188,7 @@ def _upload_to_oo_api(base64_data: str, mime_type: str) -> str:
     resp = requests.post(
         f"{base}/api/v1/images",
         headers={"Authorization": f"Bearer {token}"},
-        files={"file": ("screenshot", base64.b64decode(base64_data), mime_type)},
+        files={"file": ("screenshot", base64.b64decode(base64_data, validate=True), mime_type)},
         timeout=30,
     )
     resp.raise_for_status()

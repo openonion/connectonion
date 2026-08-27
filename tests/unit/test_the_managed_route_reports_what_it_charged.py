@@ -30,16 +30,29 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from openai.types.completion_usage import CompletionUsage
 
 from connectonion.core.llm import OpenOnionLLM
 
 
-def _response(cost_usd=None, prompt=3, completion=9, total=114, cached=0):
+def _response(
+    cost_usd=None,
+    prompt=3,
+    completion=9,
+    total=114,
+    cached=0,
+    normalized=None,
+    cost_details=None,
+):
     usage = SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion,
                             total_tokens=total,
                             prompt_tokens_details=SimpleNamespace(cached_tokens=cached))
     if cost_usd is not None:
         usage.cost_usd = cost_usd
+    if normalized is not None:
+        usage.normalized = normalized
+    if cost_details is not None:
+        usage.cost_details = cost_details
     message = SimpleNamespace(content="hi", tool_calls=None)
     return SimpleNamespace(choices=[SimpleNamespace(message=message)], usage=usage)
 
@@ -92,6 +105,93 @@ class TestTheServersFigureWins:
 
         assert result.usage.input_tokens == 100
         assert result.usage.cached_tokens == 80
+
+    def test_normalized_cache_usage_reaches_the_trace_without_field_loss(self, llm):
+        normalized = {
+            "provider": "anthropic",
+            "requested_model": "claude-sonnet-4-5",
+            "provider_model": "claude-sonnet-4-5-20260801",
+            "input_tokens_total": 600,
+            "input_tokens_uncached": 100,
+            "cache_read_input_tokens": 200,
+            "cache_write_input_tokens": 300,
+            "cache_write_5m_input_tokens": 100,
+            "cache_write_1h_input_tokens": 200,
+            "output_tokens": 50,
+            "cache_metadata_status": "reported",
+            "provider_reported_cost_usd": 0.0026,
+        }
+        cost_details = {
+            "pricing_version": "2026-08-22",
+            "pricing_tier": "standard",
+            "total_usd": 0.002685,
+        }
+
+        result = _complete(
+            llm,
+            _response(
+                cost_usd=0.002685,
+                prompt=1,
+                completion=1,
+                total=2,
+                normalized=normalized,
+                cost_details=cost_details,
+            ),
+        )
+
+        assert result.usage.model_dump(exclude_none=True) == {
+            "input_tokens": 600,
+            "output_tokens": 50,
+            "cached_tokens": 200,
+            "cache_write_tokens": 300,
+            "cost": 0.002685,
+            "total_tokens": 650,
+            "input_tokens_total": 600,
+            "input_tokens_uncached": 100,
+            "cache_read_input_tokens": 200,
+            "cache_write_input_tokens": 300,
+            "cache_write_5m_input_tokens": 100,
+            "cache_write_1h_input_tokens": 200,
+            "cache_metadata_status": "reported",
+            "provider": "anthropic",
+            "requested_model": "claude-sonnet-4-5",
+            "provider_model": "claude-sonnet-4-5-20260801",
+            "provider_reported_cost_usd": 0.0026,
+            "pricing_version": "2026-08-22",
+            "pricing_tier": "standard",
+            "cost_details": cost_details,
+        }
+
+    def test_openai_sdk_preserves_the_managed_usage_extensions(self, llm):
+        response = _response()
+        response.usage = CompletionUsage.model_validate({
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "total_tokens": 2,
+            "cost_usd": 0.00021,
+            "normalized": {
+                "provider": "google",
+                "input_tokens_total": 100,
+                "input_tokens_uncached": 20,
+                "cache_read_input_tokens": 80,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 5,
+                "cache_metadata_status": "reported",
+            },
+            "cost_details": {
+                "pricing_version": "2026-08-22",
+                "pricing_tier": "standard",
+            },
+        })
+
+        usage = _complete(llm, response).usage
+
+        assert usage.input_tokens_total == 100
+        assert usage.input_tokens_uncached == 20
+        assert usage.cache_read_input_tokens == 80
+        assert usage.output_tokens == 5
+        assert usage.cost == 0.00021
+        assert usage.provider == "google"
 
 
 class TestWithoutOneNothingChanges:

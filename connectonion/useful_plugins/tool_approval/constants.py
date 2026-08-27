@@ -1,17 +1,17 @@
 """
-Purpose: Define tool classification and permission-profile constants for approval system
+Purpose: Define tool classification and canonical permission-mode constants
 LLM-Note:
-  Dependencies: imports canonical mode IDs from [core/approval_modes.py] | imported by [tool_approval/approval.py, tool_approval/__init__.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py]
+  Dependencies: imports canonical mode IDs from [core/mode.py] | imported by [tool_approval/approval.py, tool_approval/__init__.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py]
   Data flow: provides read-only constants → consumed by approval.py check_approval() and callers → identifies modes, named edit tools, command tools, and known effectful tools
   State/Effects: no state | no side effects | pure constant definitions
-  Integration: exposes VALID_PERMISSION_PROFILES, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS sets | approval.py uses profiles, edit tools, and command tools; previous constants remain deprecated compatibility exports
+  Integration: exposes VALID_PERMISSION_MODES, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
   Performance: O(1) set membership checks for tool classification
   Errors: none (constants cannot fail)
 
 Constants Overview:
-    VALID_PERMISSION_PROFILES = {':read-only', ':workspace'}
-        - :read-only: unpermitted tools need approval
-        - :workspace: named file edits are auto-approved
+    VALID_PERMISSION_MODES = {'read-only', 'auto'}
+        - read-only: unpermitted tools need approval
+        - auto: named file edits are auto-approved
 
     DANGEROUS_TOOLS: known effectful tools kept as a public reference set
     FILE_EDIT_TOOLS: write, edit, multi_edit (subset of DANGEROUS)
@@ -20,7 +20,7 @@ Constants Overview:
 Tool Classification:
     Permitted tools: supplied by template, config, skills, or the user → auto-approved
     Unpermitted tools: require approval with live IO, including unclassified tools
-    File edit tools: FILE_EDIT_TOOLS set → automatic in :workspace
+    File edit tools: FILE_EDIT_TOOLS set → automatic in auto
     Command tools: COMMAND_TOOLS set → tool-level approval (approving "bash" approves all)
 """
 
@@ -28,32 +28,19 @@ Tool Classification:
 # PERMISSION PROFILE SYSTEM
 # =============================================================================
 # Two profiles are enforced directly by this approval hook:
-#   - ':read-only': Unpermitted tools need approval
-#   - ':workspace': File edits are automatic; other unpermitted tools need approval
+#   - 'read-only': Unpermitted tools need approval
+#   - 'auto': File edits are automatic; other unpermitted tools need approval
 #
 # The third profile is handled by a separate bounded-grant plugin:
-#   - ':danger-full-access': handled by full_access; sets skip_tool_approval=True
+#   - 'full-access': handled by the bounded full_access plugin
 #
 # New clients change profiles through the Host-acknowledged OIP transaction.
 # The legacy WebSocket frame remains a migration reader only.
 # =============================================================================
 
-from ...core.approval_modes import (
-    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
-    READ_ONLY_PERMISSION_PROFILE,
-    WORKSPACE_PERMISSION_PROFILE,
-)
+from ...core.mode import AUTO, READ_ONLY
 
-VALID_PERMISSION_PROFILES = {
-    READ_ONLY_PERMISSION_PROFILE,
-    WORKSPACE_PERMISSION_PROFILE,
-}
-
-# One source-compatibility window for plugin consumers.
-DEFAULT_MODE = READ_ONLY_PERMISSION_PROFILE
-AUTO_APPROVE_MODE = WORKSPACE_PERMISSION_PROFILE
-FULL_ACCESS_MODE = DANGER_FULL_ACCESS_PERMISSION_PROFILE
-VALID_MODES = VALID_PERMISSION_PROFILES
+VALID_PERMISSION_MODES = {READ_ONLY, AUTO}
 
 
 # Known tools that modify files, execute code, or have external effects.
@@ -76,7 +63,7 @@ DANGEROUS_TOOLS = {
     'delete', 'remove',
 }
 
-# File edit tools - auto-approved in the :workspace profile
+# File edit tools - auto-approved in Auto mode
 # These tools only modify files, no external side effects.
 FILE_EDIT_TOOLS = {'write', 'edit', 'multi_edit'}
 

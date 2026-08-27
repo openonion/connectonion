@@ -207,6 +207,41 @@ def _is_paid_account_required(error) -> bool:
     return isinstance(detail, dict) and detail.get('error') == 'paid_account_required'
 
 
+# Explicit network bounds for every provider client (#1116).
+#
+# A scheduled run froze mid-iteration with the upstream socket in CLOSE_WAIT:
+# the server had closed its side and the client sat in a read that nothing
+# bounded. No error, no exit, killed by hand after 15 minutes. The fix is not
+# cleverness, it is that no provider client is ever constructed on implicit
+# SDK defaults again — every one carries these numbers, visibly.
+#
+# READ is 600s because a long non-streaming generation legitimately sends no
+# bytes until it finishes; cutting that off would break exactly the runs that
+# matter (#1116: "confirm ordinary long model generations are not cut off").
+# CONNECT is 20s — generous for proxy/VPN users, far below "looks hung".
+#
+# The documented upper bound for a stalled upstream is therefore
+# (1 + max_retries) x 600s per request: ~30 minutes for the default 2 retries,
+# ~60 for OpenOnionLLM's deliberate 5 (transient relay blips used to kill
+# whole agent runs; that decision predates this and stands). Bounded and
+# typed — a stall now ends in LLMConnectionError, never a silent hang.
+LLM_CONNECT_TIMEOUT_SECONDS = 20.0
+LLM_READ_TIMEOUT_SECONDS = 600.0
+LLM_MAX_RETRIES = 2
+
+
+def _network_bounds(max_retries: int = LLM_MAX_RETRIES) -> dict:
+    """Constructor kwargs no provider client is allowed to omit."""
+    import openai
+
+    return {
+        "timeout": openai.Timeout(
+            LLM_READ_TIMEOUT_SECONDS, connect=LLM_CONNECT_TIMEOUT_SECONDS
+        ),
+        "max_retries": max_retries,
+    }
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM including content and tool calls."""
@@ -294,7 +329,7 @@ class OpenAILLM(LLM):
         if not self.api_key:
             raise ValueError("OpenAI API key required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
         
-        self.client = openai.OpenAI(api_key=self.api_key)
+        self.client = openai.OpenAI(api_key=self.api_key, **_network_bounds())
         self.model = model
     
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -380,7 +415,7 @@ class AnthropicLLM(LLM):
         if not self.api_key:
             raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter.")
 
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.client = anthropic.Anthropic(api_key=self.api_key, **_network_bounds())
         self.model = model
         self.max_tokens = max_tokens  # Anthropic requires max_tokens (default 8192)
     
@@ -623,7 +658,8 @@ class GeminiLLM(LLM):
         # Use Gemini's OpenAI-compatible endpoint
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            **_network_bounds(),
         )
         self.model = model
     
@@ -702,7 +738,8 @@ class GroqLLM(LLM):
         self.model = model.removeprefix("groq/")
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://api.groq.com/openai/v1"
+            base_url="https://api.groq.com/openai/v1",
+            **_network_bounds(),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -780,7 +817,8 @@ class GrokLLM(LLM):
         self.model = model.removeprefix("grok/")
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://api.x.ai/v1"
+            base_url="https://api.x.ai/v1",
+            **_network_bounds(),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -862,6 +900,7 @@ class OpenRouterLLM(LLM):
         client_kwargs = {
             "api_key": self.api_key,
             "base_url": "https://openrouter.ai/api/v1",
+            **_network_bounds(),
         }
         if default_headers:
             client_kwargs["default_headers"] = default_headers
@@ -942,7 +981,8 @@ class MistralLLM(LLM):
         self.model = model.removeprefix("mistral/")
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            base_url="https://api.mistral.ai/v1"
+            base_url="https://api.mistral.ai/v1",
+            **_network_bounds(),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -1050,6 +1090,89 @@ MODEL_REGISTRY = {
 }
 
 
+def _response_mapping(value: Any) -> dict:
+    """Read SDK-preserved extension objects without depending on one SDK type."""
+    if isinstance(value, dict):
+        return value
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else {}
+    if hasattr(value, "__dict__"):
+        return {
+            key: item
+            for key, item in vars(value).items()
+            if not key.startswith("_")
+        }
+    return {}
+
+
+def _managed_token_usage(raw_usage: Any, model: str) -> TokenUsage:
+    """Keep the managed server's measured usage and charge as one contract."""
+    normalized = _response_mapping(getattr(raw_usage, "normalized", None))
+    cost_details = _response_mapping(getattr(raw_usage, "cost_details", None))
+
+    if normalized:
+        input_tokens = int(normalized["input_tokens_total"])
+        output_tokens = int(normalized["output_tokens"])
+        cache_read = int(normalized.get("cache_read_input_tokens", 0))
+        cache_write = int(normalized.get("cache_write_input_tokens", 0))
+        cost = getattr(raw_usage, "cost_usd", None)
+        if cost is None:
+            cost = calculate_cost(
+                model, input_tokens, output_tokens, cache_read, cache_write
+            )
+        provider_cost = normalized.get("provider_reported_cost_usd")
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cache_read,
+            cache_write_tokens=cache_write,
+            cost=float(cost),
+            total_tokens=input_tokens + output_tokens,
+            input_tokens_total=input_tokens,
+            input_tokens_uncached=int(normalized["input_tokens_uncached"]),
+            cache_read_input_tokens=cache_read,
+            cache_write_input_tokens=cache_write,
+            cache_write_5m_input_tokens=int(
+                normalized.get("cache_write_5m_input_tokens", 0)
+            ),
+            cache_write_1h_input_tokens=int(
+                normalized.get("cache_write_1h_input_tokens", 0)
+            ),
+            cache_metadata_status=normalized.get("cache_metadata_status"),
+            provider=normalized.get("provider"),
+            requested_model=normalized.get("requested_model"),
+            provider_model=normalized.get("provider_model"),
+            provider_reported_cost_usd=(
+                float(provider_cost) if provider_cost is not None else None
+            ),
+            pricing_version=cost_details.get("pricing_version"),
+            pricing_tier=cost_details.get("pricing_tier"),
+            cost_details=cost_details or None,
+        )
+
+    # Compatibility with older oo-api deployments: preserve their OpenAI shape
+    # and prefer the server's cost when present.
+    input_tokens = raw_usage.prompt_tokens
+    output_tokens = raw_usage.completion_tokens
+    details = getattr(raw_usage, "prompt_tokens_details", None)
+    cached_tokens = getattr(details, "cached_tokens", 0) or 0
+    cost = getattr(raw_usage, "cost_usd", None)
+    if cost is None:
+        cost = calculate_cost(model, input_tokens, output_tokens, cached_tokens)
+    server_total = getattr(raw_usage, "total_tokens", 0) or 0
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        cost=cost,
+        total_tokens=(
+            server_total if server_total > input_tokens + output_tokens else 0
+        ),
+    )
+
+
 class OpenOnionLLM(LLM):
     """OpenOnion managed keys LLM implementation using OpenAI-compatible API."""
 
@@ -1079,8 +1202,7 @@ class OpenOnionLLM(LLM):
         self.client = openai.OpenAI(
             base_url=self.base_url,
             api_key=self.auth_token,
-            timeout=openai.Timeout(600.0, connect=20.0),
-            max_retries=5,
+            **_network_bounds(max_retries=5),
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
@@ -1113,42 +1235,11 @@ class OpenOnionLLM(LLM):
                     extra_content=extra
                 ))
 
-        # Extract token usage (OpenAI-compatible format)
-        usage = None
-        if hasattr(response, 'usage') and response.usage:
-            input_tokens = response.usage.prompt_tokens
-            output_tokens = response.usage.completion_tokens
-            cached_tokens = 0
-            if hasattr(response.usage, 'prompt_tokens_details') and response.usage.prompt_tokens_details:
-                cached_tokens = getattr(response.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
-            # The server bills the account and says what it took. Use that,
-            # not the local table: prompt_tokens + completion_tokens is 12 on a
-            # call whose total_tokens is 114, because the reasoning models
-            # charge for tokens the OpenAI-shaped fields never name. Arithmetic
-            # over those two numbers came out 11.6x under what was charged.
-            #
-            # `is not None` rather than a truth test — a free call reports 0.0,
-            # and falling back there would invent a charge for it.
-            cost = getattr(response.usage, 'cost_usd', None)
-            if cost is None:
-                cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
-            # total_tokens for the same reason as cost_usd, and it was the half of
-            # this decision left undone: the cost came from the server while the
-            # token count stayed on the two fields just described as not naming
-            # the reasoning tokens. Measured here: prompt 17 + completion 3
-            # printed as "20 tok · $0.0017" on a call the server billed 243
-            # tokens for — a line 34x off itself.
-            #
-            # Only when it exceeds the sum. Equal or smaller means the provider is
-            # restating those two fields and there is nothing extra to report.
-            server_total = getattr(response.usage, 'total_tokens', 0) or 0
-            usage = TokenUsage(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-                cost=cost,
-                total_tokens=server_total if server_total > input_tokens + output_tokens else 0,
-            )
+        usage = (
+            _managed_token_usage(response.usage, self.model)
+            if hasattr(response, 'usage') and response.usage
+            else None
+        )
 
         return LLMResponse(
             content=message.content,

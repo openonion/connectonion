@@ -8,7 +8,7 @@ ConnectOnion's development roadmap. Track progress on
 ### 1.7.0 — OIP and native coding adapters
 
 The 1.7 preview train delivers one authenticated browser lifecycle over OIP:
-onboarding, reconnect, session state, approvals, permission profiles,
+onboarding, reconnect, session state, approvals, modes,
 interruption, plans, and nested provider activity.
 
 Release order:

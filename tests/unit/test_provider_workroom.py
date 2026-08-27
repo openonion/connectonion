@@ -6,12 +6,13 @@ from connectonion.network.host.provider_workroom import (
 )
 from connectonion.network.host.session import Session, SessionStorage
 from connectonion.useful_plugins import tool_approval
+from connectonion.core.mode import FULL_ACCESS, mode_of
 from tests.utils.mock_helpers import MockLLM
 
 
 def _stored_codex_session(*, owner="0xowner"):
     return {
-        "mode": ":workspace",
+        "mode": "auto",
         "requester": {"address": owner, "level": "admin"},
         "trace": [{
             "type": "provider_invocation",
@@ -25,6 +26,19 @@ def _stored_codex_session(*, owner="0xowner"):
             "stateRevision": 7,
         }],
     }
+
+
+def _stored_claude_session(*, owner="0xowner"):
+    session = _stored_codex_session(owner=owner)
+    invocation = session["trace"][0]
+    invocation.update({
+        "invocationId": "claude_code:current",
+        "provider": "claude_code",
+        "providerDisplayName": "Claude Code",
+        "workroomId": "claude_code:root",
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    })
+    return session
 
 
 def test_owned_terminal_codex_thread_runs_only_the_native_tool_and_persists_safe_events(tmp_path):
@@ -116,6 +130,89 @@ def test_owned_terminal_codex_thread_runs_only_the_native_tool_and_persists_safe
         "provider_message",
     ]
     assert all("private raw output" not in str(event) for event in trace)
+
+
+def test_owned_terminal_claude_session_resumes_only_the_native_provider(tmp_path):
+    storage = SessionStorage(tmp_path / "sessions.jsonl")
+    storage.save(Session(
+        session_id="session-claude",
+        status="done",
+        prompt="original outer prompt",
+        session=_stored_claude_session(),
+    ))
+
+    class DirectAgent:
+        def __init__(self):
+            self.io = None
+            self.storage = None
+            self.current_session = None
+            self.calls = []
+
+        def execute_tool(self, name, arguments):
+            self.calls.append((name, arguments))
+
+    agent = DirectAgent()
+    prepared = prepare_provider_workroom_turn(
+        lambda: agent,
+        storage,
+        "session-claude",
+        "claude_code:current",
+        "Please add the missing reconnect case.",
+        "input-claude-1",
+        "0xowner",
+    )
+
+    prepared["run"](object())
+
+    assert agent.calls == [(
+        "claude_code",
+        {
+            "prompt": "Please add the missing reconnect case.",
+            "cwd": "",
+            "session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        },
+    )]
+    assert agent.current_session["_provider_workroom_id"] == "claude_code:root"
+    assert agent.current_session["_provider_direct_approved_tool"] == "claude_code"
+
+
+def test_direct_workroom_session_keeps_the_durable_full_access_budget(tmp_path):
+    """Provider-only turns must not publish a fake outer Auto mode."""
+    session = _stored_codex_session()
+    session.update({"mode": "full-access", "turns_left": 7})
+    storage = SessionStorage(tmp_path / "sessions.jsonl")
+    storage.save(Session(
+        session_id="session-full-access",
+        status="done",
+        prompt="original outer prompt",
+        session=session,
+    ))
+
+    class DirectAgent:
+        def __init__(self):
+            self.io = None
+            self.storage = None
+            self.current_session = None
+
+        def execute_tool(self, _name, _arguments):
+            assert mode_of(self.current_session) == FULL_ACCESS
+            assert self.current_session["turns_left"] == 7
+
+    prepared = prepare_provider_workroom_turn(
+        DirectAgent,
+        storage,
+        "session-full-access",
+        "codex:current",
+        "Please continue.",
+        "input-full-access",
+        "0xowner",
+    )
+
+    prepared["run"](object())
+
+    stored = storage.get("session-full-access").session
+    assert mode_of(stored) == FULL_ACCESS
+    assert stored["turns_left"] == 7
 
 
 def test_workroom_continuation_fails_closed_for_another_owner_or_live_source(tmp_path):

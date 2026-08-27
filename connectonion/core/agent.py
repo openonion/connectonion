@@ -19,16 +19,65 @@ from uuid import uuid4
 
 from ..logger import Logger
 from ..prompts import load_system_prompt
-from .approval_modes import normalize_runtime_approval_session
 from .events import EventHandler
-from .interrupt import run_interruptible
+from .interrupt import InterruptibleStepTimeout, run_interruptible
 from .llm import LLM, TokenUsage, create_llm
+from .mode import FULL_ACCESS, full_access_turns_left, mode_of, set_mode
 from .provider_messages import messages_for_provider
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
 from .usage import DEFAULT_MODEL, get_context_limit, turn_usage_from_trace
 from .wire_events import normalize_wire_event
+
+_REMOVED_MODE_FIELDS = {
+    "approval_profile",
+    "full_access_prompt",
+    "full_access_turns",
+    "full_access_turns_used",
+    "permission_profile",
+    "skip_tool_approval",
+    "ulw_prompt",
+    "ulw_turns",
+    "ulw_turns_used",
+    "workflow_mode",
+}
+
+_POST_PROVIDER_LLM_TIMEOUT_SECONDS = 90.0
+_NATIVE_PROVIDER_TOOL_NAMES = frozenset({"claude_code", "codex"})
+
+
+def _has_unsettled_native_provider_result(trace: list[dict[str, Any]]) -> bool:
+    """Whether the latest model decision completed native-provider work.
+
+    The durable trace is the hosted runtime's authoritative record.  Scan only
+    back to the latest LLM call: an older provider result must not put an
+    unrelated later tool batch on the settlement deadline.
+    """
+    for entry in reversed(trace):
+        if entry.get("type") == "llm_call":
+            return False
+        if (
+            entry.get("type") == "tool_result"
+            and entry.get("name") in _NATIVE_PROVIDER_TOOL_NAMES
+        ):
+            return True
+    return False
+
+
+def _normalized_runtime_mode_session(session: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply the 1.7 schema boundary without translating old authority."""
+
+    normalized = dict(session)
+    canonical = mode_of(normalized)
+    remaining = full_access_turns_left(normalized)
+    for field in _REMOVED_MODE_FIELDS:
+        normalized.pop(field, None)
+    if canonical == FULL_ACCESS:
+        set_mode(normalized, FULL_ACCESS, turns_left=remaining)
+    else:
+        set_mode(normalized, canonical)
+    return normalized
 
 
 def _normalized_plan(entries: Any) -> list[dict[str, str]]:
@@ -322,7 +371,7 @@ class Agent:
             # this point, in input_handler: a session arriving over the wire has
             # the server-owned ones stripped and re-applied from what the server
             # stored. Here we only restore what we were handed.
-            self.current_session = normalize_runtime_approval_session(session)
+            self.current_session = _normalized_runtime_mode_session(session)
             self.current_session['session_id'] = session.get('session_id')
             self.current_session['messages'] = list(session.get('messages', []))
             self.current_session['trace'] = list(session.get('trace', []))
@@ -336,6 +385,7 @@ class Agent:
                 'trace': [],
                 'turn': 0  # Track conversation turns
             }
+            set_mode(self.current_session, mode_of(self.current_session))
             start_logger_session = True
 
         # Session shape is the turn boundary: from here, preprocessing, model
@@ -545,6 +595,7 @@ class Agent:
                 'iteration': 1,
                 'user_prompt': 'Manual tool execution'
             }
+            set_mode(self.current_session, mode_of(self.current_session))
 
         # Execute using the tool_executor
         trace_entry = execute_single_tool(
@@ -598,26 +649,115 @@ class Agent:
 
     def _run_iteration_loop(self, max_iterations: int) -> tuple[str, str]:
         """Return the existing response string and its private terminal reason."""
+        completed_tools = False
+        empty_terminal_retries = 0
+        provider_settlement_required = False
+        provider_timeout_retries = 0
+        provider_tool_retries = 0
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
             # Fire before_iteration (poll IO, check mode changes)
             self._invoke_events('before_iteration')
 
+            # Hosted provider plugins publish their completed tool result into
+            # the durable trace.  Re-derive the bound here as a fail-safe for
+            # any observer that normalized the in-memory ToolCall after the
+            # original decision.  RC9's public Work Room gate proved that the
+            # post-execution-only name check was not sufficient in this path.
+            if (
+                not provider_settlement_required
+                and _has_unsettled_native_provider_result(
+                    self.current_session.get('trace', [])
+                )
+            ):
+                provider_settlement_required = True
+
             # Get LLM response
-            response = self._get_llm_decision()
+            try:
+                response = self._get_llm_decision(
+                    timeout_seconds=(
+                        _POST_PROVIDER_LLM_TIMEOUT_SECONDS
+                        if provider_settlement_required
+                        else None
+                    )
+                )
+            except InterruptibleStepTimeout as error:
+                if provider_settlement_required and provider_timeout_retries == 0:
+                    from ..useful_plugins.system_reminder import reminder_message
+
+                    self.current_session['messages'].append(reminder_message(
+                        "The previous model call did not return within the bounded "
+                        "settlement window after native provider work. Return a concise "
+                        "user-facing final answer based only on the recorded tool results. "
+                        "Do not claim work that those results do not prove."
+                    ))
+                    provider_timeout_retries += 1
+                    max_iterations += 1
+                    continue
+                raise TimeoutError(
+                    "LLM did not settle native provider tool results after one bounded retry"
+                ) from error
 
             if response is not None:
                 if not response.tool_calls:
                     content = response.content or ""
-                    self.current_session['messages'].append({
-                        "role": "assistant",
-                        "content": content,
-                        "id": self._next_trace_id(),
-                    })
+                    if content.strip():
+                        self.current_session['messages'].append({
+                            "role": "assistant",
+                            "content": content,
+                            "id": self._next_trace_id(),
+                        })
                 else:
-                    # Process tool calls
-                    self._execute_and_record_tools(response.tool_calls)
+                    # Arm the settlement bound from the model's immutable
+                    # decision before tool execution.  The hosted co-ai path
+                    # lets provider plugins and event handlers observe and
+                    # normalize a call while it runs; detecting the provider
+                    # only after that path returned left the real Work Room
+                    # continuation unbounded even though minimal Agent tests
+                    # retained the original ToolCall name.
+                    native_provider_batch = any(
+                        getattr(call, "name", "") in _NATIVE_PROVIDER_TOOL_NAMES
+                        for call in response.tool_calls
+                    )
+                    settlement_tools_rejected = False
+                    if provider_settlement_required and not native_provider_batch:
+                        if provider_tool_retries == 0:
+                            from ..useful_plugins.system_reminder import reminder_message
+
+                            attempted = ", ".join(
+                                getattr(call, "name", "unknown")
+                                for call in response.tool_calls
+                            )
+                            self.current_session['messages'].append(reminder_message(
+                                "Native provider work is already complete. The parent "
+                                "settlement attempted additional tool calls "
+                                f"({attempted}); those calls were not executed. Return "
+                                "a concise user-facing final answer based only on the "
+                                "recorded provider result. Do not call any tools."
+                            ))
+                            provider_tool_retries += 1
+                            max_iterations += 1
+                            settlement_tools_rejected = True
+                        else:
+                            raise RuntimeError(
+                                "Native provider settlement attempted tools after one "
+                                "final-only retry"
+                            )
+                    if not settlement_tools_rejected:
+                        if native_provider_batch:
+                            provider_settlement_required = True
+                        # Process tool calls
+                        self._execute_and_record_tools(response.tool_calls)
+                        completed_tools = True
+                        if native_provider_batch:
+                            from ..useful_plugins.system_reminder import reminder_message
+
+                            self.current_session['messages'].append(reminder_message(
+                                "Native provider work has completed. Return a concise "
+                                "user-facing final answer based only on its recorded result. "
+                                "Do not call any additional tools."
+                            ))
 
             # Fire after_iteration
             self._invoke_events('after_iteration')
@@ -651,6 +791,20 @@ class Agent:
                     # needs even when the original request used its full budget.
                     max_iterations += 1
                     continue
+                if not content.strip():
+                    if completed_tools and empty_terminal_retries == 0:
+                        from ..useful_plugins.system_reminder import reminder_message
+
+                        self.current_session['messages'].append(reminder_message(
+                            "The previous model response was empty after tool execution. "
+                            "Return a concise user-facing final answer based only on the "
+                            "recorded tool results. Do not claim work that those results "
+                            "do not prove."
+                        ))
+                        empty_terminal_retries += 1
+                        max_iterations += 1
+                        continue
+                    raise RuntimeError("LLM returned an empty terminal response")
                 return content, 'natural'
 
         # Hit max iterations
@@ -659,7 +813,7 @@ class Agent:
             'max_iterations',
         )
 
-    def _get_llm_decision(self):
+    def _get_llm_decision(self, timeout_seconds: float | None = None):
         """Get the next action/decision from the LLM."""
         # Get tool schemas
         tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
@@ -681,14 +835,33 @@ class Agent:
             'model': self.llm.model,
             'iteration': self.current_session['iteration'],
             'status': 'running',
+            **(
+                {'timeout_seconds': timeout_seconds}
+                if timeout_seconds is not None
+                else {}
+            ),
         })
 
         start = time.time()
         messages = messages_for_provider(self.current_session['messages'])
-        response, interrupted = run_interruptible(
-            lambda: self.llm.complete(messages, tools=tool_schemas),
-            self.io,
-        )
+        try:
+            response, interrupted = run_interruptible(
+                lambda: self.llm.complete(messages, tools=tool_schemas),
+                self.io,
+                timeout_seconds=timeout_seconds,
+            )
+        except InterruptibleStepTimeout:
+            duration = (time.time() - start) * 1000
+            self._record_trace({
+                'type': 'llm_result',
+                'id': llm_id,
+                'model': self.llm.model,
+                'iteration': self.current_session['iteration'],
+                'duration_ms': duration,
+                'status': 'error',
+                'error_type': 'TimeoutError',
+            })
+            raise
         duration = (time.time() - start) * 1000  # milliseconds
 
         if interrupted:
@@ -710,7 +883,10 @@ class Agent:
 
         # Record llm_result AFTER LLM completes (streams to client)
         # Convert usage to dict for JSON serialization (Pydantic objects need model_dump())
-        usage_dict = response.usage.model_dump() if response.usage else None
+        usage_dict = (
+            response.usage.model_dump(exclude_none=True)
+            if response.usage else None
+        )
         self._record_trace({
             'type': 'llm_result',
             'id': llm_id,

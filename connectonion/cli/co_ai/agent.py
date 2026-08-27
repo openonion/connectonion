@@ -18,7 +18,7 @@ Plugins included:
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
 - auto_compact: Context window management
-- yolo: Approval-free autonomous N-turn sessions with continuation
+- full_access: Bounded approval bypass; never starts another user turn
 
 Architecture:
 - Uses prompt assembly from prompts/assembler.py: main.md (domain-neutral) +
@@ -39,15 +39,18 @@ from connectonion.core.events import after_user_input
 from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
     auto_compact,
-    enable_yolo,
+    enable_full_access,
+    full_access,
     image_result_formatter,
     prefer_write_tool,
     runtime_input,
     subagents,
     tool_approval,
-    yolo,
 )
 from connectonion.useful_plugins.skills import skills as skills_plugin
+from connectonion.useful_plugins.tool_approval.policy import (
+    managed_delegation_permission,
+)
 
 from .context import load_project_context
 from .plugins import native_coding_agent_routing, system_reminder
@@ -76,12 +79,7 @@ def grant_managed_delegation_permissions(agent: Agent) -> None:
     """
     permissions = agent.current_session.setdefault('permissions', {})
     for tool_name in ('codex', 'claude_code'):
-        permissions.setdefault(tool_name, {
-            'allowed': True,
-            'source': 'safe',
-            'reason': 'managed delegation owns inner approval',
-            'expires': {'type': 'never'},
-        })
+        permissions.setdefault(tool_name, managed_delegation_permission())
 
 
 def agent_name(co_dir: Path = Path(".co")) -> str:
@@ -112,7 +110,7 @@ def create_agent(
     model: str = DEFAULT_MODEL,
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
-    yolo_turns: int | None = None,
+    full_access_turns: int | None = None,
     role: str | None = "coding",
     background_tools: bool = True,
     state_dir: Path | None = None,
@@ -174,7 +172,7 @@ def create_agent(
         [grant_managed_delegation_permissions],
         tool_approval,
         auto_compact,
-        yolo,
+        full_access,
         image_result_formatter,
         runtime_input,
     ]
@@ -194,8 +192,8 @@ def create_agent(
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.
     agent.tools.remove("wait_for_manual_login")
 
-    if yolo_turns is not None:
-        enable_yolo(agent, turns=yolo_turns)
+    if full_access_turns is not None:
+        enable_full_access(agent, turns=full_access_turns)
 
     return agent
 

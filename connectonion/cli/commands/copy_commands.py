@@ -58,7 +58,6 @@ PLUGINS = {
     "system_reminder": "system_reminder.py",
     "ui_stream": "ui_stream.py",
     "ulw": "ulw.py",  # Deprecated compatibility shim.
-    "yolo": "full_access.py",
 }
 
 # Registry of copyable plugin directories
