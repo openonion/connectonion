@@ -204,3 +204,30 @@ def test_a_deliberate_close_starts_a_new_billing_interval(monkeypatch):
 
     assert len(keys) == 2
     assert len(set(keys)) == 2, "a closed session replayed its own paid interval"
+
+
+def test_a_paid_session_says_what_it_costs(monkeypatch):
+    """`auto` can start a billable session from an ordinary command.
+
+    Whether auto should resolve to the paid engine is a product question
+    (#1327). Spending money without saying so in the output is not.
+    """
+    playwright = FakePlaywright()
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        return FakePaidRun()
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+
+    priced = onion_resolution()
+    priced.prepared.capability.interval_usd = 0.025
+    browser = mod.BrowserAutomation(engine_resolver=lambda mode: priced)
+
+    message = browser.open_browser()
+    status = browser.engine_status()
+    browser.close()
+
+    assert "$0.025 per interval" in message
+    assert status["interval_usd"] == 0.025

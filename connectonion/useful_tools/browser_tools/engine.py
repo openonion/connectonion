@@ -56,6 +56,20 @@ class Resolution:
         return getattr(artifact, "artifact_id", None)
 
     @property
+    def interval_usd(self) -> float | None:
+        """What one billing interval costs, when the server said.
+
+        Surfaced so a paid session can say what it costs. `auto` resolves to
+        the paid engine whenever preparation succeeds, so an ordinary command
+        can start a billable session; spending money without saying so in the
+        output is the part of that which is wrong however the default is
+        settled (#1327).
+        """
+        capability = getattr(self.prepared, "capability", None)
+        price = getattr(capability, "interval_usd", None)
+        return price if isinstance(price, (int, float)) else None
+
+    @property
     def onionwright_version(self) -> str | None:
         capability = getattr(self.prepared, "capability", None)
         version = getattr(capability, "client_version", None)
@@ -74,6 +88,7 @@ class Resolution:
             "browser_revision": self.browser_revision,
             "onionwright_version": self.onionwright_version,
             "artifact_id": self.artifact_id,
+            "interval_usd": self.interval_usd,
         }
 
 

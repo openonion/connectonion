@@ -661,9 +661,15 @@ class AsyncBrowserCore:
                         raise native_egress_failure() from None
                     raise
                 status = resolution.public_status()
+                price = status.get("interval_usd")
+                cost = (
+                    f", ${price:.3f} per interval"
+                    if isinstance(price, (int, float))
+                    else ""
+                )
                 return (
-                    "Onion Browser opened with a prepaid supervised session: "
-                    f"artifact={status['artifact_id']}"
+                    "Onion Browser opened with a prepaid supervised session"
+                    f"{cost}: artifact={status['artifact_id']}"
                 )
 
             manager = async_playwright()
