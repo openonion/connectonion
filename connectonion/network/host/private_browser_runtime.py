@@ -18,12 +18,19 @@ from ...useful_tools.browser_tools.launch_policy import (
 )
 from .egress_gateway import ProxyEndpoint
 
+# Every entry here is a switch the launched binary actually defines. A switch
+# Chromium does not recognise is ignored in silence, which makes a misspelling
+# indistinguishable from a working control: `--force-webrtc-ip-handling-policy`
+# appears nowhere in Chrome 151 and left non-proxied UDP fully available, so a
+# page could still open direct UDP sockets past this gateway. The spelling below
+# is the one present in the binary, and BrowserLaunchPolicy now refuses a
+# policy that omits any of REQUIRED_EGRESS_ARGS.
 REMOTE_BROWSER_CHROME_ARGS = (
     *CHROME_DEFAULT_ARGS,
     "--proxy-bypass-list=<-loopback>",
     "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
     "--disable-quic",
-    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    "--webrtc-ip-handling-policy=disable_non_proxied_udp",
     "--disable-extensions",
 )
 

@@ -53,6 +53,19 @@ class BrowserProxySettings:
         }
 
 
+# The switches that make a private policy fail closed. Held here rather than
+# only in the caller's constant, because a policy that pins a proxy while
+# leaving the browser free to bypass it, resolve names itself, or open QUIC and
+# WebRTC UDP sockets is not a boundary — and it validated fine when the only
+# check was "the constant equals itself".
+REQUIRED_EGRESS_ARGS = (
+    "--proxy-bypass-list=<-loopback>",
+    "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+    "--disable-quic",
+    "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+)
+
+
 @dataclass(frozen=True)
 class BrowserLaunchPolicy:
     """Complete non-environment launch inputs for one private browser context."""
@@ -71,6 +84,13 @@ class BrowserLaunchPolicy:
             raise ValueError("browser launch arguments must be nonempty and unique")
         if self.service_workers != "block":
             raise ValueError("private browser launch policy must block Service Workers")
+        missing = [arg for arg in REQUIRED_EGRESS_ARGS if arg not in self.args]
+        if missing:
+            raise ValueError(
+                f"private browser launch policy is missing egress arguments: {missing}"
+            )
+        if any(arg == "--proxy-server" or arg.startswith("--proxy-server=") for arg in self.args):
+            raise ValueError("proxy authority belongs to `proxy`, not to a bare argument")
 
     def playwright_options(self) -> dict:
         """Return a fresh mapping so a driver cannot mutate the frozen policy."""

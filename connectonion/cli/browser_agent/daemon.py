@@ -246,6 +246,12 @@ class BrowserDaemon:
         self._browser_factory = browser_factory
         if self._remote_egress and self._profile_dir is None:
             raise ValueError("remote browser daemon requires an explicit profile")
+        if not self._remote_egress and self._profile_dir is not None:
+            # A profile only reaches the browser through the launch policy, which
+            # exists in remote-egress mode. Accepting it here and using the
+            # shared local profile anyway would give a caller its own socket,
+            # lock and log while silently pooling cookies with `co browser`.
+            raise ValueError("a profile directory requires --remote-egress")
         self._gateway = None
         self.browser = (
             None if self._remote_egress else self._browser_factory(headless=headless)

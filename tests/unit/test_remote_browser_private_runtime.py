@@ -10,7 +10,7 @@ import pytest
 
 from connectonion.cli.browser_agent import client, transport
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
-from connectonion.network.host.egress_gateway import ProxyEndpoint
+from connectonion.network.host.egress_gateway import EgressGateway, ProxyEndpoint
 from connectonion.network.host.private_browser_runtime import (
     REMOTE_BROWSER_CHROME_ARGS,
     PrivateBrowserTarget,
@@ -18,7 +18,10 @@ from connectonion.network.host.private_browser_runtime import (
 )
 from connectonion.network.host.remote_browser import RemoteBrowserService
 from connectonion.useful_tools.browser_tools import _async_browser as async_browser
-from connectonion.useful_tools.browser_tools.launch_policy import BrowserProxySettings
+from connectonion.useful_tools.browser_tools.launch_policy import (
+    BrowserLaunchPolicy,
+    BrowserProxySettings,
+)
 
 
 class LifecycleBrowser:
@@ -118,7 +121,10 @@ def test_launch_policy_is_fixed_fail_closed_and_secret_safe(tmp_path):
     assert "--proxy-bypass-list=<-loopback>" in options["args"]
     assert "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" in options["args"]
     assert "--disable-quic" in options["args"]
-    assert "--force-webrtc-ip-handling-policy=disable_non_proxied_udp" in options["args"]
+    # The switch Chromium actually defines. `--force-webrtc-ip-handling-policy`
+    # is silently ignored, so asserting that spelling pinned a dead control.
+    assert "--webrtc-ip-handling-policy=disable_non_proxied_udp" in options["args"]
+    assert not any(arg.startswith("--force-webrtc") for arg in options["args"])
     assert "--disable-extensions" in options["args"]
     assert "direct" not in options["proxy"]["server"].lower()
     assert "proxy-secret" not in repr(endpoint)
@@ -341,7 +347,12 @@ def test_default_remote_service_targets_private_daemon(tmp_path, monkeypatch):
     assert "password" not in service.state_path.read_text(encoding="utf-8")
 
 
-def test_private_spawn_argv_and_log_never_contain_gateway_secret(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_private_spawn_argv_and_log_never_contain_gateway_secret(
+    tmp_path, monkeypatch
+):
+    gateway = EgressGateway()
+    await gateway.start()
     target = PrivateBrowserTarget(
         address=transport.namespaced_address(f"spawn-{time.time_ns()}"),
         profile_dir=tmp_path / "profile",
@@ -361,14 +372,25 @@ def test_private_spawn_argv_and_log_never_contain_gateway_secret(tmp_path, monke
         lambda _address, authkey_path=None: connection,
     )
 
-    result = client._spawn_daemon(target.address, True, target=target)
+    try:
+        secret = gateway.endpoint.password
+        result = client._spawn_daemon(target.address, True, target=target)
+    finally:
+        await gateway.stop()
 
     assert result is connection
     command = spawned[0]
     assert "--remote-egress" in command
     assert command[command.index("--profile-dir") + 1] == str(target.profile_dir)
     assert command[command.index("--authkey-file") + 1] == str(target.authkey_path)
-    assert "gateway-secret" not in repr(command)
+    # Assert the credential the gateway actually minted is absent, not a
+    # literal chosen by this test: the previous form passed on any argv,
+    # including one carrying a real password, because this code path never
+    # sees a gateway at all.
+    assert secret
+    assert secret not in repr(command)
+    assert secret not in " ".join(command)
+    assert secret not in target.log_path.read_text(encoding="utf-8")
     assert target.log_path.read_text(encoding="utf-8") == ""
 
 
@@ -439,3 +461,42 @@ def test_local_and_private_native_daemons_run_and_stop_independently(tmp_path):
             ):
                 with contextlib.suppress(OSError):
                     Path(path).unlink()
+
+
+@pytest.mark.parametrize(
+    "dropped",
+    [
+        "--proxy-bypass-list=<-loopback>",
+        "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+        "--disable-quic",
+        "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+    ],
+)
+def test_a_policy_missing_any_egress_argument_will_not_construct(tmp_path, dropped):
+    """The invariants live in the type, not in one module's constant.
+
+    A policy that pins a proxy while leaving the browser free to bypass it,
+    resolve names itself, or open QUIC and WebRTC UDP sockets is not a
+    boundary. Validating only the constant is what let a misspelled WebRTC
+    switch — silently ignored by Chromium — read as an enforced control.
+    """
+    proxy = BrowserProxySettings(
+        server="http://127.0.0.1:9999", username="connectonion", password="x"
+    )
+    args = tuple(arg for arg in REMOTE_BROWSER_CHROME_ARGS if arg != dropped)
+
+    with pytest.raises(ValueError) as raised:
+        BrowserLaunchPolicy(profile_dir=tmp_path, proxy=proxy, args=args)
+    assert "egress" in str(raised.value)
+
+
+def test_a_bare_proxy_server_argument_is_refused(tmp_path):
+    proxy = BrowserProxySettings(
+        server="http://127.0.0.1:9999", username="connectonion", password="x"
+    )
+    with pytest.raises(ValueError):
+        BrowserLaunchPolicy(
+            profile_dir=tmp_path,
+            proxy=proxy,
+            args=(*REMOTE_BROWSER_CHROME_ARGS, "--proxy-server=http://127.0.0.1:1"),
+        )

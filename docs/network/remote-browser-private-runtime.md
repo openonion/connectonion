@@ -59,8 +59,24 @@ requests:
 - QUIC disabled;
 - non-proxied WebRTC UDP disabled;
 - extensions disabled;
-- Service Workers blocked; and
+- Service Workers requested blocked; and
 - a dedicated persistent profile with downloads accepted.
+
+Each switch above is present in the launched binary. That is not a formality:
+`--force-webrtc-ip-handling-policy` — the spelling this policy carried until it
+was checked against Chrome 151 — appears nowhere in that binary, and Chromium
+ignores an unknown switch in silence, so a page kept full non-proxied UDP while
+the configuration read as enforced. `BrowserLaunchPolicy` now refuses to
+construct without each of the four egress switches, so the invariant belongs to
+the type rather than to one module's tuple.
+
+**The Service Worker request is not effective on the shipped driver.** Measured
+against real Chrome with these options, `service_workers="block"` registers,
+activates and controls a page exactly as `"allow"` does; the bundled driver
+gates only its own network inspection on that value. Worker traffic still goes
+through the gateway, which remains the final authority, so this widens no
+egress — but it is a requested control that does not hold, tracked separately
+rather than described here as a guarantee.
 
 The proxy value rejects non-loopback hosts, alternate spellings, paths,
 userinfo, query strings, fragments, empty credentials, and fallback proxy
