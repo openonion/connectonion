@@ -847,7 +847,9 @@ class BrowserDaemon:
                 proxy_auth_path,
             )
             browser = self._browser_factory(
-                headless=self._headless, launch_policy=policy
+                headless=self._headless,
+                launch_policy=policy,
+                egress_gateway=gateway,
             )
         except BaseException:
             remove_proxy_auth_file(proxy_auth_path)

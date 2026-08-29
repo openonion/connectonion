@@ -299,7 +299,12 @@ class AsyncBrowserCore:
         max_tabs: int = 10,
         use_mock_keychain: bool = False,
         launch_policy: BrowserLaunchPolicy | None = None,
+        egress_gateway: object | None = None,
     ) -> None:
+        # Only read for its decision count, which is the preflight's positive
+        # control: without it, "the sentinel saw nothing" cannot be told apart
+        # from "the browser never asked".
+        self._egress_gateway = egress_gateway
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[BrowserContext] = None
         self._pages: Dict[Optional[str], Page] = {}
@@ -584,6 +589,7 @@ class AsyncBrowserCore:
                     await run_native_egress_preflight(
                         policy.native_preflight,
                         context,
+                        gateway=self._egress_gateway,
                     )
 
                 if self._seed_state and not self._seeded:

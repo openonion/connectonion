@@ -155,19 +155,57 @@ async def _exercise_subresource_paths(page: Any, origin: str) -> None:
     )
 
 
+GATEWAY_WITNESS_HEADER = "x-connectonion-error"
+
+
+def _require_gateway_denial(response: Any) -> None:
+    """Require a denial that this gateway, authenticated, produced.
+
+    Two independent things have to hold and neither implies the other. The
+    header proves the answer came from this gateway — no origin, captive
+    portal or intermediary on this path emits it, and a bare status would
+    accept a 403 from whatever the browser happened to reach. The status
+    proves the request was decided rather than turned away at the door: a 407
+    also carries the header, and it means the credential never arrived, which
+    is a misconfigured browser reported as a proven one.
+    """
+    if response is None:
+        raise native_egress_failure()
+    try:
+        headers = response.headers
+        witness = headers.get(GATEWAY_WITNESS_HEADER) if headers else None
+        status = response.status
+    except Exception:
+        raise native_egress_failure() from None
+    if not witness or status != 403:
+        raise native_egress_failure()
+
+
+def _gateway_request_count(gateway: Any) -> int | None:
+    """Read the gateway's own decision count, when the caller supplied one."""
+    count = getattr(gateway, "handled_requests", None)
+    return count if isinstance(count, int) else None
+
+
 async def run_native_egress_preflight(
     name: str,
     context: Any,
     *,
     timeout: float = 8.0,
     sentinel_factory: type[LoopbackSentinel] = LoopbackSentinel,
+    gateway: Any = None,
 ) -> None:
     """Prove the effective Chromium proxy path or fail with one stable code.
 
-    A 403 response proves the authenticated gateway saw and denied the owned
-    loopback main-frame request.  Zero sentinel accepts proves Chromium did not
-    silently take its implicit localhost DIRECT path.  Representative
-    subresource, WebSocket, and worker attempts repeat the zero-socket check.
+    Each probe must be answered by *this* gateway, identified by the
+    ``X-ConnectOnion-Error`` header no other party on the path produces.
+    Matching a bare status would accept a 403 from anything the browser could
+    reach.  Zero sentinel accepts then proves Chromium did not take its
+    implicit localhost DIRECT path.
+
+    Zero is also what "the request was never made" looks like, so the gateway's
+    own request count is read before and after: an absence is only evidence
+    once the thing that would have produced a presence is known to have run.
     """
     if name != REMOTE_EGRESS_PREFLIGHT:
         raise native_egress_failure()
@@ -190,8 +228,13 @@ async def run_native_egress_preflight(
                 ),
                 timeout=timeout,
             )
-            if response is None or response.status != 502:
-                raise native_egress_failure()
+            # `.invalid` is reserved never to resolve, and the destination
+            # policy denies it by name before DNS is consulted at all — so the
+            # gateway answers HOST_DENIED, not the DNS witness an earlier
+            # revision expected. What proves the browser got here is the
+            # header: a direct path fails locally under the fixed host-resolver
+            # rule and cannot manufacture it.
+            _require_gateway_denial(response)
             loopback_response = await asyncio.wait_for(
                 page.goto(
                     sentinel.origin + "/main-frame",
@@ -200,14 +243,22 @@ async def run_native_egress_preflight(
                 ),
                 timeout=timeout,
             )
-            if loopback_response is None or loopback_response.status != 403:
-                raise native_egress_failure()
+            _require_gateway_denial(loopback_response)
+            before = _gateway_request_count(gateway)
             await asyncio.wait_for(
                 _exercise_subresource_paths(page, sentinel.origin),
                 timeout=timeout,
             )
             await asyncio.sleep(0.1)
             if sentinel.accepted_connections or sentinel.accepted_bytes:
+                raise native_egress_failure()
+            # The subresource probes are wrapped in a bounded race that
+            # swallows their own errors, so a probe that silently did nothing —
+            # a wrong URL, a blocked API, an await that resolves on the timer —
+            # leaves exactly the zero-socket reading a correctly proxied one
+            # leaves. Requiring the gateway to have decided at least one more
+            # request separates "denied" from "never attempted".
+            if before is not None and _gateway_request_count(gateway) <= before:
                 raise native_egress_failure()
     except asyncio.CancelledError:
         raise

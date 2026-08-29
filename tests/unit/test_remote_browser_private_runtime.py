@@ -35,10 +35,11 @@ from connectonion.useful_tools.browser_tools.native_egress import (
 
 
 class LifecycleBrowser:
-    def __init__(self, *, headless=True, launch_policy=None, events=None):
+    def __init__(self, *, headless=True, launch_policy=None, events=None, egress_gateway=None):
         self._headless = headless
         self.launch_policy = launch_policy
         self.events = events
+        self.egress_gateway = egress_gateway
         self._tab_meta = {}
         self._pages = {}
 
@@ -380,7 +381,9 @@ async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, mo
     assert playwright.options["proxy"]["server"] == "http://127.0.0.1:43123"
     assert "environment.invalid" not in repr(playwright.options)
     assert playwright.options["service_workers"] == "block"
-    preflight.assert_awaited_once_with("remote-egress-v1", playwright.context)
+    preflight.assert_awaited_once_with(
+        "remote-egress-v1", playwright.context, gateway=None
+    )
     await browser.close()
 
 
@@ -634,23 +637,33 @@ def test_a_policy_missing_any_egress_argument_will_not_construct(tmp_path, dropp
     boundary. Validating only the constant is what let a misspelled WebRTC
     switch — silently ignored by Chromium — read as an enforced control.
     """
-    proxy = BrowserProxySettings(
-        server="http://127.0.0.1:9999", username="connectonion", password="x"
-    )
-    args = tuple(arg for arg in REMOTE_BROWSER_CHROME_ARGS if arg != dropped)
+    proxy = BrowserProxySettings(server="http://127.0.0.1:9999")
+    auth_file = tmp_path / "proxy-auth.json"
+    args = tuple(
+        arg for arg in REMOTE_BROWSER_CHROME_ARGS if arg != dropped
+    ) + (f"--connectonion-proxy-auth-file={auth_file}",)
 
     with pytest.raises(ValueError) as raised:
-        BrowserLaunchPolicy(profile_dir=tmp_path, proxy=proxy, args=args)
+        BrowserLaunchPolicy(
+            profile_dir=tmp_path,
+            proxy=proxy,
+            proxy_auth_file=auth_file,
+            args=args,
+        )
     assert "egress" in str(raised.value)
 
 
 def test_a_bare_proxy_server_argument_is_refused(tmp_path):
-    proxy = BrowserProxySettings(
-        server="http://127.0.0.1:9999", username="connectonion", password="x"
-    )
+    proxy = BrowserProxySettings(server="http://127.0.0.1:9999")
+    auth_file = tmp_path / "proxy-auth.json"
     with pytest.raises(ValueError):
         BrowserLaunchPolicy(
             profile_dir=tmp_path,
             proxy=proxy,
-            args=(*REMOTE_BROWSER_CHROME_ARGS, "--proxy-server=http://127.0.0.1:1"),
+            proxy_auth_file=auth_file,
+            args=(
+                *REMOTE_BROWSER_CHROME_ARGS,
+                f"--connectonion-proxy-auth-file={auth_file}",
+                "--proxy-server=http://127.0.0.1:1",
+            ),
         )

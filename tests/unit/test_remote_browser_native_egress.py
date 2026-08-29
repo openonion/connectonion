@@ -11,15 +11,34 @@ from connectonion.useful_tools.browser_tools.native_egress import (
 
 
 class FakeResponse:
-    def __init__(self, status=403):
+    def __init__(self, status=403, witness="DESTINATION_HOST_DENIED"):
         self.status = status
+        # The real gateway stamps this on every refusal, and it is what the
+        # preflight matches on. A fake that omits it models a response no
+        # gateway produces.
+        self.headers = {"x-connectonion-error": witness} if witness else {}
+
+
+class FakeGateway:
+    """Counts decisions the way EgressGateway does, for the positive control."""
+
+    def __init__(self, per_probe=1):
+        self.handled_requests = 0
+        self.per_probe = per_probe
+
+    def saw_request(self):
+        self.handled_requests += 1
 
 
 class FakePage:
-    def __init__(self, *, status=403, witness_status=502, error=None):
+    def __init__(self, *, status=403, witness_status=403, error=None,
+                 witness=True, gateway=None, evaluate_hits=1):
         self.status = status
         self.witness_status = witness_status
         self.error = error
+        self.witness = witness
+        self.gateway = gateway
+        self.evaluate_hits = evaluate_hits
         self.calls = []
         self.closed = False
 
@@ -27,14 +46,22 @@ class FakePage:
         self.calls.append(("goto", url, options))
         if self.error is not None:
             raise self.error
+        if self.gateway is not None:
+            self.gateway.saw_request()
         status = self.witness_status if url.endswith(".invalid/") else self.status
-        return FakeResponse(status)
+        code = "DESTINATION_HOST_DENIED" if self.witness else None
+        return FakeResponse(status, code)
 
     async def set_content(self, html):
         self.calls.append(("set_content", html))
 
     async def evaluate(self, script, origin):
         self.calls.append(("evaluate", script, origin))
+        # A real subresource probe reaches the gateway; a neutered one does not,
+        # and that difference is what the positive control detects.
+        if self.gateway is not None:
+            for _ in range(self.evaluate_hits):
+                self.gateway.saw_request()
 
     async def close(self):
         self.closed = True
@@ -170,3 +197,58 @@ async def test_unknown_preflight_version_fails_closed_before_opening_a_page():
         )
 
     assert page.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_subresource_probe_that_does_nothing_fails_the_preflight():
+    """Absence is only evidence once the thing that makes presence has run.
+
+    The subresource probes swallow their own errors inside a bounded race, so
+    a probe that silently no-ops leaves exactly the zero-socket reading that a
+    correctly proxied probe leaves. Neutering the probe must be detectable.
+    """
+    gateway = FakeGateway()
+    # evaluate_hits=0 models a probe that ran but reached nothing: a wrong URL,
+    # a blocked API, an await that resolved on the timer.
+    page = FakePage(gateway=gateway, evaluate_hits=0)
+    context = FakeContext(page)
+
+    with pytest.raises(NativeEgressPreflightError, match="EGRESS_PREFLIGHT_FAILED"):
+        await run_native_egress_preflight(
+            "remote-egress-v1",
+            context,
+            sentinel_factory=sentinel_factory(),
+            gateway=gateway,
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_response_without_the_gateway_witness_fails_the_preflight():
+    """A 403 from something other than this gateway proves nothing."""
+    gateway = FakeGateway()
+    page = FakePage(gateway=gateway, witness=False)
+    context = FakeContext(page)
+
+    with pytest.raises(NativeEgressPreflightError, match="EGRESS_PREFLIGHT_FAILED"):
+        await run_native_egress_preflight(
+            "remote-egress-v1",
+            context,
+            sentinel_factory=sentinel_factory(),
+            gateway=gateway,
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_preflight_passes_when_every_probe_reaches_the_gateway():
+    """The positive case, so the tests above prove a difference, not a floor."""
+    gateway = FakeGateway()
+    page = FakePage(gateway=gateway, evaluate_hits=4)
+    context = FakeContext(page)
+
+    await run_native_egress_preflight(
+        "remote-egress-v1",
+        context,
+        sentinel_factory=sentinel_factory(),
+        gateway=gateway,
+    )
+    assert gateway.handled_requests >= 6
