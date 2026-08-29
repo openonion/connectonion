@@ -1,10 +1,10 @@
 """
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
-  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation is imported only to preserve the public CLI help/schema until #500 installs the sync facade | imported by browser_agent.client and browser_commands | tested by test_async_browser_daemon.py, test_browser_daemon.py, test_transport.py, test_remote_browser_private_runtime.py
-  Data flow: wire-v1 JSON {v,caller,account,tab,line,raw} (legacy plain line accepted) → atomic registry/claim admission → request-scoped audit lease → awaited async browser verb → bounded reply with exit code 2 usage / 3 unknown tab / 4 busy; `do` keeps model latency in the client and sends only its short tool calls
-  State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its egress gateway and fixed launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser before gateway | independent tab tasks interleave; AsyncBrowserCore's per-tab locks serialize one tab | registry lock makes conflicting claims deterministic and clears each request lease in finally | POSIX uses asyncio.start_unix_server with a 1 MiB request cap, absolute 120s read/write deadlines, 32-client cap, and immediate overload shedding | Windows preserves the HMAC named-pipe handshake and bridges accept/read/write through an 8-worker bounded executor into the same loop | lifetime OS lock + pid sidecar preserve cold-start/stale-owner rules | shutdown stops admission, cancels owned connection tasks, closes the runtime, and removes only its own endpoint
-  Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main(); launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless]`; dispatch() is a non-loop compatibility seam for existing pure tests, production awaits dispatch_async()
+  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
+  Data flow: wire-v1 JSON {v,caller,account,tab,line,raw,engine} (legacy plain line accepted) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb; private mode forces engine=onion before any paid session or page effect
+  State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
+  Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
   Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
   Errors: malformed/oversized/stalled clients are bounded at their own connection boundary; cancellation clears only its request lease; vanished readers are logged and cannot stop the daemon; launch failure or closed shared runtime releases the endpoint
 """
@@ -228,6 +228,7 @@ class BrowserDaemon:
         self,
         sock_path: str,
         headless: bool = False,
+        engine_mode: str = "auto",
         *,
         profile_dir: str | Path | None = None,
         remote_egress: bool = False,
@@ -235,7 +236,12 @@ class BrowserDaemon:
         gateway_factory=None,
         browser_factory=AsyncBrowserCore,
     ):
+        if engine_mode not in ("auto", "system", "onion"):
+            raise ValueError(f"invalid browser engine mode: {engine_mode}")
+        if remote_egress and engine_mode != "onion":
+            raise ValueError("remote browser daemon requires engine=onion")
         self.sock_path = sock_path
+        self.engine_mode = engine_mode
         self._headless = headless
         self._profile_dir = (
             Path(profile_dir).expanduser().resolve() if profile_dir is not None else None
@@ -255,7 +261,9 @@ class BrowserDaemon:
             raise ValueError("a profile directory requires --remote-egress")
         self._gateway = None
         self.browser = (
-            None if self._remote_egress else self._browser_factory(headless=headless)
+            None
+            if self._remote_egress
+            else self._browser_factory(headless=headless, engine_mode=engine_mode)
         )
         self._srv = None
         # Set by _cleanup before it closes the listener, so serve() can tell "we are
@@ -273,11 +281,11 @@ class BrowserDaemon:
         self._transport_pool = None
 
     def _parse_envelope(self, raw: str) -> tuple:
-        """Wire v1: JSON {caller,account,tab,line,raw} — quote-safe by construction
+        """Wire v1: JSON {caller,account,tab,line,raw,engine} — quote-safe by construction
         (a caller or tab name can hold any character without breaking shlex). A plain
         line (old client) is accepted as an anonymous request for the main tab."""
         if not raw.startswith("{"):
-            return "", "", None, raw, False
+            return "", "", None, raw, False, self.engine_mode
         req = json.loads(raw)
         tab = req.get("tab")
         return (
@@ -286,12 +294,13 @@ class BrowserDaemon:
             (str(tab) if tab is not None else None),
             str(req.get("line") or ""),
             bool(req.get("raw", False)),
+            str(req.get("engine") or "auto"),
         )
 
     # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
     # -t target is fine (you may inspect or create it). `help` never reaches the daemon —
     # the CLI answers it locally.
-    READONLY = ("tab", "status", "use", "switch")
+    READONLY = ("tab", "status", "engine_status", "use", "switch")
 
     def dispatch(self, raw: str) -> tuple:
         """Synchronous test/embedding bridge; production uses ``dispatch_async``.
@@ -315,16 +324,24 @@ class BrowserDaemon:
         browser operation itself may overlap work on independent tabs.
         """
         try:
-            caller, _caller_account, tab, line, raw_result = self._parse_envelope(raw)
+            caller, _caller_account, tab, line, raw_result, requested_engine = self._parse_envelope(raw)
             tokens = shlex.split(line)
         except (ValueError, TypeError) as exc:  # malformed envelope/quoting is the CLIENT's error
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return 2, "empty request"
+        # Not `getattr(..., False)`: a missing attribute here would skip the
+        # gateway-health gate entirely, which is the wrong direction to fail
+        # for the check that keeps an unproven browser from serving commands.
         if self._remote_egress and (
             self._gateway is None or not self._gateway.is_running
         ):
             return False, "EGRESS_GATEWAY_UNAVAILABLE"
+        if requested_engine != self.engine_mode:
+            return 6, (
+                f"browser daemon is pinned to engine={self.engine_mode}; this request asked "
+                f"for engine={requested_engine}. Close it with `co browser close`, then retry."
+            )
         verb = tokens[0]
 
         # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
@@ -340,6 +357,8 @@ class BrowserDaemon:
             return await self._tab_async(tokens[1:], caller)
         if verb == "status":  # read-only report; does not count as the last command
             return await self._status_async()
+        if verb == "engine_status":  # protocol/diagnostic probe; no claim and no launch
+            return await self._call_verb_async("engine_status", [])
         if verb in ("use", "switch"):  # removed: no server-side cursor, targeting is per-command
             return False, "use/switch removed — target a tab per command instead:  co browser -t <tab> <verb>"
         if verb == "newtab":  # legacy spelling of `tab open` + go_to
@@ -507,6 +526,32 @@ class BrowserDaemon:
         open_state = "open" if await self._browser_is_alive() else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
         lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
+        engine_status = getattr(self.browser, "engine_status", None)
+        try:
+            engine = engine_status() if callable(engine_status) else {
+                "requested_engine": "auto",
+                "resolved_engine": None,
+                "reason": "not_started",
+                "artifact_id": None,
+            }
+            if inspect.isawaitable(engine):
+                engine = await engine
+        except Exception:
+            # Status is the diagnostic path. A broken optional paid client must
+            # be reported as unresolved, not take the whole report down.
+            engine = {
+                "requested_engine": getattr(self.browser, "_engine_mode", "auto"),
+                "resolved_engine": None,
+                "reason": "status_unavailable",
+                "artifact_id": None,
+            }
+        lines.append(
+            "Engine: "
+            f"requested={engine['requested_engine']} · "
+            f"resolved={engine['resolved_engine'] or 'not-started'} · "
+            f"reason={engine['reason']}"
+            + (f" · artifact={engine['artifact_id']}" if engine.get("artifact_id") else "")
+        )
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
         # visible where users look for browser state, not only in `co doctor`.
         stealth, version, detail = driver_stealth_status()
@@ -848,6 +893,7 @@ class BrowserDaemon:
             )
             browser = self._browser_factory(
                 headless=self._headless,
+                engine_mode=self.engine_mode,
                 launch_policy=policy,
                 egress_gateway=gateway,
             )
@@ -1301,10 +1347,12 @@ def main():
     parser.add_argument("--profile-dir")
     parser.add_argument("--authkey-file")
     parser.add_argument("--remote-egress", action="store_true")
+    parser.add_argument("--engine", choices=("auto", "system", "onion"), default="auto")
     args = parser.parse_args()
     BrowserDaemon(
         args.sock_path,
         headless=args.headless,
+        engine_mode=args.engine,
         profile_dir=args.profile_dir,
         authkey_path=args.authkey_file,
         remote_egress=args.remote_egress,

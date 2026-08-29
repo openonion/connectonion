@@ -21,6 +21,7 @@ import platform
 import sys
 import time
 import urllib.parse
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
 from . import _async_scroll as async_scroll
 from . import _async_terminal as terminal
+from . import engine as browser_engine
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 from .launch_policy import BrowserLaunchPolicy
@@ -300,11 +302,21 @@ class AsyncBrowserCore:
         use_mock_keychain: bool = False,
         launch_policy: BrowserLaunchPolicy | None = None,
         egress_gateway: object | None = None,
+        engine_mode: str = browser_engine.AUTO,
+        engine_resolver=browser_engine.resolve,
     ) -> None:
         # Only read for its decision count, which is the preflight's positive
         # control: without it, "the sentinel saw nothing" cannot be told apart
         # from "the browser never asked".
         self._egress_gateway = egress_gateway
+        # One key per logical paid session, not per launch attempt. A launch
+        # that fails after the server minted the licence — a transient RPC
+        # error, a driver that would not start, a preflight that could not
+        # prove the boundary — is retried by the next command, and a fresh key
+        # each time buys a fresh interval each time. On a machine where the
+        # boundary can never be proven that bills forever while every command
+        # fails. Cleared when a session is deliberately released.
+        self._paid_idempotency_key: Optional[str] = None
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[BrowserContext] = None
         self._pages: Dict[Optional[str], Page] = {}
@@ -320,6 +332,10 @@ class AsyncBrowserCore:
         self._seeded = False
         self._use_mock_keychain = use_mock_keychain
         self._launch_policy = launch_policy
+        self._engine_mode = engine_mode
+        self._engine_resolver = engine_resolver
+        self._engine_resolution = None
+        self._paid_run = None
         self.current_url = ""
         self.screenshots_dir = str(Path.cwd() / ".tmp")
         self.last_screenshot_path: Optional[str] = None
@@ -531,14 +547,129 @@ class AsyncBrowserCore:
                     await self._teardown_unlocked()
 
             policy = self._launch_policy
+            try:
+                resolution = await asyncio.to_thread(
+                    self._engine_resolver, self._engine_mode
+                )
+            except BaseException as exc:
+                if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                    raise
+                if policy is not None:
+                    raise native_egress_failure() from None
+                raise
+            self._engine_resolution = resolution
+
+            if policy is not None and resolution.resolved != browser_engine.ONION:
+                raise native_egress_failure()
+
             profile_dir = policy.profile_dir if policy is not None else _profile_dir()
             profile_dir.mkdir(parents=True, exist_ok=True)
             _clear_stale_profile_lock(profile_dir)
             holder = _profile_lock_holder(profile_dir)
             if holder is not None:
-                raise RuntimeError(
+                error = RuntimeError(
                     f"Browser profile is already in use by another process (PID {holder}).\n"
                     f"The persistent profile at {profile_dir} can be driven by only one browser at a time."
+                )
+                if policy is not None:
+                    raise native_egress_failure() from None
+                raise error
+
+            if resolution.resolved == browser_engine.ONION:
+                manager = async_playwright()
+                playwright = None
+                paid_run = None
+                try:
+                    start_task = asyncio.create_task(
+                        asyncio.wait_for(manager.start(), timeout=30)
+                    )
+                    try:
+                        playwright = await asyncio.shield(start_task)
+                    except asyncio.CancelledError:
+                        playwright, _ = await _complete_cleanup(start_task)
+                        raise
+                    launch_options = {
+                        "headless": headless,
+                        "timeout": 120000,
+                    }
+                    if policy is None:
+                        launch_options.update(
+                            args=CHROME_DEFAULT_ARGS,
+                            ignore_default_args=(
+                                IGNORE_DEFAULT_ARGS
+                                if self._use_mock_keychain
+                                else IGNORE_DEFAULT_ARGS + ["--use-mock-keychain"]
+                            ),
+                            proxy=_proxy_from_env(),
+                        )
+                    else:
+                        launch_options.update(policy.playwright_options())
+                    if self._paid_idempotency_key is None:
+                        self._paid_idempotency_key = (
+                            f"connectonion-start:{uuid.uuid4()}"
+                        )
+                    paid_run = await browser_engine.launch_async(
+                        resolution,
+                        playwright,
+                        self._paid_idempotency_key,
+                        user_data_dir=(
+                            policy.profile_dir if policy is not None else True
+                        ),
+                        **launch_options,
+                    )
+                    self.playwright = playwright
+                    self.browser = paid_run.closable
+                    self._paid_run = paid_run
+                    if policy is not None and policy.native_preflight is not None:
+                        # The paid path gets the same positive control as the
+                        # free one. Omitting the gateway here degrades the
+                        # subresource proof to "the sentinel saw nothing",
+                        # which is also what "no probe ran" looks like — and
+                        # this is the path that charges money.
+                        await run_native_egress_preflight(
+                            policy.native_preflight,
+                            self.browser,
+                            gateway=self._egress_gateway,
+                        )
+                    if self._seed_state and not self._seeded:
+                        cookies = json.loads(
+                            Path(self._seed_state).read_text(encoding="utf-8")
+                        ).get("cookies", [])
+                        if cookies:
+                            await self.browser.add_cookies(cookies)
+                        self._seeded = True
+                    await self._ensure_page(key)
+                except BaseException as exc:
+                    self.browser = None
+                    self.playwright = None
+                    self._paid_run = None
+                    if paid_run is not None:
+                        try:
+                            await _complete_cleanup(paid_run.close())
+                        except BaseException:
+                            pass
+                    if playwright is not None:
+                        try:
+                            await _complete_cleanup(
+                                asyncio.wait_for(playwright.stop(), timeout=30)
+                            )
+                        except BaseException:
+                            pass
+                    if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                        raise
+                    if policy is not None:
+                        raise native_egress_failure() from None
+                    raise
+                status = resolution.public_status()
+                price = status.get("interval_usd")
+                cost = (
+                    f", ${price:.3f} per interval"
+                    if isinstance(price, (int, float))
+                    else ""
+                )
+                return (
+                    "Onion Browser opened with a prepaid supervised session"
+                    f"{cost}: artifact={status['artifact_id']}"
                 )
 
             manager = async_playwright()
@@ -629,6 +760,28 @@ class AsyncBrowserCore:
             if had_previous_state:
                 return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
             return f"Browser opened with persistent profile: {profile_dir}"
+
+    async def engine_status(self) -> dict:
+        """Return the immutable engine decision without secrets or local paths."""
+        if self._engine_resolution is None:
+            return {
+                "requested_engine": self._engine_mode,
+                "resolved_engine": None,
+                "fallback": False,
+                "reason": "not_started",
+                "next_action": "Open the browser to resolve an engine.",
+                "browser_revision": browser_engine.BROWSER_REVISION,
+                "onionwright_version": None,
+                "artifact_id": None,
+            }
+        status = self._engine_resolution.public_status()
+        if self._paid_run is not None:
+            status.update({
+                "paid_session_id": self._paid_run.session.session_id,
+                "paid_until": self._paid_run.session.paid_until,
+                "terminal_reason": self._paid_run.terminal_reason,
+            })
+        return status
 
     async def save_state(self, path: str) -> str:
         async with self._tab_operation(ensure_page=False):
@@ -1813,10 +1966,14 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """Clear state even when one close operation fails; caller owns lifecycle lock."""
         warnings = []
         interrupted = False
-        context, playwright = self.browser, self.playwright
+        context, playwright, paid_run = self.browser, self.playwright, self._paid_run
         pages = list(self._pages.values())
         self.browser = None
         self.playwright = None
+        self._paid_run = None
+        # A deliberate teardown ends the logical session, so the next open
+        # starts a new billing interval rather than replaying this one's.
+        self._paid_idempotency_key = None
         self._pages.clear()
         self._page_used.clear()
         self._page_url.clear()
@@ -1841,7 +1998,13 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                     interrupted = interrupted or was_cancelled
                 except BaseException as exc:
                     warnings.append(f"close page failed: {exc}")
-        if context is not None:
+        if paid_run is not None:
+            try:
+                _, was_cancelled = await _complete_cleanup(paid_run.close())
+                interrupted = interrupted or was_cancelled
+            except BaseException as exc:
+                warnings.append(f"close paid browser failed: {exc}")
+        elif context is not None:
             try:
                 _, was_cancelled = await _complete_cleanup(
                     asyncio.wait_for(context.close(), timeout=30)

@@ -31,6 +31,8 @@ class BrowserAutomation:
         seed_state: Optional[str] = None,
         tab_idle_ttl: float = 3600.0,
         max_tabs: int = 10,
+        engine_mode: str = "auto",
+        engine_resolver=None,
     ) -> None:
         self._core_kwargs = {
             "use_chrome_profile": use_chrome_profile,
@@ -38,7 +40,10 @@ class BrowserAutomation:
             "seed_state": seed_state,
             "tab_idle_ttl": tab_idle_ttl,
             "max_tabs": max_tabs,
+            "engine_mode": engine_mode,
         }
+        if engine_resolver is not None:
+            self._core_kwargs["engine_resolver"] = engine_resolver
         self._runtime_lock = threading.RLock()
         self._runtime_ready = threading.Event()
         self._runtime_thread: Optional[threading.Thread] = None
