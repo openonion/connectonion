@@ -659,6 +659,25 @@ See [sub documentation](sub.md) for the full fan-out behavior and v1 limitations
 
 ---
 
+#### `co proxy <command>` - Share This Computer's Connection
+
+A browser on a server reaches the internet from a data-centre address. Lend
+yours and its traffic arrives from here instead. See [proxy.md](proxy.md).
+
+```bash
+co proxy share to 0xHOST     # lend your connection to one agent
+co proxy status              # what is shared right now
+co proxy stop 0xHOST         # stop lending
+```
+
+Then: `co remote-browser 0xHOST start --proxy shared`.
+
+The share applies the same destination policy as the host's own egress gateway,
+so a remote agent gets an outbound path to the public web and **not** your
+router, your NAS, or anything else on your LAN.
+
+---
+
 #### `co browser <command>` - Browser Automation
 
 Drive one persistent browser from the shell. Call a browser function directly, or use `do` for the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).

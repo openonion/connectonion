@@ -338,6 +338,21 @@ def remote_browser(
     raise typer.Exit(handle_remote_browser(args or []))
 
 
+@app.command(
+    "proxy",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def proxy(
+    args: List[str] = typer.Argument(
+        None, help="share to <address> | status | stop <address> | diagnose <address>"
+    ),
+):
+    """Share this computer's internet connection with an authorized agent."""
+    from .commands.proxy_commands import handle_proxy
+
+    raise typer.Exit(handle_proxy(args or []))
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def call(
     args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),

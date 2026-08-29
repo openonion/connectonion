@@ -11,14 +11,15 @@ ConnectOnion - A simple agent framework with behavior tracking.
 """
 
 # Single source, in a module the CLI can import on its own — see _version.py.
-from ._version import __version__
-
 # Auto-load .env files for the entire framework
 import os as _os
 import sys as _sys
-from types import ModuleType as _ModuleType
-from dotenv import load_dotenv
 from pathlib import Path as _Path
+from types import ModuleType as _ModuleType
+
+from dotenv import load_dotenv
+
+from ._version import __version__
 
 # Load BOTH the project .env and the global ~/.co/keys.env, in that order.
 # load_dotenv never overrides an already-set variable, so the first file to

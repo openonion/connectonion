@@ -9,15 +9,16 @@ LLM-Note:
   Errors: no error handling (let I/O errors bubble up) | assumes log_file parent can be created | assumes stderr is available
 """
 
+import os
 import re
 from datetime import datetime
-import os
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Union
+from typing import Any, Dict, List, Optional, Union
+
 from rich.console import Console as RichConsole
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 from rich.text import Text
-from rich.markup import escape as rich_escape
 
 # Use stderr so console output doesn't mix with agent results
 _rich_console = RichConsole(stderr=True)
@@ -325,8 +326,8 @@ class Console:
             timing: Execution time in milliseconds
             agent: Agent instance with current_session
         """
-        from rich.table import Table
         from rich.console import Group
+        from rich.table import Table
 
         table = Table(show_header=False, box=None, padding=(0, 1))
         table.add_column("Key", style="dim")

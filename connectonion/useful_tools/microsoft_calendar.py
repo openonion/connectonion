@@ -45,7 +45,9 @@ Example:
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+
 import httpx
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 
@@ -313,7 +315,7 @@ class MicrosoftCalendar:
         ]
 
         if attendee_list:
-            output.append(f"Attendees:\n  " + "\n  ".join(attendee_list))
+            output.append("Attendees:\n  " + "\n  ".join(attendee_list))
 
         return "\n".join(output)
 

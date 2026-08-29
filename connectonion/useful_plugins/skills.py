@@ -65,14 +65,13 @@ Permission Patterns:
 - read_file - Tool name only (any args)
 """
 
-import os
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Dict, Any, List
-from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ..core.events import after_user_input, on_complete, before_each_tool, on_agent_ready
+from ..core.events import after_user_input, on_agent_ready, on_complete
 from ..project import project_co_dir, project_root
 from ..skill_requirements import (
     SkillManifestError,

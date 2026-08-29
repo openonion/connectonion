@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import importlib
 import platform
 import subprocess
 import sys
+from dataclasses import dataclass
 from typing import Callable, Iterable
-
 
 PATCHRIGHT_VERSION = "1.61.2"
 SUPPORTED_SYSTEMS = {"Darwin", "Linux", "Windows"}
@@ -75,11 +74,11 @@ def _linux_prerequisites(browser_path: str | None) -> RuntimeCheck:
 def runtime_checks() -> list[RuntimeCheck]:
     """Inspect supported Python, package, platform, daemon, driver, and browser state."""
     from ... import __version__
-    from ..browser_agent.daemon import _owner_alive, default_sock_path
     from ...useful_tools.browser_tools.browser import (
         driver_stealth_status,
         installed_browser_path,
     )
+    from ..browser_agent.daemon import _owner_alive, default_sock_path
 
     checks: list[RuntimeCheck] = []
     python_ok = sys.version_info >= (3, 10)

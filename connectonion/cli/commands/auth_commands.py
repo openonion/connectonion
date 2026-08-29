@@ -9,25 +9,21 @@ LLM-Note:
   Errors: fails if ~/.co/keys/ missing (no keypair) | fails if backend unreachable (network error) | fails if signature invalid (backend 401) | fails if timestamp expired (5min window) | prints error messages to console and returns False | backend 500 errors bubble up with error details
 """
 
-import sys
-import time
-import requests
-import json
-import webbrowser
-import os
 import base64
+import json
+import time
+import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from time import monotonic
 from urllib.parse import parse_qs, urlparse
+
+import requests
 from nacl.public import PrivateKey, SealedBox
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.panel import Panel
-from ...backend import backend_url
-from dotenv import load_dotenv
 
 from ... import address
+from ...backend import backend_url
 from .project_cmd_lib import load_api_key, upsert_env
 
 console = Console()
@@ -345,11 +341,11 @@ def handle_google_auth():
     console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
 
     # Success message
-    console.print(f"\n✅ [bold green]Google account connected![/bold green]")
+    console.print("\n✅ [bold green]Google account connected![/bold green]")
     console.print(f"   Email: {credentials['google_email']}", style="green")
-    console.print(f"\n📧 You can now use Google tools in your agents:")
-    console.print(f"   [dim]from connectonion.tools import gmail_send[/dim]")
-    console.print(f"   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
+    console.print("\n📧 You can now use Google tools in your agents:")
+    console.print("   [dim]from connectonion.tools import gmail_send[/dim]")
+    console.print("   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
 
 
 def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
@@ -520,8 +516,8 @@ def handle_microsoft_auth():
     console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
 
     # Success message
-    console.print(f"\n✅ [bold green]Microsoft account connected![/bold green]")
+    console.print("\n✅ [bold green]Microsoft account connected![/bold green]")
     console.print(f"   Email: {credentials['microsoft_email']}", style="green")
-    console.print(f"\n📧 You can now use Microsoft tools in your agents:")
-    console.print(f"   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
-    console.print(f"   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
+    console.print("\n📧 You can now use Microsoft tools in your agents:")
+    console.print("   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
+    console.print("   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")

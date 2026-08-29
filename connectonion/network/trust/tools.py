@@ -16,7 +16,7 @@ Trust Levels (stored in ~/.co/):
 
 import re
 from pathlib import Path
-from typing import List, Callable
+from typing import Callable, List
 
 
 def list_file(list_name: str, co_dir: Path = None) -> Path:

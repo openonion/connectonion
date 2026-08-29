@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.text import Text
 
 # Use SDK subagents plugin instead of registry
-from connectonion.useful_plugins.subagents import task as sdk_task, _discover_all_agents
+from connectonion.useful_plugins.subagents import task as sdk_task
 
 console = Console()
 

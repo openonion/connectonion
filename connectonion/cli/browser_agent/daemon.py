@@ -561,10 +561,16 @@ class BrowserDaemon:
         # every page command answered "Executable doesn't exist at
         # .../chromium-1228/chrome-linux64/chrome", so the one thing that has to
         # be true before anything works was the one thing not reported.
-        try:
-            binary = installed_browser_path()
-        except Exception:
-            binary = None  # status is what you run when things are already broken
+        # A paid resolution runs the downloaded artifact, not the driver's
+        # default install. Reporting the default here said "/usr/bin/google-chrome"
+        # while every page was served by a Chromium under .onionwright/runtimes,
+        # which is the wrong answer to the one question this line exists for.
+        binary = engine.get("executable")
+        if not binary:
+            try:
+                binary = installed_browser_path()
+            except Exception:
+                binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
                      "Browser binary: ✗ none installed — run: patchright install chromium")
         if self.last_command:

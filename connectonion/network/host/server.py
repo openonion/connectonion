@@ -26,50 +26,55 @@ don't interfere between concurrent requests.
 """
 
 import asyncio
+import json
+import os
 import random
 from functools import partial
-import os
 from pathlib import Path
-import json
 from typing import Callable, Optional, Union
 
 import uvicorn
-import websockets
 from rich.console import Console
 
 from ... import address
 from ...backend import DEFAULT_BACKEND_WS_URL
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
-from .ws_router import run_ws_session
-from .schedule import create_schedule_lifespan
-from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
+from ..trust import TRUST_LEVELS, TrustAgent, parse_policy
 from ..trust.factory import PROMPTS_DIR
 from .auth import authenticate_connect, extract_and_authenticate
-from .replay import SignatureReplayStore
-from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
-from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
-from .session.mode import HostPermissionPolicy
+from .config import (
+    DEFAULT_FILE_LIMITS,
+    load_host_config,
+    load_list_file,
+    project_co_dir,
+    validate_files,
+    validate_images,
+)
 from .http_router import (
-    input_handler,
-    exec_handler,
-    session_handler,
-    sessions_handler,
-    health_handler,
-    info_handler,
-    admin_logs_handler,
-    admin_sessions_handler,
-    admin_trust_promote_handler,
-    admin_trust_demote_handler,
-    admin_trust_block_handler,
-    admin_trust_unblock_handler,
-    admin_trust_level_handler,
     admin_admins_add_handler,
     admin_admins_remove_handler,
+    admin_logs_handler,
+    admin_sessions_handler,
+    admin_trust_block_handler,
+    admin_trust_demote_handler,
+    admin_trust_level_handler,
+    admin_trust_promote_handler,
+    admin_trust_unblock_handler,
+    exec_handler,
+    health_handler,
+    info_handler,
+    input_handler,
+    session_handler,
+    sessions_handler,
 )
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
-
+from .replay import SignatureReplayStore
+from .schedule import create_schedule_lifespan
+from .session import ActiveSessionRegistry, SessionStorage, start_cleanup_job
+from .session.mode import HostPermissionPolicy
+from .ws_router import run_ws_session
 
 EXEC_REQUIRES = ("admin", "whitelist", "contact")
 
@@ -868,7 +873,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
                         # the truth was a three-second blip — telling them apart
                         # meant inspecting sockets on the box.
                         relay_console.print(
-                            f"[magenta]\\[host][/magenta] [dim]relay reconnected[/dim]"
+                            "[magenta]\\[host][/magenta] [dim]relay reconnected[/dim]"
                         )
                     failures = 0  # clean disconnect — next reconnect is immediate
                 except asyncio.CancelledError:

@@ -8,7 +8,6 @@ LLM-Note:
   Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
 """
 
-import os
 import shlex
 
 import requests

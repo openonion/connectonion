@@ -16,11 +16,10 @@ Architecture:
 - Falls back to description if prompt file not found
 """
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from connectonion import Agent
-
 from connectonion.cli.co_ai.tools import FileTools
-
 
 # Sub-agent configurations
 SUBAGENTS: Dict[str, Dict[str, Any]] = {

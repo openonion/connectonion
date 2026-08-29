@@ -32,7 +32,7 @@ You are an explore agent specialized in quickly understanding codebases.
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Dict, Any, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..core.events import on_agent_ready
 from ..project import project_co_dir
@@ -188,7 +188,7 @@ def task(agent, prompt: str, agent_type: str) -> str:
 
 def _resolve_tools(tool_names: List[str], agent_name: str) -> List:
     """Resolve tool names to actual tool functions/classes."""
-    from ..useful_tools import glob, grep, read_file, edit, multi_edit, write, bash, WebFetch, Memory
+    from ..useful_tools import Memory, WebFetch, bash, edit, glob, grep, multi_edit, read_file, write
     from ..useful_tools.browser_tools import BrowserAutomation
 
     tool_map = {

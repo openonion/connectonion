@@ -19,7 +19,6 @@ after it.
 from pathlib import Path
 from typing import Optional, Union
 
-
 CO_DIR = ".co"
 
 

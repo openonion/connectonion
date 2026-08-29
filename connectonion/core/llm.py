@@ -153,18 +153,17 @@ With tools:
     ...     print(response.tool_calls[0].name)  # "search"
 """
 
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Type
-from dataclasses import dataclass
 import json
-import os
-import base64
 import logging
+import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Type
 
 logger = logging.getLogger(__name__)
 # google-genai not needed - using OpenAI-compatible endpoint instead
+
 import requests
-from pathlib import Path
 from pydantic import BaseModel
 
 
@@ -187,7 +186,6 @@ class ToolCall:
 
 
 # Import TokenUsage from usage module
-from .usage import DEFAULT_MODEL, TokenUsage, calculate_cost
 from ..backend import backend_url
 from .exceptions import (
     InsufficientCreditsError,
@@ -198,6 +196,7 @@ from .exceptions import (
     PaidModelRequiredError,
     ProviderServiceError,
 )
+from .usage import DEFAULT_MODEL, TokenUsage, calculate_cost
 
 
 def _is_paid_account_required(error) -> bool:
@@ -322,16 +321,16 @@ class LLM(ABC):
 
 class OpenAILLM(LLM):
     """OpenAI LLM implementation."""
-    
+
     def __init__(self, api_key: Optional[str] = None, model: str = "o4-mini", **kwargs):
         import openai
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
-        
+
         self.client = openai.OpenAI(api_key=self.api_key, **_network_bounds())
         self.model = model
-    
+
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support."""
         api_kwargs = {
@@ -408,7 +407,7 @@ class OpenAILLM(LLM):
 
 class AnthropicLLM(LLM):
     """Anthropic Claude LLM implementation."""
-    
+
     def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514", max_tokens: int = 8192, **kwargs):
         import anthropic
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -418,7 +417,7 @@ class AnthropicLLM(LLM):
         self.client = anthropic.Anthropic(api_key=self.api_key, **_network_bounds())
         self.model = model
         self.max_tokens = max_tokens  # Anthropic requires max_tokens (default 8192)
-    
+
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support."""
         # Convert messages to Anthropic format
@@ -440,11 +439,11 @@ class AnthropicLLM(LLM):
 
         response = self._call_provider(
             lambda: self.client.messages.create(**api_kwargs))
-        
+
         # Parse tool calls if present
         tool_calls = []
         content = ""
-        
+
         for block in response.content:
             if block.type == "text":
                 content += block.text
@@ -521,17 +520,17 @@ class AnthropicLLM(LLM):
         anthropic_messages = []
         system_parts = []
         i = 0
-        
+
         while i < len(messages):
             msg = messages[i]
-            
+
             # Anthropic accepts system instructions as a top-level request parameter.
             if msg["role"] == "system":
                 if msg.get("content"):
                     system_parts.append(msg["content"])
                 i += 1
                 continue
-            
+
             # Handle assistant messages with tool calls
             if msg["role"] == "assistant" and msg.get("tool_calls"):
                 content_blocks = []
@@ -540,7 +539,7 @@ class AnthropicLLM(LLM):
                         "type": "text",
                         "text": msg["content"]
                     })
-                
+
                 for tc in msg["tool_calls"]:
                     content_blocks.append({
                         "type": "tool_use",
@@ -548,12 +547,12 @@ class AnthropicLLM(LLM):
                         "name": tc["function"]["name"],
                         "input": json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
                     })
-                
+
                 anthropic_messages.append({
                     "role": "assistant",
                     "content": content_blocks
                 })
-                
+
                 # Now collect all the tool responses that follow immediately
                 i += 1
                 tool_results = []
@@ -565,14 +564,14 @@ class AnthropicLLM(LLM):
                         "content": tool_msg["content"]
                     })
                     i += 1
-                
+
                 # Add all tool results in a single user message
                 if tool_results:
                     anthropic_messages.append({
                         "role": "user",
                         "content": tool_results
                     })
-            
+
             # Handle tool role messages that aren't immediately after assistant tool calls
             elif msg["role"] == "tool":
                 # This shouldn't happen in normal flow, but handle it just in case
@@ -585,7 +584,7 @@ class AnthropicLLM(LLM):
                     }]
                 })
                 i += 1
-            
+
             # Handle user messages
             elif msg["role"] == "user":
                 if isinstance(msg.get("content"), list):
@@ -609,7 +608,7 @@ class AnthropicLLM(LLM):
                         "content": msg["content"]
                     })
                 i += 1
-            
+
             # Handle regular assistant messages
             elif msg["role"] == "assistant":
                 anthropic_messages.append({
@@ -617,17 +616,17 @@ class AnthropicLLM(LLM):
                     "content": msg["content"]
                 })
                 i += 1
-            
+
             else:
                 i += 1
-        
+
         system = "\n\n".join(system_parts)
         return anthropic_messages, system or None
-    
+
     def _convert_tools(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert OpenAI-style tools to Anthropic format."""
         anthropic_tools = []
-        
+
         for tool in tools:
             # Tools already in our internal format
             anthropic_tool = {
@@ -640,7 +639,7 @@ class AnthropicLLM(LLM):
                 })
             }
             anthropic_tools.append(anthropic_tool)
-        
+
         return anthropic_tools
 
 
@@ -662,7 +661,7 @@ class GeminiLLM(LLM):
             **_network_bounds(),
         )
         self.model = model
-    
+
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation using Gemini's OpenAI-compatible endpoint."""
         api_kwargs = {
@@ -1065,7 +1064,7 @@ MODEL_REGISTRY = {
     "claude-sonnet-4-0": "anthropic",  # Alias
     "claude-3-7-sonnet-latest": "anthropic",
     "claude-3-7-sonnet-20250219": "anthropic",
-    
+
     # Google Gemini models
     "gemini-3.7-flash": "google",
     "gemini-3.6-flash": "google",
@@ -1318,7 +1317,6 @@ class OpenOnionLLM(LLM):
             - Returns None on any error (network, auth, etc.)
             - ~200ms typical latency, acceptable for startup
         """
-        import requests
 
         # Build auth endpoint URL (strip /v1 suffix)
         auth_url = f"{self.base_url.rstrip('/v1')}/api/v1/auth/me"
@@ -1378,10 +1376,10 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
         return GrokLLM(api_key=api_key, model=model, **kwargs)
     if model.startswith("mistral/"):
         return MistralLLM(api_key=api_key, model=model, **kwargs)
-    
+
     # Get provider from registry
     provider = MODEL_REGISTRY.get(model)
-    
+
     if not provider:
         # Try to infer provider from model name
         if model.startswith("gpt") or model.startswith(OPENAI_REASONING_PREFIXES):
@@ -1392,7 +1390,7 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
             provider = "google"
         else:
             raise ValueError(f"Unknown model '{model}'")
-    
+
     # Create the appropriate LLM
     if provider == "openai":
         return OpenAILLM(api_key=api_key, model=model, **kwargs)

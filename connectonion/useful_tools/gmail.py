@@ -52,18 +52,18 @@ Example:
     agent.input("Search for emails from alice@example.com")
 """
 
+import base64
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import base64
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 from ..project import project_root
 from ._attachment_files import path_of_open_file
-
 
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
@@ -1435,8 +1435,8 @@ Emails:
         if not self.emails_csv:
             return "No emails_csv path configured. Initialize Gmail with emails_csv parameter."
 
-        import csv
         import base64
+        import csv
         from datetime import datetime, timedelta
 
         service = self._get_service()

@@ -29,7 +29,6 @@ Usage:
 from typing import Callable
 
 from rich.text import Text
-
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Container, VerticalScroll
@@ -39,7 +38,6 @@ from textual.widgets import Input, Markdown, Static
 from textual_autocomplete import AutoComplete, DropdownItem
 
 from connectonion import before_each_tool
-
 
 # --- Widgets ---
 
@@ -441,7 +439,7 @@ class Chat(App):
 
         # Register event handlers for status updates
         if self.agent:
-            from connectonion import before_llm, after_llm, on_complete
+            from connectonion import after_llm, before_llm, on_complete
             chat = self  # Capture for closure
 
             @before_llm

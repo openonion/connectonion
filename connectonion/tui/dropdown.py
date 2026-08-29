@@ -15,9 +15,8 @@ Modern zsh-style dropdown with icons and highlighting.
 from dataclasses import dataclass, field
 from typing import Any
 
-from rich.text import Text
 from rich.table import Table
-from rich.console import Group
+from rich.text import Text
 
 from .fuzzy import highlight_match
 

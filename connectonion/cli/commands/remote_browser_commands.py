@@ -17,7 +17,7 @@ Options:
   --relay URL      relay backend used for discovery/fallback
   --headless       start headless (default)
   --headed         start with a visible browser
-  --proxy MODE     start proxy mode; 1.8 accepts only direct
+  --proxy MODE     direct (this host's connection) or shared (yours)
 """
 
 
@@ -151,6 +151,21 @@ def handle_remote_browser(args) -> int:
             "headless": options["headless"],
             "proxy": options["proxy"],
         }
+        if options["proxy"] == "shared":
+            # Only this machine knows where its own connection is reachable, so
+            # the share endpoint travels with the request rather than being
+            # something the host could guess.
+            from .proxy_commands import _load
+
+            share = _load().get(address)
+            if share is None:
+                print(
+                    f"You are not sharing your connection with {address}.",
+                    file=sys.stderr,
+                )
+                print(f"Lend it with: co proxy share to {address}", file=sys.stderr)
+                return 2
+            command_args["share"] = share
     try:
         result = connect(address, **connect_kwargs).remote_browser(
             command,

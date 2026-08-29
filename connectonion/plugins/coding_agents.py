@@ -17,12 +17,6 @@ from typing import Any
 
 from ..core.events import on_agent_ready
 from ..core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_of
-from ..core.provider_permissions import (
-    default_provider_permission_option,
-    provider_permission_option,
-    provider_permission_state,
-    selected_provider_permission_option,
-)
 from ..core.provider_events import (
     clear_provider_activity_history,
     clear_provider_artifact,
@@ -32,6 +26,12 @@ from ..core.provider_events import (
     provider_task_title,
     provider_terminal_summary,
     take_provider_activity_history,
+)
+from ..core.provider_permissions import (
+    default_provider_permission_option,
+    provider_permission_option,
+    provider_permission_state,
+    selected_provider_permission_option,
 )
 from ..useful_tools.claude_code import _run_claude_code
 from ..useful_tools.codex import codex as _run_codex

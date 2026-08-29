@@ -181,4 +181,4 @@ def handle_gdrive_rm(file_id: str):
         raise typer.Exit(1)
 
     drive.delete(resolved)
-    console.print(f"\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")
+    console.print("\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")

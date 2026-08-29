@@ -26,15 +26,14 @@ Paste Handling:
 """
 
 import random
-from typing import Optional
+
 from rich.console import Console, Group
-from rich.text import Text
 from rich.live import Live
+from rich.text import Text
 
-from .keys import read_key, enable_bracketed_paste, disable_bracketed_paste
 from .dropdown import Dropdown
+from .keys import disable_bracketed_paste, enable_bracketed_paste, read_key
 from .providers import FileProvider
-
 
 # Color palette - works on both light and dark terminals
 COLORS = {

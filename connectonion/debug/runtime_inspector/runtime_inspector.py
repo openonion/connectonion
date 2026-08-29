@@ -9,9 +9,9 @@ LLM-Note:
   Errors: execute_in_frame() catches exceptions and returns error strings (doesn't raise) | missing variables return "not found" messages | no frame returns "No runtime context available"
 """
 
-from pathlib import Path
-from typing import Any, Optional, List, Dict
 import re
+from pathlib import Path
+from typing import Any, Dict, List
 
 
 class RuntimeInspector:
@@ -242,7 +242,7 @@ class RuntimeInspector:
                 value = frame.f_locals[variable_name]
                 result.append(f"  {variable_name} = {self._format_result(value)}")
             else:
-                result.append(f"  (not in scope)")
+                result.append("  (not in scope)")
 
             current_traceback = current_traceback.tb_next
 

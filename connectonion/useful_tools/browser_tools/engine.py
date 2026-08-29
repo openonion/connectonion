@@ -56,6 +56,17 @@ class Resolution:
         return getattr(artifact, "artifact_id", None)
 
     @property
+    def executable(self) -> str | None:
+        """The browser this resolution will actually run.
+
+        Not the driver's default install: a paid resolution runs the downloaded
+        artifact, and reporting the default instead tells an operator the
+        system browser is in use while a different binary serves every page.
+        """
+        path = getattr(self.prepared, "executable", None)
+        return str(path) if path else None
+
+    @property
     def interval_usd(self) -> float | None:
         """What one billing interval costs, when the server said.
 
@@ -89,6 +100,7 @@ class Resolution:
             "onionwright_version": self.onionwright_version,
             "artifact_id": self.artifact_id,
             "interval_usd": self.interval_usd,
+            "executable": self.executable,
         }
 
 

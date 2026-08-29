@@ -36,7 +36,6 @@ import httpx
 from rich.console import Console
 from rich.table import Table
 
-from .fanout import install_all, uninstall_all
 from ...backend import backend_url
 from ...network.profile_freshness import (
     read_state,
@@ -44,6 +43,7 @@ from ...network.profile_freshness import (
     validate_revision,
     write_state,
 )
+from .fanout import install_all, uninstall_all
 
 console = Console()
 
@@ -373,7 +373,7 @@ def handle_sub_list() -> None:
     """Show ~/.co/subscriptions.txt with local version info."""
     subs = _read_subs()
     if not subs:
-        console.print(f"\n[dim]No subscriptions. Subscribe with `co sub 0x...`[/dim]\n")
+        console.print("\n[dim]No subscriptions. Subscribe with `co sub 0x...`[/dim]\n")
         return
 
     table = Table(title="Subscriptions", show_lines=False, header_style="bold")

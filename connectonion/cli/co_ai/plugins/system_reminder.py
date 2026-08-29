@@ -25,11 +25,12 @@ Usage:
     agent = Agent("coder", plugins=[system_reminder])
 """
 
-from pathlib import Path
 import fnmatch
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+
 from connectonion.core.events import after_each_tool, after_user_input
 from connectonion.llm_do import llm_do
 

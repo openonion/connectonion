@@ -29,16 +29,17 @@ Supported formats: WAV, MP3, AIFF, AAC, OGG, FLAC
 Token cost: 32 tokens per second of audio (1 minute = 1,920 tokens)
 """
 
-import os
 import base64
 import mimetypes
+import os
 from pathlib import Path
 from typing import Optional
-import httpx
-from connectonion.backend import backend_url
-from connectonion.credentials import require_ambient_api_key
-from connectonion.core.usage import DEFAULT_MODEL
 
+import httpx
+
+from connectonion.backend import backend_url
+from connectonion.core.usage import DEFAULT_MODEL
+from connectonion.credentials import require_ambient_api_key
 
 # MIME type mapping for audio formats
 AUDIO_MIME_TYPES = {

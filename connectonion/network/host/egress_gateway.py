@@ -229,7 +229,13 @@ class EgressGateway:
         limits: GatewayLimits | None = None,
         username: str = "connectonion",
         password: str | None = None,
+        bind_host: str = "127.0.0.1",
     ):
+        # Loopback is the default and the only address a browser-private
+        # gateway may use. `co proxy share` runs the same request machinery on
+        # a reachable address so a remote agent can egress through this
+        # machine, and that is the only reason this is a parameter.
+        self.bind_host = bind_host
         self.resolver = resolver
         self.dialer = dialer
         try:
@@ -285,7 +291,7 @@ class EgressGateway:
     def endpoint(self) -> ProxyEndpoint:
         if self._port is None:
             raise RuntimeError("egress gateway is not started")
-        return ProxyEndpoint("127.0.0.1", self._port, self.username, self.password)
+        return ProxyEndpoint(self.bind_host, self._port, self.username, self.password)
 
     @property
     def is_running(self) -> bool:
@@ -312,7 +318,7 @@ class EgressGateway:
                 socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP
             )
             try:
-                listener.bind(("127.0.0.1", 0))
+                listener.bind((self.bind_host, 0))
                 listener.listen()
                 listener.setblocking(False)
                 self._server = await asyncio.start_server(
@@ -327,11 +333,11 @@ class EgressGateway:
             host, port = (
                 sockets[0].getsockname()[:2] if len(sockets) == 1 else (None, 0)
             )
-            if host != "127.0.0.1":
+            if host != self.bind_host:
                 self._server.close()
                 await self._server.wait_closed()
                 self._server = None
-                raise RuntimeError("egress gateway escaped IPv4 loopback")
+                raise RuntimeError("egress gateway did not bind the address it asked for")
             self._port = int(port)
             return self.endpoint
 

@@ -69,7 +69,7 @@ def edit(
 
         msg = f"Error: String not found in '{file_path}'"
         if lines_with_similar:
-            msg += f"\n\nSimilar content found:\n" + "\n".join(lines_with_similar[:5])
+            msg += "\n\nSimilar content found:\n" + "\n".join(lines_with_similar[:5])
         return msg
 
     if count > 1 and not replace_all:

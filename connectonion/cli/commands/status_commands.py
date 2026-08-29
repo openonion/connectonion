@@ -20,6 +20,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
 from ...backend import backend_url
 from ...credentials import account_in_token
 from ...project import project_identity, project_root
