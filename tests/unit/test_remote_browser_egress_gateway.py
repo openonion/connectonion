@@ -18,7 +18,6 @@ from connectonion.network.host.egress_gateway import (
     GatewayLimits,
     GatewayRefusal,
     NumericEndpoint,
-    dial_numeric,
 )
 
 
@@ -145,8 +144,12 @@ async def test_literal_and_authority_denials_are_zero_dial(target, status):
 
     assert status in response
     assert dialer.calls == []
-    if target[0].isdigit():
-        assert resolver.calls == []
+    # Every one of these is refused before DNS: a literal is classified without
+    # resolving, and localhost / a denied port are refused at the authority.
+    # The old form only checked resolver.calls for digit-leading targets, which
+    # skipped exactly the localhost and bad-port cases where "denied before DNS"
+    # is the interesting claim.
+    assert resolver.calls == []
 
 
 @pytest.mark.asyncio
@@ -521,7 +524,7 @@ async def test_dns_timeout_empty_and_answer_limit_are_zero_dial():
 
 
 @pytest.mark.asyncio
-async def test_overload_is_rejected_without_read_resolve_or_dial():
+async def test_overload_is_rejected_after_auth_before_resolve_or_dial():
     entered = asyncio.Event()
     release = asyncio.Event()
     calls = []
@@ -565,28 +568,71 @@ async def test_overload_is_rejected_without_read_resolve_or_dial():
 
 
 @pytest.mark.asyncio
-async def test_numeric_dialer_never_calls_getaddrinfo(monkeypatch):
-    async def accept_then_close(_reader, writer):
+async def test_no_name_resolution_happens_after_the_gateway_resolves(monkeypatch):
+    """The anti-TOCTOU property, tested where it can actually fail.
+
+    The old form fed dial_numeric an already-numeric "127.0.0.1" and patched
+    only loop.getaddrinfo — but asyncio short-circuits numeric strings before
+    either resolver is touched, so a dialer that resolved a name would still
+    pass. It read like the guard and was not one.
+
+    The property is: the gateway resolves a HOSTNAME once, pins the numeric
+    answer, and nothing resolves that name again on the way to the socket. So
+    drive a hostname through the whole gateway with BOTH resolution entry
+    points spied, and assert the name is never looked up outside the gateway's
+    own resolver.
+    """
+    origin_connected = asyncio.Event()
+
+    async def origin(_reader, writer):
+        origin_connected.set()
         writer.close()
         await writer.wait_closed()
 
-    server = await asyncio.start_server(accept_then_close, "127.0.0.1", 0)
+    server = await asyncio.start_server(origin, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
+
     loop = asyncio.get_running_loop()
+    real_loop_getaddrinfo = loop.getaddrinfo
+    real_socket_getaddrinfo = socket.getaddrinfo
+    lookups = []
 
-    async def forbidden_getaddrinfo(*_args, **_kwargs):
-        raise AssertionError("numeric dial attempted hostname resolution")
+    async def spy_loop_getaddrinfo(host, *args, **kwargs):
+        lookups.append(("loop", host))
+        return await real_loop_getaddrinfo(host, *args, **kwargs)
 
-    monkeypatch.setattr(loop, "getaddrinfo", forbidden_getaddrinfo)
-    try:
-        _reader, writer = await dial_numeric(
-            NumericEndpoint(socket.AF_INET, "127.0.0.1", port), 1
+    def spy_socket_getaddrinfo(host, *args, **kwargs):
+        lookups.append(("socket", host))
+        return real_socket_getaddrinfo(host, *args, **kwargs)
+
+    # One public numeric answer for the hostname. A real dialer would connect to
+    # 8.8.8.8; this one redirects the pinned numeric address to the local origin
+    # so the connection completes. Any lookup of the name after this is the
+    # second resolution the property forbids.
+    async def resolver(_host, _port):
+        return ("8.8.8.8",)
+
+    async def dial_to_origin(endpoint, _timeout):
+        assert endpoint.address == "8.8.8.8"
+        return await asyncio.open_connection("127.0.0.1", port)
+
+    monkeypatch.setattr(loop, "getaddrinfo", spy_loop_getaddrinfo)
+    monkeypatch.setattr(socket, "getaddrinfo", spy_socket_getaddrinfo)
+
+    gateway = EgressGateway(
+        resolver=resolver, dialer=dial_to_origin, password="secret"
+    )
+    async with gateway:
+        response = await _exchange(
+            gateway.endpoint,
+            _connect_request(gateway.endpoint, "onlyname.example.com:443"),
         )
-        writer.close()
-        await writer.wait_closed()
-    finally:
-        server.close()
-        await server.wait_closed()
+    server.close()
+    await server.wait_closed()
+
+    assert response.startswith(b"HTTP/1.1 200 Connection Established")
+    assert origin_connected.is_set(), "the dial never reached the numeric peer"
+    assert not any(host == "onlyname.example.com" for _, host in lookups), lookups
 
 
 @pytest.mark.asyncio
@@ -614,7 +660,16 @@ async def test_tunnel_byte_limit_closes_before_an_oversized_chunk_reaches_upstre
             writer.write(_connect_request(gateway.endpoint))
             await writer.drain()
             await reader.readuntil(b"\r\n\r\n")
-            writer.write(b"12345")
+            # Two writes, not one. The property is "at most bytes_per_direction
+            # crosses", not "nothing crosses" — sending all five bytes in one
+            # buffer let _copy accumulate and reject the whole thing, so the old
+            # `received == b""` passed for a reason that would also hold if the
+            # limit were off by a chunk. Splitting the writes exercises the
+            # boundary: the first four are allowed through, the fifth is not.
+            writer.write(b"1234")
+            await writer.drain()
+            await asyncio.sleep(0.05)
+            writer.write(b"5")
             await writer.drain()
             assert await asyncio.wait_for(reader.read(), timeout=1) == b""
             writer.close()
@@ -624,7 +679,9 @@ async def test_tunnel_byte_limit_closes_before_an_oversized_chunk_reaches_upstre
         upstream.close()
         await upstream.wait_closed()
 
-    assert received == b""
+    # At most the limit crossed, and never more.
+    assert len(received) <= 4
+    assert received == b"1234"
 
 
 @pytest.mark.asyncio
