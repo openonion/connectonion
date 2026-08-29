@@ -1,15 +1,15 @@
 """
 Purpose: Internal Patchright async browser core for the 1.8 driver migration.
 LLM-Note:
-  Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/e2e/test_async_browser_core_real_driver.py]
+  Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, immutable BrowserLaunchPolicy, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/unit/test_remote_browser_private_runtime.py, tests/e2e/test_async_browser_core_real_driver.py]
   Data flow: caller binds a session in a ContextVar → each async operation acquires that tab's lock → the shared persistent context lazily creates/restores one page per session → model-selected actions await extraction and worker-thread matching → independent tab operations may interleave on one event loop
-  State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
-  Integration: internal AsyncBrowserCore; the public synchronous BrowserAutomation remains unchanged until #500 adds its compatibility facade
+  State/Effects: ordinary mode keeps its persistent profile and proxy environment compatibility; private mode uses only the explicit policy profile/proxy/args/service-worker/download settings | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
+  Integration: internal AsyncBrowserCore; used directly by the daemon and through the public synchronous BrowserAutomation compatibility facade
   Errors: live profile ownership fails before driver start | launch/cancellation tears down partially-created driver state | destructive keyboard shortcuts fail closed outside editable focus | element ambiguity and non-match errors preserve the synchronous finder contract
 
-This module is deliberately internal while #498 is in progress. It must never
-import or call patchright.sync_api: the old public class remains the compatibility
-implementation until the async contract is complete and #500 installs the facade.
+This module is deliberately internal. It must never import or call
+``patchright.sync_api``: synchronous callers use the compatibility facade, which
+submits work to this core's owned event loop.
 """
 
 import asyncio
@@ -18,17 +18,24 @@ import contextvars
 import json
 import os
 import platform
+import sys
 import time
 import urllib.parse
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
+from . import _async_scroll as async_scroll
+from . import _async_terminal as terminal
+from . import engine as browser_engine
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
+from .launch_policy import BrowserLaunchPolicy
+from .native_egress import native_egress_failure, run_native_egress_preflight
 
 try:
     from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
@@ -91,6 +98,17 @@ _FOCUSED_ELEMENT_SCRIPT = """
         value_truncated: value === null ? false : value.length > previewLimit,
     };
 }
+"""
+
+_PAGE_CSS_SCRIPT = r"""
+() => Array.from(document.styleSheets).map((sheet, i) => {
+    try {
+        return `/* ${sheet.href || `inline-${i}`} */\n` +
+            Array.from(sheet.cssRules || []).map(rule => rule.cssText).join("\n");
+    } catch (error) {
+        return `/* ${sheet.href || `stylesheet-${i}`} unavailable: ${error.name} */`;
+    }
+}).join("\n\n")
 """
 
 
@@ -242,6 +260,35 @@ async def _complete_cleanup(awaitable):
     return task.result(), interrupted
 
 
+def _write_page_context_files(
+    base_dir: Path,
+    timestamp: str,
+    safe_name: str,
+    html: str,
+    css: str,
+    element_dicts: list[Dict[str, Any]],
+) -> Path:
+    """Write one collision-safe page-context snapshot outside the event loop."""
+    root = base_dir / ".co" / "browser_context"
+    root.mkdir(parents=True, exist_ok=True)
+    stem = f"{timestamp}_{safe_name}"
+    suffix = 0
+    while True:
+        out_dir = root / (stem if suffix == 0 else f"{stem}_{suffix}")
+        try:
+            out_dir.mkdir()
+            break
+        except FileExistsError:
+            suffix += 1
+
+    (out_dir / "page.html").write_text(html, encoding="utf-8")
+    (out_dir / "styles.css").write_text(css, encoding="utf-8")
+    (out_dir / "elements.json").write_text(
+        json.dumps(element_dicts, indent=2), encoding="utf-8"
+    )
+    return out_dir
+
+
 class AsyncBrowserCore:
     """Internal async browser runtime with one persistent context and one tab per session."""
 
@@ -253,7 +300,23 @@ class AsyncBrowserCore:
         tab_idle_ttl: float = 3600.0,
         max_tabs: int = 10,
         use_mock_keychain: bool = False,
+        launch_policy: BrowserLaunchPolicy | None = None,
+        egress_gateway: object | None = None,
+        engine_mode: str = browser_engine.AUTO,
+        engine_resolver=browser_engine.resolve,
     ) -> None:
+        # Only read for its decision count, which is the preflight's positive
+        # control: without it, "the sentinel saw nothing" cannot be told apart
+        # from "the browser never asked".
+        self._egress_gateway = egress_gateway
+        # One key per logical paid session, not per launch attempt. A launch
+        # that fails after the server minted the licence — a transient RPC
+        # error, a driver that would not start, a preflight that could not
+        # prove the boundary — is retried by the next command, and a fresh key
+        # each time buys a fresh interval each time. On a machine where the
+        # boundary can never be proven that bills forever while every command
+        # fails. Cleared when a session is deliberately released.
+        self._paid_idempotency_key: Optional[str] = None
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[BrowserContext] = None
         self._pages: Dict[Optional[str], Page] = {}
@@ -268,6 +331,11 @@ class AsyncBrowserCore:
         self._seed_state = seed_state
         self._seeded = False
         self._use_mock_keychain = use_mock_keychain
+        self._launch_policy = launch_policy
+        self._engine_mode = engine_mode
+        self._engine_resolver = engine_resolver
+        self._engine_resolution = None
+        self._paid_run = None
         self.current_url = ""
         self.screenshots_dir = str(Path.cwd() / ".tmp")
         self.last_screenshot_path: Optional[str] = None
@@ -281,6 +349,7 @@ class AsyncBrowserCore:
         )
         self._lifecycle_lock = asyncio.Lock()
         self._clipboard_lock = asyncio.Lock()
+        self._manual_login_lock = asyncio.Lock()
         self._page_state_lock = asyncio.Lock()
         self._tab_locks: Dict[Optional[str], asyncio.Lock] = {}
         self._operation_state_lock = asyncio.Lock()
@@ -429,9 +498,7 @@ class AsyncBrowserCore:
             return False
         return True
 
-    async def open_browser(
-        self, headless: Optional[bool] = None, force: bool = False
-    ) -> str:
+    async def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open/reuse the runtime while participating in tab and shutdown admission."""
         if self._operation_depth.get():
             return await self._open_browser(headless=headless, force=force)
@@ -479,14 +546,130 @@ class AsyncBrowserCore:
                 if had_previous_state:
                     await self._teardown_unlocked()
 
-            profile_dir = _profile_dir()
+            policy = self._launch_policy
+            try:
+                resolution = await asyncio.to_thread(
+                    self._engine_resolver, self._engine_mode
+                )
+            except BaseException as exc:
+                if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                    raise
+                if policy is not None:
+                    raise native_egress_failure() from None
+                raise
+            self._engine_resolution = resolution
+
+            if policy is not None and resolution.resolved != browser_engine.ONION:
+                raise native_egress_failure()
+
+            profile_dir = policy.profile_dir if policy is not None else _profile_dir()
             profile_dir.mkdir(parents=True, exist_ok=True)
             _clear_stale_profile_lock(profile_dir)
             holder = _profile_lock_holder(profile_dir)
             if holder is not None:
-                raise RuntimeError(
+                error = RuntimeError(
                     f"Browser profile is already in use by another process (PID {holder}).\n"
                     f"The persistent profile at {profile_dir} can be driven by only one browser at a time."
+                )
+                if policy is not None:
+                    raise native_egress_failure() from None
+                raise error
+
+            if resolution.resolved == browser_engine.ONION:
+                manager = async_playwright()
+                playwright = None
+                paid_run = None
+                try:
+                    start_task = asyncio.create_task(
+                        asyncio.wait_for(manager.start(), timeout=30)
+                    )
+                    try:
+                        playwright = await asyncio.shield(start_task)
+                    except asyncio.CancelledError:
+                        playwright, _ = await _complete_cleanup(start_task)
+                        raise
+                    launch_options = {
+                        "headless": headless,
+                        "timeout": 120000,
+                    }
+                    if policy is None:
+                        launch_options.update(
+                            args=CHROME_DEFAULT_ARGS,
+                            ignore_default_args=(
+                                IGNORE_DEFAULT_ARGS
+                                if self._use_mock_keychain
+                                else IGNORE_DEFAULT_ARGS + ["--use-mock-keychain"]
+                            ),
+                            proxy=_proxy_from_env(),
+                        )
+                    else:
+                        launch_options.update(policy.playwright_options())
+                    if self._paid_idempotency_key is None:
+                        self._paid_idempotency_key = (
+                            f"connectonion-start:{uuid.uuid4()}"
+                        )
+                    paid_run = await browser_engine.launch_async(
+                        resolution,
+                        playwright,
+                        self._paid_idempotency_key,
+                        user_data_dir=(
+                            policy.profile_dir if policy is not None else True
+                        ),
+                        **launch_options,
+                    )
+                    self.playwright = playwright
+                    self.browser = paid_run.closable
+                    self._paid_run = paid_run
+                    if policy is not None and policy.native_preflight is not None:
+                        # The paid path gets the same positive control as the
+                        # free one. Omitting the gateway here degrades the
+                        # subresource proof to "the sentinel saw nothing",
+                        # which is also what "no probe ran" looks like — and
+                        # this is the path that charges money.
+                        await run_native_egress_preflight(
+                            policy.native_preflight,
+                            self.browser,
+                            gateway=self._egress_gateway,
+                        )
+                    if self._seed_state and not self._seeded:
+                        cookies = json.loads(
+                            Path(self._seed_state).read_text(encoding="utf-8")
+                        ).get("cookies", [])
+                        if cookies:
+                            await self.browser.add_cookies(cookies)
+                        self._seeded = True
+                    await self._ensure_page(key)
+                except BaseException as exc:
+                    self.browser = None
+                    self.playwright = None
+                    self._paid_run = None
+                    if paid_run is not None:
+                        try:
+                            await _complete_cleanup(paid_run.close())
+                        except BaseException:
+                            pass
+                    if playwright is not None:
+                        try:
+                            await _complete_cleanup(
+                                asyncio.wait_for(playwright.stop(), timeout=30)
+                            )
+                        except BaseException:
+                            pass
+                    if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                        raise
+                    if policy is not None:
+                        raise native_egress_failure() from None
+                    raise
+                status = resolution.public_status()
+                price = status.get("interval_usd")
+                cost = (
+                    f", ${price:.3f} per interval"
+                    if isinstance(price, (int, float))
+                    else ""
+                )
+                return (
+                    "Onion Browser opened with a prepaid supervised session"
+                    f"{cost}: artifact={status['artifact_id']}"
                 )
 
             manager = async_playwright()
@@ -502,20 +685,27 @@ class AsyncBrowserCore:
                     playwright, _ = await _complete_cleanup(start_task)
                     raise
 
-                launch_task = asyncio.create_task(
-                    playwright.chromium.launch_persistent_context(
-                        str(profile_dir),
-                        headless=headless,
-                        executable_path=find_system_chrome(),
+                launch_options = {
+                    "headless": headless,
+                    "executable_path": find_system_chrome(),
+                    "no_viewport": True,
+                    "timeout": 120000,
+                }
+                if policy is None:
+                    launch_options.update(
                         args=CHROME_DEFAULT_ARGS,
                         ignore_default_args=(
                             IGNORE_DEFAULT_ARGS
                             if self._use_mock_keychain
                             else IGNORE_DEFAULT_ARGS + ["--use-mock-keychain"]
                         ),
-                        no_viewport=True,
                         proxy=_proxy_from_env(),
-                        timeout=120000,
+                    )
+                else:
+                    launch_options.update(policy.playwright_options())
+                launch_task = asyncio.create_task(
+                    playwright.chromium.launch_persistent_context(
+                        str(profile_dir), **launch_options
                     )
                 )
                 try:
@@ -526,6 +716,13 @@ class AsyncBrowserCore:
                 self.playwright = playwright
                 self.browser = context
 
+                if policy is not None and policy.native_preflight is not None:
+                    await run_native_egress_preflight(
+                        policy.native_preflight,
+                        context,
+                        gateway=self._egress_gateway,
+                    )
+
                 if self._seed_state and not self._seeded:
                     cookies = json.loads(
                         Path(self._seed_state).read_text(encoding="utf-8")
@@ -535,7 +732,7 @@ class AsyncBrowserCore:
                     self._seeded = True
 
                 await self._ensure_page(key)
-            except BaseException:
+            except BaseException as exc:
                 self.browser = None
                 self.playwright = None
                 if context is not None:
@@ -552,6 +749,10 @@ class AsyncBrowserCore:
                         )
                     except BaseException:
                         pass
+                if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                    raise
+                if policy is not None and policy.native_preflight is not None:
+                    raise native_egress_failure() from None
                 raise
 
             if force and had_previous_state:
@@ -559,6 +760,28 @@ class AsyncBrowserCore:
             if had_previous_state:
                 return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
             return f"Browser opened with persistent profile: {profile_dir}"
+
+    async def engine_status(self) -> dict:
+        """Return the immutable engine decision without secrets or local paths."""
+        if self._engine_resolution is None:
+            return {
+                "requested_engine": self._engine_mode,
+                "resolved_engine": None,
+                "fallback": False,
+                "reason": "not_started",
+                "next_action": "Open the browser to resolve an engine.",
+                "browser_revision": browser_engine.BROWSER_REVISION,
+                "onionwright_version": None,
+                "artifact_id": None,
+            }
+        status = self._engine_resolution.public_status()
+        if self._paid_run is not None:
+            status.update({
+                "paid_session_id": self._paid_run.session.session_id,
+                "paid_until": self._paid_run.session.paid_until,
+                "terminal_reason": self._paid_run.terminal_reason,
+            })
+        return status
 
     async def save_state(self, path: str) -> str:
         async with self._tab_operation(ensure_page=False):
@@ -983,6 +1206,16 @@ class AsyncBrowserCore:
                     )
             await self.page.keyboard.press(key)
             return f"Pressed: '{key}'"
+
+    async def keyboard_type(self, text: str) -> str:
+        """Type into the focused element without blocking the event loop."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            await humanize.type_text(self.page, text, self._clipboard_lock)
+            return f"""Typed: '{text}'
+
+SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
 
     async def click_element_by_selector(
         self,
@@ -1488,9 +1721,7 @@ class AsyncBrowserCore:
                 response["reason"] = "no frame returned ok: true"
             return json.dumps(response, indent=2, ensure_ascii=False)
 
-    async def take_screenshot(
-        self, path: Optional[str] = None, full_page: bool = False
-    ) -> str:
+    async def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
@@ -1509,6 +1740,55 @@ class AsyncBrowserCore:
                 mime = "image/jpeg"
             await self.page.wait_for_timeout(1000)
             return f"data:{mime};base64,{base64.b64encode(screenshot).decode('utf-8')}"
+
+    async def save_page_context(self, name: str = "page") -> str:
+        """Save HTML, CSS, and interactive-element data without loop-bound I/O."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+
+            page = self.page
+            html = await page.content()
+            css = await page.evaluate(_PAGE_CSS_SCRIPT)
+            elements = await element_finder.extract_elements(page)
+            element_dicts = [
+                (
+                    element.model_dump()
+                    if hasattr(element, "model_dump")
+                    else element.dict()
+                )
+                for element in elements
+            ]
+            safe_name = (
+                "".join(
+                    character if character.isalnum() or character in "._-" else "_"
+                    for character in name
+                ).strip("._-")
+                or "page"
+            )
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_dir, interrupted = await _complete_cleanup(
+                asyncio.to_thread(
+                    _write_page_context_files,
+                    Path.home(),
+                    timestamp,
+                    safe_name,
+                    html,
+                    css,
+                    element_dicts,
+                )
+            )
+            if interrupted:
+                raise asyncio.CancelledError
+
+            return (
+                f"Saved page context to {out_dir}\n"
+                f"- HTML: {out_dir / 'page.html'}\n"
+                f"- CSS: {out_dir / 'styles.css'}\n"
+                f"- Elements: {out_dir / 'elements.json'}\n"
+                f"- URL: {page.url}\n"
+                f"- Elements: {len(element_dicts)}"
+            )
 
     async def set_viewport(self, width: int, height: int) -> str:
         async with self._tab_operation():
@@ -1567,7 +1847,57 @@ class AsyncBrowserCore:
             await self.page.wait_for_timeout(int(seconds * 1000))
             return f"Waited for {seconds} seconds"
 
-    async def extract_data(self, selector: str) -> list[str]:
+    async def scroll(
+        self, times: int = 5, description: str = "the main content area"
+    ) -> str:
+        """Scroll using the async human/AI/element/page strategy chain."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            result = await async_scroll.scroll(
+                self.page,
+                self.take_screenshot,
+                times,
+                description,
+                Path(self.screenshots_dir),
+            )
+            await self._save_context()
+            return result
+
+    async def wait_for_manual_login(self, site_name: str = "the website") -> str:
+        """Wait for interactive confirmation without blocking the event loop."""
+        async with self._tab_operation():
+            if self.page is None:
+                return "Browser not open"
+            if not sys.stdin or not sys.stdin.isatty():
+                return (
+                    "Manual login needs an interactive terminal, which a hosted deploy "
+                    "doesn't have. Capture the login locally with save_state(path) and "
+                    "start the deployed browser with seed_state=<path>."
+                )
+
+            async with self._manual_login_lock:
+                print(f"\n{'='*60}")
+                print("  MANUAL LOGIN REQUIRED")
+                print(f"{'='*60}")
+                print(f"Please login to {site_name} in the browser window.")
+                print("Once you're logged in and ready to continue:")
+                print("  Type 'yes' or 'Y' and press Enter")
+                print(f"{'='*60}\n")
+
+                while True:
+                    response = (
+                        (await terminal.read_line("Ready to continue? (yes/Y): "))
+                        .strip()
+                        .lower()
+                    )
+                    if response in {"yes", "y"}:
+                        print("Continuing automation...\n")
+                        await self._save_context()
+                        return f"User confirmed login to {site_name} - continuing"
+                    print("Please type 'yes' or 'Y' when ready.")
+
+    async def extract_data(self, selector: str) -> List[str]:
         async with self._tab_operation():
             if self.page is None:
                 return []
@@ -1575,7 +1905,7 @@ class AsyncBrowserCore:
             count = await elements.count()
             return [await elements.nth(index).inner_text() for index in range(count)]
 
-    async def get_links_from_page(self, domain_filter: str = "") -> list[str]:
+    async def get_links_from_page(self, domain_filter: str = "") -> List[str]:
         async with self._tab_operation():
             if self.page is None:
                 return []
@@ -1636,10 +1966,14 @@ class AsyncBrowserCore:
         """Clear state even when one close operation fails; caller owns lifecycle lock."""
         warnings = []
         interrupted = False
-        context, playwright = self.browser, self.playwright
+        context, playwright, paid_run = self.browser, self.playwright, self._paid_run
         pages = list(self._pages.values())
         self.browser = None
         self.playwright = None
+        self._paid_run = None
+        # A deliberate teardown ends the logical session, so the next open
+        # starts a new billing interval rather than replaying this one's.
+        self._paid_idempotency_key = None
         self._pages.clear()
         self._page_used.clear()
         self._page_url.clear()
@@ -1664,7 +1998,13 @@ class AsyncBrowserCore:
                     interrupted = interrupted or was_cancelled
                 except BaseException as exc:
                     warnings.append(f"close page failed: {exc}")
-        if context is not None:
+        if paid_run is not None:
+            try:
+                _, was_cancelled = await _complete_cleanup(paid_run.close())
+                interrupted = interrupted or was_cancelled
+            except BaseException as exc:
+                warnings.append(f"close paid browser failed: {exc}")
+        elif context is not None:
             try:
                 _, was_cancelled = await _complete_cleanup(
                     asyncio.wait_for(context.close(), timeout=30)

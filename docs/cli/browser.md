@@ -13,11 +13,59 @@ co browser close                         # done
 
 The browser stays open **between commands**. Each `co browser ...` call drives the *same* window — your navigation, cookies, and logged-in session persist until you `close`.
 
+## Choosing the browser engine
+
+ConnectOnion 1.8 resolves the engine once when the browser daemon starts:
+
+```bash
+co browser --engine auto go_to example.com    # default
+co browser --engine system go_to example.com  # always Patchright + system Chrome
+co browser --engine onion go_to example.com   # strict paid Onion Browser
+```
+
+The paid path requires Onionwright 0.0.12 or newer. Install or upgrade the real
+private wheel explicitly:
+
+```bash
+co browser install-onion
+```
+
+This command uses the current ConnectOnion login, verifies the release feed
+with ConnectOnion's pinned Ed25519 public key, verifies the wheel checksum from
+that signed manifest, and only then invokes this Python interpreter's pip. It
+does not start the browser daemon or a paid session, and downloading/installing
+the client costs $0. The real wheel comes from OpenOnion's authenticated
+artifact endpoint, not the public PyPI placeholder.
+
+| mode | behavior |
+|---|---|
+| `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
+| `system` | Return before importing Onionwright, reading paid credentials, calling oo-api, downloading an artifact, or creating a paid session. Cost: $0 browser runtime. |
+| `onion` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
+
+Artifact checking and download do not charge. A paid session starts only after
+the complete artifact is locally ready, then prepays $0.025 for one 15-minute
+interval. Renewal occurs before the signed deadline. If renewal fails, that
+exact Onion process stops at `paid_until`; it is never changed into system
+Chrome mid-session.
+
+The daemon is pinned to its chosen engine. Close it before changing modes:
+
+```bash
+co browser close
+co browser --engine system go_to example.com
+```
+
+System Chrome and Onion Browser use separate persistent profiles. Cookies and
+fingerprint state are not silently copied between them. `co browser status`
+shows requested/resolved engine, typed reason, and exact artifact when paid;
+it never prints tokens, licence bytes, or paid-cache paths.
+
 ## Why Use This
 
 Two ways to use a browser from the CLI, and you pick per command:
 
-- **Direct function call** — `co browser go_to x.com`. Deterministic, instant, free (no LLM). Great for scripting and exact steps you already know.
+- **Direct function call** — `co browser go_to x.com`. Deterministic and instant, with no LLM charge; browser runtime cost follows the selected engine. Great for scripting and exact steps you already know.
 - **Natural language** — `co browser do "find the cheapest flight"`. The AI agent figures out the steps. Great when you don't want to spell them out.
 
 Both drive the **same live browser**, so you can mix them: script the boring parts, let the agent handle the hard part.
@@ -187,6 +235,12 @@ with the tab still open means that agent crashed, not that it is still working.
 A tab opened without `--needs` frees up after ~2 minutes of silence, which is
 wrong whenever you are waiting on a slow page or a human. Say the number.
 
+Named tabs are also the concurrency boundary. The daemon owns one asyncio browser
+runtime: two operations aimed at `scrape` queue behind each other, while `scrape`
+and `inbox` may run at the same time. A registry lock decides claim races before
+either operation touches a page, so concurrency never means two agents silently
+sharing one tab.
+
 Set `CO_WHO` so your commands carry your identity:
 
 ```bash
@@ -231,8 +285,12 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 
 ## Sessions & Profile
 
-- One browser per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
+- One async browser runtime per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
 - The daemon endpoint: a Unix socket under `$XDG_RUNTIME_DIR/co/browser.sock` on macOS/Linux, a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`.
+- Client work is bounded: 1 MiB request cap, 120-second read/reply deadlines,
+  32 admitted connections, and eight blocking transport workers on Windows.
+- On Windows, `co browser close` returns only after the serving daemon exits, so
+  an immediate next command can safely start a fresh daemon.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
 
 ## Error Messages

@@ -314,12 +314,28 @@ def doctor(
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
+    engine: str = typer.Option("auto", "--engine", help="Browser engine: auto, system, or onion"),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
     use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
     from .commands.browser_commands import handle_browser
-    raise typer.Exit(handle_browser(args or [], headless=headless))
+    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=engine))
+
+
+@app.command(
+    "remote-browser",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def remote_browser(
+    args: List[str] = typer.Argument(
+        None, help="[options] <address> <start|status|sessions|stop|diagnose>"
+    ),
+):
+    """Manage an owner-bound browser session on a remote agent over OIP."""
+    from .commands.remote_browser_commands import handle_remote_browser
+
+    raise typer.Exit(handle_remote_browser(args or []))
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

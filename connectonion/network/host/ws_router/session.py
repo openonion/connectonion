@@ -20,6 +20,7 @@ from .connect import establish_connection, handle_authenticated_reconnect, handl
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
+from .remote_browser import run_remote_browser
 
 console = Console()
 
@@ -289,6 +290,25 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     # whitelisted tool (#653).
                     task = asyncio.create_task(
                         run_exec(data, send_msg, route_handlers, conn["agent_address"]))
+                    exec_tasks.add(task)
+                    task.add_done_callback(exec_tasks.discard)
+
+            elif msg_type == "REMOTE_BROWSER":
+                if not conn["authenticated"]:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "authenticate first (send CONNECT)",
+                    })
+                else:
+                    task = asyncio.create_task(
+                        run_remote_browser(
+                            data,
+                            send_msg,
+                            route_handlers,
+                            requester_address=conn["agent_address"],
+                            transport=conn["transport"],
+                        )
+                    )
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
 

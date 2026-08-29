@@ -34,6 +34,25 @@ with BrowserAutomation() as browser:
     browser.close()
 ```
 
+### Synchronous API, async runtime
+
+`BrowserAutomation` remains synchronous in 1.8: existing calls, context managers,
+method names, signatures, and return values do not require an `await`. Internally,
+the class owns one async browser core on a private event-loop thread. This removes
+the old synchronous Patchright implementation from the execution path while
+preserving existing Python and Agent integrations.
+
+Calling these synchronous methods from a thread that already runs an asyncio loop
+is supported; the call blocks that caller until its browser operation completes.
+Calling from the browser's own private runtime thread raises a clear `RuntimeError`
+instead of deadlocking. An unbound `close()` closes the shared browser and joins the
+runtime thread; a session-bound `close()` releases only that session's tab.
+
+Compatibility policy for 1.8: no public `BrowserAutomation` method is deprecated,
+and the async core remains internal. `LegacyBrowserAutomation` is an internal test
+oracle for comparing the 1.7 contract; it is not a supported import and may be
+removed after the 1.8 transition without a deprecation period.
+
 ## Persistent Profile
 
 Browser state (cookies, sessions, localStorage) is saved automatically to `~/.co/browser_profile/`. On subsequent runs the browser is already logged into any site you've previously authenticated.
@@ -285,18 +304,15 @@ agent.input("Navigate to github.com/trending and screenshot the page")
 agent.input("Fill in the contact form on example.com with test data")
 ```
 
-One `BrowserAutomation` instance is safe to reuse across turns and concurrent hosted sessions. Public methods are serialized onto one internal browser worker thread, so Playwright's sync API is always called from the thread that owns it. When `bind_browser_session` is enabled, each hosted session gets its own tab in the shared browser context.
+One `BrowserAutomation` instance is safe to reuse across turns and concurrent hosted sessions. Public calls remain synchronous, but the facade submits them to one owned async browser runtime. When `bind_browser_session` is enabled, each hosted session gets its own tab in the shared browser context.
 
-That worker-thread behavior remains the public contract during the 1.8 async
-migration. The replacement core is internal until every browser verb and the
-cross-platform daemon have equivalent coverage; do not import it as an
-application API yet. The lifecycle, concurrency, cancellation, and compatibility
-boundaries are recorded in [DD-054](../design-decisions/054-one-async-browser-runtime.md).
-The internal core now covers the deterministic selector, extraction, viewport,
-wait, system-info, tab-status, page/frame-script, and file-upload contracts, but
-click variants, downloads, humanized input, model-backed element finding,
-concurrent IPC, and the synchronous facade are still migration work.
-`BrowserAutomation` remains the supported API.
+The async core remains internal; do not import it as an application API. Both the
+facade and `co browser` daemon use that core: independent tabs interleave,
+same-tab operations serialize, and the POSIX/Windows transports bound
+connections, reads, writes, and shutdown. The lifecycle, concurrency,
+cancellation, and compatibility boundaries are recorded in
+[DD-054](../design-decisions/054-one-async-browser-runtime.md).
+`BrowserAutomation` remains the supported Python API.
 
 ## Common Patterns
 
