@@ -207,6 +207,28 @@ def _whatwg_ipv4(host: str) -> ipaddress.IPv4Address | None:
 
 
 def _normalize_host(host: str) -> tuple[str, IPAddress | None]:
+    if not host:
+        raise DestinationPolicyError(INVALID, "hostname is invalid")
+
+    # An IPv6 literal reaches here already unbracketed, and its `:` separators
+    # are disallowed under STD3, so it is classified before the mapping below.
+    # Its grammar is fixed ASCII; there is nothing for UTS-46 to map.
+    if ":" not in host:
+        # UTS-46 mapping runs before every other check, which is the order a
+        # browser URL parser uses. U+3002 U+FF0E U+FF61 all map to `.` and the
+        # fullwidth digits map to ASCII, so a check reading the string first
+        # reads a different name than the one Chromium will dial: `localhost。`
+        # normalizes to `localhost.`, and `１２７.０.０.１` to the literal
+        # 127.0.0.1.
+        remapped: str | None
+        try:
+            remapped = idna.uts46_remap(host, std3_rules=True, transitional=False)
+        except (idna.IDNAError, UnicodeError):
+            remapped = None
+        if remapped is None:
+            raise DestinationPolicyError(INVALID, "hostname mapping is invalid")
+        host = remapped
+
     if not host or "\\" in host or "%" in host:
         raise DestinationPolicyError(INVALID, "hostname is invalid")
     if host.endswith(".."):
@@ -304,7 +326,11 @@ def classify_address(
     if address is None:
         raise DestinationPolicyError(INVALID, "DNS answer is not an IP address")
 
-    for network in _operator_networks(deny_networks):
+    # Materialize once. The transition-address branches below recurse with this
+    # same value, and a one-shot iterable would arrive there already exhausted —
+    # protecting the outer address and silently nothing inside it.
+    frozen_denies = _operator_networks(deny_networks)
+    for network in frozen_denies:
         if address.version == network.version and address in network:
             return AddressClassification(str(address), False, "operator_denied")
 
@@ -315,14 +341,14 @@ def classify_address(
         return AddressClassification(str(address), True, "public_ipv4")
 
     if address.ipv4_mapped is not None:
-        inner = classify_address(address.ipv4_mapped, deny_networks=deny_networks)
+        inner = classify_address(address.ipv4_mapped, deny_networks=frozen_denies)
         return AddressClassification(
             str(address), inner.allowed, f"ipv4_mapped_{inner.address_class}"
         )
     if address in _IPV4_TRANSLATED:
         inner = classify_address(
             ipaddress.IPv4Address(int(address) & 0xFFFFFFFF),
-            deny_networks=deny_networks,
+            deny_networks=frozen_denies,
         )
         return AddressClassification(
             str(address), inner.allowed, f"ipv4_translated_{inner.address_class}"
@@ -330,7 +356,7 @@ def classify_address(
     if address in _NAT64_WKP:
         inner = classify_address(
             ipaddress.IPv4Address(int(address) & 0xFFFFFFFF),
-            deny_networks=deny_networks,
+            deny_networks=frozen_denies,
         )
         return AddressClassification(
             str(address), inner.allowed, f"nat64_{inner.address_class}"
@@ -338,7 +364,7 @@ def classify_address(
     if address in _SIX_TO_FOUR:
         inner = classify_address(
             ipaddress.IPv4Address((int(address) >> 80) & 0xFFFFFFFF),
-            deny_networks=deny_networks,
+            deny_networks=frozen_denies,
         )
         return AddressClassification(
             str(address), inner.allowed, f"6to4_{inner.address_class}"

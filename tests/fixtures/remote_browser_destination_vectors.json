@@ -7,75 +7,418 @@
     "registry_snapshot": "2025-10-09"
   },
   "authorities": [
-    {"url": "https://Example.COM./private/path?token=secret#fragment", "ok": true, "scheme": "https", "host": "example.com", "port": 443},
-    {"url": "http://93.184.216.34/", "ok": true, "scheme": "http", "host": "93.184.216.34", "port": 80},
-    {"url": "http://127.1/", "ok": true, "scheme": "http", "host": "127.0.0.1", "port": 80},
-    {"url": "http://2130706433/", "ok": true, "scheme": "http", "host": "127.0.0.1", "port": 80},
-    {"url": "http://0177.0.0.1/", "ok": true, "scheme": "http", "host": "127.0.0.1", "port": 80},
-    {"url": "http://0x7f.1/", "ok": true, "scheme": "http", "host": "127.0.0.1", "port": 80},
-    {"url": "http://4294967295/", "ok": true, "scheme": "http", "host": "255.255.255.255", "port": 80},
-    {"url": "http://0xffffffff/", "ok": true, "scheme": "http", "host": "255.255.255.255", "port": 80},
-    {"url": "http://0300.0250.0001.0001/", "ok": true, "scheme": "http", "host": "192.168.1.1", "port": 80},
-    {"url": "https://[2001:4860:4860::8888]:8443/", "ok": true, "scheme": "https", "host": "2001:4860:4860::8888", "port": 8443},
-    {"url": "https://BÜCHER.de/", "ok": true, "scheme": "https", "host": "xn--bcher-kva.de", "port": 443},
-    {"url": "ws://example.com/socket", "ok": true, "scheme": "ws", "host": "example.com", "port": 80},
-    {"url": "wss://example.com:8080/socket", "ok": true, "scheme": "wss", "host": "example.com", "port": 8080},
-    {"url": "ftp://example.com/file", "ok": false, "code": "DESTINATION_SCHEME_DENIED"},
-    {"url": "https://user:pass@example.com/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "https://example.com:22/", "ok": false, "code": "DESTINATION_PORT_DENIED"},
-    {"url": "https://example.com:0/", "ok": false, "code": "DESTINATION_PORT_DENIED"},
-    {"url": "https://example.com:65536/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://localhost/", "ok": false, "code": "DESTINATION_HOST_DENIED"},
-    {"url": "http://api.service.local/", "ok": false, "code": "DESTINATION_HOST_DENIED"},
-    {"url": "http://metadata.google.internal/", "ok": false, "code": "DESTINATION_HOST_DENIED"},
-    {"url": "http://example.test/", "ok": false, "code": "DESTINATION_HOST_DENIED"},
-    {"url": "http://example.com../", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://[fe80::1%25en0]/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://09/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://4294967296/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://1.2.3.999/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://1.2.3.4.5/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http://exa mple.com/", "ok": false, "code": "DESTINATION_INVALID"},
-    {"url": "http:///missing-host", "ok": false, "code": "DESTINATION_INVALID"}
+    {
+      "url": "https://Example.COM./private/path?token=secret#fragment",
+      "ok": true,
+      "scheme": "https",
+      "host": "example.com",
+      "port": 443
+    },
+    {
+      "url": "http://93.184.216.34/",
+      "ok": true,
+      "scheme": "http",
+      "host": "93.184.216.34",
+      "port": 80
+    },
+    {
+      "url": "http://127.1/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    },
+    {
+      "url": "http://2130706433/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    },
+    {
+      "url": "http://0177.0.0.1/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    },
+    {
+      "url": "http://0x7f.1/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    },
+    {
+      "url": "http://4294967295/",
+      "ok": true,
+      "scheme": "http",
+      "host": "255.255.255.255",
+      "port": 80
+    },
+    {
+      "url": "http://0xffffffff/",
+      "ok": true,
+      "scheme": "http",
+      "host": "255.255.255.255",
+      "port": 80
+    },
+    {
+      "url": "http://0300.0250.0001.0001/",
+      "ok": true,
+      "scheme": "http",
+      "host": "192.168.1.1",
+      "port": 80
+    },
+    {
+      "url": "https://[2001:4860:4860::8888]:8443/",
+      "ok": true,
+      "scheme": "https",
+      "host": "2001:4860:4860::8888",
+      "port": 8443
+    },
+    {
+      "url": "https://BÜCHER.de/",
+      "ok": true,
+      "scheme": "https",
+      "host": "xn--bcher-kva.de",
+      "port": 443
+    },
+    {
+      "url": "ws://example.com/socket",
+      "ok": true,
+      "scheme": "ws",
+      "host": "example.com",
+      "port": 80
+    },
+    {
+      "url": "wss://example.com:8080/socket",
+      "ok": true,
+      "scheme": "wss",
+      "host": "example.com",
+      "port": 8080
+    },
+    {
+      "url": "ftp://example.com/file",
+      "ok": false,
+      "code": "DESTINATION_SCHEME_DENIED"
+    },
+    {
+      "url": "https://user:pass@example.com/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "https://example.com:22/",
+      "ok": false,
+      "code": "DESTINATION_PORT_DENIED"
+    },
+    {
+      "url": "https://example.com:0/",
+      "ok": false,
+      "code": "DESTINATION_PORT_DENIED"
+    },
+    {
+      "url": "https://example.com:65536/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://localhost/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://api.service.local/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://metadata.google.internal/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://example.test/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://example.com../",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://[fe80::1%25en0]/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://09/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://4294967296/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://1.2.3.999/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://1.2.3.4.5/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://exa mple.com/",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http:///missing-host",
+      "ok": false,
+      "code": "DESTINATION_INVALID"
+    },
+    {
+      "url": "http://localhost。/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://metadata.google.internal。/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://api.svc.cluster.local．/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://anything.internal｡/",
+      "ok": false,
+      "code": "DESTINATION_HOST_DENIED"
+    },
+    {
+      "url": "http://127。0。0。1/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    },
+    {
+      "url": "http://０x７f.１/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    },
+    {
+      "url": "http://２１３０７０６４３３/",
+      "ok": true,
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 80
+    }
   ],
   "addresses": [
-    {"address": "8.8.8.8", "allowed": true, "class": "public_ipv4"},
-    {"address": "1.1.1.1", "allowed": true, "class": "public_ipv4"},
-    {"address": "127.0.0.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "10.0.0.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "100.64.0.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "169.254.169.254", "allowed": false, "class": "special_ipv4"},
-    {"address": "172.16.0.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "192.0.0.9", "allowed": false, "class": "special_ipv4"},
-    {"address": "192.168.1.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "198.18.0.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "198.51.100.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "203.0.113.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "224.0.0.1", "allowed": false, "class": "special_ipv4"},
-    {"address": "255.255.255.255", "allowed": false, "class": "special_ipv4"},
-    {"address": "2001:4860:4860::8888", "allowed": true, "class": "public_ipv6"},
-    {"address": "2620:fe::fe", "allowed": true, "class": "public_ipv6"},
-    {"address": "::", "allowed": false, "class": "special_ipv6"},
-    {"address": "::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "fc00::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "fe80::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "ff02::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "2001:db8::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "100:0:0:1::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "3fff::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "5f00::1", "allowed": false, "class": "special_ipv6"},
-    {"address": "::ffff:127.0.0.1", "allowed": false, "class": "ipv4_mapped_special_ipv4"},
-    {"address": "::ffff:8.8.8.8", "allowed": true, "class": "ipv4_mapped_public_ipv4"},
-    {"address": "::ffff:0:127.0.0.1", "allowed": false, "class": "ipv4_translated_special_ipv4"},
-    {"address": "::ffff:0:8.8.8.8", "allowed": true, "class": "ipv4_translated_public_ipv4"},
-    {"address": "64:ff9b::7f00:1", "allowed": false, "class": "nat64_special_ipv4"},
-    {"address": "64:ff9b::808:808", "allowed": true, "class": "nat64_public_ipv4"},
-    {"address": "2002:7f00:1::", "allowed": false, "class": "6to4_special_ipv4"},
-    {"address": "2002:808:808::", "allowed": true, "class": "6to4_public_ipv4"}
+    {
+      "address": "8.8.8.8",
+      "allowed": true,
+      "class": "public_ipv4"
+    },
+    {
+      "address": "1.1.1.1",
+      "allowed": true,
+      "class": "public_ipv4"
+    },
+    {
+      "address": "127.0.0.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "10.0.0.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "100.64.0.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "169.254.169.254",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "172.16.0.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "192.0.0.9",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "192.168.1.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "198.18.0.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "198.51.100.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "203.0.113.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "224.0.0.1",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "255.255.255.255",
+      "allowed": false,
+      "class": "special_ipv4"
+    },
+    {
+      "address": "2001:4860:4860::8888",
+      "allowed": true,
+      "class": "public_ipv6"
+    },
+    {
+      "address": "2620:fe::fe",
+      "allowed": true,
+      "class": "public_ipv6"
+    },
+    {
+      "address": "::",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "fc00::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "fe80::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "ff02::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "2001:db8::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "100:0:0:1::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "3fff::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "5f00::1",
+      "allowed": false,
+      "class": "special_ipv6"
+    },
+    {
+      "address": "::ffff:127.0.0.1",
+      "allowed": false,
+      "class": "ipv4_mapped_special_ipv4"
+    },
+    {
+      "address": "::ffff:8.8.8.8",
+      "allowed": true,
+      "class": "ipv4_mapped_public_ipv4"
+    },
+    {
+      "address": "::ffff:0:127.0.0.1",
+      "allowed": false,
+      "class": "ipv4_translated_special_ipv4"
+    },
+    {
+      "address": "::ffff:0:8.8.8.8",
+      "allowed": true,
+      "class": "ipv4_translated_public_ipv4"
+    },
+    {
+      "address": "64:ff9b::7f00:1",
+      "allowed": false,
+      "class": "nat64_special_ipv4"
+    },
+    {
+      "address": "64:ff9b::808:808",
+      "allowed": true,
+      "class": "nat64_public_ipv4"
+    },
+    {
+      "address": "2002:7f00:1::",
+      "allowed": false,
+      "class": "6to4_special_ipv4"
+    },
+    {
+      "address": "2002:808:808::",
+      "allowed": true,
+      "class": "6to4_public_ipv4"
+    }
   ],
   "answer_sets": [
-    {"url": "https://public.example.org/hidden?secret=yes", "answers": ["8.8.8.8", "2001:4860:4860::8888"], "ok": true, "code": "DESTINATION_ALLOWED"},
-    {"url": "https://rebind.example.org/", "answers": ["8.8.8.8", "127.0.0.1"], "ok": false, "code": "DESTINATION_ADDRESS_DENIED"},
-    {"url": "https://v6-rebind.example.org/", "answers": ["2001:4860:4860::8888", "::ffff:10.0.0.1"], "ok": false, "code": "DESTINATION_ADDRESS_DENIED"}
+    {
+      "url": "https://public.example.org/hidden?secret=yes",
+      "answers": [
+        "8.8.8.8",
+        "2001:4860:4860::8888"
+      ],
+      "ok": true,
+      "code": "DESTINATION_ALLOWED"
+    },
+    {
+      "url": "https://rebind.example.org/",
+      "answers": [
+        "8.8.8.8",
+        "127.0.0.1"
+      ],
+      "ok": false,
+      "code": "DESTINATION_ADDRESS_DENIED"
+    },
+    {
+      "url": "https://v6-rebind.example.org/",
+      "answers": [
+        "2001:4860:4860::8888",
+        "::ffff:10.0.0.1"
+      ],
+      "ok": false,
+      "code": "DESTINATION_ADDRESS_DENIED"
+    }
   ]
 }

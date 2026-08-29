@@ -273,3 +273,67 @@ def test_invalid_explicit_port_policies_fail_closed(allowed_ports):
             "https://example.com/", allowed_ports=allowed_ports
         )
     assert raised.value.code == policy.INVALID
+
+
+# UTS-46 maps several Unicode characters onto ASCII `.` and onto ASCII digits.
+# Chromium runs that mapping FIRST, so a caller who writes `localhost。` reaches
+# the same host as `localhost`. Any check that reads the string before the
+# mapping is reading a different name than the browser will dial.
+@pytest.mark.parametrize(
+    "host",
+    [
+        "localhost。",
+        "localhost．",
+        "localhost｡",
+        "metadata.google.internal。",
+        "metadata.goog。",
+        "localhost.localdomain。",
+        "anything.internal。",
+        "anything.local。",
+        "kubernetes.default.svc.cluster.local。",
+    ],
+)
+def test_unicode_dots_do_not_smuggle_a_special_hostname(host):
+    with pytest.raises(policy.DestinationPolicyError) as raised:
+        policy.normalize_web_destination(f"http://{host}/")
+    assert raised.value.code == policy.HOST_DENIED
+
+
+# The mapping also produces the double trailing dot the parser rejects outright.
+def test_a_unicode_dot_cannot_build_a_second_trailing_dot():
+    with pytest.raises(policy.DestinationPolicyError) as raised:
+        policy.normalize_web_destination("http://localhost。./")
+    assert raised.value.code == policy.INVALID
+
+
+# The same mapping produces ASCII digits, so these are IP literals to the
+# browser. A destination the browser dials numerically must be pinned here as a
+# literal, never handed to a resolver whose answer the caller can influence.
+@pytest.mark.parametrize(
+    "host",
+    ["127。0。0。1", "127.0.0.1。", "０x７f.１", "２１３０７０６４３３", "１２７.０.０.１"],
+)
+def test_unicode_digits_and_dots_still_pin_an_ip_literal(host):
+    authority = policy.normalize_web_destination(f"http://{host}/")
+
+    assert authority.literal is not None
+    assert str(authority.literal) == "127.0.0.1"
+    result = policy.decide_destination(authority, ["8.8.8.8"])
+    assert result.ok is False
+    assert result.code == policy.ADDRESS_DENIED
+    assert result.addresses == ("127.0.0.1",)
+
+
+# classify_address consumes deny_networks before recursing into a transition
+# address, so a one-shot iterable protected the outer address and nothing else.
+@pytest.mark.parametrize(
+    "address",
+    ["::ffff:8.8.8.8", "::ffff:0:8.8.8.8", "64:ff9b::808:808", "2002:808:808::"],
+)
+def test_operator_deny_generator_survives_transition_recursion(address):
+    result = policy.classify_address(
+        address, deny_networks=(value for value in ["8.8.8.0/24"])
+    )
+
+    assert result.allowed is False
+    assert result.address_class.endswith("operator_denied")
