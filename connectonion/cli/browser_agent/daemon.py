@@ -833,8 +833,15 @@ class BrowserDaemon:
     async def serve_async(self):
         self._loop = asyncio.get_running_loop()
         try:
-            await self._prepare_runtime()
+            # Bind before preparing the runtime, not after. `_bind` takes the
+            # singleton lock and a loser exits there; preparing first meant a
+            # loser had already written proxy-auth.json (its path derives from
+            # the shared profile) and started a gateway, and its
+            # `finally: _shutdown_async()` then removed the *winner's* live
+            # credential on the way out — a silent, unattributable 407 for the
+            # daemon that actually owns the socket.
             self._bind()
+            await self._prepare_runtime()
             atexit.register(self._cleanup)
             if threading.current_thread() is threading.main_thread():
                 with contextlib.suppress(NotImplementedError, RuntimeError):
