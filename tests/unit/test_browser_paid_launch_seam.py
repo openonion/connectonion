@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from connectonion.useful_tools.browser_tools import _async_browser as async_mod
 from connectonion.useful_tools.browser_tools import browser as mod
 from connectonion.useful_tools.browser_tools import engine
@@ -259,3 +261,41 @@ def test_status_names_the_browser_that_actually_runs(monkeypatch):
     browser.close()
 
     assert status["executable"] == "/runtimes/7de5a8/chrome"
+
+
+def test_a_terminated_paid_session_refuses_page_commands():
+    """Once Onionwright reports terminal_reason, the browser must stop serving.
+
+    The context can outlive the paid session — expiry, revocation, non-payment.
+    Serving page verbs against it is an unpaid browser treated as paid. The
+    reason was only ever shown in status; nothing acted on it.
+    """
+    core = async_mod.AsyncBrowserCore.__new__(async_mod.AsyncBrowserCore)
+    core._paid_run = FakePaidRun()
+
+    # A live session lets the guard pass.
+    core._paid_run.terminal_reason = None
+    core._require_live_paid_session()
+
+    # A terminated one refuses, carrying the reason.
+    core._paid_run.terminal_reason = "revoked"
+    with pytest.raises(async_mod.PaidSessionEndedError) as raised:
+        core._require_live_paid_session()
+    assert raised.value.reason == "revoked"
+
+    # A free/system session (no paid run) is never gated.
+    core._paid_run = None
+    core._require_live_paid_session()
+
+
+def test_the_guard_is_called_from_the_page_command_entry_point():
+    """The check must run where page commands enter, not sit unreferenced.
+
+    _tab_operation is the single gate every page verb passes through. A guard
+    defined but never called is exactly the terminal_reason situation this
+    fixes, so assert the call is there rather than trusting it.
+    """
+    import inspect
+
+    source = inspect.getsource(async_mod.AsyncBrowserCore._tab_operation)
+    assert "_require_live_paid_session()" in source

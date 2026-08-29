@@ -47,6 +47,14 @@ except ImportError:
     ASYNC_BROWSER_AVAILABLE = False
 
 
+class PaidSessionEndedError(RuntimeError):
+    """A paid session ended upstream; its browser must not keep serving."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"paid browser session ended: {reason}")
+        self.reason = reason
+
+
 _FOCUSED_ELEMENT_SCRIPT = """
 (previewLimit) => {
     let element = document.activeElement;
@@ -379,6 +387,22 @@ class AsyncBrowserCore:
             self._tab_locks[key] = lock
         return lock
 
+    def _require_live_paid_session(self) -> None:
+        """Refuse page commands once the paid session has been terminated.
+
+        Onionwright reports `terminal_reason` when a session ends upstream —
+        expiry, revocation, non-payment. The browser context can outlive that,
+        and serving page verbs against it is an unpaid browser treated as paid.
+        The reason is only ever surfaced in status today; here it gates the
+        commands that would otherwise keep running for free.
+        """
+        run = self._paid_run
+        if run is None:
+            return
+        reason = getattr(run, "terminal_reason", None)
+        if reason:
+            raise PaidSessionEndedError(reason)
+
     @asynccontextmanager
     async def _tab_operation(self, *, ensure_page: bool = True):
         """Serialize one tab while allowing independent tabs to make progress."""
@@ -387,6 +411,7 @@ class AsyncBrowserCore:
             yield
             return
 
+        self._require_live_paid_session()
         key = self._bound_session_key()
         async with self._tab_lock(key):
             async with self._operation_state_lock:
