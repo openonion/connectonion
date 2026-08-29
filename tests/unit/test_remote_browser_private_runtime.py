@@ -806,3 +806,53 @@ def test_a_bare_proxy_server_argument_is_refused(tmp_path):
                 "--proxy-server=http://127.0.0.1:1",
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_a_losing_daemon_never_touches_the_winners_credential(tmp_path):
+    """The loser of the singleton race must not write or remove proxy-auth.json.
+
+    Its path derives from the shared profile, so a loser that prepared the
+    runtime before contesting the lock wrote the file and started a gateway,
+    and its shutdown then removed the *winner's* live credential — a silent
+    407 for the daemon that owns the socket. Binding first makes the loser
+    exit before it can prepare anything.
+    """
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    if os.name != "nt":
+        os.chmod(profile, 0o700)
+    sock = str(tmp_path / "private.sock")
+
+    # The winner: hold the singleton lock for the whole test, as a live daemon
+    # would for its lifetime.
+    transport.ensure_endpoint_parent(sock)
+    winner_lock = transport.acquire_singleton_lock(transport.lock_path(sock))
+    assert winner_lock is not None
+
+    # The winner's credential is on disk and must survive the loser.
+    from connectonion.network.host.egress_gateway import ProxyEndpoint
+    from connectonion.network.host.private_browser_runtime import write_proxy_auth_file
+
+    auth_path = proxy_auth_path_for_profile(profile)
+    write_proxy_auth_file(auth_path, ProxyEndpoint("127.0.0.1", 5000, "connectonion", "B" * 43))
+    winner_bytes = auth_path.read_bytes()
+
+    prepared = []
+    loser = BrowserDaemon(
+        sock,
+        engine_mode="onion",
+        profile_dir=profile,
+        remote_egress=True,
+        gateway_factory=lambda: (_ for _ in ()).throw(
+            AssertionError("loser started a gateway")
+        ),
+        browser_factory=lambda **_k: prepared.append("browser"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        await loser.serve_async()
+
+    assert exit_info.value.code == 0
+    assert prepared == [], "the loser prepared a runtime it should never reach"
+    assert auth_path.read_bytes() == winner_bytes, "the loser touched the winner's credential"
