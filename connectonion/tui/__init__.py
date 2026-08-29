@@ -28,26 +28,27 @@ Usage:
     console.print(Divider().render())
 """
 
-from .input import Input
-from .dropdown import Dropdown, DropdownItem
-from .providers import FileProvider, StaticProvider
-from .keys import getch, read_key
-from .fuzzy import fuzzy_match, highlight_match
-from .status_bar import StatusBar, SimpleStatusBar, ProgressSegment
-from .divider import Divider
-from .pick import pick
-from .footer import Footer
+from textual_autocomplete import DropdownItem as CommandItem
+
 from .chat import (
+    AssistantMessage,
     Chat,
-    TriggerAutoComplete,
     ChatStatusBar,
     HintsFooter,
-    WelcomeMessage,
-    UserMessage,
-    AssistantMessage,
     ThinkingIndicator,
+    TriggerAutoComplete,
+    UserMessage,
+    WelcomeMessage,
 )
-from textual_autocomplete import DropdownItem as CommandItem
+from .divider import Divider
+from .dropdown import Dropdown, DropdownItem
+from .footer import Footer
+from .fuzzy import fuzzy_match, highlight_match
+from .input import Input
+from .keys import getch, read_key
+from .pick import pick
+from .providers import FileProvider, StaticProvider
+from .status_bar import ProgressSegment, SimpleStatusBar, StatusBar
 
 __all__ = [
     # Rich-based TUI (legacy)

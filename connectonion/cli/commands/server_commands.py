@@ -20,8 +20,9 @@ from typing import Dict, Optional
 
 import yaml
 from rich.console import Console
-from ...backend import backend_url
 from rich.table import Table
+
+from ...backend import backend_url
 
 console = Console()
 
@@ -204,8 +205,8 @@ def handle_server_add(name: str, ssh_target: str) -> bool:
             for line in detail.splitlines():
                 console.print(f"  [dim]{line}[/dim]")
         console.print("\n[dim]Nothing was saved. Fix the ssh target and try again.[/dim]")
-        console.print(f"[dim]Tip: your derived key is [bold]co keys --ssh[/bold] — it has to be in "
-                      f"authorized_keys on that host.[/dim]\n")
+        console.print("[dim]Tip: your derived key is [bold]co keys --ssh[/bold] — it has to be in "
+                      "authorized_keys on that host.[/dim]\n")
         return False
 
     existed = name in _load()
@@ -398,7 +399,7 @@ def handle_server_check(name: str) -> bool:
     result = _ssh(target, _PROBE)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip().splitlines()
-        console.print(f"[red]✗ unreachable[/red]")
+        console.print("[red]✗ unreachable[/red]")
         for line in detail:
             console.print(f"  [dim]{line}[/dim]")
         _record(name, "unreachable")
@@ -886,7 +887,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
 
     if load_server(name):
         console.print(f"\n[red]'{name}' is already registered locally.[/red]")
-        console.print(f"[dim]co server ls  ·  or pick another name[/dim]\n")
+        console.print("[dim]co server ls  ·  or pick another name[/dim]\n")
         return False
 
     api_key = load_api_key()
@@ -1011,7 +1012,7 @@ def _report_failure(response) -> None:
 
     error = detail.get("error")
     if error == "insufficient_credits":
-        console.print(f"\n[red]Not enough credit.[/red]")
+        console.print("\n[red]Not enough credit.[/red]")
         console.print(f"  have      ${detail.get('balance', 0):.2f}")
         console.print(f"  need      ${detail.get('required', 0):.2f}")
         console.print(f"  short by  [bold]${detail.get('shortfall', 0):.2f}[/bold]")

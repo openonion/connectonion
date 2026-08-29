@@ -231,3 +231,31 @@ def test_a_paid_session_says_what_it_costs(monkeypatch):
 
     assert "$0.025 per interval" in message
     assert status["interval_usd"] == 0.025
+
+
+def test_status_names_the_browser_that_actually_runs(monkeypatch):
+    """A paid resolution runs the downloaded artifact, not the driver default.
+
+    Measured on a real server: status read `/usr/bin/google-chrome` while every
+    page was served by a Chromium under `.onionwright/runtimes`. The line
+    exists to answer "which binary is serving my pages"; naming a different one
+    is worse than printing nothing.
+    """
+    playwright = FakePlaywright()
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        return FakePaidRun()
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+
+    resolution = onion_resolution()
+    resolution.prepared.executable = "/runtimes/7de5a8/chrome"
+    browser = mod.BrowserAutomation(engine_resolver=lambda mode: resolution)
+
+    browser.open_browser()
+    status = browser.engine_status()
+    browser.close()
+
+    assert status["executable"] == "/runtimes/7de5a8/chrome"

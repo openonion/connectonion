@@ -27,7 +27,7 @@ Usage:
 """
 
 from pathlib import Path
-from typing import List, Any, Optional
+from typing import Any, List, Optional
 
 
 def assemble_prompt(
@@ -96,8 +96,7 @@ def _get_tool_name(tool: Any) -> str:
 
 # Example usage
 if __name__ == "__main__":
-    from connectonion import Agent
-    from connectonion.useful_tools import bash, DiffWriter, TodoList
+    from connectonion.useful_tools import DiffWriter, TodoList, bash
 
     # Define tools
     def read_file(path: str) -> str:

@@ -218,12 +218,14 @@ From docs/llm_do.md Quick Start:
     print(result.confidence)   # 0.98
 """
 
-from typing import Union, Type, Optional, TypeVar
 from pathlib import Path
+from typing import Optional, Type, TypeVar, Union
+
 from pydantic import BaseModel
-from .prompts import load_system_prompt
+
 from .core.llm import create_llm
 from .core.usage import DEFAULT_MODEL
+from .prompts import load_system_prompt
 
 T = TypeVar('T', bound=BaseModel)
 

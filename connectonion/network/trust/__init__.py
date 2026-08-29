@@ -31,9 +31,9 @@ TrustAgent is the single interface for all trust operations.
 Subclass to customize behavior (e.g., database-backed admin storage).
 """
 
-from .trust_agent import TrustAgent, Decision
-from .factory import validate_trust_level, TRUST_LEVELS
+from .factory import TRUST_LEVELS, validate_trust_level
 from .fast_rules import parse_policy
+from .trust_agent import Decision, TrustAgent
 
 __all__ = [
     # TrustAgent - the single interface

@@ -21,6 +21,7 @@ Usage:
 """
 
 from typing import TYPE_CHECKING
+
 from ..core.events import after_llm
 
 if TYPE_CHECKING:
@@ -96,6 +97,7 @@ def check_and_compact(agent: 'Agent') -> None:
 def _do_compact(agent: 'Agent') -> str:
     """Perform the actual compaction. Returns summary message."""
     from pathlib import Path
+
     from ..llm_do import llm_do
 
     messages = agent.current_session.get('messages', [])

@@ -75,8 +75,9 @@ class WebFetch:
         Returns:
             Clean plain text (body content only)
         """
-        from bs4 import BeautifulSoup
         import re
+
+        from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(html, 'html.parser')
 

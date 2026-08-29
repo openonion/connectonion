@@ -29,7 +29,6 @@ Bracketed Paste Mode:
 
 import sys
 
-
 # Bracketed paste mode sequences
 PASTE_START = '\x1b[200~'  # Sent by terminal when paste begins
 PASTE_END = '\x1b[201~'    # Sent by terminal when paste ends

@@ -18,7 +18,6 @@ from ...core.provider_permissions import (
 )
 from .session import SessionStorage, session_owner
 
-
 _SUPPORTED_PROVIDERS = frozenset({"codex", "claude_code"})
 _SESSION_ACTOR_LEVELS = frozenset({"contact", "whitelist", "admin"})
 

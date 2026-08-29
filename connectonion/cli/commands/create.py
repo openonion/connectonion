@@ -9,13 +9,13 @@ LLM-Note:
   Errors: fails if project name invalid (spaces, special chars) | fails if directory already exists | fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | catches KeyboardInterrupt during interactive menus (cleans up partial state)
 """
 
-import os
 import shutil
 from pathlib import Path
 from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import IntPrompt, Prompt
 from rich.syntax import Syntax
 
 from .auth_commands import authenticate
@@ -23,20 +23,20 @@ from .auth_commands import authenticate
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
     PROVIDER_TO_ENV,
-    mint_invite_code,
-    ensure_global_config,
+    LoadingAnimation,
+    check_environment_for_api_keys,
     copy_docs,
     create_host_yaml,
-    record_creator_as_admin,
-    setup_gitignore,
-    print_resources,
-    LoadingAnimation,
-    validate_project_name,
-    check_environment_for_api_keys,
     detect_api_provider,
+    ensure_global_config,
     generate_custom_template_with_name,
     get_template_suggested_name,
+    mint_invite_code,
+    print_resources,
+    record_creator_as_admin,
+    setup_gitignore,
     unknown_template_message,
+    validate_project_name,
 )
 
 console = Console()
@@ -442,7 +442,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
     # Vibe Coding hint - clean formatting with proper spacing
     console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-    console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
+    console.print("   [cyan].co/docs/[/cyan] for full documentation")
     console.print()
 
     # Resources

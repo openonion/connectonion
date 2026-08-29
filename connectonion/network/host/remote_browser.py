@@ -212,12 +212,27 @@ class RemoteBrowserService:
                 request_id, "start", "INVALID_ARGUMENT", "args must be an object."
             )
         proxy_mode = args.get("proxy", "direct")
-        if proxy_mode != "direct":
+        if proxy_mode not in {"direct", "shared"}:
             return _failure(
                 request_id,
                 "start",
                 "REMOTE_SESSION_PROXY_LOCKED",
-                "This review boundary supports only a direct, session-pinned egress.",
+                "Egress is either direct or shared from the caller's own connection.",
+                state={"fallback_applied": False},
+            )
+        # `shared` sends this session's egress out through the caller's machine,
+        # so pages see the caller's address rather than this host's. The caller
+        # must already be lending it (`co proxy share to <this host>`); the
+        # share endpoint arrives with the request because only the caller knows
+        # where its own connection is reachable.
+        share = args.get("share") if proxy_mode == "shared" else None
+        if proxy_mode == "shared" and not isinstance(share, dict):
+            return _failure(
+                request_id,
+                "start",
+                "REMOTE_SESSION_SHARE_MISSING",
+                "Shared egress needs the caller's share endpoint. "
+                "Run `co proxy share to <this host>` and retry.",
                 state={"fallback_applied": False},
             )
         headless = args.get("headless", True)

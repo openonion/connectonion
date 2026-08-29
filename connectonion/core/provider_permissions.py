@@ -6,7 +6,6 @@ from typing import Any
 
 from .mode import AUTO, FULL_ACCESS, READ_ONLY
 
-
 _OPTION_DEFINITIONS = {
     "codex": (
         {"id": "codex:read-only", "nativeProfileId": ":read-only", "reviewer": "user", "label": "Read Only", "description": "Codex can inspect the workspace but cannot change it.", "ceiling": 0, "risk": "standard"},

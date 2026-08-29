@@ -16,21 +16,32 @@ co remote-browser 0xHOST stop    rb_0123456789abcdef0123456789abcdef
 That is the whole surface today. `start` is safe to retry: the same owner and
 request ID gets the same session back rather than a second one.
 
-## Where this is going
+## Reaching the internet through your own connection
 
-The full product ([#991](https://github.com/openonion/connectonion/issues/991))
-is a browser on a server that reaches the internet through *your* laptop, so
-pages see a residential connection instead of a data-centre one:
+A browser on a server reaches the internet from a data-centre address. Lend it
+yours and pages see your address instead:
 
 ```text
-browser on the host  ──▶  your laptop  ──▶  the internet (your IP)
+browser on the host  ──▶  your computer  ──▶  the internet (your address)
                           co proxy share to <address>
 ```
 
-1.8 ships the first half: the session lifecycle above, with the host's own
-connection. Sharing your laptop's connection (`--proxy shared`) comes with the
-egress work below; today every other proxy mode answers
+```bash
+co proxy share to 0xHOST                        # on your computer
+co remote-browser 0xHOST start --proxy shared   # then start the session
+```
+
+Measured on a Google Cloud server egressing through a laptop in Sydney: the
+server's own address is `34.21.243.229`, and the site saw `129.94.43.159`.
+
+`--proxy direct` (the default) keeps the host on its own connection. Asking for
+`shared` without a share endpoint answers `REMOTE_SESSION_SHARE_MISSING` rather
+than quietly falling back — a silent fallback would send traffic from the data
+centre while you believed it left from home. Any other mode answers
 `REMOTE_SESSION_PROXY_LOCKED`.
+
+Both machines apply the destination policy, so sharing a connection does not
+share the network behind it. See [co proxy](../cli/proxy.md).
 
 ## Scripting it
 

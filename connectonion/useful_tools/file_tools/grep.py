@@ -15,7 +15,7 @@ Usage:
 
 import re
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 from .glob import IGNORE_DIRS
 

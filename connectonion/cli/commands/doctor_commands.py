@@ -9,20 +9,21 @@ LLM-Note:
   Errors: lets errors crash naturally - no try-except unless absolutely needed
 """
 
-import sys
 import os
 import shlex
 import shutil
+import sys
 from pathlib import Path
 
-from ...credentials import account_in_token, api_key_account_mismatch
-from ...project import project_co_dir, project_identity
 import requests
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
 from ...backend import backend_url
-from rich import box
+from ...credentials import account_in_token, api_key_account_mismatch
+from ...project import project_co_dir, project_identity
 
 console = Console()
 
@@ -470,7 +471,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     browser_table.add_column("Status")
 
     from ...useful_tools.browser_tools.browser import (
-        driver_stealth_status, installed_browser_path,
+        driver_stealth_status,
+        installed_browser_path,
     )
     daemon = runtime["browser-daemon"]
     daemon_mark = "[green]✓[/green]" if daemon.status == "ok" else "[yellow]○[/yellow]"
@@ -513,7 +515,9 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     # a deploy. A user-tier skill works for months and is simply absent everywhere
     # else, and nothing in the agent's output ever says so.
     from ...useful_plugins.skills import (
-        _discover_all_skills, find_skill_problems, TRAVELS_ON_DEPLOY,
+        TRAVELS_ON_DEPLOY,
+        _discover_all_skills,
+        find_skill_problems,
     )
 
     skills = _discover_all_skills()
@@ -567,8 +571,9 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         # independently, and doctor could report on an account that is not the
         # one in question.
         if addr_data:
-            from ... import address
             import time
+
+            from ... import address
 
 
             public_key = addr_data["address"]

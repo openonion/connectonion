@@ -132,8 +132,18 @@ def test_relay_fails_before_daemon_or_registry_mutation(tmp_path):
 
 def test_non_direct_proxy_and_navigation_are_not_silently_enabled(tmp_path):
     remote, daemon = service(tmp_path)
+    # `shared` is a real mode now, but it cannot be assumed: the caller's share
+    # endpoint has to arrive with the request, because only the caller knows
+    # where its own connection is reachable. Asking for shared egress without
+    # one must not quietly fall back to this host's address — that would send
+    # traffic from the data centre while the caller believed it left from home.
     shared = remote.handle(
         request("start", args={"proxy": "shared"}),
+        owner="0xalice",
+        transport="direct",
+    )
+    unknown = remote.handle(
+        request("start", args={"proxy": "tor"}, request_id="req-tor"),
         owner="0xalice",
         transport="direct",
     )
@@ -142,7 +152,8 @@ def test_non_direct_proxy_and_navigation_are_not_silently_enabled(tmp_path):
         owner="0xalice",
         transport="direct",
     )
-    assert shared["code"] == "REMOTE_SESSION_PROXY_LOCKED"
+    assert shared["code"] == "REMOTE_SESSION_SHARE_MISSING"
+    assert unknown["code"] == "REMOTE_SESSION_PROXY_LOCKED"
     assert navigation["code"] == "INVALID_ARGUMENT"
     assert daemon.calls == []
 

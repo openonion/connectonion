@@ -9,13 +9,13 @@ LLM-Note:
   Errors: gracefully handles missing ~/.co/ (nothing to reset) | requires uppercase 'Y' for confirmation (case-sensitive) | cancels if user types anything else | authenticate() may fail but reset still completes | warns user about data loss before proceeding
 """
 
-import sys
 import shutil
-import yaml
+import sys
 from pathlib import Path
+
 from rich.console import Console
-from rich.prompt import Prompt
 from rich.panel import Panel
+from rich.prompt import Prompt
 
 from ... import address
 from .auth_commands import authenticate
@@ -82,7 +82,7 @@ def handle_reset():
     addr_data = address.generate()
     address.save(addr_data, global_dir)
 
-    console.print(f"✓ Generated new keypair")
+    console.print("✓ Generated new keypair")
     console.print(f"✓ Your new address: [bold]{addr_data['short_address']}[/bold]")
 
     # Show seed phrase

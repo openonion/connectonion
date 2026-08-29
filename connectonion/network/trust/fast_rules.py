@@ -20,10 +20,11 @@ Config format:
 """
 
 import io
+from typing import Optional
 
 import yaml
-from typing import Optional
-from .tools import is_whitelisted, is_blocked, is_contact, is_admin, promote_to_contact
+
+from .tools import is_admin, is_blocked, is_contact, is_whitelisted, promote_to_contact
 
 
 def parse_policy(policy_text: str, source: str = None) -> tuple[dict, str]:
@@ -263,14 +264,14 @@ def evaluate_request(config: dict, client_id: str, request: dict,
     logger.warning(f"[FAST_RULES] No match, using default={default}")
 
     if default == 'allow':
-        logger.warning(f"[FAST_RULES] Returning 'allow' (default)")
+        logger.warning("[FAST_RULES] Returning 'allow' (default)")
         return 'allow'
     elif default == 'deny':
-        logger.warning(f"[FAST_RULES] Returning 'deny' (default)")
+        logger.warning("[FAST_RULES] Returning 'deny' (default)")
         return 'deny'
     elif default == 'ask':
-        logger.warning(f"[FAST_RULES] Returning None (needs LLM)")
+        logger.warning("[FAST_RULES] Returning None (needs LLM)")
         return None  # Needs LLM evaluation
 
-    logger.warning(f"[FAST_RULES] Returning 'deny' (fallback)")
+    logger.warning("[FAST_RULES] Returning 'deny' (fallback)")
     return 'deny'  # Safe fallback

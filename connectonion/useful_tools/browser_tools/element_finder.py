@@ -22,12 +22,13 @@ Usage:
     page.locator(element.locator).click()
 """
 
-from typing import List, Optional
-from pathlib import Path
-from pydantic import BaseModel, Field
-from connectonion import llm_do
 import json
-import os
+from pathlib import Path
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+from connectonion import llm_do
 
 
 class ElementNotFoundError(Exception):
@@ -190,7 +191,7 @@ def find_element(
     if not elements:
         print(f"\n{'='*60}")
         print(f"❌ Could not find element: '{description}'")
-        print(f"⚠️  No interactive elements found on page!")
+        print("⚠️  No interactive elements found on page!")
         print(f"{'='*60}\n")
         return None
 
@@ -238,7 +239,7 @@ def find_element(
         # Enhanced debug logging - print all attributes
         print(f"\n{'='*60}")
         print(f"[element_finder] Looking for: '{description}'")
-        print(f"[element_finder] Selected element:")
+        print("[element_finder] Selected element:")
         print(f"  Index: [{selected.index}]")
         print(f"  Tag: {selected.tag}")
         print(f"  Text: '{selected.text}'")

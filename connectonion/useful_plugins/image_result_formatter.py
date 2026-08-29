@@ -19,14 +19,16 @@ Test coverage: tests/unit/test_image_result_formatter.py and
 tests/e2e/test_image_formatter_plugin.py.
 """
 
-import os
-import re
 import base64
 import binascii
-import requests
+import os
+import re
 from typing import TYPE_CHECKING
-from ..core.events import after_tools
+
+import requests
+
 from ..backend import backend_url
+from ..core.events import after_tools
 from ..credentials import require_ambient_api_key
 
 if TYPE_CHECKING:

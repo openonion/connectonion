@@ -20,7 +20,7 @@ Architecture:
 from rich.console import Console
 from rich.table import Table
 
-from connectonion.cli.co_ai.tools.background import _tasks, TaskStatus
+from connectonion.cli.co_ai.tools.background import TaskStatus, _tasks
 
 console = Console()
 

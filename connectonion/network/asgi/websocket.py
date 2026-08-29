@@ -15,8 +15,9 @@ See docs/network/websocket-protocol.md for full specification.
 import json
 
 from rich.console import Console
-from .http import pydantic_json_encoder
+
 from ..host.ws_router import run_ws_session
+from .http import pydantic_json_encoder
 
 console = Console()
 

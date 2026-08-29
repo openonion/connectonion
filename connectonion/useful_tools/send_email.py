@@ -10,16 +10,17 @@ LLM-Note:
 """
 
 import os
-import json
-import yaml
-import requests
 import uuid
 from pathlib import Path
+from typing import Dict, Optional
+
+import requests
+import yaml
+from dotenv import load_dotenv
+
+from ..backend import backend_url
 from ..credentials import AmbientCredentialError, require_ambient_api_key
 from ..project import project_co_dir, project_root
-from typing import Dict, Optional
-from dotenv import load_dotenv
-from ..backend import backend_url
 
 
 def send_email(
@@ -85,9 +86,9 @@ def send_email(
             "idempotency_key": send_key,
             "retryable": False,
         }
-    
+
     # Validate recipient email
-    if not "@" in to or not "." in to.split("@")[-1]:
+    if "@" not in to or "." not in to.split("@")[-1]:
         return {
             "success": False,
             "error": f"Invalid email address: {to}",
@@ -95,7 +96,7 @@ def send_email(
             "idempotency_key": send_key,
             "retryable": False,
         }
-    
+
     # Prepare email payload
     payload = {
         "to": to,
@@ -109,17 +110,17 @@ def send_email(
     }
     if from_address:
         payload["from_address"] = from_address
-    
+
     # Send email via backend API
     endpoint = f"{backend_url()}/api/v1/email/send"
-    
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "X-Request-ID": send_key,
         "Idempotency-Key": send_key,
     }
-    
+
     try:
         response = requests.post(
             endpoint,
@@ -127,7 +128,7 @@ def send_email(
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             return {
@@ -182,7 +183,7 @@ def send_email(
                 "idempotency_key": returned_key,
                 "retryable": retryable,
             }
-            
+
     except requests.exceptions.Timeout:
         return {
             "success": False,
@@ -260,7 +261,7 @@ def get_agent_email() -> Optional[str]:
     co_dir = project_co_dir()
     if not co_dir.exists():
         return None
-    
+
     config_path = co_dir / "host.yaml"
     if not config_path.exists():
         return None

@@ -25,7 +25,6 @@ import base64
 import re
 from typing import Any, Iterable, Mapping
 
-
 _ACTIVITY_STATUSES = {"running", "completed", "failed"}
 _FILE_LIMIT = 8
 _FILE_NAME_LIMIT = 128

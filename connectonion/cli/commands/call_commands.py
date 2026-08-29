@@ -9,8 +9,8 @@ LLM-Note:
   Errors: usage errors → stderr + exit 2 | connection/tool errors → stderr + exit 1 | the remote gates the command against ITS .co/host.yaml whitelist, so a non-whitelisted command comes back as an error result
 """
 
-import sys
 import shlex
+import sys
 from pathlib import Path
 
 USAGE = (

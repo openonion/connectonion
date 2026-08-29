@@ -36,26 +36,22 @@ Features:
 - Manual login pause for 2FA/CAPTCHA
 """
 
-import os
 import base64
 import functools
 import inspect
 import json
+import os
 import platform
 import sys
 import threading
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from connectonion import Agent, llm_do
-from connectonion.useful_plugins import image_result_formatter, ui_stream
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from . import element_finder
-from . import humanize
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from . import element_finder, humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 
@@ -69,7 +65,7 @@ SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 # identical, so only the import line changes; sync_playwright keeps its name because that
 # is exactly what patchright.sync_api exports.
 try:
-    from patchright.sync_api import sync_playwright, Page, Browser, Playwright
+    from patchright.sync_api import Browser, Page, Playwright, sync_playwright
     BROWSER_AVAILABLE = True
 except ImportError:
     BROWSER_AVAILABLE = False
@@ -382,8 +378,8 @@ def driver_stealth_status():
 
     Returns (status, version, detail) where status is 'ok' | 'broken' | 'missing'.
     """
-    import importlib.util
     import importlib.metadata
+    import importlib.util
 
     if importlib.util.find_spec("patchright") is None:
         return "missing", "", "patchright not installed — pip install patchright && patchright install chrome"
@@ -2080,7 +2076,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             path = f"step_{timestamp}.png"
 
-        if not "/" in path:
+        if "/" not in path:
             path = f"{self.screenshots_dir}/{path}"
 
         screenshot_bytes = self.page.screenshot(path=path, full_page=full_page)
@@ -2210,11 +2206,11 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             )
 
         print(f"\n{'='*60}")
-        print(f"  MANUAL LOGIN REQUIRED")
+        print("  MANUAL LOGIN REQUIRED")
         print(f"{'='*60}")
         print(f"Please login to {site_name} in the browser window.")
-        print(f"Once you're logged in and ready to continue:")
-        print(f"  Type 'yes' or 'Y' and press Enter")
+        print("Once you're logged in and ready to continue:")
+        print("  Type 'yes' or 'Y' and press Enter")
         print(f"{'='*60}\n")
 
         while True:

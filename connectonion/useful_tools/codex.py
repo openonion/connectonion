@@ -48,13 +48,13 @@ from pathlib import Path
 from ..core.provider_events import (
     command_phase,
     next_provider_state_revision,
+    provider_activity_event,
     provider_artifact_event,
     provider_artifact_for_state,
-    provider_activity_event,
     provider_message_event,
     provider_status_summary,
-    remember_provider_artifact,
     remember_provider_activity,
+    remember_provider_artifact,
 )
 
 SANDBOX_LEVELS = ("read-only", "workspace-write", "danger-full-access")

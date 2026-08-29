@@ -13,7 +13,6 @@ import time
 from contextlib import closing
 from pathlib import Path
 
-
 SIGNATURE_EXPIRY_SECONDS = 300
 # A healthy transaction is tiny, but another OS worker can be descheduled while
 # holding the write lock. Stay bounded and fail closed after ordinary runner

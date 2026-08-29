@@ -16,11 +16,10 @@ Simple function-based approach - no classes needed for MVP.
 import json
 import os
 import time
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-import ifaddr
 import httpx
-
+import ifaddr
 
 # The relay's limit, stated here because this is where the message is built.
 # Verified against the live relay: 5,400 characters comes back as

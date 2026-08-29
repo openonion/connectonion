@@ -16,7 +16,6 @@ from typing import Any, Callable
 from ...core.mode import FULL_ACCESS, full_access_turns_left, mode_of
 from .session import SessionStorage, session_owner
 
-
 _TERMINAL_PROVIDER_STATUSES = {"completed", "failed", "cancelled"}
 _MAX_INPUT_LENGTH = 12_000
 

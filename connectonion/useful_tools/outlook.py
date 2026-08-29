@@ -49,11 +49,11 @@ import os
 from pathlib import Path
 
 import httpx
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 from ..project import project_root
 from ._attachment_files import path_of_open_file
-
 
 OUTLOOK_ATTACHMENT_LIMIT = 3_000_000
 

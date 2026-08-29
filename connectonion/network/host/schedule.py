@@ -17,10 +17,10 @@ is one implementation. The argument in full is #521.
 import asyncio
 import json
 import os
-import threading
 import re
+import threading
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional

@@ -13,9 +13,10 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 
 from .auth_commands import authenticate
@@ -23,18 +24,18 @@ from .auth_commands import authenticate
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
     PROVIDER_TO_ENV,
-    mint_invite_code,
-    ensure_global_config,
+    check_environment_for_api_keys,
     copy_docs,
     create_host_yaml,
-    record_creator_as_admin,
-    setup_gitignore,
-    print_resources,
+    detect_api_provider,
+    ensure_global_config,
+    generate_custom_template,
     get_special_directory_warning,
     is_directory_empty,
-    check_environment_for_api_keys,
-    detect_api_provider,
-    generate_custom_template,
+    mint_invite_code,
+    print_resources,
+    record_creator_as_admin,
+    setup_gitignore,
     show_progress,
     unknown_template_message,
 )
@@ -174,8 +175,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Authenticate to get OPENONION_API_KEY (always, for everyone)
     auth_success = authenticate(global_co_dir, save_to_project=False)
 
-    from .env_inheritance import (AGENT_IDENTITY_KEYS, describes_this_machine,
-                                  is_personal_account_credential)
+    from .env_inheritance import AGENT_IDENTITY_KEYS, describes_this_machine, is_personal_account_credential
 
     # Handle .env file - append API keys from global config
     env_path = Path(current_dir) / ".env"
@@ -343,11 +343,11 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
         # Vibe Coding hint - clean formatting with proper spacing
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-        console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
+        console.print("   [cyan].co/docs/[/cyan] for full documentation")
     else:
         # Vibe Coding hint for building from scratch
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-        console.print(f"   [cyan].co/docs/[/cyan] to build your agent")
+        console.print("   [cyan].co/docs/[/cyan] to build your agent")
 
     # Resources
     console.print()

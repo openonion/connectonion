@@ -21,8 +21,8 @@ Note: Uses lazy imports to avoid circular dependency with agent.py
 """
 
 # xray and decorators can be imported eagerly (no circular dependency)
-from .xray import xray
 from .decorators import replay, xray_replay
+from .xray import xray
 
 __all__ = [
     "xray",
@@ -46,15 +46,15 @@ def __getattr__(name):
         from .auto_debug import AutoDebugger
         return AutoDebugger
     elif name in ("AutoDebugUI", "BreakpointContext", "BreakpointAction"):
-        from .auto_debug_ui import AutoDebugUI, BreakpointContext, BreakpointAction
+        from .auto_debug_ui import AutoDebugUI, BreakpointAction, BreakpointContext
         return {"AutoDebugUI": AutoDebugUI, "BreakpointContext": BreakpointContext, "BreakpointAction": BreakpointAction}[name]
     elif name == "auto_debug_exception":
         from .auto_debug_exception import auto_debug_exception
         return auto_debug_exception
     elif name in ("create_debug_agent", "RuntimeInspector"):
-        from .runtime_inspector import create_debug_agent, RuntimeInspector
+        from .runtime_inspector import RuntimeInspector, create_debug_agent
         return {"create_debug_agent": create_debug_agent, "RuntimeInspector": RuntimeInspector}[name]
     elif name in ("explain_tool_choice", "RuntimeContext"):
-        from .debug_explainer import explain_tool_choice, RuntimeContext
+        from .debug_explainer import RuntimeContext, explain_tool_choice
         return {"explain_tool_choice": explain_tool_choice, "RuntimeContext": RuntimeContext}[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
