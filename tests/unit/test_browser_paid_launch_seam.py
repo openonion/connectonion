@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from connectonion.useful_tools.browser_tools import browser as mod
 from connectonion.useful_tools.browser_tools import _async_browser as async_mod
+from connectonion.useful_tools.browser_tools import browser as mod
 from connectonion.useful_tools.browser_tools import engine
 
 
@@ -149,3 +149,58 @@ def test_paid_launch_failure_never_hot_swaps_to_system(monkeypatch):
     assert browser.browser is None
     assert browser.playwright is None
     assert playwright.stopped == 1
+
+
+def test_a_retried_launch_does_not_buy_a_second_interval(monkeypatch):
+    """A failed launch must not charge again on the next attempt.
+
+    The server mints the licence inside launch_async, so a launch that fails
+    afterwards — a transient RPC error, a driver that will not start, a
+    boundary that cannot be proven — has already been paid for. A fresh
+    idempotency key each attempt buys a fresh 15-minute interval each attempt,
+    and on a machine where the launch can never succeed that bills forever
+    while every command fails.
+    """
+    playwright = FakePlaywright()
+    keys = []
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def fail_after_minting(resolution, owner, key, **kwargs):
+        keys.append(key)
+        raise RuntimeError("launched, charged, then died")
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", fail_after_minting)
+    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+
+    for _ in range(3):
+        try:
+            browser.open_browser()
+        except RuntimeError:
+            pass
+
+    assert len(keys) == 3
+    assert len(set(keys)) == 1, f"each retry bought its own interval: {keys}"
+
+
+def test_a_deliberate_close_starts_a_new_billing_interval(monkeypatch):
+    """Retries replay one session; a real close ends it."""
+    playwright = FakePlaywright()
+    keys = []
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        keys.append(key)
+        return FakePaidRun()
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+
+    browser.open_browser()
+    browser.close()
+    browser.open_browser()
+    browser.close()
+
+    assert len(keys) == 2
+    assert len(set(keys)) == 2, "a closed session replayed its own paid interval"

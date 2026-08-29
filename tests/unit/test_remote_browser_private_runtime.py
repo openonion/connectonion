@@ -441,11 +441,17 @@ async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, mo
         ProxyEndpoint("127.0.0.1", 43123, "connectonion", "A" * 43),
         tmp_path / "proxy-auth.json",
     )
+    # A distinct object, so the assertion below tells "the gateway was
+    # threaded through" apart from "the call site hardcodes None" — which a
+    # core built without one cannot do, and which is what let the paid path
+    # lose its positive control unnoticed.
+    gateway = object()
     browser = async_browser.AsyncBrowserCore(
         headless=True,
         launch_policy=policy,
         engine_mode="onion",
         engine_resolver=lambda mode: onion_resolution(),
+        egress_gateway=gateway,
     )
 
     await browser.open_browser()
@@ -462,7 +468,7 @@ async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, mo
     assert "username" not in repr(launch_options["proxy"])
     assert "password" not in repr(launch_options["proxy"])
     preflight.assert_awaited_once_with(
-        "remote-egress-v1", playwright.context, gateway=None
+        "remote-egress-v1", playwright.context, gateway=gateway
     )
     assert len(playwright.context.pages) == 1
     await browser.close()

@@ -309,6 +309,14 @@ class AsyncBrowserCore:
         # control: without it, "the sentinel saw nothing" cannot be told apart
         # from "the browser never asked".
         self._egress_gateway = egress_gateway
+        # One key per logical paid session, not per launch attempt. A launch
+        # that fails after the server minted the licence — a transient RPC
+        # error, a driver that would not start, a preflight that could not
+        # prove the boundary — is retried by the next command, and a fresh key
+        # each time buys a fresh interval each time. On a machine where the
+        # boundary can never be proven that bills forever while every command
+        # fails. Cleared when a session is deliberately released.
+        self._paid_idempotency_key: Optional[str] = None
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[BrowserContext] = None
         self._pages: Dict[Optional[str], Page] = {}
@@ -596,10 +604,14 @@ class AsyncBrowserCore:
                         )
                     else:
                         launch_options.update(policy.playwright_options())
+                    if self._paid_idempotency_key is None:
+                        self._paid_idempotency_key = (
+                            f"connectonion-start:{uuid.uuid4()}"
+                        )
                     paid_run = await browser_engine.launch_async(
                         resolution,
                         playwright,
-                        f"connectonion-start:{uuid.uuid4()}",
+                        self._paid_idempotency_key,
                         user_data_dir=(
                             policy.profile_dir if policy is not None else True
                         ),
@@ -1953,6 +1965,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         self.browser = None
         self.playwright = None
         self._paid_run = None
+        # A deliberate teardown ends the logical session, so the next open
+        # starts a new billing interval rather than replaying this one's.
+        self._paid_idempotency_key = None
         self._pages.clear()
         self._page_used.clear()
         self._page_url.clear()

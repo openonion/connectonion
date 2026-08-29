@@ -330,7 +330,10 @@ class BrowserDaemon:
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return 2, "empty request"
-        if getattr(self, "_remote_egress", False) and (
+        # Not `getattr(..., False)`: a missing attribute here would skip the
+        # gateway-health gate entirely, which is the wrong direction to fail
+        # for the check that keeps an unproven browser from serving commands.
+        if self._remote_egress and (
             self._gateway is None or not self._gateway.is_running
         ):
             return False, "EGRESS_GATEWAY_UNAVAILABLE"

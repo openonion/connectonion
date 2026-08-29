@@ -57,6 +57,10 @@ def test_warm_daemon_refuses_engine_hot_swap():
     daemon = BrowserDaemon.__new__(BrowserDaemon)
     daemon.engine_mode = "system"
     daemon.browser = object()
+    # __new__ skips __init__, so state the daemon always has must be set here.
+    # Letting the gate read it through a falsy getattr default instead would
+    # make a missing attribute skip the gateway-health check in production.
+    daemon._remote_egress = False
     request = json.dumps({
         "caller": "test",
         "tab": None,
