@@ -285,6 +285,11 @@ class EgressGateway:
             raise RuntimeError("egress gateway is not started")
         return ProxyEndpoint("127.0.0.1", self._port, self.username, self.password)
 
+    @property
+    def is_running(self) -> bool:
+        """Whether this instance still owns a serving listener."""
+        return self._server is not None and self._server.is_serving()
+
     async def start(self) -> ProxyEndpoint:
         async with self._lifecycle_lock:
             if self._server is not None:
