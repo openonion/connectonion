@@ -16,7 +16,7 @@ import math
 import re
 import secrets
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Iterable, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
@@ -60,6 +60,13 @@ _ERROR_STATUS = {
 }
 
 
+@dataclass
+class _Admission:
+    """Whether this connection has converted a pending slot into a served one."""
+
+    promoted: bool = False
+
+
 class GatewayRefusal(Exception):
     """Stable internal refusal containing no caller-controlled value."""
 
@@ -82,6 +89,11 @@ class GatewayLimits:
     bytes_per_direction: int = 128 * 1024 * 1024
     max_connections: int = 32
     max_dns_answers: int = 32
+    # Sockets waiting to prove they hold the credential are counted separately.
+    # Sharing one budget lets any local process that connects and says nothing
+    # hold slots for the whole header timeout, and the browser's only route to
+    # the internet is this gateway.
+    max_pending_connections: int = 128
 
     def __post_init__(self) -> None:
         integer_values = (
@@ -91,6 +103,7 @@ class GatewayLimits:
             self.bytes_per_direction,
             self.max_connections,
             self.max_dns_answers,
+            self.max_pending_connections,
         )
         durations = (
             self.header_timeout,
@@ -111,6 +124,8 @@ class GatewayLimits:
             raise ValueError("gateway limits must be positive")
         if self.request_line_bytes > self.header_bytes:
             raise ValueError("request line limit exceeds header limit")
+        if self.max_pending_connections < self.max_connections:
+            raise ValueError("pending budget is smaller than the connection limit")
 
 
 @dataclass(frozen=True)
@@ -118,7 +133,10 @@ class ProxyEndpoint:
     host: str
     port: int
     username: str
-    password: str
+    # Kept out of the repr so a traceback, a debug line, or a structured dump of
+    # this object cannot publish the credential. The rule that nothing logs it
+    # is easier to keep when there is nothing to log.
+    password: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -256,6 +274,7 @@ class EgressGateway:
         self._port: int | None = None
         self._closing = False
         self._active = 0
+        self._pending = 0
         self._lifecycle_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
         self._client_tasks: set[asyncio.Task] = set()
@@ -324,6 +343,16 @@ class EgressGateway:
     async def __aexit__(self, *_exc) -> None:
         await self.stop()
 
+    async def _promote(self, admission: _Admission) -> None:
+        """Take a served-connection slot, now that the credential is proven."""
+        async with self._state_lock:
+            if self._closing:
+                raise GatewayRefusal(GATEWAY_STOPPING)
+            if self._active >= self.limits.max_connections:
+                raise GatewayRefusal(OVERLOADED)
+            self._active += 1
+            admission.promoted = True
+
     async def _accept(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
@@ -331,10 +360,14 @@ class EgressGateway:
         if task is not None:
             self._client_tasks.add(task)
         admitted = False
+        admission = _Admission()
         try:
             async with self._state_lock:
-                if not self._closing and self._active < self.limits.max_connections:
-                    self._active += 1
+                if (
+                    not self._closing
+                    and self._pending < self.limits.max_pending_connections
+                ):
+                    self._pending += 1
                     admitted = True
             if not admitted:
                 await self._send_error(
@@ -348,7 +381,7 @@ class EgressGateway:
                         reader.read(self.limits.header_bytes + 1), timeout=0.05
                     )
                 return
-            await self._serve_connection(reader, writer)
+            await self._serve_connection(reader, writer, admission)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -359,7 +392,9 @@ class EgressGateway:
         finally:
             if admitted:
                 async with self._state_lock:
-                    self._active -= 1
+                    self._pending -= 1
+                    if admission.promoted:
+                        self._active -= 1
             writer.close()
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
@@ -367,11 +402,15 @@ class EgressGateway:
                 self._client_tasks.discard(task)
 
     async def _serve_connection(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        admission: _Admission,
     ) -> None:
         try:
             request = await self._read_request(reader)
             self._authenticate(request)
+            await self._promote(admission)
             authority, origin_target, upgrade = self._request_destination(request)
             endpoints = await self._approved_endpoints(authority)
             upstream_reader, upstream_writer = await self._connect(endpoints)
@@ -398,11 +437,10 @@ class EgressGateway:
                 await self._tunnel(reader, writer, upstream_reader, upstream_writer)
                 return
             if content_length:
-                body = await self._read_exactly(reader, content_length)
-                upstream_writer.write(body)
-                await self._drain(upstream_writer)
+                await self._stream_body(reader, upstream_writer, content_length)
             with contextlib.suppress(NotImplementedError, OSError):
                 upstream_writer.write_eof()
+            await self._relay_response_head(upstream_reader, writer)
             await self._copy(upstream_reader, writer)
         except (GatewayRefusal, ConnectionError, OSError):
             # Upstream establishment succeeded, so either side may already have
@@ -495,7 +533,13 @@ class EgressGateway:
             return authority, None, False
 
         split = self._safe_split(request.target)
-        if split.fragment or split.scheme.lower() not in {"http", "ws"}:
+        # A fragment is never sent on the wire, so a target carrying one is a
+        # malformed request rather than a scheme this gateway declines. The
+        # distinction only shows up when someone reads the code and goes looking
+        # at scheme policy for a target whose scheme was fine.
+        if split.fragment:
+            raise GatewayRefusal(INVALID)
+        if split.scheme.lower() not in {"http", "ws"}:
             raise GatewayRefusal(SCHEME_DENIED if split.scheme else INVALID)
         authority = normalize_web_destination(
             request.target, allowed_ports=self.allowed_ports
@@ -582,6 +626,13 @@ class EgressGateway:
             except (asyncio.TimeoutError, OSError):
                 resolution_failed = True
                 answers = ()
+            except Exception:
+                # Resolver is pluggable. Whatever a custom one raises, the
+                # caller gets the same refusal — a resolver failure that closed
+                # the connection with no response at all left the operator
+                # nothing to read and the client nothing to distinguish.
+                resolution_failed = True
+                answers = ()
             if resolution_failed:
                 raise GatewayRefusal(DNS_FAILED)
         if not answers or len(answers) > self.limits.max_dns_answers:
@@ -651,17 +702,79 @@ class EgressGateway:
         lines.append("Connection: Upgrade" if upgrade else "Connection: close")
         return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii")
 
-    async def _read_exactly(self, reader: asyncio.StreamReader, count: int) -> bytes:
-        body = None
+    async def _relay_response_head(
+        self, upstream: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        """Forward the response head with connection reuse taken away.
+
+        The gateway answers exactly one request per connection and then stops
+        reading. An origin that replies `Connection: keep-alive` would leave the
+        client believing otherwise — and a second response queued behind the
+        first would already be in the client's receive buffer, waiting to be
+        matched against whatever it sends next. Rewriting the hop-by-hop
+        headers here is what makes the one-request-per-connection rule visible
+        to the client instead of only true inside the gateway.
+        """
+        head = None
         try:
-            body = await asyncio.wait_for(
-                reader.readexactly(count), timeout=self.limits.idle_timeout
+            head = await asyncio.wait_for(
+                upstream.readuntil(b"\r\n\r\n"), timeout=self.limits.idle_timeout
             )
-        except (asyncio.TimeoutError, asyncio.IncompleteReadError):
+        except (
+            asyncio.TimeoutError,
+            asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
+        ):
             pass
-        if body is None:
+        if head is None or len(head) > self.limits.header_bytes:
+            # An unparseable or oversized head cannot be made safe, and passing
+            # it through is what this function exists to prevent.
             raise GatewayRefusal(TRANSFER_LIMIT)
-        return body
+
+        lines = head.decode("latin-1").split("\r\n")
+        rewritten = [lines[0]]
+        for line in lines[1:]:
+            name, separator, _ = line.partition(":")
+            if not separator:
+                continue
+            if name.strip().lower() in {"connection", "keep-alive", "proxy-connection"}:
+                continue
+            rewritten.append(line)
+        rewritten.append("Connection: close")
+        writer.write(("\r\n".join(rewritten) + "\r\n\r\n").encode("latin-1"))
+        await self._drain(writer)
+
+    async def _stream_body(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        count: int,
+    ) -> None:
+        """Forward a declared body in bounded chunks.
+
+        `Content-Length` is caller-controlled, so reading it in one call sizes a
+        resident buffer from a number a stranger chose: one connection declaring
+        the transfer limit holds that many bytes in RAM, times the connection
+        cap. Chunks bound the memory to the chunk size regardless of the
+        declaration; the transfer limit still bounds the total.
+        """
+        if count > self.limits.bytes_per_direction:
+            raise GatewayRefusal(TRANSFER_LIMIT)
+        remaining = count
+        while remaining:
+            chunk = None
+            try:
+                chunk = await asyncio.wait_for(
+                    reader.read(min(remaining, 64 * 1024)),
+                    timeout=self.limits.idle_timeout,
+                )
+            except asyncio.TimeoutError:
+                pass
+            if not chunk:
+                raise GatewayRefusal(TRANSFER_LIMIT)
+            remaining -= len(chunk)
+            writer.write(chunk)
+            await self._drain(writer)
 
     async def _copy(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter

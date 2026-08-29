@@ -50,8 +50,16 @@ results.
   peer. An explicit safe port is required.
 - Absolute-form `http://` and `ws://` HTTP/1.1 requests are normalized, checked
   against `Host`, rewritten to origin-form, and sent to one approved peer.
-- Ordinary HTTP forces `Connection: close` and forwards only the declared
-  `Content-Length`, so pipelined bytes cannot introduce another authority.
+- Ordinary HTTP forces `Connection: close` in **both** directions — on the
+  request sent upstream, and on the response head relayed back — and forwards
+  only the declared `Content-Length`, so pipelined bytes cannot introduce
+  another authority. Rewriting the response matters as much as the request: the
+  gateway answers one request per connection, and an origin replying
+  `Connection: keep-alive` would leave the client believing otherwise while a
+  second response the origin queued sits in its receive buffer.
+- The declared body is streamed in bounded chunks. `Content-Length` is
+  caller-chosen, so reading it in one call would size a resident buffer from a
+  stranger's number.
 - A valid `GET` Upgrade may become a bidirectional tunnel to the same peer.
 - Chunked request bodies, `Expect`, origin-form proxy requests, SOCKS, UDP,
   non-web schemes, ambiguous framing, and security-sensitive `Connection`
@@ -88,7 +96,13 @@ falls back to Direct.
 | Numeric connect timeout across the frozen answer set | 10 seconds |
 | Tunnel idle timeout per read/drain | 60 seconds |
 | Bytes per direction | 128 MiB |
-| Concurrent inbound connections | 32 |
+| Concurrent served connections (after the credential is proven) | 32 |
+| Concurrent sockets awaiting authentication | 128 |
+
+The two connection budgets are separate on purpose. Counting unauthenticated
+sockets against the served limit lets any local process that connects and says
+nothing hold slots for the whole header timeout — and this gateway is the
+browser's only route to the internet.
 | DNS answers before refusal | 32 |
 
 Every configured limit must be finite, positive, and of the expected integer or

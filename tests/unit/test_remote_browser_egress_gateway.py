@@ -545,7 +545,11 @@ async def test_overload_is_rejected_without_read_resolve_or_dial():
             first_writer.write(_connect_request(gateway.endpoint))
             await first_writer.drain()
             await asyncio.wait_for(entered.wait(), timeout=1)
-            second = await _exchange(gateway.endpoint, b"not-even-read")
+            # A second authenticated client beyond the connection cap is
+            # refused after proving its credential, and before any name
+            # resolution or dial. (Unauthenticated sockets are bounded by the
+            # separate pending budget, so they cannot spend these slots at all.)
+            second = await _exchange(gateway.endpoint, _connect_request(gateway.endpoint))
             assert f"X-ConnectOnion-Error: {OVERLOADED}".encode() in second
             assert resolver.calls == [("example.com", 443)]
             assert len(calls) == 1
@@ -702,8 +706,10 @@ async def test_gateway_refusals_do_not_retain_parser_dns_or_body_payloads():
     body_reader = asyncio.StreamReader()
     body_reader.feed_data(b"secret-partial-body")
     body_reader.feed_eof()
+    _, sink = await asyncio.open_connection(sock=socket.socketpair()[0])
     with pytest.raises(GatewayRefusal) as body_refusal:
-        await gateway._read_exactly(body_reader, 100)
+        await gateway._stream_body(body_reader, sink, 100)
+    sink.close()
     assert body_refusal.value.__context__ is None
     assert "secret-partial" not in repr(body_refusal.value)
 
@@ -739,3 +745,195 @@ def test_invalid_limits_credentials_and_operator_policy_fail_at_construction():
         EgressGateway(allowed_ports={True})
     with pytest.raises(ValueError):
         EgressGateway(deny_networks={"not-a-network"})
+
+
+@pytest.mark.asyncio
+async def test_upstream_keep_alive_never_reaches_the_client():
+    """A hostile origin must not tell the client this socket is reusable.
+
+    The gateway serves one request per connection. If the origin's
+    `Connection: keep-alive` is relayed verbatim, the client believes it may
+    send a second request — and a second response the origin queued behind the
+    first is already sitting in the client's receive buffer, waiting to be
+    matched against it.
+    """
+
+    async def hostile(reader, writer):
+        await reader.read(4096)
+        writer.write(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"
+            b"Connection: keep-alive\r\nKeep-Alive: timeout=60\r\n\r\n"
+            b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\nsmuggled"
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    upstream = await asyncio.start_server(hostile, "127.0.0.1", 0)
+    port = upstream.sockets[0].getsockname()[1]
+    gateway = EgressGateway(resolver=RecordingResolver(), dialer=RecordingDialer(port))
+    try:
+        async with gateway:
+            request = (
+                "GET http://example.com/ HTTP/1.1\r\n"
+                "Host: example.com\r\n"
+                f"Proxy-Authorization: {_authorization(gateway.endpoint)}\r\n\r\n"
+            ).encode("ascii")
+            response = await _exchange(gateway.endpoint, request)
+    finally:
+        await gateway.stop()
+        upstream.close()
+        await upstream.wait_closed()
+
+    head = response.split(b"\r\n\r\n", 1)[0].lower()
+    assert b"connection: close" in head
+    assert b"keep-alive" not in head
+
+
+@pytest.mark.asyncio
+async def test_a_declared_body_is_streamed_rather_than_buffered_whole():
+    """`Content-Length` is caller-controlled; it must not size a RAM buffer."""
+    captured = bytearray()
+    body_arrived = asyncio.Event()
+
+    async def sink(reader, writer):
+        # Read incrementally: a gateway that buffers the whole declared length
+        # forwards nothing until it has all of it, and this never fires.
+        while len(captured) < 1024:
+            chunk = await reader.read(4096)
+            if not chunk:
+                break
+            captured.extend(chunk)
+        body_arrived.set()
+        with contextlib.suppress(Exception):
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            await writer.drain()
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+    upstream = await asyncio.start_server(sink, "127.0.0.1", 0)
+    port = upstream.sockets[0].getsockname()[1]
+    gateway = EgressGateway(resolver=RecordingResolver(), dialer=RecordingDialer(port))
+    try:
+        async with gateway:
+            reader, writer = await asyncio.open_connection(
+                gateway.endpoint.host, gateway.endpoint.port
+            )
+            writer.write(
+                (
+                    "POST http://example.com/ HTTP/1.1\r\n"
+                    "Host: example.com\r\n"
+                    f"Proxy-Authorization: {_authorization(gateway.endpoint)}\r\n"
+                    "Content-Length: 1048576\r\n\r\n"
+                ).encode("ascii")
+            )
+            await writer.drain()
+            # Declare a megabyte, send a kilobyte, then stall. A gateway that
+            # buffers the whole declared length waits here holding it all.
+            writer.write(b"x" * 1024)
+            await writer.drain()
+            arrived = True
+            try:
+                await asyncio.wait_for(body_arrived.wait(), timeout=3)
+            except asyncio.TimeoutError:
+                arrived = False
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+    finally:
+        await gateway.stop()
+        upstream.close()
+        await upstream.wait_closed()
+
+    # The bytes that did arrive were forwarded as they arrived, not held back
+    # until the declared length completed.
+    assert arrived
+    assert bytes(captured).endswith(b"x" * 1024)
+
+
+@pytest.mark.asyncio
+async def test_silent_connections_cannot_starve_an_authenticated_client():
+    """A local process with no credentials must not consume the egress path.
+
+    Admission happens before a single byte is read, so sockets that send
+    nothing hold their slots for the whole header timeout. Chromium's only
+    route to the internet is this gateway; an unauthenticated neighbour must
+    not be able to close it.
+    """
+    limits = GatewayLimits(max_connections=2, header_timeout=5.0)
+    gateway = EgressGateway(
+        resolver=RecordingResolver(), dialer=RecordingDialer(), limits=limits
+    )
+    silent = []
+    try:
+        async with gateway:
+            for _ in range(limits.max_connections):
+                silent.append(
+                    await asyncio.open_connection(
+                        gateway.endpoint.host, gateway.endpoint.port
+                    )
+                )
+            await asyncio.sleep(0.1)
+            response = await _exchange(
+                gateway.endpoint, _connect_request(gateway.endpoint)
+            )
+    finally:
+        for _, writer in silent:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+        await gateway.stop()
+
+    assert OVERLOADED.encode("ascii") not in response
+
+
+@pytest.mark.asyncio
+async def test_the_proxy_password_stays_out_of_the_endpoint_repr():
+    gateway = EgressGateway()
+    async with gateway:
+        endpoint = gateway.endpoint
+        assert endpoint.password
+        assert endpoint.password not in repr(endpoint)
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_resolver_failure_answers_instead_of_closing_silently():
+    """The resolver is pluggable; a custom one must not produce a dead socket."""
+
+    async def broken_resolver(_host, _port):
+        raise ValueError("resolver blew up")
+
+    dialer = RecordingDialer()
+    gateway = EgressGateway(resolver=broken_resolver, dialer=dialer)
+    try:
+        async with gateway:
+            response = await _exchange(
+                gateway.endpoint, _connect_request(gateway.endpoint)
+            )
+    finally:
+        await gateway.stop()
+
+    assert b"EGRESS" in response or b"DESTINATION_DNS_FAILED" in response
+    assert dialer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_fragment_is_a_malformed_target_not_a_denied_scheme():
+    dialer = RecordingDialer()
+    gateway = EgressGateway(resolver=RecordingResolver(), dialer=dialer)
+    try:
+        async with gateway:
+            request = (
+                "GET http://example.com/a#frag HTTP/1.1\r\n"
+                "Host: example.com\r\n"
+                f"Proxy-Authorization: {_authorization(gateway.endpoint)}\r\n\r\n"
+            ).encode("ascii")
+            response = await _exchange(gateway.endpoint, request)
+    finally:
+        await gateway.stop()
+
+    assert b"DESTINATION_INVALID" in response
+    assert dialer.calls == []
