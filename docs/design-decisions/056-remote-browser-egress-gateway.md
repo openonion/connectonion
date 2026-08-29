@@ -227,6 +227,7 @@ Initial codes:
 - `DESTINATION_INVALID`
 - `DESTINATION_SCHEME_DENIED`
 - `DESTINATION_PORT_DENIED`
+- `DESTINATION_HOST_DENIED`
 - `DESTINATION_DNS_FAILED`
 - `DESTINATION_ADDRESS_DENIED`
 - `DESTINATION_REBINDING_BLOCKED`
@@ -389,3 +390,11 @@ the portable gateway.
 - CDP Fetch documents that redirects create later paused requests, but
   continuation still hands the request to Chromium's network stack:
   <https://chromedevtools.github.io/devtools-protocol/tot/Fetch/>
+- The WHATWG URL Standard defines the browser-compatible host parser, including
+  IPv4 numbers written with one to four decimal, octal-like, or hexadecimal
+  parts: <https://url.spec.whatwg.org/#concept-ipv4-parser>
+- The frozen address policy is derived from the IANA IPv4 and IPv6
+  special-purpose registries. Its snapshot date is part of the executable
+  vector catalogue so a registry refresh is an explicit policy change:
+  <https://www.iana.org/assignments/iana-ipv4-special-registry/>,
+  <https://www.iana.org/assignments/iana-ipv6-special-registry/>
