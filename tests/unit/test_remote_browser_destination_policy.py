@@ -337,3 +337,51 @@ def test_operator_deny_generator_survives_transition_recursion(address):
 
     assert result.allowed is False
     assert result.address_class.endswith("operator_denied")
+
+
+# The frozen tables were only ever compared to themselves, which proves the two
+# uses of one table agree but can never detect a MISSING range. These vectors
+# are transcribed from the IANA registries independently of the code, so a
+# special-purpose block the table forgets shows up here.
+@pytest.mark.parametrize("block", VECTORS["registry_must_deny"]["ipv4"])
+def test_every_registry_ipv4_block_is_covered_by_the_frozen_table(block):
+    network = ipaddress.ip_network(block)
+    covered = any(
+        network.subnet_of(frozen)
+        for frozen in policy._FORBIDDEN_V4
+        if frozen.version == 4
+    )
+    assert covered, f"{block} is in the IANA registry but no frozen network covers it"
+
+
+@pytest.mark.parametrize("block", VECTORS["registry_must_deny"]["ipv6"])
+def test_every_registry_ipv6_block_is_covered(block):
+    network = ipaddress.ip_network(block)
+    covered = network.subnet_of(policy._GLOBAL_V6) is False or any(
+        network.subnet_of(frozen)
+        for frozen in policy._FORBIDDEN_V6
+        if frozen.version == 6
+    )
+    # Everything outside 2000::/3 is denied by the global catch-all; everything
+    # inside must be named in the frozen table.
+    assert covered, f"{block} is in the IANA registry but nothing denies it"
+
+
+# Special-use TLDs that resolve split-horizon: the address layer cannot judge
+# them, so the suffix list is the only thing that can.
+@pytest.mark.parametrize(
+    "host",
+    [
+        "server.corp",
+        "printer.home",
+        "nas.lan",
+        "wiki.intranet",
+        "1.0.0.127.in-addr.arpa",
+        "service.alt",
+        "facebookcorewwwi.onion",
+    ],
+)
+def test_reserved_and_squatted_tlds_are_denied(host):
+    with pytest.raises(policy.DestinationPolicyError) as raised:
+        policy.normalize_web_destination(f"http://{host}/")
+    assert raised.value.code == policy.HOST_DENIED

@@ -44,6 +44,19 @@ _SPECIAL_SUFFIXES = (
     ".invalid",
     ".test",
     ".example",
+    # Reserved for special use, so a split-horizon name under one of these can
+    # resolve to an address the frozen tables cannot judge — which is the case
+    # the suffix list exists to cover, not the address layer.
+    ".arpa",  # RFC 3172 — includes in-addr.arpa, ip6.arpa, home.arpa (RFC 8375)
+    ".alt",  # RFC 9476 — non-DNS namespaces
+    ".onion",  # RFC 7686 — Tor; must never hit the public resolver
+    # Commonly squatted for internal networks; not reserved by the IETF, but a
+    # remote caller has no business reaching a host named this way through a
+    # shared connection.
+    ".corp",
+    ".home",
+    ".lan",
+    ".intranet",
 )
 
 # Conservative frozen policy derived from the IANA IPv4 special-purpose
