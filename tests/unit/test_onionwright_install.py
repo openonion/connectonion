@@ -266,3 +266,39 @@ def test_cli_install_rejects_extra_arguments_without_daemon(monkeypatch, capsys)
 
     assert browser_commands.handle_browser(["install-onion", "unexpected"]) == 2
     assert "usage: co browser install-onion" in capsys.readouterr().err
+
+
+def test_a_manifest_signed_by_another_key_is_rejected_with_the_pin_untouched(monkeypatch):
+    """The trust root must be the pinned key, not one the response supplies.
+
+    Every other test here monkeypatches RELEASE_VERIFY_KEY_HEX to its own
+    generated key, so none proves the real pin rejects an attacker's signature.
+    This one signs a perfectly valid manifest with a DIFFERENT key and leaves
+    the pin alone: replacing the module constant with a key read from the
+    response body would make this pass, which is exactly the bypass it guards.
+    """
+    attacker_key = SigningKey.generate()
+    assert bytes(attacker_key.verify_key).hex() != installer.RELEASE_VERIFY_KEY_HEX
+    signed, _digest = _signed_manifest(attacker_key, b"wheel")
+
+    monkeypatch.setattr(installer, "_installed_version", lambda: None)
+    monkeypatch.setattr(installer, "require_ambient_api_key", lambda: "token")
+    monkeypatch.setattr(installer, "backend_url", lambda: "https://api.test")
+    monkeypatch.setattr(
+        installer.requests,
+        "request",
+        lambda *args, **kwargs: _Response(json_body=signed),
+    )
+    monkeypatch.setattr(
+        installer.requests,
+        "get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("downloaded")),
+    )
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("ran pip")),
+    )
+
+    with pytest.raises(installer.OnionwrightInstallError, match="signature or schema"):
+        installer.install_onionwright()
