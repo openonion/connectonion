@@ -307,6 +307,9 @@ OAuth redirects, WebSockets, and downloads remain usable.
 8. Treat shared proxy mode as a separate #1036/#1172 gate; never silently reuse
    Direct when a pinned shared grant fails.
 
+The executable limits and protocol contract for step 2 are documented in
+[Remote Browser egress gateway](../network/remote-browser-egress-gateway.md).
+
 Each step is its own reviewable PR with documentation, unit tests, native E2E,
 and a rollback that leaves navigation unavailable rather than bypassing the
 gateway.
