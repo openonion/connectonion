@@ -422,7 +422,7 @@ async def test_async_core_uses_private_policy_not_environment_proxy(tmp_path, mo
     playwright = FakePlaywright()
     paid_calls = []
 
-    async def prove_before_user_page(_name, context):
+    async def prove_before_user_page(_name, context, *, gateway=None):
         assert context.pages == []
 
     preflight = AsyncMock(side_effect=prove_before_user_page)

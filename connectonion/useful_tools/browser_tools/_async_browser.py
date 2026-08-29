@@ -609,9 +609,15 @@ class AsyncBrowserCore:
                     self.browser = paid_run.closable
                     self._paid_run = paid_run
                     if policy is not None and policy.native_preflight is not None:
+                        # The paid path gets the same positive control as the
+                        # free one. Omitting the gateway here degrades the
+                        # subresource proof to "the sentinel saw nothing",
+                        # which is also what "no probe ran" looks like — and
+                        # this is the path that charges money.
                         await run_native_egress_preflight(
                             policy.native_preflight,
                             self.browser,
+                            gateway=self._egress_gateway,
                         )
                     if self._seed_state and not self._seeded:
                         cookies = json.loads(
