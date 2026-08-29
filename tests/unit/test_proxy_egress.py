@@ -192,3 +192,53 @@ def test_the_reachable_address_is_not_loopback():
     address = local_egress_address()
     assert address != "127.0.0.1"
     socket.inet_aton(address)
+
+
+def test_the_share_command_serves_instead_of_reporting_and_exiting(tmp_path, monkeypatch):
+    """`co proxy share` must still be listening when it says it is sharing.
+
+    The share is a socket owned by this process. Printing "sharing" and
+    returning closes it the moment the shell gets its prompt back, so every
+    later command reads a registry entry for something nothing serves — and the
+    remote browser silently falls back to failing every request. Measured that
+    way once: the command reported success and a connect to its own advertised
+    address answered ConnectionRefusedError.
+    """
+    import json
+    import subprocess
+    import sys
+    import time
+
+    home = tmp_path / "home"
+    (home / ".co").mkdir(parents=True)
+    env = {**__import__("os").environ, "HOME": str(home)}
+    process = subprocess.Popen(
+        [sys.executable, "-m", "connectonion.cli.main", "proxy", "share", "to", "0xtest"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        text=True,
+    )
+    try:
+        registry = home / ".co" / "proxy-shares.json"
+        for _ in range(100):
+            if registry.exists():
+                break
+            time.sleep(0.1)
+        assert registry.exists(), "the share never registered"
+        url = json.loads(registry.read_text())["0xtest"]["url"]
+        host, port = url.rsplit("//", 1)[1].split(":")
+
+        probe = socket.socket()
+        probe.settimeout(3)
+        try:
+            probe.connect((host, int(port)))
+        finally:
+            probe.close()
+    finally:
+        process.terminate()
+        process.wait(timeout=15)
+
+    # And a stopped share does not stay in the registry claiming to be live.
+    remaining = json.loads(registry.read_text()) if registry.exists() else {}
+    assert "0xtest" not in remaining

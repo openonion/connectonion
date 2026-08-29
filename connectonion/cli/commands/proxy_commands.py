@@ -13,7 +13,9 @@ an agent whose entire world is what it types and what comes back.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import signal
 import sys
 from pathlib import Path
 
@@ -50,16 +52,24 @@ def _emit(envelope: dict, as_json: bool) -> int:
     if as_json:
         print(json.dumps(envelope, indent=2))
     else:
-        print(envelope["summary"])
+        print(envelope["summary"], flush=True)
         for tip in envelope.get("next_actions", []):
-            print(f"  {tip}")
+            print(f"  {tip}", flush=True)
     return 0 if envelope["ok"] else 1
 
 
 def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> int:
+    """Serve the share until the operator stops it.
+
+    This command holds the process open on purpose. A share is a listening
+    socket owned by this process: returning after printing "sharing" would
+    close it the moment the shell got its prompt back, so the command would
+    report success and leave nothing running. Background it with `&` or a
+    supervisor if you want the shell back; `--ttl` stops it on a timer.
+    """
     from ...network.proxy_egress import ProxyEgressService
 
-    async def run() -> dict:
+    async def run() -> int:
         service = ProxyEgressService(bind_host=bind)
         endpoint = await service.start()
         state = _load()
@@ -70,21 +80,50 @@ def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> in
             "ttl": ttl,
         }
         _save(state)
-        return {
-            "ok": True,
-            "command": "share",
-            "summary": (
-                f"Sharing this computer's connection with {address} at {endpoint.url}. "
-                "Traffic that agent's browser sends now leaves from your address."
-            ),
-            "result": {"address": address, "url": endpoint.url},
-            "next_actions": [
-                "Check it is being used with: co proxy status",
-                f"Stop lending with: co proxy stop {address}",
-            ],
-        }
+        _emit(
+            {
+                "ok": True,
+                "command": "share",
+                "summary": (
+                    f"Sharing this computer's connection with {address} at "
+                    f"{endpoint.url}. Traffic that agent's browser sends now "
+                    "leaves from your address. Serving until you stop it."
+                ),
+                "result": {"address": address, "url": endpoint.url},
+                "next_actions": [
+                    "Check it is being used with: co proxy status",
+                    f"Stop lending with: co proxy stop {address}",
+                ],
+            },
+            as_json,
+        )
+        # A supervisor stops this with SIGTERM, not Ctrl-C, and a share that
+        # outlives its process in the registry is a share every later command
+        # reports as live while nothing listens.
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for signal_name in ("SIGTERM", "SIGINT"):
+            number = getattr(signal, signal_name, None)
+            if number is not None:
+                with contextlib.suppress(NotImplementedError):
+                    loop.add_signal_handler(number, stop.set)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=ttl or None)
+        except (asyncio.TimeoutError, KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            await service.stop()
+            remaining = _load()
+            remaining.pop(address, None)
+            _save(remaining)
+        return 0
 
-    return _emit(asyncio.run(run()), as_json)
+    try:
+        return asyncio.run(run())
+    except KeyboardInterrupt:
+        print(f"Stopped sharing with {address}.")
+        print("  Lend it again with: co proxy share to " + address)
+        return 0
 
 
 def _status(as_json: bool) -> int:
