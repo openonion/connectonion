@@ -1,8 +1,9 @@
 """Bounded loopback egress gateway for future Remote Browser navigation.
 
-The gateway owns hostname resolution and numeric socket selection.  It has no
-Chromium integration and is not reachable through OIP yet; keeping that seam
-closed lets the proxy boundary be tested before a browser can depend on it.
+The gateway owns hostname resolution and numeric socket selection.  A private
+launch policy can request this proxy, but Remote Browser page commands remain
+unavailable until the credential-enabled paid artifact and native preflight
+both pass their installed-artifact acceptance suite.
 """
 
 from __future__ import annotations
@@ -278,6 +279,7 @@ class EgressGateway:
         self._lifecycle_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
         self._client_tasks: set[asyncio.Task] = set()
+        self._handled = 0
 
     @property
     def endpoint(self) -> ProxyEndpoint:
@@ -289,6 +291,17 @@ class EgressGateway:
     def is_running(self) -> bool:
         """Whether this instance still owns a serving listener."""
         return self._server is not None and self._server.is_serving()
+
+    @property
+    def handled_requests(self) -> int:
+        """How many authenticated requests this gateway has decided.
+
+        The positive control for anything asserting an absence: "the sentinel
+        saw no sockets" and "the browser never made the request" produce the
+        same zero, and a proof built on the first needs this to tell them
+        apart.
+        """
+        return self._handled
 
     async def start(self) -> ProxyEndpoint:
         async with self._lifecycle_lock:
@@ -415,6 +428,10 @@ class EgressGateway:
         try:
             request = await self._read_request(reader)
             self._authenticate(request)
+            # Counted the moment the credential is proven, which is the point
+            # this gateway has definitely seen the request, whatever the policy
+            # decides next.
+            self._handled += 1
             await self._promote(admission)
             authority, origin_target, upgrade = self._request_destination(request)
             endpoints = await self._approved_endpoints(authority)
@@ -842,13 +859,21 @@ class EgressGateway:
             if code == AUTH_REQUIRED
             else ""
         )
+        # A refusal carries a body because Chromium will not commit a bodyless
+        # 4xx/5xx main-frame navigation: it reports ERR_HTTP_RESPONSE_CODE_FAILURE
+        # instead, so `page.goto` raises rather than returning the status. The
+        # native preflight has to read this refusal as evidence that the browser
+        # reached this gateway, and with no body it never sees one. The body
+        # holds the stable code and nothing caller-controlled.
+        body = f"{code}\n".encode("ascii")
         response = (
             f"HTTP/1.1 {status} {reason}\r\n"
             "Connection: close\r\n"
-            "Content-Length: 0\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n"
+            f"Content-Length: {len(body)}\r\n"
             f"X-ConnectOnion-Error: {code}\r\n"
             f"{authenticate}\r\n"
-        ).encode("ascii")
+        ).encode("ascii") + body
         writer.write(response)
         with contextlib.suppress(Exception):
             await asyncio.wait_for(writer.drain(), timeout=1.0)
