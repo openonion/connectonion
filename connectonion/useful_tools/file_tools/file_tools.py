@@ -16,6 +16,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional, List, Literal
 
+from ...core.tool_result import ToolFailure
 from .read import read_file as _read_file
 from .edit import edit as _edit
 from .multi_edit import multi_edit as _multi_edit, EditOperation
@@ -64,7 +65,7 @@ class FileTools:
         result = _read_file(path, offset, limit)
 
         # Track snapshot for edit validation (only if read succeeded)
-        if not result.startswith("Error:"):
+        if not isinstance(result, ToolFailure):
             file_path = Path(path)
             if file_path.exists() and file_path.is_file():
                 content = file_path.read_text(encoding="utf-8", errors="replace")
@@ -132,16 +133,20 @@ class FileTools:
             Success message or error description
         """
         if self._permission == "read":
-            return "Error: Permission denied - FileTools is in read-only mode"
+            return ToolFailure(
+                "Error: Permission denied - FileTools is in read-only mode"
+            )
 
         # Check if file was read first
         if file_path not in self._snapshots:
-            return f"Error: Read '{file_path}' before editing (use read_file first)"
+            return ToolFailure(
+                f"Error: Read '{file_path}' before editing (use read_file first)"
+            )
 
         # Check if file changed since read (stale-read protection)
         path = Path(file_path)
         if not path.exists():
-            return f"Error: File '{file_path}' no longer exists"
+            return ToolFailure(f"Error: File '{file_path}' no longer exists")
 
         current_content = path.read_text(encoding="utf-8", errors="replace")
         current_hash = hashlib.md5(current_content.encode()).hexdigest()
@@ -149,13 +154,15 @@ class FileTools:
         if current_hash != self._snapshots[file_path]:
             # File changed externally - invalidate snapshot
             del self._snapshots[file_path]
-            return f"Error: '{file_path}' changed since last read - re-read it first"
+            return ToolFailure(
+                f"Error: '{file_path}' changed since last read - re-read it first"
+            )
 
         # Perform the edit
         result = _edit(file_path, old_string, new_string, replace_all)
 
         # Update snapshot if edit succeeded
-        if not result.startswith("Error:"):
+        if not isinstance(result, ToolFailure):
             new_content = path.read_text(encoding="utf-8", errors="replace")
             self._snapshots[file_path] = hashlib.md5(new_content.encode()).hexdigest()
 
@@ -177,29 +184,35 @@ class FileTools:
             Success message or error description
         """
         if self._permission == "read":
-            return "Error: Permission denied - FileTools is in read-only mode"
+            return ToolFailure(
+                "Error: Permission denied - FileTools is in read-only mode"
+            )
 
         # Check if file was read first
         if file_path not in self._snapshots:
-            return f"Error: Read '{file_path}' before editing (use read_file first)"
+            return ToolFailure(
+                f"Error: Read '{file_path}' before editing (use read_file first)"
+            )
 
         # Check if file changed since read
         path = Path(file_path)
         if not path.exists():
-            return f"Error: File '{file_path}' no longer exists"
+            return ToolFailure(f"Error: File '{file_path}' no longer exists")
 
         current_content = path.read_text(encoding="utf-8", errors="replace")
         current_hash = hashlib.md5(current_content.encode()).hexdigest()
 
         if current_hash != self._snapshots[file_path]:
             del self._snapshots[file_path]
-            return f"Error: '{file_path}' changed since last read - re-read it first"
+            return ToolFailure(
+                f"Error: '{file_path}' changed since last read - re-read it first"
+            )
 
         # Perform multi-edit
         result = _multi_edit(file_path, edits)
 
         # Update snapshot if edit succeeded
-        if not result.startswith("Error:"):
+        if not isinstance(result, ToolFailure):
             new_content = path.read_text(encoding="utf-8", errors="replace")
             self._snapshots[file_path] = hashlib.md5(new_content.encode()).hexdigest()
 
@@ -219,13 +232,15 @@ class FileTools:
             Success message or error description
         """
         if self._permission == "read":
-            return "Error: Permission denied - FileTools is in read-only mode"
+            return ToolFailure(
+                "Error: Permission denied - FileTools is in read-only mode"
+            )
 
         # write() is full overwrite - no snapshot check needed
         result = _write(path, content)
 
         # Track snapshot after write (for subsequent edits)
-        if not result.startswith("Error:"):
+        if not isinstance(result, ToolFailure):
             file_path = Path(path)
             if file_path.exists() and file_path.is_file():
                 content_on_disk = file_path.read_text(encoding="utf-8", errors="replace")
