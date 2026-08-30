@@ -43,11 +43,14 @@ private address factory owns and verifies its dedicated directory.
 
 ## Configuration is evidence, not the verdict
 
-The private launch asks Chromium to use one authenticated loopback proxy, block
-Service Workers, disable QUIC and non-proxied WebRTC UDP, subtract Chromium's
-implicit loopback bypass, and fail browser-side hostname resolution outside the
-gateway. Tests also prove that ordinary local browsing still honors its old
-environment-compatible configuration.
+The private launch asks Chromium to use one authenticated loopback proxy,
+requests `service_workers="block"` as best-effort visibility hardening,
+disables QUIC and non-proxied WebRTC UDP, subtracts Chromium's implicit loopback
+bypass, and fails browser-side hostname resolution outside the gateway. Real
+Chrome later proved that the Service Worker option does not stop registration
+or control, so it is not counted as a security boundary. Tests also prove that
+ordinary local browsing still honors its old environment-compatible
+configuration.
 
 But a list of launch flags is not proof that Chromium cannot escape them. This
 slice deliberately leaves navigation unavailable. The next test must run the

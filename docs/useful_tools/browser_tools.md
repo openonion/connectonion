@@ -21,6 +21,13 @@ agent = Agent("web", tools=[browser])
 agent.input("go to github.com and take a screenshot")
 ```
 
+`BrowserAutomation()` defaults to `engine_mode="system"`, the free local
+browser path. `engine_mode="auto"` is an explicit opt-in strategy that may
+select paid Onion and start a $0.025 interval when its preflight succeeds;
+`engine_mode="onion"` explicitly requires that paid engine and never falls
+back to system. The internal `AsyncBrowserCore` uses the same default and
+semantics.
+
 ## Quick Start (no agent)
 
 ```python

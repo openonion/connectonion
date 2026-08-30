@@ -82,7 +82,13 @@ class BrowserLaunchPolicy:
         if self.args.count(expected_switch) != 1:
             raise ValueError("private browser policy must name its native proxy auth file")
         if self.service_workers != "block":
-            raise ValueError("private browser launch policy must block Service Workers")
+            # The shipped driver does not actually prevent registration or
+            # control. Requiring the request keeps its inspection/visibility
+            # behavior stable; the gateway and native preflight are the real
+            # egress boundary.
+            raise ValueError(
+                "private browser policy must request service_workers='block'"
+            )
         missing = [arg for arg in REQUIRED_EGRESS_ARGS if arg not in self.args]
         if missing:
             raise ValueError(

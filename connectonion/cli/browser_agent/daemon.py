@@ -228,7 +228,7 @@ class BrowserDaemon:
         self,
         sock_path: str,
         headless: bool = False,
-        engine_mode: str = "auto",
+        engine_mode: str = "system",
         *,
         profile_dir: str | Path | None = None,
         remote_egress: bool = False,
@@ -294,7 +294,7 @@ class BrowserDaemon:
             (str(tab) if tab is not None else None),
             str(req.get("line") or ""),
             bool(req.get("raw", False)),
-            str(req.get("engine") or "auto"),
+            str(req.get("engine") or self.engine_mode),
         )
 
     # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
@@ -526,10 +526,11 @@ class BrowserDaemon:
         open_state = "open" if await self._browser_is_alive() else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
         lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
+        daemon_engine = getattr(self, "engine_mode", "system")
         engine_status = getattr(self.browser, "engine_status", None)
         try:
             engine = engine_status() if callable(engine_status) else {
-                "requested_engine": "auto",
+                "requested_engine": daemon_engine,
                 "resolved_engine": None,
                 "reason": "not_started",
                 "artifact_id": None,
@@ -540,15 +541,17 @@ class BrowserDaemon:
             # Status is the diagnostic path. A broken optional paid client must
             # be reported as unresolved, not take the whole report down.
             engine = {
-                "requested_engine": getattr(self.browser, "_engine_mode", "auto"),
+                "requested_engine": getattr(
+                    self.browser, "_engine_mode", daemon_engine
+                ),
                 "resolved_engine": None,
                 "reason": "status_unavailable",
                 "artifact_id": None,
             }
-        # The paid engine charges per interval the moment a command uses it —
-        # like tokens, no confirmation. So the price and the live session ride
-        # here in status, which is where an operator looks to see what a running
-        # browser is doing and costing.
+        # Once an operator explicitly selects auto or onion, the paid engine
+        # charges per interval when a command uses it. The price and live
+        # session therefore ride here in status, where an operator looks to see
+        # what a running browser is doing and costing.
         price = engine.get("interval_usd")
         cost = (
             f" · ${price:.3f}/interval"
@@ -1377,7 +1380,9 @@ def main():
     parser.add_argument("--profile-dir")
     parser.add_argument("--authkey-file")
     parser.add_argument("--remote-egress", action="store_true")
-    parser.add_argument("--engine", choices=("auto", "system", "onion"), default="auto")
+    parser.add_argument(
+        "--engine", choices=("auto", "system", "onion"), default="system"
+    )
     args = parser.parse_args()
     BrowserDaemon(
         args.sock_path,

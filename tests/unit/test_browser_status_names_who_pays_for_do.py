@@ -61,8 +61,7 @@ class _PaidBrowser(_Browser):
 
 @pytest.mark.asyncio
 async def test_a_paid_session_shows_its_cost_in_status(monkeypatch):
-    """Auto charges on use like tokens, with no prompt — so status is where the
-    price and the live session have to appear (Aaron's call on #1327)."""
+    """Explicit auto may charge, so status names price and live session (#1327)."""
     from connectonion.cli.browser_agent import daemon as mod
 
     instance = mod.BrowserDaemon.__new__(mod.BrowserDaemon)

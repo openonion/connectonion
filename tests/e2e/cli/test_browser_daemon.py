@@ -179,9 +179,9 @@ def _wait_until_listening(sock_path, timeout=5.0):
     raise RuntimeError("daemon did not bind in time")
 
 
-def make_daemon(sock_path, stub=None):
+def make_daemon(sock_path, stub=None, *, engine_mode="system"):
     """Build a daemon whose lazy BrowserAutomation is replaced by a stub."""
-    daemon = d.BrowserDaemon(sock_path, headless=True)
+    daemon = d.BrowserDaemon(sock_path, headless=True, engine_mode=engine_mode)
     daemon.browser = stub or StubBrowser()
     _CREATED_DAEMONS.append(daemon)
     return daemon
@@ -432,9 +432,11 @@ def test_status_does_not_become_the_last_command(tmp_path):
 def test_engine_status_is_a_no_claim_no_launch_protocol_probe(tmp_path):
     class EngineBrowser(StubBrowser):
         def engine_status(self):
-            return {"requested_engine": "onion", "resolved_engine": None}
+            return {"requested_engine": "auto", "resolved_engine": None}
 
-    daemon = make_daemon(str(tmp_path / "s.sock"), stub=EngineBrowser())
+    daemon = make_daemon(
+        str(tmp_path / "s.sock"), stub=EngineBrowser(), engine_mode="auto"
+    )
     daemon.last_command = {"line": "go_to x.com", "at": 1}
 
     ok, payload = daemon.dispatch(_json.dumps({

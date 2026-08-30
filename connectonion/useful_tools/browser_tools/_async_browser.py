@@ -310,7 +310,7 @@ class AsyncBrowserCore:
         use_mock_keychain: bool = False,
         launch_policy: BrowserLaunchPolicy | None = None,
         egress_gateway: object | None = None,
-        engine_mode: str = browser_engine.AUTO,
+        engine_mode: str = browser_engine.SYSTEM,
         engine_resolver=browser_engine.resolve,
     ) -> None:
         # Only read for its decision count, which is the preflight's positive

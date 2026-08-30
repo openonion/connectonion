@@ -80,9 +80,9 @@ class FakePaidRun:
         await self.closable.close()
 
 
-def onion_resolution():
+def onion_resolution(requested):
     return engine.Resolution(
-        requested=engine.AUTO,
+        requested=requested,
         resolved=engine.ONION,
         reason=engine.Reason.ONION_READY,
         next_action="start",
@@ -107,7 +107,10 @@ def test_real_launch_seam_uses_supervised_paid_handle(monkeypatch):
         return paid
 
     monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
-    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.ONION,
+        engine_resolver=lambda mode: onion_resolution(mode),
+    )
 
     message = browser.open_browser()
     status = browser.engine_status()
@@ -115,6 +118,7 @@ def test_real_launch_seam_uses_supervised_paid_handle(monkeypatch):
 
     assert "Onion Browser opened" in message
     assert len(calls) == 1
+    assert calls[0][0].requested == engine.ONION
     assert calls[0][1] is playwright
     assert calls[0][2].startswith("connectonion-start:")
     assert calls[0][3]["user_data_dir"] is True
@@ -139,7 +143,10 @@ def test_paid_launch_failure_never_hot_swaps_to_system(monkeypatch):
         "launch_async",
         fail,
     )
-    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.ONION,
+        engine_resolver=lambda mode: onion_resolution(mode),
+    )
 
     try:
         browser.open_browser()
@@ -173,7 +180,10 @@ def test_a_retried_launch_does_not_buy_a_second_interval(monkeypatch):
         raise RuntimeError("launched, charged, then died")
 
     monkeypatch.setattr(async_mod.browser_engine, "launch_async", fail_after_minting)
-    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.ONION,
+        engine_resolver=lambda mode: onion_resolution(mode),
+    )
 
     for _ in range(3):
         try:
@@ -197,7 +207,10 @@ def test_a_deliberate_close_starts_a_new_billing_interval(monkeypatch):
         return FakePaidRun()
 
     monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
-    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.ONION,
+        engine_resolver=lambda mode: onion_resolution(mode),
+    )
 
     browser.open_browser()
     browser.close()
@@ -209,11 +222,7 @@ def test_a_deliberate_close_starts_a_new_billing_interval(monkeypatch):
 
 
 def test_a_paid_session_says_what_it_costs(monkeypatch):
-    """`auto` can start a billable session from an ordinary command.
-
-    Whether auto should resolve to the paid engine is a product question
-    (#1327). Spending money without saying so in the output is not.
-    """
+    """Explicit ``auto`` may buy Onion, and must state the interval price."""
     playwright = FakePlaywright()
     monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
@@ -223,15 +232,20 @@ def test_a_paid_session_says_what_it_costs(monkeypatch):
 
     monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
 
-    priced = onion_resolution()
+    priced = onion_resolution(engine.AUTO)
     priced.prepared.capability.interval_usd = 0.025
-    browser = mod.BrowserAutomation(engine_resolver=lambda mode: priced)
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.AUTO,
+        engine_resolver=lambda mode: priced,
+    )
 
     message = browser.open_browser()
     status = browser.engine_status()
     browser.close()
 
     assert "$0.025 per interval" in message
+    assert status["requested_engine"] == engine.AUTO
+    assert status["resolved_engine"] == engine.ONION
     assert status["interval_usd"] == 0.025
 
 
@@ -252,9 +266,12 @@ def test_status_names_the_browser_that_actually_runs(monkeypatch):
 
     monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
 
-    resolution = onion_resolution()
+    resolution = onion_resolution(engine.ONION)
     resolution.prepared.executable = "/runtimes/7de5a8/chrome"
-    browser = mod.BrowserAutomation(engine_resolver=lambda mode: resolution)
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.ONION,
+        engine_resolver=lambda mode: resolution,
+    )
 
     browser.open_browser()
     status = browser.engine_status()

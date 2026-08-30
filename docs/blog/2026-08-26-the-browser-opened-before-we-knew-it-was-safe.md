@@ -4,8 +4,11 @@
 
 The private BrowserDaemon had a careful launch policy. Chromium received one
 loopback proxy, no implicit localhost bypass, browser-side DNS failure outside
-the gateway, blocked Service Workers, disabled QUIC, and disabled non-proxied
-WebRTC UDP. The process opened successfully.
+the gateway, a best-effort `service_workers="block"` request, disabled QUIC,
+and disabled non-proxied WebRTC UDP. Later real-Chrome measurement showed that
+the driver option does not prevent Service Worker registration or control; the
+gateway and native preflight, not that option, are the security boundary. The
+process opened successfully.
 
 That last sentence was the problem.
 

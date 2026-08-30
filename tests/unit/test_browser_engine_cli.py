@@ -1,8 +1,14 @@
+import inspect
 import json
 
+from typer.testing import CliRunner
+
+from connectonion.cli import main as cli_main
 from connectonion.cli.browser_agent import client
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
 from connectonion.cli.commands import browser_commands
+from connectonion.useful_tools.browser_tools import _async_browser as async_browser
+from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
 
 
 class _FakeConnection:
@@ -23,6 +29,69 @@ class _FakeConnection:
 
     def close(self):
         self.closed = True
+
+
+def test_cli_omission_passes_nonbilling_system_to_client(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        browser_commands,
+        "send",
+        lambda line, **kwargs: calls.append((line, kwargs)) or 0,
+    )
+
+    assert browser_commands.handle_browser(["status"]) == 0
+    assert calls == [
+        (
+            "status",
+            {"headless": False, "tab": None, "engine_mode": "system"},
+        )
+    ]
+
+
+def test_all_local_browser_entry_points_default_to_system():
+    assert inspect.signature(client.send).parameters["engine_mode"].default == "system"
+    assert (
+        inspect.signature(BrowserDaemon).parameters["engine_mode"].default
+        == "system"
+    )
+    assert (
+        inspect.signature(BrowserAutomation).parameters["engine_mode"].default
+        == "system"
+    )
+    assert (
+        inspect.signature(async_browser.AsyncBrowserCore)
+        .parameters["engine_mode"]
+        .default
+        == "system"
+    )
+
+
+def test_typer_browser_omission_and_help_name_the_billing_boundary(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        browser_commands,
+        "handle_browser",
+        lambda args, **kwargs: calls.append((args, kwargs)) or 0,
+    )
+
+    result = CliRunner().invoke(cli_main.app, ["browser", "status"])
+    auto_result = CliRunner().invoke(
+        cli_main.app, ["browser", "--engine", "auto", "status"]
+    )
+    help_result = CliRunner().invoke(
+        cli_main.app, ["browser", "--help"], env={"COLUMNS": "200"}
+    )
+
+    assert result.exit_code == 0
+    assert auto_result.exit_code == 0
+    assert calls == [
+        (["status"], {"headless": False, "engine_mode": "system"}),
+        (["status"], {"headless": False, "engine_mode": "auto"}),
+    ]
+    assert help_result.exit_code == 0
+    assert "system (free default)" in help_result.output
+    assert "auto (may select paid)" in help_result.output
+    assert "onion (paid)" in help_result.output
 
 
 def test_cli_passes_explicit_engine_to_client(monkeypatch):

@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send | lazy: browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
   State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
-  Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
+  Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="system") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
   Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
 """
@@ -38,6 +38,7 @@ USAGE = (
     "each other through this error and through `tab ls`. Set CO_WHO=<name> so the board\n"
     "shows a real name for you (Claude Code sessions are identified automatically).\n"
     "Add --headless before the function to run without a visible window.\n"
+    "Engine default: system (free). Explicit auto may select paid Onion; explicit onion is paid.\n"
     "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy."
 )
 
@@ -90,7 +91,7 @@ def _extract_tab(args):
     return tab, args[i:]
 
 
-def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> int:
+def handle_browser(args, headless: bool = False, engine_mode: str = "system") -> int:
     """Forward a browser command to the daemon, or print help. Returns the process exit code."""
     if engine_mode not in ("auto", "system", "onion"):
         print("--engine must be one of: auto, system, onion", file=sys.stderr)

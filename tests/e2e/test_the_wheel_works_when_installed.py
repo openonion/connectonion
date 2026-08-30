@@ -43,13 +43,13 @@ set to a scratch directory for that reason.
 
 import os
 import shutil
+import site
 import subprocess
 import sys
 import venv
 from pathlib import Path
 
 import pytest
-
 
 pytestmark = pytest.mark.slow
 
@@ -61,7 +61,10 @@ def _build_wheel(into: Path) -> Path:
     for extra in (["--no-isolation"], []):
         result = subprocess.run(
             [sys.executable, "-m", "build", "--wheel", "-o", str(into), *extra],
-            cwd=REPO, capture_output=True, text=True, timeout=900,
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            timeout=900,
         )
         wheels = list(into.glob("*.whl"))
         if result.returncode == 0 and wheels:
@@ -83,10 +86,45 @@ def installed(tmp_path_factory):
     bin_dir = env_dir / ("Scripts" if os.name == "nt" else "bin")
     python = bin_dir / ("python.exe" if os.name == "nt" else "python")
 
+    # `--system-site-packages` reaches the base interpreter, not packages in an
+    # outer venv. The autouse HOME-isolation fixture also deliberately hides
+    # the operator's user-site from child processes. Make the already-tested
+    # outer dependency layers visible after this child venv's site-packages so
+    # the wheel installed below always wins if another ConnectOnion is present.
+    child_site_result = subprocess.run(
+        [str(python), "-c", "import site; print(site.getsitepackages()[0])"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert child_site_result.returncode == 0, child_site_result.stderr[-400:]
+    child_site = Path(child_site_result.stdout.strip())
+    dependency_sites = {
+        str(Path(entry).resolve())
+        for entry in [*site.getsitepackages(), site.getusersitepackages()]
+        if entry
+        and Path(entry).is_dir()
+        and Path(entry).resolve() != child_site.resolve()
+    }
+    (child_site / "_connectonion_outer_test_dependencies.pth").write_text(
+        "".join(f"{entry}\n" for entry in sorted(dependency_sites)),
+        encoding="utf-8",
+    )
+
     install = subprocess.run(
-        [str(python), "-m", "pip", "install", "--quiet", "--no-deps",
-         "--force-reinstall", str(wheel)],
-        capture_output=True, text=True, timeout=900,
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "--no-deps",
+            "--force-reinstall",
+            str(wheel),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=900,
     )
     assert install.returncode == 0, install.stderr[-500:]
 
@@ -97,9 +135,13 @@ def installed(tmp_path_factory):
 
 def _run(installed, code: str, cwd=None) -> subprocess.CompletedProcess:
     python, _, elsewhere, _env = installed
-    return subprocess.run([str(python), "-c", code],
-                          cwd=str(cwd or elsewhere),
-                          capture_output=True, text=True, timeout=300)
+    return subprocess.run(
+        [str(python), "-c", code],
+        cwd=str(cwd or elsewhere),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
 
 
 class TestItIsTheWheelBeingTested:
@@ -114,61 +156,100 @@ class TestItIsTheWheelBeingTested:
         pass while measuring that other copy.
         """
         *_, env_dir = installed
-        result = _run(installed, "import connectonion, pathlib;"
-                                 " print(pathlib.Path(connectonion.__file__).parent)")
+        result = _run(
+            installed,
+            "import connectonion, pathlib;"
+            " print(pathlib.Path(connectonion.__file__).parent)",
+        )
 
         assert result.returncode == 0, result.stderr[-400:]
         assert str(env_dir) in result.stdout, result.stdout
 
     def test_the_repo_is_not_on_the_path(self, installed):
-        result = _run(installed, "import connectonion;"
-                                 f" print(str(connectonion.__file__).startswith({str(REPO)!r}))")
+        result = _run(
+            installed,
+            "import connectonion;"
+            f" print(str(connectonion.__file__).startswith({str(REPO)!r}))",
+        )
 
-        assert "False" in result.stdout, "the source tree shadowed the installed package"
+        assert (
+            "False" in result.stdout
+        ), "the source tree shadowed the installed package"
 
 
 class TestTheDataFilesShipped:
     """Every non-.py file the runtime loads."""
 
     def test_the_trust_policies_load(self, installed):
-        result = _run(installed,
-                      "from connectonion.network.trust.trust_agent import TrustAgent;"
-                      " print([TrustAgent(l)._config.get('default')"
-                      "        for l in ('open', 'careful', 'strict')])")
+        result = _run(
+            installed,
+            "from connectonion.network.trust.trust_agent import TrustAgent;"
+            " print([TrustAgent(l)._config.get('default')"
+            "        for l in ('open', 'careful', 'strict')])",
+        )
 
         assert result.returncode == 0, result.stderr[-400:]
         assert "['allow', 'ask', 'deny']" in result.stdout
 
     def test_the_co_ai_prompts_assemble(self, installed):
-        result = _run(installed,
-                      "import pathlib, connectonion;"
-                      " from connectonion.cli.co_ai.prompts.assembler import assemble_prompt;"
-                      " from connectonion.cli.co_ai.tools import ask_user;"
-                      " d = pathlib.Path(connectonion.__file__).parent / 'cli/co_ai/prompts';"
-                      " out = assemble_prompt(prompts_dir=str(d), tools=[ask_user]);"
-                      " print(len(str(out)))")
+        result = _run(
+            installed,
+            "import pathlib, connectonion;"
+            " from connectonion.cli.co_ai.prompts.assembler import assemble_prompt;"
+            " from connectonion.cli.co_ai.tools import ask_user;"
+            " d = pathlib.Path(connectonion.__file__).parent / 'cli/co_ai/prompts';"
+            " out = assemble_prompt(prompts_dir=str(d), tools=[ask_user]);"
+            " print(len(str(out)))",
+        )
 
         assert result.returncode == 0, result.stderr[-400:]
         assert int(result.stdout.strip()) > 1000, "the prompts assembled to nothing"
 
     def test_the_project_template_is_there(self, installed):
-        result = _run(installed,
-                      "import pathlib, connectonion;"
-                      " d = pathlib.Path(connectonion.__file__).parent / 'cli/templates';"
-                      " print(sorted(p.name for p in d.iterdir()))")
+        result = _run(
+            installed,
+            "import pathlib, connectonion;"
+            " d = pathlib.Path(connectonion.__file__).parent / 'cli/templates';"
+            " print(sorted(p.name for p in d.iterdir()))",
+        )
 
         assert result.returncode == 0, result.stderr[-400:]
         assert "co-ai" in result.stdout
 
     def test_the_docs_are_there(self, installed):
         """The force-include in pyproject.toml, which every wheel once missed."""
-        result = _run(installed,
-                      "import pathlib, connectonion;"
-                      " d = pathlib.Path(connectonion.__file__).parent / 'docs';"
-                      " print(len(list(d.rglob('*.md'))) if d.exists() else 0)")
+        result = _run(
+            installed,
+            "import pathlib, connectonion;"
+            " d = pathlib.Path(connectonion.__file__).parent / 'docs';"
+            " print(len(list(d.rglob('*.md'))) if d.exists() else 0)",
+        )
 
         assert result.returncode == 0, result.stderr[-400:]
         assert int(result.stdout.strip()) > 50, "connectonion/docs/ did not ship"
+
+    def test_the_browser_preview_pin_and_evidence_ship_together(self, installed):
+        result = _run(
+            installed,
+            """
+from pathlib import Path
+
+import connectonion
+from connectonion import browser_preview
+
+package = Path(connectonion.__file__).parent
+plan = (package / "docs/1.8-browser-preview-plan.md").read_text()
+manifest = (package / "docs/releases/assets/v1.8.0a4/manifest.yml").read_text()
+assert browser_preview.ONIONWRIGHT_VERSION == "0.0.13.dev3"
+assert browser_preview.ONIONWRIGHT_ARTIFACT == (
+    "onionwright/0.0.13.dev3/onionwright-0.0.13.dev3-py3-none-any.whl"
+)
+assert "0.0.13.dev3" in plan
+assert "0.0.13.dev3" in manifest
+""",
+        )
+
+        assert result.returncode == 0, result.stderr[-400:]
 
 
 class TestTheCommandRuns:
@@ -179,12 +260,19 @@ class TestTheCommandRuns:
 
         assert co.exists(), "the `co` entry point was not installed"
 
-        result = subprocess.run([str(co), "--version"], cwd=str(elsewhere),
-                                capture_output=True, text=True, timeout=300)
+        result = subprocess.run(
+            [str(co), "--version"],
+            cwd=str(elsewhere),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
         version = (REPO / "connectonion" / "_version.py").read_text(encoding="utf-8")
         expected = version.split('__version__ = "')[1].split('"')[0]
 
-        assert expected in result.stdout, f"{result.stdout!r} does not report {expected}"
+        assert (
+            expected in result.stdout
+        ), f"{result.stdout!r} does not report {expected}"
 
     def test_co_init_fills_the_docs_folder(self, installed, tmp_path):
         """`co init` says ".co/docs/" is there; this is the check that it is."""
@@ -193,8 +281,13 @@ class TestTheCommandRuns:
         project = tmp_path / "fresh"
         project.mkdir()
 
-        result = subprocess.run([str(co), "init", "--yes"], cwd=str(project),
-                                capture_output=True, text=True, timeout=600)
+        result = subprocess.run(
+            [str(co), "init", "--yes"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
 
         assert result.returncode == 0, result.stderr[-400:]
         assert (project / ".co" / "host.yaml").exists()

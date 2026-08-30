@@ -1,4 +1,4 @@
-"""Resolve the 1.8 browser engine once, before a browser session can charge."""
+"""Resolve the 1.8 preview browser engine before a session can charge."""
 
 from __future__ import annotations
 
@@ -8,12 +8,20 @@ from typing import Any, Callable
 
 from packaging.version import InvalidVersion, Version
 
+from connectonion.browser_preview import (
+    ONIONWRIGHT_VERSION,
+    RELEASE_CHANNEL,
+    BrowserPreviewConfigError,
+    api_url,
+)
+
 AUTO = "auto"
 SYSTEM = "system"
 ONION = "onion"
 MODES = (AUTO, SYSTEM, ONION)
 BROWSER_REVISION = "151.0.7922.137"
-MIN_ONIONWRIGHT_VERSION = "0.0.12"
+MIN_ONIONWRIGHT_VERSION = ONIONWRIGHT_VERSION
+ONIONWRIGHT_RELEASE_CHANNEL = RELEASE_CHANNEL
 
 
 class Reason:
@@ -70,11 +78,10 @@ class Resolution:
     def interval_usd(self) -> float | None:
         """What one billing interval costs, when the server said.
 
-        Surfaced so a paid session can say what it costs. `auto` resolves to
-        the paid engine whenever preparation succeeds, so an ordinary command
-        can start a billable session; spending money without saying so in the
-        output is the part of that which is wrong however the default is
-        settled (#1327).
+        Surfaced so a paid session can say what it costs. The default `system`
+        mode is non-billing. An operator who explicitly selects `auto` may still
+        resolve to the paid engine when preparation succeeds, while explicit
+        `onion` requires it; both paid outcomes must state the price (#1327).
         """
         capability = getattr(self.prepared, "capability", None)
         price = getattr(capability, "interval_usd", None)
@@ -98,6 +105,7 @@ class Resolution:
             "next_action": self.next_action,
             "browser_revision": self.browser_revision,
             "onionwright_version": self.onionwright_version,
+            "release_channel": getattr(self.client, "release_channel", None),
             "artifact_id": self.artifact_id,
             "interval_usd": self.interval_usd,
             "executable": self.executable,
@@ -119,7 +127,12 @@ def _default_client(token: str, home: Path):
 
     if not callable(getattr(onionwright, "launch_paid_async", None)):
         raise AttributeError("installed Onionwright has no async paid launcher")
-    return onionwright.PaidSessionClient(token=token, home=home)
+    return onionwright.PaidSessionClient(
+        token=token,
+        home=home,
+        api=api_url(),
+        release_channel=ONIONWRIGHT_RELEASE_CHANNEL,
+    )
 
 
 def _system(requested: str, reason: str, next_action: str) -> Resolution:
@@ -138,7 +151,7 @@ def _unavailable(requested: str, reason: str, next_action: str) -> Resolution:
 
 
 def resolve(
-    requested: str = AUTO,
+    requested: str = SYSTEM,
     *,
     browser_revision: str = BROWSER_REVISION,
     token_loader: Callable[[], str] = _default_token,
@@ -182,6 +195,8 @@ def resolve(
             Reason.ONIONWRIGHT_MISSING,
             "Run `co browser install-onion`, or request the system browser.",
         )
+    except BrowserPreviewConfigError as exc:
+        return _unavailable(requested, Reason.PREFLIGHT_FAILED, str(exc))
     except (ImportError, AttributeError, TypeError):
         return _unavailable(
             requested,
@@ -190,10 +205,12 @@ def resolve(
         )
 
     client_version = getattr(client, "client_version", None)
+    release_channel = getattr(client, "release_channel", None)
     try:
         compatible = (
             isinstance(client_version, str)
-            and Version(client_version) >= Version(MIN_ONIONWRIGHT_VERSION)
+            and Version(client_version) == Version(MIN_ONIONWRIGHT_VERSION)
+            and release_channel == ONIONWRIGHT_RELEASE_CHANNEL
         )
     except InvalidVersion:
         compatible = False
@@ -201,7 +218,8 @@ def resolve(
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_INCOMPATIBLE,
-            f"Run `co browser install-onion` for Onionwright {MIN_ONIONWRIGHT_VERSION} or newer.",
+            f"Run `co browser install-onion` for exact preview Onionwright "
+            f"{MIN_ONIONWRIGHT_VERSION}.",
         )
 
     try:
@@ -239,7 +257,11 @@ def launch(
     **launch_kwargs,
 ):
     """Cross the billing boundary for a previously prepared Onion resolution."""
-    if resolution.resolved != ONION or resolution.client is None or resolution.prepared is None:
+    if (
+        resolution.resolved != ONION
+        or resolution.client is None
+        or resolution.prepared is None
+    ):
         raise BrowserEngineError(
             Reason.PREFLIGHT_FAILED,
             "Only a ready Onion resolution can start a paid session.",
@@ -249,7 +271,7 @@ def launch(
     except (ImportError, AttributeError) as exc:
         raise BrowserEngineError(
             Reason.ONIONWRIGHT_INCOMPATIBLE,
-            "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
+            "Install the exact Onionwright client for this ConnectOnion preview.",
         ) from exc
     return launch_paid(
         playwright,
@@ -268,7 +290,11 @@ async def launch_async(
     **launch_kwargs,
 ):
     """Cross the billing boundary through Onionwright's async driver contract."""
-    if resolution.resolved != ONION or resolution.client is None or resolution.prepared is None:
+    if (
+        resolution.resolved != ONION
+        or resolution.client is None
+        or resolution.prepared is None
+    ):
         raise BrowserEngineError(
             Reason.PREFLIGHT_FAILED,
             "Only a ready Onion resolution can start a paid session.",
@@ -278,7 +304,7 @@ async def launch_async(
     except (ImportError, AttributeError) as exc:
         raise BrowserEngineError(
             Reason.ONIONWRIGHT_INCOMPATIBLE,
-            "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
+            "Install the exact Onionwright client for this ConnectOnion preview.",
         ) from exc
     return await launch_paid_async(
         playwright,

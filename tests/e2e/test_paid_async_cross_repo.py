@@ -7,10 +7,15 @@ import pytest
 
 onionwright = pytest.importorskip("onionwright")
 
-from connectonion.useful_tools.browser_tools import BrowserAutomation
-from connectonion.useful_tools.browser_tools import _async_browser as async_mod
-from connectonion.useful_tools.browser_tools import engine
-from onionwright.paid import Artifact, Capability, PreparedBrowser
+from onionwright.paid import Artifact, Capability, PreparedBrowser  # noqa: E402
+
+from connectonion.useful_tools.browser_tools import (  # noqa: E402
+    BrowserAutomation,
+    engine,
+)
+from connectonion.useful_tools.browser_tools import (  # noqa: E402
+    _async_browser as async_mod,
+)
 
 
 class Page:
@@ -93,6 +98,7 @@ class Session:
 
 class Client:
     client_version = engine.MIN_ONIONWRIGHT_VERSION
+    release_channel = engine.ONIONWRIGHT_RELEASE_CHANNEL
 
     def __init__(self, home, prepared):
         self.home = home
@@ -113,6 +119,7 @@ def prepared_browser(tmp_path):
         os="linux",
         architecture="x86_64",
         minimum_os_version="22.04",
+        minimum_client_version=engine.MIN_ONIONWRIGHT_VERSION,
         object_key=f"chrome/{engine.BROWSER_REVISION}/linux-x86_64.tar.zst",
         size_bytes=10,
         sha256="1" * 64,
@@ -120,6 +127,10 @@ def prepared_browser(tmp_path):
         executable_path="chrome",
         repository_commit="2" * 40,
         provenance_sha256="3" * 64,
+        signing_mode="not_applicable",
+        notarized=False,
+        bundle_path=None,
+        signing_identity_sha256=None,
         paid_ready=True,
     )
     capability = Capability(
@@ -129,6 +140,7 @@ def prepared_browser(tmp_path):
         architecture="x86_64",
         browser_revision=engine.BROWSER_REVISION,
         client_version=engine.MIN_ONIONWRIGHT_VERSION,
+        release_channel=engine.ONIONWRIGHT_RELEASE_CHANNEL,
         artifact=artifact,
         cache_state="ready",
         paid_capable=True,
@@ -174,7 +186,9 @@ def test_sync_facade_reaches_real_async_paid_boundary(tmp_path, monkeypatch):
     profile, kwargs = chromium.calls[0]
     assert profile == str(tmp_path / "profiles" / "0xaccount")
     assert kwargs["executable_path"] == str(prepared.executable)
-    assert kwargs["args"][-1] == f"--license-file={client.session.licence_path.resolve()}"
+    assert (
+        kwargs["args"][-1] == f"--license-file={client.session.licence_path.resolve()}"
+    )
     assert status["resolved_engine"] == engine.ONION
     assert status["paid_session_id"] == client.session.session_id
     assert client.session.release_calls == 1

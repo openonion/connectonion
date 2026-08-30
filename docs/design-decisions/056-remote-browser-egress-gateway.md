@@ -202,8 +202,11 @@ the identical authenticated effective-runtime suite without a weaker shim:
   profile;
 - QUIC disabled;
 - non-proxied WebRTC UDP disabled;
-- Service Workers blocked for the first remote-navigation release, reducing a
-  second request path while the gateway remains the final authority;
+- `service_workers="block"` requested as best-effort request-visibility
+  hardening. Real Chrome measurement shows that this driver option does not
+  prevent registration, activation, or page control, so it is not an egress
+  boundary; the authenticated loopback gateway and native preflight remain the
+  authority for Service Worker traffic;
 - downloads accepted only through the same context and gateway.
 
 Preflight must test the effective runtime, not only inspect requested flags: a

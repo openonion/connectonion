@@ -1,0 +1,2 @@
+version: v1.8.0a4
+no_visual_change: "ConnectOnion 1.8.0a4 pins Onionwright 0.0.13.dev3, strictly verifies the preview manifest, and makes system the non-billing engine default; no browser or CLI layout changed"

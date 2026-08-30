@@ -59,7 +59,7 @@ requests:
 - QUIC disabled;
 - non-proxied WebRTC UDP disabled;
 - extensions disabled;
-- Service Workers requested blocked; and
+- `service_workers="block"` requested as best-effort visibility hardening; and
 - a dedicated persistent profile with downloads accepted.
 
 Each switch above is present in the launched binary. That is not a formality:

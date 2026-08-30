@@ -15,33 +15,46 @@ The browser stays open **between commands**. Each `co browser ...` call drives t
 
 ## Choosing the browser engine
 
-ConnectOnion 1.8 resolves the engine once when the browser daemon starts:
+The ConnectOnion 1.8 browser preview resolves the engine once when the browser daemon starts:
 
 ```bash
-co browser --engine auto go_to example.com    # default
-co browser --engine system go_to example.com  # always Patchright + system Chrome
-co browser --engine onion go_to example.com   # strict paid Onion Browser
+co browser go_to example.com                  # default: free system browser
+co browser --engine system go_to example.com  # explicit free system browser
+co browser --engine auto go_to example.com    # opt in to policy; may select paid Onion
+co browser --engine onion go_to example.com   # force paid Onion Browser
 ```
 
-The paid path requires Onionwright 0.0.12 or newer. Install or upgrade the real
-private wheel explicitly:
+Omitting `--engine` is exactly `system`: it does not inspect paid credentials,
+load Onionwright, contact the preview API, or start billing. `auto` is retained
+as an explicit strategy, not a default; selecting it authorizes the non-billing
+preflight and may start a $0.025 paid interval when Onion is ready. Selecting
+`onion` explicitly requires the paid path and never falls back to system.
+
+The paid path requires the exact Onionwright 0.0.13.dev3 preview client. Install
+or upgrade the real private wheel explicitly:
 
 ```bash
 co browser install-onion
 ```
 
-This command uses the current ConnectOnion login, verifies the release feed
-with ConnectOnion's pinned Ed25519 public key, verifies the wheel checksum from
-that signed manifest, and only then invokes this Python interpreter's pip. It
+This command uses the current ConnectOnion login and only the dedicated browser
+preview API. It verifies the feed with ConnectOnion's pinned Ed25519 public key,
+requires the signed manifest itself to name the `preview` channel, verifies the
+exact wheel checksum, and only then invokes this Python interpreter's pip. It
 does not start the browser daemon or a paid session, and downloading/installing
-the client costs $0. The real wheel comes from OpenOnion's authenticated
-artifact endpoint, not the public PyPI placeholder.
+the client costs $0. The real wheel comes from OpenOnion's authenticated preview
+artifact endpoint, not the public PyPI placeholder or the production catalogue.
+
+For an isolated local preview API, set
+`CONNECTONION_BROWSER_PREVIEW_API_URL` to its origin. HTTPS is required except
+for `localhost`, `127.0.0.1`, or `::1` test servers. The general `OO_API_URL`
+setting is deliberately ignored by this preview path.
 
 | mode | behavior |
 |---|---|
-| `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
-| `system` | Return before importing Onionwright, reading paid credentials, calling oo-api, downloading an artifact, or creating a paid session. Cost: $0 browser runtime. |
-| `onion` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
+| omitted / `system` | The free default. Return before importing Onionwright, reading paid credentials, calling oo-api, downloading an artifact, or creating a paid session. Cost: $0 browser runtime. |
+| explicit `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified paid Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
+| explicit `onion` | Force the paid path. Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
 
 Artifact checking and download do not charge. A paid session starts only after
 the complete artifact is locally ready, then prepays $0.025 for one 15-minute

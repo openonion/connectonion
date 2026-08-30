@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [socket, os, json, sys, time, shlex, inspect, functools, pathlib, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: direct verb → _request() → wire-v1 JSON {v,caller,account,tab,line,raw,engine}; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=onion; an explicit Onion request probes the warm daemon's no-launch engine_status verb before any page action; `do` keeps model calls local and sends only short tool requests
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless] [--engine=MODE]` detached, logging to ~/.co/browser.log or the explicit private target log | private proxy credentials never enter daemon argv | writes to stdout/stderr
-  Integration: exposes _caller() -> str, send(line, headless=False, tab=None, engine_mode="auto") -> int and Host-only request_target_as(); system/auto may provision per-user Chromium, while explicit Onion/private-target requests never install or fall back to a system browser; PAGELESS_VERBS never provision
+  Integration: exposes _caller() -> str, send(line, headless=False, tab=None, engine_mode="system") -> int and Host-only request_target_as(); system/auto may provision per-user Chromium, while explicit Onion/private-target requests never install or fall back to a system browser; PAGELESS_VERBS never provision
   Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
   Errors: _connect() retries transient refusal/backpressure and never unlinks an endpoint whose recorded owner is alive; only a truly stale POSIX socket is removed | missing endpoint → spawn daemon and wait until ready or timeout | setup RuntimeErrors become one clean stderr line, never a traceback containing HMAC-path locals | daemon death, overload shedding, or disconnect mid-request becomes a clean exit 1
 """
@@ -124,7 +124,7 @@ def _connect_windows(sock_path: str, authkey_path: str | Path | None = None):
 def _spawn_daemon(
     sock_path: str,
     headless: bool,
-    engine_mode: str = "auto",
+    engine_mode: str = "system",
     target=None,
 ):
     """Launch the daemon detached and wait until its socket accepts connections."""
@@ -242,7 +242,7 @@ def _request_with_identity(
     raw_result: bool = False,
     _provisioned: bool = False,
     target=None,
-    engine_mode: str = "auto",
+    engine_mode: str = "system",
     _protocol_checked: bool = False,
     _connection=None,
 ) -> tuple:
@@ -341,8 +341,8 @@ def _request_with_identity(
                 return 0, "Browser daemon: not running — the next page command starts one"
             if effective_engine != "onion":
                 _ensure_browser_ready(line)  # system or auto fallback needs this
-            if target is None and effective_engine == "auto":
-                # Keep the long-standing local auto-mode embedding seam: small
+            if target is None and effective_engine == "system":
+                # Keep the long-standing local default-mode embedding seam: small
                 # test/host adapters may implement the original two arguments.
                 conn = _spawn_daemon(sock_path, headless)
             else:
@@ -449,7 +449,7 @@ def _request(
     tab: str = None,
     raw_result: bool = False,
     _provisioned: bool = False,
-    engine_mode: str = "auto",
+    engine_mode: str = "system",
     _protocol_checked: bool = False,
     _connection=None,
 ) -> tuple:
@@ -533,7 +533,9 @@ def _tool_line(name: str, args: tuple, kwargs: dict) -> str:
 class DaemonBrowserProxy:
     """BrowserAutomation-shaped tools whose calls cross the daemon one at a time."""
 
-    def __init__(self, headless: bool = False, tab: str = None, engine_mode: str = "auto"):
+    def __init__(
+        self, headless: bool = False, tab: str = None, engine_mode: str = "system"
+    ):
         self._headless = headless
         self._tab = tab
         self._engine_mode = engine_mode
@@ -544,7 +546,7 @@ class DaemonBrowserProxy:
             "tab": self._tab,
             "raw_result": True,
         }
-        if self._engine_mode != "auto":
+        if self._engine_mode != "system":
             request_kwargs["engine_mode"] = self._engine_mode
         code, payload = _request(_tool_line(name, args, kwargs), **request_kwargs)
         if code:
@@ -584,7 +586,7 @@ def _install_proxy_methods() -> None:
     _proxy_methods_installed = True
 
 
-def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "auto") -> tuple:
+def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "system") -> tuple:
     """Run the model loop here; only its browser tool calls enter the daemon."""
     account = _caller_account()
     if not account:
@@ -614,7 +616,7 @@ def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "auto") -> t
 
 
 def send(line: str, headless: bool = False, tab: str = None,
-         _provisioned: bool = False, engine_mode: str = "auto") -> int:
+         _provisioned: bool = False, engine_mode: str = "system") -> int:
     """Run a CLI command, print its result, and return its process exit code."""
     try:
         verb = shlex.split(line)[:1]
@@ -625,7 +627,7 @@ def send(line: str, headless: bool = False, tab: str = None,
     if verb == ["do"]:
         code, payload = (
             _run_do(line, headless, tab)
-            if engine_mode == "auto"
+            if engine_mode == "system"
             else _run_do(line, headless, tab, engine_mode)
         )
     else:
@@ -634,7 +636,7 @@ def send(line: str, headless: bool = False, tab: str = None,
             "tab": tab,
             "_provisioned": _provisioned,
         }
-        if engine_mode != "auto":
+        if engine_mode != "system":
             request_kwargs["engine_mode"] = engine_mode
         code, payload = _request(line, **request_kwargs)
     if payload:
