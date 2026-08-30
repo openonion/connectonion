@@ -17,6 +17,8 @@ Usage:
 from pathlib import Path
 from typing import List, TypedDict
 
+from ...core.tool_result import ToolFailure
+
 
 class EditOperation(TypedDict, total=False):
     """Single edit operation."""
@@ -54,13 +56,13 @@ def multi_edit(
     path = Path(file_path)
 
     if not path.exists():
-        return f"Error: File '{file_path}' does not exist"
+        return ToolFailure(f"Error: File '{file_path}' does not exist")
 
     if not path.is_file():
-        return f"Error: '{file_path}' is not a file"
+        return ToolFailure(f"Error: '{file_path}' is not a file")
 
     if not edits:
-        return "Error: No edits provided"
+        return ToolFailure("Error: No edits provided")
 
     # Read original content
     original_content = path.read_text(encoding="utf-8")
@@ -74,7 +76,7 @@ def multi_edit(
         replace_all = edit.get("replace_all", False)
 
         if not old_string:
-            return f"Error: Edit {i+1} missing 'old_string'"
+            return ToolFailure(f"Error: Edit {i+1} missing 'old_string'")
 
         # Check if old_string exists in current content
         count = content.count(old_string)
@@ -83,16 +85,19 @@ def multi_edit(
             # Show what edits were successful before failure
             if applied:
                 applied_msg = "\n".join([f"  {j+1}. Replaced '{e['old']}'" for j, e in enumerate(applied)])
-                return (
+                return ToolFailure(
                     f"Error: Edit {i+1} failed - string not found after previous edits.\n"
                     f"Looking for: {repr(old_string[:100])}\n\n"
                     f"Successfully applied before failure:\n{applied_msg}\n\n"
                     f"No changes were saved (atomic operation)."
                 )
-            return f"Error: Edit {i+1} - string not found in '{file_path}': {repr(old_string[:100])}"
+            return ToolFailure(
+                f"Error: Edit {i+1} - string not found in '{file_path}': "
+                f"{repr(old_string[:100])}"
+            )
 
         if count > 1 and not replace_all:
-            return (
+            return ToolFailure(
                 f"Error: Edit {i+1} - string appears {count} times. "
                 f"Use replace_all=True or provide more context.\n"
                 f"String: {repr(old_string[:100])}"

@@ -15,6 +15,8 @@ Usage:
 
 from pathlib import Path
 
+from ...core.tool_result import ToolFailure
+
 
 def edit(
     file_path: str,
@@ -45,10 +47,10 @@ def edit(
     path = Path(file_path)
 
     if not path.exists():
-        return f"Error: File '{file_path}' does not exist"
+        return ToolFailure(f"Error: File '{file_path}' does not exist")
 
     if not path.is_file():
-        return f"Error: '{file_path}' is not a file"
+        return ToolFailure(f"Error: '{file_path}' is not a file")
 
     content = path.read_text(encoding="utf-8")
 
@@ -70,7 +72,7 @@ def edit(
         msg = f"Error: String not found in '{file_path}'"
         if lines_with_similar:
             msg += f"\n\nSimilar content found:\n" + "\n".join(lines_with_similar[:5])
-        return msg
+        return ToolFailure(msg)
 
     if count > 1 and not replace_all:
         # Show where the duplicates are
@@ -79,7 +81,7 @@ def edit(
             if old_string in line:
                 lines_with_match.append(f"  Line {i}: {line[:80]}")
 
-        return (
+        return ToolFailure(
             f"Error: String appears {count} times in '{file_path}'. "
             f"Use replace_all=True to replace all, or provide more context to make it unique.\n\n"
             f"Found at:\n" + "\n".join(lines_with_match[:10])

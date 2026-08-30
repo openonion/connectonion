@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [datetime, pathlib, typing, json, re, yaml, os, console.py] | imported by [agent.py, tool_executor.py] | tested by [tests/unit/test_logger.py]
   Data flow: receives from Agent/tool_executor → delegates to Console for terminal/file → writes YAML evals to .co/evals/
   State/Effects: writes to .co/evals/{input_slug}.yaml (one file per unique first input — _slugify keeps Unicode word characters, so a Chinese, Japanese or Cyrillic prompt gets its own file; keeping only [a-zA-Z0-9] made every non-Latin prompt collapse to `default` and share one) | retains KEEP_EVAL_RECORDS generated records and KEEP_RUNS_PER_EVAL runs per record | authored evals are never pruned | eval data persisted after each turn
-  Integration: exposes Logger(agent_name, quiet, log), .print(), .log_tool_call(name, args), .log_tool_result(result, timing), .log_llm_response(), .start_session(), .log_turn()
+  Integration: exposes Logger(agent_name, quiet, log), .print(), .log_tool_call(name, args), .log_tool_result(result, timing, success), .log_llm_response(), .start_session(), .log_turn()
   Eval format: eval.yaml (metadata + turns) | run_N.yaml (system_prompt, model, cwd, tokens, cost, duration_ms, timestamp, messages as multi-line JSON)
   Performance: YAML written after each turn (incremental) | Console delegation is direct passthrough
   Errors: let I/O errors bubble up (no try-except)
@@ -171,10 +171,15 @@ class Logger:
         if self.console:
             self.console.log_tool_call(tool_name, tool_args)
 
-    def log_tool_result(self, result: str, timing_ms: float):
+    def log_tool_result(
+        self, result: str, timing_ms: float, success: bool = True
+    ) -> None:
         """Log tool result."""
         if self.console:
-            self.console.log_tool_result(result, timing_ms)
+            if success:
+                self.console.log_tool_result(result, timing_ms)
+            else:
+                self.console.log_tool_result(result, timing_ms, success=False)
 
     def _format_tool_call(self, trace_entry: dict) -> str:
         """Format tool call as natural function-call style: greet(name='Alice')"""
