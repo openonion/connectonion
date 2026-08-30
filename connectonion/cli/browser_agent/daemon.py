@@ -545,12 +545,29 @@ class BrowserDaemon:
                 "reason": "status_unavailable",
                 "artifact_id": None,
             }
+        # The paid engine charges per interval the moment a command uses it —
+        # like tokens, no confirmation. So the price and the live session ride
+        # here in status, which is where an operator looks to see what a running
+        # browser is doing and costing.
+        price = engine.get("interval_usd")
+        cost = (
+            f" · ${price:.3f}/interval"
+            if isinstance(price, (int, float))
+            else ""
+        )
+        session = (
+            f" · paid session {engine['paid_session_id']}"
+            if engine.get("paid_session_id")
+            else ""
+        )
         lines.append(
             "Engine: "
             f"requested={engine['requested_engine']} · "
             f"resolved={engine['resolved_engine'] or 'not-started'} · "
             f"reason={engine['reason']}"
             + (f" · artifact={engine['artifact_id']}" if engine.get("artifact_id") else "")
+            + cost
+            + session
         )
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
         # visible where users look for browser state, not only in `co doctor`.
