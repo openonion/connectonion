@@ -2,77 +2,68 @@
 
 *2026-08-27*
 
-The ConnectOnion 1.8 browser candidate had a preview version, an exact preview
-dependency, and a signed artifact manifest. On paper, that looked like a
-separate release channel. Then the first cross-repository check supplied the
-ordinary `OO_API_URL` setting and watched the preview client follow it straight
-back to the production control plane.
+The ConnectOnion 1.8 browser candidate looked like a preview. Its version was a
+preview, its Onionwright dependency was a preview, and the artifact manifest
+was signed. We had done the work people usually mean when they say “separate
+release channel.”
 
-Nothing had defeated the checksum. The client was prepared to download the
-right bytes from the wrong authority.
+Then a cross-repository test set the ordinary `OO_API_URL` variable.
 
-That distinction matters for a paid browser. The API chooses the artifact,
-creates the metered session, and signs the runtime configuration. If preview
-can silently inherit a production endpoint, a test can spend real credit and
-exercise production policy while still reporting a preview package version.
-The green result proves only that two channels happened to be compatible that
-day.
+The preview client followed it straight to production.
 
-## The channel now crosses every trust boundary
+That was the uncomfortable result because none of the cryptography had failed.
+The checksum was right. The signature was right. The package version was
+right. The client was prepared to download the expected bytes from the wrong
+authority.
 
-The 1.8 browser preview client names `preview` in four places that must agree.
-It installs the exact Onionwright preview version, calls the dedicated preview
-API, accepts only a signed manifest whose channel is `preview`, and checks that
-the runtime client still reports that channel before browser preparation or
-billing can begin. The general production override is deliberately ignored and
-there is no preview endpoint environment override, including for loopback.
-Hosted traffic is fixed to the packaged preview hostname, and its HTTP session
-uses a dedicated TLS 1.2+ context with the packaged certifi bundle while
-ignoring ambient proxy, CA-bundle, TLS-key-log, and netrc settings. A repository
-`.env` file therefore cannot redirect, intercept, or record the ambient
-credential. Integration tests inject a local endpoint in-process rather than
-widening the installed trust boundary.
+For a library download, that would already be a serious boundary mistake. For
+a paid browser it was worse. The API does more than serve a file: it selects
+the artifact, creates the metered session, and signs the runtime configuration.
+A test labelled “preview” could therefore spend real credit and exercise
+production policy. If it passed, the green check proved only that preview and
+production happened to agree that day.
 
-The same repository-controlled environment could otherwise survive into pip.
-The installer now invokes isolated Python/pip from a temporary working
-directory, disables indexes and dependency resolution, and installs only the
-already verified wheel. ConnectOnion locks Onionwright's PyNaCl and zstandard
-runtime requirements itself, then checks the installed version, imports,
-preview client channel, and paid public surface in another isolated process.
-Malformed download URLs are rejected as installer errors rather than leaking a
-parser traceback.
+Our first instinct was to treat the endpoint as one more setting to document.
+That would have preserved the bug in a friendlier form. Environment overrides
+are useful precisely because they are ambient: a shell, a project `.env`, or a
+parent process can provide them without the caller thinking about the value on
+each request. The property that makes an override convenient for ordinary API
+traffic makes it unsuitable for the authenticated bootstrap that downloads
+code and crosses a billing boundary.
 
-The failure order is part of the design. A version or channel mismatch stops
-before download, pip installation, browser preparation, session creation, or
-charging. A preview label is not a warning attached to a production request;
-it is an input to every decision that can spend money or execute downloaded
-code.
+The turn came when we stopped asking, “Does this package have a preview
+version?” and asked, “What is the first irreversible action?” Downloading code,
+creating a paid session, and launching a remotely configured browser all
+qualified. The channel had to be settled before any of them.
 
-The 1.8 preview also makes spending an explicit choice. A bare `co browser`,
-`BrowserAutomation`, or async core selects the free system engine. `auto` still
-exists as an explicit policy and may choose paid Onion when ready; `onion`
-forces the paid path. Either paid outcome names `$0.025 / 15 min`. The
-preview trust chain is therefore available without turning ordinary browser
-usage into an implicit purchase.
+That changed the shape of the solution. The preview endpoint became part of
+the packaged trust decision, not an alias for the production endpoint. The
+signed manifest had to say `preview`, and the installed runtime had to report
+the same channel before preparation or billing could begin. A mismatch now
+ends the attempt rather than looking for a compatible fallback.
 
-## Offline green is necessary, not deployment proof
+The same question exposed a second, quieter path. Even after a wheel had been
+verified, an ordinary pip invocation could consult repository-controlled
+configuration or indexes. So verification could be correct while installation
+still executed something else. The installer now hands an already verified
+local wheel to an isolated interpreter, with indexes and dependency resolution
+disabled, and checks the installed client from outside the project directory.
 
-The superseded stacked 1.8 browser candidate first passed the focused preview
-and version suites, the browser security/runtime matrix, the installed-wheel
-harness, and a real ConnectOnion-to-Onionwright preview boundary check. A fresh
-install also proved that it ignored `OO_API_URL`; in system mode the browser
-resolver did not invoke its paid-token loader or contact the preview service.
-The shared CLI bootstrap can still load environment files before dispatch.
+We found the pricing decision by following the boundary one step further. If a
+bare `co browser` could automatically select Onion, then installing the preview
+once would turn later ordinary browser calls into purchases. The new default is
+the free system engine. `auto` remains available as an explicit choice and may
+select Onion; `onion` is the strict paid path. Both paid choices name the
+`$0.025 / 15 min` price. The preview can now be installed without silently
+changing what an unqualified browser command costs.
 
-Those results established the client boundary, not the hosted one. At that
-checkpoint the final gate still had to deploy the isolated preview API and run
-the exact artifact through create, navigation, WebGL, download, renewal, close,
-release, and billing reconciliation. That later passed on the exact stacked
-source and wheel. The clean 1.8.0a4 rebase has repeated the local full,
-cross-repository, package, and installed-wheel gates, but its source and wheel
-hashes necessarily changed. The hosted gate is therefore required again, after
-the immutable dev3 wheel and matching oo-api catalogue coordinate exist.
+Local tests could prove these failure orders, but they could not prove a hosted
+deployment. An earlier stacked candidate completed the real browser and billing
+path; rebasing it as `1.8.0a4` changed the source and wheel hashes. That erased
+the right to reuse the old acceptance result. The immutable dev3 wheel, preview
+catalogue, API deployment, and paid lifecycle must agree again before a4 can be
+published.
 
-The lesson is smaller than the machinery: a preview channel is independent
-only when it fails closed before the first irreversible action. A different
-version string is useful evidence, but it is not a trust boundary.
+The lesson is smaller than the machinery. A preview is independent only when
+it fails closed before the first irreversible action. A different version
+string is useful evidence. It is not a trust boundary.
