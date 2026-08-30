@@ -57,6 +57,7 @@ MAX_MANIFEST_PAYLOAD_BYTES = 1024 * 1024
 MAX_JSON_RESPONSE_BYTES = 2 * MAX_MANIFEST_PAYLOAD_BYTES + 4096
 MAX_ARTIFACT_KEY_LENGTH = 512
 
+
 class _ReleaseTLSAdapter(requests.adapters.HTTPAdapter):
     """Keep authenticated release TLS on one explicit context and CA bundle."""
 
@@ -91,6 +92,14 @@ class _ReleaseTLSAdapter(requests.adapters.HTTPAdapter):
         # through SSL_CERT_*, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, or mTLS state.
         super().cert_verify(conn, url, self._ca_bundle, None)
 
+    def proxy_manager_for(self, proxy, **proxy_kwargs):
+        # The release path never permits a proxy.  Besides redirecting the
+        # bearer token, a future explicit HTTPS proxy would otherwise create a
+        # second TLS context with its own ambient CA/key-log behavior.
+        raise requests.exceptions.ProxyError(
+            "authenticated release transport does not permit proxies"
+        )
+
 
 def _release_ssl_context(ca_bundle: str) -> ssl.SSLContext:
     """Build TLS without urllib3/default-context environment side effects."""
@@ -112,10 +121,6 @@ def _build_release_session() -> requests.Session:
     session.mount("https://", _ReleaseTLSAdapter(context, ca_bundle))
     return session
 
-
-# ConnectOnion imports project .env files.  The authenticated release client
-# must not inherit proxy, CA, key-log, netrc, or interpreter controls from it.
-_RELEASE_SESSION = _build_release_session()
 
 _CLIENT_HEALTHCHECK = """
 import importlib.metadata
@@ -228,14 +233,23 @@ def _installed_client_is_healthy() -> bool:
     return completed.returncode == 0
 
 
-def _request_json(method: str, url: str, **kwargs) -> dict:
+def _request_json(
+    method: str, url: str, *, session: requests.Session, **kwargs
+) -> dict:
+    if {"proxies", "verify", "cert"}.intersection(kwargs):
+        raise OnionwrightInstallError(
+            "Authenticated release transport overrides are not permitted."
+        )
     try:
-        response = _RELEASE_SESSION.request(
+        response = session.request(
             method,
             url,
             stream=True,
             timeout=REQUEST_TIMEOUT,
             allow_redirects=False,
+            proxies={},
+            verify=True,
+            cert=None,
             **kwargs,
         )
     except requests.RequestException as exc:
@@ -383,6 +397,7 @@ def _download_wheel(
     destination: Path,
     expected_sha256: str,
     *,
+    session: requests.Session,
     preview_api_url: str | None = None,
 ) -> None:
     try:
@@ -430,11 +445,14 @@ def _download_wheel(
             )
 
     try:
-        response = _RELEASE_SESSION.get(
+        response = session.get(
             url,
             stream=True,
             timeout=REQUEST_TIMEOUT,
             allow_redirects=False,
+            proxies={},
+            verify=True,
+            cert=None,
         )
     except requests.RequestException as exc:
         raise OnionwrightInstallError(
@@ -484,31 +502,40 @@ def install_onionwright() -> InstallResult:
     token = require_ambient_api_key()
     headers = {"Authorization": f"Bearer {token}"}
     base = api_url()
-    signed = _request_json(
-        "get",
-        f"{base}/api/v1/license/manifest",
-        headers=headers,
-    )
-    expected_sha256 = _verified_manifest_digest(signed)
-    grant = _request_json(
-        "post",
-        f"{base}/api/v1/license/download",
-        headers=headers,
-        json={"artifact": ONIONWRIGHT_ARTIFACT},
-    )
-    if grant.get("sha256") != expected_sha256 or not isinstance(grant.get("url"), str):
-        raise OnionwrightInstallError(
-            "OpenOnion download grant did not match the signed manifest."
-        )
 
     with tempfile.TemporaryDirectory(prefix="co-onionwright-") as temp_dir:
         wheel = Path(temp_dir) / Path(ONIONWRIGHT_ARTIFACT).name
-        _download_wheel(
-            grant["url"],
-            wheel,
-            expected_sha256,
-            preview_api_url=base,
-        )
+        # requests Session and SSLContext are intentionally invocation-scoped:
+        # neither object promises thread safety, and no cookie/connection state
+        # should survive into another install attempt.
+        with _build_release_session() as release_session:
+            signed = _request_json(
+                "get",
+                f"{base}/api/v1/license/manifest",
+                session=release_session,
+                headers=headers,
+            )
+            expected_sha256 = _verified_manifest_digest(signed)
+            grant = _request_json(
+                "post",
+                f"{base}/api/v1/license/download",
+                session=release_session,
+                headers=headers,
+                json={"artifact": ONIONWRIGHT_ARTIFACT},
+            )
+            if grant.get("sha256") != expected_sha256 or not isinstance(
+                grant.get("url"), str
+            ):
+                raise OnionwrightInstallError(
+                    "OpenOnion download grant did not match the signed manifest."
+                )
+            _download_wheel(
+                grant["url"],
+                wheel,
+                expected_sha256,
+                session=release_session,
+                preview_api_url=base,
+            )
         command = [
             sys.executable,
             "-I",
