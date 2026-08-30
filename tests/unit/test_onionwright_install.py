@@ -138,8 +138,74 @@ def test_only_the_exact_preview_client_is_compatible(version):
     assert installer._is_compatible(version) is False
 
 
-def test_authenticated_release_transport_ignores_ambient_network_settings():
-    assert installer._RELEASE_SESSION.trust_env is False
+def test_authenticated_release_transport_ignores_all_ambient_tls_and_network_settings(
+    monkeypatch, tmp_path
+):
+    keylog = tmp_path / "stolen-tls-keys.log"
+    fake_ca = tmp_path / "attacker-ca.pem"
+    fake_ca.write_text("not a CA", encoding="utf-8")
+    fake_ca_dir = tmp_path / "attacker-ca-dir"
+    fake_ca_dir.mkdir()
+    netrc = tmp_path / "attacker.netrc"
+    netrc.write_text(
+        "machine browser-preview.oo.openonion.ai "
+        "login attacker password intercepted\n",
+        encoding="utf-8",
+    )
+    hostile = {
+        "SSLKEYLOGFILE": str(keylog),
+        "SSL_CERT_FILE": str(fake_ca),
+        "SSL_CERT_DIR": str(fake_ca_dir),
+        "REQUESTS_CA_BUNDLE": str(fake_ca),
+        "CURL_CA_BUNDLE": str(fake_ca),
+        "HTTPS_PROXY": "https://attacker.invalid:8443",
+        "HTTP_PROXY": "http://attacker.invalid:8080",
+        "ALL_PROXY": "socks5://attacker.invalid:1080",
+        "NETRC": str(netrc),
+    }
+    for name, value in hostile.items():
+        monkeypatch.setenv(name, value)
+
+    session = installer._build_release_session()
+    adapter = session.get_adapter("https://browser-preview.oo.openonion.ai")
+    context = adapter._ssl_context
+    prepared = session.prepare_request(
+        installer.requests.Request(
+            "GET",
+            "https://browser-preview.oo.openonion.ai/api/v1/license/manifest",
+            headers={"Authorization": "Bearer intended-token"},
+        )
+    )
+    without_auth = session.prepare_request(
+        installer.requests.Request(
+            "GET",
+            "https://browser-preview.oo.openonion.ai/api/v1/license/manifest",
+        )
+    )
+    settings = session.merge_environment_settings(
+        prepared.url, {}, None, None, None
+    )
+    _, pool_kwargs = adapter.build_connection_pool_key_attributes(
+        prepared, settings["verify"], None
+    )
+
+    assert session.trust_env is False
+    assert prepared.headers["Authorization"] == "Bearer intended-token"
+    assert "Authorization" not in without_auth.headers
+    assert settings["proxies"] == {}
+    assert settings["verify"] is True
+    assert adapter._ca_bundle == installer.requests.certs.where()
+    assert adapter.poolmanager.connection_pool_kw["ssl_context"] is context
+    assert pool_kwargs["ssl_context"] is context
+    assert pool_kwargs["cert_reqs"] == "CERT_REQUIRED"
+    assert "ca_certs" not in pool_kwargs
+    assert "ca_cert_dir" not in pool_kwargs
+    assert context.verify_mode == installer.ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    assert context.minimum_version == installer.ssl.TLSVersion.TLSv1_2
+    assert context.keylog_filename is None
+    assert context.cert_store_stats()["x509_ca"] > 0
+    assert not keylog.exists()
 
 
 def test_installed_client_health_check_runs_isolated_from_the_project(
@@ -150,6 +216,7 @@ def test_installed_client_health_check_runs_isolated_from_the_project(
     monkeypatch.setenv("PIP_INDEX_URL", "https://attacker.invalid/simple")
     monkeypatch.setenv("HTTPS_PROXY", "https://attacker.invalid")
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/tmp/attacker.pem")
+    monkeypatch.setenv("SSLKEYLOGFILE", "/tmp/stolen-tls-keys.log")
     monkeypatch.setenv("LD_PRELOAD", "/tmp/attacker.so")
 
     def run(command, **kwargs):
@@ -169,6 +236,7 @@ def test_installed_client_health_check_runs_isolated_from_the_project(
         "PIP_INDEX_URL",
         "HTTPS_PROXY",
         "REQUESTS_CA_BUNDLE",
+        "SSLKEYLOGFILE",
         "LD_PRELOAD",
     ):
         assert name not in seen["kwargs"]["env"]
@@ -583,6 +651,8 @@ def test_download_redirect_is_refused_without_reading_body(monkeypatch, tmp_path
         ("https://example.test:99999/wheel", "https://preview.test"),
         ("https://example.test:/wheel", "https://preview.test"),
         (" https://example.test/wheel", "https://preview.test"),
+        ("https://example.test/wheel?", "https://preview.test"),
+        ("https://example.test/wheel#", "https://preview.test"),
         ("https://example.test/wheel#fragment", "https://preview.test"),
         (None, "https://preview.test"),
     ],

@@ -177,11 +177,12 @@ def resolve(
 ) -> Resolution:
     """Resolve one immutable engine choice without starting a paid session.
 
-    `system` returns before importing Onionwright, loading a token, calling the
-    server, or touching the paid cache. `auto` and `onion` run Onionwright's
-    complete non-billing `prepare`: exact signed manifest, compatibility,
-    download, checksum, extraction, and executable readiness. Only the later
-    `launch()` call is allowed to create and charge a session.
+    `system` does not invoke this resolver's token loader, import Onionwright,
+    call the server, or touch the paid cache. The enclosing CLI may already
+    have loaded environment files before dispatch. `auto` and `onion` run
+    Onionwright's complete non-billing `prepare`: exact signed manifest,
+    compatibility, download, checksum, extraction, and executable readiness.
+    Only the later `launch()` call is allowed to create and charge a session.
     """
     if requested not in MODES:
         raise BrowserEngineError(

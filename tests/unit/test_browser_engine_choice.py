@@ -25,7 +25,7 @@ class Client:
         return self.result
 
 
-def test_system_returns_before_token_or_onionwright():
+def test_system_resolver_does_not_invoke_paid_token_loader_or_onionwright():
     def forbidden(*args):
         pytest.fail("system mode touched the paid path")
 
@@ -41,7 +41,7 @@ def test_system_returns_before_token_or_onionwright():
 
 def test_omitted_engine_defaults_to_nonbilling_system():
     def forbidden(*args):
-        pytest.fail("the omitted engine touched credentials or paid code")
+        pytest.fail("the omitted engine invoked its paid token loader or paid code")
 
     result = engine.resolve(
         token_loader=forbidden,

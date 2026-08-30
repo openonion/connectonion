@@ -24,8 +24,10 @@ co browser --engine auto go_to example.com    # opt in to policy; may select pai
 co browser --engine onion go_to example.com   # force paid Onion Browser
 ```
 
-Omitting `--engine` is exactly `system`: it does not inspect paid credentials,
-load Onionwright, contact the preview API, or start billing. `auto` is retained
+Omitting `--engine` is exactly `system`: the browser path does not invoke the
+paid-token loader, transmit or use a paid token, load Onionwright, contact the
+preview API, or start billing. The shared CLI bootstrap may already have loaded
+project or home environment files before command dispatch. `auto` is retained
 as an explicit strategy, not a default; selecting it authorizes the non-billing
 preflight and may start a $0.025 paid interval when Onion is ready. Selecting
 `onion` explicitly requires the paid path and never falls back to system.
@@ -47,14 +49,16 @@ artifact endpoint, not the public PyPI placeholder or the production catalogue.
 
 The origin is fixed to `browser-preview.oo.openonion.ai`: there is no runtime
 environment override, and the general `OO_API_URL` setting is deliberately
-ignored. The authenticated release session ignores environment proxy, CA, and
-netrc configuration. Pip runs isolated and offline against only the verified
-local wheel; ConnectOnion supplies its locked PyNaCl and zstandard dependencies
-and verifies the installed preview surface outside the project directory.
+ignored. The authenticated release session uses a dedicated TLS 1.2+ context
+with the packaged certifi bundle and ignores environment proxy, CA,
+TLS-key-log, and netrc configuration. Pip runs isolated and offline against
+only the verified local wheel; ConnectOnion supplies its locked PyNaCl and
+zstandard dependencies and verifies the installed preview surface outside the
+project directory.
 
 | mode | behavior |
 |---|---|
-| omitted / `system` | The free default. Return before importing Onionwright, reading paid credentials, calling oo-api, downloading an artifact, or creating a paid session. Cost: $0 browser runtime. |
+| omitted / `system` | The free default. The browser path does not parse, transmit, or use a paid token and does not import Onionwright, call oo-api, download an artifact, or create a paid session. Cost: $0 browser runtime. |
 | explicit `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified paid Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
 | explicit `onion` | Force the paid path. Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
 

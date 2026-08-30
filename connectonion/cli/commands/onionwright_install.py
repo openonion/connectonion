@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -56,10 +57,65 @@ MAX_MANIFEST_PAYLOAD_BYTES = 1024 * 1024
 MAX_JSON_RESPONSE_BYTES = 2 * MAX_MANIFEST_PAYLOAD_BYTES + 4096
 MAX_ARTIFACT_KEY_LENGTH = 512
 
+class _ReleaseTLSAdapter(requests.adapters.HTTPAdapter):
+    """Keep authenticated release TLS on one explicit context and CA bundle."""
+
+    def __init__(self, context: ssl.SSLContext, ca_bundle: str):
+        self._ssl_context = context
+        self._ca_bundle = ca_bundle
+        super().__init__()
+
+    def init_poolmanager(
+        self, connections: int, maxsize: int, block: bool = False, **pool_kwargs
+    ) -> None:
+        pool_kwargs["ssl_context"] = self._ssl_context
+        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
+
+    def build_connection_pool_key_attributes(self, request, verify, cert=None):
+        # requests 2.32+ can put a different context into the per-request pool
+        # key after init_poolmanager().  Ignore caller/environment trust inputs
+        # and force the same release context at both layers.
+        host_params, pool_kwargs = super().build_connection_pool_key_attributes(
+            request, True, None
+        )
+        pool_kwargs.pop("ca_certs", None)
+        pool_kwargs.pop("ca_cert_dir", None)
+        pool_kwargs.pop("cert_file", None)
+        pool_kwargs.pop("key_file", None)
+        pool_kwargs["ssl_context"] = self._ssl_context
+        pool_kwargs["cert_reqs"] = "CERT_REQUIRED"
+        return host_params, pool_kwargs
+
+    def cert_verify(self, conn, url, verify, cert) -> None:
+        # The fixed certifi path is intentional.  In particular, do not pass
+        # through SSL_CERT_*, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, or mTLS state.
+        super().cert_verify(conn, url, self._ca_bundle, None)
+
+
+def _release_ssl_context(ca_bundle: str) -> ssl.SSLContext:
+    """Build TLS without urllib3/default-context environment side effects."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.keylog_filename = None
+    context.load_verify_locations(cafile=ca_bundle)
+    return context
+
+
+def _build_release_session() -> requests.Session:
+    """Build the environment-independent authenticated release transport."""
+    ca_bundle = requests.certs.where()
+    context = _release_ssl_context(ca_bundle)
+    session = requests.Session()
+    session.trust_env = False
+    session.mount("https://", _ReleaseTLSAdapter(context, ca_bundle))
+    return session
+
+
 # ConnectOnion imports project .env files.  The authenticated release client
-# must not inherit proxy, CA-bundle, or netrc controls from that repository.
-_RELEASE_SESSION = requests.Session()
-_RELEASE_SESSION.trust_env = False
+# must not inherit proxy, CA, key-log, netrc, or interpreter controls from it.
+_RELEASE_SESSION = _build_release_session()
 
 _CLIENT_HEALTHCHECK = """
 import importlib.metadata
@@ -133,6 +189,7 @@ def _clean_subprocess_env() -> dict[str, str]:
         "REQUESTS_CA_BUNDLE",
         "SSL_CERT_DIR",
         "SSL_CERT_FILE",
+        "SSLKEYLOGFILE",
     }
     for key in list(cleaned):
         upper = key.upper()
@@ -333,6 +390,7 @@ def _download_wheel(
             not isinstance(url, str)
             or url != url.strip()
             or any(ord(character) < 0x20 for character in url)
+            or url.endswith(("?", "#"))
         ):
             raise ValueError("download URL is not a canonical string")
         parsed = urlparse(url)

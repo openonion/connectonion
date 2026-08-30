@@ -27,10 +27,11 @@ the runtime client still reports that channel before browser preparation or
 billing can begin. The general production override is deliberately ignored and
 there is no preview endpoint environment override, including for loopback.
 Hosted traffic is fixed to the packaged preview hostname, and its HTTP session
-ignores ambient proxy, CA-bundle, and netrc settings, so a repository `.env`
-file cannot redirect or intercept the ambient credential. Integration tests
-inject a local endpoint in-process rather than widening the installed trust
-boundary.
+uses a dedicated TLS 1.2+ context with the packaged certifi bundle while
+ignoring ambient proxy, CA-bundle, TLS-key-log, and netrc settings. A repository
+`.env` file therefore cannot redirect, intercept, or record the ambient
+credential. Integration tests inject a local endpoint in-process rather than
+widening the installed trust boundary.
 
 The same repository-controlled environment could otherwise survive into pip.
 The installer now invokes isolated Python/pip from a temporary working
@@ -59,8 +60,9 @@ usage into an implicit purchase.
 The superseded stacked 1.8 browser candidate first passed the focused preview
 and version suites, the browser security/runtime matrix, the installed-wheel
 harness, and a real ConnectOnion-to-Onionwright preview boundary check. A fresh
-install also proved that it ignored `OO_API_URL` and selected the preview origin
-without reading credentials or touching the network in system mode.
+install also proved that it ignored `OO_API_URL`; in system mode the browser
+resolver did not invoke its paid-token loader or contact the preview service.
+The shared CLI bootstrap can still load environment files before dispatch.
 
 Those results established the client boundary, not the hosted one. At that
 checkpoint the final gate still had to deploy the isolated preview API and run
