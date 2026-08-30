@@ -13,6 +13,7 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -31,7 +32,6 @@ from connectonion.browser_preview import (
     ONIONWRIGHT_ARTIFACT,
     ONIONWRIGHT_VERSION,
     RELEASE_CHANNEL,
-    BrowserPreviewConfigError,
     api_url,
 )
 from connectonion.credentials import require_ambient_api_key
@@ -55,6 +55,41 @@ MANIFEST_FUTURE_SKEW_SECONDS = 60
 MAX_MANIFEST_PAYLOAD_BYTES = 1024 * 1024
 MAX_JSON_RESPONSE_BYTES = 2 * MAX_MANIFEST_PAYLOAD_BYTES + 4096
 MAX_ARTIFACT_KEY_LENGTH = 512
+
+# ConnectOnion imports project .env files.  The authenticated release client
+# must not inherit proxy, CA-bundle, or netrc controls from that repository.
+_RELEASE_SESSION = requests.Session()
+_RELEASE_SESSION.trust_env = False
+
+_CLIENT_HEALTHCHECK = """
+import importlib.metadata
+import pathlib
+import sys
+
+import onionwright
+import zstandard
+
+expected_version, expected_channel, expected_api = sys.argv[1:]
+if importlib.metadata.version("onionwright") != expected_version:
+    raise SystemExit(1)
+if getattr(onionwright, "__version__", None) != expected_version:
+    raise SystemExit(1)
+if not callable(getattr(onionwright, "launch_paid_async", None)):
+    raise SystemExit(1)
+client_type = getattr(onionwright, "PaidSessionClient", None)
+if not callable(client_type):
+    raise SystemExit(1)
+client = client_type(
+    "connectonion-install-healthcheck",
+    pathlib.Path.cwd(),
+    api=expected_api,
+    release_channel=expected_channel,
+)
+if client.client_version != expected_version:
+    raise SystemExit(1)
+if client.release_channel != expected_channel:
+    raise SystemExit(1)
+"""
 
 
 class OnionwrightInstallError(RuntimeError):
@@ -86,9 +121,59 @@ def _is_compatible(version: str | None) -> bool:
         return False
 
 
+def _clean_subprocess_env() -> dict[str, str]:
+    """Remove repository-controlled interpreter, installer, and TLS settings."""
+    cleaned = dict(os.environ)
+    exact = {
+        "CURL_CA_BUNDLE",
+        "GIT_SSL_CAINFO",
+        "NETRC",
+        "NO_PROXY",
+        "OPENSSL_CONF",
+        "REQUESTS_CA_BUNDLE",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
+    }
+    for key in list(cleaned):
+        upper = key.upper()
+        if (
+            upper in exact
+            or upper.startswith(("PYTHON", "PIP_", "DYLD_", "LD_"))
+            or upper.endswith("_PROXY")
+        ):
+            cleaned.pop(key, None)
+    return cleaned
+
+
+def _installed_client_is_healthy() -> bool:
+    """Validate the installed bytes outside cwd and ambient import settings."""
+    with tempfile.TemporaryDirectory(prefix="co-onionwright-check-") as temp_dir:
+        try:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-c",
+                    _CLIENT_HEALTHCHECK,
+                    ONIONWRIGHT_VERSION,
+                    RELEASE_CHANNEL,
+                    api_url(),
+                ],
+                check=False,
+                cwd=temp_dir,
+                env=_clean_subprocess_env(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    return completed.returncode == 0
+
+
 def _request_json(method: str, url: str, **kwargs) -> dict:
     try:
-        response = requests.request(
+        response = _RELEASE_SESSION.request(
             method,
             url,
             stream=True,
@@ -243,23 +328,43 @@ def _download_wheel(
     *,
     preview_api_url: str | None = None,
 ) -> None:
-    parsed = urlparse(url)
+    try:
+        if (
+            not isinstance(url, str)
+            or url != url.strip()
+            or any(ord(character) < 0x20 for character in url)
+        ):
+            raise ValueError("download URL is not a canonical string")
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port
+        preview = urlparse(preview_api_url or "")
+        preview_hostname = preview.hostname
+        preview_port = preview.port
+    except (TypeError, ValueError) as exc:
+        raise OnionwrightInstallError(
+            "OpenOnion release service returned an invalid download URL."
+        ) from exc
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
+        or hostname is None
+        or port == 0
+        or parsed.netloc.endswith(":")
         or parsed.username is not None
         or parsed.password is not None
+        or parsed.fragment
     ):
         raise OnionwrightInstallError(
             "OpenOnion release service returned an invalid download URL."
         )
     if parsed.scheme != "https":
-        preview = urlparse(preview_api_url or "")
         local_e2e = (
             parsed.scheme == "http"
-            and parsed.hostname in LOOPBACK_HOSTS
+            and hostname in LOOPBACK_HOSTS
             and preview.scheme == "http"
-            and preview.hostname in LOOPBACK_HOSTS
+            and preview_hostname in LOOPBACK_HOSTS
+            and preview_port != 0
         )
         if not local_e2e:
             raise OnionwrightInstallError(
@@ -267,7 +372,7 @@ def _download_wheel(
             )
 
     try:
-        response = requests.get(
+        response = _RELEASE_SESSION.get(
             url,
             stream=True,
             timeout=REQUEST_TIMEOUT,
@@ -313,17 +418,14 @@ def _download_wheel(
 def install_onionwright() -> InstallResult:
     """Install the current private client into this exact Python environment."""
     current = _installed_version()
-    if _is_compatible(current):
+    if _is_compatible(current) and _installed_client_is_healthy():
         return InstallResult(
             version=current or ONIONWRIGHT_VERSION, already_installed=True
         )
 
     token = require_ambient_api_key()
     headers = {"Authorization": f"Bearer {token}"}
-    try:
-        base = api_url()
-    except BrowserPreviewConfigError as exc:
-        raise OnionwrightInstallError(str(exc)) from exc
+    base = api_url()
     signed = _request_json(
         "get",
         f"{base}/api/v1/license/manifest",
@@ -351,15 +453,24 @@ def install_onionwright() -> InstallResult:
         )
         command = [
             sys.executable,
+            "-I",
             "-m",
             "pip",
+            "--isolated",
             "install",
             "--upgrade",
             "--disable-pip-version-check",
+            "--no-index",
+            "--no-deps",
             str(wheel),
         ]
         try:
-            completed = subprocess.run(command, check=False)
+            completed = subprocess.run(
+                command,
+                check=False,
+                cwd=temp_dir,
+                env=_clean_subprocess_env(),
+            )
         except OSError as exc:
             raise OnionwrightInstallError(
                 "Could not start pip in the current Python environment."
@@ -370,10 +481,11 @@ def install_onionwright() -> InstallResult:
             )
 
     installed = _installed_version()
-    if not _is_compatible(installed):
+    if not _is_compatible(installed) or not _installed_client_is_healthy():
         raise OnionwrightInstallError(
-            f"pip completed but exact preview Onionwright {ONIONWRIGHT_VERSION} "
-            "is not installed."
+            f"pip completed but exact, importable preview Onionwright "
+            f"{ONIONWRIGHT_VERSION} is not installed with its required public "
+            "surface and dependencies."
         )
     return InstallResult(
         version=installed or ONIONWRIGHT_VERSION, already_installed=False

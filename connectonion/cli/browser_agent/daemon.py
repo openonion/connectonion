@@ -333,13 +333,21 @@ class BrowserDaemon:
         verb = tokens[0]
         session = _key(tab)
         whole_browser_close = verb == "close" and len(tokens) == 1 and session is None
+        tab_lifecycle_close = (
+            (verb == "tab" and len(tokens) >= 2 and tokens[1] == "close")
+            or verb == "closetab"
+            or (verb == "close" and len(tokens) == 1 and session is not None)
+        )
+        gateway_independent_close = whole_browser_close or tab_lifecycle_close
         # Not `getattr(..., False)`: a missing attribute here would skip the
         # gateway-health gate entirely, which is the wrong direction to fail
         # for the check that keeps an unproven browser from serving commands.
-        # Whole-browser close is the exception: it cannot create traffic or a
-        # paid interval and must remain available to stop an old daemon even
-        # when its gateway or requested engine no longer matches the caller.
-        if not whole_browser_close and self._remote_egress and (
+        # Close operations cannot launch a page or start a paid interval. They
+        # remain available when the gateway is down so an authenticated owner
+        # can tear down its page/session. Whole-browser close also crosses an
+        # engine mismatch during default-mode migration; tab close still goes
+        # through the normal engine pin and owner guard below.
+        if not gateway_independent_close and self._remote_egress and (
             self._gateway is None or not self._gateway.is_running
         ):
             return False, "EGRESS_GATEWAY_UNAVAILABLE"

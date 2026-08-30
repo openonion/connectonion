@@ -200,6 +200,13 @@ def _normalize_url(url: str) -> str:
     return f"https://{url}" if "." in url else f"http://{url}"
 
 
+def _with_paid_launch_notice(launch_result: str, action_result: str) -> str:
+    """Keep the first charged interval visible through a compound page action."""
+    if launch_result.startswith("Onion Browser opened"):
+        return f"{launch_result}\n{action_result}"
+    return action_result
+
+
 def _occupancy_help(verb: str, url: str) -> str:
     return (
         "This tab has no purpose yet — say why you're using it. "
@@ -826,13 +833,14 @@ class AsyncBrowserCore:
         hours: float = 0.0,
     ) -> str:
         async with self._tab_operation():
+            launch_result = ""
             key = self._bound_session_key()
             existing = self._tab_meta.get(key, {})
             occupied = bool(existing.get("purpose") and existing.get("who"))
             if not occupied and not (purpose and who):
                 raise ValueError(_occupancy_help("go_to", url))
             if self.page is None:
-                await self.open_browser()
+                launch_result = await self.open_browser()
 
             await self.page.goto(
                 _normalize_url(url), wait_until="domcontentloaded", timeout=30000
@@ -850,7 +858,9 @@ class AsyncBrowserCore:
             if hours:
                 meta["hours"] = hours
             await self._save_context()
-            return f"Navigated to {self.current_url}"
+            return _with_paid_launch_notice(
+                launch_result, f"Navigated to {self.current_url}"
+            )
 
     async def newtab(
         self,
@@ -862,8 +872,9 @@ class AsyncBrowserCore:
         if not purpose or not who:
             raise ValueError(_occupancy_help("newtab", url or "<url>"))
         async with self._tab_operation(ensure_page=False):
+            launch_result = ""
             if self.browser is None:
-                await self.open_browser()
+                launch_result = await self.open_browser()
             key = self._bound_session_key()
             await self._ensure_page(key)
             meta = self._tab_meta.setdefault(key, {"opened_at": datetime.now()})
@@ -871,8 +882,12 @@ class AsyncBrowserCore:
             if hours:
                 meta["hours"] = hours
             if url:
-                return await self.go_to(url, purpose=purpose, who=who, hours=hours)
-            return f"Opened new tab · who={who} · purpose={purpose!r}"
+                result = await self.go_to(
+                    url, purpose=purpose, who=who, hours=hours
+                )
+            else:
+                result = f"Opened new tab · who={who} · purpose={purpose!r}"
+            return _with_paid_launch_notice(launch_result, result)
 
     async def tab_status(self) -> str:
         """Render registered tabs, including reservations without a live page."""

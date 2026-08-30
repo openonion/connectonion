@@ -24,18 +24,22 @@ The 1.8 browser preview client names `preview` in four places that must agree.
 It installs the exact Onionwright preview version, calls the dedicated preview
 API, accepts only a signed manifest whose channel is `preview`, and checks that
 the runtime client still reports that channel before browser preparation or
-billing can begin. The general production override is deliberately ignored;
-local tests have a separate loopback-only preview override. Hosted traffic is
-fixed to the packaged preview hostname, so a repository `.env` file cannot
-redirect the ambient credential to an arbitrary HTTPS host.
+billing can begin. The general production override is deliberately ignored and
+there is no preview endpoint environment override, including for loopback.
+Hosted traffic is fixed to the packaged preview hostname, and its HTTP session
+ignores ambient proxy, CA-bundle, and netrc settings, so a repository `.env`
+file cannot redirect or intercept the ambient credential. Integration tests
+inject a local endpoint in-process rather than widening the installed trust
+boundary.
 
-That local override exposed another useful boundary. Preview needs an HTTPS
-origin in normal use, but an integration test should not need a public
-certificate merely to bind an ephemeral server on the loopback interface. The
-validator therefore permits an overridden origin only when it is loopback, and
-permits HTTP only when both the API and artifact URLs are loopback addresses.
-Credentials, paths, queries, fragments, malformed ports, and other remote hosts
-are rejected instead of normalized into something surprising.
+The same repository-controlled environment could otherwise survive into pip.
+The installer now invokes isolated Python/pip from a temporary working
+directory, disables indexes and dependency resolution, and installs only the
+already verified wheel. ConnectOnion locks Onionwright's PyNaCl and zstandard
+runtime requirements itself, then checks the installed version, imports,
+preview client channel, and paid public surface in another isolated process.
+Malformed download URLs are rejected as installer errors rather than leaking a
+parser traceback.
 
 The failure order is part of the design. A version or channel mismatch stops
 before download, pip installation, browser preparation, session creation, or

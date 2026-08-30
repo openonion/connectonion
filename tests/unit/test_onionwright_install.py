@@ -88,13 +88,14 @@ def test_already_compatible_does_not_read_credentials_or_touch_network(monkeypat
     monkeypatch.setattr(
         installer, "_installed_version", lambda: installer.ONIONWRIGHT_VERSION
     )
+    monkeypatch.setattr(installer, "_installed_client_is_healthy", lambda: True)
     monkeypatch.setattr(
         installer,
         "require_ambient_api_key",
         lambda: (_ for _ in ()).throw(AssertionError("read credentials")),
     )
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "request",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network")),
     )
@@ -104,6 +105,21 @@ def test_already_compatible_does_not_read_credentials_or_touch_network(monkeypat
     assert result == installer.InstallResult(
         version=installer.ONIONWRIGHT_VERSION, already_installed=True
     )
+
+
+def test_exact_metadata_does_not_hide_a_broken_or_shadowed_install(monkeypatch):
+    monkeypatch.setattr(
+        installer, "_installed_version", lambda: installer.ONIONWRIGHT_VERSION
+    )
+    monkeypatch.setattr(installer, "_installed_client_is_healthy", lambda: False)
+    monkeypatch.setattr(
+        installer,
+        "require_ambient_api_key",
+        lambda: (_ for _ in ()).throw(RuntimeError("continued to repair")),
+    )
+
+    with pytest.raises(RuntimeError, match="continued to repair"):
+        installer.install_onionwright()
 
 
 @pytest.mark.parametrize(
@@ -120,6 +136,42 @@ def test_already_compatible_does_not_read_credentials_or_touch_network(monkeypat
 )
 def test_only_the_exact_preview_client_is_compatible(version):
     assert installer._is_compatible(version) is False
+
+
+def test_authenticated_release_transport_ignores_ambient_network_settings():
+    assert installer._RELEASE_SESSION.trust_env is False
+
+
+def test_installed_client_health_check_runs_isolated_from_the_project(
+    monkeypatch,
+):
+    seen = {}
+    monkeypatch.setenv("PYTHONPATH", "/tmp/attacker")
+    monkeypatch.setenv("PIP_INDEX_URL", "https://attacker.invalid/simple")
+    monkeypatch.setenv("HTTPS_PROXY", "https://attacker.invalid")
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/tmp/attacker.pem")
+    monkeypatch.setenv("LD_PRELOAD", "/tmp/attacker.so")
+
+    def run(command, **kwargs):
+        seen.update(command=command, kwargs=kwargs)
+        assert installer.Path(kwargs["cwd"]).is_dir()
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(installer.subprocess, "run", run)
+
+    assert installer._installed_client_is_healthy() is True
+    assert seen["command"][0:3] == [installer.sys.executable, "-I", "-c"]
+    assert seen["kwargs"]["timeout"] == 30
+    assert seen["kwargs"]["stdout"] == installer.subprocess.DEVNULL
+    assert seen["kwargs"]["stderr"] == installer.subprocess.DEVNULL
+    for name in (
+        "PYTHONPATH",
+        "PIP_INDEX_URL",
+        "HTTPS_PROXY",
+        "REQUESTS_CA_BUNDLE",
+        "LD_PRELOAD",
+    ):
+        assert name not in seen["kwargs"]["env"]
 
 
 def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
@@ -146,20 +198,23 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
     )
     monkeypatch.setattr(installer, "require_ambient_api_key", lambda: "secret-token")
     monkeypatch.setattr(installer, "api_url", lambda: "https://api.test")
+    monkeypatch.setattr(installer, "_installed_client_is_healthy", lambda: True)
 
     def request(method, url, **kwargs):
         requests_seen.append((method, url, kwargs))
         return manifest_response if method == "get" else grant_response
 
-    monkeypatch.setattr(installer.requests, "request", request)
+    monkeypatch.setattr(installer._RELEASE_SESSION, "request", request)
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "get",
         lambda url, **kwargs: wheel_response,
     )
 
-    def run(command, check):
+    def run(command, check, **kwargs):
         assert check is False
+        assert kwargs["cwd"]
+        assert "PIP_INDEX_URL" not in kwargs["env"]
         wheel_path = command[-1]
         assert installer.Path(wheel_path).read_bytes() == wheel
         pip_calls.append(command)
@@ -195,14 +250,18 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
             },
         ),
     ]
-    assert pip_calls[0][0:5] == [
+    assert pip_calls[0][0:7] == [
         installer.sys.executable,
+        "-I",
         "-m",
         "pip",
+        "--isolated",
         "install",
         "--upgrade",
     ]
     assert "--disable-pip-version-check" in pip_calls[0]
+    assert "--no-index" in pip_calls[0]
+    assert "--no-deps" in pip_calls[0]
     assert wheel_response.closed
 
 
@@ -215,12 +274,12 @@ def test_bad_manifest_signature_stops_before_download_or_pip(monkeypatch):
     monkeypatch.setattr(installer, "require_ambient_api_key", lambda: "token")
     monkeypatch.setattr(installer, "api_url", lambda: "https://api.test")
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "request",
         lambda *args, **kwargs: _Response(json_body=signed),
     )
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "get",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("downloaded")),
     )
@@ -246,12 +305,12 @@ def test_nonpreview_manifest_stops_before_download_or_pip(monkeypatch, channel):
     monkeypatch.setattr(installer, "require_ambient_api_key", lambda: "token")
     monkeypatch.setattr(installer, "api_url", lambda: "https://api.test")
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "request",
         lambda *args, **kwargs: _Response(json_body=signed),
     )
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "get",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("downloaded")),
     )
@@ -478,7 +537,9 @@ def test_preview_bootstrap_rejects_an_invalid_verifier_clock(monkeypatch, now):
 def test_download_checksum_mismatch_stops_before_pip(monkeypatch, tmp_path):
     response = _Response(chunks=[b"tampered"])
     monkeypatch.setattr(installer, "api_url", lambda: "https://api.test")
-    monkeypatch.setattr(installer.requests, "get", lambda *args, **kwargs: response)
+    monkeypatch.setattr(
+        installer._RELEASE_SESSION, "get", lambda *args, **kwargs: response
+    )
 
     with pytest.raises(installer.OnionwrightInstallError, match="checksum"):
         installer._download_wheel(
@@ -498,7 +559,7 @@ def test_download_redirect_is_refused_without_reading_body(monkeypatch, tmp_path
         assert kwargs["allow_redirects"] is False
         return response
 
-    monkeypatch.setattr(installer.requests, "get", get)
+    monkeypatch.setattr(installer._RELEASE_SESSION, "get", get)
 
     with pytest.raises(installer.OnionwrightInstallError, match="HTTP 302"):
         installer._download_wheel(
@@ -518,13 +579,19 @@ def test_download_redirect_is_refused_without_reading_body(monkeypatch, tmp_path
         ("http://downloads.test/wheel", "http://127.0.0.1:8000"),
         ("http://127.0.0.1:9000/wheel", "https://preview.test"),
         ("http://user:pass@127.0.0.1:9000/wheel", "http://127.0.0.1:8000"),
+        ("https://[", "https://preview.test"),
+        ("https://example.test:99999/wheel", "https://preview.test"),
+        ("https://example.test:/wheel", "https://preview.test"),
+        (" https://example.test/wheel", "https://preview.test"),
+        ("https://example.test/wheel#fragment", "https://preview.test"),
+        (None, "https://preview.test"),
     ],
 )
 def test_insecure_download_is_rejected_before_network(
     monkeypatch, tmp_path, download_url, preview_api_url
 ):
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "get",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network")),
     )
@@ -541,7 +608,9 @@ def test_insecure_download_is_rejected_before_network(
 def test_loopback_preview_may_download_from_loopback_http(monkeypatch, tmp_path):
     wheel = b"local preview wheel"
     response = _Response(chunks=[wheel])
-    monkeypatch.setattr(installer.requests, "get", lambda *args, **kwargs: response)
+    monkeypatch.setattr(
+        installer._RELEASE_SESSION, "get", lambda *args, **kwargs: response
+    )
 
     destination = tmp_path / "onionwright.whl"
     installer._download_wheel(
@@ -557,7 +626,7 @@ def test_loopback_preview_may_download_from_loopback_http(monkeypatch, tmp_path)
 
 def test_manifest_http_error_is_sanitized(monkeypatch):
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "request",
         lambda *args, **kwargs: _Response(
             status_code=503, json_body={"detail": "secret"}
@@ -581,7 +650,7 @@ def test_manifest_json_body_is_bounded_before_decoding(monkeypatch):
         chunks=[b"x" * (installer.MAX_JSON_RESPONSE_BYTES + 1)]
     )
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "request",
         lambda *args, **kwargs: response,
     )
@@ -664,12 +733,12 @@ def test_a_manifest_signed_by_another_key_is_rejected_with_the_pin_untouched(mon
     monkeypatch.setattr(installer, "require_ambient_api_key", lambda: "token")
     monkeypatch.setattr(installer, "api_url", lambda: "https://api.test")
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "request",
         lambda *args, **kwargs: _Response(json_body=signed),
     )
     monkeypatch.setattr(
-        installer.requests,
+        installer._RELEASE_SESSION,
         "get",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("downloaded")),
     )

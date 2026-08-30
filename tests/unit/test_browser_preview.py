@@ -1,11 +1,7 @@
-import pytest
-
 from connectonion import browser_preview
 
 
-def test_default_preview_coordinates_are_exact(monkeypatch):
-    monkeypatch.delenv(browser_preview.API_URL_ENV, raising=False)
-
+def test_default_preview_coordinates_are_exact():
     assert browser_preview.RELEASE_CHANNEL == "preview"
     assert browser_preview.ONIONWRIGHT_VERSION == "0.0.13.dev3"
     assert browser_preview.ONIONWRIGHT_ARTIFACT == (
@@ -14,45 +10,10 @@ def test_default_preview_coordinates_are_exact(monkeypatch):
     assert browser_preview.api_url() == ("https://browser-preview.oo.openonion.ai")
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
-        "",
-        "http://preview.example.com",
-        "ftp://preview.example.com",
-        "https://preview.example.com",
-        "https://user:pass@preview.example.com",
-        "https://preview.example.com/path",
-        "https://preview.example.com?channel=preview",
-        "https://preview.example.com#preview",
-        "https://:443",
-        "https://.",
-        "https://example.com:99999",
-        "https://%65xample.com",
-        "https://[",
-        "https://[::1",
-        "https://browser-preview.oo.openonion.ai:444",
-        "https://browser-preview.oo.openonion.ai:",
-        "http://127.0.0.1:0",
-    ],
-)
-def test_unsafe_preview_origins_fail_closed(monkeypatch, value):
-    monkeypatch.setenv(browser_preview.API_URL_ENV, value)
+def test_project_environment_cannot_redirect_the_preview_credential(monkeypatch):
+    monkeypatch.setenv(
+        "CONNECTONION_BROWSER_PREVIEW_API_URL", "http://127.0.0.1:8000"
+    )
+    monkeypatch.setenv("OO_API_URL", "https://production.example.test")
 
-    with pytest.raises(browser_preview.BrowserPreviewConfigError):
-        browser_preview.api_url()
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "http://127.0.0.1:8000",
-        "http://localhost:8000",
-        "http://[::1]:8000",
-        "https://localhost:8443",
-    ],
-)
-def test_local_e2e_may_use_loopback_http(monkeypatch, value):
-    monkeypatch.setenv(browser_preview.API_URL_ENV, value + "/")
-
-    assert browser_preview.api_url() == value
+    assert browser_preview.api_url() == browser_preview.DEFAULT_API_URL

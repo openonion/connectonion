@@ -45,12 +45,12 @@ does not start the browser daemon or a paid session, and downloading/installing
 the client costs $0. The real wheel comes from OpenOnion's authenticated preview
 artifact endpoint, not the public PyPI placeholder or the production catalogue.
 
-For an isolated local preview API, set
-`CONNECTONION_BROWSER_PREVIEW_API_URL` to a `localhost`, `127.0.0.1`, or `::1`
-origin. The override is loopback-only (HTTP or HTTPS); hosted traffic remains
-fixed to `browser-preview.oo.openonion.ai`. The general `OO_API_URL` setting is
-deliberately ignored. This prevents a project `.env` file from redirecting the
-ambient preview credential to an arbitrary HTTPS host.
+The origin is fixed to `browser-preview.oo.openonion.ai`: there is no runtime
+environment override, and the general `OO_API_URL` setting is deliberately
+ignored. The authenticated release session ignores environment proxy, CA, and
+netrc configuration. Pip runs isolated and offline against only the verified
+local wheel; ConnectOnion supplies its locked PyNaCl and zstandard dependencies
+and verifies the installed preview surface outside the project directory.
 
 | mode | behavior |
 |---|---|
@@ -72,9 +72,12 @@ co browser --engine system go_to example.com
 ```
 
 Bare whole-browser `close` is deliberately accepted across engine modes: it
-cannot launch a page or start a paid interval, and it must be able to stop an
-older `auto`/`onion` daemon after the default changes. Page and tab commands
-remain pinned to the daemon's selected engine.
+cannot launch a page or start a paid interval. The client also recognizes the
+real 1.8.0a3 mode-mismatch response and retries its old default `auto` coordinate
+so an upgrade can stop the already-running daemon. Page actions and targeted
+tab operations remain pinned to the daemon's selected engine; authenticated
+tab close remains available when a private gateway is down so teardown does
+not depend on the failed component.
 
 System Chrome and Onion Browser use separate persistent profiles. Cookies and
 fingerprint state are not silently copied between them. `co browser status`

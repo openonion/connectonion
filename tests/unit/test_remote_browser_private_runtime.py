@@ -329,6 +329,45 @@ async def test_gateway_loss_rejects_lifecycle_before_browser_mutation(tmp_path):
     await daemon._shutdown_async()
 
 
+@pytest.mark.asyncio
+async def test_gateway_loss_still_allows_the_owner_to_stop_its_remote_tab(tmp_path):
+    events = []
+    gateway = RecordingGateway(events)
+    daemon = BrowserDaemon(
+        str(tmp_path / "private.sock"),
+        engine_mode="onion",
+        profile_dir=tmp_path / "profile",
+        remote_egress=True,
+        gateway_factory=lambda: gateway,
+        browser_factory=LifecycleBrowser,
+    )
+    await daemon._prepare_runtime()
+    envelope = {
+        "v": 1,
+        "caller": "alice",
+        "account": "alice",
+        "tab": None,
+        "raw": False,
+        "engine": "onion",
+    }
+    ok, _ = await daemon.dispatch_async(
+        json.dumps(
+            {**envelope, "line": "tab open remote --who alice --for remote-browser"}
+        )
+    )
+    assert ok is True
+    gateway.is_running = False
+
+    ok, message = await daemon.dispatch_async(
+        json.dumps({**envelope, "line": "tab close remote"})
+    )
+
+    assert ok is True
+    assert "Closed tab remote" in message
+    assert "remote" not in daemon.browser._tab_meta
+    await daemon._shutdown_async()
+
+
 class FakeContext:
     def __init__(self):
         self.pages = []

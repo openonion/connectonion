@@ -181,3 +181,34 @@ def test_client_sends_command_only_after_successful_protocol_probe(monkeypatch):
     command_request = json.loads(command.sent)
     assert command_request["line"] == "go_to https://example.com"
     assert command_request["engine"] == "onion"
+
+
+def test_bare_onion_close_skips_the_page_action_protocol_probe(monkeypatch):
+    close = _FakeConnection(b"OK\nBrowser closed")
+    connections = iter([close])
+    monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
+    monkeypatch.setattr(client, "_caller", lambda: "test")
+    monkeypatch.setattr(client, "_caller_account", lambda: "0xtest")
+
+    assert client._request("close", engine_mode="onion") == (0, "Browser closed")
+    request = json.loads(close.sent)
+    assert request["line"] == "close"
+    assert request["engine"] == "onion"
+
+
+def test_default_close_retries_the_real_a3_auto_daemon_engine(monkeypatch):
+    mismatch = _FakeConnection(
+        b"ERR 6\nbrowser daemon is pinned to engine=auto; "
+        b"this request asked for engine=system"
+    )
+    close = _FakeConnection(b"OK\nBrowser closed")
+    connections = iter([mismatch, close])
+    monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
+    monkeypatch.setattr(client, "_caller", lambda: "test")
+    monkeypatch.setattr(client, "_caller_account", lambda: "0xtest")
+
+    assert client._request("close") == (0, "Browser closed")
+    assert json.loads(mismatch.sent)["engine"] == "system"
+    retried = json.loads(close.sent)
+    assert retried["line"] == "close"
+    assert retried["engine"] == "auto"

@@ -8,7 +8,8 @@ from connectonion.useful_tools.browser_tools import engine
 
 
 class FakePage:
-    url = "about:blank"
+    def __init__(self):
+        self.url = "about:blank"
 
     def is_closed(self):
         return False
@@ -22,7 +23,10 @@ class FakePage:
     async def set_viewport_size(self, viewport):
         pass
 
-    def wait_for_timeout(self, milliseconds):
+    async def goto(self, url, **_kwargs):
+        self.url = url
+
+    async def wait_for_timeout(self, milliseconds):
         pass
 
 
@@ -248,6 +252,35 @@ def test_a_paid_session_says_what_it_costs(monkeypatch):
     assert status["requested_engine"] == engine.AUTO
     assert status["resolved_engine"] == engine.ONION
     assert status["interval_usd"] == 0.025
+
+
+@pytest.mark.parametrize("action", ["go_to", "newtab"])
+def test_the_first_paid_page_action_keeps_the_interval_price(monkeypatch, action):
+    playwright = FakePlaywright()
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        return FakePaidRun()
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+    priced = onion_resolution(engine.ONION)
+    priced.prepared.capability.interval_usd = "0.025"
+    browser = mod.BrowserAutomation(
+        engine_mode=engine.ONION,
+        engine_resolver=lambda mode: priced,
+    )
+
+    if action == "go_to":
+        message = browser.go_to("example.com", purpose="test", who="tester")
+    else:
+        message = browser.newtab(
+            "example.com", purpose="test", who="tester"
+        )
+    browser.close()
+
+    assert "$0.025 / 15 min" in message
+    assert "Navigated to https://example.com" in message
 
 
 def test_status_names_the_browser_that_actually_runs(monkeypatch):

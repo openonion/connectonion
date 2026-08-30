@@ -14,7 +14,6 @@ from packaging.version import InvalidVersion, Version
 from connectonion.browser_preview import (
     ONIONWRIGHT_VERSION,
     RELEASE_CHANNEL,
-    BrowserPreviewConfigError,
     api_url,
 )
 
@@ -90,7 +89,7 @@ class Resolution:
         price = getattr(capability, "interval_usd", None)
         if isinstance(price, str):
             # Onionwright deliberately keeps wire money as a decimal string.
-            # Accept that exact non-negative decimal spelling, not whitespace,
+            # Accept that exact positive decimal spelling, not whitespace,
             # exponent notation, booleans, NaN, or Infinity.
             if re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", price) is None:
                 return None
@@ -213,8 +212,6 @@ def resolve(
             Reason.ONIONWRIGHT_MISSING,
             "Run `co browser install-onion`, or request the system browser.",
         )
-    except BrowserPreviewConfigError as exc:
-        return _unavailable(requested, Reason.PREFLIGHT_FAILED, str(exc))
     except (ImportError, AttributeError, TypeError):
         return _unavailable(
             requested,

@@ -244,6 +244,7 @@ def _request_with_identity(
     target=None,
     engine_mode: str = "system",
     _protocol_checked: bool = False,
+    _close_compat_attempted: bool = False,
     _connection=None,
 ) -> tuple:
     """Send one short daemon request and return ``(code, payload)``.
@@ -255,6 +256,10 @@ def _request_with_identity(
     effective_engine = (
         "onion" if target is not None and target.remote_egress else engine_mode
     )
+    try:
+        whole_browser_close = tab is None and shlex.split(line) == ["close"]
+    except ValueError:
+        whole_browser_close = False
     request = json.dumps({
         "v": 1,
         "caller": caller,
@@ -276,7 +281,8 @@ def _request_with_identity(
                 else _connect(sock_path)
             )
         if (conn is not None and effective_engine == "onion"
-                and not _protocol_checked and line != "engine_status"):
+                and not _protocol_checked and line != "engine_status"
+                and not whole_browser_close):
             # A pre-1.8 daemon ignores unknown envelope fields. Sending an
             # explicit Onion request straight to it could therefore drive its
             # old system-Chrome context before the client notices. Probe the
@@ -317,6 +323,7 @@ def _request_with_identity(
                     target=target,
                     engine_mode=effective_engine,
                     _protocol_checked=True,
+                    _close_compat_attempted=_close_compat_attempted,
                 )
         if conn is None:
             if line.split()[:1] == ["status"]:
@@ -422,6 +429,7 @@ def _request_with_identity(
                 target=target,
                 engine_mode=effective_engine,
                 _protocol_checked=_protocol_checked,
+                _close_compat_attempted=_close_compat_attempted,
             )
 
     # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
@@ -440,6 +448,34 @@ def _request_with_identity(
     # branch without parsing prose (2 = usage, 3 = unknown tab, 4 = tab busy).
     parts = header.split()
     code = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
+    if (
+        code == 6
+        and whole_browser_close
+        and target is None
+        and not _close_compat_attempted
+    ):
+        # 1.8.0a3's ordinary daemon was pinned to the old default `auto` and
+        # rejected a new default-system close before reaching its lifecycle
+        # handler.  Retry only the engine named by that authenticated daemon;
+        # the new daemon accepts bare close immediately across all modes.
+        for legacy_engine in ("auto", "system", "onion"):
+            if (
+                legacy_engine != effective_engine
+                and f"pinned to engine={legacy_engine}" in payload
+            ):
+                return _request_with_identity(
+                    line,
+                    caller=caller,
+                    account=account,
+                    headless=headless,
+                    tab=tab,
+                    raw_result=raw_result,
+                    _provisioned=_provisioned,
+                    target=target,
+                    engine_mode=legacy_engine,
+                    _protocol_checked=True,
+                    _close_compat_attempted=True,
+                )
     return code, payload
 
 
