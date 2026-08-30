@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import Literal, Optional
 
+from ...core.tool_result import ToolFailure
 from .glob import IGNORE_DIRS
 
 
@@ -56,14 +57,14 @@ def grep(
     base = Path(path) if path else Path.cwd()
 
     if not base.exists():
-        return f"Error: Path '{base}' does not exist"
+        return ToolFailure(f"Error: Path '{base}' does not exist")
 
     # Compile regex
     flags = re.IGNORECASE if ignore_case else 0
     try:
         regex = re.compile(pattern, flags)
     except re.error as e:
-        return f"Error: Invalid regex pattern: {e}"
+        return ToolFailure(f"Error: Invalid regex pattern: {e}")
 
     # Collect files to search
     if base.is_file():
