@@ -2,7 +2,7 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() validates the ambient OpenOnion account and refreshes locally owned Microsoft tokens via oo-api → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh rewrites ~/.co/keys.env
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments) keeps send_at third positional for pre-attachment callers, so attachments is keyword-only
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
@@ -46,6 +46,7 @@ Example:
 
 import html
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -98,27 +99,51 @@ class Outlook:
             )
 
     def _get_access_token(self) -> str:
-        """Get Microsoft access token, refreshing once per Outlook instance.
+        """Return a usable Microsoft access token.
 
-        Microsoft refresh tokens have a 90-day default lifetime in this flow
-        and each refresh can return a replacement. Persist the newest token
-        locally; interactive authorization is still required if Microsoft
-        expires or revokes it.
+        Refresh only when a parseable expiry is within five minutes. Older
+        credential files may have no expiry (or a malformed one); use their
+        access token first and let Graph's 401 response trigger one refresh.
+        This keeps a working Microsoft token independent of the refresh broker
+        until a refresh is actually necessary.
         """
-        if self._access_token:
-            return self._access_token
-
-        access_token = os.getenv("MICROSOFT_ACCESS_TOKEN")
+        access_token = self._access_token or os.getenv("MICROSOFT_ACCESS_TOKEN")
         refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
+        expires_at = self._parse_token_expiry(
+            os.getenv("MICROSOFT_TOKEN_EXPIRES_AT")
+        )
 
-        if not access_token or not refresh_token:
+        if not access_token:
             raise ValueError(
                 "Microsoft OAuth credentials not found.\n"
                 "Run: co auth microsoft"
             )
 
-        self._access_token = self._refresh_via_backend(refresh_token)
+        if expires_at is not None:
+            refresh_at = expires_at - timedelta(minutes=5)
+            if datetime.now(timezone.utc) >= refresh_at:
+                if not refresh_token:
+                    raise ValueError(
+                        "Microsoft access token is expiring, but its refresh "
+                        "credential is missing.\nRun: co auth microsoft"
+                    )
+                access_token = self._refresh_via_backend(refresh_token)
+
+        self._access_token = access_token
         return self._access_token
+
+    @staticmethod
+    def _parse_token_expiry(value: str | None) -> datetime | None:
+        """Parse a token expiry as UTC, returning ``None`` for legacy values."""
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     def _refresh_via_backend(self, refresh_token: str) -> str:
         """Refresh tokens via backend API and persist the rotated pair.
@@ -139,6 +164,28 @@ class Outlook:
         )
 
         if response.status_code != 200:
+            try:
+                payload = response.json()
+                detail = (
+                    payload.get("detail") if isinstance(payload, dict) else None
+                )
+            except (TypeError, ValueError):
+                detail = None
+
+            if (
+                response.status_code == 401
+                and isinstance(detail, dict)
+                and detail.get("error") == "reauth_required"
+            ):
+                raise ValueError(
+                    "Microsoft authorization expired.\n"
+                    "Run: co auth microsoft"
+                )
+            if response.status_code == 401:
+                raise ValueError(
+                    "OpenOnion authentication failed while refreshing "
+                    "Microsoft access.\nRun: co auth"
+                )
             raise ValueError(
                 f"Microsoft session expired and refresh failed ({response.status_code}).\n"
                 "Reconnect with: co auth microsoft"
@@ -193,9 +240,20 @@ class Outlook:
             if refresh_token:
                 self._access_token = None
                 token = self._refresh_via_backend(refresh_token)
+                self._access_token = token
                 headers["Authorization"] = f"Bearer {token}"
                 response = httpx.request(method, url, headers=headers, **kwargs)
 
+        if response.status_code == 401:
+            raise ValueError(
+                "Microsoft authorization expired.\n"
+                "Run: co auth microsoft"
+            )
+        if response.status_code == 403:
+            raise ValueError(
+                "Microsoft permission denied for this operation.\n"
+                "Reconnect to grant the required scope: co auth microsoft"
+            )
         if response.status_code not in [200, 201, 202, 204]:
             raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
 

@@ -12,15 +12,18 @@ Components under test:
 
 import base64
 import os
-import pytest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
 def _stub_token_refresh(request, monkeypatch):
-    """Outlook refreshes tokens once per instance; stub that network call so
-    Graph-operation tests stay isolated. Tests of the refresh flow itself
-    opt out with @pytest.mark.real_refresh."""
+    """Keep Graph-operation tests isolated from the refresh broker.
+
+    Tests of the real refresh flow opt out with @pytest.mark.real_refresh.
+    """
     if "real_refresh" in request.keywords:
         return
     from connectonion.useful_tools.outlook import Outlook
@@ -75,7 +78,7 @@ class TestOutlookTokenManagement:
             assert "credentials not found" in str(exc_info.value)
 
     def test_get_access_token_returns_valid_token(self):
-        """Test that valid token is returned."""
+        """A token with a future expiry does not depend on the broker."""
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "test-token",
@@ -84,13 +87,89 @@ class TestOutlookTokenManagement:
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             outlook = Outlook()
+            outlook._refresh_via_backend = MagicMock(return_value="unexpected")
             token = outlook._get_access_token()
             assert token == "test-token"
+            outlook._refresh_via_backend.assert_not_called()
+
+    def test_get_access_token_refreshes_near_expiry(self):
+        """A parseable expiry inside the five-minute window refreshes early."""
+        near_expiry = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "old-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": near_expiry,
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._refresh_via_backend = MagicMock(return_value="new-token")
+
+            assert outlook._get_access_token() == "new-token"
+            outlook._refresh_via_backend.assert_called_once_with("test-refresh")
+
+    @pytest.mark.parametrize("expiry", ["", "not-an-iso-date"])
+    def test_unknown_expiry_uses_existing_token(self, expiry):
+        """Legacy or malformed expiry metadata does not force a refresh."""
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": expiry,
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._refresh_via_backend = MagicMock(return_value="unexpected")
+
+            assert outlook._get_access_token() == "test-token"
+            outlook._refresh_via_backend.assert_not_called()
+
+    def test_valid_access_token_does_not_require_refresh_credential(self):
+        """A usable access token remains useful when its refresh token is absent."""
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+
+            assert Outlook()._get_access_token() == "test-token"
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_unknown_expiry_refreshes_after_graph_401(self, mock_httpx):
+        """Graph remains the expiry authority when local metadata is malformed."""
+        rejected = MagicMock(status_code=401, text="expired")
+        accepted = MagicMock(status_code=200, text="ok")
+        accepted.json.return_value = {"value": []}
+        responses = iter([rejected, accepted])
+        authorizations = []
+
+        def request_with_auth(*args, **kwargs):
+            authorizations.append(kwargs["headers"]["Authorization"])
+            return next(responses)
+
+        mock_httpx.request.side_effect = request_with_auth
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "old-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "unknown",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._refresh_via_backend = MagicMock(return_value="new-token")
+
+            assert outlook._request("GET", "/me/messages") == {"value": []}
+            outlook._refresh_via_backend.assert_called_once_with("test-refresh")
+
+        assert authorizations == ["Bearer old-token", "Bearer new-token"]
 
     @pytest.mark.real_refresh
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_refresh_persists_rotated_refresh_token(self, mock_httpx, tmp_path):
-        """Every use refreshes and saves the rotated refresh token to keys.env."""
+        """An expired token refreshes and saves the rotated token to keys.env."""
         keys_env = tmp_path / "keys.env"
         keys_env.write_text(
             "MICROSOFT_ACCESS_TOKEN=old-access\n"
@@ -111,6 +190,7 @@ class TestOutlookTokenManagement:
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "old-access",
             "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2000-01-01T00:00:00Z",
             "OPENONION_API_KEY": "test-key",
             "AGENT_CONFIG_PATH": str(tmp_path),
         }, clear=False):
@@ -143,6 +223,7 @@ class TestOutlookTokenManagement:
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "old-access",
             "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2000-01-01T00:00:00Z",
             "OPENONION_API_KEY": "test-key",
             "AGENT_CONFIG_PATH": str(tmp_path),
         }, clear=False):
@@ -177,6 +258,7 @@ class TestOutlookTokenManagement:
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "old-access",
             "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2000-01-01T00:00:00Z",
             "OPENONION_API_KEY": "test-key",
             "AGENT_CONFIG_PATH": str(config_dir),
         }, clear=False):
@@ -208,6 +290,7 @@ class TestOutlookTokenManagement:
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "old-access",
             "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2000-01-01T00:00:00Z",
             "OPENONION_API_KEY": "test-key",
             "AGENT_CONFIG_PATH": str(config_dir),
         }, clear=False):
@@ -215,6 +298,117 @@ class TestOutlookTokenManagement:
             assert Outlook()._get_access_token() == "new-access"
 
         assert (tmp_path / ".env").read_text() == "DATABASE_URL=postgres://local\n"
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_refresh_requires_openonion_auth(self, mock_httpx):
+        """A missing broker credential points to co auth, not Microsoft OAuth."""
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "OPENONION_API_KEY": "",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError) as exc_info:
+                Outlook()._refresh_via_backend("refresh-token")
+
+        message = str(exc_info.value)
+        assert "co auth" in message
+        assert "co auth microsoft" not in message
+        assert "refresh-token" not in message
+        mock_httpx.post.assert_not_called()
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_backend_rejected_openonion_key_points_to_co_auth(self, mock_httpx):
+        """A broker-level 401 identifies the OpenOnion credential layer."""
+        response = MagicMock(status_code=401)
+        response.json.return_value = {"detail": "Invalid token"}
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "OPENONION_API_KEY": "invalid-openonion-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError) as exc_info:
+                Outlook()._refresh_via_backend("microsoft-refresh-token")
+
+        message = str(exc_info.value)
+        assert "OpenOnion authentication failed" in message
+        assert "co auth" in message
+        assert "co auth microsoft" not in message
+        assert "invalid-openonion-key" not in message
+        assert "microsoft-refresh-token" not in message
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_microsoft_reauth_failure_points_to_microsoft_auth(self, mock_httpx):
+        """An explicit Microsoft revocation response keeps its own remedy."""
+        response = MagicMock(status_code=401)
+        response.json.return_value = {
+            "detail": {"error": "reauth_required"},
+        }
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "OPENONION_API_KEY": "valid-openonion-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError) as exc_info:
+                Outlook()._refresh_via_backend("revoked-refresh-token")
+
+        message = str(exc_info.value)
+        assert "Microsoft authorization expired" in message
+        assert "co auth microsoft" in message
+        assert "valid-openonion-key" not in message
+        assert "revoked-refresh-token" not in message
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_other_microsoft_refresh_failure_points_to_microsoft_auth(self, mock_httpx):
+        """A non-auth broker failure still identifies the Microsoft session."""
+        response = MagicMock(status_code=400)
+        response.json.return_value = {"detail": "invalid_grant"}
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "OPENONION_API_KEY": "valid-openonion-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError) as exc_info:
+                Outlook()._refresh_via_backend("revoked-refresh-token")
+
+        message = str(exc_info.value)
+        assert "Microsoft session expired" in message
+        assert "co auth microsoft" in message
+        assert "valid-openonion-key" not in message
+        assert "revoked-refresh-token" not in message
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_graph_scope_failure_points_to_microsoft_auth(self, mock_httpx):
+        """Graph 403 is a Microsoft consent problem, not an OpenOnion login."""
+        mock_httpx.request.return_value = MagicMock(
+            status_code=403,
+            text="ErrorAccessDenied",
+        )
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "access-token",
+            "MICROSOFT_REFRESH_TOKEN": "refresh-token",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError) as exc_info:
+                Outlook()._request("GET", "/me/messages")
+
+        message = str(exc_info.value)
+        assert "Microsoft permission denied" in message
+        assert "co auth microsoft" in message
+        assert "access-token" not in message
+        assert "refresh-token" not in message
 
 
 class TestOutlookEmailFormatting:
