@@ -46,9 +46,11 @@ the client costs $0. The real wheel comes from OpenOnion's authenticated preview
 artifact endpoint, not the public PyPI placeholder or the production catalogue.
 
 For an isolated local preview API, set
-`CONNECTONION_BROWSER_PREVIEW_API_URL` to its origin. HTTPS is required except
-for `localhost`, `127.0.0.1`, or `::1` test servers. The general `OO_API_URL`
-setting is deliberately ignored by this preview path.
+`CONNECTONION_BROWSER_PREVIEW_API_URL` to a `localhost`, `127.0.0.1`, or `::1`
+origin. The override is loopback-only (HTTP or HTTPS); hosted traffic remains
+fixed to `browser-preview.oo.openonion.ai`. The general `OO_API_URL` setting is
+deliberately ignored. This prevents a project `.env` file from redirecting the
+ambient preview credential to an arbitrary HTTPS host.
 
 | mode | behavior |
 |---|---|
@@ -68,6 +70,11 @@ The daemon is pinned to its chosen engine. Close it before changing modes:
 co browser close
 co browser --engine system go_to example.com
 ```
+
+Bare whole-browser `close` is deliberately accepted across engine modes: it
+cannot launch a page or start a paid interval, and it must be able to stop an
+older `auto`/`onion` daemon after the default changes. Page and tab commands
+remain pinned to the daemon's selected engine.
 
 System Chrome and Onion Browser use separate persistent profiles. Cookies and
 fingerprint state are not silently copied between them. `co browser status`

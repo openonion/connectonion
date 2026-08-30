@@ -330,24 +330,28 @@ class BrowserDaemon:
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return 2, "empty request"
+        verb = tokens[0]
+        session = _key(tab)
+        whole_browser_close = verb == "close" and len(tokens) == 1 and session is None
         # Not `getattr(..., False)`: a missing attribute here would skip the
         # gateway-health gate entirely, which is the wrong direction to fail
         # for the check that keeps an unproven browser from serving commands.
-        if self._remote_egress and (
+        # Whole-browser close is the exception: it cannot create traffic or a
+        # paid interval and must remain available to stop an old daemon even
+        # when its gateway or requested engine no longer matches the caller.
+        if not whole_browser_close and self._remote_egress and (
             self._gateway is None or not self._gateway.is_running
         ):
             return False, "EGRESS_GATEWAY_UNAVAILABLE"
-        if requested_engine != self.engine_mode:
+        if not whole_browser_close and requested_engine != self.engine_mode:
             return 6, (
                 f"browser daemon is pinned to engine={self.engine_mode}; this request asked "
                 f"for engine={requested_engine}. Close it with `co browser close`, then retry."
             )
-        verb = tokens[0]
 
         # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
         # command that would DRIVE the tab — read-only/lifecycle verbs may name a tab that
         # is not registered yet (to inspect it, or `tab open` it).
-        session = _key(tab)
         async with self._registry_lock:
             if session is not None and session not in self.browser._tab_meta and verb not in self.READONLY:
                 return 3, await self._unknown_tab_async(session)
@@ -549,12 +553,12 @@ class BrowserDaemon:
                 "artifact_id": None,
             }
         # Once an operator explicitly selects auto or onion, the paid engine
-        # charges per interval when a command uses it. The price and live
+        # charges per 15-minute interval when a command uses it. The price and live
         # session therefore ride here in status, where an operator looks to see
         # what a running browser is doing and costing.
         price = engine.get("interval_usd")
         cost = (
-            f" · ${price:.3f}/interval"
+            f" · ${price:.3f} / 15 min"
             if isinstance(price, (int, float))
             else ""
         )

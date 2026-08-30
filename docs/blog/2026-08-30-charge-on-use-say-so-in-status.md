@@ -16,7 +16,7 @@ Now it carries both the price and the live session:
 
 ```
 Engine: requested=auto · resolved=onion · reason=onion_ready ·
-        artifact=chrome/151/linux-x86_64.tar.zst · $0.025/interval ·
+        artifact=chrome/151/linux-x86_64.tar.zst · $0.025 / 15 min ·
         paid session sess-123
 ```
 

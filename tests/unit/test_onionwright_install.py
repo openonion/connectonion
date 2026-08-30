@@ -12,10 +12,10 @@ from connectonion.credentials import MissingAmbientAPIKey
 
 
 class _Response:
-    def __init__(self, *, status_code=200, json_body=None, chunks=()):
+    def __init__(self, *, status_code=200, json_body=None, chunks=None):
         self.status_code = status_code
         self._json_body = json_body
-        self._chunks = list(chunks)
+        self._chunks = None if chunks is None else list(chunks)
         self.closed = False
 
     def json(self):
@@ -25,6 +25,12 @@ class _Response:
 
     def iter_content(self, chunk_size):
         assert chunk_size == 1024 * 1024
+        if self._chunks is None:
+            if isinstance(self._json_body, Exception):
+                yield b"not-json"
+            else:
+                yield json.dumps(self._json_body).encode("utf-8")
+            return
         yield from self._chunks
 
     def close(self):
@@ -171,6 +177,7 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
             "get",
             "https://api.test/api/v1/license/manifest",
             {
+                "stream": True,
                 "timeout": installer.REQUEST_TIMEOUT,
                 "allow_redirects": False,
                 "headers": {"Authorization": "Bearer secret-token"},
@@ -180,6 +187,7 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
             "post",
             "https://api.test/api/v1/license/download",
             {
+                "stream": True,
                 "timeout": installer.REQUEST_TIMEOUT,
                 "allow_redirects": False,
                 "headers": {"Authorization": "Bearer secret-token"},
@@ -566,6 +574,22 @@ def test_manifest_http_error_is_sanitized(monkeypatch):
     assert "503" in str(raised.value)
     assert "do-not-print" not in str(raised.value)
     assert "secret" not in str(raised.value)
+
+
+def test_manifest_json_body_is_bounded_before_decoding(monkeypatch):
+    response = _Response(
+        chunks=[b"x" * (installer.MAX_JSON_RESPONSE_BYTES + 1)]
+    )
+    monkeypatch.setattr(
+        installer.requests,
+        "request",
+        lambda *args, **kwargs: response,
+    )
+
+    with pytest.raises(installer.OnionwrightInstallError, match="safe limit"):
+        installer._request_json("get", "https://api.test/manifest")
+
+    assert response.closed
 
 
 def test_cli_install_returns_before_contacting_browser_daemon(monkeypatch, capsys):

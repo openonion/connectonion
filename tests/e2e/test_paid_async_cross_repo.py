@@ -146,6 +146,7 @@ def prepared_browser(tmp_path):
         paid_capable=True,
         reason="ready",
         next_action="start",
+        interval_usd="0.025",
     )
     executable = tmp_path / "chrome"
     executable.write_text("exact-browser")
@@ -181,6 +182,7 @@ def test_sync_facade_reaches_real_async_paid_boundary(tmp_path, monkeypatch):
         closed = browser.close()
 
     assert "Onion Browser opened" in message
+    assert "$0.025 / 15 min" in message
     assert client.start_calls[0][0] is prepared
     assert client.start_calls[0][1].startswith("connectonion-start:")
     profile, kwargs = chromium.calls[0]
@@ -190,6 +192,7 @@ def test_sync_facade_reaches_real_async_paid_boundary(tmp_path, monkeypatch):
         kwargs["args"][-1] == f"--license-file={client.session.licence_path.resolve()}"
     )
     assert status["resolved_engine"] == engine.ONION
+    assert status["interval_usd"] == 0.025
     assert status["paid_session_id"] == client.session.session_id
     assert client.session.release_calls == 1
     assert context.close_calls == 1

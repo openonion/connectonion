@@ -53,6 +53,7 @@ MANIFEST_PRODUCT = "openonion-artifacts"
 MANIFEST_LIFETIME_SECONDS = 15 * 60
 MANIFEST_FUTURE_SKEW_SECONDS = 60
 MAX_MANIFEST_PAYLOAD_BYTES = 1024 * 1024
+MAX_JSON_RESPONSE_BYTES = 2 * MAX_MANIFEST_PAYLOAD_BYTES + 4096
 MAX_ARTIFACT_KEY_LENGTH = 512
 
 
@@ -90,6 +91,7 @@ def _request_json(method: str, url: str, **kwargs) -> dict:
         response = requests.request(
             method,
             url,
+            stream=True,
             timeout=REQUEST_TIMEOUT,
             allow_redirects=False,
             **kwargs,
@@ -104,9 +106,23 @@ def _request_json(method: str, url: str, **kwargs) -> dict:
                 f"OpenOnion release service returned HTTP {response.status_code} "
                 f"during {method.upper()}."
             )
+        encoded = bytearray()
         try:
-            body = response.json()
-        except (requests.JSONDecodeError, ValueError) as exc:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                if len(encoded) + len(chunk) > MAX_JSON_RESPONSE_BYTES:
+                    raise OnionwrightInstallError(
+                        "OpenOnion release service response exceeded the safe limit."
+                    )
+                encoded.extend(chunk)
+        except requests.RequestException as exc:
+            raise OnionwrightInstallError(
+                f"OpenOnion release service is unavailable during {method.upper()}."
+            ) from exc
+        try:
+            body = json.loads(encoded)
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise OnionwrightInstallError(
                 "OpenOnion release service returned invalid JSON."
             ) from exc
@@ -134,9 +150,10 @@ def _verified_manifest_digest(signed: dict, *, clock=time.time) -> str:
         signature_hex = signed["signature"]
         if (
             not isinstance(payload_hex, str)
-            or re.fullmatch(r"[0-9a-f]+", payload_hex) is None
-            or len(payload_hex) % 2
+            or not payload_hex
             or len(payload_hex) > 2 * MAX_MANIFEST_PAYLOAD_BYTES
+            or len(payload_hex) % 2
+            or re.fullmatch(r"[0-9a-f]+", payload_hex) is None
             or not isinstance(signature_hex, str)
             or re.fullmatch(r"[0-9a-f]{128}", signature_hex) is None
         ):

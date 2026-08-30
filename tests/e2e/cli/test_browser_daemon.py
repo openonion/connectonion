@@ -455,6 +455,54 @@ def test_engine_status_is_a_no_claim_no_launch_protocol_probe(tmp_path):
     assert daemon.browser._tab_meta == {}
 
 
+@pytest.mark.parametrize("warm_engine", ["auto", "onion"])
+def test_bare_default_close_stops_a_warm_nondefault_daemon(tmp_path, warm_engine):
+    """The new system default can always stop an older paid-policy daemon."""
+    daemon = make_daemon(
+        str(tmp_path / "s.sock"),
+        engine_mode=warm_engine,
+    )
+    request = _json.dumps(
+        {
+            "v": 1,
+            "caller": "operator",
+            "account": "0xtest",
+            "tab": None,
+            "line": "close",
+            "raw": False,
+            "engine": "system",
+        }
+    )
+
+    ok, payload = daemon.dispatch(request)
+
+    assert ok is True
+    assert payload == "Browser closed"
+
+
+def test_close_with_arguments_does_not_bypass_the_warm_daemon_engine_pin(tmp_path):
+    daemon = make_daemon(
+        str(tmp_path / "s.sock"),
+        engine_mode="onion",
+    )
+    request = _json.dumps(
+        {
+            "v": 1,
+            "caller": "operator",
+            "account": "0xtest",
+            "tab": None,
+            "line": "close unexpected-argument",
+            "raw": False,
+            "engine": "system",
+        }
+    )
+
+    ok, payload = daemon.dispatch(request)
+
+    assert ok == 6
+    assert "pinned to engine=onion" in payload
+
+
 def test_status_before_any_command(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("status")

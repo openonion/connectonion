@@ -233,7 +233,8 @@ def test_a_paid_session_says_what_it_costs(monkeypatch):
     monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
 
     priced = onion_resolution(engine.AUTO)
-    priced.prepared.capability.interval_usd = 0.025
+    # The real Onionwright Capability carries wire money as a decimal string.
+    priced.prepared.capability.interval_usd = "0.025"
     browser = mod.BrowserAutomation(
         engine_mode=engine.AUTO,
         engine_resolver=lambda mode: priced,
@@ -243,7 +244,7 @@ def test_a_paid_session_says_what_it_costs(monkeypatch):
     status = browser.engine_status()
     browser.close()
 
-    assert "$0.025 per interval" in message
+    assert "$0.025 / 15 min" in message
     assert status["requested_engine"] == engine.AUTO
     assert status["resolved_engine"] == engine.ONION
     assert status["interval_usd"] == 0.025

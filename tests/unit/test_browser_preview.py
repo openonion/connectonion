@@ -20,10 +20,20 @@ def test_default_preview_coordinates_are_exact(monkeypatch):
         "",
         "http://preview.example.com",
         "ftp://preview.example.com",
+        "https://preview.example.com",
         "https://user:pass@preview.example.com",
         "https://preview.example.com/path",
         "https://preview.example.com?channel=preview",
         "https://preview.example.com#preview",
+        "https://:443",
+        "https://.",
+        "https://example.com:99999",
+        "https://%65xample.com",
+        "https://[",
+        "https://[::1",
+        "https://browser-preview.oo.openonion.ai:444",
+        "https://browser-preview.oo.openonion.ai:",
+        "http://127.0.0.1:0",
     ],
 )
 def test_unsafe_preview_origins_fail_closed(monkeypatch, value):
@@ -35,7 +45,12 @@ def test_unsafe_preview_origins_fail_closed(monkeypatch, value):
 
 @pytest.mark.parametrize(
     "value",
-    ["http://127.0.0.1:8000", "http://localhost:8000", "http://[::1]:8000"],
+    [
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://[::1]:8000",
+        "https://localhost:8443",
+    ],
 )
 def test_local_e2e_may_use_loopback_http(monkeypatch, value):
     monkeypatch.setenv(browser_preview.API_URL_ENV, value + "/")

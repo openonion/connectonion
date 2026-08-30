@@ -688,7 +688,7 @@ class AsyncBrowserCore:
                 status = resolution.public_status()
                 price = status.get("interval_usd")
                 cost = (
-                    f", ${price:.3f} per interval"
+                    f", ${price:.3f} / 15 min"
                     if isinstance(price, (int, float))
                     else ""
                 )

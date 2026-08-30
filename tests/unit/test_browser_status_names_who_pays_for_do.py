@@ -74,5 +74,5 @@ async def test_a_paid_session_shows_its_cost_in_status(monkeypatch):
     ok, text = await instance._status_async()
 
     assert ok is True
-    assert "$0.025/interval" in text
+    assert "$0.025 / 15 min" in text
     assert "paid session sess-123" in text

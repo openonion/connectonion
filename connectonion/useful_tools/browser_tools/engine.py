@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable
 
@@ -85,7 +88,22 @@ class Resolution:
         """
         capability = getattr(self.prepared, "capability", None)
         price = getattr(capability, "interval_usd", None)
-        return price if isinstance(price, (int, float)) else None
+        if isinstance(price, str):
+            # Onionwright deliberately keeps wire money as a decimal string.
+            # Accept that exact non-negative decimal spelling, not whitespace,
+            # exponent notation, booleans, NaN, or Infinity.
+            if re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", price) is None:
+                return None
+        elif type(price) not in (int, float):
+            return None
+        try:
+            amount = Decimal(str(price))
+            normalized = float(amount)
+        except (InvalidOperation, OverflowError, ValueError):
+            return None
+        if not amount.is_finite() or amount <= 0 or not math.isfinite(normalized):
+            return None
+        return normalized
 
     @property
     def onionwright_version(self) -> str | None:

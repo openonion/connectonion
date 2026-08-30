@@ -237,3 +237,37 @@ def test_public_status_contains_no_client_token_or_local_path(tmp_path):
     assert status["release_channel"] == engine.ONIONWRIGHT_RELEASE_CHANNEL
     assert "super-secret" not in repr(status)
     assert str(tmp_path) not in repr(status)
+
+
+@pytest.mark.parametrize("wire_price", ["0.025", 0.025])
+def test_public_status_normalizes_the_real_onionwright_interval_price(wire_price):
+    paid = prepared()
+    paid.capability.interval_usd = wire_price
+    result = engine.Resolution(
+        requested=engine.AUTO,
+        resolved=engine.ONION,
+        reason=engine.Reason.ONION_READY,
+        next_action="start",
+        prepared=paid,
+    )
+
+    assert result.interval_usd == 0.025
+    assert result.public_status()["interval_usd"] == 0.025
+
+
+@pytest.mark.parametrize(
+    "wire_price",
+    [None, True, 0, -0.025, float("nan"), float("inf"), " 0.025", "2.5e-2"],
+)
+def test_public_status_rejects_noncanonical_or_unsafe_interval_prices(wire_price):
+    paid = prepared()
+    paid.capability.interval_usd = wire_price
+    result = engine.Resolution(
+        requested=engine.ONION,
+        resolved=engine.ONION,
+        reason=engine.Reason.ONION_READY,
+        next_action="start",
+        prepared=paid,
+    )
+
+    assert result.interval_usd is None
