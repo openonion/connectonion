@@ -3,7 +3,33 @@
 import sys
 from pathlib import Path
 
-from connectonion.cli.commands.project_cmd_lib import upsert_env
+from connectonion.cli.commands.project_cmd_lib import (
+    configure_env_for_provider,
+    detect_api_provider,
+    upsert_env,
+)
+
+
+class TestApiProviderDetection:
+    """Provider-specific key prefixes win before generic prefixes."""
+
+    def test_specific_sk_prefixes_win_before_generic_openai_prefix(self):
+        assert detect_api_provider("sk-or-v1-test-key") == (
+            "openrouter",
+            "openrouter",
+        )
+        assert detect_api_provider("sk-proj-test-key") == ("openai", "project")
+        assert detect_api_provider("sk-test-key") == ("openai", "user")
+
+    def test_openrouter_key_configures_openrouter_environment(self):
+        api_key = "sk-or-v1-test-key"
+        provider, _key_type = detect_api_provider(api_key)
+
+        env_content = configure_env_for_provider(provider, api_key)
+
+        assert f"OPENROUTER_API_KEY={api_key}" in env_content
+        assert "OPENAI_API_KEY=" not in env_content
+        assert "MODEL=openrouter/openai/o4-mini" in env_content
 
 
 class TestUpsertEnv:
