@@ -7,6 +7,7 @@ from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
+from connectonion.console import Console
 from connectonion.core.usage import DEFAULT_MODEL
 
 runner = CliRunner()
@@ -88,3 +89,26 @@ def test_ai_forwards_invocation_invite_options():
     assert result.exit_code == 0
     assert handler.call_args.kwargs["invite_code"] is None
     assert handler.call_args.kwargs["invite_code_file"] == Path("/private/invite")
+
+
+def test_ai_max_iterations_exits_nonzero_without_success_summary(monkeypatch):
+    class IncompleteAgent:
+        def input(self, prompt):
+            self.current_session = {
+                "trace": [{"type": "turn_result", "reason": "max_iterations"}]
+            }
+            Console().print_completion(0.1, self.current_session)
+            return "Task incomplete: Maximum iterations (1) reached."
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent",
+        lambda **_: IncompleteAgent(),
+    )
+
+    result = runner.invoke(app, ["ai", "task", "--max-iterations", "1"])
+
+    output = strip_ansi(result.output)
+    assert result.exit_code == 1
+    assert "Task incomplete" in output
+    assert "✓ complete" not in output
+    assert "✗ incomplete" in output

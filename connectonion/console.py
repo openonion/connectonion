@@ -644,8 +644,27 @@ class Console:
         _rich_console.print()
         self.print(f"[{DIM_COLOR}]═══════════════════════════════════════════════[/{DIM_COLOR}]")
 
-        # Print summary: green check, white "complete", dim metadata
-        self.print(f"[{SUCCESS_COLOR}]{SUCCESS_SYMBOL}[/{SUCCESS_COLOR}] complete [{DIM_COLOR}]· {tokens_str} tokens · {cost_str} · {time_str}[/{DIM_COLOR}]")
+        latest_outcome = next(
+            (
+                entry.get("reason")
+                for entry in reversed(session.get("trace", []))
+                if entry.get("type") == "turn_result"
+            ),
+            None,
+        )
+        if latest_outcome == "max_iterations":
+            status_color = ERROR_COLOR
+            status_symbol = ERROR_SYMBOL
+            status_text = "incomplete"
+        else:
+            status_color = SUCCESS_COLOR
+            status_symbol = SUCCESS_SYMBOL
+            status_text = "complete"
+
+        self.print(
+            f"[{status_color}]{status_symbol}[/{status_color}] {status_text} "
+            f"[{DIM_COLOR}]· {tokens_str} tokens · {cost_str} · {time_str}[/{DIM_COLOR}]"
+        )
 
         # Print session path if provided (dim)
         if session_path:
