@@ -580,6 +580,10 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     if api_key.startswith('sk-ant-'):
         return 'anthropic', 'claude'
 
+    # OpenRouter shares the generic sk- prefix, so match it before OpenAI.
+    if api_key.startswith('sk-or-'):
+        return 'openrouter', 'openrouter'
+
     # OpenAI formats
     if api_key.startswith('sk-proj-'):
         return 'openai', 'project'
@@ -597,10 +601,6 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     # xAI Grok
     if api_key.startswith('xai-'):
         return 'grok', 'xai'
-
-    # OpenRouter
-    if api_key.startswith('sk-or-'):
-        return 'openrouter', 'openrouter'
 
     # Default to OpenAI if unsure
     return 'openai', 'unknown'
