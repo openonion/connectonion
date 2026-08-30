@@ -534,7 +534,10 @@ class TestOutlookSendOperations:
         mock_response.status_code = 201
         mock_response.text = '{"id": "draft-1"}'
         mock_response.json.return_value = {"id": "draft-1"}
-        mock_httpx.request.return_value = mock_response
+        send_response = MagicMock()
+        send_response.status_code = 202
+        send_response.text = ""
+        mock_httpx.request.side_effect = [mock_response, send_response]
 
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
@@ -555,15 +558,19 @@ class TestOutlookSendOperations:
             assert "2026-07-06T15:30:00Z" in result
             assert "recipient@example.com" in result
 
-            method, url = mock_httpx.request.call_args.args[:2]
+            method, url = mock_httpx.request.call_args_list[0].args[:2]
             assert method == "POST"
             assert url.endswith("/me/messages")
 
-            sent_message = mock_httpx.request.call_args.kwargs["json"]
+            sent_message = mock_httpx.request.call_args_list[0].kwargs["json"]
             assert sent_message["singleValueExtendedProperties"] == [
                 {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
             ]
-            assert mock_httpx.request.call_count == 1
+            assert mock_httpx.request.call_count == 2
+            send_method, send_url = mock_httpx.request.call_args_list[1].args[:2]
+            assert send_method == "POST"
+            assert send_url.endswith("/me/messages/draft-1/send")
+            assert "json" not in mock_httpx.request.call_args_list[1].kwargs
 
     def test_send_email_scheduled_requires_readwrite_scope(self):
         with patch.dict(os.environ, {

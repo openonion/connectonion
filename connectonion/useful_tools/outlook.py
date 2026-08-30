@@ -707,7 +707,11 @@ class Outlook:
             # deliver it immediately while also retaining the deferred copy.
             # Creating the draft leaves Exchange responsible for delivering it
             # at the requested time and keeps it visible to get_scheduled().
-            self._request("POST", "/me/messages", json=message)
+            draft = self._request("POST", "/me/messages", json=message)
+            draft_id = draft.get("id")
+            if not draft_id:
+                raise ValueError("Microsoft Graph draft response did not include an id")
+            self._request("POST", f"/me/messages/{draft_id}/send")
             return f"Email scheduled for {send_at} to {to}{suffix}"
 
         self._request("POST", "/me/sendMail", json={"message": message})
