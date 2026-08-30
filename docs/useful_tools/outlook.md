@@ -214,4 +214,10 @@ to grant the new contact permission.
 
 **Credentials not found**: Run `co auth microsoft`
 
-**Token expired**: Tokens auto-refresh. If issues persist, run `co auth microsoft` again.
+**OpenOnion authentication failed while refreshing Microsoft access**: Run
+`co auth`. Your Microsoft access token is reused while it remains valid, but a
+refresh still needs a valid OpenOnion session.
+
+**Microsoft authorization expired or permission denied**: Run
+`co auth microsoft` again. Tokens auto-refresh when possible; reauthorization
+is required after Microsoft revokes a refresh token or when a scope is missing.
