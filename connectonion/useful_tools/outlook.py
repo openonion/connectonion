@@ -698,7 +698,8 @@ class Outlook:
             # PidTagDeferredSendTime — Exchange holds delivery until this time.
             # Draft creation requires Mail.ReadWrite; see the scope check above.
             message["singleValueExtendedProperties"] = [
-                {"id": "SystemTime 0x3FEF", "value": send_at}
+                {"id": "SystemTime 0x3FEF", "value": send_at},
+                {"id": "SystemTime 0x000F", "value": send_at},
             ]
 
         if send_at:

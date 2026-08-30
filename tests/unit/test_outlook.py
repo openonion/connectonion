@@ -564,7 +564,8 @@ class TestOutlookSendOperations:
 
             sent_message = mock_httpx.request.call_args_list[0].kwargs["json"]
             assert sent_message["singleValueExtendedProperties"] == [
-                {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
+                {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"},
+                {"id": "SystemTime 0x000F", "value": "2026-07-06T15:30:00Z"},
             ]
             assert mock_httpx.request.call_count == 2
             send_method, send_url = mock_httpx.request.call_args_list[1].args[:2]
