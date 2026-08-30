@@ -1,0 +1,2 @@
+version: v1.7.1
+no_visual_change: "No new graphical or layout surface: this framework patch reuses the existing terminal failure treatment for outcomes that were previously misclassified, and makes no browser product change."
