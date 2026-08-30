@@ -250,8 +250,10 @@ outlook.send(
 - **Missing Mail scopes** → run `co auth microsoft` again to re-consent.
 - **Missing `Contacts.ReadWrite`** → run `co auth microsoft` again; an older
   token cannot gain the new permission through refresh alone.
-- **Token expired** → tokens auto-refresh; if issues persist, re-run
-  `co auth microsoft`.
+- **OpenOnion authentication failed during token refresh** → run `co auth`.
+- **Microsoft authorization expired or permission denied** → tokens
+  auto-refresh when possible; re-run `co auth microsoft` if Microsoft revoked
+  the refresh token or the operation needs another scope.
 - **`No email #N in your inbox`** → the number is out of range; run
   `co outlook inbox` to refresh the listing.
 - **`co outlook cancel` rejected with 403** → some Exchange work/school
