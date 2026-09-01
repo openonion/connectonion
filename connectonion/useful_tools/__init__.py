@@ -33,6 +33,15 @@ from .memory import Memory
 from .microsoft_calendar import MicrosoftCalendar
 from .outlook import Outlook
 from .send_email import send_email
+from .sms import (
+    acknowledge_sms,
+    create_sms_pairing,
+    delete_sms,
+    get_sms,
+    list_sms_devices,
+    revoke_sms_device,
+    wait_for_sms,
+)
 from .shell import Shell
 from .slash_command import SlashCommand
 from .synology import Synology
@@ -47,6 +56,13 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    "create_sms_pairing",
+    "get_sms",
+    "wait_for_sms",
+    "acknowledge_sms",
+    "delete_sms",
+    "list_sms_devices",
+    "revoke_sms_device",
     # Class-based tools
     "Memory",
     "Gmail",

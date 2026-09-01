@@ -81,6 +81,8 @@ _FROM = {
     **{name: ".plugins" for name in ("CodexPlugin", "ClaudeCodePlugin", "PermissionMode")},
     **{name: ".useful_tools" for name in (
         "send_email", "get_emails", "mark_read", "mark_unread", "send_telegram",
+        "create_sms_pairing", "get_sms", "wait_for_sms", "acknowledge_sms", "delete_sms",
+        "list_sms_devices", "revoke_sms_device",
         "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
         "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
         "claude_code",
@@ -166,6 +168,13 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    "create_sms_pairing",
+    "get_sms",
+    "wait_for_sms",
+    "acknowledge_sms",
+    "delete_sms",
+    "list_sms_devices",
+    "revoke_sms_device",
     "send_telegram",
     # Class-based tools
     "Memory",

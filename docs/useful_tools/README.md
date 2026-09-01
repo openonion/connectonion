@@ -20,6 +20,7 @@ Pre-built tools for common agent tasks.
 | [Synology](synology.md) | Synology NAS files | `from connectonion import Synology` |
 | [get_emails](get_emails.md) | Email parsing utilities | `from connectonion import get_emails` |
 | [send_email](send_email.md) | Send emails via API | `from connectonion import send_email` |
+| [SMS inbox](sms.md) | Pair Android and decrypt Agent SMS | `from connectonion import get_sms` |
 | [Outlook](outlook.md) | Outlook integration | `from connectonion import Outlook` |
 | [GoogleCalendar](google_calendar.md) | Google Calendar | `from connectonion import GoogleCalendar` |
 | [MicrosoftCalendar](microsoft_calendar.md) | Microsoft Calendar | `from connectonion import MicrosoftCalendar` |
@@ -82,6 +83,7 @@ See [co copy](../cli/copy.md) for full details.
 ### Communication
 - **Gmail** - Send/read Gmail
 - **Outlook** - Send/read Outlook
+- **SMS inbox** - Pair a phone and read E2EE SMS as untrusted Agent data
 
 ### Calendar
 - **GoogleCalendar** - Google Calendar events

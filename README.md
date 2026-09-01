@@ -133,6 +133,7 @@ from connectonion.useful_tools import FileTools                         # File s
 from connectonion.useful_tools.browser_tools import BrowserAutomation   # Natural language browser automation
 
 from connectonion import Gmail, Outlook              # Email
+from connectonion import get_sms, wait_for_sms        # E2EE Android SMS inbox
 from connectonion import GDrive                      # Google Drive files
 from connectonion import GoogleCalendar              # Calendar
 from connectonion import Memory                      # Persistent memory
