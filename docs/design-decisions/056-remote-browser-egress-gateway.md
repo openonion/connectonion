@@ -1,6 +1,6 @@
 # DD-056: Remote Browser navigation needs an egress gateway, not a URL check
 
-**Status:** Proposed for 1.8; navigation remains disabled
+**Status:** Accepted for 1.8; shared Laptop egress wired, navigation remains disabled
 
 **Date:** 2026-08-26
 
@@ -140,6 +140,27 @@ profile and behavior.
 Future shared-proxy grants may require different browser contexts because
 Chromium proxy selection is context-scoped. #1036 must choose and test that
 context/process model; this decision does not claim per-tab proxy isolation.
+
+## First shared-Proxy decision (2026-09-01)
+
+The first preview uses the two-machine product selected in #1036: a Laptop runs
+`co proxy share to <B>`, and the remote WTF Browser B pins that Laptop for the
+runtime. It does not require the later three-party unattended D/P/B model.
+
+The authority split is:
+
+- `RemoteBrowserService` chooses and persists `direct` or `shared` once;
+- the private WTF runtime enforces one fixed loopback Proxy with no Direct
+  fallback;
+- Laptop `co proxy` owns target DNS resolution and the public socket;
+- BrowserDaemon controls pages/tabs but cannot choose or change the Proxy.
+
+In shared mode B does not call system DNS for target names. It sends an
+authenticated bounded resolution request to the Laptop, independently checks
+the complete returned answer set, and asks the Laptop to connect one selected
+numeric address. The Laptop applies the same frozen policy both while resolving
+and while dialing. This preserves the exact-socket invariant while ensuring DNS
+and public egress both belong to the Laptop.
 
 ## Gateway connection contract
 

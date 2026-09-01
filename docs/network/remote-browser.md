@@ -43,6 +43,11 @@ centre while you believed it left from home. Any other mode answers
 Both machines apply the destination policy, so sharing a connection does not
 share the network behind it. See [co proxy](../cli/proxy.md).
 
+The selection is pinned when the WTF Browser runtime is created. One running
+runtime cannot mix `direct` and `shared`, or two different Laptop exits. A
+change requires a new runtime; losing the Laptop Proxy never falls back to the
+server's datacentre address.
+
 ## Scripting it
 
 `--json` returns a stable envelope on every command — `schema_version`, `ok`,
@@ -84,8 +89,9 @@ connections that the first check never saw.
 Navigation will be authorized at the socket, not at the URL. The host runs a
 loopback egress gateway and starts the browser with no way around it: every
 HTTP, HTTPS, WebSocket, worker, subresource, redirect and download connection
-goes through the gateway, which resolves the name itself, checks every address
-the lookup returned, and dials only an approved numeric address.
+goes through the gateway. In `direct` mode the host gateway resolves and dials.
+In `shared` mode the Laptop resolves the name and opens the final socket; both
+machines classify the complete answer set before one numeric address is used.
 
 ```text
 remote command ──▶ Remote Browser service ──▶ host-private browser
@@ -93,7 +99,7 @@ remote command ──▶ Remote Browser service ──▶ host-private browser
                                                      │ no direct fallback
                                                      ▼
                                        egress gateway 127.0.0.1:<port>
-                                       resolve · classify · dial approved IP
+                                       classify · direct/shared transport
                                                      ▼
                                              the public internet
 ```

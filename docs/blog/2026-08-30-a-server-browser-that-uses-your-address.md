@@ -1,80 +1,78 @@
 # A browser on a server, using your address
 
-`co proxy share to <address>` is in 1.8.0a3. It lends this computer's internet
-connection to one agent you authorize, and a remote browser session started
-with `--proxy shared` reaches the internet through it.
+The first test looked finished. A browser was running on a cloud server, its
+traffic crossed a Laptop in Sydney, and the destination reported the Laptop's
+public IP. That was the number we wanted to move.
 
-```bash
-co proxy share to 0xHOST                        # on your computer
-co remote-browser 0xHOST start --proxy shared   # then start the session
-```
+Then we looked one step earlier than the destination.
 
-The number that matters, measured across two real machines — a Google Cloud
-server running the paid Chromium 151, a laptop in Sydney lending its
-connection:
+The server had resolved the hostname before asking the Laptop to open the
+numeric socket. The page arrived from the right address, but the server still
+announced where it was going through DNS. We had moved the last packet and left
+the first one behind.
 
-```text
-the server's own address        34.21.243.229
-what the site saw               129.94.43.159
-```
+That is a particularly dangerous kind of green test: the visible result is
+right while the security boundary is wrong.
 
-## Lending a connection, not a network
+## Moving DNS changes who must be trusted
 
-The obvious way to build this is a forwarder: accept a connection, open a
-socket, copy bytes. That version would also hand the remote caller your router's
-admin page, whatever listens on `localhost`, and every other thing that answers
-inside your house — and each of those requests would arrive from a machine that
-trusts them.
+Sending the hostname to the Laptop sounds like a small correction. It is not.
+DNS can return several addresses, change its answer, or point a public-looking
+name at a private machine. If the server approves one lookup and the Laptop
+performs another, neither side knows which socket the other side meant.
 
-So the share is not a forwarder. It is the same component as the browser's own
-egress gateway — same parser, same authentication, same destination policy, same
-limits — bound to a reachable address instead of loopback:
+The path now makes one answer set cross the boundary:
 
 ```text
-CONNECT 192.168.0.1:80  →  403 DESTINATION_ADDRESS_DENIED
+WTF Browser on server
+        │ hostname
+        ▼
+Laptop resolves and checks every answer
+        │ complete numeric answer set
+        ▼
+server checks it independently and chooses one address
+        │ numeric CONNECT
+        ▼
+Laptop checks again and opens the public socket
 ```
 
-The check that keeps a remote caller off a server's private network turned out
-to be, unchanged, the check that keeps it off yours.
+The remote operating system never resolves the target. The Laptop cannot talk
+the server into accepting a private answer, and the server cannot use the
+Laptop as a tunnel into somebody's home network. A request for
+`192.168.0.1:80` dies before any upstream socket opens.
 
-## One hop moves, and only one
+The useful lesson was not “proxy DNS too.” It was that a proxy boundary is a
+decision about an exact socket. Hostname checks are only evidence used to reach
+that decision; they are not the decision itself.
 
-The host resolves the hostname, classifies every address the lookup returns, and
-pins one numeric address — exactly as it does with no share involved. Then it
-asks your machine for that same numeric address:
+## Truth has a lifecycle
 
-```text
-CONNECT 93.184.216.34:443      ← what the host asks your share for
-CONNECT example.com:443        ← what it never asks
-```
+Once DNS and the final socket belonged to the same Laptop, two older behaviors
+became impossible to ignore. A shared session accepted the Laptop endpoint but
+recorded itself as `direct`. Stopping a share removed a JSON entry but left the
+listener alive.
 
-If it forwarded the hostname, your machine would resolve it a second time, and
-the address it dialed could differ from the one the host approved. Your share
-then applies its own policy to what it was handed, so a destination has to pass
-both machines.
+Both bugs said the system was in a state it had never reached.
 
-## What else is in this release
+The WTF runtime now binds to one Direct or shared exit before the browser
+starts. A second session cannot quietly change it. Stop authenticates to the
+live service, waits for the listener to close, and only then removes the state.
+If the Laptop disappears, the browser loses the network path; it does not find
+the server's datacentre address as a convenient fallback.
 
-The boundary that makes the above safe to offer: a frozen destination policy
-that classifies alternate address forms and special-use names, an authenticated
-loopback gateway that owns DNS and dials only approved numeric sockets, a
-Host-private browser runtime that keeps a remote caller's session out of the
-browser holding your logins, and a preflight that makes the browser prove it
-used the gateway before the first page opens.
+## The negative test mattered most
 
-Paid Onion Browser on Linux is a working customer path in this preview:
-`co browser install-onion` bootstraps the runtime through a signed release
-channel, and a paid session downloads and runs the exact Chromium 151 artifact.
-A session now says what it costs when it starts.
+We drove a visible Chromium through the two real proxy hops and served a page
+from the fake Laptop exit. DNS and the numeric connection both appeared at the
+Laptop boundary. Then we deliberately restored Chromium's localhost bypass.
+The preflight failed.
 
-## Try it
+That second run is the stronger result. A test that only proves the intended
+path works can stay green while another path leaks. A test that introduces a
+real leak and watches the boundary reject it tells us the alarm is connected.
 
-```bash
-pip install connectonion==1.8.0a3
-```
-
-Preview releases are opt-in; `pip install connectonion` still gives you stable
-1.7. Remote **navigation** is still switched off — `diagnose` reports
-`navigation_policy: not_enabled` until the installed-artifact acceptance suite
-finishes. The share is reachable on your own network today; carrying it across
-networks still uses a tunnel you provide.
+The next acceptance is deliberately less tidy: two physical machines, observed
+DNS on both sides, and a destination comparing the Laptop and server IPs. The
+current listener also needs a trusted VPN or tunnel between networks; its Basic
+credential is authentication, not transport encryption. Those are remaining
+boundaries, not details to hide behind the successful local run.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import contextlib
 import hmac
 import ipaddress
@@ -41,6 +42,7 @@ OVERLOADED = "EGRESS_OVERLOADED"
 CONNECT_FAILED = "EGRESS_CONNECT_FAILED"
 TRANSFER_LIMIT = "EGRESS_TRANSFER_LIMIT"
 GATEWAY_STOPPING = "EGRESS_GATEWAY_STOPPING"
+RESOLVE_UNAVAILABLE = "EGRESS_RESOLVE_UNAVAILABLE"
 
 _HEADER_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 _METHOD = re.compile(rb"[A-Z][A-Z0-9!#$%&'*+.^_`|~-]{0,31}")
@@ -58,6 +60,7 @@ _ERROR_STATUS = {
     CONNECT_FAILED: (502, "Bad Gateway"),
     TRANSFER_LIMIT: (413, "Content Too Large"),
     GATEWAY_STOPPING: (503, "Service Unavailable"),
+    RESOLVE_UNAVAILABLE: (403, "Forbidden"),
 }
 
 
@@ -230,12 +233,14 @@ class EgressGateway:
         username: str = "connectonion",
         password: str | None = None,
         bind_host: str = "127.0.0.1",
+        allow_remote_resolution: bool = False,
     ):
         # Loopback is the default and the only address a browser-private
         # gateway may use. `co proxy share` runs the same request machinery on
         # a reachable address so a remote agent can egress through this
         # machine, and that is the only reason this is a parameter.
         self.bind_host = bind_host
+        self.allow_remote_resolution = bool(allow_remote_resolution)
         self.resolver = resolver
         self.dialer = dialer
         try:
@@ -439,6 +444,9 @@ class EgressGateway:
             # decides next.
             self._handled += 1
             await self._promote(admission)
+            if request.method == "CORESOLVE":
+                await self._serve_resolution(request, writer)
+                return
             authority, origin_target, upgrade = self._request_destination(request)
             endpoints = await self._approved_endpoints(authority)
             upstream_reader, upstream_writer = await self._connect(endpoints)
@@ -478,6 +486,50 @@ class EgressGateway:
             upstream_writer.close()
             with contextlib.suppress(Exception):
                 await upstream_writer.wait_closed()
+
+    async def _serve_resolution(
+        self, request: ProxyRequest, writer: asyncio.StreamWriter
+    ) -> None:
+        """Resolve one authority on the egress machine for a shared browser.
+
+        Chromium never calls this method.  The remote host-private gateway uses
+        it before asking this same service to CONNECT one returned numeric
+        address.  Keeping resolution here makes the Laptop the DNS boundary;
+        keeping the ordinary destination decision here means sharing an exit
+        never shares the Laptop's LAN.
+        """
+        if not self.allow_remote_resolution:
+            raise GatewayRefusal(RESOLVE_UNAVAILABLE)
+        if request.values("host"):
+            raise GatewayRefusal(INVALID)
+        try:
+            encoded, raw_port = request.target.rsplit(":", 1)
+            padding = "=" * (-len(encoded) % 4)
+            host = base64.urlsafe_b64decode((encoded + padding).encode("ascii")).decode(
+                "utf-8"
+            )
+            port = int(raw_port)
+        except (ValueError, UnicodeError, binascii.Error):
+            raise GatewayRefusal(INVALID) from None
+        if not host or isinstance(port, bool) or not 1 <= port <= 65535:
+            raise GatewayRefusal(INVALID)
+        bracketed = f"[{host}]" if ":" in host else host
+        try:
+            authority = normalize_web_destination(f"https://{bracketed}:{port}")
+            endpoints = await self._approved_endpoints(authority)
+        except DestinationPolicyError as refusal:
+            raise GatewayRefusal(refusal.code) from refusal
+        body = ("\n".join(endpoint.address for endpoint in endpoints) + "\n").encode(
+            "ascii"
+        )
+        writer.write(
+            b"HTTP/1.1 200 OK\r\n"
+            b"Connection: close\r\n"
+            b"Content-Type: text/plain; charset=us-ascii\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+            + body
+        )
+        await self._drain(writer)
 
     async def _read_request(self, reader: asyncio.StreamReader) -> ProxyRequest:
         refusal_code = None

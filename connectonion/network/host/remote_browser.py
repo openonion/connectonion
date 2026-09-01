@@ -8,6 +8,8 @@ subresources as well as the first URL.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -18,6 +20,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "1"
 REQUEST_ID = re.compile(r"[\x21-\x7e]{1,128}")
@@ -94,6 +97,55 @@ class RemoteBrowserService:
             def daemon_request(line, **identity):
                 return request_target_as(self.daemon_target, line, **identity)
         self.daemon_request = daemon_request
+
+    @staticmethod
+    def _share_endpoint(share: dict):
+        """Return one validated Laptop Proxy endpoint without retaining its URL."""
+        from ..proxy_egress import ShareEndpoint
+        from .private_browser_runtime import _canonical_share_endpoint
+
+        value = dict(share)
+        if "host" not in value or "port" not in value:
+            try:
+                parsed = urlsplit(value.pop("url"))
+                if (
+                    parsed.scheme != "http"
+                    or parsed.hostname is None
+                    or parsed.username is not None
+                    or parsed.password is not None
+                    or parsed.path not in {"", "/"}
+                    or parsed.query
+                    or parsed.fragment
+                ):
+                    raise ValueError
+                value["host"] = parsed.hostname
+                value["port"] = parsed.port
+            except (KeyError, TypeError, ValueError):
+                raise ValueError("shared proxy endpoint is invalid") from None
+        endpoint = _canonical_share_endpoint(value)
+        return ShareEndpoint(
+            endpoint.host, endpoint.port, endpoint.username, endpoint.password
+        )
+
+    @staticmethod
+    def _share_binding(endpoint) -> str:
+        identity = json.dumps(
+            {
+                "host": endpoint.host,
+                "port": endpoint.port,
+                "username": endpoint.username,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+        # The random Proxy credential is a key, not a user password to verify.
+        # HMAC gives this private registry a purpose-separated, non-reversible
+        # binding without persisting the bearer credential itself.
+        return hmac.new(
+            endpoint.password.encode("ascii"),
+            b"connectonion:remote-browser:proxy-binding:v1\x00" + identity,
+            hashlib.sha256,
+        ).hexdigest()
 
     def _load(self) -> dict:
         if not self.state_path.exists():
@@ -235,6 +287,20 @@ class RemoteBrowserService:
                 "Run `co proxy share to <this host>` and retry.",
                 state={"fallback_applied": False},
             )
+        share_endpoint = None
+        share_binding = None
+        if proxy_mode == "shared":
+            try:
+                share_endpoint = self._share_endpoint(share)
+            except ValueError as exc:
+                return _failure(
+                    request_id,
+                    "start",
+                    "REMOTE_SESSION_SHARE_INVALID",
+                    str(exc),
+                    state={"fallback_applied": False},
+                )
+            share_binding = self._share_binding(share_endpoint)
         headless = args.get("headless", True)
         if not isinstance(headless, bool):
             return _failure(
@@ -253,25 +319,66 @@ class RemoteBrowserService:
                         result=self._public(session),
                         state={"session": session["status"], "fallback_applied": False},
                     )
+            active = [
+                session
+                for session in state["sessions"].values()
+                if session.get("status") == "active"
+            ]
+            runtime_already_active = bool(active)
+            if any(
+                session.get("proxy_mode") != proxy_mode
+                or (
+                    proxy_mode == "shared"
+                    and session.get("proxy_binding") != share_binding
+                )
+                for session in active
+            ):
+                return _failure(
+                    request_id,
+                    "start",
+                    "REMOTE_SESSION_PROXY_LOCKED",
+                    "The running WTF Browser is already pinned to another proxy.",
+                    state={"fallback_applied": False},
+                )
+            if share_endpoint is not None and self.daemon_target is not None:
+                from .private_browser_runtime import write_shared_proxy_file
+
+                write_shared_proxy_file(
+                    self.daemon_target.shared_proxy_path, share_endpoint
+                )
             session_id = f"rb_{uuid.uuid4().hex}"
             tab = f"remote-{session_id[3:19]}"
             line = shlex.join(
                 ["tab", "open", tab, "--who", owner, "--for", "remote-browser"]
             )
-            code, payload = self.daemon_request(
-                line, caller=owner, account=owner, headless=headless
-            )
-            if code:
-                raise RuntimeError(payload or "browser daemon rejected session start")
-            if payload.strip() != tab:
-                raise RuntimeError("browser daemon returned an unexpected tab identity")
+            try:
+                code, payload = self.daemon_request(
+                    line, caller=owner, account=owner, headless=headless
+                )
+                if code:
+                    raise RuntimeError(
+                        payload or "browser daemon rejected session start"
+                    )
+                if payload.strip() != tab:
+                    raise RuntimeError(
+                        "browser daemon returned an unexpected tab identity"
+                    )
+            except Exception:
+                if (
+                    not runtime_already_active
+                    and self.daemon_target is not None
+                    and self.daemon_target.shared_proxy_path is not None
+                ):
+                    self.daemon_target.shared_proxy_path.unlink(missing_ok=True)
+                raise
             now = int(self.clock())
             session = {
                 "session_id": session_id,
                 "owner": owner,
                 "tab": tab,
                 "status": "active",
-                "proxy_mode": "direct",
+                "proxy_mode": proxy_mode,
+                "proxy_binding": share_binding,
                 "headless": headless,
                 "start_request_id": request_id,
                 "created_at": now,
@@ -293,6 +400,21 @@ class RemoteBrowserService:
                     )
                 except Exception:
                     pass
+                if not runtime_already_active:
+                    try:
+                        self.daemon_request(
+                            "close",
+                            caller=owner,
+                            account=owner,
+                            headless=headless,
+                        )
+                    except Exception:
+                        pass
+                    if (
+                        self.daemon_target is not None
+                        and self.daemon_target.shared_proxy_path is not None
+                    ):
+                        self.daemon_target.shared_proxy_path.unlink(missing_ok=True)
                 raise
         return _success(
             request_id,
@@ -354,7 +476,23 @@ class RemoteBrowserService:
                     )
                 session["status"] = "stopped"
                 session["updated_at"] = int(self.clock())
-                self._save(state)
+            if not any(
+                candidate.get("status") == "active"
+                for candidate in state["sessions"].values()
+            ):
+                close_code, close_payload = self.daemon_request(
+                    "close",
+                    caller=owner,
+                    account=owner,
+                    headless=session["headless"],
+                )
+                if close_code not in (0, 3):
+                    raise RuntimeError(
+                        close_payload or "browser daemon rejected runtime stop"
+                    )
+                if self.daemon_target is not None:
+                    self.daemon_target.shared_proxy_path.unlink(missing_ok=True)
+            self._save(state)
             public = self._public(session)
         return _success(
             request_id,
@@ -376,10 +514,15 @@ class RemoteBrowserService:
                 "session_registry": "ok",
                 "transport": "direct",
                 "proxy_mode": "direct",
+                "egress_gateway": "ready",
+                "dns_boundary": (
+                    "laptop" if status["result"]["proxy_mode"] == "shared" else "host"
+                ),
                 "navigation_policy": "not_enabled",
             },
         }
+        status["result"]["checks"]["proxy_mode"] = status["result"]["proxy_mode"]
         status["warnings"] = [
-            "Remote navigation remains disabled until the public-destination policy is enforced."
+            "The WTF Browser egress boundary is ready; remote page commands remain disabled."
         ]
         return status

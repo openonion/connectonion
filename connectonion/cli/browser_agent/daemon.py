@@ -245,6 +245,7 @@ class BrowserDaemon:
         profile_dir: str | Path | None = None,
         remote_egress: bool = False,
         authkey_path: str | Path | None = None,
+        shared_proxy_path: str | Path | None = None,
         gateway_factory=None,
         browser_factory=AsyncBrowserCore,
     ):
@@ -260,6 +261,13 @@ class BrowserDaemon:
         )
         self._remote_egress = remote_egress
         self._authkey_path = Path(authkey_path) if authkey_path is not None else None
+        self._shared_proxy_path = (
+            Path(shared_proxy_path).expanduser().resolve()
+            if shared_proxy_path is not None
+            else None
+        )
+        if self._shared_proxy_path is not None and not self._remote_egress:
+            raise ValueError("a shared proxy requires --remote-egress")
         self._gateway_factory = gateway_factory
         self._browser_factory = browser_factory
         self._proxy_auth_path = None
@@ -961,16 +969,22 @@ class BrowserDaemon:
             raise RuntimeError("private browser runtime is only prepared once")
         from connectonion.network.host.egress_gateway import EgressGateway
         from connectonion.network.host.private_browser_runtime import (
+            load_shared_proxy_file,
             proxy_auth_path_for_profile,
             remote_browser_launch_policy,
             remove_proxy_auth_file,
             write_proxy_auth_file,
         )
+        from connectonion.network.proxy_egress import shared_egress_gateway
 
         gateway = (
             self._gateway_factory()
             if self._gateway_factory is not None
-            else EgressGateway()
+            else (
+                shared_egress_gateway(load_shared_proxy_file(self._shared_proxy_path))
+                if self._shared_proxy_path is not None
+                else EgressGateway()
+            )
         )
         endpoint = await gateway.start()
         proxy_auth_path = proxy_auth_path_for_profile(self._profile_dir)
@@ -1591,6 +1605,7 @@ def main():
     parser.add_argument("--profile-dir")
     parser.add_argument("--authkey-file")
     parser.add_argument("--remote-egress", action="store_true")
+    parser.add_argument("--shared-proxy-file")
     parser.add_argument("--engine", choices=("auto", "system", "onion"), default="auto")
     args = parser.parse_args()
     BrowserDaemon(
@@ -1600,6 +1615,7 @@ def main():
         profile_dir=args.profile_dir,
         authkey_path=args.authkey_file,
         remote_egress=args.remote_egress,
+        shared_proxy_path=args.shared_proxy_file,
     ).serve()
 
 

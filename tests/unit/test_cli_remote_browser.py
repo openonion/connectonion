@@ -1,7 +1,7 @@
 """CLI contract tests for ``co remote-browser``."""
 
-import json
 import importlib
+import json
 
 from connectonion.cli.commands.remote_browser_commands import handle_remote_browser
 
@@ -107,3 +107,32 @@ def test_proxy_option_is_not_accepted_by_non_start_command(monkeypatch):
     handle_remote_browser(["--proxy", "direct", "0xhost", "sessions"])
 
     assert remote.calls == [("sessions", {"session_id": None, "timeout": 60.0})]
+
+
+def test_shared_start_passes_the_laptop_endpoint_once_at_runtime_creation(
+    tmp_path, monkeypatch
+):
+    remote = _install(monkeypatch, _result())
+    from connectonion.cli.commands import proxy_commands
+
+    state_path = tmp_path / "proxy-shares.json"
+    monkeypatch.setattr(proxy_commands, "STATE_PATH", state_path)
+    proxy_commands._save(
+        {
+            "0xhost": {
+                "url": "http://192.0.2.10:43123",
+                "host": "192.0.2.10",
+                "port": 43123,
+                "username": "laptop",
+                "password": "secret",
+            }
+        }
+    )
+
+    assert handle_remote_browser(["--proxy", "shared", "0xhost", "start"]) == 0
+
+    command, kwargs = remote.calls[0]
+    assert command == "start"
+    assert kwargs["proxy"] == "shared"
+    assert kwargs["share"]["host"] == "192.0.2.10"
+    assert kwargs["share"]["password"] == "secret"

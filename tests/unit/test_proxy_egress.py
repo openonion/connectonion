@@ -2,7 +2,10 @@
 
 import asyncio
 import base64
+import json
+import os
 import socket
+import stat
 
 import pytest
 
@@ -11,6 +14,7 @@ from connectonion.network.proxy_egress import (
     ProxyEgressService,
     local_egress_address,
     remote_proxy_dialer,
+    remote_proxy_resolver,
     shared_egress_gateway,
 )
 
@@ -33,6 +37,18 @@ async def _origin(response=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection:
 def _auth(endpoint) -> str:
     raw = f"{endpoint.username}:{endpoint.password}".encode("ascii")
     return "Basic " + base64.b64encode(raw).decode("ascii")
+
+
+def test_proxy_registry_is_atomic_and_private(tmp_path, monkeypatch):
+    from connectonion.cli.commands import proxy_commands
+
+    path = tmp_path / ".co" / "proxy-shares.json"
+    monkeypatch.setattr(proxy_commands, "STATE_PATH", path)
+    proxy_commands._save({"0xtest": {"password": "secret"}})
+
+    assert json.loads(path.read_text()) == {"0xtest": {"password": "secret"}}
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 @pytest.mark.asyncio
@@ -93,6 +109,19 @@ async def test_an_unauthenticated_neighbour_cannot_use_the_share():
 
 
 @pytest.mark.asyncio
+async def test_laptop_dns_refuses_a_name_that_resolves_into_its_lan():
+    async def private_answer(_host, _port):
+        return ("192.168.0.1",)
+
+    async with ProxyEgressService(
+        bind_host="127.0.0.1", resolver=private_answer
+    ) as share:
+        resolve = remote_proxy_resolver(share.endpoint)
+        with pytest.raises(OSError, match="refused remote DNS"):
+            await resolve("public-looking.example.net", 443)
+
+
+@pytest.mark.asyncio
 async def test_traffic_leaves_through_the_share_rather_than_the_host():
     """The end-to-end property: the destination sees the sharer, not the host.
 
@@ -114,9 +143,7 @@ async def test_traffic_leaves_through_the_share_rather_than_the_host():
     async with ProxyEgressService(
         bind_host="127.0.0.1", resolver=public, dialer=to_origin
     ) as share:
-        gateway = shared_egress_gateway(
-            share.endpoint, resolver=public, allowed_ports=(80, 443)
-        )
+        gateway = shared_egress_gateway(share.endpoint, allowed_ports=(80, 443))
         endpoint = await gateway.start()
         try:
             reader, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
@@ -141,18 +168,22 @@ async def test_traffic_leaves_through_the_share_rather_than_the_host():
 
 
 @pytest.mark.asyncio
-async def test_the_host_asks_the_share_for_a_numeric_address_only():
-    """Lending a connection must not widen what the host was willing to reach.
-
-    The host resolves and classifies the hostname itself; only the last hop
-    moves. If it forwarded the name instead, the share would resolve it a
-    second time and could land somewhere the host never approved.
-    """
+async def test_dns_runs_on_the_laptop_then_the_host_asks_for_one_numeric_address():
+    """The browser host never resolves a target; the Laptop does, then both
+    sides classify the complete answer set before a numeric CONNECT."""
     requests = []
 
     async def recorder(reader, writer):
-        requests.append(await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5))
-        writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        request = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+        requests.append(request)
+        if request.startswith(b"CORESOLVE "):
+            body = b"8.8.8.8\n"
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 8\r\n\r\n"
+                + body
+            )
+        else:
+            writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         await writer.drain()
         writer.close()
 
@@ -160,10 +191,10 @@ async def test_the_host_asks_the_share_for_a_numeric_address_only():
     port = fake_share.sockets[0].getsockname()[1]
     from connectonion.network.proxy_egress import ShareEndpoint
 
-    dial = remote_proxy_dialer(ShareEndpoint("127.0.0.1", port, "u", "p"))
+    share = ShareEndpoint("127.0.0.1", port, "u", "p")
     gateway = EgressGateway(
-        resolver=lambda host, port_: asyncio.sleep(0, result=("8.8.8.8",)),
-        dialer=dial,
+        resolver=remote_proxy_resolver(share),
+        dialer=remote_proxy_dialer(share),
     )
     endpoint = await gateway.start()
     try:
@@ -182,10 +213,12 @@ async def test_the_host_asks_the_share_for_a_numeric_address_only():
         fake_share.close()
         await fake_share.wait_closed()
 
-    assert requests, "the host never reached the share"
-    asked = requests[0].decode("ascii")
-    assert "CONNECT 8.8.8.8:443" in asked, asked
-    assert "example.com" not in asked.split("\r\n")[0]
+    assert len(requests) == 2, "the host did not resolve and connect through the share"
+    resolve_line = requests[0].decode("ascii").split("\r\n")[0]
+    connect_line = requests[1].decode("ascii").split("\r\n")[0]
+    assert resolve_line.startswith("CORESOLVE ")
+    assert "example.com" not in resolve_line
+    assert connect_line == "CONNECT 8.8.8.8:443 HTTP/1.1"
 
 
 def test_the_reachable_address_is_not_loopback():
@@ -213,7 +246,17 @@ def test_the_share_command_serves_instead_of_reporting_and_exiting(tmp_path, mon
     (home / ".co").mkdir(parents=True)
     env = {**__import__("os").environ, "HOME": str(home)}
     process = subprocess.Popen(
-        [sys.executable, "-m", "connectonion.cli.main", "proxy", "share", "to", "0xtest"],
+        [
+            sys.executable,
+            "-m",
+            "connectonion.cli.main",
+            "proxy",
+            "share",
+            "to",
+            "0xtest",
+            "--bind",
+            "127.0.0.1",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
@@ -235,9 +278,31 @@ def test_the_share_command_serves_instead_of_reporting_and_exiting(tmp_path, mon
             probe.connect((host, int(port)))
         finally:
             probe.close()
-    finally:
-        process.terminate()
+        stopped = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "connectonion.cli.main",
+                "proxy",
+                "stop",
+                "0xtest",
+            ],
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=15,
+        )
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
         process.wait(timeout=15)
+        refused = socket.socket()
+        refused.settimeout(1)
+        with pytest.raises(OSError):
+            refused.connect((host, int(port)))
+        refused.close()
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=15)
 
     # And a stopped share does not stay in the registry claiming to be live.
     remaining = json.loads(registry.read_text()) if registry.exists() else {}
