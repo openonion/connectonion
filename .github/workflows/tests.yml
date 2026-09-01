@@ -389,6 +389,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error "co copy failed in CJK home"; exit 1 }
 
           # Real browser with profile + sidecars + authkey all under the CJK home.
+          # This USERPROFILE is intentionally isolated, so repeat the explicit
+          # Chrome compatibility choice instead of relying on another user's
+          # persisted config or allowing the WTF default to fall back silently.
+          co browser config set engine chrome
+          if ($LASTEXITCODE -ne 0) { Write-Error "Chrome engine config failed in CJK home"; exit 1 }
           Set-Content -Path page.html -Value "<html><body>cjk-home</body></html>"
           $url = "file:///" + ($PWD.Path -replace '\\','/') + "/page.html"
           co browser --headless go_to $url
