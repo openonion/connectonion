@@ -3,72 +3,197 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0d0c">
   <title>Agent Control Center</title>
   <style>
     :root {
-      color-scheme: light;
-      font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-      color: #191917;
-      background: #f5f4ef;
+      color-scheme: dark;
+      font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #f1f5f9;
+      background: #0c0d0c;
+      --surface: #151715;
+      --border: #343934;
+      --border-strong: #4b524b;
+      --heading: #fff;
+      --body: #f1f5f9;
+      --muted: #cbd5e1;
+      --primary: #4ade80;
+      --primary-ink: #07120b;
+      --interactive: #c084fc;
+      --info: #60a5fa;
+      --error: #f87171;
     }
+
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; }
-    main { width: min(760px, 100%); margin: 0 auto; padding: 28px; }
-    header { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 24px; }
-    .eyebrow { margin: 0 0 6px; color: #6c6a62; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
-    h1 { margin: 0; font: 650 clamp(28px, 6vw, 40px)/1.05 Georgia, serif; }
-    .connection { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid #d4d1c8; border-radius: 999px; background: #fff; color: #66645d; font-size: 12px; white-space: nowrap; }
-    .connection::before { width: 7px; height: 7px; border-radius: 50%; background: #aaa79e; content: ""; }
-    .connection.connected { color: #2f683a; border-color: #cad8cc; }
-    .connection.connected::before { background: #31a24c; }
-    .card { padding: 22px; border: 1px solid #d9d6cc; border-radius: 18px; background: #fff; box-shadow: 0 12px 40px #34301e0a; }
-    .card + .card { margin-top: 16px; }
-    h2 { margin: 0 0 6px; font-size: 17px; }
-    .muted { margin: 0; color: #6b6962; }
-    form { display: flex; gap: 9px; margin-top: 18px; }
-    input { min-width: 0; flex: 1; min-height: 44px; padding: 10px 12px; border: 1px solid #d4d1c8; border-radius: 12px; color: inherit; background: #faf9f6; font: inherit; }
-    button { min-height: 44px; padding: 10px 14px; border: 1px solid #d4d1c8; border-radius: 12px; color: inherit; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-    button.primary { border-color: #191917; color: #fff; background: #191917; }
-    button:disabled { cursor: not-allowed; opacity: .45; }
-    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 9px; margin-top: 16px; }
-    .actions button { text-align: left; }
-    #status { min-height: 22px; margin: 14px 0 0; color: #69675f; font-size: 12px; }
-    footer { margin-top: 18px; color: #77746c; font-size: 12px; }
-    @media (max-width: 520px) {
-      main { padding: 18px; }
-      header { display: block; }
-      .connection { margin-top: 12px; }
-      form { display: grid; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 90% -10%, rgb(74 222 128 / 9%), transparent 34rem),
+        #0c0d0c;
+    }
+    button, textarea { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+
+    .shell { width: min(896px, 100%); margin: 0 auto; padding: 64px 24px; }
+    .masthead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 24px; margin-bottom: 48px; }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    .brand-mark { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--border-strong); border-radius: 10px; color: var(--primary); background: #111311; }
+    .brand-mark svg { width: 17px; height: 17px; }
+    h1 { max-width: 680px; margin: 0; color: var(--heading); font-size: clamp(36px, 7vw, 64px); font-weight: 720; letter-spacing: -.055em; line-height: .98; }
+    .intro { max-width: 610px; margin: 24px 0 0; color: var(--muted); font-size: 18px; }
+
+    .connection { display: inline-flex; min-height: 48px; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: rgb(21 23 21 / 82%); font-size: 14px; font-weight: 650; white-space: nowrap; }
+    .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; box-shadow: 0 0 0 4px rgb(107 114 128 / 12%); }
+    .connection.connected { color: var(--body); border-color: rgb(74 222 128 / 35%); }
+    .connection.connected .connection-dot { background: var(--primary); box-shadow: 0 0 0 4px rgb(74 222 128 / 13%); }
+
+    .workspace { overflow: hidden; border: 1px solid var(--border); border-radius: 24px; background: rgb(21 23 21 / 94%); box-shadow: 0 28px 80px rgb(0 0 0 / 28%); }
+    .composer { padding: 32px; }
+    .section-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    h2 { margin: 0; color: var(--heading); font-size: 24px; line-height: 1.2; letter-spacing: -.02em; }
+    .conversation-label { color: var(--muted); font-size: 12px; }
+
+    form { position: relative; }
+    textarea { width: 100%; min-height: 136px; resize: vertical; padding: 18px 18px 72px; border: 1px solid var(--border-strong); border-radius: 18px; outline: none; color: var(--body); background: #101210; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+    textarea::placeholder { color: #94a3b8; }
+    textarea:hover { border-color: #626a62; }
+    textarea:focus { border-color: var(--interactive); background: #121412; box-shadow: 0 0 0 3px rgb(192 132 252 / 15%); }
+    .composer-bar { position: absolute; right: 12px; bottom: 12px; left: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .keyboard-hint { color: #94a3b8; font-size: 12px; }
+    .primary { display: inline-flex; min-width: 110px; min-height: 48px; align-items: center; justify-content: center; gap: 9px; padding: 10px 18px; border: 1px solid var(--primary); border-radius: 12px; color: var(--primary-ink); background: var(--primary); font-weight: 750; cursor: pointer; transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease; }
+    .primary svg { width: 17px; height: 17px; }
+    .primary:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 8px 24px rgb(74 222 128 / 18%); transform: translateY(-1px); }
+    .primary:active:not(:disabled) { transform: translateY(0); }
+    .primary:focus-visible, .skill-button:focus-visible { outline: 3px solid rgb(192 132 252 / 55%); outline-offset: 3px; }
+    button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .48; }
+
+    .status { display: flex; min-height: 48px; align-items: center; gap: 10px; margin: 16px 0 0; padding: 10px 14px; border-radius: 12px; color: var(--muted); background: #101210; font-size: 14px; }
+    .status-icon { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #0c0d0c; background: #94a3b8; font-size: 12px; font-weight: 800; }
+    .status[data-state="success"] .status-icon { background: var(--primary); }
+    .status[data-state="error"] { color: #fecaca; }
+    .status[data-state="error"] .status-icon { background: var(--error); }
+    .status[data-state="pending"] .status-icon { border: 2px solid #475569; border-top-color: var(--info); background: transparent; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .skills-section { padding: 32px; border-top: 1px solid var(--border); background: rgb(27 30 27 / 48%); }
+    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    .section-copy { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .skill-count { color: #94a3b8; font-size: 12px; white-space: nowrap; }
+    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .skill-button { display: grid; min-height: 112px; grid-template-columns: minmax(0, 1fr) 36px; gap: 16px; align-items: center; padding: 20px; border: 1px solid var(--border); border-radius: 16px; color: inherit; background: var(--surface); text-align: left; cursor: pointer; transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
+    .skill-button:hover { border-color: rgb(192 132 252 / 58%); background: #202320; transform: translateY(-2px); }
+    .skill-name { display: block; overflow: hidden; color: var(--heading); font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .skill-description { display: -webkit-box; overflow: hidden; margin-top: 8px; color: var(--muted); font-size: 14px; font-weight: 400; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .skill-arrow { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--border); border-radius: 10px; color: var(--interactive); background: #111311; transition: border-color 160ms ease, transform 160ms ease; }
+    .skill-button:hover .skill-arrow { border-color: rgb(192 132 252 / 50%); transform: translateX(2px); }
+    .skill-arrow svg { width: 16px; height: 16px; }
+    .empty-state { grid-column: 1 / -1; display: flex; min-height: 112px; align-items: center; gap: 16px; padding: 20px; border: 1px dashed var(--border-strong); border-radius: 16px; color: var(--muted); background: rgb(12 13 12 / 30%); }
+    .empty-icon { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; border: 1px solid var(--border); border-radius: 14px; color: var(--interactive); background: var(--surface); }
+    .empty-icon svg { width: 21px; height: 21px; }
+    .empty-state strong { display: block; margin-bottom: 4px; color: var(--body); font-size: 14px; }
+    .empty-state span { font-size: 12px; }
+
+    footer { display: flex; justify-content: space-between; gap: 24px; margin-top: 24px; color: #94a3b8; font-size: 12px; }
+    footer span:last-child { text-align: right; }
+
+    @media (max-width: 720px) {
+      .shell { padding: 48px 18px; }
+      .masthead { grid-template-columns: 1fr; margin-bottom: 32px; }
+      .brand { margin-bottom: 16px; }
+      h1 { font-size: clamp(36px, 12vw, 48px); }
+      .intro { margin-top: 16px; }
+      .connection { justify-self: start; }
+      .composer, .skills-section { padding: 24px; }
+      .actions { grid-template-columns: 1fr; }
+      footer { display: block; }
+      footer span { display: block; }
+      footer span + span { margin-top: 8px; text-align: left; }
+    }
+
+    @media (max-width: 440px) {
+      .shell { padding: 32px 16px; }
+      .masthead { gap: 16px; }
+      .workspace { border-radius: 20px; }
+      .composer, .skills-section { padding: 20px; }
+      .section-label, .section-heading { display: block; }
+      .conversation-label, .skill-count { display: block; margin-top: 8px; }
+      textarea { min-height: 176px; padding-bottom: 78px; }
+      .composer-bar { left: 14px; }
+      .keyboard-hint { display: none; }
+      .primary { width: 100%; }
+      .status { align-items: flex-start; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <header>
+  <main class="shell">
+    <header class="masthead">
       <div>
-        <p class="eyebrow">Control Center</p>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+          </span>
+          Control Center
+        </div>
         <h1 id="agent-name">Your Agent</h1>
+        <p class="intro">Message this Agent or run one of its published skills. Every action stays visible in Chat.</p>
       </div>
-      <span id="connection" class="connection">Waiting for O Chat</span>
+      <span id="connection" class="connection">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span id="connection-label">Waiting for O Chat</span>
+      </span>
     </header>
 
-    <section class="card">
-      <h2>Ask the Agent</h2>
-      <p class="muted">This becomes a visible message in the current Chat.</p>
-      <form id="message-form">
-        <input id="message" name="message" autocomplete="off" placeholder="What should the Agent do?" required maxlength="10000">
-        <button class="primary" type="submit" disabled>Send</button>
-      </form>
-      <p id="status" role="status" aria-live="polite">Open this app through O Chat to connect.</p>
+    <section class="workspace" aria-label="Agent workspace">
+      <div class="composer">
+        <div class="section-label">
+          <h2>Send a message</h2>
+          <span id="conversation-label" class="conversation-label">Not connected</span>
+        </div>
+        <form id="message-form">
+          <textarea id="message" name="message" autocomplete="off" placeholder="What should this Agent do?" required maxlength="10000" aria-label="Message to Agent"></textarea>
+          <div class="composer-bar">
+            <span class="keyboard-hint">Enter to send · Shift + Enter for a new line</span>
+            <button class="primary" type="submit" disabled>
+              Send
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 14-7-4 14-3-6-7-1Z"/><path d="m12 13 7-8"/></svg>
+            </button>
+          </div>
+        </form>
+        <p id="status" class="status" data-state="idle" role="status" aria-live="polite">
+          <span class="status-icon" aria-hidden="true">i</span>
+          <span id="status-message">Open this app through O Chat to connect.</span>
+        </p>
+      </div>
+
+      <div class="skills-section">
+        <div class="section-heading">
+          <div>
+            <h2>Skills</h2>
+            <p class="section-copy">Run a published workflow without leaving this Chat.</p>
+          </div>
+          <span id="skill-count" class="skill-count">Waiting for Agent</span>
+        </div>
+        <div id="skills" class="actions">
+          <div class="empty-state">
+            <span class="empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m13 2-2 7h7l-7 13 2-8H6l7-12Z"/></svg>
+            </span>
+            <span><strong>Skills appear when connected</strong><span>O Chat shares only the skills published by this Agent.</span></span>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Skills</h2>
-      <p class="muted">Published project skills appear here automatically.</p>
-      <div id="skills" class="actions"><span class="muted">No skills received yet.</span></div>
-    </section>
-
-    <footer>Agent replies appear in Chat. The website receives a correlated acknowledgement for every action.</footer>
+    <footer>
+      <span>Replies appear in Chat.</span>
+      <span>Actions receive a correlated acknowledgement.</span>
+    </footer>
   </main>
   <script type="module" src="./control-center.js"></script>
 </body>
