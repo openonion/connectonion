@@ -9,6 +9,7 @@ subresources as well as the first URL.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -128,17 +129,23 @@ class RemoteBrowserService:
 
     @staticmethod
     def _share_binding(endpoint) -> str:
-        canonical = json.dumps(
+        identity = json.dumps(
             {
                 "host": endpoint.host,
-                "password": endpoint.password,
                 "port": endpoint.port,
                 "username": endpoint.username,
             },
             sort_keys=True,
             separators=(",", ":"),
         ).encode("ascii")
-        return hashlib.sha256(canonical).hexdigest()
+        # The random Proxy credential is a key, not a user password to verify.
+        # HMAC gives this private registry a purpose-separated, non-reversible
+        # binding without persisting the bearer credential itself.
+        return hmac.new(
+            endpoint.password.encode("ascii"),
+            b"connectonion:remote-browser:proxy-binding:v1\x00" + identity,
+            hashlib.sha256,
+        ).hexdigest()
 
     def _load(self) -> dict:
         if not self.state_path.exists():
