@@ -513,12 +513,7 @@ class EgressGateway:
             raise GatewayRefusal(INVALID) from None
         if not host or isinstance(port, bool) or not 1 <= port <= 65535:
             raise GatewayRefusal(INVALID)
-        bracketed = f"[{host}]" if ":" in host else host
-        try:
-            authority = normalize_web_destination(f"https://{bracketed}:{port}")
-            endpoints = await self._approved_endpoints(authority)
-        except DestinationPolicyError as refusal:
-            raise GatewayRefusal(refusal.code) from refusal
+        endpoints = await self.resolve_destination(host, port)
         body = ("\n".join(endpoint.address for endpoint in endpoints) + "\n").encode(
             "ascii"
         )
@@ -530,6 +525,41 @@ class EgressGateway:
             + body
         )
         await self._drain(writer)
+
+    async def resolve_destination(
+        self, host: str, port: int
+    ) -> tuple[NumericEndpoint, ...]:
+        """This gateway's destination policy applied to one name, no socket.
+
+        The laptop end of a share answers the browser host's `resolve` with
+        this: the same resolver, the same bounds, the same frozen classifier
+        that decides what its own listener would connect to.
+        """
+        bracketed = f"[{host}]" if ":" in host else host
+        try:
+            authority = normalize_web_destination(f"https://{bracketed}:{port}")
+            return await self._approved_endpoints(authority)
+        except DestinationPolicyError as refusal:
+            raise GatewayRefusal(refusal.code) from refusal
+
+    async def connect_destination(
+        self, address: str, port: int
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Classify one numeric address again, then dial it.
+
+        A share connects only what it has just approved itself; the peer's
+        earlier resolve answer is not a decision it gets to keep.
+        """
+        bracketed = f"[{address}]" if ":" in address else address
+        try:
+            authority = normalize_web_destination(
+                f"https://{bracketed}:{port}/", allowed_ports=self.allowed_ports
+            )
+        except DestinationPolicyError as refusal:
+            raise GatewayRefusal(refusal.code) from refusal
+        if authority.literal is None:
+            raise GatewayRefusal(INVALID)
+        return await self._connect(await self._approved_endpoints(authority))
 
     async def _read_request(self, reader: asyncio.StreamReader) -> ProxyRequest:
         refusal_code = None
