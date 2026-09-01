@@ -46,7 +46,7 @@ def _install(monkeypatch, result):
 def test_start_forwards_only_typed_start_options(monkeypatch, capsys):
     remote = _install(monkeypatch, _result())
 
-    assert handle_remote_browser(["--headed", "--timeout", "5", "0xhost", "start"]) == 0
+    assert handle_remote_browser(["--headless", "--timeout", "5", "0xhost", "start"]) == 0
 
     assert remote.calls == [
         (
@@ -54,7 +54,7 @@ def test_start_forwards_only_typed_start_options(monkeypatch, capsys):
             {
                 "session_id": None,
                 "timeout": 5.0,
-                "headless": False,
+                "headless": True,
                 "proxy": "direct",
             },
         )
@@ -245,3 +245,13 @@ def test_co_proxy_share_and_stop_default_to_the_remembered_address(monkeypatch, 
     capsys.readouterr()
     assert proxy_commands.handle_proxy(["stop"]) == 1
     assert "not sharing your connection with 0xhost" in capsys.readouterr().out
+
+
+def test_start_is_headed_by_default_like_co_browser(monkeypatch):
+    """A visible window is the local default and the anti-detect default; a
+    host without a display already falls back to headless on its own."""
+    remote = _install(monkeypatch, _result())
+
+    handle_remote_browser(["0xhost", "start"])
+
+    assert remote.calls[0][1]["headless"] is False

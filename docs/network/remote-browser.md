@@ -16,6 +16,10 @@ co remote-browser 0xHOST stop    rb_0123456789abcdef0123456789abcdef
 That is the whole surface today. `start` is safe to retry: the same owner and
 request ID gets the same session back rather than a second one.
 
+The session opens a visible window by default, exactly like `co browser` on
+your own machine; a host with no display runs headless by itself. Pass
+`--headless` to ask for that explicitly.
+
 The address is 42 characters and never changes between calls, so remember it
 once and leave it out afterwards:
 

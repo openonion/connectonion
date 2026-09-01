@@ -21,8 +21,9 @@ Options:
   --json           emit the complete stable JSON envelope
   --timeout SEC    seconds to wait (default 60)
   --relay URL      relay backend used for discovery/fallback
-  --headless       start headless (default)
-  --headed         start with a visible browser
+  --headed         start with a visible window (default, like co browser;
+                   a host with no display runs headless by itself)
+  --headless       start without a window
   --proxy MODE     direct (this host's connection) or shared (yours)
 """
 
@@ -55,7 +56,7 @@ def _parse(args):
         "json_output": False,
         "timeout": 60.0,
         "relay_url": None,
-        "headless": True,
+        "headless": False,
         "proxy": None,
     }
     positional = []
