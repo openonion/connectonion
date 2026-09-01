@@ -19,8 +19,10 @@ activation still requires the upload and independent-review service described be
 ```
 
 The directory belongs to the project. A later `co init` never overwrites it. The
-bundled template is responsive, displays the authenticated skill list, sends ordinary
-messages, and creates one button per skill.
+bundled template is the interactive full-Web version of CO AI's canonical default
+Control Center in `network/host/ws_router/starter.html`: it keeps the same identity,
+Workspace, Quick actions, Capabilities, color tokens, and responsive structure. It
+adds ordinary-message and skill actions through the reviewed OChat bridge.
 
 Preview the website while editing it:
 

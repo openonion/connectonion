@@ -6,6 +6,8 @@ stack without depending on O Chat's private component tree.
 
 ## What the default app does
 
+- It starts from CO AI's canonical default Control Center design: Agent identity,
+  Workspace, Quick actions, Capabilities, and the shared light/dark color tokens.
 - The message form calls `send_message`.
 - Each published project skill becomes a `run_skill` button.
 - Both actions become visible, attributable user turns in the current Agent Chat.

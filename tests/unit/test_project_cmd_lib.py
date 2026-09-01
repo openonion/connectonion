@@ -1,5 +1,6 @@
 """Tests for CLI project helpers — upsert_env credential writing."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -28,6 +29,23 @@ class TestControlCenterTemplate:
         bridge = (app / "control-center.js").read_text(encoding="utf-8")
         contract = (app / "CONTROL_CENTER.md").read_text(encoding="utf-8")
         assert 'src="./control-center.js"' in html
+        assert "interactive version of CO AI's canonical starter.html" in html
+        for landmark in ("Control Center", "Workspace", "Quick actions", "Capabilities"):
+            assert landmark in html
+        for token in ("--cc-bg", "--cc-surface", "--cc-accent", "--cc-focus"):
+            assert token in html
+        assert "color-scheme: light dark" in html
+        starter = (
+            Path(__file__).parents[2]
+            / "connectonion/network/host/ws_router/starter.html"
+        ).read_text(encoding="utf-8")
+        for token in (
+            "--cc-bg", "--cc-surface", "--cc-surface-raised", "--cc-text",
+            "--cc-muted", "--cc-subtle", "--cc-border", "--cc-accent",
+            "--cc-accent-soft", "--cc-danger", "--cc-focus",
+        ):
+            declarations = rf"{re.escape(token)}:\s*([^;]+);"
+            assert re.findall(declarations, html) == re.findall(declarations, starter)
         assert "send_message" in bridge and "run_skill" in bridge
         assert "message.skills" in bridge
         assert "current Agent Chat" in contract

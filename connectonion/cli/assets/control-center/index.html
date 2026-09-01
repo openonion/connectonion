@@ -3,197 +3,226 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0c0d0c">
-  <title>Agent Control Center</title>
+  <title>Agent · Control Center</title>
   <style>
+    /* This is the interactive version of CO AI's canonical starter.html.
+       Keep its tokens, landmarks, and responsive structure in sync with
+       connectonion/network/host/ws_router/starter.html. */
     :root {
-      color-scheme: dark;
-      font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #f1f5f9;
-      background: #0c0d0c;
-      --surface: #151715;
-      --border: #343934;
-      --border-strong: #4b524b;
-      --heading: #fff;
-      --body: #f1f5f9;
-      --muted: #cbd5e1;
-      --primary: #4ade80;
-      --primary-ink: #07120b;
-      --interactive: #c084fc;
-      --info: #60a5fa;
-      --error: #f87171;
+      color-scheme: light dark;
+      --cc-bg: #f7f8f6;
+      --cc-surface: #ffffff;
+      --cc-surface-raised: #f0f2ee;
+      --cc-text: #171a17;
+      --cc-muted: #505650;
+      --cc-subtle: #626962;
+      --cc-border: #d9ddd7;
+      --cc-accent: #14733a;
+      --cc-accent-soft: #e2f3e7;
+      --cc-danger: #b42318;
+      --cc-focus: #075985;
+      --cc-radius-sm: 10px;
+      --cc-radius-md: 14px;
+      --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
     }
-
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --cc-bg: #111411;
+        --cc-surface: #191d19;
+        --cc-surface-raised: #222722;
+        --cc-text: #f1f5f1;
+        --cc-muted: #bbc4bb;
+        --cc-subtle: #aeb7ae;
+        --cc-border: #343b34;
+        --cc-accent: #62d68a;
+        --cc-accent-soft: #173d25;
+        --cc-danger: #ff8a80;
+        --cc-focus: #7dd3fc;
+        --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
+      }
+    }
     * { box-sizing: border-box; }
+    html { background: var(--cc-bg); }
     body {
       margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at 90% -10%, rgb(74 222 128 / 9%), transparent 34rem),
-        #0c0d0c;
+      padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
+      background: var(--cc-bg);
+      color: var(--cc-text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
-    button, textarea { font: inherit; }
-    button { -webkit-tap-highlight-color: transparent; }
+    html, body { max-width: 100%; overflow-x: clip; }
+    main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
+    main { width: min(100%, 860px); margin: 0 auto; }
+    button, input, textarea, summary { font: inherit; }
+    button, input, summary { min-height: 48px; }
+    :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
+    [hidden] { display: none !important; }
 
-    .shell { width: min(896px, 100%); margin: 0 auto; padding: 64px 24px; }
-    .masthead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 24px; margin-bottom: 48px; }
-    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-    .brand-mark { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--border-strong); border-radius: 10px; color: var(--primary); background: #111311; }
-    .brand-mark svg { width: 17px; height: 17px; }
-    h1 { max-width: 680px; margin: 0; color: var(--heading); font-size: clamp(36px, 7vw, 64px); font-weight: 720; letter-spacing: -.055em; line-height: .98; }
-    .intro { max-width: 610px; margin: 24px 0 0; color: var(--muted); font-size: 18px; }
+    .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
+    .eyebrow {
+      margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
+      letter-spacing: .11em; text-transform: uppercase;
+    }
+    .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .mark {
+      flex: none; display: grid; place-items: center; width: 42px; height: 42px;
+      border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
+      font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
+    }
+    h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
+    .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
+    .sub { display: flex; align-items: center; gap: 7px; margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
+    .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc-subtle); }
+    .sub.connected .connection-dot { background: var(--cc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cc-accent) 16%, transparent); }
 
-    .connection { display: inline-flex; min-height: 48px; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: rgb(21 23 21 / 82%); font-size: 14px; font-weight: 650; white-space: nowrap; }
-    .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; box-shadow: 0 0 0 4px rgb(107 114 128 / 12%); }
-    .connection.connected { color: var(--body); border-color: rgb(74 222 128 / 35%); }
-    .connection.connected .connection-dot { background: var(--primary); box-shadow: 0 0 0 4px rgb(74 222 128 / 13%); }
-
-    .workspace { overflow: hidden; border: 1px solid var(--border); border-radius: 24px; background: rgb(21 23 21 / 94%); box-shadow: 0 28px 80px rgb(0 0 0 / 28%); }
-    .composer { padding: 32px; }
-    .section-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-    h2 { margin: 0; color: var(--heading); font-size: 24px; line-height: 1.2; letter-spacing: -.02em; }
-    .conversation-label { color: var(--muted); font-size: 12px; }
-
-    form { position: relative; }
-    textarea { width: 100%; min-height: 136px; resize: vertical; padding: 18px 18px 72px; border: 1px solid var(--border-strong); border-radius: 18px; outline: none; color: var(--body); background: #101210; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
-    textarea::placeholder { color: #94a3b8; }
-    textarea:hover { border-color: #626a62; }
-    textarea:focus { border-color: var(--interactive); background: #121412; box-shadow: 0 0 0 3px rgb(192 132 252 / 15%); }
-    .composer-bar { position: absolute; right: 12px; bottom: 12px; left: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    .keyboard-hint { color: #94a3b8; font-size: 12px; }
-    .primary { display: inline-flex; min-width: 110px; min-height: 48px; align-items: center; justify-content: center; gap: 9px; padding: 10px 18px; border: 1px solid var(--primary); border-radius: 12px; color: var(--primary-ink); background: var(--primary); font-weight: 750; cursor: pointer; transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease; }
-    .primary svg { width: 17px; height: 17px; }
-    .primary:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 8px 24px rgb(74 222 128 / 18%); transform: translateY(-1px); }
-    .primary:active:not(:disabled) { transform: translateY(0); }
-    .primary:focus-visible, .skill-button:focus-visible { outline: 3px solid rgb(192 132 252 / 55%); outline-offset: 3px; }
-    button:disabled { cursor: not-allowed; filter: grayscale(.55); opacity: .48; }
-
-    .status { display: flex; min-height: 48px; align-items: center; gap: 10px; margin: 16px 0 0; padding: 10px 14px; border-radius: 12px; color: var(--muted); background: #101210; font-size: 14px; }
-    .status-icon { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #0c0d0c; background: #94a3b8; font-size: 12px; font-weight: 800; }
-    .status[data-state="success"] .status-icon { background: var(--primary); }
-    .status[data-state="error"] { color: #fecaca; }
-    .status[data-state="error"] .status-icon { background: var(--error); }
-    .status[data-state="pending"] .status-icon { border: 2px solid #475569; border-top-color: var(--info); background: transparent; animation: spin .8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .skills-section { padding: 32px; border-top: 1px solid var(--border); background: rgb(27 30 27 / 48%); }
-    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
-    .section-copy { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
-    .skill-count { color: #94a3b8; font-size: 12px; white-space: nowrap; }
-    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .skill-button { display: grid; min-height: 112px; grid-template-columns: minmax(0, 1fr) 36px; gap: 16px; align-items: center; padding: 20px; border: 1px solid var(--border); border-radius: 16px; color: inherit; background: var(--surface); text-align: left; cursor: pointer; transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
-    .skill-button:hover { border-color: rgb(192 132 252 / 58%); background: #202320; transform: translateY(-2px); }
-    .skill-name { display: block; overflow: hidden; color: var(--heading); font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-    .skill-description { display: -webkit-box; overflow: hidden; margin-top: 8px; color: var(--muted); font-size: 14px; font-weight: 400; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-    .skill-arrow { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--border); border-radius: 10px; color: var(--interactive); background: #111311; transition: border-color 160ms ease, transform 160ms ease; }
-    .skill-button:hover .skill-arrow { border-color: rgb(192 132 252 / 50%); transform: translateX(2px); }
-    .skill-arrow svg { width: 16px; height: 16px; }
-    .empty-state { grid-column: 1 / -1; display: flex; min-height: 112px; align-items: center; gap: 16px; padding: 20px; border: 1px dashed var(--border-strong); border-radius: 16px; color: var(--muted); background: rgb(12 13 12 / 30%); }
-    .empty-icon { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; border: 1px solid var(--border); border-radius: 14px; color: var(--interactive); background: var(--surface); }
-    .empty-icon svg { width: 21px; height: 21px; }
-    .empty-state strong { display: block; margin-bottom: 4px; color: var(--body); font-size: 14px; }
-    .empty-state span { font-size: 12px; }
-
-    footer { display: flex; justify-content: space-between; gap: 24px; margin-top: 24px; color: #94a3b8; font-size: 12px; }
-    footer span:last-child { text-align: right; }
-
-    @media (max-width: 720px) {
-      .shell { padding: 48px 18px; }
-      .masthead { grid-template-columns: 1fr; margin-bottom: 32px; }
-      .brand { margin-bottom: 16px; }
-      h1 { font-size: clamp(36px, 12vw, 48px); }
-      .intro { margin-top: 16px; }
-      .connection { justify-self: start; }
-      .composer, .skills-section { padding: 24px; }
-      .actions { grid-template-columns: 1fr; }
-      footer { display: block; }
-      footer span { display: block; }
-      footer span + span { margin-top: 8px; text-align: left; }
+    .grid { display: grid; gap: 14px; }
+    .stack { margin-top: 14px; }
+    .card {
+      border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
+      background: var(--cc-surface); box-shadow: var(--cc-shadow);
+    }
+    .card-pad { padding: 16px; }
+    .section-title {
+      margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
+      letter-spacing: .09em; text-transform: uppercase;
     }
 
-    @media (max-width: 440px) {
-      .shell { padding: 32px 16px; }
-      .masthead { gap: 16px; }
-      .workspace { border-radius: 20px; }
-      .composer, .skills-section { padding: 20px; }
-      .section-label, .section-heading { display: block; }
-      .conversation-label, .skill-count { display: block; margin-top: 8px; }
-      textarea { min-height: 176px; padding-bottom: 78px; }
-      .composer-bar { left: 14px; }
-      .keyboard-hint { display: none; }
-      .primary { width: 100%; }
-      .status { align-items: flex-start; }
+    .composer { display: grid; gap: 10px; }
+    textarea {
+      display: block; width: 100%; min-height: 88px; max-height: 240px; resize: vertical;
+      padding: 11px 12px; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
+      background: var(--cc-surface-raised); color: var(--cc-text); line-height: 1.45;
     }
+    textarea::placeholder { color: var(--cc-subtle); }
+    textarea:hover { border-color: var(--cc-subtle); }
+    .composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .send {
+      display: inline-flex; min-width: 88px; min-height: 48px; align-items: center; justify-content: center;
+      padding: 9px 15px; border: 1px solid var(--cc-accent); border-radius: var(--cc-radius-sm);
+      background: var(--cc-accent); color: var(--cc-bg); font-weight: 760; cursor: pointer;
+    }
+    .send:hover:not(:disabled) { filter: brightness(1.06); }
+    .send:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .status { margin: 0; color: var(--cc-muted); font-size: 12px; }
+    .status[data-state="pending"] { color: var(--cc-focus); }
+    .status[data-state="success"] { color: var(--cc-accent); }
+    .status[data-state="error"] { color: var(--cc-danger); }
 
+    .quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .quick .skill {
+      min-height: 72px; padding: 12px 30px 12px 12px;
+      border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
+    }
+    .quick .skill::after { right: 13px; }
+
+    .skill {
+      position: relative; display: flex; flex-direction: column; justify-content: center;
+      width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
+      border: 0; border-radius: var(--cc-radius-sm); background: transparent;
+      color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
+    }
+    .skill::after {
+      content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
+      border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
+      transform: translateY(-50%) rotate(45deg);
+    }
+    .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
+    .skill:active { background: var(--cc-accent-soft); }
+    .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+    .skill .desc {
+      min-width: 0; max-width: 100%; margin-top: 2px; color: var(--cc-muted); font-size: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .skill .desc:empty { display: none; }
+
+    details.card { overflow: clip; }
+    details.card > summary {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
+    }
+    details.card > summary::-webkit-details-marker { display: none; }
+    details.card > summary::after {
+      content: ""; flex: none; width: 8px; height: 8px;
+      border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
+      transform: rotate(45deg) translate(-2px, 2px);
+    }
+    details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
+    .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
+    .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
+    .filter {
+      width: 100%; margin-top: 12px; padding: 9px 12px; border: 1px solid var(--cc-border);
+      border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); color: var(--cc-text);
+    }
+    .rows { display: grid; gap: 2px; margin-top: 8px; }
+    .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
+    .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
+    code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+
+    @media (min-width: 640px) {
+      .masthead { grid-template-columns: 1fr auto; align-items: end; }
+      .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+      .overview.single { grid-template-columns: 1fr; }
+      .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
+    }
+    @media (max-width: 520px) {
+      body { padding-inline: 10px; }
+      .quick { grid-template-columns: 1fr; }
+      .quick .skill { min-height: 56px; }
+      .composer-actions { align-items: stretch; flex-direction: column; }
+      .send { width: 100%; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .skill, summary, .send { transition: background-color .14s ease, border-color .14s ease, filter .14s ease; }
+    }
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
     }
   </style>
 </head>
 <body>
-  <main class="shell">
+  <main>
     <header class="masthead">
       <div>
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
-          </span>
-          Control Center
-        </div>
-        <h1 id="agent-name">Your Agent</h1>
-        <p class="intro">Message this Agent or run one of its published skills. Every action stays visible in Chat.</p>
+        <p class="eyebrow">Control Center</p>
+        <div class="identity"><span id="agent-initial" class="mark" aria-hidden="true">A</span><h1 id="agent-name">Agent</h1></div>
+        <p class="tagline">Message this Agent or run one of its published skills.</p>
+        <p id="connection" class="sub"><span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Open through O Chat to connect</span></p>
       </div>
-      <span id="connection" class="connection">
-        <span class="connection-dot" aria-hidden="true"></span>
-        <span id="connection-label">Waiting for O Chat</span>
-      </span>
     </header>
 
-    <section class="workspace" aria-label="Agent workspace">
-      <div class="composer">
-        <div class="section-label">
-          <h2>Send a message</h2>
-          <span id="conversation-label" class="conversation-label">Not connected</span>
-        </div>
-        <form id="message-form">
+    <div id="overview" class="grid overview single">
+      <section class="card card-pad" aria-labelledby="workspace-title">
+        <h2 class="section-title" id="workspace-title">Workspace</h2>
+        <form id="message-form" class="composer">
           <textarea id="message" name="message" autocomplete="off" placeholder="What should this Agent do?" required maxlength="10000" aria-label="Message to Agent"></textarea>
-          <div class="composer-bar">
-            <span class="keyboard-hint">Enter to send · Shift + Enter for a new line</span>
-            <button class="primary" type="submit" disabled>
-              Send
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 14-7-4 14-3-6-7-1Z"/><path d="m12 13 7-8"/></svg>
-            </button>
+          <div class="composer-actions">
+            <p id="status" class="status" data-state="idle" role="status" aria-live="polite">Waiting for O Chat.</p>
+            <button class="send" type="submit" disabled>Send</button>
           </div>
         </form>
-        <p id="status" class="status" data-state="idle" role="status" aria-live="polite">
-          <span class="status-icon" aria-hidden="true">i</span>
-          <span id="status-message">Open this app through O Chat to connect.</span>
-        </p>
-      </div>
+      </section>
 
-      <div class="skills-section">
-        <div class="section-heading">
-          <div>
-            <h2>Skills</h2>
-            <p class="section-copy">Run a published workflow without leaving this Chat.</p>
-          </div>
-          <span id="skill-count" class="skill-count">Waiting for Agent</span>
-        </div>
-        <div id="skills" class="actions">
-          <div class="empty-state">
-            <span class="empty-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m13 2-2 7h7l-7 13 2-8H6l7-12Z"/></svg>
-            </span>
-            <span><strong>Skills appear when connected</strong><span>O Chat shares only the skills published by this Agent.</span></span>
-          </div>
-        </div>
-      </div>
-    </section>
+      <section id="quick-card" class="card card-pad" aria-labelledby="quick-title" hidden>
+        <h2 class="section-title" id="quick-title">Quick actions</h2>
+        <div id="quick-actions" class="quick"></div>
+      </section>
+    </div>
 
-    <footer>
-      <span>Replies appear in Chat.</span>
-      <span>Actions receive a correlated acknowledgement.</span>
-    </footer>
+    <div class="grid stack">
+      <details class="card capabilities">
+        <summary><span>Capabilities</span><span id="capability-count" class="count">Waiting for Agent</span></summary>
+        <div class="details-body">
+          <input id="skill-filter" class="filter" type="search" placeholder="Search capabilities" aria-label="Search capabilities" hidden>
+          <div id="capability-list" class="capability-rows rows">
+            <section class="empty"><p>Connect through O Chat to see this Agent's published skills.</p></section>
+          </div>
+          <section id="search-empty" class="empty" hidden><p>No capabilities match this search.</p></section>
+        </div>
+      </details>
+    </div>
   </main>
   <script type="module" src="./control-center.js"></script>
 </body>
