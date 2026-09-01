@@ -96,6 +96,71 @@ def test_full_sync_is_owner_scoped_and_incremental(storage):
     assert isinstance(unchanged["cursor"], str)
 
 
+def test_empty_mode_session_is_not_retained_history(storage):
+    storage.save(
+        Session(
+            session_id="empty",
+            status="running",
+            prompt="",
+            created=time.time(),
+            session={
+                "requester": {"address": OWNER},
+                "mode": "open",
+                "messages": [],
+                "trace": [],
+            },
+        )
+    )
+    service = SessionSyncService(storage)
+
+    assert service.sync(OWNER)["sessions"] == []
+    with pytest.raises(SessionSyncError, match="not found") as caught:
+        service.get(OWNER, "empty")
+
+    assert caught.value.code == "not_found"
+
+
+def test_empty_session_appears_incrementally_after_first_user_turn(storage):
+    empty = storage.save(
+        Session(
+            session_id="draft",
+            status="running",
+            prompt="",
+            created=time.time(),
+            session={
+                "requester": {"address": OWNER},
+                "mode": "open",
+                "messages": [],
+                "trace": [],
+            },
+        )
+    )
+    service = SessionSyncService(storage)
+    cursor = service.sync(OWNER)["cursor"]
+
+    storage.save(
+        empty.model_copy(
+            update={
+                "prompt": "first real message",
+                "session": {
+                    **empty.session,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "first real message",
+                            "id": "draft-u",
+                        }
+                    ],
+                },
+            }
+        )
+    )
+    delta = service.sync(OWNER, cursor=cursor)
+
+    assert [item["session_id"] for item in delta["sessions"]] == ["draft"]
+    assert delta["sessions"][0]["title"] == "first real message"
+
+
 def test_incremental_cursor_advances_past_another_owners_writes(storage):
     storage.save(_session("s1"))
     service = SessionSyncService(storage, clock=lambda: 100.0)
