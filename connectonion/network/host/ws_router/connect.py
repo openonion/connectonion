@@ -15,7 +15,13 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import get_onboard_requirements
-from ..protocol import oip_compatibility_record, oip_descriptor, supports_oip
+from ..protocol import (
+    oip_compatibility_record,
+    oip_descriptor,
+    requests_session_sync,
+    requests_session_sync_only,
+    supports_oip,
+)
 from .agent_io import resume_forwarding
 
 console = Console()
@@ -127,6 +133,8 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
     equivalent = (
         data.get("session_id") == conn.get("session_id")
         and (payload.get("signed_commands") == 1) == bool(conn.get("signed_commands"))
+        and requests_session_sync(data) == bool(conn.get("session_sync"))
+        and requests_session_sync_only(data) == bool(conn.get("session_sync_only"))
         and payload.get("to") == conn.get("recipient_address")
         and supports_oip(data.get("protocol"))
     )
@@ -159,6 +167,13 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
 async def republish_authenticated_connection(data, send_msg, conn, storage,
                                              registry, route_handlers):
     """Republish an unchanged live connection without reopening its policy gate."""
+    if conn.get("session_sync_only"):
+        await send_msg({
+            "type": "CONNECTED",
+            "status": "index",
+            "protocol": oip_descriptor(session_sync=True),
+        })
+        return
     session_id = conn["session_id"]
     status = _connection_status(registry, session_id)
     server_newer = _merge_reattach_session(data, conn, storage)
@@ -205,7 +220,7 @@ def _reattach_connected_frame(conn, status, route_handlers, server_newer):
         "type": "CONNECTED",
         "session_id": conn["session_id"],
         "status": status,
-        "protocol": oip_descriptor(),
+        "protocol": oip_descriptor(session_sync=bool(conn.get("session_sync"))),
     }
     mode_policy = route_handlers.get("session_modes")
     if mode_policy is not None and conn.get("session") is not None:
@@ -256,6 +271,8 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     for key in (
         "agent_address", "signed_commands", "recipient_address", "session_id",
         "session", "mode_is_admin",
+        "session_sync",
+        "session_sync_only",
     ):
         conn.pop(key, None)
 
@@ -272,7 +289,44 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     signed_commands = (
         data.get("payload", {}).get("signed_commands") == 1
     )
+    # Session Sync frames are individually signed even for compatibility
+    # clients that have not enabled signed commands for every legacy frame.
+    # This lets an upgraded browser adopt the extension without changing the
+    # delivery timing of INPUT, INTERRUPT, and approval messages in one release.
+    session_sync = requests_session_sync(data)
+    session_sync_only = requests_session_sync_only(data)
     recipient_address = data.get("payload", {}).get("to")
+
+    # A Recent Chat index must not create a blank conversation merely by
+    # looking for existing ones. This authenticated capability socket skips
+    # registry, mode initialization, dashboard, and durable session creation;
+    # it accepts only the individually signed Session Sync extension frames.
+    if session_sync_only:
+        if data.get("session_id") is not None or data.get("session") is not None:
+            await send_msg({
+                "type": "ERROR",
+                "code": "invalid_request",
+                "message": "session_sync_only cannot resume a chat session",
+                "retryable": False,
+            })
+            return None
+        conn.update({
+            "authenticated": True,
+            "agent_address": agent_address,
+            "signed_commands": signed_commands,
+            "recipient_address": recipient_address,
+            "session_id": None,
+            "session": None,
+            "session_sync": True,
+            "session_sync_only": True,
+        })
+        await send_msg({
+            "type": "CONNECTED",
+            "status": "index",
+            "protocol": oip_descriptor(session_sync=True),
+        })
+        return None
+
     session_id = data.get("session_id") or str(uuid.uuid4())
     client_session = data.get("session")
     server_newer = False
@@ -385,6 +439,8 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "recipient_address": recipient_address,
         "session_id": session_id,
         "session": client_session,
+        "session_sync": session_sync,
+        "session_sync_only": False,
     })
     if mode_is_admin is not None:
         conn["mode_is_admin"] = mode_is_admin
@@ -395,7 +451,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "type": "CONNECTED",
         "session_id": session_id,
         "status": status,
-        "protocol": oip_descriptor(),
+        "protocol": oip_descriptor(session_sync=session_sync),
     }
     if mode_state is not None:
         connected_msg["session_modes"] = mode_state

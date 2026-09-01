@@ -121,6 +121,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
             "transport": transport}
     active_io = None
     forward_task = None
+    session_watch_task = None
     exec_tasks = set()
     ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
 
@@ -210,6 +211,74 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 owner = getattr(active, "owner", None) if active else None
                 status = active.status if active and owner == requester else "not_found"
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
+
+            elif msg_type in {
+                "SESSION_SYNC", "SESSION_GET", "SESSION_WATCH", "SESSION_UPDATE"
+            }:
+                if not conn.get("authenticated") or not conn.get("session_sync"):
+                    await send_msg({
+                        "type": "ERROR",
+                        "code": "unsupported_extension",
+                        "message": "session-sync/0.1 was not negotiated",
+                        "request_id": data.get("request_id"),
+                        "retryable": False,
+                    })
+                    continue
+
+                # Compatibility clients may negotiate only session-sync/0.1
+                # while leaving legacy application frames unsigned. Session
+                # Sync still carries owner-visible history, so authenticate
+                # every extension command independently before dispatch.
+                if not conn.get("signed_commands"):
+                    from ..auth import authenticated_command_payload
+
+                    data, command_error = authenticated_command_payload(
+                        data, conn["agent_address"], conn.get("recipient_address"),
+                        route_handlers.get("replay"),
+                    )
+                    if command_error:
+                        await send_msg({
+                            "type": "ERROR",
+                            "code": "unauthorized",
+                            "message": command_error,
+                            "request_id": (
+                                data.get("request_id")
+                                if isinstance(data, dict)
+                                else None
+                            ),
+                            "retryable": False,
+                        })
+                        continue
+                    msg_type = data.get("type")
+                from .session_sync import (
+                    handle_session_get,
+                    handle_session_sync,
+                    handle_session_update,
+                    start_session_watch,
+                )
+
+                if msg_type == "SESSION_SYNC":
+                    await handle_session_sync(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+                elif msg_type == "SESSION_GET":
+                    await handle_session_get(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+                elif msg_type == "SESSION_UPDATE":
+                    await handle_session_update(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+                else:
+                    if session_watch_task and not session_watch_task.done():
+                        session_watch_task.cancel()
+                        try:
+                            await session_watch_task
+                        except asyncio.CancelledError:
+                            pass
+                    session_watch_task = await start_session_watch(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
 
             elif msg_type == "ONBOARD_SUBMIT":
                 agent_address = await handle_onboard_submit(data, send_msg, route_handlers)
@@ -596,7 +665,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
         # that await is the expected exit signal — not a bug, swallow it.
-        for task in (forward_task, ping_task, *exec_tasks):
+        for task in (forward_task, session_watch_task, ping_task, *exec_tasks):
             if task and not task.done():
                 task.cancel()
                 try:
