@@ -1,8 +1,8 @@
 """
 Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language `do` agent locally so model waits never occupy the daemon.
 LLM-Note:
-  Dependencies: imports from [socket, os, json, sys, time, shlex, inspect, functools, pathlib, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: direct verb → _request() → wire-v1 JSON {v,caller,account,tab,line,raw,engine}; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=onion; an explicit Onion request probes the warm daemon's no-launch engine_status verb before any page action; `do` keeps model calls local and sends only short tool requests
+  Dependencies: imports from [socket, os, sys, time, shlex, inspect, functools, pathlib, OIP framing, browser_agent.artifacts, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: direct verb → typed OIP 0.2 BrowserCommand argv → BrowserResult and optional Artifact Stream → verified caller-owned file; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=onion; an explicit Onion request probes the warm daemon before any page action; `do` keeps model calls local and sends only short tool requests
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless] [--engine=MODE]` detached, logging to ~/.co/browser.log or the explicit private target log | private proxy credentials never enter daemon argv | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None, engine_mode="system") -> int and Host-only request_target_as(); system/auto may provision per-user Chromium, while explicit Onion/private-target requests never install or fall back to a system browser; PAGELESS_VERBS never provision
   Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
@@ -11,15 +11,25 @@ LLM-Note:
 
 import functools
 import inspect
-import json
 import os
 import shlex
 import socket
 import sys
 import time
+import uuid
 from pathlib import Path
 
+from connectonion.network.oip import browser_daemon_pb2 as oip_wire
+from connectonion.network.oip.framing import (
+    PROTOCOL_VERSION as OIP_VERSION,
+    ProtocolError,
+    decode_frame,
+    encode_frame,
+    recv_socket_frame,
+)
+
 from . import transport
+from .artifacts import ArtifactReceiver, ArtifactTransferError
 
 
 def default_sock_path() -> str:
@@ -196,6 +206,67 @@ PAGELESS_VERBS = {
     "status", "engine_status", "tab", "help", "use", "switch", "close", "closetab",
 }
 
+# The Host adapters still return OIP 0.1 text to their remote caller. Returning
+# a Host-local filename would recreate the bug Artifact Stream removes, so file
+# verbs fail closed until the secure remote stream carrier is connected.
+_REMOTE_ARTIFACT_VERBS = {"take_screenshot", "save_state", "save_page_context"}
+
+
+def _remote_artifact_unavailable(line: str) -> tuple | None:
+    try:
+        verb = shlex.split(line)[:1]
+    except ValueError:
+        return None
+    if verb and verb[0] in _REMOTE_ARTIFACT_VERBS:
+        return 7, (
+            "REMOTE_BROWSER_ARTIFACT_STREAM_UNAVAILABLE: this Host will not return "
+            "base64 or a server-local path; enable the reviewed secure OIP artifact "
+            "carrier first"
+        )
+    return None
+
+
+def _oip_command(line: str, *, caller: str, account: str, tab, engine: str):
+    """Build typed argv and keep a screenshot destination local to this caller."""
+    argv = shlex.split(line)
+    destination = None
+    if argv[:1] == ["take_screenshot"]:
+        daemon_argv = [argv[0]]
+        index = 1
+        while index < len(argv):
+            token = argv[index]
+            if token in {"--out", "--path"}:
+                if index + 1 >= len(argv):
+                    raise ValueError(f"{token} requires a local path")
+                destination = argv[index + 1]
+                index += 2
+                continue
+            if token.startswith("--out=") or token.startswith("--path="):
+                destination = token.split("=", 1)[1]
+            elif not token.startswith("-") and destination is None:
+                destination = token
+            else:
+                daemon_argv.append(token)
+            index += 1
+        argv = daemon_argv
+    request_id = uuid.uuid4().hex
+    return (
+        oip_wire.Envelope(
+            protocol_version=OIP_VERSION,
+            request_id=request_id,
+            sequence=0,
+            command=oip_wire.BrowserCommand(
+                caller=caller,
+                account=account,
+                tab=tab or "",
+                has_tab=tab is not None,
+                argv=argv,
+                engine=engine,
+            ),
+        ),
+        destination,
+    )
+
 
 def _ensure_browser_ready(line: str) -> bool:
     """First-run auto-install: if this command will drive a page and no browser
@@ -244,31 +315,26 @@ def _request_with_identity(
     target=None,
     engine_mode: str = "system",
     _protocol_checked: bool = False,
-    _close_compat_attempted: bool = False,
     _connection=None,
 ) -> tuple:
-    """Send one short daemon request and return ``(code, payload)``.
-
-    ``raw_result`` is for the client-side agent: image data must reach its vision
-    formatter, while an interactive shell should still receive a saved-file line.
-    The account address is public; the API key never crosses this transport.
-    """
+    """Send one OIP command and materialize any artifacts for this caller."""
     effective_engine = (
         "onion" if target is not None and target.remote_egress else engine_mode
     )
     try:
-        whole_browser_close = tab is None and shlex.split(line) == ["close"]
-    except ValueError:
-        whole_browser_close = False
-    request = json.dumps({
-        "v": 1,
-        "caller": caller,
-        "account": account,
-        "tab": tab,
-        "line": line,
-        "raw": raw_result,
-        "engine": effective_engine,
-    })
+        request_frame, artifact_destination = _oip_command(
+            line,
+            caller=caller,
+            account=account,
+            tab=tab,
+            engine=effective_engine,
+        )
+        whole_browser_close = (
+            tab is None and list(request_frame.command.argv) == ["close"]
+        )
+        request = encode_frame(request_frame)
+    except (ValueError, ProtocolError) as exc:
+        return 2, f"unparseable request: {exc}"
     sock_path = target.address if target is not None else default_sock_path()
     authkey_path = target.authkey_path if target is not None else None
     owner_pid = None
@@ -287,9 +353,9 @@ def _request_with_identity(
             # explicit Onion request straight to it could therefore drive its
             # old system-Chrome context before the client notices. Probe the
             # new no-launch status verb first and refuse old daemons before the
-            # requested command has any browser effect. Auto/system preserve
-            # wire-v1 compatibility: an old daemon's system browser is a safe
-            # realization of both modes and does not risk an unintended charge.
+            # requested command has any browser effect. Auto/system do not need
+            # this paid-engine safety probe. New clients never downgrade from
+            # OIP2 to wire v1.
             probe_code, _probe_payload = _request_with_identity(
                 "engine_status",
                 caller=caller,
@@ -323,7 +389,6 @@ def _request_with_identity(
                     target=target,
                     engine_mode=effective_engine,
                     _protocol_checked=True,
-                    _close_compat_attempted=_close_compat_attempted,
                 )
         if conn is None:
             if line.split()[:1] == ["status"]:
@@ -376,31 +441,87 @@ def _request_with_identity(
         # print frame locals, and connect-path frames hold the HMAC secret.
         return 1, str(exc)
 
-    if transport.IS_WINDOWS:
-        # Named-pipe wire: one framed message each way (no half-close needed).
-        try:
-            conn.send_bytes(request.encode())
-            reply = conn.recv_bytes()
-        except (EOFError, OSError):
-            # The daemon died mid-request (browser crash mid-command). Mirror the POSIX
-            # empty-reply degradation: a clean error and exit 1, never a traceback.
-            conn.close()
-            return 1, "browser daemon closed the connection mid-request — try again"
-        conn.close()
-    else:
-        conn.sendall(request.encode())
-        conn.shutdown(socket.SHUT_WR)  # half-close signals end-of-request to the daemon
-        chunks = []
-        while True:
-            chunk = conn.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-        conn.close()
-        reply = b"".join(chunks)
+    def receive_frame():
+        if transport.IS_WINDOWS:
+            return decode_frame(conn.recv_bytes())
+        return recv_socket_frame(conn)
 
-    header, _, payload = reply.decode().partition("\n")
-    if header == "OK":
+    def send_frame(frame):
+        encoded = encode_frame(frame)
+        if transport.IS_WINDOWS:
+            conn.send_bytes(encoded)
+        else:
+            conn.sendall(encoded)
+
+    try:
+        if transport.IS_WINDOWS:
+            conn.send_bytes(request)
+        else:
+            conn.sendall(request)
+        first = receive_frame()
+        if first.WhichOneof("frame") == "failure":
+            return 1, first.failure.message
+        if first.WhichOneof("frame") != "result":
+            raise ProtocolError("browser daemon did not begin with BrowserResult")
+        if first.request_id != request_frame.request_id:
+            raise ProtocolError("browser response request_id does not match")
+        code = int(first.result.exit_code)
+        payload = first.result.text
+        saved_paths = []
+        for artifact_index in range(first.result.artifact_count):
+            opened = receive_frame()
+            receiver = ArtifactReceiver(Path.cwd() / ".tmp" / "screenshots")
+
+            def following_frames():
+                while True:
+                    yield receive_frame()
+
+            saved, finished = receiver.receive_stream(
+                opened,
+                following_frames(),
+                destination=artifact_destination if artifact_index == 0 else None,
+            )
+            commit = receiver.commit_frame(opened, finished)
+            send_frame(commit)
+            confirmed = receive_frame()
+            if confirmed.WhichOneof("frame") == "failure":
+                raise ProtocolError(
+                    "browser daemon rejected artifact commit: "
+                    f"{confirmed.failure.message}"
+                )
+            if (
+                confirmed.WhichOneof("frame") != "stream_commit"
+                or confirmed.request_id != opened.request_id
+                or confirmed.stream_id != opened.stream_id
+                or confirmed.sequence != commit.sequence + 1
+                or confirmed.offset != finished.stream_fin.actual_size
+                or confirmed.stream_commit.actual_size
+                != finished.stream_fin.actual_size
+                or bytes(confirmed.stream_commit.sha256)
+                != bytes(finished.stream_fin.sha256)
+            ):
+                raise ProtocolError(
+                    "browser daemon did not confirm artifact cleanup "
+                    f"(frame={confirmed.WhichOneof('frame')}, "
+                    f"request={confirmed.request_id == opened.request_id}, "
+                    f"stream={confirmed.stream_id}, sequence={confirmed.sequence}, "
+                    f"offset={confirmed.offset}, "
+                    f"size={confirmed.stream_commit.actual_size})"
+                )
+            saved_paths.append(saved)
+        if saved_paths:
+            payload = "\n".join(
+                f"Screenshot saved to: {path}" for path in saved_paths
+            )
+    except (EOFError, OSError, ProtocolError, ArtifactTransferError) as exc:
+        return 1, (
+            "browser daemon closed or rejected the OIP stream — "
+            f"restart it and retry ({exc})"
+        )
+    finally:
+        conn.close()
+
+    if code == 0:
         if owner_pid is not None and not _wait_for_pid_exit(owner_pid):
             return 1, (
                 "Browser closed, but its daemon did not stop within 15 seconds — "
@@ -429,53 +550,7 @@ def _request_with_identity(
                 target=target,
                 engine_mode=effective_engine,
                 _protocol_checked=_protocol_checked,
-                _close_compat_attempted=_close_compat_attempted,
             )
-
-    # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
-    # token — which, after shlex strips the quotes, is 'unknown command: {v:1,...'.
-    if payload.startswith("unknown command: {"):
-        payload = (
-            "an old browser daemon (pre-upgrade) is still running and does not speak "
-            "this client's protocol.\n"
-            # The bracketed [.] is load-bearing. `pkill -f` matches whole command
-            # lines, so the plain pattern matches the shell running it and kills
-            # that shell — measured on Linux: anything after it in the same
-            # command never runs. An agent reads this line and runs it that way.
-            "restart it:  pkill -f 'connectonion.cli.browser_agent[.]daemon'"
-        )
-    # "ERR" = generic failure (1); "ERR <n>" carries a distinct code so callers can
-    # branch without parsing prose (2 = usage, 3 = unknown tab, 4 = tab busy).
-    parts = header.split()
-    code = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1
-    if (
-        code == 6
-        and whole_browser_close
-        and target is None
-        and not _close_compat_attempted
-    ):
-        # 1.8.0a3's ordinary daemon was pinned to the old default `auto` and
-        # rejected a new default-system close before reaching its lifecycle
-        # handler.  Retry only the engine named by that authenticated daemon;
-        # the new daemon accepts bare close immediately across all modes.
-        for legacy_engine in ("auto", "system", "onion"):
-            if (
-                legacy_engine != effective_engine
-                and f"pinned to engine={legacy_engine}" in payload
-            ):
-                return _request_with_identity(
-                    line,
-                    caller=caller,
-                    account=account,
-                    headless=headless,
-                    tab=tab,
-                    raw_result=raw_result,
-                    _provisioned=_provisioned,
-                    target=target,
-                    engine_mode=legacy_engine,
-                    _protocol_checked=True,
-                    _close_compat_attempted=True,
-                )
     return code, payload
 
 
@@ -520,6 +595,9 @@ def request_as(
     """
     if not caller or not account:
         return 3, "authenticated caller and account are required"
+    blocked = _remote_artifact_unavailable(line)
+    if blocked is not None:
+        return blocked
     return _request_with_identity(
         line,
         caller=caller,
@@ -541,6 +619,9 @@ def request_target_as(
     """Send an authenticated Host command only to an explicit daemon target."""
     if not caller or not account:
         return 3, "authenticated caller and account are required"
+    blocked = _remote_artifact_unavailable(line)
+    if blocked is not None:
+        return blocked
     return _request_with_identity(
         line,
         caller=caller,

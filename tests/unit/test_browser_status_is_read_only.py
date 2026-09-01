@@ -32,6 +32,8 @@ from unittest.mock import patch
 import pytest
 
 from connectonion.cli.browser_agent import client
+from connectonion.network.oip import browser_daemon_pb2 as wire
+from connectonion.network.oip.framing import decode_frame, encode_frame
 
 
 @pytest.fixture
@@ -139,16 +141,27 @@ class TestAWarmDaemonIsUnaffected:
 
         class FakeConn:
             def __init__(self):
-                self._reply = [b"OK\nBrowser: open, headless=false\n"]
+                self._reply = b""
 
             def sendall(self, data):
                 sent.append(data)
+                request_id = decode_frame(data).request_id
+                self._reply = encode_frame(
+                    wire.Envelope(
+                        protocol_version=2,
+                        request_id=request_id,
+                        result=wire.BrowserResult(
+                            text="Browser: open, headless=false"
+                        ),
+                    )
+                )
 
             def shutdown(self, how):
                 pass
 
             def recv(self, n):
-                return self._reply.pop(0) if self._reply else b""
+                reply, self._reply = self._reply[:n], self._reply[n:]
+                return reply
 
             def close(self):
                 pass

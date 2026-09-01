@@ -7,6 +7,8 @@ from connectonion.cli import main as cli_main
 from connectonion.cli.browser_agent import client
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
 from connectonion.cli.commands import browser_commands
+from connectonion.network.oip import browser_daemon_pb2 as wire
+from connectonion.network.oip.framing import decode_frame, encode_frame
 from connectonion.useful_tools.browser_tools import _async_browser as async_browser
 from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
 
@@ -23,12 +25,22 @@ class _FakeConnection:
     def shutdown(self, _how):
         pass
 
-    def recv(self, _size):
-        reply, self.reply = self.reply, b""
+    def recv(self, size):
+        reply, self.reply = self.reply[:size], self.reply[size:]
         return reply
 
     def close(self):
         self.closed = True
+
+
+def _result(request_id: str, text: str, *, exit_code: int = 0) -> bytes:
+    return encode_frame(
+        wire.Envelope(
+            protocol_version=2,
+            request_id=request_id,
+            result=wire.BrowserResult(exit_code=exit_code, text=text),
+        )
+    )
 
 
 def test_cli_omission_passes_nonbilling_system_to_client(monkeypatch):
@@ -158,15 +170,27 @@ def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
     assert code == 1
     assert "predates 1.8 engine pinning" in message
     assert probe.closed
-    probe_request = json.loads(probe.sent)
-    assert probe_request["line"] == "engine_status"
-    assert probe_request["engine"] == "onion"
+    probe_request = decode_frame(probe.sent).command
+    assert list(probe_request.argv) == ["engine_status"]
+    assert probe_request.engine == "onion"
     assert b"go_to" not in probe.sent
 
 
 def test_client_sends_command_only_after_successful_protocol_probe(monkeypatch):
-    probe = _FakeConnection(b'OK\n{"requested": "onion"}')
-    command = _FakeConnection(b"OK\ndone")
+    def result(request_id, text):
+        return encode_frame(
+            wire.Envelope(
+                protocol_version=2,
+                request_id=request_id,
+                result=wire.BrowserResult(text=text),
+            )
+        )
+
+    request_ids = iter(["probe-id", "command-id"])
+    monkeypatch.setattr(client.uuid, "uuid4", lambda: type("U", (), {"hex": next(request_ids)})())
+    # The outer command frame is built before its nested safety probe.
+    probe = _FakeConnection(result("command-id", '{"requested": "onion"}'))
+    command = _FakeConnection(result("probe-id", "done"))
     connections = iter([probe, command])
     monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
     monkeypatch.setattr(client, "_caller", lambda: "test")
@@ -177,38 +201,25 @@ def test_client_sends_command_only_after_successful_protocol_probe(monkeypatch):
         engine_mode="onion",
     ) == (0, "done")
 
-    assert json.loads(probe.sent)["line"] == "engine_status"
-    command_request = json.loads(command.sent)
-    assert command_request["line"] == "go_to https://example.com"
-    assert command_request["engine"] == "onion"
+    assert list(decode_frame(probe.sent).command.argv) == ["engine_status"]
+    command_request = decode_frame(command.sent).command
+    assert list(command_request.argv) == ["go_to", "https://example.com"]
+    assert command_request.engine == "onion"
 
 
 def test_bare_onion_close_skips_the_page_action_protocol_probe(monkeypatch):
-    close = _FakeConnection(b"OK\nBrowser closed")
+    monkeypatch.setattr(
+        client.uuid,
+        "uuid4",
+        lambda: type("U", (), {"hex": "close-id"})(),
+    )
+    close = _FakeConnection(_result("close-id", "Browser closed"))
     connections = iter([close])
     monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
     monkeypatch.setattr(client, "_caller", lambda: "test")
     monkeypatch.setattr(client, "_caller_account", lambda: "0xtest")
 
     assert client._request("close", engine_mode="onion") == (0, "Browser closed")
-    request = json.loads(close.sent)
-    assert request["line"] == "close"
-    assert request["engine"] == "onion"
-
-
-def test_default_close_retries_the_real_a3_auto_daemon_engine(monkeypatch):
-    mismatch = _FakeConnection(
-        b"ERR 6\nbrowser daemon is pinned to engine=auto; "
-        b"this request asked for engine=system"
-    )
-    close = _FakeConnection(b"OK\nBrowser closed")
-    connections = iter([mismatch, close])
-    monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
-    monkeypatch.setattr(client, "_caller", lambda: "test")
-    monkeypatch.setattr(client, "_caller_account", lambda: "0xtest")
-
-    assert client._request("close") == (0, "Browser closed")
-    assert json.loads(mismatch.sent)["engine"] == "system"
-    retried = json.loads(close.sent)
-    assert retried["line"] == "close"
-    assert retried["engine"] == "auto"
+    request = decode_frame(close.sent).command
+    assert list(request.argv) == ["close"]
+    assert request.engine == "onion"

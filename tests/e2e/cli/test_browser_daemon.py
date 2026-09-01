@@ -648,6 +648,41 @@ def test_socket_round_trip(short_sock, monkeypatch, capsys):
     assert daemon.browser.calls == [("go_to", "example.com")]
 
 
+def test_socket_screenshot_streams_to_caller_without_base64_or_daemon_path(
+    short_sock, monkeypatch, tmp_path
+):
+    """The same OIP request carries a multi-frame artifact larger than 1 MiB."""
+    content = b"png" + (b"browser-artifact" * 80_000)
+
+    class ScreenshotBrowser(StubBrowser):
+        def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
+            assert path is not None
+            Path(path).write_bytes(content)
+            self.last_screenshot_path = path
+            return "data:image/png;base64,this-must-not-cross-the-daemon-boundary"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    browser = ScreenshotBrowser()
+    daemon = make_daemon(short_sock, stub=browser)
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    code, payload = c._request("take_screenshot", headless=True, raw_result=True)
+
+    assert code == 0, payload
+    assert payload.startswith("Screenshot saved to: ")
+    assert "base64" not in payload
+    caller_path = Path(payload.removeprefix("Screenshot saved to: "))
+    assert caller_path.read_bytes() == content
+    assert caller_path.stat().st_size > 1024 * 1024
+    assert Path(browser.last_screenshot_path) != caller_path
+    assert not Path(browser.last_screenshot_path).exists()
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
 def test_close_stops_a_fresh_async_daemon_without_launching_chrome(short_sock, monkeypatch):
     """The real async core returns a longer close message than the old stub."""
     monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
