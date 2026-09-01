@@ -52,9 +52,10 @@ The app receives a correlated acknowledgement through its `MessagePort`. The age
 answer appears in Chat. Streaming normalized output back into the website can be added
 later without changing these request actions.
 
-The initial context includes the authenticated Agent identity, current session, and
-skill names. The default template builds its buttons from that list, so it does not
-need to hard-code invoice or other project-specific skills.
+The initial context includes the authenticated Agent name and full address, current
+session, app revision, and skill names. The default template shows the address and
+other identity facts in its canonical Diagnostics disclosure, then builds its buttons
+from the skill list. It does not hard-code invoice or another project-specific Agent.
 
 ## The iframe URL
 

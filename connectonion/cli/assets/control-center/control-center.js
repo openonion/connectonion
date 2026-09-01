@@ -17,6 +17,10 @@ const capabilityList = document.querySelector('#capability-list')
 const capabilityCount = document.querySelector('#capability-count')
 const skillFilter = document.querySelector('#skill-filter')
 const searchEmpty = document.querySelector('#search-empty')
+const agentAddress = document.querySelector('#agent-address')
+const diagnosticSkills = document.querySelector('#diagnostic-skills')
+const diagnosticConversation = document.querySelector('#diagnostic-conversation')
+const appRevision = document.querySelector('#app-revision')
 
 function setStatus(message, state = 'idle') {
   status.dataset.state = state
@@ -98,6 +102,9 @@ function renderSkills(skills = []) {
   capabilityCount.textContent = ordered.length
     ? `${ordered.length} skill${ordered.length === 1 ? '' : 's'}`
     : 'None published'
+  diagnosticSkills.textContent = ordered.length
+    ? `${ordered.length} published skill${ordered.length === 1 ? '' : 's'}`
+    : 'None published'
   skillFilter.hidden = ordered.length <= 6
   skillFilter.value = ''
   searchEmpty.hidden = true
@@ -117,12 +124,15 @@ function filterSkills() {
 function receive(message = {}) {
   if (message.version !== BRIDGE_VERSION || message.revision !== revision) return
   if (message.type === 'connectonion.control-center/context') {
-    const name = message.agent?.name || 'Agent'
+    const name = message.agent?.name || 'Connect AI'
     document.querySelector('#agent-name').textContent = name
-    document.querySelector('#agent-initial').textContent = name.trim()[0] || 'A'
+    document.querySelector('#agent-initial').textContent = name.trim()[0] || 'C'
     document.title = `${name} · Control Center`
     renderSkills(message.skills)
     const hasChat = Boolean(message.conversation?.sessionId)
+    agentAddress.textContent = message.agent?.address || 'Unavailable'
+    diagnosticConversation.textContent = hasChat ? 'Current Chat' : 'Created by the first action'
+    appRevision.textContent = message.revision
     connectionLabel.textContent = hasChat ? 'Current Chat' : 'First action creates a Chat'
     connection.classList.add('connected')
     submit.disabled = false

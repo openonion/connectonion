@@ -8,6 +8,8 @@ stack without depending on O Chat's private component tree.
 
 - It starts from CO AI's canonical default Control Center design: Agent identity,
   Workspace, Quick actions, Capabilities, and the shared light/dark color tokens.
+- Diagnostics shows the authenticated Agent address, conversation, published skill
+  count, and immutable app revision without truncating identity data.
 - The message form calls `send_message`.
 - Each published project skill becomes a `run_skill` button.
 - Both actions become visible, attributable user turns in the current Agent Chat.

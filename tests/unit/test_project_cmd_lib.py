@@ -32,6 +32,8 @@ class TestControlCenterTemplate:
         assert "interactive version of CO AI's canonical starter.html" in html
         for landmark in ("Control Center", "Workspace", "Quick actions", "Capabilities"):
             assert landmark in html
+        assert "Connect AI" in html
+        assert "Diagnostics" in html and 'id="agent-address"' in html
         for token in ("--cc-bg", "--cc-surface", "--cc-accent", "--cc-focus"):
             assert token in html
         assert "color-scheme: light dark" in html
@@ -48,6 +50,7 @@ class TestControlCenterTemplate:
             assert re.findall(declarations, html) == re.findall(declarations, starter)
         assert "send_message" in bridge and "run_skill" in bridge
         assert "message.skills" in bridge
+        assert "message.agent?.address" in bridge
         assert "current Agent Chat" in contract
         assert "exact immutable bundle" in contract
         assert "<agent-address>/<sha256-revision>/index.html" in contract

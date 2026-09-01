@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent · Control Center</title>
+  <title>Connect AI · Control Center</title>
   <style>
     /* This is the interactive version of CO AI's canonical starter.html.
        Keep its tokens, landmarks, and responsive structure in sync with
@@ -161,6 +161,13 @@
     .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
     code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
 
+    .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
+    .diag { display: grid; grid-template-columns: minmax(92px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
+    .diag:first-child { border-top: 0; }
+    .diag dt { color: var(--cc-subtle); }
+    .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    .addr, .revision { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
+
     @media (min-width: 640px) {
       .masthead { grid-template-columns: 1fr auto; align-items: end; }
       .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
@@ -173,6 +180,7 @@
       .quick .skill { min-height: 56px; }
       .composer-actions { align-items: stretch; flex-direction: column; }
       .send { width: 100%; }
+      .diag { grid-template-columns: 1fr; gap: 2px; }
     }
     @media (prefers-reduced-motion: no-preference) {
       .skill, summary, .send { transition: background-color .14s ease, border-color .14s ease, filter .14s ease; }
@@ -187,7 +195,7 @@
     <header class="masthead">
       <div>
         <p class="eyebrow">Control Center</p>
-        <div class="identity"><span id="agent-initial" class="mark" aria-hidden="true">A</span><h1 id="agent-name">Agent</h1></div>
+        <div class="identity"><span id="agent-initial" class="mark" aria-hidden="true">C</span><h1 id="agent-name">Connect AI</h1></div>
         <p class="tagline">Message this Agent or run one of its published skills.</p>
         <p id="connection" class="sub"><span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Open through O Chat to connect</span></p>
       </div>
@@ -221,6 +229,16 @@
           </div>
           <section id="search-empty" class="empty" hidden><p>No capabilities match this search.</p></section>
         </div>
+      </details>
+
+      <details class="card diagnostics-card">
+        <summary><span>Diagnostics</span><span class="count">Agent identity</span></summary>
+        <dl class="diagnostics">
+          <div class="diag"><dt>Address</dt><dd id="agent-address" class="addr">Available after connection</dd></div>
+          <div class="diag"><dt>Skills</dt><dd id="diagnostic-skills">Unknown</dd></div>
+          <div class="diag"><dt>Conversation</dt><dd id="diagnostic-conversation">Not connected</dd></div>
+          <div class="diag"><dt>App revision</dt><dd id="app-revision" class="revision">Not connected</dd></div>
+        </dl>
       </details>
     </div>
   </main>

@@ -731,6 +731,10 @@ The website receives a transferred `MessagePort` and may request `send_message` 
 becomes the visible user message `/skill-name arguments`. An explicit
 `conversation: "new"` is reserved for actions that need isolated context.
 
+The initial context carries the authenticated Agent name and full address, current
+session, immutable app revision, and skill list. The default app can therefore render
+honest identity Diagnostics and real skill buttons without hard-coding one Agent.
+
 `co create` and `co init` now scaffold the editable source in
 `.co/control-center/`. Uploading it, producing the immutable URL, independent review,
 and Host emission of this frame remain preview work; a project must not hand-author an
