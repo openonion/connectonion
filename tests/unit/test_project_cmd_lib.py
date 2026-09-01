@@ -31,7 +31,7 @@ class TestControlCenterTemplate:
         assert "send_message" in bridge and "run_skill" in bridge
         assert "message.skills" in bridge
         assert "current Agent Chat" in contract
-        assert "content-addressed URL" in contract
+        assert "exact immutable bundle" in contract
         assert "<agent-address>/<sha256-revision>/index.html" in contract
 
     def test_never_overwrites_an_authored_app(self, tmp_path):
