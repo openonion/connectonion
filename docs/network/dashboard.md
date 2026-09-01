@@ -1,4 +1,8 @@
-# Control Center
+# Legacy Control Center snapshot
+
+> New projects also receive a full Web app in `.co/control-center/`. It can use
+> JavaScript, routes, external assets, and the typed Chat bridge after it has been
+> uploaded and independently reviewed. See [control-center.md](control-center.md).
 
 Every hosted agent has a **Control Center** beside the conversation. The Host renders
 a current day-zero view—identity, quick actions, recent activity, searchable
@@ -68,12 +72,15 @@ while syncing project-authored files such as `.co/host.yaml`, `.co/skills/` and
 `.co/dashboard.html`. A deploy that dropped a custom Control Center would silently
 replace it with the starter, so the page travels as ordinary project content.
 
-#### It isn't scaffolded
+#### The legacy snapshot isn't scaffolded
 
-`co create` and `co init` deliberately do not write one. At create time the project has
-no skills yet, and the starter is never written over an existing file — scaffolding
-then would freeze an empty Control Center forever. Instead the Host renders from the
-skills and activity that are present on that server at read time.
+`co create` and `co init` do not write `.co/dashboard.html`. At create time the project
+has no skills yet, and writing the snapshot would freeze an empty Control Center.
+Instead the Host renders it from the skills and activity present on that server.
+
+They do scaffold `.co/control-center/`, the source for the new full website. The two
+surfaces coexist during migration: the legacy snapshot remains the fallback until the
+full website has an approved, immutable `CONTROL_CENTER_APP.app.url`.
 
 ### One starter for all your agents
 

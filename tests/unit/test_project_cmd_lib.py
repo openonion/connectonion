@@ -1,13 +1,68 @@
 """Tests for CLI project helpers — upsert_env credential writing."""
 
+import re
 import sys
 from pathlib import Path
 
 from connectonion.cli.commands.project_cmd_lib import (
     configure_env_for_provider,
+    copy_control_center_template,
     detect_api_provider,
     upsert_env,
 )
+
+
+class TestControlCenterTemplate:
+    """Every new project gets an editable full Web app without freezing updates."""
+
+    def test_copies_the_complete_default_app(self, tmp_path):
+        co_dir = tmp_path / ".co"
+        co_dir.mkdir()
+
+        assert copy_control_center_template(co_dir) is True
+
+        app = co_dir / "control-center"
+        assert {path.name for path in app.iterdir()} == {
+            "index.html", "control-center.js", "CONTROL_CENTER.md",
+        }
+        html = (app / "index.html").read_text(encoding="utf-8")
+        bridge = (app / "control-center.js").read_text(encoding="utf-8")
+        contract = (app / "CONTROL_CENTER.md").read_text(encoding="utf-8")
+        assert 'src="./control-center.js"' in html
+        assert "interactive version of CO AI's canonical starter.html" in html
+        for landmark in ("Control Center", "Workspace", "Quick actions", "Capabilities"):
+            assert landmark in html
+        assert "Connect AI" in html
+        assert "Diagnostics" in html and 'id="agent-address"' in html
+        for token in ("--cc-bg", "--cc-surface", "--cc-accent", "--cc-focus"):
+            assert token in html
+        assert "color-scheme: light dark" in html
+        starter = (
+            Path(__file__).parents[2]
+            / "connectonion/network/host/ws_router/starter.html"
+        ).read_text(encoding="utf-8")
+        for token in (
+            "--cc-bg", "--cc-surface", "--cc-surface-raised", "--cc-text",
+            "--cc-muted", "--cc-subtle", "--cc-border", "--cc-accent",
+            "--cc-accent-soft", "--cc-danger", "--cc-focus",
+        ):
+            declarations = rf"{re.escape(token)}:\s*([^;]+);"
+            assert re.findall(declarations, html) == re.findall(declarations, starter)
+        assert "send_message" in bridge and "run_skill" in bridge
+        assert "message.skills" in bridge
+        assert "message.agent?.address" in bridge
+        assert "current Agent Chat" in contract
+        assert "exact immutable bundle" in contract
+        assert "<agent-address>/<sha256-revision>/index.html" in contract
+
+    def test_never_overwrites_an_authored_app(self, tmp_path):
+        app = tmp_path / ".co" / "control-center"
+        app.mkdir(parents=True)
+        custom = app / "index.html"
+        custom.write_text("<h1>Mine</h1>", encoding="utf-8")
+
+        assert copy_control_center_template(tmp_path / ".co") is False
+        assert custom.read_text(encoding="utf-8") == "<h1>Mine</h1>"
 
 
 class TestApiProviderDetection:

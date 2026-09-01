@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect AI · Control Center</title>
+  <style>
+    /* This is the interactive version of CO AI's canonical starter.html.
+       Keep its tokens, landmarks, and responsive structure in sync with
+       connectonion/network/host/ws_router/starter.html. */
+    :root {
+      color-scheme: light dark;
+      --cc-bg: #f7f8f6;
+      --cc-surface: #ffffff;
+      --cc-surface-raised: #f0f2ee;
+      --cc-text: #171a17;
+      --cc-muted: #505650;
+      --cc-subtle: #626962;
+      --cc-border: #d9ddd7;
+      --cc-accent: #14733a;
+      --cc-accent-soft: #e2f3e7;
+      --cc-danger: #b42318;
+      --cc-focus: #075985;
+      --cc-radius-sm: 10px;
+      --cc-radius-md: 14px;
+      --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --cc-bg: #111411;
+        --cc-surface: #191d19;
+        --cc-surface-raised: #222722;
+        --cc-text: #f1f5f1;
+        --cc-muted: #bbc4bb;
+        --cc-subtle: #aeb7ae;
+        --cc-border: #343b34;
+        --cc-accent: #62d68a;
+        --cc-accent-soft: #173d25;
+        --cc-danger: #ff8a80;
+        --cc-focus: #7dd3fc;
+        --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--cc-bg); }
+    body {
+      margin: 0;
+      padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
+      background: var(--cc-bg);
+      color: var(--cc-text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    html, body { max-width: 100%; overflow-x: clip; }
+    main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
+    main { width: min(100%, 860px); margin: 0 auto; }
+    button, input, textarea, summary { font: inherit; }
+    button, input, summary { min-height: 48px; }
+    :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+
+    .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
+    .eyebrow {
+      margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
+      letter-spacing: .11em; text-transform: uppercase;
+    }
+    .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .mark {
+      flex: none; display: grid; place-items: center; width: 42px; height: 42px;
+      border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
+      font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
+    }
+    h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
+    .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
+    .sub { display: flex; align-items: center; gap: 7px; margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
+    .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc-subtle); }
+    .sub.connected .connection-dot { background: var(--cc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cc-accent) 16%, transparent); }
+
+    .grid { display: grid; gap: 14px; }
+    .stack { margin-top: 14px; }
+    .card {
+      border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
+      background: var(--cc-surface); box-shadow: var(--cc-shadow);
+    }
+    .card-pad { padding: 16px; }
+    .section-title {
+      margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
+      letter-spacing: .09em; text-transform: uppercase;
+    }
+
+    .composer { display: grid; gap: 10px; }
+    textarea {
+      display: block; width: 100%; min-height: 88px; max-height: 240px; resize: vertical;
+      padding: 11px 12px; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
+      background: var(--cc-surface-raised); color: var(--cc-text); line-height: 1.45;
+    }
+    textarea::placeholder { color: var(--cc-subtle); }
+    textarea:hover { border-color: var(--cc-subtle); }
+    .composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .send {
+      display: inline-flex; min-width: 88px; min-height: 48px; align-items: center; justify-content: center;
+      padding: 9px 15px; border: 1px solid var(--cc-accent); border-radius: var(--cc-radius-sm);
+      background: var(--cc-accent); color: var(--cc-bg); font-weight: 760; cursor: pointer;
+    }
+    .send:hover:not(:disabled) { filter: brightness(1.06); }
+    .send:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .status { margin: 0; color: var(--cc-muted); font-size: 12px; }
+    .status[data-state="pending"] { color: var(--cc-focus); }
+    .status[data-state="success"] { color: var(--cc-accent); }
+    .status[data-state="error"] { color: var(--cc-danger); }
+
+    .quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .quick .skill {
+      min-height: 72px; padding: 12px 30px 12px 12px;
+      border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
+    }
+    .quick .skill::after { right: 13px; }
+
+    .skill {
+      position: relative; display: flex; flex-direction: column; justify-content: center;
+      width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
+      border: 0; border-radius: var(--cc-radius-sm); background: transparent;
+      color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
+    }
+    .skill::after {
+      content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
+      border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
+      transform: translateY(-50%) rotate(45deg);
+    }
+    .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
+    .skill:active { background: var(--cc-accent-soft); }
+    .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+    .skill .desc {
+      min-width: 0; max-width: 100%; margin-top: 2px; color: var(--cc-muted); font-size: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .skill .desc:empty { display: none; }
+
+    details.card { overflow: clip; }
+    details.card > summary {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
+    }
+    details.card > summary::-webkit-details-marker { display: none; }
+    details.card > summary::after {
+      content: ""; flex: none; width: 8px; height: 8px;
+      border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
+      transform: rotate(45deg) translate(-2px, 2px);
+    }
+    details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
+    .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
+    .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
+    .filter {
+      width: 100%; margin-top: 12px; padding: 9px 12px; border: 1px solid var(--cc-border);
+      border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); color: var(--cc-text);
+    }
+    .rows { display: grid; gap: 2px; margin-top: 8px; }
+    .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
+    .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
+    code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+
+    .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
+    .diag { display: grid; grid-template-columns: minmax(92px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
+    .diag:first-child { border-top: 0; }
+    .diag dt { color: var(--cc-subtle); }
+    .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    .addr, .revision { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
+
+    @media (min-width: 640px) {
+      .masthead { grid-template-columns: 1fr auto; align-items: end; }
+      .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+      .overview.single { grid-template-columns: 1fr; }
+      .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
+    }
+    @media (max-width: 520px) {
+      body { padding-inline: 10px; }
+      .quick { grid-template-columns: 1fr; }
+      .quick .skill { min-height: 56px; }
+      .composer-actions { align-items: stretch; flex-direction: column; }
+      .send { width: 100%; }
+      .diag { grid-template-columns: 1fr; gap: 2px; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .skill, summary, .send { transition: background-color .14s ease, border-color .14s ease, filter .14s ease; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Control Center</p>
+        <div class="identity"><span id="agent-initial" class="mark" aria-hidden="true">C</span><h1 id="agent-name">Connect AI</h1></div>
+        <p class="tagline">Message this Agent or run one of its published skills.</p>
+        <p id="connection" class="sub"><span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Open through O Chat to connect</span></p>
+      </div>
+    </header>
+
+    <div id="overview" class="grid overview single">
+      <section class="card card-pad" aria-labelledby="workspace-title">
+        <h2 class="section-title" id="workspace-title">Workspace</h2>
+        <form id="message-form" class="composer">
+          <textarea id="message" name="message" autocomplete="off" placeholder="What should this Agent do?" required maxlength="10000" aria-label="Message to Agent"></textarea>
+          <div class="composer-actions">
+            <p id="status" class="status" data-state="idle" role="status" aria-live="polite">Waiting for O Chat.</p>
+            <button class="send" type="submit" disabled>Send</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="quick-card" class="card card-pad" aria-labelledby="quick-title" hidden>
+        <h2 class="section-title" id="quick-title">Quick actions</h2>
+        <div id="quick-actions" class="quick"></div>
+      </section>
+    </div>
+
+    <div class="grid stack">
+      <details class="card capabilities">
+        <summary><span>Capabilities</span><span id="capability-count" class="count">Waiting for Agent</span></summary>
+        <div class="details-body">
+          <input id="skill-filter" class="filter" type="search" placeholder="Search capabilities" aria-label="Search capabilities" hidden>
+          <div id="capability-list" class="capability-rows rows">
+            <section class="empty"><p>Connect through O Chat to see this Agent's published skills.</p></section>
+          </div>
+          <section id="search-empty" class="empty" hidden><p>No capabilities match this search.</p></section>
+        </div>
+      </details>
+
+      <details class="card diagnostics-card">
+        <summary><span>Diagnostics</span><span class="count">Agent identity</span></summary>
+        <dl class="diagnostics">
+          <div class="diag"><dt>Address</dt><dd id="agent-address" class="addr">Available after connection</dd></div>
+          <div class="diag"><dt>Skills</dt><dd id="diagnostic-skills">Unknown</dd></div>
+          <div class="diag"><dt>Conversation</dt><dd id="diagnostic-conversation">Not connected</dd></div>
+          <div class="diag"><dt>App revision</dt><dd id="app-revision" class="revision">Not connected</dd></div>
+        </dl>
+      </details>
+    </div>
+  </main>
+  <script type="module" src="./control-center.js"></script>
+</body>
+</html>

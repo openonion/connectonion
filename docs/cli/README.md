@@ -92,6 +92,7 @@ my-agent/
 ├── .env                     # API keys (from ~/.co/keys.env)
 ├── .co/
 │   ├── host.yaml            # Project config
+│   ├── control-center/      # Editable full Web app
 │   └── docs/                # Framework docs
 ├── co-vibecoding-principles-docs-contexts-all-in-one.md
 └── .gitignore               # Safe defaults
@@ -113,6 +114,7 @@ co init                      # Safe - preserves existing files
 - ✅ **Preserves** existing files and `.env`
 - ✅ **Appends** only missing API keys
 - ✅ **Updates** `.co/docs/` to latest
+- ✅ **Adds once** `.co/control-center/` and never overwrites your website
 - ✅ **Skips** existing files (like `agent.py`)
 
 **Options:**

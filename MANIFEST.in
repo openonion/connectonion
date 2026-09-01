@@ -1,6 +1,7 @@
 include README.md
 include LICENSE
 recursive-include connectonion/cli/templates *
+recursive-include connectonion/cli/assets/control-center *
 recursive-include connectonion/prompt_files *.md
 recursive-include connectonion/debug_agent/prompts *.md
 recursive-include connectonion/debug_explainer *.md

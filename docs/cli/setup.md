@@ -95,7 +95,7 @@ You can also just edit `~/.co/agent.json` directly — it's normal JSON. `oo-pub
 
 | Command | Scope | What it creates |
 |---------|-------|-----------------|
-| `co init` | **Project** (cwd) | `agent.py`, `.env`, `.co/host.yaml`, vibe-coding docs |
+| `co init` | **Project** (cwd) | `agent.py`, `.env`, `.co/host.yaml`, `.co/control-center/`, vibe-coding docs |
 | `co setup` | **Global** (`~/.co/`) | `agent.json`, `skills/`, `keys/` (if missing) |
 
 They're orthogonal. Use `co init` to scaffold a new agent *project* (with template code). Use `co setup` to prepare your *identity* for publishing. Both can run on the same machine without conflict.
