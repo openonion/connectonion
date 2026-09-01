@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: openonion/onionwright
-          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          ref: 35c3777cc7e32eb22c5c35256ea8c045ca82fa1d
           path: .ci/onionwright
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -98,7 +98,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: openonion/onionwright
-          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          ref: 35c3777cc7e32eb22c5c35256ea8c045ca82fa1d
           path: .ci/onionwright
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -138,7 +138,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: openonion/onionwright
-          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          ref: 35c3777cc7e32eb22c5c35256ea8c045ca82fa1d
           path: .ci/onionwright
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -177,7 +177,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: openonion/onionwright
-          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          ref: 35c3777cc7e32eb22c5c35256ea8c045ca82fa1d
           path: .ci/onionwright
 
       - name: Set up Python
@@ -491,7 +491,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: openonion/onionwright
-          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          ref: 35c3777cc7e32eb22c5c35256ea8c045ca82fa1d
           path: .ci/onionwright
 
       - name: Set up Python
