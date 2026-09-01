@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
+import secrets
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlparse
+import uuid
 from uuid import UUID
 
 import requests
@@ -24,12 +28,15 @@ from ..project import project_identity
 
 
 ALGORITHM = "x25519-xsalsa20-poly1305-sealed-box"
+PAIRING_VERSION = 2
+PAIRING_PURPOSE = "openonion-sms-pair"
+ACTIVATION_PURPOSE = "openonion-sms-activate"
 MIN_SMS = 1
 MAX_SMS = 100
 
 
 def create_sms_pairing(expires_in_seconds: int = 600) -> dict[str, Any]:
-    """Create a one-time link that connects an Android SMS device to this agent.
+    """Create an Agent-signed one-time Android pairing grant.
 
     Args:
         expires_in_seconds: Link lifetime, from 60 through 1800 seconds.
@@ -44,14 +51,81 @@ def create_sms_pairing(expires_in_seconds: int = 600) -> dict[str, Any]:
         or not 60 <= expires_in_seconds <= 1800
     ):
         raise ValueError("expires_in_seconds must be between 60 and 1800")
+    identity = _identity()
+    pairing_id = uuid.uuid4()
+    nonce = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+    expires_at = int(time.time()) + expires_in_seconds
+    grant = _canonical_pairing_grant(
+        pairing_id,
+        identity["address"],
+        nonce,
+        expires_at,
+    )
+    signature = identity["signing_key"].sign(grant.encode()).signature.hex()
     response = requests.post(
-        f"{backend_url()}/api/v1/sms/pairings",
-        json={"expires_in_seconds": expires_in_seconds},
+        f"{backend_url()}/api/v1/sms/pairings/v2",
+        json={
+            "pairing_id": str(pairing_id),
+            "recipient": identity["address"],
+            "nonce": nonce,
+            "expires_at": expires_at,
+            "signature": signature,
+        },
         headers=_headers(),
         timeout=10,
     )
     response.raise_for_status()
     return response.json()
+
+
+def get_sms_pairing(pairing_id: str) -> dict[str, Any]:
+    """Return non-secret status for one pairing owned by this Agent."""
+    pairing_id = _uuid(pairing_id, "pairing_id")
+    response = requests.get(
+        f"{backend_url()}/api/v1/sms/pairings/{pairing_id}",
+        headers=_headers(),
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def pairing_confirmation_code(pairing_link: str, device_public_key: str) -> str:
+    """Compute the six digits that must match the Android display."""
+    grant = _grant_from_link(pairing_link)
+    try:
+        device_key = base64.b64decode(device_public_key, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("device_public_key must be canonical base64") from exc
+    digest = hashlib.sha256(grant.encode() + b"\x00" + device_key).digest()
+    return f"{int.from_bytes(digest[:4], 'big') % 1_000_000:06d}"
+
+
+def confirm_sms_pairing(
+    pairing_id: str,
+    pairing_link: str,
+    device_public_key: str,
+    confirmation_code: str,
+) -> bool:
+    """Approve the exact Android key after the human compares both codes."""
+    pairing_id = _uuid(pairing_id, "pairing_id")
+    parsed = _parse_pairing_link(pairing_link)
+    if parsed["pairing_id"] != pairing_id:
+        raise ValueError("pairing_link does not belong to pairing_id")
+    expected = pairing_confirmation_code(pairing_link, device_public_key)
+    if confirmation_code != expected:
+        raise ValueError("confirmation_code does not match this device")
+    identity = _identity()
+    approval = _canonical_activation(pairing_id, identity["address"], device_public_key)
+    signature = identity["signing_key"].sign(approval.encode()).signature.hex()
+    response = requests.post(
+        f"{backend_url()}/api/v1/sms/pairings/{pairing_id}/confirm",
+        json={"device_public_key": device_public_key, "signature": signature},
+        headers=_headers(),
+        timeout=10,
+    )
+    response.raise_for_status()
+    return True
 
 
 def get_sms(
@@ -185,6 +259,73 @@ def revoke_sms_device(device_id: str) -> bool:
     )
     response.raise_for_status()
     return True
+
+
+def _canonical_pairing_grant(
+    pairing_id: UUID,
+    recipient: str,
+    nonce: str,
+    expires_at: int,
+) -> str:
+    return json.dumps(
+        {
+            "expires_at": expires_at,
+            "nonce": nonce,
+            "pairing_id": str(pairing_id),
+            "purpose": PAIRING_PURPOSE,
+            "recipient": recipient.lower(),
+            "version": PAIRING_VERSION,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _canonical_activation(
+    pairing_id: str,
+    recipient: str,
+    device_public_key: str,
+) -> str:
+    return json.dumps(
+        {
+            "device_public_key": device_public_key,
+            "pairing_id": pairing_id,
+            "purpose": ACTIVATION_PURPOSE,
+            "recipient": recipient.lower(),
+            "version": PAIRING_VERSION,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _parse_pairing_link(pairing_link: str) -> dict[str, Any]:
+    parsed = urlparse(pairing_link.strip())
+    if parsed.scheme != "openonion" or parsed.netloc != "sms" or parsed.path != "/pair":
+        raise ValueError("Expected an openonion://sms/pair link")
+    query = {key: values[-1] for key, values in parse_qs(parsed.query).items()}
+    required = {"v", "id", "recipient", "nonce", "expires", "signature"}
+    if not required.issubset(query):
+        raise ValueError("Pairing link is incomplete")
+    if query["v"] != str(PAIRING_VERSION):
+        raise ValueError("Unsupported SMS pairing protocol")
+    return {
+        "pairing_id": _uuid(query["id"], "pairing_id"),
+        "recipient": query["recipient"],
+        "nonce": query["nonce"],
+        "expires_at": int(query["expires"]),
+        "signature": query["signature"],
+    }
+
+
+def _grant_from_link(pairing_link: str) -> str:
+    parsed = _parse_pairing_link(pairing_link)
+    return _canonical_pairing_grant(
+        UUID(parsed["pairing_id"]),
+        parsed["recipient"],
+        parsed["nonce"],
+        parsed["expires_at"],
+    )
 
 
 def _headers() -> dict[str, str]:

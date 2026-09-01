@@ -45,6 +45,7 @@ dependencies = [
     "requests>=2.33.0",
     "rich>=13.0.0",
     "PyNaCl>=1.6.2",
+    "qrcode>=8.2",
     "mnemonic>=0.20",
     "questionary>=2.0.0",
     "websockets>=11.0.0",

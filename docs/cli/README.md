@@ -227,6 +227,20 @@ details and current limitations.
 
 ---
 
+#### `co sms` - Pair & Read Encrypted SMS
+
+```bash
+co sms pair
+co sms inbox --pending
+co sms devices
+```
+
+Pair an OpenOnion Messages Android phone with an Agent-signed QR and explicit
+six-digit device-key comparison. SMS is decrypted inside the current Agent
+process; server storage remains ciphertext-only. See [sms.md](sms.md).
+
+---
+
 #### `co telegram` - Send from Your Telegram Bot
 
 ```bash

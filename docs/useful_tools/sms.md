@@ -5,6 +5,19 @@ SMS in a ConnectOnion Agent project.
 
 ## Pair a phone
 
+The recommended interactive flow is:
+
+```bash
+co sms pair
+```
+
+It creates an Agent-signed QR, waits for Android to prove its Keystore device
+key, and prints the same six-digit code shown on the phone. Compare the codes
+before confirming. The Agent private key and recovery words never leave the
+Agent project.
+
+The lower-level Python API is also available:
+
 ```python
 from connectonion import create_sms_pairing
 
@@ -12,8 +25,15 @@ pairing = create_sms_pairing(expires_in_seconds=600)
 print(pairing["pairing_link"])
 ```
 
-Paste the one-time link into OpenOnion Messages. Treat it as a secret until it
-is claimed; it expires after 60–1,800 seconds.
+Scan or paste the one-time link into OpenOnion Messages. Treat it as a secret
+until it is claimed; it expires after 60–1,800 seconds. A copied QR can create a
+pending claim but cannot receive an active device credential until the Agent
+signs the exact device key after human comparison.
+
+For non-interactive integrations, poll `get_sms_pairing(pairing["id"])`, derive
+the code with `pairing_confirmation_code()`, and finish with
+`confirm_sms_pairing()`. Do not automate confirmation without an equivalent
+authenticated way to identify the intended device key.
 
 ## Read messages
 
@@ -65,6 +85,9 @@ credential before removing it locally.
 
 ```python
 create_sms_pairing(expires_in_seconds=600)
+get_sms_pairing(pairing_id)
+pairing_confirmation_code(pairing_link, device_public_key)
+confirm_sms_pairing(pairing_id, pairing_link, device_public_key, confirmation_code)
 get_sms(last=10, unacknowledged=False, acknowledge=False, after=None)
 wait_for_sms(timeout_seconds=60, poll_interval_seconds=2.0, sender_contains=None)
 acknowledge_sms(message_id)
@@ -75,3 +98,18 @@ revoke_sms_device(device_id)
 
 OpenOnion Messages v1 receives SMS only. Agents cannot send SMS through these
 tools, and MMS/RCS are not supported.
+
+## Cryptographic boundary
+
+The QR transcript is signed with the Agent's Ed25519 identity. Android verifies
+that signature from the `0x…` address, creates a non-exportable P-256 Android
+Keystore key, and signs the complete transcript. After comparison, the Agent
+adds a second Ed25519 signature binding that exact device key. `oo-api` stores
+hashes of the random nonce and bearer tokens, never the Agent private key.
+
+The six digits are approximately a 20-bit human short authentication string;
+they are useful only when both screens are compared. Message confidentiality is
+separate: Android encrypts SMS to the Agent's Ed25519-derived X25519 key, and
+decryption occurs in the Agent runtime. `oo-api` sees routing and timing metadata
+but cannot read the SMS body. This protocol has shared cross-language vectors
+but has not received an independent cryptographic audit.
