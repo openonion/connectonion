@@ -413,7 +413,9 @@ class BrowserDaemon:
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
         # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
         # never silent interleaving on one page.
-        request_id = uuid.uuid4().hex
+        # Preserve the authenticated transaction ID supplied by OIP. Legacy
+        # in-process callers do not have one, so allocate it only for them.
+        request_id = request_id or uuid.uuid4().hex
         async with self._registry_lock:
             meta = self._register_tab(session, caller)
             if _held_by_other(meta, caller):
@@ -1239,7 +1241,31 @@ class BrowserDaemon:
                     or commit.stream_commit.actual_size != staged.size
                     or bytes(commit.stream_commit.sha256) != staged.digest
                 ):
-                    raise ProtocolError("artifact StreamCommit does not match the stream")
+                    raise ProtocolError(
+                        "artifact StreamCommit does not match the stream "
+                        f"(request={commit.request_id == request.request_id}, "
+                        f"stream={commit.stream_id}/{staged.stream_id}, "
+                        f"size={commit.stream_commit.actual_size}/{staged.size}, "
+                        f"digest={bytes(commit.stream_commit.sha256) == staged.digest})"
+                    )
+                # Success is observable only after daemon ownership has ended.
+                # Without this confirmation the client can return while the
+                # staging file still exists (a real race on Windows named pipes).
+                staged.discard()
+                await send_frame(
+                    oip_wire.Envelope(
+                        protocol_version=OIP_VERSION,
+                        request_id=request.request_id,
+                        stream_id=staged.stream_id,
+                        sequence=commit.sequence + 1,
+                        offset=staged.size,
+                        stream_commit=oip_wire.StreamCommit(
+                            actual_size=staged.size,
+                            sha256=staged.digest,
+                        ),
+                    )
+                )
+                staged = None
             if await self._should_stop(ok, result_text):
                 self._begin_shutdown()
         except (ProtocolError, ValueError) as exc:

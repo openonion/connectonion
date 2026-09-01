@@ -34,8 +34,14 @@ BrowserResult(artifact_count=N)
 StreamOpen
 StreamData ...
 StreamFin
-StreamCommit
+StreamCommit(receiver)
+StreamCommit(sender confirmation)
 ```
+
+The receiver commit says that the verified caller file is durable. The sender
+then removes its staging file and echoes a sequenced `StreamCommit`; only that
+confirmation lets the client report success. This makes the ownership handoff
+observable instead of depending on scheduler timing.
 
 The checked-in schema is
 `connectonion/network/oip/browser_daemon.proto`. The current local carrier uses

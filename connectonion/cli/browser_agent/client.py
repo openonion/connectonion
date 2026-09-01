@@ -477,7 +477,33 @@ def _request_with_identity(
                 following_frames(),
                 destination=artifact_destination if artifact_index == 0 else None,
             )
-            send_frame(receiver.commit_frame(opened, finished))
+            commit = receiver.commit_frame(opened, finished)
+            send_frame(commit)
+            confirmed = receive_frame()
+            if confirmed.WhichOneof("frame") == "failure":
+                raise ProtocolError(
+                    "browser daemon rejected artifact commit: "
+                    f"{confirmed.failure.message}"
+                )
+            if (
+                confirmed.WhichOneof("frame") != "stream_commit"
+                or confirmed.request_id != opened.request_id
+                or confirmed.stream_id != opened.stream_id
+                or confirmed.sequence != commit.sequence + 1
+                or confirmed.offset != finished.stream_fin.actual_size
+                or confirmed.stream_commit.actual_size
+                != finished.stream_fin.actual_size
+                or bytes(confirmed.stream_commit.sha256)
+                != bytes(finished.stream_fin.sha256)
+            ):
+                raise ProtocolError(
+                    "browser daemon did not confirm artifact cleanup "
+                    f"(frame={confirmed.WhichOneof('frame')}, "
+                    f"request={confirmed.request_id == opened.request_id}, "
+                    f"stream={confirmed.stream_id}, sequence={confirmed.sequence}, "
+                    f"offset={confirmed.offset}, "
+                    f"size={confirmed.stream_commit.actual_size})"
+                )
             saved_paths.append(saved)
         if saved_paths:
             payload = "\n".join(

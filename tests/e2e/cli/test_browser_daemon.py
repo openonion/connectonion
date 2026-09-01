@@ -621,7 +621,7 @@ def test_socket_screenshot_streams_to_caller_without_base64_or_daemon_path(
 
     code, payload = c._request("take_screenshot", headless=True, raw_result=True)
 
-    assert code == 0
+    assert code == 0, payload
     assert payload.startswith("Screenshot saved to: ")
     assert "base64" not in payload
     caller_path = Path(payload.removeprefix("Screenshot saved to: "))
