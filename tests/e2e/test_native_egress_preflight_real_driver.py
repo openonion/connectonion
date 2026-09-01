@@ -55,7 +55,7 @@ async def _run_preflight(args: tuple[str, ...]) -> tuple[bool, int]:
     try:
         async with async_playwright() as driver:
             browser = await driver.chromium.launch(
-                headless=False,
+                headless=True,
                 executable_path=_chrome(),
                 args=list(args),
                 proxy={
@@ -168,7 +168,7 @@ async def _exercise_shared_proxy():
     try:
         async with async_playwright() as driver:
             browser = await driver.chromium.launch(
-                headless=False,
+                headless=True,
                 executable_path=_chrome(),
                 args=list(REMOTE_BROWSER_CHROME_ARGS),
                 proxy={
