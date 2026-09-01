@@ -105,6 +105,7 @@ SKILLS = {
     "co-mail-and-drive": "co-mail-and-drive",
     "commit": "commit",
     "install-connectonion": "install-connectonion",
+    "oo": "oo",
     "review-pr": "review-pr",
     "ship-feature": "ship-feature",
 }
