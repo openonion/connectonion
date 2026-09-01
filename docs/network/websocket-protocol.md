@@ -534,6 +534,59 @@ Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
 Sent on the same socket as the CONNECT it answers. A wrong code comes back as `ERROR` and
 the stashed CONNECT is **kept**, so the reader can simply try again — no reconnect needed.
 
+#### PROXY_ATTACH
+
+Lend this computer's internet connection to the host (`co proxy share`). Sent
+once per socket after a signed CONNECT, on a **direct** connection only — the
+relay never carries page bytes. Signed like every other command.
+
+```json
+{
+  "type": "PROXY_ATTACH",
+  "payload": {
+    "grant": {
+      "type": "proxy_grant", "grant_id": "pxg_...",
+      "grantor": "0xLaptop", "holder": "0xHost", "scope": "public_internet",
+      "expires_at": "2026-09-03T10:00:00Z", "max_bytes": null,
+      "signature": "..."
+    },
+    "to": "0xHost", "timestamp": 1702234567, "nonce": "..."
+  },
+  "from": "0xLaptop",
+  "signature": "0x..."
+}
+```
+
+The host verifies the grant (it must name this host as holder, be unexpired,
+and be signed by the identity on this socket), requires contact-or-better
+trust, and answers `PROXY_ATTACHED` or `ERROR`. A later attach from the same
+identity replaces the earlier one; the attachment ends when the socket closes.
+
+#### PROXY_STREAM
+
+One multiplexed stream operation, in either direction, while a share is
+attached. The host opens streams; the laptop answers them.
+
+```json
+{"type": "PROXY_STREAM", "payload": {"id": 7, "op": "connect", "address": "93.184.216.34", "port": 443}}
+```
+
+| `op` | Direction | Fields | Meaning |
+|------|-----------|--------|---------|
+| `resolve` | host → laptop | `host`, `port` | resolve this name with the laptop's DNS and policy |
+| `resolve` | laptop → host | `addresses` | the complete answer set |
+| `connect` | host → laptop | `address`, `port` | open a socket to this numeric address, re-classified on the laptop |
+| `connect` | laptop → host | — | the socket is open |
+| `data` | both | `data` (base64, ≤ 32 KiB) | bytes on the stream |
+| `eof` | both | — | half-close: no more bytes this way |
+| `close` | both | — | the stream is finished; forget it |
+| `error` | both | `code` | the request failed (`EGRESS_*` / `DESTINATION_*` codes) |
+
+Laptop → host frames are signed like every command. Host → laptop frames carry
+no signature: they travel inside the TLS session the laptop opened to an
+endpoint whose identity it already verified. At most 64 streams per share; the
+grant's `expires_at` and `max_bytes` are enforced by the host.
+
 ### Server → Client
 
 #### CONNECTED
@@ -782,6 +835,19 @@ Fields beyond `action` are whatever the trust handler returned for that operatio
 Also how a **refused onboard** comes back — `{"type": "ERROR", "message": "Invalid invite
 code"}`. There is no dedicated failure frame, and no repeat of `ONBOARD_REQUIRED`: a client
 waiting for one of those to detect the refusal will wait forever.
+
+#### PROXY_ATTACHED
+
+The share offered by `PROXY_ATTACH` is accepted and registered under the
+sender's address. A refused attach is an `ERROR` whose message starts with
+`proxy attach refused:`.
+
+```json
+{ "type": "PROXY_ATTACHED", "expires_at": "2026-09-03T10:00:00Z", "max_bytes": null }
+```
+
+From here the host sends `PROXY_STREAM` frames (unsigned, see above) down this
+socket until it closes.
 
 ---
 

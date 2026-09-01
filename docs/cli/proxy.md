@@ -27,6 +27,30 @@ co remote-browser 0xHOST start --proxy shared
 Every address above is optional once `co remote-browser config 0xHOST` has
 remembered one; `co proxy share`, `stop` and `diagnose` then use it.
 
+## How it connects
+
+Your computer dials the host — nothing listens here, so it works from behind
+a home router or a hotel NAT without port forwards or tunnels. `co proxy
+share` opens the same direct, signed WebSocket `co remote-browser` uses,
+attaches with a grant you sign (naming the host and an expiry), and then
+serves the host's requests over that socket: resolve this name, connect to
+this address, here are the bytes.
+
+```text
+your computer ──dials──▶ host        PROXY_ATTACH  (signed grant)
+your computer ◀──────── host         PROXY_STREAM  resolve / connect / data
+```
+
+The command keeps running while the share is attached. If the socket drops it
+reconnects with backoff (1 s, 2 s, ... up to 60 s) and re-attaches with a grant
+carrying the same expiry; `co proxy status` shows `attached` or `reconnecting`
+while that happens. The share ends when you stop it, when `--ttl` runs out
+(default 24 h), or when the process exits.
+
+Only a direct connection is accepted. The relay carries control frames, not
+page bytes; if the host is reachable only through the relay the share reports
+that and keeps retrying.
+
 ## What gets shared, and what does not
 
 **Shared:** an outbound path to the public web, for destinations the policy
@@ -70,28 +94,34 @@ fallback.
 | Option | What it does |
 |---|---|
 | `--json` | the complete stable envelope, for scripts and agents |
-| `--bind HOST` | listen on a specific address (default: the one a peer reaches) |
-| `--ttl SEC` | stop sharing automatically after this long |
+| `--ttl SEC` | stop sharing automatically after this long (default: 24 h) |
 
-`co proxy stop` sends an authenticated stop request to the live service, waits
-for its listener to close, and only then reports success. Deleting stale state
-is not treated as stopping a Proxy.
+`co proxy stop` sends an authenticated stop request to the live share, waits
+for it to detach and exit, and only then reports success. Deleting stale state
+is not treated as stopping a share.
 
-`co proxy share` picks its own address by asking the routing table which
-interface reaches the internet. On a machine with several interfaces, or behind
-a NAT where the peer arrives somewhere else, set `--bind` yourself;
-`co proxy diagnose` tells you when the bound address and the reachable one
-differ.
+`co proxy diagnose` distinguishes "never shared", "the share process is gone"
+and "the process is alive but not attached right now" — each with the one
+command that fixes it.
 
-## Reaching your share from outside your network
+## Security
 
-A share listens on this machine. An agent on another network needs a path to
-it — a port forward, a VPN, or a tunnel you already run. `co proxy diagnose`
-prints the address a peer would use, which is where to point that path.
-
-The first preview intentionally keeps this two-machine model. A later transport
-may make `share to` create its own outbound reverse path through the remote
-Agent; that is not silently claimed by the current listener implementation.
+- **You sign the grant.** The attach carries a grant signed by this computer's
+  identity, naming the host as holder with an expiry. The host refuses a grant
+  for another host, an expired one, or one signed by anyone other than the
+  identity on the socket — so a copied grant is useless to whoever copied it.
+- **Only your own sessions use it.** The host keys attached shares by your
+  address. `co remote-browser start --proxy shared` from your identity uses
+  your share; nobody else's session can.
+- **Signed one way, TLS both ways.** Your frames to the host are Ed25519-signed
+  like every other command. The host's frames back to you are not signed: they
+  arrive inside the TLS session you opened to an endpoint whose identity you
+  already verified, and no one else can inject into that socket.
+- **Bounded.** Streams per share and bytes per frame are capped; a grant's
+  `max_bytes` and `expires_at` are enforced on the host, and the share stops
+  itself at `--ttl`.
+- **Policy on both ends.** Every destination is classified on the host and
+  again on your computer. Your LAN stays yours.
 
 ## Verified
 

@@ -44,19 +44,23 @@ browser on the host  ──▶  your computer  ──▶  the internet (your add
 ```
 
 ```bash
-co proxy share to 0xHOST                        # on your computer
-co remote-browser 0xHOST start --proxy shared   # then start the session
+co remote-browser config 0xHOST --proxy shared  # once
+co proxy share                                  # on your computer; keeps running
+co remote-browser start                         # then start the session
 ```
 
-Or, after `co remote-browser config 0xHOST --proxy shared`, the same two
-commands with nothing to type: `co proxy share` and `co remote-browser start`.
+Your computer dials the host and stays attached; the host never has to reach
+you, so this works from behind any home or office NAT. The share is keyed by
+your identity on the host — `start --proxy shared` from the same identity
+finds it by itself, and nothing about it travels in the start request.
 
 Measured on a Google Cloud server egressing through a laptop in Sydney: the
 server's own address is `34.21.243.229`, and the site saw `129.94.43.159`.
 
 `--proxy direct` (the default) keeps the host on its own connection. Asking for
-`shared` without a share endpoint answers `REMOTE_SESSION_SHARE_MISSING` rather
-than quietly falling back — a silent fallback would send traffic from the data
+`shared` while your computer is not attached answers
+`REMOTE_SESSION_PROXY_NOT_ATTACHED` (next action: `co proxy share`) rather than
+quietly falling back — a silent fallback would send traffic from the data
 centre while you believed it left from home. Any other mode answers
 `REMOTE_SESSION_PROXY_LOCKED`.
 
