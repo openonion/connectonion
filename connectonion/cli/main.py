@@ -157,6 +157,7 @@ def _show_help():
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
+    console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
@@ -717,6 +718,69 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
     """Remove an admin."""
     from .commands.trust_commands import handle_admin_remove
     handle_admin_remove(address)
+
+
+# SMS command group. `co sms` (no args) shows the inbox without changing state.
+sms_app = _typer_app(help="Pair a phone and read the Agent's encrypted SMS inbox")
+app.add_typer(sms_app, name="sms")
+
+
+@sms_app.callback(invoke_without_command=True)
+def sms_callback(ctx: typer.Context):
+    """With no subcommand, show the inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sms_commands import handle_sms_inbox
+        handle_sms_inbox()
+
+
+@sms_app.command("pair")
+def sms_pair(
+    expires: int = typer.Option(
+        600, "--expires", min=60, max=1800,
+        help="One-time challenge lifetime in seconds",
+    ),
+    wait: bool = typer.Option(
+        True, "--wait/--no-wait",
+        help="Wait to compare and approve the phone's six-digit code",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable JSON and do not wait"),
+):
+    """Create an Agent-signed QR challenge for one Android phone."""
+    from .commands.sms_commands import handle_sms_pair
+    handle_sms_pair(expires=expires, wait=wait and not json_output, json_output=json_output)
+
+
+@sms_app.command("inbox")
+def sms_inbox(
+    last: int = typer.Option(10, "--last", "-n", min=1, max=100),
+    pending: bool = typer.Option(False, "--pending", help="Only unacknowledged messages"),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable JSON"),
+):
+    """List decrypted SMS without acknowledging them."""
+    from .commands.sms_commands import handle_sms_inbox
+    handle_sms_inbox(last=last, pending=pending, json_output=json_output)
+
+
+sms_devices_app = _typer_app(help="List and revoke paired SMS phones")
+sms_app.add_typer(sms_devices_app, name="devices")
+
+
+@sms_devices_app.callback(invoke_without_command=True)
+def sms_devices_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
+    """With no subcommand, list paired phones."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sms_commands import handle_sms_devices
+        handle_sms_devices(json_output=json_output)
+
+
+@sms_devices_app.command("revoke")
+def sms_devices_revoke(
+    device_id: str = typer.Argument(..., help="Device UUID from co sms devices"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+):
+    """Revoke one phone's upload credential."""
+    from .commands.sms_commands import handle_sms_revoke
+    handle_sms_revoke(device_id, yes=yes)
 
 
 # Email command group. `co email` (no args) shows the inbox.

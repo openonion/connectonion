@@ -35,10 +35,13 @@ from .outlook import Outlook
 from .send_email import send_email
 from .sms import (
     acknowledge_sms,
+    confirm_sms_pairing,
     create_sms_pairing,
     delete_sms,
     get_sms,
+    get_sms_pairing,
     list_sms_devices,
+    pairing_confirmation_code,
     revoke_sms_device,
     wait_for_sms,
 )
@@ -57,6 +60,9 @@ __all__ = [
     "mark_read",
     "mark_unread",
     "create_sms_pairing",
+    "get_sms_pairing",
+    "pairing_confirmation_code",
+    "confirm_sms_pairing",
     "get_sms",
     "wait_for_sms",
     "acknowledge_sms",

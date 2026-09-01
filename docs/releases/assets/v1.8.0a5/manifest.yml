@@ -1,0 +1,9 @@
+version: v1.8.0a5
+images:
+  - file: sms-pair-cli.webp
+    alt: "ConnectOnion terminal showing an Agent-signed OpenOnion Messages pairing QR"
+    caption: "co sms pair renders a short-lived signed challenge while keeping the Agent private key on the Agent machine."
+    scenario: "operator pairs one Android phone using the fixed public cross-language test vector"
+    viewport: "1527x1654, dark terminal"
+    commit: 7e7e1261
+    source_run: "https://github.com/openonion/connectonion/actions/runs/33487441366"
