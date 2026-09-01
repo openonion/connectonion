@@ -26,10 +26,12 @@ from pathlib import Path
 
 USAGE = """co proxy — share this computer's internet connection.
 
-  co proxy share to <address>     lend your connection to one agent
+  co proxy share [to <address>]   lend your connection to one agent
   co proxy status                 what is shared right now
-  co proxy stop <address>         stop lending
-  co proxy diagnose <address>     why a share is not working
+  co proxy stop [<address>]       stop lending
+  co proxy diagnose [<address>]   why a share is not working
+
+<address> defaults to the one `co remote-browser config` remembered.
 
 Options:
   --json          emit the complete stable JSON envelope
@@ -339,23 +341,27 @@ def handle_proxy(args) -> int:
         print(USAGE)
         return 0
 
+    from .remote_browser_commands import NOT_CONFIGURED, configured_address
+
     verb, rest = args[0], args[1:]
-    if verb == "share":
-        # `share to <address>` reads as English; `share <address>` also works.
-        target = rest[1] if rest[:1] == ["to"] else (rest[0] if rest else None)
-        if not target:
-            print("co proxy share needs an address.", file=sys.stderr)
-            print("Try: co proxy share to 0xHOST", file=sys.stderr)
-            return 2
-        return _share(target, as_json, bind, ttl)
     if verb == "status":
         return _status(as_json)
-    if verb in {"stop", "diagnose"}:
-        if not rest:
-            print(f"co proxy {verb} needs an address.", file=sys.stderr)
-            print("See what is shared with: co proxy status", file=sys.stderr)
-            return 2
-        return (_stop if verb == "stop" else _diagnose)(rest[0], as_json)
+    if verb not in {"share", "stop", "diagnose"}:
+        print(f"Unknown command: co proxy {verb}", file=sys.stderr)
+        print(USAGE, file=sys.stderr)
+        return 2
+
+    # `share to <address>` reads as English; `share <address>` also works, and
+    # no address at all means the one `co remote-browser config` remembered.
+    if rest[:1] == ["to"]:
+        rest = rest[1:]
+    target = rest[0] if rest else configured_address()
+    if not target:
+        print(NOT_CONFIGURED, file=sys.stderr)
+        return 2
+    if verb == "share":
+        return _share(target, as_json, bind, ttl)
+    return (_stop if verb == "stop" else _diagnose)(target, as_json)
 
     print(f"Unknown command: co proxy {verb}", file=sys.stderr)
     print(USAGE, file=sys.stderr)

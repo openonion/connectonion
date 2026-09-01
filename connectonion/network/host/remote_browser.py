@@ -301,7 +301,7 @@ class RemoteBrowserService:
                     state={"fallback_applied": False},
                 )
             share_binding = self._share_binding(share_endpoint)
-        headless = args.get("headless", True)
+        headless = args.get("headless", False)
         if not isinstance(headless, bool):
             return _failure(
                 request_id, "start", "INVALID_ARGUMENT", "headless must be boolean."

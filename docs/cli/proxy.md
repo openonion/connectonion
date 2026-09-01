@@ -24,6 +24,9 @@ co remote-browser 0xHOST start --proxy shared
 
 `--proxy direct` (the default) keeps the host on its own connection.
 
+Every address above is optional once `co remote-browser config 0xHOST` has
+remembered one; `co proxy share`, `stop` and `diagnose` then use it.
+
 ## What gets shared, and what does not
 
 **Shared:** an outbound path to the public web, for destinations the policy

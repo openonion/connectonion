@@ -16,6 +16,23 @@ co remote-browser 0xHOST stop    rb_0123456789abcdef0123456789abcdef
 That is the whole surface today. `start` is safe to retry: the same owner and
 request ID gets the same session back rather than a second one.
 
+The session opens a visible window by default, exactly like `co browser` on
+your own machine; a host with no display runs headless by itself. Pass
+`--headless` to ask for that explicitly.
+
+The address is 42 characters and never changes between calls, so remember it
+once and leave it out afterwards:
+
+```bash
+co remote-browser config 0xHOST --proxy shared   # once
+co remote-browser start                           # from now on
+co remote-browser sessions
+```
+
+An explicit address still wins when you give one. With nothing remembered and
+no address on the command line, the command stops and tells you to run
+`config` — it never guesses a host.
+
 ## Reaching the internet through your own connection
 
 A browser on a server reaches the internet from a data-centre address. Lend it
@@ -30,6 +47,9 @@ browser on the host  ──▶  your computer  ──▶  the internet (your add
 co proxy share to 0xHOST                        # on your computer
 co remote-browser 0xHOST start --proxy shared   # then start the session
 ```
+
+Or, after `co remote-browser config 0xHOST --proxy shared`, the same two
+commands with nothing to type: `co proxy share` and `co remote-browser start`.
 
 Measured on a Google Cloud server egressing through a laptop in Sydney: the
 server's own address is `34.21.243.229`, and the site saw `129.94.43.159`.
