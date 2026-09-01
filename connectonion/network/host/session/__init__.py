@@ -10,6 +10,7 @@ LLM-Note:
 from .active import ActiveSession, ActiveSessionRegistry, start_cleanup_job
 from .merge import merge_sessions
 from .storage import Session, SessionStorage, session_owner
+from .sync import SessionSyncError, SessionSyncService
 from .ui import session_to_chat_items
 
 __all__ = [
@@ -17,6 +18,8 @@ __all__ = [
     'Session',
     'SessionStorage',
     'session_owner',
+    'SessionSyncError',
+    'SessionSyncService',
     # Active sessions
     'ActiveSession',
     'ActiveSessionRegistry',

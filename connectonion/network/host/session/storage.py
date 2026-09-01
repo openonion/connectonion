@@ -13,10 +13,11 @@ import json
 import os
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ....project import project_co_dir
 
@@ -31,6 +32,11 @@ class Session(BaseModel):
     created: Optional[float] = None
     expires: Optional[float] = None
     duration_ms: Optional[int] = None
+    # Host-authored synchronization metadata. Revision is assigned at the
+    # append boundary; callers cannot use a stale client counter to choose it.
+    revision: int = 0
+    updated_at: Optional[float] = None
+    metadata: dict = Field(default_factory=dict)
 
 
 def session_owner(record) -> str | None:
@@ -124,17 +130,38 @@ class SessionStorage:
         self.path = Path(path) if path else project_co_dir() / "session_results.jsonl"
         self.path.parent.mkdir(exist_ok=True)
         self._lock_state = threading.local()
+        self._ensure_sync_epoch()
 
     @property
     def _lock_path(self) -> Path:
         return self.path.with_suffix(self.path.suffix + ".lock")
 
-    def save(self, session: Session):
+    @property
+    def _sync_epoch_path(self) -> Path:
+        return self.path.with_suffix(self.path.suffix + ".sync-epoch")
+
+    def _ensure_sync_epoch(self) -> None:
+        """Create one durable cursor generation without racing another worker."""
+        try:
+            with open(self._sync_epoch_path, "x", encoding="utf-8") as handle:
+                handle.write(uuid.uuid4().hex)
+        except FileExistsError:
+            pass
+
+    def sync_epoch(self) -> str:
+        """Current opaque-cursor generation; compaction rotates it."""
+        self._ensure_sync_epoch()
+        value = self._sync_epoch_path.read_text(encoding="utf-8").strip()
+        if not value:
+            raise RuntimeError("session sync epoch is empty")
+        return value
+
+    def save(self, session: Session) -> Session:
         # Excludes compact(), which replaces this file wholesale.
         if not self._acquire_lock():
             raise TimeoutError("could not acquire session storage lock")
         try:
-            self._append_locked(session)
+            return self._commit_locked(session)
         finally:
             self._release_lock()
 
@@ -162,14 +189,53 @@ class SessionStorage:
             if replacement.session_id != session_id:
                 raise ValueError("session storage updater changed session id")
             if current is None or replacement != current:
-                self._append_locked(replacement)
+                replacement = self._commit_locked(replacement, current=current)
             return replacement.model_copy(deep=True)
         finally:
             self._release_lock()
 
+    def _commit_locked(
+        self,
+        session: Session,
+        *,
+        current: Session | None = None,
+    ) -> Session:
+        """Append one Host-authored revision while the storage lock is held."""
+        if current is None:
+            current = self._latest_record(session.session_id)
+        metadata = dict(current.metadata) if current is not None else {}
+        metadata.update(session.metadata)
+        committed = session.model_copy(
+            deep=True,
+            update={
+                # Rows written before Session Sync have revision=0, but are
+                # exposed as revision=1. Their first new append must therefore
+                # become 2 rather than repeating the synthesized revision.
+                "revision": (max(current.revision, 1) if current is not None else 0) + 1,
+                "updated_at": time.time(),
+                "metadata": metadata,
+            },
+        )
+        self._append_locked(committed)
+        return committed
+
     def _append_locked(self, session: Session) -> None:
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(session.model_dump_json() + "\n")
+
+    def _latest_record(self, session_id: str) -> Session | None:
+        """Newest valid record shape for an id, including expired history."""
+        if not self.path.exists():
+            return None
+        for raw in self._lines_from_the_end():
+            try:
+                data = json.loads(raw.decode("utf-8"))
+                if not isinstance(data, dict) or data.get("session_id") != session_id:
+                    continue
+                return Session(**data)
+            except Exception:
+                continue
+        return None
 
     def _acquire_lock(self, *, wait: bool = True) -> bool:
         """Acquire this storage lock, reusing it only in the owning thread."""
@@ -272,6 +338,15 @@ class SessionStorage:
             return None  # Expired
         return None
 
+    def sync_snapshot(self) -> tuple[list[Session], str]:
+        """Return a consistent append-log snapshot and its cursor generation."""
+        if not self._acquire_lock():
+            raise TimeoutError("could not acquire session storage lock")
+        try:
+            return self._records(), self.sync_epoch()
+        finally:
+            self._release_lock()
+
     # A turn that is still owed something by this process. Both are equally dead
     # once the process is gone: `running` had work in flight, `waiting_approval`
     # had a question outstanding, and the thread that would have finished either
@@ -343,6 +418,11 @@ class SessionStorage:
             return
 
         tmp.replace(self.path)
+        epoch_tmp = self._sync_epoch_path.with_suffix(
+            self._sync_epoch_path.suffix + f".{os.getpid()}"
+        )
+        epoch_tmp.write_text(uuid.uuid4().hex, encoding="utf-8")
+        epoch_tmp.replace(self._sync_epoch_path)
 
     def reconcile_interrupted(self):
         """Close out sessions this process cannot possibly finish.
@@ -409,5 +489,6 @@ class SessionStorage:
             session=session,
             created=(earlier.created if earlier and earlier.created else time.time()),
             expires=time.time() + 86400,
+            metadata=(dict(earlier.metadata) if earlier else {}),
         )
         self.save(record)

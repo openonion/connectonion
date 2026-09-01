@@ -56,6 +56,10 @@ A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not
 normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
 See [Trust Gate](#trust-gate-onboarding).
 
+The optional `session-sync/0.1` extension adds discovery, snapshot, watch, and
+metadata-update messages for retained conversations. These messages do not
+change the core OIP 0.1 lifecycle unless both peers negotiate the extension.
+
 ### Scoped native-provider stop
 
 `PROVIDER_INTERRUPT` stops one live Codex or Claude Code invocation without
@@ -337,7 +341,8 @@ Authenticate, restore session, and sync conversation. **Always the first message
   "payload": {
     "to": "0x3d4017c3e843...",
     "timestamp": 1702234567,
-    "signed_commands": 1
+    "signed_commands": 1,
+    "extensions": {"session-sync": ["0.1"]}
   },
   "from": "0xClientPublicKey",
   "signature": "0x..."
@@ -357,6 +362,19 @@ Authenticate, restore session, and sync conversation. **Always the first message
 v2 command gate described below. A new server continues accepting a v1 CONNECT
 without it, so an older client is not stranded; it does not receive v2's
 per-command injection/replay protection.
+
+`payload.extensions` is also signed. If Host selects Session Sync, CONNECTED
+advertises `"extensions": {"session-sync": "0.1"}` inside its protocol
+descriptor. A client must not send extension frames when that selection is
+absent. During the rolling compatibility window a browser may leave legacy
+application frames on the connection-authenticated path, but every Session
+Sync frame is still independently signed using the v2 command envelope.
+
+A client that needs only the Recent Chat index may include
+`payload.session_sync_only: 1` with that extension request and omit `session_id`
+and `session`. Host answers CONNECTED with `status: "index"` and creates no
+registry entry, mode record, dashboard subscription, or blank conversation.
+Only signed Session Sync frames are valid on that capability socket.
 
 Server response based on state:
 
@@ -506,6 +524,78 @@ failures return `ERROR`.
 `@connectonion/react` owns this browser operation; O Chat consumes it without
 constructing protocol frames. Plan is not a mode; Todo List progress carries
 no authority.
+
+#### Session Sync extension
+
+Session Sync makes Host-retained history the remote authority for Recent Chat
+while allowing a browser to keep a local cache, draft, and outbox. It is scoped
+to the Ed25519 address that authenticated CONNECT: knowing another session ID
+never reveals its title, existence, or records. All four client frames use the
+signed command envelope and a unique `request_id`.
+
+`SESSION_SYNC` discovers summaries. Omit `cursor` for a full snapshot; preserve
+the returned opaque cursor for incremental calls. Pagination must be drained
+before replacing the cursor:
+
+```json
+{"type":"SESSION_SYNC","request_id":"sync-1","cursor":"opaque","limit":50,"include_archived":false}
+```
+
+```json
+{
+  "type":"SESSION_SYNC_RESULT",
+  "request_id":"sync-1",
+  "sessions":[{
+    "session_id":"550e8400-...",
+    "revision":7,
+    "title":"Translate the report",
+    "activity":"idle",
+    "created_at":"2026-09-01T08:00:00Z",
+    "updated_at":"2026-09-01T08:03:12Z",
+    "last_sequence":12,
+    "preview":"The translated report is ready"
+  }],
+  "removed_session_ids":[],
+  "cursor":"opaque"
+}
+```
+
+When another page archives or expiry removes a conversation, its ID appears in
+`removed_session_ids`. `next_page_token` replaces `cursor` on non-final pages;
+send it back unchanged with the same archive selection until a final page
+returns the new cursor. Tokens are integrity-protected and owner-, query-, and
+storage-generation-bound.
+Compaction can return `cursor_expired`; the client then performs one full sync.
+
+`SESSION_GET` retrieves a revision-consistent ordered record snapshot. Send
+`if_revision` to receive `SESSION_NOT_MODIFIED`; otherwise Host answers
+`SESSION_SNAPSHOT` with `summary`, `snapshot_revision`, `records`, and an
+optional `next_page_token`. Every record has a strictly increasing `sequence`,
+stable `record_id`, `kind`, `occurred_at`, and typed ChatItem-compatible `data`.
+
+```json
+{"type":"SESSION_GET","request_id":"get-1","session_id":"550e8400-...","if_revision":6,"limit":100}
+```
+
+`SESSION_WATCH` starts one lightweight watch on the connection from an already
+issued sync cursor. Host acknowledges with `SESSION_WATCHED` and emits
+`SESSION_CHANGED` only when summaries or removals exist. A later watch replaces
+the earlier one; socket close cancels it. Clients still re-sync on reconnect,
+focus, and visibility changes because watch delivery is not durable.
+
+`SESSION_UPDATE` applies only remote metadata and is optimistic-concurrency
+checked. The 0.1 patch supports `title` and `archived`; a stale `if_revision`
+returns `revision_conflict` plus the current safe summary.
+
+```json
+{"type":"SESSION_UPDATE","request_id":"update-1","session_id":"550e8400-...","if_revision":7,"patch":{"archived":true}}
+```
+
+Stable extension error codes are `invalid_request`, `not_found`,
+`revision_conflict`, `cursor_expired`, `rate_limited`,
+`temporarily_unavailable`, `unauthorized`, and `unsupported_extension`.
+Retention and archive are separate: archive hides a retained chat from the
+default index; retention determines whether Host can still return it at all.
 
 #### ONBOARD_SUBMIT
 
@@ -814,10 +904,10 @@ waiting for one of those to detect the refusal will wait forever.
 
   Data Ownership:
   ┌────────────────────────────────────────────────────────────────┐
-  │ Client owns: conversation history (localStorage)              │
-  │ Server owns: execution state (registry), results (storage)    │
-  │ CONNECT syncs: client → server (session), server → client     │
-  │                (if server_newer)                               │
+  │ Host owns: committed retained history and revisions           │
+  │ Client owns: cache, drafts, and unsent outbox                  │
+  │ CONNECT resumes one chat; Session Sync discovers all owned    │
+  │ retained chats and merges newer Host revisions into cache     │
   └────────────────────────────────────────────────────────────────┘
 
 ════════════════════════════════════════════════════════════════════
@@ -832,11 +922,11 @@ waiting for one of those to detect the refusal will wait forever.
 │   Connection    │  │  Conversation   │  │   Execution     │
 │                 │  │                 │  │                 │
 │ WebSocket + auth│  │ Message history │  │ One INPUT→OUTPUT│
-│ PING/PONG       │  │ Owned by client │  │ Agent thread    │
-│ Persistent      │  │ Sent via CONNECT│  │ Temporary       │
+│ PING/PONG       │  │ Host retained   │  │ Agent thread    │
+│ Persistent      │  │ Client cached   │  │ Temporary       │
 │                 │  │ Merged on server│  │                 │
 │ Dies: WS close  │  │ Dies: never     │  │ Dies: OUTPUT    │
-│ + 10min grace   │  │ (localStorage)  │  │                 │
+│ + 10min grace   │  │ until retention │  │                 │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
@@ -844,22 +934,23 @@ waiting for one of those to detect the refusal will wait forever.
 
 ## Authentication
 
-Authentication happens once, on CONNECT.
+Identity is established on CONNECT. Current v2 commands, and every negotiated
+Session Sync command even on a compatibility socket, carry their own signature.
 
 ```
-CONNECT (signed)          INPUT (not signed)
+CONNECT (signed)          INPUT / SESSION_SYNC (signed)
   │                          │
   ▼                          ▼
-Server verifies            Server trusts
-signature → OK             (same WS, already authenticated)
+Server verifies            Server verifies owner, recipient,
+signature → OK             type, nonce, freshness, and replay
 ```
 
 Trust levels:
 
 | Trust Level | CONNECT Behavior |
 |-------------|-----------------|
-| `open` | Accept without signature |
-| `careful` | Accept unsigned, recommend signature |
+| `open` | Valid signature required; trust policy allows the signer |
+| `careful` | Valid signature required; policy may ask before allowing |
 | `strict` | Require valid signature |
 
 ---
