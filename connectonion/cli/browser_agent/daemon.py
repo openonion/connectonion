@@ -1021,6 +1021,8 @@ class BrowserDaemon:
             prefix = await asyncio.wait_for(
                 reader.readexactly(4), timeout=REQUEST_TIMEOUT
             )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError("request timed out") from exc
         except asyncio.IncompleteReadError as exc:
             return exc.partial.decode().strip()
         if prefix == OIP_MAGIC:
@@ -1034,6 +1036,8 @@ class BrowserDaemon:
                 )
             except asyncio.IncompleteReadError as exc:
                 raise ProtocolError("peer closed during an OIP frame") from exc
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError("request timed out") from exc
             return decode_frame(prefix + length_bytes + payload)
 
         chunks = [prefix]
