@@ -37,21 +37,30 @@ CONNECT 192.168.0.1:80  →  403 DESTINATION_ADDRESS_DENIED
 The check that keeps a remote caller off a server's private network turned out
 to be, unchanged, the check that keeps it off yours.
 
-## One hop moves, and only one
+## DNS moves too
 
-The host resolves the hostname, classifies every address the lookup returns, and
-pins one numeric address — exactly as it does with no share involved. Then it
-asks your machine for that same numeric address:
+The first implementation moved only the final socket: the server resolved the
+hostname and asked the Laptop for one numeric address. That proved the public
+IP, but it did not satisfy the product boundary. A server-side DNS lookup is
+still a server-side network signal.
+
+The next preview moves DNS to the Laptop as well:
 
 ```text
-CONNECT 93.184.216.34:443      ← what the host asks your share for
-CONNECT example.com:443        ← what it never asks
+WTF Browser on server → Laptop DNS → both policies approve all answers
+                      → Laptop connects the selected numeric address
 ```
 
-If it forwarded the hostname, your machine would resolve it a second time, and
-the address it dialed could differ from the one the host approved. Your share
-then applies its own policy to what it was handed, so a destination has to pass
-both machines.
+The Laptop classifies the complete answer set before returning it. The remote
+gateway classifies it independently. The Laptop classifies the selected numeric
+address again before dialing. Neither side can widen the other's decision, and
+Chromium never asks the server resolver for the target.
+
+The same correction closes a second truthful-state bug: `start --proxy shared`
+used to accept the Laptop endpoint and then persist `proxy_mode: direct`.
+Runtime creation now writes one private Proxy binding before WTF Browser starts,
+and a running runtime refuses a different exit. `co proxy stop` now stops the
+live listener rather than only deleting its registry entry.
 
 ## What else is in this release
 

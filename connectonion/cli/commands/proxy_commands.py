@@ -14,9 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import json
+import os
+import secrets
 import signal
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 USAGE = """co proxy — share this computer's internet connection.
@@ -44,8 +49,19 @@ def _load() -> dict:
 
 def _save(state: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    STATE_PATH.chmod(0o600)
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{STATE_PATH.name}.", dir=STATE_PATH.parent
+    )
+    path = Path(temporary)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(state, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        path.chmod(0o600)
+        path.replace(STATE_PATH)
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _emit(envelope: dict, as_json: bool) -> int:
@@ -72,12 +88,38 @@ def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> in
     async def run() -> int:
         service = ProxyEgressService(bind_host=bind)
         endpoint = await service.start()
+        stop = asyncio.Event()
+        control_token = secrets.token_urlsafe(32)
+
+        async def control(reader, writer):
+            try:
+                supplied = await asyncio.wait_for(reader.readline(), timeout=2)
+                expected = (control_token + "\n").encode("ascii")
+                if hmac.compare_digest(supplied, expected):
+                    writer.write(b"OK\n")
+                    await writer.drain()
+                    stop.set()
+                else:
+                    writer.write(b"REFUSED\n")
+                    await writer.drain()
+            finally:
+                writer.close()
+                with contextlib.suppress(Exception):
+                    await writer.wait_closed()
+
+        controller = await asyncio.start_server(control, "127.0.0.1", 0)
+        control_host, control_port = controller.sockets[0].getsockname()[:2]
         state = _load()
         state[address] = {
             "url": endpoint.url,
+            "host": endpoint.host,
+            "port": endpoint.port,
             "username": endpoint.username,
             "password": endpoint.password,
             "ttl": ttl,
+            "control_host": control_host,
+            "control_port": control_port,
+            "control_token": control_token,
         }
         _save(state)
         _emit(
@@ -100,7 +142,6 @@ def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> in
         # A supervisor stops this with SIGTERM, not Ctrl-C, and a share that
         # outlives its process in the registry is a share every later command
         # reports as live while nothing listens.
-        stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for signal_name in ("SIGTERM", "SIGINT"):
             number = getattr(signal, signal_name, None)
@@ -112,6 +153,8 @@ def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> in
         except (asyncio.TimeoutError, KeyboardInterrupt, asyncio.CancelledError):
             pass
         finally:
+            controller.close()
+            await controller.wait_closed()
             await service.stop()
             remaining = _load()
             remaining.pop(address, None)
@@ -168,8 +211,56 @@ def _stop(address: str, as_json: bool) -> int:
             },
             as_json,
         )
-    state.pop(address)
-    _save(state)
+    share = state[address]
+
+    async def stop_live_share() -> bool:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(
+                    share["control_host"], int(share["control_port"])
+                ),
+                timeout=2,
+            )
+            writer.write((share["control_token"] + "\n").encode("ascii"))
+            await writer.drain()
+            reply = await asyncio.wait_for(reader.readline(), timeout=2)
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+            return reply == b"OK\n"
+        except (KeyError, TypeError, ValueError, OSError, asyncio.TimeoutError):
+            return False
+
+    if not asyncio.run(stop_live_share()):
+        return _emit(
+            {
+                "ok": False,
+                "code": "SHARE_STOP_FAILED",
+                "command": "stop",
+                "summary": (
+                    f"The share for {address} is recorded but its service did not "
+                    "accept the stop request."
+                ),
+                "next_actions": [
+                    f"Inspect it with: co proxy diagnose {address}",
+                ],
+            },
+            as_json,
+        )
+    deadline = time.monotonic() + 5
+    while address in _load() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if address in _load():
+        return _emit(
+            {
+                "ok": False,
+                "code": "SHARE_STOP_TIMEOUT",
+                "command": "stop",
+                "summary": f"The share for {address} accepted stop but is still shutting down.",
+                "next_actions": ["Retry: co proxy status"],
+            },
+            as_json,
+        )
     return _emit(
         {
             "ok": True,

@@ -20,6 +20,7 @@ from ...useful_tools.browser_tools.launch_policy import (
     BrowserLaunchPolicy,
     BrowserProxySettings,
 )
+from ..proxy_egress import ShareEndpoint
 from .egress_gateway import ProxyEndpoint
 
 # Every entry here is a switch the launched binary actually defines. A switch
@@ -38,6 +39,7 @@ REMOTE_BROWSER_CHROME_ARGS = (
     "--disable-extensions",
 )
 PROXY_AUTH_FILENAME = "proxy-auth.json"
+SHARED_PROXY_FILENAME = "shared-proxy.json"
 PROXY_AUTH_REALM = "ConnectOnion Remote Browser"
 PROXY_AUTH_USERNAME = "connectonion"
 _PROXY_AUTH_PASSWORD = re.compile(r"[A-Za-z0-9_-]{43}\Z")
@@ -52,6 +54,7 @@ class PrivateBrowserTarget:
     log_path: Path
     authkey_path: Path
     proxy_auth_path: Path | None = None
+    shared_proxy_path: Path | None = None
     remote_egress: bool = True
 
     @classmethod
@@ -68,7 +71,103 @@ class PrivateBrowserTarget:
             log_path=root / "browser.log",
             authkey_path=root / "authkey",
             proxy_auth_path=root / PROXY_AUTH_FILENAME,
+            shared_proxy_path=root / SHARED_PROXY_FILENAME,
         )
+
+
+def _canonical_share_endpoint(value: dict) -> ShareEndpoint:
+    """Validate one Laptop Proxy endpoint before it can affect a WTF runtime."""
+    if not isinstance(value, dict):
+        raise ValueError("shared proxy endpoint must be an object")
+    try:
+        host = value["host"]
+        port = value["port"]
+        username = value["username"]
+        password = value["password"]
+    except KeyError as exc:
+        raise ValueError("shared proxy endpoint is incomplete") from exc
+    if (
+        not isinstance(host, str)
+        or not host
+        or len(host) > 253
+        or any(ord(char) < 0x21 or ord(char) > 0x7E for char in host)
+        or isinstance(port, bool)
+        or not isinstance(port, int)
+        or not 1 <= port <= 65535
+        or not isinstance(username, str)
+        or not username
+        or len(username) > 256
+        or ":" in username
+        or not isinstance(password, str)
+        or not password
+        or len(password) > 256
+        or any(ord(char) < 0x21 or ord(char) > 0x7E for char in username + password)
+    ):
+        raise ValueError("shared proxy endpoint is invalid")
+    return ShareEndpoint(host, port, username, password)
+
+
+def write_shared_proxy_file(path: Path, endpoint: ShareEndpoint) -> Path:
+    """Atomically bind a private Remote Browser runtime to one Laptop exit."""
+    path = Path(path).expanduser()
+    payload = {
+        "host": endpoint.host,
+        "password": endpoint.password,
+        "port": endpoint.port,
+        "username": endpoint.username,
+        "v": 1,
+    }
+    # Reuse the validation path for both callers and later daemon reads.
+    _canonical_share_endpoint(payload)
+    if not path.is_absolute() or not path.parent.is_dir() or path.parent.is_symlink():
+        raise ValueError("shared proxy path must be absolute in a private runtime")
+    if os.name != "nt":
+        parent_stat = path.parent.stat()
+        if stat.S_IMODE(parent_stat.st_mode) & 0o077 or parent_stat.st_uid != os.getuid():
+            raise ValueError("shared proxy root must be private and owned by this user")
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("ascii")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            if os.name != "nt":
+                os.chmod(temporary, 0o600)
+            stream.write(body)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        temporary = None
+        return path
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def load_shared_proxy_file(path: Path) -> ShareEndpoint:
+    """Load the Laptop exit selected by the Remote Browser authority process."""
+    path = Path(path).expanduser()
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
+                raise ValueError("shared proxy file is not a bounded regular file")
+            if os.name != "nt" and (
+                stat.S_IMODE(info.st_mode) & 0o077 or info.st_uid != os.getuid()
+            ):
+                raise ValueError("shared proxy file must be private and owned")
+            body = stream.read(4097)
+        if len(body) > 4096:
+            raise ValueError("shared proxy file is not a bounded regular file")
+        value = json.loads(body.decode("ascii"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("shared proxy file is unreadable") from exc
+    if value.get("v") != 1 or set(value) != {"host", "password", "port", "username", "v"}:
+        raise ValueError("shared proxy file has an unknown format")
+    return _canonical_share_endpoint(value)
 
 
 def canonical_proxy_auth(endpoint: ProxyEndpoint) -> bytes:

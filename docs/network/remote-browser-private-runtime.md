@@ -20,8 +20,9 @@ Each Host state file deterministically selects one private runtime with its own:
 - lifetime PID and singleton-lock sidecars;
 - persistent browser profile;
 - daemon log;
-- Windows IPC authentication key; and
-- ephemeral authenticated egress gateway credential.
+- Windows IPC authentication key;
+- ephemeral authenticated egress gateway credential; and
+- an optional mode-`0600` Laptop Proxy selection read only at runtime start.
 
 The local `co browser` namespace and profile remain unchanged. Local and private
 daemons can run at the same time and stop independently. Long project paths are
@@ -33,6 +34,13 @@ created through the existing atomic, per-file HMAC-key path. Gateway passwords
 are never command-line arguments and are excluded from dataclass
 representations. The session registry, state file, log path, errors, and command
 results contain no proxy credential.
+
+`RemoteBrowserService`, not BrowserDaemon, selects `direct` or `shared` and
+writes the private selection before asking the daemon adapter to open a tab.
+BrowserDaemon consumes that immutable choice while constructing the WTF Browser
+launch policy; it cannot select another Proxy or fall back to Direct. The
+Laptop's `co proxy` process has its own lifecycle and remains independently
+stoppable if BrowserDaemon fails.
 
 ## Start and stop order
 
@@ -46,6 +54,11 @@ If the gateway cannot start or the browser cannot be constructed, the daemon
 never binds its IPC endpoint. If the gateway stops serving later, every daemon
 command returns `EGRESS_GATEWAY_UNAVAILABLE` before a tab or browser mutation.
 There is no Direct fallback.
+
+For shared egress the loopback gateway replaces its system resolver and numeric
+dialer together: DNS asks the Laptop Proxy for its complete classified answer
+set, and the selected numeric connection returns to that same Laptop Proxy.
+Chromium and the remote operating system never resolve the destination.
 
 ## Requested Chromium launch policy
 

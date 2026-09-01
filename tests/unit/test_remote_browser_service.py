@@ -16,6 +16,8 @@ class Daemon:
             return 0, tokens[2]
         if tokens[:2] == ["tab", "close"]:
             return 0, f"Closed tab {tokens[2]}"
+        if tokens == ["close"]:
+            return 0, "Browser closed"
         raise AssertionError(line)
 
 
@@ -156,6 +158,102 @@ def test_non_direct_proxy_and_navigation_are_not_silently_enabled(tmp_path):
     assert unknown["code"] == "REMOTE_SESSION_PROXY_LOCKED"
     assert navigation["code"] == "INVALID_ARGUMENT"
     assert daemon.calls == []
+
+
+def test_shared_start_pins_the_laptop_proxy_without_persisting_its_secret(tmp_path):
+    daemon = Daemon()
+    remote = RemoteBrowserService(tmp_path / "sessions.json")
+    remote.daemon_request = daemon
+    share = {
+        "url": "http://192.0.2.10:43123",
+        "username": "laptop",
+        "password": "secret-value",
+    }
+
+    started = remote.handle(
+        request("start", args={"proxy": "shared", "share": share}),
+        owner="0xalice",
+        transport="direct",
+    )
+
+    assert started["ok"] is True
+    assert started["result"]["proxy_mode"] == "shared"
+    assert "secret-value" not in repr(started)
+    saved = json.loads((tmp_path / "sessions.json").read_text())
+    session = next(iter(saved["sessions"].values()))
+    assert session["proxy_mode"] == "shared"
+    assert len(session["proxy_binding"]) == 64
+    assert "secret-value" not in repr(saved)
+    config = json.loads(remote.daemon_target.shared_proxy_path.read_text())
+    assert config["host"] == "192.0.2.10"
+    assert config["port"] == 43123
+    assert config["password"] == "secret-value"
+
+    stopped = remote.handle(
+        request(
+            "stop",
+            request_id="req-stop-shared",
+            session_id=started["result"]["session_id"],
+        ),
+        owner="0xalice",
+        transport="direct",
+    )
+    assert stopped["ok"] is True
+    assert not remote.daemon_target.shared_proxy_path.exists()
+    assert daemon.calls[-1][0] == "close"
+
+
+def test_failed_first_shared_start_leaves_no_stale_proxy_selection(tmp_path):
+    remote = RemoteBrowserService(tmp_path / "sessions.json")
+
+    def rejected(_line, **_identity):
+        return 1, "browser rejected start"
+
+    remote.daemon_request = rejected
+    result = remote.handle(
+        request(
+            "start",
+            args={
+                "proxy": "shared",
+                "share": {
+                    "url": "http://192.0.2.10:43123",
+                    "username": "laptop",
+                    "password": "secret-value",
+                },
+            },
+        ),
+        owner="0xalice",
+        transport="direct",
+    )
+
+    assert result["code"] == "REMOTE_BROWSER_UNAVAILABLE"
+    assert not remote.daemon_target.shared_proxy_path.exists()
+    assert not (tmp_path / "sessions.json").exists()
+
+
+def test_one_wtf_runtime_cannot_mix_direct_and_shared_sessions(tmp_path):
+    remote, daemon = service(tmp_path)
+    first = remote.handle(request("start"), owner="0xalice", transport="direct")
+    second = remote.handle(
+        request(
+            "start",
+            request_id="req-shared",
+            args={
+                "proxy": "shared",
+                "share": {
+                    "url": "http://192.0.2.10:43123",
+                    "username": "u",
+                    "password": "p",
+                },
+            },
+        ),
+        owner="0xbob",
+        transport="direct",
+    )
+
+    assert first["ok"] is True
+    assert second["code"] == "REMOTE_SESSION_PROXY_LOCKED"
+    assert len(daemon.calls) == 1
 
 
 def test_explicit_non_object_args_are_rejected(tmp_path):

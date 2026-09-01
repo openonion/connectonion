@@ -41,22 +41,26 @@ carries bytes the remote browser already decided to send, and for HTTPS the TLS
 session stays end to end — the share connects a socket and copies bytes; it
 installs no certificate and sees no page content.
 
-## How the two hops divide the work
+## DNS and the two decisions
 
-The host resolves the hostname, classifies **every** address the lookup
-returns, and pins one numeric address — exactly as it does without a share.
-Only the last hop changes: instead of dialing that address itself, it asks your
-share for that same numeric address.
+In `shared` mode the remote server does not resolve browser destinations. Its
+private gateway asks the Laptop Proxy to resolve the hostname. The Laptop
+classifies the complete answer set first; the remote gateway independently
+classifies the same set and selects one numeric address; then the Laptop
+classifies that numeric address again before opening the public socket.
 
 ```text
-CONNECT 93.184.216.34:443      ← what the host asks your share for
-CONNECT example.com:443        ← what it never asks
+WTF Browser: example.com
+        ↓ no server DNS
+Laptop DNS: 93.184.216.34
+        ↓ complete answer set is accepted by both machines
+CONNECT 93.184.216.34:443      ← final Laptop dial
 ```
 
-That matters. If the host forwarded the hostname, your share would resolve it a
-second time and could land somewhere the host never approved. Your share then
-applies its own policy to the address it was given, so a destination has to
-pass **both** machines.
+This gives the remote WTF Browser the Laptop's DNS and public-IP boundary
+without trusting either machine's decision alone. Chromium target DNS, QUIC and
+non-proxied WebRTC UDP are disabled, and the browser has no Direct proxy
+fallback.
 
 ## Options
 
@@ -65,6 +69,10 @@ pass **both** machines.
 | `--json` | the complete stable envelope, for scripts and agents |
 | `--bind HOST` | listen on a specific address (default: the one a peer reaches) |
 | `--ttl SEC` | stop sharing automatically after this long |
+
+`co proxy stop` sends an authenticated stop request to the live service, waits
+for its listener to close, and only then reports success. Deleting stale state
+is not treated as stopping a Proxy.
 
 `co proxy share` picks its own address by asking the routing table which
 interface reaches the internet. On a machine with several interfaces, or behind
@@ -77,6 +85,10 @@ differ.
 A share listens on this machine. An agent on another network needs a path to
 it — a port forward, a VPN, or a tunnel you already run. `co proxy diagnose`
 prints the address a peer would use, which is where to point that path.
+
+The first preview intentionally keeps this two-machine model. A later transport
+may make `share to` create its own outbound reverse path through the remote
+Agent; that is not silently claimed by the current listener implementation.
 
 ## Verified
 

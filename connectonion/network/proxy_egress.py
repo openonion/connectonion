@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import ipaddress
 import socket
 from dataclasses import dataclass
 
@@ -39,6 +40,8 @@ from .host.egress_gateway import (
 SHARED_DENY_NETWORKS: tuple[str, ...] = ()
 
 DEFAULT_SHARE_PORT = 0
+_REMOTE_HEADER_LIMIT = 16 * 1024
+_REMOTE_IO_TIMEOUT = 10.0
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,7 @@ class ProxyEgressService:
             username="connectonion-proxy",
             password=credential,
             bind_host=bind_host or local_egress_address(),
+            allow_remote_resolution=True,
         )
 
     @property
@@ -150,7 +154,10 @@ def remote_proxy_dialer(share: ShareEndpoint):
             f"{share.username}:{share.password}".encode("ascii")
         ).decode("ascii")
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(share.host, share.port), timeout=timeout
+            asyncio.open_connection(
+                share.host, share.port, limit=_REMOTE_HEADER_LIMIT + 1
+            ),
+            timeout=timeout,
         )
         try:
             writer.write(
@@ -164,6 +171,17 @@ def remote_proxy_dialer(share: ShareEndpoint):
             head = await asyncio.wait_for(
                 reader.readuntil(b"\r\n\r\n"), timeout=timeout
             )
+            if len(head) > _REMOTE_HEADER_LIMIT:
+                raise OSError("shared connection returned an invalid response")
+        except (
+            asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
+            asyncio.TimeoutError,
+        ) as exc:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+            raise OSError("shared connection returned an invalid response") from exc
         except BaseException:
             writer.close()
             with contextlib.suppress(Exception):
@@ -182,12 +200,91 @@ def remote_proxy_dialer(share: ShareEndpoint):
     return dial
 
 
+def remote_proxy_resolver(share: ShareEndpoint):
+    """Resolve browser destinations on the Laptop that owns the shared exit.
+
+    The server-side browser and operating system never resolve the target.  A
+    small authenticated request asks the Laptop's already-bounded egress
+    service for its complete answer set; the server classifies that set again
+    before selecting one numeric address, and the Laptop classifies the chosen
+    address once more when CONNECT arrives.
+    """
+
+    async def resolve(host: str, port: int):
+        encoded = base64.urlsafe_b64encode(host.encode("utf-8")).decode("ascii").rstrip(
+            "="
+        )
+        token = base64.b64encode(
+            f"{share.username}:{share.password}".encode("ascii")
+        ).decode("ascii")
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(
+                share.host, share.port, limit=_REMOTE_HEADER_LIMIT + 1
+            ),
+            timeout=_REMOTE_IO_TIMEOUT,
+        )
+        try:
+            writer.write(
+                (
+                    f"CORESOLVE {encoded}:{port} HTTP/1.1\r\n"
+                    f"Proxy-Authorization: Basic {token}\r\n\r\n"
+                ).encode("ascii")
+            )
+            await asyncio.wait_for(writer.drain(), timeout=_REMOTE_IO_TIMEOUT)
+            head = await asyncio.wait_for(
+                reader.readuntil(b"\r\n\r\n"), timeout=_REMOTE_IO_TIMEOUT
+            )
+            if len(head) > _REMOTE_HEADER_LIMIT:
+                raise OSError("shared connection returned invalid DNS response")
+            status = head.split(b" ")[1:2]
+            if status != [b"200"]:
+                raise OSError("shared connection refused remote DNS")
+            length = None
+            for line in head.split(b"\r\n")[1:]:
+                name, separator, value = line.partition(b":")
+                if separator and name.lower() == b"content-length":
+                    length = int(value.strip())
+                    break
+            if length is None or not 0 < length <= 4096:
+                raise OSError("shared connection returned invalid DNS response")
+            body = await asyncio.wait_for(
+                reader.readexactly(length), timeout=_REMOTE_IO_TIMEOUT
+            )
+            answers = tuple(line for line in body.decode("ascii").splitlines() if line)
+            if not answers:
+                raise OSError("shared connection returned no DNS answers")
+            # Canonicalize before returning into EgressGateway's independent
+            # frozen classifier.  A malformed Laptop response cannot reach a
+            # dial call or turn into a second hostname lookup.
+            return tuple(str(ipaddress.ip_address(answer)) for answer in answers)
+        except (
+            ValueError,
+            UnicodeError,
+            asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
+            asyncio.TimeoutError,
+        ) as exc:
+            raise OSError("shared connection returned invalid DNS response") from exc
+        finally:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+
+    return resolve
+
+
 def shared_egress_gateway(
     share: ShareEndpoint,
     **kwargs,
 ) -> EgressGateway:
     """A host-private gateway whose last hop is the caller's own connection."""
-    return EgressGateway(dialer=remote_proxy_dialer(share), **kwargs)
+    if "resolver" in kwargs or "dialer" in kwargs:
+        raise ValueError("shared egress owns its resolver and dialer")
+    return EgressGateway(
+        resolver=remote_proxy_resolver(share),
+        dialer=remote_proxy_dialer(share),
+        **kwargs,
+    )
 
 
 __all__ = [
@@ -197,5 +294,6 @@ __all__ = [
     "ShareEndpoint",
     "local_egress_address",
     "remote_proxy_dialer",
+    "remote_proxy_resolver",
     "shared_egress_gateway",
 ]
