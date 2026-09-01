@@ -1,0 +1,2 @@
+version: v1.8.0a6
+no_visual_change: "backend protocol correction: relay routing metadata and CONNECT replay uniqueness do not change browser or CLI presentation"
