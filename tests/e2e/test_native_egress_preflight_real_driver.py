@@ -23,10 +23,7 @@ from connectonion.network.host.egress_gateway import EgressGateway
 from connectonion.network.host.private_browser_runtime import (
     REMOTE_BROWSER_CHROME_ARGS,
 )
-from connectonion.network.proxy_egress import (
-    ProxyEgressService,
-    shared_egress_gateway,
-)
+from connectonion.network.proxy_egress import ShareEndpoint, shared_egress_gateway
 from connectonion.useful_tools.browser_tools.native_egress import (
     NativeEgressPreflightError,
     run_native_egress_preflight,
@@ -159,11 +156,24 @@ async def _exercise_shared_proxy():
     async def laptop_dial(_endpoint, _timeout):
         return await asyncio.open_connection("127.0.0.1", origin_port)
 
-    share = ProxyEgressService(
-        bind_host="127.0.0.1", resolver=laptop_dns, dialer=laptop_dial
+    # Stands in for the laptop end of an attached share: a gateway on this
+    # machine that resolves and dials with the laptop's own policy.
+    share = EgressGateway(
+        bind_host="127.0.0.1",
+        allow_remote_resolution=True,
+        username="connectonion-proxy",
+        resolver=laptop_dns,
+        dialer=laptop_dial,
     )
-    await share.start()
-    gateway = shared_egress_gateway(share.endpoint)
+    share_endpoint = await share.start()
+    gateway = shared_egress_gateway(
+        ShareEndpoint(
+            share_endpoint.host,
+            share_endpoint.port,
+            share_endpoint.username,
+            share_endpoint.password,
+        )
+    )
     endpoint = await gateway.start()
     try:
         async with async_playwright() as driver:
