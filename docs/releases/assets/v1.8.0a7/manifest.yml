@@ -1,0 +1,2 @@
+version: v1.8.0a7
+no_visual_change: "release-pipeline correction: secret forwarding for the exact private test driver does not change browser or CLI presentation"

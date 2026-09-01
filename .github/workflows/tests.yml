@@ -7,6 +7,10 @@ on:
   # feature branch. A missing workflow is too easy to mistake for a green one.
   pull_request:
   workflow_call:
+    secrets:
+      ONIONWRIGHT_DEPLOY_KEY:
+        description: "Read-only deploy key for the exact private Onionwright test revision"
+        required: true
 
 jobs:
   lockfile:

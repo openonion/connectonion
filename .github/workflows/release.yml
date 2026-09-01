@@ -21,6 +21,8 @@ permissions:
 jobs:
   tests:
     uses: ./.github/workflows/tests.yml
+    secrets:
+      ONIONWRIGHT_DEPLOY_KEY: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}
     permissions:
       contents: read
 

@@ -65,6 +65,16 @@ def test_test_job_does_not_inherit_repository_secrets():
     assert "secrets: inherit" not in RELEASE
 
 
+def test_release_forwards_only_the_private_driver_checkout_key():
+    workflow_call = TESTS.split("workflow_call:", 1)[1].split("jobs:", 1)[0]
+    tests_job = RELEASE.split("  tests:", 1)[1].split("  build:", 1)[0]
+
+    assert "ONIONWRIGHT_DEPLOY_KEY:" in workflow_call
+    assert "required: true" in workflow_call
+    assert "ONIONWRIGHT_DEPLOY_KEY: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}" in tests_job
+    assert tests_job.count("${{ secrets.") == 1
+
+
 def test_release_uses_trusted_publishing_and_verifies_pypi():
     assert "id-token: write" in RELEASE
     assert "pypa/gh-action-pypi-publish@" in RELEASE
