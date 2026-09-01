@@ -2,7 +2,7 @@
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
   Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
-  Data flow: wire-v1 JSON {v,caller,account,tab,line,raw,engine} (legacy plain line accepted) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb; private mode forces engine=onion before any paid session or page effect
+  Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
   State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
   Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
   Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
@@ -21,6 +21,7 @@ import shlex
 import signal
 import socket
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -34,8 +35,19 @@ from connectonion.useful_tools.browser_tools.browser import (
     driver_stealth_status,
     installed_browser_path,
 )
+from connectonion.network.oip import browser_daemon_pb2 as oip_wire
+from connectonion.network.oip.framing import (
+    MAGIC as OIP_MAGIC,
+    PROTOCOL_VERSION as OIP_VERSION,
+    ProtocolError,
+    decode_frame,
+    encode_frame,
+    frame_size_from_header,
+    read_async_frame,
+)
 
 from . import transport
+from .artifacts import ArtifactStager, StagedArtifact
 
 
 def default_sock_path() -> str:
@@ -279,6 +291,11 @@ class BrowserDaemon:
         self._loop = None
         self._client_tasks = set()
         self._transport_pool = None
+        artifact_root = (
+            Path(tempfile.gettempdir())
+            / f"connectonion-browser-artifacts-{uuid.uuid5(uuid.NAMESPACE_URL, sock_path).hex[:16]}"
+        )
+        self._artifact_stager = ArtifactStager(artifact_root)
 
     def _parse_envelope(self, raw: str) -> tuple:
         """Wire v1: JSON {caller,account,tab,line,raw,engine} — quote-safe by construction
@@ -315,7 +332,13 @@ class BrowserDaemon:
             return asyncio.run(self.dispatch_async(raw))
         raise RuntimeError("dispatch() cannot run inside an event loop; await dispatch_async()")
 
-    async def dispatch_async(self, raw: str) -> tuple:
+    async def dispatch_async(
+        self,
+        raw: str,
+        *,
+        artifact_stager: ArtifactStager | None = None,
+        request_id: str | None = None,
+    ) -> tuple:
         """Run one request without blocking unrelated tabs.
 
         Returns ``(ok, payload)``; ok is True, False, or an integer error code
@@ -390,7 +413,9 @@ class BrowserDaemon:
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
         # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
         # never silent interleaving on one page.
-        request_id = uuid.uuid4().hex
+        # Preserve the authenticated transaction ID supplied by OIP. Legacy
+        # in-process callers do not have one, so allocate it only for them.
+        request_id = request_id or uuid.uuid4().hex
         async with self._registry_lock:
             meta = self._register_tab(session, caller)
             if _held_by_other(meta, caller):
@@ -404,7 +429,11 @@ class BrowserDaemon:
             self.last_command = {"line": line, "at": time.time()}
         try:
             return await self._call_verb_async(
-                verb, tokens[1:], raw_result=raw_result
+                verb,
+                tokens[1:],
+                raw_result=raw_result,
+                artifact_stager=artifact_stager,
+                request_id=request_id,
             )
         finally:
             async with self._registry_lock:
@@ -461,7 +490,13 @@ class BrowserDaemon:
         )
 
     async def _call_verb_async(
-        self, verb: str, raw_args, raw_result: bool = False
+        self,
+        verb: str,
+        raw_args,
+        raw_result: bool = False,
+        *,
+        artifact_stager: ArtifactStager | None = None,
+        request_id: str | None = None,
     ) -> tuple:
         """Match a verb to an async browser method and await its result."""
         method = getattr(self.browser, verb)
@@ -476,11 +511,25 @@ class BrowserDaemon:
             ann = param_by_name[k].annotation if k in param_by_name else str
             kw[k] = v if v is True else _coerce(v, ann)
 
+        staged_path = None
+        if artifact_stager is not None and verb == "take_screenshot":
+            if positional or "path" in kw:
+                return 2, (
+                    "the screenshot destination belongs to the caller; use the local "
+                    "output path option instead of sending a daemon path"
+                )
+            staged_path = artifact_stager.reserve(request_id or uuid.uuid4().hex)
+            kw["path"] = str(staged_path)
+
         try:
             result = method(*args, **kw)
             if inspect.isawaitable(result):
                 result = await result
         except Exception as exc:  # dispatch boundary: report to client as ERR
+            if staged_path is not None:
+                staged_path.unlink(missing_ok=True)
+                with contextlib.suppress(OSError):
+                    staged_path.parent.rmdir()
             if self._launch_failed():
                 # Chrome aborted at startup: str(exc) is a huge patchright "Call log".
                 # Keep the first line and point at the full log instead of dumping it.
@@ -492,6 +541,17 @@ class BrowserDaemon:
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
             return False, f"{type(exc).__name__}: {exc}{hint}"
+
+        if staged_path is not None and staged_path.is_file():
+            return True, artifact_stager.adopt(
+                staged_path,
+                proposed_name=f"screenshot-{(request_id or uuid.uuid4().hex)[:12]}.png",
+                media_type="image/png",
+                request_id=request_id or uuid.uuid4().hex,
+            )
+        if staged_path is not None:
+            with contextlib.suppress(OSError):
+                staged_path.parent.rmdir()
 
         payload = _stringify(result)
         if payload.startswith("data:image/") and not raw_result:
@@ -955,10 +1015,33 @@ class BrowserDaemon:
         if exc is not None:
             print(f"browser client task failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
-    async def _read_posix_request(self, reader) -> str:
+    async def _read_posix_request(self, reader):
         deadline = asyncio.get_running_loop().time() + REQUEST_TIMEOUT
-        chunks = []
-        size = 0
+        try:
+            prefix = await asyncio.wait_for(
+                reader.readexactly(4), timeout=REQUEST_TIMEOUT
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError("request timed out") from exc
+        except asyncio.IncompleteReadError as exc:
+            return exc.partial.decode().strip()
+        if prefix == OIP_MAGIC:
+            try:
+                length_bytes = await asyncio.wait_for(
+                    reader.readexactly(4), timeout=REQUEST_TIMEOUT
+                )
+                size = frame_size_from_header(prefix + length_bytes)
+                payload = await asyncio.wait_for(
+                    reader.readexactly(size), timeout=REQUEST_TIMEOUT
+                )
+            except asyncio.IncompleteReadError as exc:
+                raise ProtocolError("peer closed during an OIP frame") from exc
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError("request timed out") from exc
+            return decode_frame(prefix + length_bytes + payload)
+
+        chunks = [prefix]
+        size = len(prefix)
         while True:
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
@@ -980,6 +1063,18 @@ class BrowserDaemon:
         request = ""
         try:
             request = await self._read_posix_request(reader)
+            if isinstance(request, oip_wire.Envelope):
+                async def send_frame(frame):
+                    writer.write(encode_frame(frame))
+                    await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
+
+                async def receive_frame():
+                    return await asyncio.wait_for(
+                        read_async_frame(reader), timeout=REQUEST_TIMEOUT
+                    )
+
+                await self._serve_oip_command(request, send_frame, receive_frame)
+                return
             ok, payload = await self._dispatch_boundary(request)
             writer.write(self._reply_bytes(ok, payload))
             await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
@@ -991,7 +1086,8 @@ class BrowserDaemon:
             TimeoutError,
             asyncio.TimeoutError,
         ):
-            print(f"client vanished before reply: {request[:80]!r}", file=sys.stderr)
+            preview = request[:80] if isinstance(request, str) else request.request_id
+            print(f"client vanished before reply: {preview!r}", file=sys.stderr)
         except ValueError as exc:
             with contextlib.suppress(
                 BrokenPipeError,
@@ -1042,6 +1138,24 @@ class BrowserDaemon:
             request = await self._transport_call(lambda: self._read_request(conn))
             if request is None:
                 return
+            if isinstance(request, oip_wire.Envelope):
+                async def send_frame(frame):
+                    await self._transport_call(
+                        lambda: self._send_reply(conn, encode_frame(frame))
+                    )
+
+                async def receive_frame():
+                    data = await self._transport_call(
+                        lambda: transport.bounded_io(
+                            conn,
+                            lambda: conn.recv_bytes(),
+                            REQUEST_TIMEOUT,
+                        )
+                    )
+                    return decode_frame(data)
+
+                await self._serve_oip_command(request, send_frame, receive_frame)
+                return
             if len(request.encode()) > MAX_REQUEST_BYTES:
                 ok, payload = 2, f"request exceeds the {MAX_REQUEST_BYTES}-byte limit"
             else:
@@ -1052,7 +1166,8 @@ class BrowserDaemon:
             if await self._should_stop(ok, payload):
                 self._begin_shutdown()
         except (BrokenPipeError, ConnectionResetError, TimeoutError, EOFError):
-            print(f"client vanished before reply: {request[:80]!r}", file=sys.stderr)
+            preview = request[:80] if isinstance(request, str) else request.request_id
+            print(f"client vanished before reply: {preview!r}", file=sys.stderr)
         except ValueError as exc:
             message = str(exc)
             with contextlib.suppress(
@@ -1074,6 +1189,102 @@ class BrowserDaemon:
             raise
         except Exception as exc:
             return False, f"{type(exc).__name__}: {exc}"
+
+    async def _serve_oip_command(self, request, send_frame, receive_frame) -> None:
+        """Serve one typed command and any artifact streams on the same channel."""
+        staged = None
+        try:
+            if request.WhichOneof("frame") != "command":
+                raise ProtocolError("the first browser frame must be BrowserCommand")
+            command = request.command
+            if not command.argv:
+                raise ProtocolError("browser command argv is empty")
+            raw = json.dumps(
+                {
+                    "v": OIP_VERSION,
+                    "caller": command.caller,
+                    "account": command.account,
+                    "tab": command.tab if command.has_tab else None,
+                    "line": shlex.join(command.argv),
+                    "raw": False,
+                    "engine": command.engine or "auto",
+                }
+            )
+            ok, payload = await self.dispatch_async(
+                raw,
+                artifact_stager=self._artifact_stager,
+                request_id=request.request_id,
+            )
+            staged = payload if isinstance(payload, StagedArtifact) else None
+            exit_code = 0 if ok is True else (1 if ok is False else int(ok))
+            result_text = "" if staged is not None else str(payload)
+            await send_frame(
+                oip_wire.Envelope(
+                    protocol_version=OIP_VERSION,
+                    request_id=request.request_id,
+                    sequence=0,
+                    result=oip_wire.BrowserResult(
+                        exit_code=exit_code,
+                        text=result_text,
+                        artifact_count=1 if staged is not None else 0,
+                    ),
+                )
+            )
+            if staged is not None:
+                await send_frame(staged.open_frame())
+                for data_frame in staged.data_frames():
+                    await send_frame(data_frame)
+                finished = staged.fin_frame()
+                await send_frame(finished)
+                commit = await receive_frame()
+                if commit.WhichOneof("frame") != "stream_commit":
+                    raise ProtocolError("artifact receiver did not send StreamCommit")
+                if (
+                    commit.request_id != request.request_id
+                    or commit.stream_id != staged.stream_id
+                    or commit.stream_commit.actual_size != staged.size
+                    or bytes(commit.stream_commit.sha256) != staged.digest
+                ):
+                    raise ProtocolError(
+                        "artifact StreamCommit does not match the stream "
+                        f"(request={commit.request_id == request.request_id}, "
+                        f"stream={commit.stream_id}/{staged.stream_id}, "
+                        f"size={commit.stream_commit.actual_size}/{staged.size}, "
+                        f"digest={bytes(commit.stream_commit.sha256) == staged.digest})"
+                    )
+                # Success is observable only after daemon ownership has ended.
+                # Without this confirmation the client can return while the
+                # staging file still exists (a real race on Windows named pipes).
+                staged.discard()
+                await send_frame(
+                    oip_wire.Envelope(
+                        protocol_version=OIP_VERSION,
+                        request_id=request.request_id,
+                        stream_id=staged.stream_id,
+                        sequence=commit.sequence + 1,
+                        offset=staged.size,
+                        stream_commit=oip_wire.StreamCommit(
+                            actual_size=staged.size,
+                            sha256=staged.digest,
+                        ),
+                    )
+                )
+                staged = None
+            if await self._should_stop(ok, result_text):
+                self._begin_shutdown()
+        except (ProtocolError, ValueError) as exc:
+            await send_frame(
+                oip_wire.Envelope(
+                    protocol_version=OIP_VERSION,
+                    request_id=request.request_id or uuid.uuid4().hex,
+                    failure=oip_wire.ProtocolFailure(
+                        code="PROTOCOL_ERROR", message=str(exc)
+                    ),
+                )
+            )
+        finally:
+            if staged is not None:
+                staged.discard()
 
     @staticmethod
     def _reply_bytes(ok, payload: str) -> bytes:
@@ -1278,17 +1489,20 @@ class BrowserDaemon:
         conn, _ = self._srv.accept()
         return conn
 
-    def _read_request(self, conn) -> str:
+    def _read_request(self, conn):
         """Read one request with EVERY blocking step bounded at 120s — waiting for the
         request, and (Windows) a partial frame from a stalled client. Returns the
         text, or None when the client stalled or vanished."""
         if transport.IS_WINDOWS:
             try:
-                return transport.bounded_io(
+                data = transport.bounded_io(
                     conn,
                     lambda: conn.recv_bytes(MAX_REQUEST_BYTES + 1),
                     REQUEST_TIMEOUT,
-                ).decode().strip()
+                )
+                if data.startswith(OIP_MAGIC):
+                    return decode_frame(data)
+                return data.decode().strip()
             except (TimeoutError, EOFError):
                 return None  # stalled mid-frame, or died before sending
         conn.settimeout(120)

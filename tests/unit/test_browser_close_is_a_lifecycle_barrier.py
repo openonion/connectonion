@@ -3,14 +3,25 @@
 import os
 
 from connectonion.cli.browser_agent import client
+from connectonion.network.oip import browser_daemon_pb2 as wire
+from connectonion.network.oip.framing import decode_frame, encode_frame
 
 
 class _ReplyConnection:
-    def __init__(self, reply=b"OK\nBrowser closed. Session saved for next time."):
-        self.reply = reply
+    def __init__(self, text="Browser closed. Session saved for next time."):
+        self.text = text
+        self.reply = b""
 
     def send_bytes(self, request):
         self.request = request
+        request_id = decode_frame(request).request_id
+        self.reply = encode_frame(
+            wire.Envelope(
+                protocol_version=2,
+                request_id=request_id,
+                result=wire.BrowserResult(text=self.text),
+            )
+        )
 
     def recv_bytes(self):
         return self.reply
