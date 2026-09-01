@@ -341,6 +341,7 @@ Authenticate, restore session, and sync conversation. **Always the first message
   "payload": {
     "to": "0x3d4017c3e843...",
     "timestamp": 1702234567,
+    "nonce": "36d78b9c-...",
     "signed_commands": 1,
     "extensions": {"session-sync": ["0.1"]}
   },
@@ -363,6 +364,11 @@ v2 command gate described below. A new server continues accepting a v1 CONNECT
 without it, so an older client is not stranded; it does not receive v2's
 per-command injection/replay protection.
 
+Clients should sign a fresh, unpredictable `payload.nonce` into every CONNECT.
+The timestamp has one-second resolution, so it cannot distinguish two pages
+opened by the same identity at the same instant; the nonce keeps their
+deterministic Ed25519 signatures distinct without weakening replay protection.
+
 `payload.extensions` is also signed. If Host selects Session Sync, CONNECTED
 advertises `"extensions": {"session-sync": "0.1"}` inside its protocol
 descriptor. A client must not send extension frames when that selection is
@@ -375,6 +381,9 @@ A client that needs only the Recent Chat index may include
 and `session`. Host answers CONNECTED with `status: "index"` and creates no
 registry entry, mode record, dashboard subscription, or blank conversation.
 Only signed Session Sync frames are valid on that capability socket.
+When the public relay adds a top-level socket routing `session_id`, Host ignores
+that transport-owned value only on this relay index connection; a direct client
+still cannot attach chat state to an index-only capability socket.
 
 Server response based on state:
 

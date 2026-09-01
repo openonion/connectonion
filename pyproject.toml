@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.8.0a5"
+version = "1.8.0a6"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -65,7 +65,7 @@ dependencies = [
     # --no-deps after checksum/signature verification.
     "playwright==1.61.0",
     "charset-normalizer>=3.0.0",
-    "pypdf>=4.0.0",
+    "pypdf>=6.16.1",
     "python-pptx>=1.0.0",
     "python-docx>=1.1.0",
     "packaging>=23.0",

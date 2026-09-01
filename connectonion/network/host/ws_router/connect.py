@@ -302,7 +302,18 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     # registry, mode initialization, dashboard, and durable session creation;
     # it accepts only the individually signed Session Sync extension frames.
     if session_sync_only:
-        if data.get("session_id") is not None or data.get("session") is not None:
+        # The public relay adds a top-level session_id to route every socket.
+        # On an index-only relay connection that value is transport metadata,
+        # not a request to resume a durable chat. Direct clients do not have
+        # that ambiguity and must continue to reject an attached chat id.
+        resumes_chat = (
+            data.get("session") is not None
+            or (
+                data.get("session_id") is not None
+                and conn.get("transport") != "relay"
+            )
+        )
+        if resumes_chat:
             await send_msg({
                 "type": "ERROR",
                 "code": "invalid_request",
