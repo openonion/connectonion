@@ -2,14 +2,20 @@
 
 import json
 import sys
+from pathlib import Path
 
 USAGE = """co remote-browser — manage a browser session on a remote agent.
 
-  co remote-browser [options] <address> start
-  co remote-browser [options] <address> sessions
-  co remote-browser [options] <address> status <session-id>
-  co remote-browser [options] <address> stop <session-id>
-  co remote-browser [options] <address> diagnose <session-id>
+  co remote-browser config <address> [--proxy MODE]   remember the remote once
+  co remote-browser config                             show what is remembered
+
+  co remote-browser [options] [<address>] start
+  co remote-browser [options] [<address>] sessions
+  co remote-browser [options] [<address>] status <session-id>
+  co remote-browser [options] [<address>] stop <session-id>
+  co remote-browser [options] [<address>] diagnose <session-id>
+
+<address> is optional once `config` has remembered one; giving it still wins.
 
 Options:
   --json           emit the complete stable JSON envelope
@@ -20,6 +26,29 @@ Options:
   --proxy MODE     direct (this host's connection) or shared (yours)
 """
 
+CONFIG_PATH = Path.home() / ".co" / "remote-browser.json"
+PROXY_MODES = ("direct", "shared")
+NOT_CONFIGURED = (
+    "No remote browser configured.\n"
+    "Set one with: co remote-browser config <address> --proxy shared"
+)
+
+
+def load_config() -> dict:
+    """The remembered remote: {"address": ..., "proxy": ...}, or {} if none."""
+    if not CONFIG_PATH.exists():
+        return {}
+    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def _save_config(config: dict) -> None:
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+
+def configured_address() -> str | None:
+    return load_config().get("address")
+
 
 def _parse(args):
     options = {
@@ -27,7 +56,7 @@ def _parse(args):
         "timeout": 60.0,
         "relay_url": None,
         "headless": True,
-        "proxy": "direct",
+        "proxy": None,
     }
     positional = []
     index = 0
@@ -106,6 +135,40 @@ def _print_invalid_argument(message, *, json_output):
     return 2
 
 
+def _config(positional, options) -> int:
+    """`config` with no address shows; with one, remembers it (and --proxy)."""
+    if len(positional) > 1:
+        return _print_invalid_argument(
+            "co remote-browser config [<address>] [--proxy MODE]",
+            json_output=options["json_output"],
+        )
+    if options["proxy"] is not None and options["proxy"] not in PROXY_MODES:
+        return _print_invalid_argument(
+            f"--proxy must be one of {', '.join(PROXY_MODES)}",
+            json_output=options["json_output"],
+        )
+    if not positional:
+        config = load_config()
+        if options["json_output"]:
+            print(json.dumps(config, sort_keys=True))
+            return 0
+        if not config:
+            print(NOT_CONFIGURED, file=sys.stderr)
+            return 2
+        print(f"{config['address']}  proxy: {config['proxy']}")
+        return 0
+    config = {"address": positional[0], "proxy": options["proxy"] or "direct"}
+    _save_config(config)
+    if options["json_output"]:
+        print(json.dumps(config, sort_keys=True))
+        return 0
+    print(f"Remembered {config['address']} (proxy: {config['proxy']}).")
+    print("Now: co remote-browser start")
+    if config["proxy"] == "shared":
+        print("Lend your connection first with: co proxy share")
+    return 0
+
+
 def handle_remote_browser(args) -> int:
     args = list(args or [])
     json_requested = "--json" in args
@@ -120,12 +183,24 @@ def handle_remote_browser(args) -> int:
     except ValueError as exc:
         return _print_invalid_argument(str(exc), json_output=json_requested)
 
-    if len(positional) < 2:
+    if positional[:1] == ["config"]:
+        return _config(positional[1:], options)
+
+    # The address is the only positional that can start with 0x, so its
+    # presence is decidable without knowing how many words the command takes.
+    if positional and positional[0].startswith("0x"):
+        address, *positional = positional
+    else:
+        address = configured_address()
+        if address is None:
+            print(NOT_CONFIGURED, file=sys.stderr)
+            return 2
+    if not positional:
         return _print_invalid_argument(
-            "co remote-browser <address> <command>",
+            "co remote-browser [<address>] <command>",
             json_output=options["json_output"],
         )
-    address, command, *rest = positional
+    command, *rest = positional
     if command not in {"start", "status", "sessions", "stop", "diagnose"}:
         return _print_invalid_argument(
             f"unknown Remote Browser command '{command}'",
@@ -135,9 +210,11 @@ def handle_remote_browser(args) -> int:
     if len(rest) != (1 if needs_session else 0):
         suffix = " <session-id>" if needs_session else ""
         return _print_invalid_argument(
-            f"co remote-browser <address> {command}{suffix}",
+            f"co remote-browser [<address>] {command}{suffix}",
             json_output=options["json_output"],
         )
+    if options["proxy"] is None:
+        options["proxy"] = load_config().get("proxy", "direct")
 
     from connectonion import connect
     from connectonion.network.connect import _this_callers_identity
