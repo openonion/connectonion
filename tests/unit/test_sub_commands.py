@@ -144,6 +144,7 @@ def test_list_with_no_subscriptions_does_not_crash(isolated_home, capsys):
     sub.handle_sub_list()
     out = _plain(capsys.readouterr().out)
     assert "No subscriptions" in out
+    assert "co sub sync <0xaddress>" in out
 
 
 def test_list_after_add_shows_alias_version_and_skill_count(isolated_home, fake_relay, capsys):
@@ -186,6 +187,7 @@ def test_remove_unknown_target_is_a_no_op(isolated_home, capsys):
     sub.handle_sub_remove("0x" + "1" * 64)
     out = _plain(capsys.readouterr().out)
     assert "Not subscribed" in out
+    assert "co sub list" in out
 
 
 def test_bare_alias_without_prior_subscription_errors_out(isolated_home, capsys):
@@ -195,6 +197,7 @@ def test_bare_alias_without_prior_subscription_errors_out(isolated_home, capsys)
         sub.handle_sub_sync_one("alice")  # not in subscriptions.txt
     out = _plain(capsys.readouterr().out)
     assert "not a 0x address" in out
+    assert "co sub sync <0xaddress>" in out
 
 
 def test_alias_refresh_works_when_address_already_pinned(isolated_home, fake_relay):
