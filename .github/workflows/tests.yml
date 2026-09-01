@@ -50,6 +50,8 @@ jobs:
           repository: openonion/onionwright
           ref: 0dc523e31510330e0cb814604efea3b2ecb97a4f
           path: .ci/onionwright
+          ssh-key: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -100,6 +102,8 @@ jobs:
           repository: openonion/onionwright
           ref: 0dc523e31510330e0cb814604efea3b2ecb97a4f
           path: .ci/onionwright
+          ssh-key: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -140,6 +144,8 @@ jobs:
           repository: openonion/onionwright
           ref: 0dc523e31510330e0cb814604efea3b2ecb97a4f
           path: .ci/onionwright
+          ssh-key: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -179,6 +185,8 @@ jobs:
           repository: openonion/onionwright
           ref: 0dc523e31510330e0cb814604efea3b2ecb97a4f
           path: .ci/onionwright
+          ssh-key: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -493,6 +501,8 @@ jobs:
           repository: openonion/onionwright
           ref: 0dc523e31510330e0cb814604efea3b2ecb97a4f
           path: .ci/onionwright
+          ssh-key: ${{ secrets.ONIONWRIGHT_DEPLOY_KEY }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
