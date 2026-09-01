@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 RELEASE_CHANNEL = "preview"
-ONIONWRIGHT_VERSION = "0.0.13.dev3"
+ONIONWRIGHT_VERSION = "0.0.13.dev5"
+ONIONWRIGHT_DRIVER_VERSION = "1.61.0"
 ONIONWRIGHT_ARTIFACT = (
-    "onionwright/0.0.13.dev3/onionwright-0.0.13.dev3-py3-none-any.whl"
+    "onionwright/0.0.13.dev5/onionwright-0.0.13.dev5-py3-none-any.whl"
 )
 DEFAULT_API_URL = "https://browser-preview.oo.openonion.ai"
 

@@ -1,5 +1,5 @@
 """
-Purpose: Chrome launch flags for BrowserAutomation. Anti-detection is now Patchright's job, so this is only the handful of flags about the run environment.
+Purpose: Launch flags shared by Onionwright. WTFbrowser owns native protection, so this is only the handful of flags about the run environment.
 LLM-Note:
   Dependencies: pure data, no imports | imported by [useful_tools/browser_tools/browser.py (passes CHROME_DEFAULT_ARGS / IGNORE_DEFAULT_ARGS to launch_persistent_context)] | no direct tests (behavior covered by tests/e2e/cli/test_browser_agent.py)
   Data flow: module-level constants only — read once when BrowserAutomation builds launch options
@@ -7,12 +7,9 @@ LLM-Note:
   State/Effects: none
   Errors: none
 
-Patchright ships correct anti-detection defaults (it drops --enable-automation, adds
---disable-blink-features=AutomationControlled, and patches the driver-level tells that
-flags can't reach) and its docs warn that over-configuring launch args can DEFEAT those
-patches. So we no longer mirror browser-use's 53-flag / 30-disabled-feature stack — that
-mirror was a standing sync burden and a regression risk. What stays here is only flags
-about the run environment, which are invisible to bot-detection.
+WTFbrowser owns browser- and network-layer protection. ConnectOnion therefore does
+not maintain a parallel spoofing flag stack. What stays here is limited to run-
+environment stability and applies to the explicit Chrome compatibility path too.
 """
 
 # These are run-environment flags, not anti-detection spoofs — both make a GPU-less server
@@ -26,16 +23,15 @@ CHROME_DEFAULT_ARGS = [
     # on sannysoft, an obvious tell, since every real browser has WebGL. This is a FALLBACK:
     # a machine with a real GPU keeps using it and reports its true vendor/renderer.
     #
-    # NOTE: Patchright recommends minimal launch args (custom headers/user_agent/automation
-    # flags can defeat its patches). This is the one deliberate exception — a GPU-rendering
+    # Keep launch args minimal. This is the one deliberate exception — a GPU-rendering
     # flag, not an automation flag. Verified it does NOT defeat the patches: with it enabled
     # rebrowser's runtimeEnableLeak stays clean and deviceandbrowserinfo reports WebGL
-    # consistent. Patchright's other recommendations (channel=chrome via find_system_chrome,
-    # headless=False, no_viewport, persistent user_data_dir, no custom UA) are all honored.
+    # consistent. We retain headless=False, no_viewport, persistent user_data_dir,
+    # and no custom UA.
     '--enable-unsafe-swiftshader',
 ]
 
-# Nothing to strip from Patchright's defaults: it already omits the automation markers we
-# used to remove here. browser.py appends '--use-mock-keychain' (the macOS cookie-persistence
+# Nothing to strip from Onionwright's pinned driver defaults. browser.py appends
+# '--use-mock-keychain' (the macOS cookie-persistence
 # fix) to this list at launch, so keep it as an empty list rather than deleting the symbol.
 IGNORE_DEFAULT_ARGS = []

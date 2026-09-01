@@ -1,14 +1,14 @@
 """
-Purpose: Internal Patchright async browser core for the 1.8 driver migration.
+Purpose: Internal Onionwright async browser core for the 1.8 driver migration.
 LLM-Note:
-  Dependencies: imports patchright.async_api, async element finding/humanization, browser_config/chrome_finder, immutable BrowserLaunchPolicy, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/unit/test_remote_browser_private_runtime.py, tests/e2e/test_async_browser_core_real_driver.py]
+  Dependencies: imports onionwright.async_api, async element finding/humanization, browser_config/chrome_finder, immutable BrowserLaunchPolicy, and stdlib | imported by [future async daemon/runtime; tests during migration] | tested by [tests/unit/test_async_browser_core.py, tests/unit/test_remote_browser_private_runtime.py, tests/e2e/test_async_browser_core_real_driver.py]
   Data flow: caller binds a session in a ContextVar → each async operation acquires that tab's lock → the shared persistent context lazily creates/restores one page per session → model-selected actions await extraction and worker-thread matching → independent tab operations may interleave on one event loop
   State/Effects: ordinary mode keeps its persistent profile and proxy environment compatibility; private mode uses only the explicit policy profile/proxy/args/service-worker/download settings | one shared BrowserContext | per-session pages/metadata/restore URLs | cancellation-safe context and driver teardown
   Integration: internal AsyncBrowserCore; used directly by the daemon and through the public synchronous BrowserAutomation compatibility facade
   Errors: live profile ownership fails before driver start | launch/cancellation tears down partially-created driver state | destructive keyboard shortcuts fail closed outside editable focus | element ambiguity and non-match errors preserve the synchronous finder contract
 
 This module is deliberately internal. It must never import or call
-``patchright.sync_api``: synchronous callers use the compatibility facade, which
+``onionwright.sync_api``: synchronous callers use the compatibility facade, which
 submits work to this core's owned event loop.
 """
 
@@ -38,7 +38,7 @@ from .launch_policy import BrowserLaunchPolicy
 from .native_egress import native_egress_failure, run_native_egress_preflight
 
 try:
-    from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
+    from onionwright.async_api import BrowserContext, Page, Playwright, async_playwright
 
     ASYNC_BROWSER_AVAILABLE = True
 except ImportError:
@@ -202,7 +202,7 @@ def _normalize_url(url: str) -> str:
 
 def _with_paid_launch_notice(launch_result: str, action_result: str) -> str:
     """Keep the first charged interval visible through a compound page action."""
-    if launch_result.startswith("Onion Browser opened"):
+    if launch_result.startswith("WTFbrowser opened"):
         return f"{launch_result}\n{action_result}"
     return action_result
 
@@ -317,7 +317,7 @@ class AsyncBrowserCore:
         use_mock_keychain: bool = False,
         launch_policy: BrowserLaunchPolicy | None = None,
         egress_gateway: object | None = None,
-        engine_mode: str = browser_engine.SYSTEM,
+        engine_mode: str = browser_engine.WTF,
         engine_resolver=browser_engine.resolve,
     ) -> None:
         # Only read for its decision count, which is the preflight's positive
@@ -543,7 +543,7 @@ class AsyncBrowserCore:
         if headless is None:
             headless = self._headless
         if not ASYNC_BROWSER_AVAILABLE:
-            return "Browser tools not installed. Run: pip install patchright && patchright install chrome"
+            return "Browser driver not installed. Run: co browser install-onion"
 
         async with self._operation_state_lock:
             if self._closing:
@@ -591,7 +591,7 @@ class AsyncBrowserCore:
                 raise
             self._engine_resolution = resolution
 
-            if policy is not None and resolution.resolved != browser_engine.ONION:
+            if policy is not None and resolution.resolved != browser_engine.WTF:
                 raise native_egress_failure()
 
             profile_dir = policy.profile_dir if policy is not None else _profile_dir()
@@ -607,7 +607,7 @@ class AsyncBrowserCore:
                     raise native_egress_failure() from None
                 raise error
 
-            if resolution.resolved == browser_engine.ONION:
+            if resolution.resolved == browser_engine.WTF:
                 manager = async_playwright()
                 playwright = None
                 paid_run = None
@@ -700,7 +700,7 @@ class AsyncBrowserCore:
                     else ""
                 )
                 return (
-                    "Onion Browser opened with a prepaid supervised session"
+                    "WTFbrowser opened with a prepaid supervised session"
                     f"{cost}: artifact={status['artifact_id']}"
                 )
 

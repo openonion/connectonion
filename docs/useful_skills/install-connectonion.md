@@ -32,8 +32,8 @@ The skill walks these steps, each verified before the next, and self-corrects on
    (`OPENONION_API_KEY`, `AGENT_EMAIL`, `IS_EMAIL_ACTIVE=true`). `co auth` is the repair step
    if that authentication didn't land (e.g. offline)
 4. **Confirm** — `co status` / `co doctor` prove the account and keys are wired up
-5. **Browser** (only if needed) — auto-installs on first use (1.2.1+, chromium: per-user,
-   no admin); manual fallback `patchright install chromium`. Native on Windows/macOS/Linux
+5. **Browser** (only if needed) — installs the exact signed Onionwright client with
+   `co browser install-onion`; WTFbrowser is default. Native on Windows/macOS/Linux
 6. **Integrations** (optional) — `co auth google` / `co auth microsoft` for personal Gmail/Outlook
 7. **Verify the commands run** — `co status`, `co email`, a real agent run, a real browser nav
 8. **Summary** — a friendly account report + the list of commands they can now use
@@ -50,11 +50,10 @@ grounded in the actual CLI code:
 - **`co email` is the built-in managed mailbox** (`…@mail.openonion.ai`), activated by that
   authentication. It needs only `OPENONION_API_KEY` — **not** `co auth google`. Gmail/Outlook
   OAuth (`co auth google`/`microsoft`) is a separate, optional thing.
-- **The browser auto-installs on first use (1.2.1+).** Before 1.2.1 it was never auto-installed: `pip install connectonion` brings the
-  `patchright` library but no Chrome; `co browser` fails with *"Chrome failed to start"*
-  until you run `patchright install chromium` or have desktop Chrome. And `co doctor` does
-  **not** catch this — it only checks the patchright library, so the skill proves the
-  browser with a real `co browser go_to example.com`.
+- **The 1.8.0a5 preview defaults to WTFbrowser.** Its private Onionwright wheel is
+  authenticated and signature/checksum verified by `co browser install-onion`.
+  Chrome is an explicit compatibility mode with detection/account risk. The skill
+  proves the complete path with `co browser go_to example.com`.
 - **`co browser` runs natively on all three OSes from 1.2.1** — Unix-socket daemon on
   macOS/Linux, native named pipes on Windows. Versions before 1.2.1 need WSL on Windows.
 

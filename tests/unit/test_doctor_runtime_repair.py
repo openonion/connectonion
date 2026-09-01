@@ -3,7 +3,7 @@
 import subprocess
 
 from connectonion.cli.commands.doctor_runtime import (
-    PATCHRIGHT_VERSION,
+    ONIONWRIGHT_VERSION,
     RuntimeCheck,
     repair_runtime,
 )
@@ -16,18 +16,18 @@ def _completed(_command, **_kwargs):
 def test_a_fresh_runtime_is_repaired_in_one_invocation():
     missing = [
         RuntimeCheck(
-            "patchright",
-            "Patchright",
+            "onionwright",
+            "Onionwright",
             "missing",
             "not installed",
-            ("python", "-m", "pip", "install", f"patchright=={PATCHRIGHT_VERSION}"),
+            ("python", "-m", "connectonion.cli.main", "browser", "install-onion"),
         ),
         RuntimeCheck(
             "browser",
             "Browser binary",
             "missing",
             "not installed",
-            ("python", "-m", "patchright", "install", "chromium"),
+            ("python", "-m", "onionwright", "install", "chromium"),
         ),
     ]
     calls = []
@@ -37,7 +37,7 @@ def test_a_fresh_runtime_is_repaired_in_one_invocation():
         return _completed(command, **kwargs)
 
     healthy = lambda: [
-        RuntimeCheck("patchright", "Patchright", "ok", PATCHRIGHT_VERSION),
+        RuntimeCheck("onionwright", "Onionwright", "ok", ONIONWRIGHT_VERSION),
         RuntimeCheck("browser", "Browser binary", "ok", "/user/chromium"),
     ]
     outcomes = repair_runtime(missing, approve=lambda _check: True, run=run, recheck=healthy)
@@ -83,7 +83,7 @@ def test_permission_denied_is_still_blocked_without_a_traceback():
         "Browser binary",
         "missing",
         "not installed",
-        ("python", "-m", "patchright", "install", "chromium"),
+        ("python", "-m", "onionwright", "install", "chromium"),
     )
 
     def denied(*_args, **_kwargs):
@@ -104,7 +104,7 @@ def test_declined_repairs_are_skipped():
         "Browser binary",
         "missing",
         "not installed",
-        ("python", "-m", "patchright", "install", "chromium"),
+        ("python", "-m", "onionwright", "install", "chromium"),
     )
 
     outcomes = repair_runtime(
@@ -121,7 +121,7 @@ def test_a_dependent_check_is_reclassified_after_repair():
         "Browser binary",
         "missing",
         "not installed",
-        ("python", "-m", "patchright", "install", "chromium"),
+        ("python", "-m", "onionwright", "install", "chromium"),
     )
     prerequisites = RuntimeCheck(
         "os-prerequisites", "OS prerequisites", "pending", "checked after install"

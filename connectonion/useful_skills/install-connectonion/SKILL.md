@@ -141,41 +141,37 @@ needs `OPENONION_API_KEY` from Step 3.
 Skip unless the person wants web automation (`co browser`, or the `browser`/`hosted-browser`
 template). Two things to know first:
 
-- **From connectonion 1.2.1, the first page-driving `co browser` command auto-installs a
-  browser when none exists** (visible one-time download in the terminal) — normally there
-  is NOTHING to do here. The manual step below is the fallback for older versions,
-  airgapped machines, or a failed auto-install.
+- **From the 1.8.0a5 preview, WTFbrowser is the paid default.** Install its exact
+  signed Onionwright client after authentication. Chrome remains an explicit
+  compatibility choice and carries bot-detection/account risk.
 - **`co browser` works natively on Windows from connectonion 1.2.1** (named-pipe daemon —
   plain PowerShell/cmd is fine, no WSL). On an OLDER version (`co --version` < 1.2.1),
   native Windows isn't supported: upgrade first (`PY -m pip install -U connectonion`), or
   do the browser work inside WSL.
 
-If a manual install IS needed (older version / auto-install failed): the agent uses
-desktop **Google Chrome** when present at the standard OS path; otherwise install
-Patchright's browser:
+Install the signed driver client:
 
 ```bash
-PY -m patchright install chromium        # per-user dir, NEVER needs admin (what auto-install runs)
-PY -m patchright install chrome          # branded Chrome: best stealth, but a system installer
-# Linux/CI without desktop libraries may need system deps (asks for sudo):
-PY -m patchright install --with-deps chromium
+co browser install-onion
+# Only for explicit Chrome compatibility when desktop Chrome is absent:
+PY -m onionwright install chromium
+# Linux/CI without desktop libraries may need system deps:
+PY -m onionwright install --with-deps chromium
 ```
 
-**Verify it actually launches — `co doctor` is NOT enough here.** `co doctor` only checks
-the patchright library/stealth driver; it shows `ok` even when no Chrome exists and the real
-launch would fail. Prove the real thing by driving a page:
+**Verify it actually launches.** `co doctor` checks Onionwright's exact driver API
+and the compatibility browser path, but a real page proves the complete paid path:
 
 ```bash
 co browser go_to example.com     # navigates → Chrome launched OK. Then: co browser close
 ```
 
 > **Recovery**
-> - *"Chrome failed to start … ~/.co/browser.log"* → no drivable browser. Run
->   `PY -m patchright install chromium` (Linux: add `--with-deps`), or install desktop Google
+> - *"Browser failed to start … ~/.co/browser.log"* in Chrome mode → no drivable browser. Run
+>   `PY -m onionwright install chromium` (Linux: add `--with-deps`), or install desktop Google
 >   Chrome to the standard path. Note: a Chrome in a non-standard spot (Windows per-user
->   `%LOCALAPPDATA%`, Linux snap/flatpak) isn't auto-detected — use `patchright install chromium`.
-> - `co doctor` Browser line **missing** → patchright library gone: `PY -m pip install patchright`.
-> - `co doctor` Browser line **broken** (stealth driver) → `PY -m pip install --force-reinstall --no-cache-dir patchright`.
+>   `%LOCALAPPDATA%`, Linux snap/flatpak) isn't auto-detected — use `PY -m onionwright install chromium`.
+> - `co doctor` Onionwright line **missing/broken** → run `co browser install-onion`.
 > - `co browser do "…"` says *"requires authentication"* → the natural-language mode uses a
 >   managed model; run `co auth` (Step 3 covers this). Direct verbs like `go_to` don't need it.
 
@@ -257,8 +253,8 @@ say it's not set up and offer. Keep it to the lines that matter to *this* person
   `python3` may be `python`/`py -3`; the browser binary is never auto-installed; and
   **`co browser` runs natively on Windows/macOS/Linux from 1.2.1** (Unix sockets on
   POSIX, named pipes on Windows); older versions need WSL on Windows.
-- **`co doctor` does not confirm the browser can launch** — it only checks the patchright
-  library/stealth driver. The real proof is `co browser go_to example.com`.
+- **`co doctor` checks the driver boundary but not a complete paid launch.** The
+  real proof is `co browser go_to example.com`.
 - `--yes` on `co init`/`co create` is mandatory for unattended runs.
 - Never print, log, or commit keys; templates gitignore `.env` — keep it that way.
 - State lives in `~/.co/` (global identity + keys.env) and the project's `.co/` + `.env`.

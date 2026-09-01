@@ -97,16 +97,16 @@ def test_system_resolution_cannot_cross_the_billing_boundary():
         engine.launch(result, "playwright", "key")
 
 
-def test_client_constructor_import_failure_is_auto_fallback():
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: "token",
-        client_factory=lambda token, home: (_ for _ in ()).throw(
-            ModuleNotFoundError("No module named 'onionwright'")
-        ),
-    )
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.ONIONWRIGHT_MISSING
+def test_client_constructor_import_failure_never_falls_back_to_chrome():
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: "token",
+            client_factory=lambda token, home: (_ for _ in ()).throw(
+                ModuleNotFoundError("No module named 'onionwright'")
+            ),
+        )
+    assert caught.value.reason == engine.Reason.ONIONWRIGHT_MISSING
 
 
 def test_prepare_exception_is_typed_and_explicit_onion_fails():

@@ -1,7 +1,7 @@
 """
-Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) — one shared persistent context, one TAB PER SESSION, so concurrent agents never drive each other's page
+Purpose: Natural language browser automation via Onionwright — one shared persistent context, one TAB PER SESSION, so concurrent agents never drive each other's page
 LLM-Note:
-  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
+  Dependencies: imports from [onionwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
   Data flow: a caller binds its session via _bind_session(key) (key None = shared 'main') → every public method hops to ONE dedicated browser worker thread (_runs_on_browser_thread propagates the binding; Playwright's sync API is thread-bound) → _ensure_page gives the session its own tab in the shared context (restored to its remembered URL), then _reclaim_idle_tabs bounds memory (idle-TTL first, then max-tabs LRU — never the active tab) → go_to/newtab record who/purpose/hours on the tab REGISTRY _tab_meta (the first navigation on an unoccupied tab demands purpose+who — direct API/tool callers only; the co browser daemon registers tabs before dispatching) → tab_status renders the board → close_tab releases ONE tab, close() releases the bound tab or tears the whole context down
   State/Effects: persistent profile at $CO_BROWSER_PROFILE_DIR or ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
   Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, get_focused_element, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
@@ -58,14 +58,11 @@ from .chrome_finder import find_system_chrome
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
-# Patchright is a stealth-patched, API-compatible drop-in for Playwright. It removes
-# driver-level automation tells (the Runtime.enable / Console.enable CDP leaks and the
-# navigator.webdriver flag) that Chrome launch flags and page init scripts cannot reach,
-# so it fixes anti-detection below where our old flag stack operated. The sync API is
-# identical, so only the import line changes; sync_playwright keeps its name because that
-# is exactly what patchright.sync_api exports.
+# Onionwright owns the one browser-driver import for both WTFbrowser and the
+# explicit system-Chrome compatibility mode. The public sync names stay
+# Playwright-compatible so the legacy comparison oracle remains importable.
 try:
-    from patchright.sync_api import Browser, Page, Playwright, sync_playwright
+    from onionwright.sync_api import Browser, Page, Playwright, sync_playwright
     BROWSER_AVAILABLE = True
 except ImportError:
     BROWSER_AVAILABLE = False
@@ -223,14 +220,14 @@ def _browser_proxy_from_env():
     return proxy
 
 
-def _patchright_chromium_path():
-    """Where patchright would look for its downloaded chromium, per patchright.
+def _onionwright_chromium_path():
+    """Where Onionwright's pinned driver would look for downloaded Chromium.
 
     Asking the driver rather than rebuilding the path: the directory carries the
     build number (chromium-1228) and its layout differs per OS, so a
     hand-written probe is a guess that goes stale on their next release.
     """
-    from patchright.sync_api import sync_playwright
+    from onionwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         return p.chromium.executable_path
@@ -249,12 +246,12 @@ def installed_browser_path():
     """A browser this machine could actually launch, or None.
 
     Two ways to have one, and `open_browser` uses either: a real desktop Chrome
-    (which it pins when present) or patchright's downloaded chromium. Reporting
-    only the patchright package — which is what `co doctor` and `co browser
+    (which it pins when present) or Onionwright's downloaded Chromium. Reporting
+    only the Onionwright package — which is what `co doctor` and `co browser
     status` did — calls a machine healthy when every browser command on it fails
     with "Executable doesn't exist at .../chromium-1228/chrome-linux64/chrome".
 
-    Costs starting the patchright driver — measured at 1.0s on Linux — so this is
+    Costs starting the Onionwright driver — measured at 1.0s on Linux — so this is
     for the commands that report state, not the path every browser command takes.
     A found browser is remembered, because `co browser status` is a PAGELESS_VERB
     and paying a second for it every time is what those verbs exist to avoid.
@@ -271,9 +268,9 @@ def installed_browser_path():
     if chrome:
         return chrome  # 0.1ms — nothing to save by remembering it
     try:
-        path = _patchright_chromium_path()
+        path = _onionwright_chromium_path()
     except Exception:
-        # A patchright too broken to answer is not a browser. This function is
+        # An Onionwright driver too broken to answer is not a browser. This function is
         # called by `co doctor`, which runs when things are already wrong and
         # must still print its report.
         return None
@@ -367,33 +364,31 @@ def _profile_lock_holder(profile_dir: Path) -> Optional[int]:
 
 
 def driver_stealth_status():
-    """Report whether the installed Patchright driver still has its stealth patches.
+    """Report whether Onionwright's single pinned driver API is importable.
 
-    Patchright ships its anti-detection patches in a separately-downloaded driver that has
-    silently regressed to the unpatched vanilla Playwright build across releases — leaving
-    navigator.webdriver=true and the "controlled by automated test software" infobar. The
-    patched driver always injects `--disable-blink-features=AutomationControlled`; the vanilla
-    one never does, so scanning the driver for that literal is a fast integrity check that
-    needs no browser launch. Surfaced by `co browser status` and `co doctor`.
+    WTFbrowser owns its native browser/network protections; ConnectOnion must not
+    infer those protections by scanning another driver's JavaScript bundle. This
+    check instead enforces the integration boundary used at runtime: both sync and
+    async APIs come from the exact Onionwright wheel.
 
     Returns (status, version, detail) where status is 'ok' | 'broken' | 'missing'.
     """
     import importlib.metadata
     import importlib.util
 
-    if importlib.util.find_spec("patchright") is None:
-        return "missing", "", "patchright not installed — pip install patchright && patchright install chrome"
+    if importlib.util.find_spec("onionwright") is None:
+        return "missing", "", "Onionwright not installed — run: co browser install-onion"
 
-    import patchright
-    version = importlib.metadata.version("patchright")
-    lib = Path(patchright.__file__).parent / "driver" / "package" / "lib"
-    marker = "disable-blink-features=AutomationControlled"
-    patched = any(marker in p.read_text(errors="ignore", encoding="utf-8") for p in lib.rglob("*.js"))
-    if patched:
-        return "ok", version, "stealth patches present"
-    return ("broken", version,
-            "UNPATCHED driver — navigator.webdriver leaks. "
-            "Fix: pip install --force-reinstall --no-cache-dir patchright")
+    try:
+        from onionwright.async_api import async_playwright
+        from onionwright.sync_api import sync_playwright
+
+        version = importlib.metadata.version("onionwright")
+    except Exception as exc:
+        return "broken", "", f"Onionwright driver API unavailable: {type(exc).__name__}"
+    if callable(async_playwright) and callable(sync_playwright):
+        return "ok", version, "single pinned driver API ready"
+    return "broken", version, "Onionwright driver API is incomplete — run: co browser install-onion"
 
 
 def _occupancy_help(verb: str, url: str) -> str:
@@ -674,7 +669,7 @@ class BrowserAutomation:
             page = self.browser.new_page()
             page.set_default_navigation_timeout(60000)
             page.set_viewport_size({"width": 1920, "height": 1200})
-            # No navigator.webdriver init script: Patchright hides it at the driver level,
+            # No navigator.webdriver init script: WTFbrowser owns native protection,
             # and add_init_script injection is itself a timing-detectable tell.
             restore_url = self._page_url.get(key)
             if restore_url:  # a reclaimed session comes back to where it was
@@ -751,7 +746,7 @@ class BrowserAutomation:
         if headless is None:
             headless = self._headless
         if not BROWSER_AVAILABLE:
-            return "Browser tools not installed. Run: pip install patchright && patchright install chrome"
+            return "Browser tools not installed. Run: co browser install-onion"
 
         # If a shared context is already running, a brand-new session has no tab in it yet.
         # Give this session its tab BEFORE judging usability, so a new session never reads
@@ -829,17 +824,16 @@ class BrowserAutomation:
         # - Survives browser restarts automatically
         # - No need for storage_state.json complexity (browser-use uses that for portability)
 
-        # Patchright supplies the anti-detection defaults; we pass only run-environment
-        # flags (see browser_config.py). executable_path pins real Chrome, which Patchright
-        # recommends over bundled Chromium.
+        # Onionwright owns the driver API; we pass only run-environment flags
+        # (see browser_config.py). Chrome compatibility may pin a system executable.
         self.browser = self.playwright.chromium.launch_persistent_context(
             str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
             headless=headless,
             executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # environment-stability flags only
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # macOS cookie fix
-            no_viewport=True,  # part of Patchright's own recommended stealth config
-                               # (channel=chrome + headless=False + no_viewport). Patchright
+            no_viewport=True,  # preserve the real OS window size instead of the
+                               # driver's fixed 1280x720 default. Onionwright
                                # inherits Playwright's fixed 1280x720 default, which is an
                                # automation tell (rebrowser's 'viewport' check flags it); this
                                # uses the real OS window size instead.
@@ -2065,7 +2059,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             Base64 encoded image data
         """
         if not BROWSER_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install patchright && patchright install chrome'
+            return 'Browser tools not installed. Run: co browser install-onion'
 
         if not self.page:
             return "Browser not open"

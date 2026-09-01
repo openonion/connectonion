@@ -17,7 +17,7 @@ def _missing():
             "Browser binary",
             "missing",
             "none installed",
-            ("python", "-m", "patchright", "install", "chromium"),
+            ("python", "-m", "onionwright", "install", "chromium"),
         ),
         RuntimeCheck("platform", "Operating system", "ok", "Linux"),
     ]
@@ -79,7 +79,7 @@ def test_explicit_yes_records_the_command_and_repair_result():
     report, code = runtime_json_report(fix=True, approved=True, probe=probe, run=run)
 
     assert code == 0
-    assert calls == [["python", "-m", "patchright", "install", "chromium"]]
+    assert calls == [["python", "-m", "onionwright", "install", "chromium"]]
     assert report["plan"][0]["command"] == calls[0]
     assert report["outcomes"][0]["outcome"] == "repaired"
     assert report["summary"] == {

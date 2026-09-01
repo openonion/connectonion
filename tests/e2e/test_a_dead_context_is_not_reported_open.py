@@ -55,7 +55,7 @@ from connectonion.useful_tools.browser_tools.browser import (
 
 
 try:
-    from patchright.sync_api import sync_playwright
+    from onionwright.sync_api import sync_playwright
 
     DRIVER = True
 except ImportError:  # pragma: no cover
@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
 def real_context():
     """A live persistent context from the real driver, and a way to close it."""
     if not DRIVER:
-        pytest.skip("patchright not installed")
+        pytest.skip("Onionwright not installed")
 
     import tempfile
 
@@ -149,7 +149,7 @@ class TestTheBrowserProcessDying:
     @pytest.fixture
     def killed_context(self):
         if not DRIVER:
-            pytest.skip("patchright not installed")
+            pytest.skip("Onionwright not installed")
 
         import os
         import signal

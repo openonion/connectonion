@@ -31,7 +31,7 @@ class BrowserAutomation:
         seed_state: Optional[str] = None,
         tab_idle_ttl: float = 3600.0,
         max_tabs: int = 10,
-        engine_mode: str = "system",
+        engine_mode: str = "wtf",
         engine_resolver=None,
     ) -> None:
         self._core_kwargs = {

@@ -43,8 +43,9 @@ def _result(request_id: str, text: str, *, exit_code: int = 0) -> bytes:
     )
 
 
-def test_cli_omission_passes_nonbilling_system_to_client(monkeypatch):
+def test_cli_omission_passes_default_wtfbrowser_to_client(monkeypatch):
     calls = []
+    monkeypatch.setattr(browser_commands, "_load_default_engine", lambda: "wtf")
     monkeypatch.setattr(
         browser_commands,
         "send",
@@ -55,26 +56,26 @@ def test_cli_omission_passes_nonbilling_system_to_client(monkeypatch):
     assert calls == [
         (
             "status",
-            {"headless": False, "tab": None, "engine_mode": "system"},
+            {"headless": False, "tab": None, "engine_mode": "wtf"},
         )
     ]
 
 
-def test_all_local_browser_entry_points_default_to_system():
-    assert inspect.signature(client.send).parameters["engine_mode"].default == "system"
+def test_all_local_browser_entry_points_default_to_wtfbrowser():
+    assert inspect.signature(client.send).parameters["engine_mode"].default == "wtf"
     assert (
         inspect.signature(BrowserDaemon).parameters["engine_mode"].default
-        == "system"
+        == "wtf"
     )
     assert (
         inspect.signature(BrowserAutomation).parameters["engine_mode"].default
-        == "system"
+        == "wtf"
     )
     assert (
         inspect.signature(async_browser.AsyncBrowserCore)
         .parameters["engine_mode"]
         .default
-        == "system"
+        == "wtf"
     )
 
 
@@ -97,13 +98,13 @@ def test_typer_browser_omission_and_help_name_the_billing_boundary(monkeypatch):
     assert result.exit_code == 0
     assert auto_result.exit_code == 0
     assert calls == [
-        (["status"], {"headless": False, "engine_mode": "system"}),
+        (["status"], {"headless": False, "engine_mode": None}),
         (["status"], {"headless": False, "engine_mode": "auto"}),
     ]
     assert help_result.exit_code == 0
-    assert "system (free default)" in help_result.output
-    assert "auto (may select paid)" in help_result.output
-    assert "onion (paid)" in help_result.output
+    assert "wtf (paid default)" in help_result.output
+    assert "chrome" in help_result.output
+    assert "detection/account risk" in help_result.output
 
 
 def test_cli_passes_explicit_engine_to_client(monkeypatch):
@@ -120,7 +121,7 @@ def test_cli_passes_explicit_engine_to_client(monkeypatch):
     ) == 0
     assert calls == [(
         "go_to https://example.com",
-        {"headless": True, "tab": None, "engine_mode": "onion"},
+        {"headless": True, "tab": None, "engine_mode": "wtf"},
     )]
 
 
@@ -131,12 +132,12 @@ def test_cli_rejects_unknown_engine_without_contacting_daemon(monkeypatch, capsy
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("contacted daemon")),
     )
     assert browser_commands.handle_browser(["status"], engine_mode="default") == 2
-    assert "auto, system, onion" in capsys.readouterr().err
+    assert "wtf, chrome" in capsys.readouterr().err
 
 
 def test_warm_daemon_refuses_engine_hot_swap():
     daemon = BrowserDaemon.__new__(BrowserDaemon)
-    daemon.engine_mode = "system"
+    daemon.engine_mode = "chrome"
     daemon.browser = object()
     # __new__ skips __init__, so state the daemon always has must be set here.
     # Letting the gate read it through a falsy getattr default instead would
@@ -151,8 +152,8 @@ def test_warm_daemon_refuses_engine_hot_swap():
     })
     code, message = daemon.dispatch(request)
     assert code == 6
-    assert "pinned to engine=system" in message
-    assert "asked for engine=onion" in message
+    assert "pinned to engine=chrome" in message
+    assert "asked for engine=wtf" in message
 
 
 def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
@@ -172,7 +173,7 @@ def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
     assert probe.closed
     probe_request = decode_frame(probe.sent).command
     assert list(probe_request.argv) == ["engine_status"]
-    assert probe_request.engine == "onion"
+    assert probe_request.engine == "wtf"
     assert b"go_to" not in probe.sent
 
 
@@ -189,7 +190,7 @@ def test_client_sends_command_only_after_successful_protocol_probe(monkeypatch):
     request_ids = iter(["probe-id", "command-id"])
     monkeypatch.setattr(client.uuid, "uuid4", lambda: type("U", (), {"hex": next(request_ids)})())
     # The outer command frame is built before its nested safety probe.
-    probe = _FakeConnection(result("command-id", '{"requested": "onion"}'))
+    probe = _FakeConnection(result("command-id", '{"requested": "wtf"}'))
     command = _FakeConnection(result("probe-id", "done"))
     connections = iter([probe, command])
     monkeypatch.setattr(client, "_connect", lambda _path: next(connections))
@@ -204,7 +205,7 @@ def test_client_sends_command_only_after_successful_protocol_probe(monkeypatch):
     assert list(decode_frame(probe.sent).command.argv) == ["engine_status"]
     command_request = decode_frame(command.sent).command
     assert list(command_request.argv) == ["go_to", "https://example.com"]
-    assert command_request.engine == "onion"
+    assert command_request.engine == "wtf"
 
 
 def test_bare_onion_close_skips_the_page_action_protocol_probe(monkeypatch):
@@ -222,4 +223,4 @@ def test_bare_onion_close_skips_the_page_action_protocol_probe(monkeypatch):
     assert client._request("close", engine_mode="onion") == (0, "Browser closed")
     request = decode_frame(close.sent).command
     assert list(request.argv) == ["close"]
-    assert request.engine == "onion"
+    assert request.engine == "wtf"

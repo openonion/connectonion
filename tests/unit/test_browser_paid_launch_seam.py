@@ -120,7 +120,7 @@ def test_real_launch_seam_uses_supervised_paid_handle(monkeypatch):
     status = browser.engine_status()
     closed = browser.close()
 
-    assert "Onion Browser opened" in message
+    assert "WTFbrowser opened" in message
     assert len(calls) == 1
     assert calls[0][0].requested == engine.ONION
     assert calls[0][1] is playwright

@@ -2,9 +2,9 @@
 Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language `do` agent locally so model waits never occupy the daemon.
 LLM-Note:
   Dependencies: imports from [socket, os, sys, time, shlex, inspect, functools, pathlib, OIP framing, browser_agent.artifacts, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: direct verb → typed OIP 0.2 BrowserCommand argv → BrowserResult and optional Artifact Stream → verified caller-owned file; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=onion; an explicit Onion request probes the warm daemon before any page action; `do` keeps model calls local and sends only short tool requests
+  Data flow: direct verb → typed OIP 0.2 BrowserCommand argv → BrowserResult and optional Artifact Stream → verified caller-owned file; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=wtf; an explicit WTFbrowser request probes the warm daemon before any page action; `do` keeps model calls local and sends only short tool requests
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless] [--engine=MODE]` detached, logging to ~/.co/browser.log or the explicit private target log | private proxy credentials never enter daemon argv | writes to stdout/stderr
-  Integration: exposes _caller() -> str, send(line, headless=False, tab=None, engine_mode="system") -> int and Host-only request_target_as(); system/auto may provision per-user Chromium, while explicit Onion/private-target requests never install or fall back to a system browser; PAGELESS_VERBS never provision
+  Integration: exposes _caller() -> str, send(line, headless=False, tab=None, engine_mode="wtf") -> int and Host-only request_target_as(); explicit Chrome compatibility mode may provision per-user Chromium, while WTFbrowser/private-target requests never install or fall back to Chrome; PAGELESS_VERBS never provision
   Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
   Errors: _connect() retries transient refusal/backpressure and never unlinks an endpoint whose recorded owner is alive; only a truly stale POSIX socket is removed | missing endpoint → spawn daemon and wait until ready or timeout | setup RuntimeErrors become one clean stderr line, never a traceback containing HMAC-path locals | daemon death, overload shedding, or disconnect mid-request becomes a clean exit 1
 """
@@ -30,6 +30,12 @@ from connectonion.network.oip.framing import (
 
 from . import transport
 from .artifacts import ArtifactReceiver, ArtifactTransferError
+
+_ENGINE_ALIASES = {"auto": "wtf", "onion": "wtf", "system": "chrome"}
+
+
+def _canonical_engine(value: str) -> str:
+    return _ENGINE_ALIASES.get(value, value)
 
 
 def default_sock_path() -> str:
@@ -134,7 +140,7 @@ def _connect_windows(sock_path: str, authkey_path: str | Path | None = None):
 def _spawn_daemon(
     sock_path: str,
     headless: bool,
-    engine_mode: str = "system",
+    engine_mode: str = "wtf",
     target=None,
 ):
     """Launch the daemon detached and wait until its socket accepts connections."""
@@ -268,10 +274,10 @@ def _oip_command(line: str, *, caller: str, account: str, tab, engine: str):
     )
 
 
-def _ensure_browser_ready(line: str) -> bool:
+def _ensure_browser_ready(line: str, engine_mode: str = "chrome") -> bool:
     """First-run auto-install: if this command will drive a page and no browser
     exists, install one NOW — the user just runs `co browser ...` and it works.
-    Nobody should have to learn about patchright or doctor commands first.
+    Nobody should have to learn the upstream transport's installer first.
 
     Returns whether an install was attempted, so a caller that is retrying can
     tell "provisioned, worth another go" from "nothing to provision".
@@ -279,11 +285,11 @@ def _ensure_browser_ready(line: str) -> bool:
     Called on the cold-start path (no daemon yet), and again if a warm daemon
     answers that no browser is installed — a daemon that outlived the missing
     browser would otherwise never reach this and fail identically forever.
-    `patchright install chrome` is idempotent — a re-run when the browser is
+    `python -m onionwright install chromium` is idempotent — a re-run when the browser is
     already downloaded returns in about a second without downloading.
     """
     verb = line.split()[0] if line.strip() else ""
-    if verb in PAGELESS_VERBS:
+    if verb in PAGELESS_VERBS or engine_mode != "chrome":
         return False
     from connectonion.useful_tools.browser_tools.chrome_finder import find_system_chrome
     if find_system_chrome():
@@ -294,12 +300,12 @@ def _ensure_browser_ready(line: str) -> bool:
     # chromium, NOT the branded chrome channel: `install chrome` runs a system-wide
     # installer on Windows (admin rights — corporate machines fail), while chromium
     # lands in the per-user browsers dir and works for everyone, headless shell included.
-    result = subprocess.run([sys.executable, "-m", "patchright", "install", "chromium"])
+    result = subprocess.run([sys.executable, "-m", "onionwright", "install", "chromium"])
     if result.returncode != 0:
         # Don't block the command: Chrome may live at a nonstandard path, and the
         # daemon's launch error is actionable if it truly can't start.
         print("Browser setup did not complete — trying to run anyway "
-              "(if launch fails: python -m patchright install chromium)", file=sys.stderr)
+              "(if launch fails: python -m onionwright install chromium)", file=sys.stderr)
     return True
 
 
@@ -313,13 +319,13 @@ def _request_with_identity(
     raw_result: bool = False,
     _provisioned: bool = False,
     target=None,
-    engine_mode: str = "system",
+    engine_mode: str = "wtf",
     _protocol_checked: bool = False,
     _connection=None,
 ) -> tuple:
     """Send one OIP command and materialize any artifacts for this caller."""
-    effective_engine = (
-        "onion" if target is not None and target.remote_egress else engine_mode
+    effective_engine = _canonical_engine(
+        "wtf" if target is not None and target.remote_egress else engine_mode
     )
     try:
         request_frame, artifact_destination = _oip_command(
@@ -346,7 +352,7 @@ def _request_with_identity(
                 if authkey_path is not None
                 else _connect(sock_path)
             )
-        if (conn is not None and effective_engine == "onion"
+        if (conn is not None and effective_engine == "wtf"
                 and not _protocol_checked and line != "engine_status"
                 and not whole_browser_close):
             # A pre-1.8 daemon ignores unknown envelope fields. Sending an
@@ -411,9 +417,9 @@ def _request_with_identity(
                 if _owner_alive(sock_path):
                     return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
-            if effective_engine != "onion":
-                _ensure_browser_ready(line)  # system or auto fallback needs this
-            if target is None and effective_engine == "system":
+            if effective_engine == "chrome":
+                _ensure_browser_ready(line, effective_engine)
+            if target is None and effective_engine == "wtf":
                 # Keep the long-standing local default-mode embedding seam: small
                 # test/host adapters may implement the original two arguments.
                 conn = _spawn_daemon(sock_path, headless)
@@ -531,14 +537,14 @@ def _request_with_identity(
     # A warm daemon reached the launcher and found no browser. The cold-start
     # provisioning above was skipped because the connect succeeded, so without
     # this every page command on this box fails identically forever. The daemon's
-    # verdict is the signal: whether patchright's downloaded chromium exists is
+    # verdict is the signal: whether Onionwright's downloaded Chromium exists is
     # not something to guess at from a version-numbered cache path.
     if (
-        effective_engine != "onion"
+        effective_engine == "chrome"
         and "No browser is installed for this user" in payload
         and not _provisioned
     ):
-        if _ensure_browser_ready(line):
+        if _ensure_browser_ready(line, effective_engine):
             return _request_with_identity(
                 line,
                 caller=caller,
@@ -560,7 +566,7 @@ def _request(
     tab: str = None,
     raw_result: bool = False,
     _provisioned: bool = False,
-    engine_mode: str = "system",
+    engine_mode: str = "wtf",
     _protocol_checked: bool = False,
     _connection=None,
 ) -> tuple:
@@ -651,7 +657,7 @@ class DaemonBrowserProxy:
     """BrowserAutomation-shaped tools whose calls cross the daemon one at a time."""
 
     def __init__(
-        self, headless: bool = False, tab: str = None, engine_mode: str = "system"
+        self, headless: bool = False, tab: str = None, engine_mode: str = "wtf"
     ):
         self._headless = headless
         self._tab = tab
@@ -663,7 +669,7 @@ class DaemonBrowserProxy:
             "tab": self._tab,
             "raw_result": True,
         }
-        if self._engine_mode != "system":
+        if self._engine_mode != "wtf":
             request_kwargs["engine_mode"] = self._engine_mode
         code, payload = _request(_tool_line(name, args, kwargs), **request_kwargs)
         if code:
@@ -703,7 +709,7 @@ def _install_proxy_methods() -> None:
     _proxy_methods_installed = True
 
 
-def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "system") -> tuple:
+def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "wtf") -> tuple:
     """Run the model loop here; only its browser tool calls enter the daemon."""
     account = _caller_account()
     if not account:
@@ -733,7 +739,7 @@ def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "system") ->
 
 
 def send(line: str, headless: bool = False, tab: str = None,
-         _provisioned: bool = False, engine_mode: str = "system") -> int:
+         _provisioned: bool = False, engine_mode: str = "wtf") -> int:
     """Run a CLI command, print its result, and return its process exit code."""
     try:
         verb = shlex.split(line)[:1]
@@ -744,7 +750,7 @@ def send(line: str, headless: bool = False, tab: str = None,
     if verb == ["do"]:
         code, payload = (
             _run_do(line, headless, tab)
-            if engine_mode == "system"
+            if engine_mode == "wtf"
             else _run_do(line, headless, tab, engine_mode)
         )
     else:
@@ -753,7 +759,7 @@ def send(line: str, headless: bool = False, tab: str = None,
             "tab": tab,
             "_provisioned": _provisioned,
         }
-        if engine_mode != "system":
+        if engine_mode != "wtf":
             request_kwargs["engine_mode"] = engine_mode
         code, payload = _request(line, **request_kwargs)
     if payload:

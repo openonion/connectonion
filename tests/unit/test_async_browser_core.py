@@ -1,4 +1,4 @@
-"""Contract tests for the internal 1.8 Patchright async browser core.
+"""Contract tests for the internal 1.8 Onionwright async browser core.
 
 The public synchronous BrowserAutomation delegates through the #500 facade. These
 tests prove the underlying core itself is genuinely async, preserves per-session
@@ -258,7 +258,7 @@ def install_fake_runtime(monkeypatch, tmp_path, context=None):
     return context, playwright
 
 
-def test_async_core_has_no_sync_patchright_dependency():
+def test_async_core_imports_only_onionwrights_async_driver_api():
     source = Path(async_mod.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
 
@@ -266,6 +266,8 @@ def test_async_core_has_no_sync_patchright_dependency():
         node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     }
     assert "patchright.sync_api" not in imported_modules
+    assert "patchright.async_api" not in imported_modules
+    assert "onionwright.async_api" in imported_modules
     assert not any(
         isinstance(node, ast.Name) and node.id == "sync_playwright"
         for node in ast.walk(tree)
@@ -290,7 +292,9 @@ async def test_open_reuses_one_async_context_and_seeds_before_navigation(
         '{"cookies":[{"name":"sid","value":"one","domain":"example.com","path":"/"}]}'
     )
     context, playwright = install_fake_runtime(monkeypatch, tmp_path)
-    browser = async_mod.AsyncBrowserCore(headless=True, seed_state=str(seed))
+    browser = async_mod.AsyncBrowserCore(
+        headless=True, seed_state=str(seed), engine_mode="chrome"
+    )
 
     first = await browser.open_browser()
     second = await browser.open_browser()
@@ -316,7 +320,9 @@ async def test_open_reuses_one_async_context_and_seeds_before_navigation(
 @pytest.mark.asyncio
 async def test_isolated_runtime_can_keep_chromes_mock_keychain(monkeypatch, tmp_path):
     _, playwright = install_fake_runtime(monkeypatch, tmp_path)
-    browser = async_mod.AsyncBrowserCore(headless=True, use_mock_keychain=True)
+    browser = async_mod.AsyncBrowserCore(
+        headless=True, use_mock_keychain=True, engine_mode="chrome"
+    )
 
     await browser.open_browser()
 
@@ -332,7 +338,7 @@ async def test_first_session_adopts_the_persistent_context_page():
     initial_page = FakePage()
     context = FakeContext()
     context.pages = [initial_page]
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     browser.browser = context
 
     await browser._ensure_page(None)
@@ -354,7 +360,7 @@ async def test_contextvar_sessions_make_progress_on_independent_tabs():
             await asyncio.wait_for(both_started.wait(), timeout=0.2)
             await super().goto(url, **kwargs)
 
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     browser.browser = FakeContext(ConcurrentPage)
 
     async def navigate(session, url):
@@ -387,7 +393,7 @@ async def test_same_tab_operations_are_serialized():
             await super().goto(url, **kwargs)
             active -= 1
 
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     browser.browser = FakeContext(SerialPage)
     browser._bind_session("one")
     browser._tab_meta["one"] = {"purpose": "test", "who": "tester"}
@@ -409,7 +415,7 @@ async def test_cancelled_launch_closes_partial_context_and_driver(
             await asyncio.Event().wait()
 
     context, playwright = install_fake_runtime(monkeypatch, tmp_path, BlockingContext())
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     task = asyncio.create_task(browser.open_browser())
     await page_started.wait()
 
@@ -441,7 +447,7 @@ async def test_cancel_during_driver_start_waits_for_driver_then_stops_it(
     monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
     monkeypatch.setattr(async_mod, "async_playwright", BlockingManager)
     monkeypatch.setattr(async_mod, "_profile_dir", lambda: tmp_path / "profile")
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     opening = asyncio.create_task(browser.open_browser())
     await start_entered.wait()
 
@@ -476,7 +482,7 @@ async def test_cancel_during_context_launch_waits_for_context_then_closes_it(
     monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_mod, "_profile_dir", lambda: tmp_path / "profile")
     monkeypatch.setattr(async_mod, "find_system_chrome", lambda: "/fake/chrome")
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     opening = asyncio.create_task(browser.open_browser())
     await launch_entered.wait()
 
@@ -510,7 +516,7 @@ async def test_close_waits_for_an_active_operation_before_teardown(
         tmp_path,
         FakeContext(BlockingPage),
     )
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     await browser.open_browser()
     browser._tab_meta[None] = {"purpose": "test", "who": "tester"}
     navigation = asyncio.create_task(browser.go_to("example.com"))
@@ -546,7 +552,7 @@ async def test_cancelled_close_finishes_cleanup_before_propagating(
         tmp_path,
         BlockingCloseContext(),
     )
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     await browser.open_browser()
     closing = asyncio.create_task(browser.close())
     await close_started.wait()
@@ -576,7 +582,7 @@ async def test_open_is_rejected_while_shutdown_owns_the_runtime(monkeypatch, tmp
             await super().close()
 
     install_fake_runtime(monkeypatch, tmp_path, BlockingCloseContext())
-    browser = async_mod.AsyncBrowserCore()
+    browser = async_mod.AsyncBrowserCore(engine_mode="chrome")
     await browser.open_browser()
     closing = asyncio.create_task(browser.close())
     await close_started.wait()

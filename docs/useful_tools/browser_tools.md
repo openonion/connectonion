@@ -1,12 +1,12 @@
 # Browser Tools
 
-Natural language browser automation via [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) — a stealth-patched, API-compatible Playwright fork that hides driver-level automation tells out of the box. Navigate, click, type, screenshot — no CSS selectors needed.
+Natural language browser automation through Onionwright's single Playwright-compatible driver API. WTFbrowser is the paid default and owns native browser/network protection; Chrome is an explicit compatibility mode with detection and account risk. Navigate, click, type, and screenshot without changing the existing tool interface.
 
 ## Installation
 
 ```bash
-pip install patchright
-patchright install chrome
+co auth
+co browser install-onion
 ```
 
 ## Usage
@@ -21,12 +21,11 @@ agent = Agent("web", tools=[browser])
 agent.input("go to github.com and take a screenshot")
 ```
 
-`BrowserAutomation()` defaults to `engine_mode="system"`, the free local
-browser path. `engine_mode="auto"` is an explicit opt-in strategy that may
-select paid Onion and start a $0.025 interval when its preflight succeeds;
-`engine_mode="onion"` explicitly requires that paid engine and never falls
-back to system. The internal `AsyncBrowserCore` uses the same default and
-semantics.
+`BrowserAutomation()` defaults to `engine_mode="wtf"`. It may start a paid
+WTFbrowser interval after non-billing preflight succeeds. It never silently
+falls back. Set `engine_mode="chrome"` explicitly for compatibility mode; sites
+may detect or challenge it and may limit or suspend the account. Legacy
+`auto/onion/system` spellings remain aliases for one preview.
 
 ## Quick Start (no agent)
 
@@ -46,7 +45,7 @@ with BrowserAutomation() as browser:
 `BrowserAutomation` remains synchronous in 1.8: existing calls, context managers,
 method names, signatures, and return values do not require an `await`. Internally,
 the class owns one async browser core on a private event-loop thread. This removes
-the old synchronous Patchright implementation from the execution path while
+the old synchronous driver implementation from the execution path while
 preserving existing Python and Agent integrations.
 
 Calling these synchronous methods from a thread that already runs an asyncio loop
@@ -368,7 +367,7 @@ BROWSER_PROXY=socks5://host:port
 
 ## Notes
 
-- Uses Google Chrome if installed (better site compatibility); if no browser exists, chromium is auto-installed per-user (no admin rights, v1.2.1+)
+- WTFbrowser uses its exact signed runtime. Explicit Chrome compatibility uses desktop Chrome when present and can install pinned Chromium per-user.
 - Viewport defaults to 1920×1200 for maximum content visibility
 - Output is truncated when used as an agent tool to prevent token overflow
 - Runs natively on Windows since v1.2.1 (named-pipe transport — no WSL), plus macOS and Linux

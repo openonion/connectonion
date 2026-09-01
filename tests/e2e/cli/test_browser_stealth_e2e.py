@@ -1,7 +1,7 @@
 """End-to-end stealth guards for the real browser stack (no mocks).
 
 Three layers:
-  1. driver integrity — the installed Patchright must still be the patched stealth build.
+  1. driver integrity — Onionwright's exact async/sync driver API must be ready.
   2. humanized input (issue #222) — the REAL BrowserAutomation verbs (mouse_click /
      keyboard_type) must emit human-shaped events.
   3. site verdicts (issue #222) — driving `co browser` (go_to) through every fingerprint /
@@ -30,11 +30,11 @@ from connectonion.useful_tools.browser_tools.browser import (
 )
 
 
-def test_real_installed_driver_is_patched():
+def test_real_installed_onionwright_driver_api_is_ready():
     status, version, detail = driver_stealth_status()
     if status == "missing":
-        pytest.skip("patchright not installed in this environment")
-    assert status == "ok", f"installed patchright {version} is not the patched stealth driver: {detail}"
+        pytest.skip("Onionwright not installed in this environment")
+    assert status == "ok", f"installed Onionwright {version} driver API is not ready: {detail}"
 
 
 # ---------------------------------------------------------------------------
@@ -44,10 +44,10 @@ def test_real_installed_driver_is_patched():
 @pytest.fixture(scope="module")
 def stealth_browser():
     if not BROWSER_AVAILABLE:
-        pytest.skip("patchright not installed")
+        pytest.skip("Onionwright not installed")
     if not os.environ.get("DISPLAY"):
         pytest.skip("no DISPLAY — headful stealth browser needs a display (run under xvfb-run)")
-    b = BrowserAutomation(headless=False)
+    b = BrowserAutomation(headless=False, engine_mode="chrome")
     b.open_browser()
     if not b.page:
         pytest.skip("browser failed to launch in this environment")
@@ -69,7 +69,7 @@ def _text(browser):
 # ---------------------------------------------------------------------------
 
 # Records the input events a behavioral detector would score, into the shared DOM
-# (Patchright evaluates in an isolated world, so page-script globals aren't readable).
+# (the driver evaluates in an isolated world, so page-script globals aren't readable).
 RECORDER_PAGE = (
     "<!doctype html><meta charset=utf-8>"
     "<input id=box style='position:absolute;left:60px;top:80px;width:220px;height:32px'>"
@@ -324,7 +324,7 @@ _ROWS_JS = ("() => Array.from(document.querySelectorAll('table tr'))"
 def _v_rebrowser_cdp(b):
     """rebrowser-bot-detector — the modern CDP-leak suite (Runtime.enable etc.). A 🔴 on
     any row is a real automation tell; the ⚪️ rows are neutral (they need main-world
-    access, which Patchright's isolated world correctly denies)."""
+    access, which the driver's isolated world correctly denies)."""
     _skip_if_down(b)
     b.mouse_click(300, 300)                                # a real interaction
     _eval(b, "() => new Promise(r => setTimeout(r, 3000))")  # let the tests settle

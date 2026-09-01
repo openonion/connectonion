@@ -1,7 +1,7 @@
 """
 Purpose: Non-blocking humanized pointer, keyboard, and wheel input for AsyncBrowserCore.
 LLM-Note:
-  Dependencies: asyncio + stdlib-only humanize rules; no Patchright sync API | imported by [_async_browser.py] | tested by [tests/unit/test_async_browser_humanize.py]
+  Dependencies: asyncio + stdlib-only humanize rules; no sync driver API | imported by [_async_browser.py] | tested by [tests/unit/test_async_browser_humanize.py]
   Data flow: known target → shared geometry/persona rules → awaited mouse/keyboard/CDP events with asyncio sleeps between events
   State/Effects: per-page cursor/CDP state | temporary OS clipboard mutation for CJK paste, serialized by the runtime clipboard lock and restored on cancellation
   Integration: internal 1.8 async driver; used by AsyncBrowserCore directly and by synchronous BrowserAutomation through its facade

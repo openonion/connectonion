@@ -8,7 +8,7 @@ Two independent checks, because they measure different things:
      and variable inter-keystroke timing. This proves the change works regardless of
      where it runs.
 
-  2. ENVIRONMENT CHECKERS (needs network; validates Patchright + headful, NOT our
+  2. ENVIRONMENT CHECKERS (needs network; validates Onionwright + headful, NOT our
      input change): visit public fingerprint pages, read their verdict, screenshot.
 
 NOTE: the behavioral vendors (reCAPTCHA v3, Cloudflare, DataDome) also weigh IP
@@ -24,7 +24,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from patchright.sync_api import sync_playwright
+from onionwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from connectonion.useful_tools.browser_tools import humanize  # noqa: E402
@@ -35,7 +35,7 @@ RECORDER_HTML = (
     '<b id=rec></b>'
 )
 
-# Patchright runs page.evaluate in an ISOLATED world, so a variable an inline page
+# The driver runs page.evaluate in an ISOLATED world, so a variable an inline page
 # <script> sets on window is invisible to evaluate. Attach the recorders from evaluate
 # and store counts in the shared DOM (dataset) so any world can read them back.
 INSTALL_RECORDER = """() => {
@@ -125,7 +125,7 @@ def main():
         page = ctx.new_page()
         print("== 1. EVENT SHAPE (humanize.py — the change under test) ==")
         all_results.update(check_event_shape(page))
-        print("\n== 2. ENVIRONMENT CHECKERS (Patchright + headful) ==")
+        print("\n== 2. ENVIRONMENT CHECKERS (Onionwright + headful) ==")
         all_results.update(check_environment(page))
         ctx.close()
 

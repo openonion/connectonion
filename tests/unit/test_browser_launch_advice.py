@@ -16,7 +16,7 @@ class TestTheAdviceMatchesTheFailure:
         advice = daemon.launch_failure_advice(
             "Executable doesn't exist at /home/co/.cache/ms-playwright/chromium-1228/chrome")
 
-        assert "patchright install chromium" in advice
+        assert "onionwright install chromium" in advice
         assert "desktop Terminal" not in advice, \
             "a server has no desktop, and that is not what is wrong"
 
@@ -25,7 +25,7 @@ class TestTheAdviceMatchesTheFailure:
         with patch.object(daemon.platform, "system", return_value="Darwin"):
             advice = daemon.launch_failure_advice("Executable doesn't exist at /Users/…")
 
-        assert "patchright install chromium" in advice
+        assert "onionwright install chromium" in advice
 
     def test_a_headless_session_on_macos_gets_the_session_advice(self):
         with patch.object(daemon.platform, "system", return_value="Darwin"):

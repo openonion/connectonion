@@ -49,7 +49,7 @@ import connectonion.useful_tools.browser_tools.browser as browser_module
 def stealth_ok(monkeypatch):
     """A healthy package, which is all doctor used to look at."""
     monkeypatch.setattr(browser_module, "driver_stealth_status",
-                        lambda: ("ok", "1.61.2", "stealth patches present"))
+                        lambda: ("ok", "0.0.13.dev5", "single pinned driver API ready"))
 
 
 def _run():
@@ -73,7 +73,7 @@ class TestAMissingBrowserIsReported:
         assert "nothing wrong" not in _run()
 
     def test_it_names_the_command_that_fixes_it(self):
-        assert "patchright install chromium" in _run()
+        assert "onionwright install chromium" in _run()
 
 
 class TestAnInstalledBrowserIsReportedGreen:
@@ -91,11 +91,11 @@ class TestAnInstalledBrowserIsReportedGreen:
         assert "chromium-1228" in output or "✓" in output
 
     def test_nothing_is_reported_wrong(self):
-        assert "patchright install chromium" not in _run()
+        assert "onionwright install chromium" not in _run()
 
 
 class TestTheProbeItself:
-    """installed_browser_path() must answer from patchright, not from a guess."""
+    """installed_browser_path() must answer from Onionwright, not from a guess."""
 
     @pytest.fixture(autouse=True)
     def no_memo(self):
@@ -117,7 +117,7 @@ class TestTheProbeItself:
                             raising=False)
 
     def test_it_returns_none_when_the_path_does_not_exist(self, monkeypatch):
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path",
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path",
                             lambda: "/nowhere/chromium-9999/chrome", raising=False)
 
         assert browser_module.installed_browser_path() is None
@@ -125,7 +125,7 @@ class TestTheProbeItself:
     def test_it_returns_the_path_when_it_exists(self, monkeypatch, tmp_path):
         fake = tmp_path / "chrome"
         fake.write_text("#!/bin/sh\n")
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path",
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path",
                             lambda: str(fake), raising=False)
 
         assert browser_module.installed_browser_path() == str(fake)
@@ -133,7 +133,7 @@ class TestTheProbeItself:
     def test_a_system_chrome_counts(self, monkeypatch):
         """`open_browser` pins a real desktop Chrome when one is present, so a
         machine with Chrome and no patchright download is not broken."""
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path", lambda: None,
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path", lambda: None,
                             raising=False)
         monkeypatch.setattr(browser_module, "find_system_chrome",
                             lambda: "/usr/bin/google-chrome", raising=False)
@@ -146,7 +146,7 @@ class TestTheProbeItself:
         def explode():
             raise RuntimeError("driver did not start")
 
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path", explode,
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path", explode,
                             raising=False)
         monkeypatch.setattr(browser_module, "find_system_chrome", lambda: None,
                             raising=False)

@@ -34,7 +34,7 @@ def test_real_daemon_keeps_a_second_tab_live_during_a_long_operation(
     tmp_path, monkeypatch
 ):
     if not ASYNC_BROWSER_AVAILABLE:
-        pytest.skip("patchright async API is not installed")
+        pytest.skip("Onionwright async API is not installed")
 
     address = endpoint()
     monkeypatch.setenv("CO_BROWSER_SOCK", address)

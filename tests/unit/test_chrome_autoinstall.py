@@ -7,7 +7,7 @@ What it tests:
 - client._ensure_browser_ready():
   * pageless verbs (status/tab/close/...) never trigger provisioning
   * a present system Chrome skips provisioning (no subprocess)
-  * no Chrome anywhere → runs `<python> -m patchright install chrome`
+  * no Chrome anywhere → runs `<python> -m onionwright install chromium`
   * an install failure warns but does NOT raise — the daemon's own launch
     error stays the actionable fallback
 
@@ -69,11 +69,11 @@ def test_system_chrome_skips_install(monkeypatch):
     assert run.calls == []
 
 
-def test_missing_browser_triggers_patchright_install(monkeypatch, capsys):
+def test_missing_browser_triggers_onionwright_install(monkeypatch, capsys):
     run = _RecordingRun(returncode=0)
     _patch_env(monkeypatch, None, run)
     c._ensure_browser_ready("go_to example.com")
-    assert run.calls == [[sys.executable, "-m", "patchright", "install", "chromium"]]  # chromium: per-user dir, never needs admin
+    assert run.calls == [[sys.executable, "-m", "onionwright", "install", "chromium"]]
     assert "one-time" in capsys.readouterr().err  # the user is told what's happening
 
 
@@ -82,7 +82,7 @@ def test_failed_install_warns_but_does_not_raise(monkeypatch, capsys):
     _patch_env(monkeypatch, None, run)
     c._ensure_browser_ready("do fill the form")  # must not raise
     err = capsys.readouterr().err
-    assert "patchright install chromium" in err  # the manual remedy is named
+    assert "onionwright install chromium" in err  # the manual remedy is named
 
 
 class TestAWarmDaemonWithNoBrowserStillProvisions:
@@ -157,7 +157,7 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
     NO_BROWSER = (
         "BrowserType.launch_persistent_context: Executable doesn't exist\n"
         "Chrome failed to start. No browser is installed for this user.\n"
-        "Install it with:  patchright install chromium"
+        "Install it with:  python -m onionwright install chromium"
     )
 
     def test_it_installs_when_the_daemon_says_no_browser(self, monkeypatch):
@@ -165,16 +165,16 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
         _patch_env(monkeypatch, None, run)
         self._warm_daemon(monkeypatch, [(1, self.NO_BROWSER), (0, "done")])
 
-        c.send("go_to https://example.com")
+        c.send("go_to https://example.com", engine_mode="chrome")
 
-        assert run.calls == [[sys.executable, "-m", "patchright", "install", "chromium"]]
+        assert run.calls == [[sys.executable, "-m", "onionwright", "install", "chromium"]]
 
     def test_it_retries_the_command_after_installing(self, monkeypatch):
         run = _RecordingRun(returncode=0)
         _patch_env(monkeypatch, None, run)
         sent = self._warm_daemon(monkeypatch, [(1, self.NO_BROWSER), (0, "done")])
 
-        code = c.send("go_to https://example.com")
+        code = c.send("go_to https://example.com", engine_mode="chrome")
 
         assert len(sent) == 2, "the command was not resent after provisioning"
         assert code == 0
@@ -187,7 +187,7 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
             monkeypatch, [(1, self.NO_BROWSER), (1, self.NO_BROWSER)]
         )
 
-        code = c.send("go_to https://example.com")
+        code = c.send("go_to https://example.com", engine_mode="chrome")
 
         assert len(sent) == 2
         assert code == 1
@@ -199,7 +199,7 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
         _patch_env(monkeypatch, None, run)
         sent = self._warm_daemon(monkeypatch, [(3, "unknown tab: research")])
 
-        code = c.send("go_to https://example.com")
+        code = c.send("go_to https://example.com", engine_mode="chrome")
 
         assert run.calls == []
         assert len(sent) == 1

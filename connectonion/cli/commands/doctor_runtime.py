@@ -9,7 +9,8 @@ import sys
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
-PATCHRIGHT_VERSION = "1.61.2"
+from ...browser_preview import ONIONWRIGHT_VERSION
+
 SUPPORTED_SYSTEMS = {"Darwin", "Linux", "Windows"}
 
 
@@ -49,7 +50,7 @@ def _linux_prerequisites(browser_path: str | None) -> RuntimeCheck:
             "os-prerequisites",
             "OS prerequisites",
             "blocked",
-            "could not inspect browser libraries; run: python -m patchright install --with-deps chromium",
+            "could not inspect browser libraries; run: python -m onionwright install --with-deps chromium",
         )
     missing = sorted(
         line.split("=>", 1)[0].strip()
@@ -62,7 +63,7 @@ def _linux_prerequisites(browser_path: str | None) -> RuntimeCheck:
             "OS prerequisites",
             "blocked",
             "missing libraries: " + ", ".join(missing)
-            + "; run: python -m patchright install --with-deps chromium",
+            + "; run: python -m onionwright install --with-deps chromium",
         )
     if result.returncode:
         return RuntimeCheck(
@@ -106,15 +107,23 @@ def runtime_checks() -> list[RuntimeCheck]:
     safe_to_repair = python_ok and system_supported
 
     driver_status, version, detail = driver_stealth_status()
+    if driver_status == "ok" and version != ONIONWRIGHT_VERSION:
+        driver_status = "broken"
+        detail = (
+            f"expected preview Onionwright {ONIONWRIGHT_VERSION}, found {version}; "
+            "run: co browser install-onion"
+        )
     if driver_status == "ok":
-        checks.append(RuntimeCheck("patchright", "Patchright", "ok", f"{version} · {detail}"))
+        checks.append(RuntimeCheck("onionwright", "Onionwright", "ok", f"{version} · {detail}"))
     else:
-        pip_command = [sys.executable, "-m", "pip", "install"]
-        if driver_status == "broken":
-            pip_command.extend(["--force-reinstall", "--no-cache-dir"])
-        pip_command.append(f"patchright=={PATCHRIGHT_VERSION}")
-        repair = tuple(pip_command) if safe_to_repair else None
-        checks.append(RuntimeCheck("patchright", "Patchright", driver_status, detail, repair))
+        repair = (
+            sys.executable,
+            "-m",
+            "connectonion.cli.main",
+            "browser",
+            "install-onion",
+        ) if safe_to_repair else None
+        checks.append(RuntimeCheck("onionwright", "Onionwright", driver_status, detail, repair))
 
     browser_path = installed_browser_path() if driver_status != "missing" else None
     checks.append(
@@ -125,7 +134,7 @@ def runtime_checks() -> list[RuntimeCheck]:
             "Browser binary",
             "missing",
             "none installed for this user",
-            (sys.executable, "-m", "patchright", "install", "chromium")
+            (sys.executable, "-m", "onionwright", "install", "chromium")
             if safe_to_repair
             else None,
         )

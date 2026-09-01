@@ -1,53 +1,49 @@
-"""Unit tests for the Patchright stealth-driver integrity check (driver_stealth_status).
+"""Unit tests for Onionwright's single driver API health check."""
 
-Pure/isolated: the driver install is faked with a temp tree and monkeypatch, so these lock
-the detection logic (patched vs vanilla vs not-installed) with no dependency on the real
-install. The guard that the *real* pinned driver is patched is an e2e test (it touches the
-actual install): tests/e2e/cli/test_browser_stealth_e2e.py.
-"""
-
+import importlib.metadata
 import importlib.util
+import sys
+from types import SimpleNamespace
 
 import connectonion.useful_tools.browser_tools.browser as browser_mod
 
-# The literal switch only the PATCHED driver injects; the vanilla driver never has it.
-PATCHED_MARKER = 'browser.launchOptions.args.push("--disable-blink-features=AutomationControlled")'
-# A snippet of the VANILLA driver (the exact form we observed on the broken 1.58 install).
-VANILLA_SNIPPET = 'assistantMode ? "" : "--enable-automation",'
-
-
-def _fake_patchright(tmp_path, js_content):
-    """Build a fake patchright install tree and return the __file__ to monkeypatch onto it."""
-    lib = tmp_path / "patchright" / "driver" / "package" / "lib" / "server" / "chromium"
-    lib.mkdir(parents=True)
-    (lib / "coreBundle.js").write_text(js_content)
-    return str(tmp_path / "patchright" / "__init__.py")
-
-
-def test_status_ok_when_driver_patched(tmp_path, monkeypatch):
-    import patchright
-    monkeypatch.setattr(patchright, "__file__", _fake_patchright(tmp_path, PATCHED_MARKER))
+def test_status_ok_when_both_onionwright_apis_are_callable(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "0.0.13.dev5")
+    monkeypatch.setitem(
+        sys.modules, "onionwright.async_api", SimpleNamespace(async_playwright=lambda: None)
+    )
+    monkeypatch.setitem(
+        sys.modules, "onionwright.sync_api", SimpleNamespace(sync_playwright=lambda: None)
+    )
 
     status, version, detail = browser_mod.driver_stealth_status()
-    assert status == "ok"
-    assert version  # importlib.metadata still reports the installed version
-    assert "present" in detail
+
+    assert (status, version) == ("ok", "0.0.13.dev5")
+    assert "single pinned driver API" in detail
 
 
-def test_status_broken_when_driver_vanilla(tmp_path, monkeypatch):
-    import patchright
-    monkeypatch.setattr(patchright, "__file__", _fake_patchright(tmp_path, VANILLA_SNIPPET))
+def test_status_broken_when_driver_api_is_incomplete(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "0.0.13.dev5")
+    monkeypatch.setitem(
+        sys.modules, "onionwright.async_api", SimpleNamespace(async_playwright=None)
+    )
+    monkeypatch.setitem(
+        sys.modules, "onionwright.sync_api", SimpleNamespace(sync_playwright=lambda: None)
+    )
 
     status, version, detail = browser_mod.driver_stealth_status()
-    assert status == "broken"
-    assert "UNPATCHED" in detail
-    assert "force-reinstall" in detail  # tells the user how to fix it
+
+    assert (status, version) == ("broken", "0.0.13.dev5")
+    assert "install-onion" in detail
 
 
 def test_status_missing_when_not_installed(monkeypatch):
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
 
     status, version, detail = browser_mod.driver_stealth_status()
+
     assert status == "missing"
     assert version == ""
     assert "not installed" in detail

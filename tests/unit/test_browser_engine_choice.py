@@ -25,9 +25,9 @@ class Client:
         return self.result
 
 
-def test_system_resolver_does_not_invoke_paid_token_loader_or_onionwright():
+def test_chrome_resolver_does_not_invoke_paid_token_loader_or_onionwright():
     def forbidden(*args):
-        pytest.fail("system mode touched the paid path")
+        pytest.fail("chrome mode touched the paid path")
 
     result = engine.resolve(
         engine.SYSTEM,
@@ -39,18 +39,17 @@ def test_system_resolver_does_not_invoke_paid_token_loader_or_onionwright():
     assert not result.fallback
 
 
-def test_omitted_engine_defaults_to_nonbilling_system():
-    def forbidden(*args):
-        pytest.fail("the omitted engine invoked its paid token loader or paid code")
-
+def test_omitted_engine_defaults_to_wtfbrowser(tmp_path):
+    client = Client(prepared())
     result = engine.resolve(
-        token_loader=forbidden,
-        client_factory=forbidden,
+        token_loader=lambda: "token",
+        client_factory=lambda token, home: client,
+        home=tmp_path,
     )
 
-    assert result.requested == engine.SYSTEM
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.SYSTEM_REQUESTED
+    assert result.requested == engine.WTF
+    assert result.resolved == engine.WTF
+    assert result.reason == engine.Reason.WTF_READY
 
 
 def test_auto_ready_selects_exact_prepared_onion_artifact(tmp_path):
@@ -79,18 +78,17 @@ def test_auto_ready_selects_exact_prepared_onion_artifact(tmp_path):
         "insufficient_balance",
     ],
 )
-def test_auto_preflight_failure_falls_back_before_billing(reason, tmp_path):
+def test_wtf_preflight_failure_never_falls_back(reason, tmp_path):
     client = Client(prepared(ready=False, reason=reason, action="use system"))
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: "token",
-        client_factory=lambda token, home: client,
-        home=tmp_path,
-    )
-    assert result.resolved == engine.SYSTEM
-    assert result.fallback
-    assert result.reason == reason
-    assert result.client is None
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: "token",
+            client_factory=lambda token, home: client,
+            home=tmp_path,
+        )
+    assert caught.value.reason == reason
+    assert not any("fallback" in str(value).lower() for value in vars(caught.value).values())
 
 
 def test_explicit_onion_never_falls_back(tmp_path):
@@ -108,13 +106,14 @@ def test_explicit_onion_never_falls_back(tmp_path):
     assert caught.value.next_action == "top up"
 
 
-def test_auto_without_credentials_is_typed_system_fallback():
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: (_ for _ in ()).throw(RuntimeError("no token")),
-    )
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.LICENSE_UNAVAILABLE
+def test_wtf_without_credentials_is_a_typed_failure_not_chrome_fallback():
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: (_ for _ in ()).throw(RuntimeError("no token")),
+        )
+    assert caught.value.reason == engine.Reason.LICENSE_UNAVAILABLE
+    assert "config set engine chrome" in caught.value.next_action
 
 
 def test_invalid_mode_is_never_guessed():
@@ -126,13 +125,13 @@ def test_invalid_mode_is_never_guessed():
 def test_installed_old_onionwright_is_typed_incompatible_before_preflight():
     client = Client(prepared())
     client.client_version = "0.0.10"
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: "token",
-        client_factory=lambda token, home: client,
-    )
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: "token",
+            client_factory=lambda token, home: client,
+        )
+    assert caught.value.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
     assert client.calls == []
 
 
@@ -143,14 +142,14 @@ def test_a_different_version_is_not_preview_compatible(version):
     client = Client(prepared())
     client.client_version = version
 
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: "token",
-        client_factory=lambda token, home: client,
-    )
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: "token",
+            client_factory=lambda token, home: client,
+        )
 
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
+    assert caught.value.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
     assert client.calls == []
 
 
@@ -158,14 +157,14 @@ def test_a_production_channel_client_is_rejected_before_preflight():
     client = Client(prepared())
     client.release_channel = "production"
 
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: "token",
-        client_factory=lambda token, home: client,
-    )
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: "token",
+            client_factory=lambda token, home: client,
+        )
 
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
+    assert caught.value.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
     assert client.calls == []
 
 
@@ -183,12 +182,12 @@ def test_installed_sync_only_onionwright_is_rejected_before_client_or_preflight(
         "onionwright",
         SimpleNamespace(PaidSessionClient=paid_client),
     )
-    result = engine.resolve(
-        engine.AUTO,
-        token_loader=lambda: "token",
-    )
-    assert result.resolved == engine.SYSTEM
-    assert result.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
+    with pytest.raises(engine.BrowserEngineError) as caught:
+        engine.resolve(
+            engine.WTF,
+            token_loader=lambda: "token",
+        )
+    assert caught.value.reason == engine.Reason.ONIONWRIGHT_INCOMPATIBLE
     assert constructed == []
 
 

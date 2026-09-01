@@ -268,7 +268,8 @@ New tests in `tests/unit/test_windows_compat.py`:
 - ✅ Subprocess survives non-UTF-8 bytes (`errors="replace"`, no crash)
 
 A real Windows E2E job (`.github/workflows/tests.yml` → `windows-e2e`) installs the
-wheel like a user, verifies the Patchright CLI, launches the preinstalled Chrome,
+wheel like a user, verifies the Onionwright driver API, launches preinstalled Chrome
+in explicit compatibility mode,
 then hides Chrome and proves `co browser` can download per-user Chromium and drive
 it on a truly fresh setup. It also runs the shipped `Shell` + background runner
 under an actual `chcp 936` (GBK) console. The fresh-setup journey is the single

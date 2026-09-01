@@ -119,7 +119,7 @@ Playwright routing nor a page-scoped CDP Fetch auth handler received the proxy
 challenge. Therefore system Chrome is not a Remote Browser engine merely
 because the requested proxy flags look correct.
 
-The paid Onion Browser reads an absolute path from
+The paid WTFbrowser reads an absolute path from
 `--connectonion-proxy-auth-file`, validates a bounded private credential file in
 the browser process, and supplies the credential only through Chromium's HTTP
 authentication delegate when the proxy flag, exact `127.0.0.1:<port>`
@@ -296,7 +296,7 @@ OAuth redirects, WebSockets, and downloads remain usable.
 3. Give BrowserDaemon an explicit namespace/profile/launch-policy contract;
    verify local and Host-private daemons can run concurrently without sharing
    sockets, locks, profile files, or proxy settings.
-4. Add the private proxy-auth credential-file hook to the paid Onion Browser,
+4. Add the private proxy-auth credential-file hook to the paid WTFbrowser,
    compile it at the pinned Chromium revision, and keep system Chrome
    unavailable for Remote Browser navigation.
 5. Wire the gateway through Onionwright's paid engine and run the identical

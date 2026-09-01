@@ -44,6 +44,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Checkout exact Onionwright driver
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: openonion/onionwright
+          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          path: .ci/onionwright
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -57,6 +63,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -e .ci/onionwright
           pip install -e ".[dev]"
 
       - name: Run all tests
@@ -87,6 +94,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Checkout exact Onionwright driver
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: openonion/onionwright
+          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          path: .ci/onionwright
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -100,6 +113,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -e .ci/onionwright
           pip install -e ".[dev]"
 
       - name: Run destination, gateway, and private runtime contracts
@@ -120,6 +134,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Checkout exact Onionwright driver
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: openonion/onionwright
+          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          path: .ci/onionwright
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -133,6 +153,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -e .ci/onionwright
           pip install -e ".[dev]"
 
       - name: Run browser transport + daemon tests (native Windows named pipes)
@@ -141,9 +162,9 @@ jobs:
 
   # Simulate a REAL Windows user end-to-end: install from the wheel (exactly what
   # PyPI ships — not an editable checkout), discover the CLI from the shell,
-  # validate the patchright CLI, exercise paths with spaces + non-ASCII characters,
+  # validate the Onionwright CLI, exercise paths with spaces + non-ASCII characters,
   # then drive a REAL Chrome through `co browser` (daemon spawn → named pipe →
-  # launch → navigate → close). This is the "it installs but co/patchright won't
+  # launch → navigate → close). This is the "it installs but co/Onionwright won't
   # run on my machine" class of failure, caught before release.
   windows-e2e:
     runs-on: windows-latest
@@ -152,6 +173,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Checkout exact Onionwright driver
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: openonion/onionwright
+          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          path: .ci/onionwright
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -172,6 +199,7 @@ jobs:
         run: |
           $whl = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
           pip install $whl
+          pip install -e .ci/onionwright
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: CLI is discoverable from a plain shell
@@ -211,10 +239,11 @@ jobs:
             Write-Error "keypair was not created on first run"; exit 1
           }
 
-      - name: patchright CLI is included and runnable
+      - name: Onionwright CLI is included and runnable
         run: |
-          python -m patchright --version
-          if ($LASTEXITCODE -ne 0) { Write-Error "patchright module not runnable"; exit 1 }
+          python -m onionwright --version
+          if ($LASTEXITCODE -ne 0) { Write-Error "Onionwright module not runnable"; exit 1 }
+          co browser config set engine chrome
 
       - name: Package data survives the wheel — skills copy in a path with spaces + CJK
         run: |
@@ -458,6 +487,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Checkout exact Onionwright driver
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: openonion/onionwright
+          ref: 40249c049fe6e9030283ef9155a108cdc896c607
+          path: .ci/onionwright
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -473,14 +508,16 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build --wheel
           python -m pip install dist/*.whl
+          python -m pip install -e .ci/onionwright
 
       - name: CLI and bundled browser are runnable
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/co-browsers
         run: |
           co --version
-          python -m patchright --version
-          python -m patchright install chromium
+          python -m onionwright --version
+          python -m onionwright install chromium
+          co browser config set engine chrome
 
       - name: Real co browser end-to-end over the macOS Unix socket
         env:

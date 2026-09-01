@@ -18,21 +18,26 @@ The browser stays open **between commands**. Each `co browser ...` call drives t
 The ConnectOnion 1.8 browser preview resolves the engine once when the browser daemon starts:
 
 ```bash
-co browser go_to example.com                  # default: free system browser
-co browser --engine system go_to example.com  # explicit free system browser
-co browser --engine auto go_to example.com    # opt in to policy; may select paid Onion
-co browser --engine onion go_to example.com   # force paid Onion Browser
+co browser go_to example.com                 # default: paid WTFbrowser
+co browser --engine wtf go_to example.com    # explicit WTFbrowser
+co browser --engine chrome go_to example.com # explicit Chrome compatibility
+co browser config set engine chrome          # persist the shorter default
+co browser config set engine wtf             # switch the default back
 ```
 
-Omitting `--engine` is exactly `system`: the browser path does not invoke the
-paid-token loader, transmit or use a paid token, load Onionwright, contact the
-preview API, or start billing. The shared CLI bootstrap may already have loaded
-project or home environment files before command dispatch. `auto` is retained
-as an explicit strategy, not a default; selecting it authorizes the non-billing
-preflight and may start a $0.025 paid interval when Onion is ready. Selecting
-`onion` explicitly requires the paid path and never falls back to system.
+Omitting `--engine` selects WTFbrowser unless a user has saved a different
+choice. `auto` and `onion` remain temporary aliases for `wtf`; `system` remains
+an alias for `chrome`. Status and daemon identity always use the canonical
+`wtf` / `chrome` names.
 
-The paid path requires the exact Onionwright 0.0.13.dev3 preview client. Install
+Chrome compatibility still runs through Onionwright's one driver API, but it
+does not include WTFbrowser's native browser and network protections. Every
+Chrome command prints a warning: sites may detect or challenge automation,
+limit access, or suspend accounts. ConnectOnion never changes a WTFbrowser
+request into Chrome because of low balance, a download error, or failed
+preflight; the user must choose Chrome explicitly.
+
+The paid path requires the exact Onionwright 0.0.13.dev5 preview client. Install
 or upgrade the real private wheel explicitly:
 
 ```bash
@@ -52,27 +57,26 @@ environment override, and the general `OO_API_URL` setting is deliberately
 ignored. The authenticated release session uses a dedicated TLS 1.2+ context
 with the packaged certifi bundle and ignores environment proxy, CA,
 TLS-key-log, and netrc configuration. Pip runs isolated and offline against
-only the verified local wheel; ConnectOnion supplies its locked PyNaCl and
-zstandard dependencies and verifies the installed preview surface outside the
-project directory.
+only the verified local wheel. ConnectOnion supplies its locked Playwright
+1.61.0, PyNaCl, and zstandard dependencies and verifies both Onionwright driver
+APIs and the installed preview surface outside the project directory.
 
 | mode | behavior |
 |---|---|
-| omitted / `system` | The free default. The browser path does not parse, transmit, or use a paid token and does not import Onionwright, call oo-api, download an artifact, or create a paid session. Cost: $0 browser runtime. |
-| explicit `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified paid Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
-| explicit `onion` | Force the paid path. Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
+| omitted / `wtf` | Paid WTFbrowser default. Requires the exact compatible artifact and enough balance. Any preflight failure is returned as a typed error; there is no Chrome fallback. |
+| explicit `chrome` | Compatibility mode through Onionwright and system Chrome (or its pinned Chromium). It does not touch paid credentials or billing, and always prints the detection/account-risk warning. |
 
 Artifact checking and download do not charge. A paid session starts only after
 the complete artifact is locally ready, then prepays $0.025 for one 15-minute
 interval. Renewal occurs before the signed deadline. If renewal fails, that
-exact Onion process stops at `paid_until`; it is never changed into system
+exact WTFbrowser process stops at `paid_until`; it is never changed into
 Chrome mid-session.
 
 The daemon is pinned to its chosen engine. Close it before changing modes:
 
 ```bash
 co browser close
-co browser --engine system go_to example.com
+co browser --engine chrome go_to example.com
 ```
 
 Bare whole-browser `close` is deliberately accepted across engine modes: it
@@ -83,7 +87,7 @@ tab operations remain pinned to the daemon's selected engine; authenticated
 tab close remains available when a private gateway is down so teardown does
 not depend on the failed component.
 
-System Chrome and Onion Browser use separate persistent profiles. Cookies and
+Chrome and WTFbrowser use separate persistent profiles. Cookies and
 fingerprint state are not silently copied between them. `co browser status`
 shows requested/resolved engine, typed reason, and exact artifact when paid;
 it never prints tokens, licence bytes, or paid-cache paths.
@@ -297,17 +301,20 @@ This path uses managed keys — run `co auth` once if you see an authentication 
 
 ## Installation
 
-**None needed (1.2.1+).** The Patchright library ships with connectonion, and the first
-page-driving command auto-installs a browser when none exists — a one-time download,
-announced in your terminal, into your per-user directory (no admin rights). If a desktop
-Google Chrome is installed at the standard location, it is detected and used instead,
-with zero downloads.
+Install the signed Onionwright wheel after `co auth`:
+
+```bash
+co browser install-onion
+```
+
+WTFbrowser downloads its exact signed runtime during non-billing preflight.
+Chrome compatibility detects desktop Google Chrome at its standard location;
+if absent, its first page command installs pinned Chromium per user.
 
 Manual fallback (older versions, airgapped machines, or a failed auto-install):
 
 ```bash
-python -m patchright install chromium   # per-user, never needs admin
-python -m patchright install chrome     # branded Chrome: best stealth, system installer
+python -m onionwright install chromium  # Chrome compatibility, per-user
 ```
 
 ## Sessions & Profile
@@ -347,9 +354,9 @@ Browser agent requires authentication. Run: co auth
 ```
 The natural-language agent uses managed keys. Run `co auth` once. Direct function calls don't need this.
 
-**Patchright not installed**
+**Onionwright not installed**
 ```bash
-Browser tools not installed. Run: pip install patchright && patchright install chrome
+Browser tools not installed. Run: co browser install-onion
 ```
 
 ## Troubleshooting

@@ -279,7 +279,7 @@ class TestHandleDoctorVirtualEnv:
 
 
 class TestHandleDoctorBrowserChecks:
-    """The Browser panel surfaces Patchright stealth-driver integrity."""
+    """The Browser panel surfaces Onionwright driver API integrity."""
 
     def _run(self, monkeypatch, tmp_path, stealth):
         import connectonion.cli.commands.doctor_commands as dc
@@ -296,19 +296,19 @@ class TestHandleDoctorBrowserChecks:
             dc.handle_doctor()
 
     def test_doctor_shows_ok_stealth_driver(self, monkeypatch, tmp_path, capsys):
-        self._run(monkeypatch, tmp_path, ("ok", "1.61.2", "stealth patches present"))
+        self._run(monkeypatch, tmp_path, ("ok", "0.0.13.dev5", "single pinned driver API ready"))
         out = capsys.readouterr().out
         assert "Browser" in out
-        assert "1.61.2" in out
-        assert "stealth patches present" in out
+        assert "0.0.13.dev5" in out
+        assert "single pinned driver API ready" in out
 
     def test_doctor_flags_broken_stealth_driver(self, monkeypatch, tmp_path, capsys):
         self._run(monkeypatch, tmp_path,
-                  ("broken", "1.58.0", "UNPATCHED driver — navigator.webdriver leaks."))
+                  ("broken", "0.0.13.dev4", "Onionwright driver API is incomplete."))
         out = capsys.readouterr().out
-        assert "UNPATCHED" in out
+        assert "incomplete" in out
 
-    def test_doctor_notes_missing_patchright(self, monkeypatch, tmp_path, capsys):
-        self._run(monkeypatch, tmp_path, ("missing", "", "patchright not installed — pip install patchright"))
+    def test_doctor_notes_missing_onionwright(self, monkeypatch, tmp_path, capsys):
+        self._run(monkeypatch, tmp_path, ("missing", "", "Onionwright not installed — run install-onion"))
         out = capsys.readouterr().out
         assert "not installed" in out

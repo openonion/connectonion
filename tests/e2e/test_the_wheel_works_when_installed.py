@@ -239,13 +239,14 @@ from connectonion import browser_preview
 
 package = Path(connectonion.__file__).parent
 plan = (package / "docs/1.8-browser-preview-plan.md").read_text()
-manifest = (package / "docs/releases/assets/v1.8.0a4/manifest.yml").read_text()
-assert browser_preview.ONIONWRIGHT_VERSION == "0.0.13.dev3"
+manifest = (package / "docs/releases/assets/v1.8.0a5/manifest.yml").read_text()
+assert browser_preview.ONIONWRIGHT_VERSION == "0.0.13.dev5"
+assert browser_preview.ONIONWRIGHT_DRIVER_VERSION == "1.61.0"
 assert browser_preview.ONIONWRIGHT_ARTIFACT == (
-    "onionwright/0.0.13.dev3/onionwright-0.0.13.dev3-py3-none-any.whl"
+    "onionwright/0.0.13.dev5/onionwright-0.0.13.dev5-py3-none-any.whl"
 )
-assert "0.0.13.dev3" in plan
-assert "0.0.13.dev3" in manifest
+assert "0.0.13.dev5" in plan
+assert "0.0.13.dev5" in manifest
 """,
         )
 

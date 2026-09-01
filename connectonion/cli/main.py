@@ -314,12 +314,12 @@ def doctor(
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
-    engine: str = typer.Option(
-        "system",
+    engine: Optional[str] = typer.Option(
+        None,
         "--engine",
         help=(
-            "Browser engine: system (free default), auto (may select paid), "
-            "or onion (paid)"
+            "Browser engine override: wtf (paid default) or chrome "
+            "(compatibility mode; detection/account risk)"
         ),
     ),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),

@@ -44,7 +44,7 @@ def _chrome() -> str | None:
 
 async def _run_preflight(args: tuple[str, ...]) -> tuple[bool, int]:
     """Launch real Chromium behind a real gateway; report (passed, requests)."""
-    from patchright.async_api import async_playwright
+    from onionwright.async_api import async_playwright
 
     gateway = EgressGateway()
     endpoint = await gateway.start()
@@ -79,7 +79,7 @@ async def _run_preflight(args: tuple[str, ...]) -> tuple[bool, int]:
 def test_the_preflight_passes_against_a_real_gateway_and_real_chromium():
     if _chrome() is None:
         pytest.skip("no Chrome/Chromium on this machine")
-    pytest.importorskip("patchright")
+    pytest.importorskip("onionwright")
 
     args = tuple(
         arg for arg in REMOTE_BROWSER_CHROME_ARGS if not arg.startswith("--user-data-dir")
@@ -96,7 +96,7 @@ def test_a_real_loopback_leak_still_fails_the_preflight():
     """The other direction: without this, passing proves only that it is lenient."""
     if _chrome() is None:
         pytest.skip("no Chrome/Chromium on this machine")
-    pytest.importorskip("patchright")
+    pytest.importorskip("onionwright")
 
     # `<-loopback>` subtracts Chromium's implicit localhost bypass. Putting the
     # address back restores a real direct path to the sentinel.

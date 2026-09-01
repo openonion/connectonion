@@ -1,0 +1,7 @@
+{
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "address": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "curve25519_public_hex": "4701d08488451f545a409fb58ae3e58581ca40ac3f7f114698cd71deac73ca01",
+  "plaintext_utf8": "{\"schema\":1,\"sender\":\"+61412345678\",\"body\":\"Your code is 123456\",\"received_at\":\"2026-09-01T02:00:00Z\",\"subscription_id\":1}",
+  "ciphertext_base64": "i+XPdcWiZoDJx7dh9KINj2RvIU8O/mZ5k+vpbo1PFlXynLrtDeSL8iKbTj6NccO7dupZ2paJx3hRc1vz3czHTcIiY4OGzVuknHDXW6sH2eIEl1XCDQaROOoAO8ZBHjscWk683d9lcSCB4bJc3CxqDyvYPksrqKif4mk2wP9D2d7htaxYpxZgSf++N8DzMXOWftB9FmohjLfxwYopv/knuG5r/04l9P3UFVw="
+}

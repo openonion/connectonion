@@ -181,7 +181,7 @@ def test_sync_facade_reaches_real_async_paid_boundary(tmp_path, monkeypatch):
     finally:
         closed = browser.close()
 
-    assert "Onion Browser opened" in message
+    assert "WTFbrowser opened" in message
     assert "$0.025 / 15 min" in message
     assert client.start_calls[0][0] is prepared
     assert client.start_calls[0][1].startswith("connectonion-start:")

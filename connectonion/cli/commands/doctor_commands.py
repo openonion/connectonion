@@ -485,19 +485,19 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     browser_table.add_row("OS prerequisites", f"{prereq_mark} {os_prerequisites.detail}")
     status, browser_version, detail = driver_stealth_status()
     # The package being healthy says nothing about there being a browser to
-    # launch. A deployed agent reported "Patchright ✓ / Stealth driver ✓ /
+    # launch. A deployed agent reported "driver ✓ / browser missing /
     # nothing wrong" while every browser command answered "Executable doesn't
     # exist at .../chromium-1228/chrome-linux64/chrome".
     browser_binary = installed_browser_path() if status != "missing" else None
     if status == "ok":
-        browser_table.add_row("Patchright", f"[green]✓[/green] {browser_version}")
-        browser_table.add_row("Stealth driver", f"[green]✓[/green] {detail}")
+        browser_table.add_row("Onionwright", f"[green]✓[/green] {browser_version}")
+        browser_table.add_row("Driver API", f"[green]✓[/green] {detail}")
     elif status == "broken":
-        browser_table.add_row("Patchright", f"[yellow]○[/yellow] {browser_version}")
-        browser_table.add_row("Stealth driver", f"[red]✗[/red] {detail}")
-        found.append(f"stealth driver: {detail}")
+        browser_table.add_row("Onionwright", f"[yellow]○[/yellow] {browser_version}")
+        browser_table.add_row("Driver API", f"[red]✗[/red] {detail}")
+        found.append(f"browser driver: {detail}")
     else:  # missing
-        browser_table.add_row("Patchright", f"[yellow]○[/yellow] {detail}")
+        browser_table.add_row("Onionwright", f"[yellow]○[/yellow] {detail}")
 
     if status != "missing":
         if browser_binary:
@@ -505,8 +505,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         else:
             browser_table.add_row(
                 "Browser binary",
-                "[red]✗[/red] none installed — run: patchright install chromium")
-            found.append("no browser is installed — run: patchright install chromium")
+                "[red]✗[/red] none installed — run: python -m onionwright install chromium")
+            found.append("no browser is installed — run: python -m onionwright install chromium")
 
     console.print(Panel(browser_table, title="[bold]Browser[/bold]", border_style="cyan"))
     console.print()

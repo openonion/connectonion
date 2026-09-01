@@ -2,9 +2,9 @@
 Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwards one command to the persistent browser daemon, and serves self-describing help.
 LLM-Note:
   Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send | lazy: browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
+  Data flow: receives args: list[str] (+ headless and optional engine_mode) from CLI → loads the persisted wtf/chrome choice (wtf by default) → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
   State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
-  Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="system") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
+  Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode=None) -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
   Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
 """
@@ -14,12 +14,13 @@ import sys
 from pathlib import Path
 
 from ..browser_agent.client import send
-
 USAGE = (
     "co browser — drive one persistent browser from the shell\n"
     "\n"
     "  co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)\n"
-    "  co browser --engine auto|system|onion <function> [args]\n"
+    "  co browser --engine wtf|chrome <function> [args]\n"
+    "  co browser config set engine wtf|chrome  save the default engine\n"
+    "  co browser config get engine             print the saved/default engine\n"
     '  co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar\n'
     '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
@@ -38,7 +39,7 @@ USAGE = (
     "each other through this error and through `tab ls`. Set CO_WHO=<name> so the board\n"
     "shows a real name for you (Claude Code sessions are identified automatically).\n"
     "Add --headless before the function to run without a visible window.\n"
-    "Engine default: system (free). Explicit auto may select paid Onion; explicit onion is paid.\n"
+    "Engine default: WTFbrowser (paid). Chrome is an explicit compatibility mode and may be detected.\n"
     "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy."
 )
 
@@ -52,6 +53,12 @@ TIPS = [
     "Run without a visible window:  co browser --headless <function>",
     "The browser stays open between commands — one shared session until close.",
 ]
+
+
+def _load_default_engine() -> str:
+    from ...useful_tools.browser_tools.engine_preferences import load_default_engine
+
+    return load_default_engine()
 
 
 def _next_tip():
@@ -91,10 +98,55 @@ def _extract_tab(args):
     return tab, args[i:]
 
 
-def handle_browser(args, headless: bool = False, engine_mode: str = "system") -> int:
+def _handle_config(args) -> int:
+    from ...useful_tools.browser_tools import engine as browser_engine
+    from ...useful_tools.browser_tools.engine_preferences import (
+        BrowserEnginePreferenceError,
+        load_default_engine,
+        save_default_engine,
+    )
+
+    if args == ["config", "get", "engine"]:
+        try:
+            print(load_default_engine())
+        except BrowserEnginePreferenceError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        return 0
+    if len(args) == 5 and args[:4] == ["config", "set", "engine", "--"]:
+        # Do not create a second spelling merely because a shell inserted `--`.
+        args = ["config", "set", "engine", args[4]]
+    if len(args) == 4 and args[:3] == ["config", "set", "engine"]:
+        try:
+            selected = browser_engine.normalize_mode(args[3])
+            path = save_default_engine(selected)
+        except (browser_engine.BrowserEngineError, BrowserEnginePreferenceError) as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        print(f"Default browser engine: {selected} ({path})")
+        if selected == browser_engine.CHROME:
+            print(f"WARNING: {browser_engine.CHROME_WARNING}", file=sys.stderr)
+        return 0
+    print(
+        "usage: co browser config get engine | "
+        "co browser config set engine wtf|chrome",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def handle_browser(args, headless: bool = False, engine_mode: str | None = None) -> int:
     """Forward a browser command to the daemon, or print help. Returns the process exit code."""
-    if engine_mode not in ("auto", "system", "onion"):
-        print("--engine must be one of: auto, system, onion", file=sys.stderr)
+    if args and args[0] == "config":
+        return _handle_config(args)
+    from ...useful_tools.browser_tools import engine as browser_engine
+    from ...useful_tools.browser_tools.engine_preferences import BrowserEnginePreferenceError
+    try:
+        selected_engine = browser_engine.normalize_mode(
+            engine_mode if engine_mode is not None else _load_default_engine()
+        )
+    except (browser_engine.BrowserEngineError, BrowserEnginePreferenceError) as exc:
+        print(exc, file=sys.stderr)
         return 2
     if not args:
         print(USAGE, file=sys.stderr)
@@ -136,7 +188,11 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "system") ->
             print("--stdin needs piped or redirected text", file=sys.stderr)
             return 2
         args = [*args[:-1], sys.stdin.read()]
-    code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
+    if selected_engine == browser_engine.CHROME:
+        print(f"WARNING: {browser_engine.CHROME_WARNING}", file=sys.stderr)
+    code = send(
+        shlex.join(args), headless=headless, tab=tab, engine_mode=selected_engine
+    )
     if code == 0 and sys.stdout.isatty():
         print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)
     return code

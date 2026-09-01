@@ -17,18 +17,33 @@ from connectonion.browser_preview import (
     api_url,
 )
 
+WTF = "wtf"
+CHROME = "chrome"
 AUTO = "auto"
-SYSTEM = "system"
-ONION = "onion"
-MODES = (AUTO, SYSTEM, ONION)
-BROWSER_REVISION = "151.0.7922.137"
+# Public legacy constants now point at the canonical modes. Literal legacy CLI
+# spellings remain accepted below so callers can migrate without changing the
+# resolution/status interface twice.
+SYSTEM = CHROME
+ONION = WTF
+LEGACY_SYSTEM = "system"
+LEGACY_ONION = "onion"
+MODES = (WTF, CHROME, AUTO, LEGACY_SYSTEM, LEGACY_ONION)
+ALIASES = {AUTO: WTF, LEGACY_ONION: WTF, LEGACY_SYSTEM: CHROME}
+BROWSER_REVISION = "151.0.7922.222"
 MIN_ONIONWRIGHT_VERSION = ONIONWRIGHT_VERSION
 ONIONWRIGHT_RELEASE_CHANNEL = RELEASE_CHANNEL
+CHROME_WARNING = (
+    "Chrome compatibility mode uses system Chrome through Onionwright but does "
+    "not include WTFbrowser's native browser and network-layer protections. "
+    "Sites may detect automation, challenge or limit access, or suspend accounts."
+)
 
 
 class Reason:
-    SYSTEM_REQUESTED = "system_requested"
-    ONION_READY = "onion_ready"
+    CHROME_REQUESTED = "chrome_requested"
+    WTF_READY = "wtf_ready"
+    SYSTEM_REQUESTED = CHROME_REQUESTED
+    ONION_READY = WTF_READY
     INVALID_MODE = "invalid_engine_mode"
     ONIONWRIGHT_MISSING = "onionwright_missing"
     ONIONWRIGHT_INCOMPATIBLE = "onionwright_incompatible"
@@ -37,7 +52,7 @@ class Reason:
 
 
 class BrowserEngineError(RuntimeError):
-    """An explicit Onion request could not start; it never becomes system."""
+    """The selected WTFbrowser could not start; it never becomes Chrome."""
 
     def __init__(self, reason: str, next_action: str):
         self.reason = reason
@@ -57,7 +72,7 @@ class Resolution:
 
     @property
     def fallback(self) -> bool:
-        return self.requested == AUTO and self.resolved == SYSTEM
+        return False
 
     @property
     def artifact_id(self) -> str | None:
@@ -80,10 +95,7 @@ class Resolution:
     def interval_usd(self) -> float | None:
         """What one billing interval costs, when the server said.
 
-        Surfaced so a paid session can say what it costs. The default `system`
-        mode is non-billing. An operator who explicitly selects `auto` may still
-        resolve to the paid engine when preparation succeeds, while explicit
-        `onion` requires it; both paid outcomes must state the price (#1327).
+        Surfaced so the default paid WTFbrowser session says what it costs.
         """
         capability = getattr(self.prepared, "capability", None)
         price = getattr(capability, "interval_usd", None)
@@ -130,16 +142,15 @@ class Resolution:
 
 
 def _default_token() -> str:
-    # Imported only after the explicit system return below. This may read the
-    # normal ConnectOnion credential sources; system mode must touch none of it.
+    # Imported only after the explicit Chrome return below. This may read the
+    # normal credential sources; Chrome mode must touch none of the paid path.
     from connectonion.credentials import require_ambient_api_key
 
     return require_ambient_api_key()
 
 
 def _default_client(token: str, home: Path):
-    # Onionwright remains optional. Presence of the paid package is not a
-    # requirement for the free/system product.
+    # The exact signed Onionwright wheel owns the driver and paid lifecycle.
     import onionwright
 
     if not callable(getattr(onionwright, "launch_paid_async", None)):
@@ -152,23 +163,30 @@ def _default_client(token: str, home: Path):
     )
 
 
-def _system(requested: str, reason: str, next_action: str) -> Resolution:
+def normalize_mode(requested: str) -> str:
+    if requested not in MODES:
+        raise BrowserEngineError(
+            Reason.INVALID_MODE,
+            "choose one of: wtf, chrome (legacy aliases: onion, system, auto)",
+        )
+    return ALIASES.get(requested, requested)
+
+
+def _chrome(reason: str = Reason.CHROME_REQUESTED) -> Resolution:
     return Resolution(
-        requested=requested,
-        resolved=SYSTEM,
+        requested=CHROME,
+        resolved=CHROME,
         reason=reason,
-        next_action=next_action,
+        next_action=CHROME_WARNING,
     )
 
 
 def _unavailable(requested: str, reason: str, next_action: str) -> Resolution:
-    if requested == ONION:
-        raise BrowserEngineError(reason, next_action)
-    return _system(requested, reason, next_action)
+    raise BrowserEngineError(reason, next_action)
 
 
 def resolve(
-    requested: str = SYSTEM,
+    requested: str = WTF,
     *,
     browser_revision: str = BROWSER_REVISION,
     token_loader: Callable[[], str] = _default_token,
@@ -177,24 +195,15 @@ def resolve(
 ) -> Resolution:
     """Resolve one immutable engine choice without starting a paid session.
 
-    `system` does not invoke this resolver's token loader, import Onionwright,
-    call the server, or touch the paid cache. The enclosing CLI may already
-    have loaded environment files before dispatch. `auto` and `onion` run
-    Onionwright's complete non-billing `prepare`: exact signed manifest,
+    `chrome` does not invoke this resolver's token loader, call the paid API, or
+    touch the paid cache. WTFbrowser runs Onionwright's complete non-billing
+    `prepare`: exact signed manifest,
     compatibility, download, checksum, extraction, and executable readiness.
     Only the later `launch()` call is allowed to create and charge a session.
     """
-    if requested not in MODES:
-        raise BrowserEngineError(
-            Reason.INVALID_MODE,
-            f"choose one of: {', '.join(MODES)}",
-        )
-    if requested == SYSTEM:
-        return _system(
-            SYSTEM,
-            Reason.SYSTEM_REQUESTED,
-            "Start Patchright with the installed system Chrome.",
-        )
+    requested = normalize_mode(requested)
+    if requested == CHROME:
+        return _chrome()
 
     paid_home = home or Path.home() / ".onionwright"
     try:
@@ -203,7 +212,7 @@ def resolve(
         return _unavailable(
             requested,
             Reason.LICENSE_UNAVAILABLE,
-            "Run `co auth`, or request the system browser.",
+            "Run `co auth`, top up, or run `co browser config set engine chrome`.",
         )
     try:
         client = client_factory(token, paid_home)
@@ -211,7 +220,7 @@ def resolve(
         return _unavailable(
             requested,
             Reason.ONIONWRIGHT_MISSING,
-            "Run `co browser install-onion`, or request the system browser.",
+            "Run `co browser install-onion` to install the Onionwright driver.",
         )
     except (ImportError, AttributeError, TypeError):
         return _unavailable(
@@ -243,7 +252,8 @@ def resolve(
     except Exception as exc:
         reason = getattr(exc, "code", Reason.PREFLIGHT_FAILED)
         message = getattr(exc, "message", None) or (
-            "Paid browser preflight failed before session creation; use system Chrome."
+            "WTFbrowser preflight failed before session creation. Top up or "
+            "explicitly configure Chrome compatibility mode."
         )
         return _unavailable(requested, reason, message)
 
@@ -251,15 +261,16 @@ def resolve(
         capability = getattr(prepared, "capability", None)
         reason = getattr(capability, "reason", Reason.PREFLIGHT_FAILED)
         next_action = getattr(capability, "next_action", None) or (
-            "Use system Chrome; no paid browser session was created."
+            "Top up or explicitly configure Chrome compatibility mode; no paid "
+            "browser session was created."
         )
         return _unavailable(requested, reason, next_action)
 
     return Resolution(
         requested=requested,
-        resolved=ONION,
-        reason=Reason.ONION_READY,
-        next_action="Start the exact prepared Onion Browser session.",
+        resolved=WTF,
+        reason=Reason.WTF_READY,
+        next_action="Start the exact prepared WTFbrowser session.",
         browser_revision=browser_revision,
         client=client,
         prepared=prepared,
@@ -274,13 +285,13 @@ def launch(
 ):
     """Cross the billing boundary for a previously prepared Onion resolution."""
     if (
-        resolution.resolved != ONION
+        resolution.resolved != WTF
         or resolution.client is None
         or resolution.prepared is None
     ):
         raise BrowserEngineError(
             Reason.PREFLIGHT_FAILED,
-            "Only a ready Onion resolution can start a paid session.",
+            "Only a ready WTFbrowser resolution can start a paid session.",
         )
     try:
         from onionwright import launch_paid
@@ -307,13 +318,13 @@ async def launch_async(
 ):
     """Cross the billing boundary through Onionwright's async driver contract."""
     if (
-        resolution.resolved != ONION
+        resolution.resolved != WTF
         or resolution.client is None
         or resolution.prepared is None
     ):
         raise BrowserEngineError(
             Reason.PREFLIGHT_FAILED,
-            "Only a ready Onion resolution can start a paid session.",
+            "Only a ready WTFbrowser resolution can start a paid session.",
         )
     try:
         from onionwright import launch_paid_async

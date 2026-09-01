@@ -162,11 +162,11 @@ def test_launch_policy_is_fixed_fail_closed_and_secret_safe(tmp_path):
     assert password not in repr(options)
 
 
-@pytest.mark.parametrize("engine_mode", ("auto", "system"))
-def test_private_daemon_rejects_every_non_onion_engine_before_runtime(
+@pytest.mark.parametrize("engine_mode", ("chrome", "system"))
+def test_private_daemon_rejects_every_non_wtf_engine_before_runtime(
     tmp_path, engine_mode
 ):
-    with pytest.raises(ValueError, match="requires engine=onion"):
+    with pytest.raises(ValueError, match="requires engine=wtf"):
         BrowserDaemon(
             str(tmp_path / "private.sock"),
             engine_mode=engine_mode,
@@ -534,15 +534,15 @@ async def test_private_core_rejects_system_resolution_before_driver_or_charge(
         tmp_path / "proxy-auth.json",
     )
     resolution = async_browser.browser_engine.Resolution(
-        requested="onion",
-        resolved="system",
+        requested="wtf",
+        resolved="chrome",
         reason="unavailable",
         next_action="do not fall back",
     )
     browser = async_browser.AsyncBrowserCore(
         headless=True,
         launch_policy=policy,
-        engine_mode="onion",
+        engine_mode="wtf",
         engine_resolver=lambda mode: resolution,
     )
 
@@ -560,7 +560,7 @@ async def test_ordinary_async_core_keeps_environment_proxy_compatibility(tmp_pat
     monkeypatch.setattr(async_browser, "async_playwright", lambda: FakeManager(playwright))
     monkeypatch.setattr(async_browser, "find_system_chrome", lambda: "/fake/chrome")
     monkeypatch.setattr(async_browser, "run_native_egress_preflight", preflight)
-    browser = async_browser.AsyncBrowserCore(headless=True)
+    browser = async_browser.AsyncBrowserCore(headless=True, engine_mode="chrome")
 
     await browser.open_browser()
 

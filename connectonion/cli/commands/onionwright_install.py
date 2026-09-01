@@ -31,6 +31,7 @@ from packaging.version import InvalidVersion, Version
 
 from connectonion.browser_preview import (
     ONIONWRIGHT_ARTIFACT,
+    ONIONWRIGHT_DRIVER_VERSION,
     ONIONWRIGHT_VERSION,
     RELEASE_CHANNEL,
     api_url,
@@ -128,12 +129,18 @@ import pathlib
 import sys
 
 import onionwright
+from onionwright.async_api import async_playwright
+from onionwright.sync_api import sync_playwright
 import zstandard
 
-expected_version, expected_channel, expected_api = sys.argv[1:]
+expected_version, expected_driver, expected_channel, expected_api = sys.argv[1:]
 if importlib.metadata.version("onionwright") != expected_version:
     raise SystemExit(1)
 if getattr(onionwright, "__version__", None) != expected_version:
+    raise SystemExit(1)
+if importlib.metadata.version("playwright") != expected_driver:
+    raise SystemExit(1)
+if not callable(async_playwright) or not callable(sync_playwright):
     raise SystemExit(1)
 if not callable(getattr(onionwright, "launch_paid_async", None)):
     raise SystemExit(1)
@@ -218,6 +225,7 @@ def _installed_client_is_healthy() -> bool:
                     "-c",
                     _CLIENT_HEALTHCHECK,
                     ONIONWRIGHT_VERSION,
+                    ONIONWRIGHT_DRIVER_VERSION,
                     RELEASE_CHANNEL,
                     api_url(),
                 ],

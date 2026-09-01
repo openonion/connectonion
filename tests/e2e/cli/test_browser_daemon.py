@@ -179,7 +179,7 @@ def _wait_until_listening(sock_path, timeout=5.0):
     raise RuntimeError("daemon did not bind in time")
 
 
-def make_daemon(sock_path, stub=None, *, engine_mode="system"):
+def make_daemon(sock_path, stub=None, *, engine_mode="wtf"):
     """Build a daemon whose lazy BrowserAutomation is replaced by a stub."""
     daemon = d.BrowserDaemon(sock_path, headless=True, engine_mode=engine_mode)
     daemon.browser = stub or StubBrowser()
@@ -500,7 +500,7 @@ def test_close_with_arguments_does_not_bypass_the_warm_daemon_engine_pin(tmp_pat
     ok, payload = daemon.dispatch(request)
 
     assert ok == 6
-    assert "pinned to engine=onion" in payload
+    assert "pinned to engine=wtf" in payload
 
 
 def test_status_before_any_command(tmp_path):
@@ -803,7 +803,7 @@ def test_navigation_timeout_keeps_daemon_available_for_recovery(short_sock, monk
 
 class LaunchFailBrowser(StubBrowser):
     """A browser whose launch aborts (e.g. Chrome SIGABRT): commands raise a huge
-    patchright-style Call log, the context never comes up, and _launch_failed is True."""
+    driver Call log, the context never comes up, and _launch_failed is True."""
 
     def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
         raise RuntimeError("Target page, context or browser has been closed\n" +
@@ -838,7 +838,7 @@ def test_launch_failure_makes_daemon_exit(short_sock, monkeypatch, capsys):
 
 def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
     """The ERR payload for a failed launch is a short, actionable hint — not the raw
-    multi-line patchright Call log dumped to the shell."""
+    multi-line driver Call log dumped to the shell."""
     sock_path = short_sock
     monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
 
@@ -849,7 +849,7 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
     code = c.send("go_to example.com", headless=True)
     err = capsys.readouterr().err
     assert code == 1
-    assert "Chrome failed to start" in err
+    assert "Browser failed to start" in err
     assert "~/.co/browser.log" in err
     assert "<launching> chrome" not in err  # the giant Call log is not dumped
 

@@ -34,7 +34,7 @@ def test_real_async_driver_keeps_sessions_isolated_and_interleaves(
 
 async def _exercise_real_async_driver(tmp_path, monkeypatch):
     if not ASYNC_BROWSER_AVAILABLE:
-        pytest.skip("patchright async API is not installed")
+        pytest.skip("Onionwright async API is not installed")
 
     monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(tmp_path / "profile"))
     browser = AsyncBrowserCore(headless=True, use_mock_keychain=True)
@@ -395,7 +395,7 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
                     for frame in (
                         getattr(error.get("future"), "_source_traceback", None) or []
                     )
-                    if "patchright" in frame.filename
+                    if "onionwright" in frame.filename or "playwright" in frame.filename
                 ][-4:],
             }
             for error in loop_errors

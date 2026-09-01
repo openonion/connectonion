@@ -57,7 +57,7 @@ class TestAFoundBrowserIsProbedOnce:
         real = tmp_path / "chrome"
         real.write_text("#!/bin/sh\n")
         probe = _CountingProbe(str(real))
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path", probe)
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path", probe)
 
         first = browser_module.installed_browser_path()
         second = browser_module.installed_browser_path()
@@ -70,7 +70,7 @@ class TestAMissingBrowserIsProbedAgain:
 
     def test_every_call_re_probes(self, monkeypatch, no_desktop_chrome):
         probe = _CountingProbe("/nowhere/chrome")
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path", probe)
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path", probe)
 
         assert browser_module.installed_browser_path() is None
         assert browser_module.installed_browser_path() is None
@@ -80,11 +80,11 @@ class TestAMissingBrowserIsProbedAgain:
                                                          no_desktop_chrome):
         """The whole reason the negative is not cached."""
         later = tmp_path / "chrome"
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path", lambda: str(later))
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path", lambda: str(later))
 
         assert browser_module.installed_browser_path() is None
 
-        later.write_text("#!/bin/sh\n")  # the user runs `patchright install chromium`
+        later.write_text("#!/bin/sh\n")  # the user runs `onionwright install chromium`
 
         assert browser_module.installed_browser_path() == str(later)
 
@@ -99,6 +99,6 @@ class TestADesktopChromeShortCircuits:
 
         monkeypatch.setattr(browser_module, "find_system_chrome",
                             lambda: "/usr/bin/google-chrome")
-        monkeypatch.setattr(browser_module, "_patchright_chromium_path", explode)
+        monkeypatch.setattr(browser_module, "_onionwright_chromium_path", explode)
 
         assert browser_module.installed_browser_path() == "/usr/bin/google-chrome"

@@ -1,0 +1,5 @@
+version: v1.8.0a5
+driver: onionwright==0.0.13.dev5
+driver_api: playwright==1.61.0
+browser: WTFbrowser 151.0.7922.222
+no_visual_change: "ConnectOnion 1.8.0a5 moves both browser engines to Onionwright's single pinned driver API, defaults to WTFbrowser, and makes Chrome an explicit warned compatibility choice; no browser or CLI layout changed"

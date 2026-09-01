@@ -2,7 +2,7 @@
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
   Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
-  Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
+  Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=wtf before any paid session or page effect
   State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
   Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
   Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
@@ -31,6 +31,7 @@ from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserCore
+from connectonion.useful_tools.browser_tools import engine as browser_engine
 from connectonion.useful_tools.browser_tools.browser import (
     driver_stealth_status,
     installed_browser_path,
@@ -212,7 +213,7 @@ def launch_failure_advice(first_line: str) -> str:
     log = "Full log at ~/.co/browser.log."
     if "xecutable doesn't exist" in first_line:
         return ("No browser is installed for this user.\n"
-                f"Install it with:  patchright install chromium\n{log}")
+                f"Install it with:  python -m onionwright install chromium\n{log}")
     if platform.system() == "Darwin":
         return ("Run `co browser` from a desktop Terminal (a logged-in window "
                 f"session), not over ssh/cron/detached.\n{log}")
@@ -240,7 +241,7 @@ class BrowserDaemon:
         self,
         sock_path: str,
         headless: bool = False,
-        engine_mode: str = "system",
+        engine_mode: str = "wtf",
         *,
         profile_dir: str | Path | None = None,
         remote_egress: bool = False,
@@ -248,10 +249,12 @@ class BrowserDaemon:
         gateway_factory=None,
         browser_factory=AsyncBrowserCore,
     ):
-        if engine_mode not in ("auto", "system", "onion"):
+        try:
+            engine_mode = browser_engine.normalize_mode(engine_mode)
+        except (ValueError, browser_engine.BrowserEngineError):
             raise ValueError(f"invalid browser engine mode: {engine_mode}")
-        if remote_egress and engine_mode != "onion":
-            raise ValueError("remote browser daemon requires engine=onion")
+        if remote_egress and engine_mode != "wtf":
+            raise ValueError("remote browser daemon requires engine=wtf")
         self.sock_path = sock_path
         self.engine_mode = engine_mode
         self._headless = headless
@@ -311,7 +314,7 @@ class BrowserDaemon:
             (str(tab) if tab is not None else None),
             str(req.get("line") or ""),
             bool(req.get("raw", False)),
-            str(req.get("engine") or self.engine_mode),
+            browser_engine.normalize_mode(str(req.get("engine") or self.engine_mode)),
         )
 
     # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
@@ -393,7 +396,7 @@ class BrowserDaemon:
         if verb == "status":  # read-only report; does not count as the last command
             return await self._status_async()
         if verb == "engine_status":  # protocol/diagnostic probe; no claim and no launch
-            return await self._call_verb_async("engine_status", [])
+            return True, json.dumps(await self._engine_status_async(), sort_keys=True)
         if verb in ("use", "switch"):  # removed: no server-side cursor, targeting is per-command
             return False, "use/switch removed — target a tab per command instead:  co browser -t <tab> <verb>"
         if verb == "newtab":  # legacy spelling of `tab open` + go_to
@@ -543,12 +546,12 @@ class BrowserDaemon:
                 with contextlib.suppress(OSError):
                     staged_path.parent.rmdir()
             if self._launch_failed():
-                # Chrome aborted at startup: str(exc) is a huge patchright "Call log".
+                # Browser startup errors include a huge driver call log.
                 # Keep the first line and point at the full log instead of dumping it.
                 first = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
                 return False, (
                     f"{type(exc).__name__}: {first}\n"
-                    f"Chrome failed to start. {launch_failure_advice(first)}"
+                    f"Browser failed to start. {launch_failure_advice(first)}"
                 )
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
@@ -593,22 +596,28 @@ class BrowserDaemon:
         result = self.browser.tab_status()
         return await result if inspect.isawaitable(result) else result
 
-    async def _status_async(self) -> tuple:
-        """Report browser state, the last command, and the tab board."""
-        open_state = "open" if await self._browser_is_alive() else "not open"
-        headless = str(getattr(self.browser, "_headless", False)).lower()
-        lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
-        daemon_engine = getattr(self, "engine_mode", "system")
-        engine_status = getattr(self.browser, "engine_status", None)
-        try:
-            engine = engine_status() if callable(engine_status) else {
+    async def _engine_status_async(self) -> dict:
+        """Report the daemon's engine pin without requiring a browser launch."""
+        daemon_engine = getattr(self, "engine_mode", "wtf")
+        status = getattr(self.browser, "engine_status", None)
+        if not callable(status):
+            return {
                 "requested_engine": daemon_engine,
                 "resolved_engine": None,
                 "reason": "not_started",
                 "artifact_id": None,
             }
-            if inspect.isawaitable(engine):
-                engine = await engine
+        result = status()
+        return await result if inspect.isawaitable(result) else result
+
+    async def _status_async(self) -> tuple:
+        """Report browser state, the last command, and the tab board."""
+        open_state = "open" if await self._browser_is_alive() else "not open"
+        headless = str(getattr(self.browser, "_headless", False)).lower()
+        lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
+        daemon_engine = getattr(self, "engine_mode", "wtf")
+        try:
+            engine = await self._engine_status_async()
         except Exception:
             # Status is the diagnostic path. A broken optional paid client must
             # be reported as unresolved, not take the whole report down.
@@ -620,7 +629,7 @@ class BrowserDaemon:
                 "reason": "status_unavailable",
                 "artifact_id": None,
             }
-        # Once an operator explicitly selects auto or onion, the paid engine
+        # WTFbrowser charges per 15-minute interval when a command uses it.
         # charges per 15-minute interval when a command uses it. The price and live
         # session therefore ride here in status, where an operator looks to see
         # what a running browser is doing and costing.
@@ -648,7 +657,7 @@ class BrowserDaemon:
         # visible where users look for browser state, not only in `co doctor`.
         stealth, version, detail = driver_stealth_status()
         mark = {"ok": "✓", "broken": "✗", "missing": "○"}[stealth]
-        lines.append(f"Stealth driver: {mark} patchright {version} — {detail}".rstrip(" —"))
+        lines.append(f"Browser driver: {mark} Onionwright {version} — {detail}".rstrip(" —"))
         # That line is about the PACKAGE. On a deployed agent it read ✓ while
         # every page command answered "Executable doesn't exist at
         # .../chromium-1228/chrome-linux64/chrome", so the one thing that has to
@@ -664,7 +673,7 @@ class BrowserDaemon:
             except Exception:
                 binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
-                     "Browser binary: ✗ none installed — run: patchright install chromium")
+                     "Browser binary: ✗ none installed — run: co browser install-onion")
         if self.last_command:
             lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
         else:
@@ -1285,7 +1294,8 @@ class BrowserDaemon:
                     )
                 )
                 staged = None
-            if await self._should_stop(ok, result_text):
+            verb = request.command.argv[0] if request.command.argv else ""
+            if await self._should_stop(ok, result_text, verb=verb):
                 self._begin_shutdown()
         except (ProtocolError, ValueError) as exc:
             await send_frame(
@@ -1306,9 +1316,14 @@ class BrowserDaemon:
         header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
         return (header + "\n" + payload).encode()
 
-    async def _should_stop(self, ok, payload: str) -> bool:
+    async def _should_stop(self, ok, payload: str, *, verb: str = "") -> bool:
         """Serialize shared runtime health transitions after concurrent replies."""
         async with self._health_lock:
+            # The engine handshake is deliberately no-launch and no-probe. Its
+            # sole job is proving that this daemon understands the immutable
+            # engine pin before the caller sends a page-affecting command.
+            if verb == "engine_status":
+                return False
             if ok is False and payload.startswith("TimeoutError:"):
                 self._had_browser = True
                 self._defer_context_probe = True
@@ -1607,7 +1622,7 @@ def main():
     parser.add_argument("--authkey-file")
     parser.add_argument("--remote-egress", action="store_true")
     parser.add_argument(
-        "--engine", choices=("auto", "system", "onion"), default="system"
+        "--engine", choices=("wtf", "chrome", "auto", "system", "onion"), default="wtf"
     )
     args = parser.parse_args()
     BrowserDaemon(

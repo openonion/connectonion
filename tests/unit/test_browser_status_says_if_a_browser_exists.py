@@ -52,7 +52,7 @@ def status_text(monkeypatch):
     # passed anyway — off the real driver installed on this machine, measuring
     # nothing.
     monkeypatch.setattr(daemon_module, "driver_stealth_status",
-                        lambda: ("ok", "1.61.2", "stealth patches present"))
+                        lambda: ("ok", "0.0.13.dev5", "single pinned driver API ready"))
     monkeypatch.setattr(daemon_module, "_daemon_account", lambda: None, raising=False)
 
     def _render():
@@ -76,7 +76,7 @@ class TestAMissingBrowserIsVisible:
     def test_it_names_the_fix(self, status_text, monkeypatch):
         monkeypatch.setattr(daemon_module, "installed_browser_path", lambda: None)
 
-        assert "patchright install chromium" in status_text()
+        assert "co browser install-onion" in status_text()
 
     def test_the_stealth_line_is_not_the_only_green_thing(self, status_text, monkeypatch):
         """The bug was a ✓ standing alone. It may stay — it is true about the
@@ -84,7 +84,7 @@ class TestAMissingBrowserIsVisible:
         monkeypatch.setattr(daemon_module, "installed_browser_path", lambda: None)
         text = status_text()
 
-        assert "✓ patchright" in text
+        assert "✓ Onionwright" in text
         assert "✗" in text
 
 
