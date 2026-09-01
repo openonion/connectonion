@@ -198,5 +198,9 @@ class TestTheCommandRuns:
 
         assert result.returncode == 0, result.stderr[-400:]
         assert (project / ".co" / "host.yaml").exists()
+        control_center = project / ".co" / "control-center"
+        assert (control_center / "index.html").exists()
+        assert (control_center / "control-center.js").exists()
+        assert (control_center / "CONTROL_CENTER.md").exists()
         docs = list((project / ".co" / "docs").rglob("*.md"))
         assert len(docs) > 50, f"co init produced {len(docs)} docs"

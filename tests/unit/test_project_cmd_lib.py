@@ -5,9 +5,42 @@ from pathlib import Path
 
 from connectonion.cli.commands.project_cmd_lib import (
     configure_env_for_provider,
+    copy_control_center_template,
     detect_api_provider,
     upsert_env,
 )
+
+
+class TestControlCenterTemplate:
+    """Every new project gets an editable full Web app without freezing updates."""
+
+    def test_copies_the_complete_default_app(self, tmp_path):
+        co_dir = tmp_path / ".co"
+        co_dir.mkdir()
+
+        assert copy_control_center_template(co_dir) is True
+
+        app = co_dir / "control-center"
+        assert {path.name for path in app.iterdir()} == {
+            "index.html", "control-center.js", "CONTROL_CENTER.md",
+        }
+        html = (app / "index.html").read_text(encoding="utf-8")
+        bridge = (app / "control-center.js").read_text(encoding="utf-8")
+        contract = (app / "CONTROL_CENTER.md").read_text(encoding="utf-8")
+        assert 'src="./control-center.js"' in html
+        assert "send_message" in bridge and "run_skill" in bridge
+        assert "message.skills" in bridge
+        assert "current Agent Chat" in contract
+        assert "https://apps.openonion.ai/" in contract
+
+    def test_never_overwrites_an_authored_app(self, tmp_path):
+        app = tmp_path / ".co" / "control-center"
+        app.mkdir(parents=True)
+        custom = app / "index.html"
+        custom.write_text("<h1>Mine</h1>", encoding="utf-8")
+
+        assert copy_control_center_template(tmp_path / ".co") is False
+        assert custom.read_text(encoding="utf-8") == "<h1>Mine</h1>"
 
 
 class TestApiProviderDetection:

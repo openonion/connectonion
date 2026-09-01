@@ -709,6 +709,33 @@ The HTML is agent-authored and untrusted: clients render it in a sandboxed ifram
 scripting and network access blocked. Files over 2MB are not sent. See
 [dashboard.md](dashboard.md).
 
+#### CONTROL_CENTER_APP (preview)
+
+The full Web Control Center is a reviewed website rather than an HTML snapshot. After
+publishing, the authenticated Host will send an immutable descriptor whose `app.url`
+is used verbatim as the iframe `src`:
+
+```json
+{
+  "type": "CONTROL_CENTER_APP",
+  "app": {
+    "url": "https://apps.openonion.ai/0x3d4017c3/9f86d081884c7d65/index.html",
+    "revision": "sha256:9f86d081884c7d65...",
+    "review": {"status": "approved"}
+  }
+}
+```
+
+The website receives a transferred `MessagePort` and may request `send_message` or
+`run_skill`. Both actions default to the current Agent and current Chat; `run_skill`
+becomes the visible user message `/skill-name arguments`. An explicit
+`conversation: "new"` is reserved for actions that need isolated context.
+
+`co create` and `co init` now scaffold the editable source in
+`.co/control-center/`. Uploading it, producing the immutable URL, independent review,
+and Host emission of this frame remain preview work; a project must not hand-author an
+"approved" descriptor. See [control-center.md](control-center.md).
+
 #### RUNTIME_INPUT_ACK
 
 Acknowledges an INPUT that arrived while the agent was running. The prompt has been queued and will be picked up at the agent's next iteration.
