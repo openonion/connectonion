@@ -2,8 +2,8 @@
 Purpose: Run one client session — read loop, per-type dispatch, lifecycle of forward + ping tasks
 LLM-Note:
   Dependencies: imports from [.connect, .agent_io, .exec, .mode, .ping, ...trust.ws_admin, asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
-  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime frames → bounded response → cancel spawned tasks on close
-  State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
+  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime/PROXY_ATTACH/PROXY_STREAM frames → bounded response → cancel spawned tasks on close
+  State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task, proxy_channel | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally | an attached laptop share is registered on PROXY_ATTACH and detached in finally
   Integration: OIP mode_change uses .mode durable authority; interrupt requires registered active IO; signed-command clients execute only verified payload copies
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
   Errors: recv_msg returning None → exit loop normally | other exceptions propagate out (transport-level errors, programmer bugs)
@@ -20,6 +20,7 @@ from .connect import establish_connection, handle_authenticated_reconnect, handl
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
+from .proxy import attach_proxy, detach_proxy
 from .remote_browser import run_remote_browser
 
 console = Console()
@@ -122,6 +123,9 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     active_io = None
     forward_task = None
     exec_tasks = set()
+    # The laptop share attached on this socket, if any. It lives exactly as
+    # long as the socket: registered on PROXY_ATTACH, detached in finally.
+    proxy_channel = None
     ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
 
     try:
@@ -292,6 +296,24 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         run_exec(data, send_msg, route_handlers, conn["agent_address"]))
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
+
+            elif msg_type == "PROXY_ATTACH":
+                if proxy_channel is not None:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "a share is already attached on this connection",
+                    })
+                else:
+                    proxy_channel = await attach_proxy(data, send_msg, conn, route_handlers)
+
+            elif msg_type == "PROXY_STREAM":
+                if proxy_channel is None:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "no share attached (send PROXY_ATTACH first)",
+                    })
+                else:
+                    await proxy_channel.receive(data)
 
             elif msg_type == "REMOTE_BROWSER":
                 if not conn["authenticated"]:
@@ -593,6 +615,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     "message": f"unknown message type: {msg_type!r}",
                 })
     finally:
+        if proxy_channel is not None:
+            await detach_proxy(proxy_channel, route_handlers)
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
         # that await is the expected exit signal — not a bug, swallow it.

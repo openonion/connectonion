@@ -225,25 +225,13 @@ def handle_remote_browser(args) -> int:
         connect_kwargs["relay_url"] = options["relay_url"]
     command_args = {}
     if command == "start":
+        # `shared` names no endpoint: the host uses the share this same
+        # identity attached with `co proxy share`, and says so
+        # (REMOTE_SESSION_PROXY_NOT_ATTACHED) when there is none.
         command_args = {
             "headless": options["headless"],
             "proxy": options["proxy"],
         }
-        if options["proxy"] == "shared":
-            # Only this machine knows where its own connection is reachable, so
-            # the share endpoint travels with the request rather than being
-            # something the host could guess.
-            from .proxy_commands import _load
-
-            share = _load().get(address)
-            if share is None:
-                print(
-                    f"You are not sharing your connection with {address}.",
-                    file=sys.stderr,
-                )
-                print(f"Lend it with: co proxy share to {address}", file=sys.stderr)
-                return 2
-            command_args["share"] = share
     try:
         result = connect(address, **connect_kwargs).remote_browser(
             command,
