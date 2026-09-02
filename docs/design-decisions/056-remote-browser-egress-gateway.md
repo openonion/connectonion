@@ -162,6 +162,27 @@ numeric address. The Laptop applies the same frozen policy both while resolving
 and while dialing. This preserves the exact-socket invariant while ensuring DNS
 and public egress both belong to the Laptop.
 
+## Transport: the Laptop dials out (2026-09-02)
+
+The first preview had the Laptop *listen* and B connect in. That is the wrong
+direction for the machine that is actually a laptop: it sits behind NAT, and
+"open a port forward" is not a step a user of `co proxy share` will take.
+
+The transport is now reversed. `co proxy share` opens the same direct, signed
+WebSocket every other `co` command uses, attaches with a `PROXY_ATTACH` frame
+carrying a grant the Laptop signs, and B sends its resolve/connect/data work
+back down that socket as `PROXY_STREAM` frames. B keeps an address-keyed
+registry of attached channels and, for each one, an `EgressGateway` on
+`127.0.0.1` whose resolver and dialer are the channel. The private WTF runtime
+still sees exactly one fixed loopback Proxy with no Direct fallback — nothing
+below this line changed — and `start --proxy shared` simply looks the caller's
+address up in that registry (`REMOTE_SESSION_PROXY_NOT_ATTACHED` when absent).
+
+Only the direct socket may carry a share: the relay carries control frames, not
+page bytes, and B verifies the grant's holder, expiry and grantor against the
+identity on the socket. B → Laptop frames are unsigned; they travel inside the
+TLS session the Laptop opened to an endpoint whose identity it verified.
+
 ## Gateway connection contract
 
 The first implementation accepts only browser web traffic:

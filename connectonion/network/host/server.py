@@ -405,6 +405,11 @@ def _create_route_handlers(
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,
         "remote_browser": handle_remote_browser,
+        # Laptops currently lending this host their connection (PROXY_ATTACH).
+        "proxy_channels": (
+            None if remote_browser_service is None
+            else remote_browser_service.proxy_channels
+        ),
         "prepare_provider_workroom_turn": handle_prepare_provider_workroom_turn,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,

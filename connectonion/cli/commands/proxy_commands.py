@@ -6,8 +6,10 @@ point of the Remote Browser product:
 
     browser on the host  ──▶  this machine  ──▶  the internet (your IP)
 
-Every command here ends by naming the next one, because the caller is usually
-an agent whose entire world is what it types and what comes back.
+This machine dials the host and stays attached; nothing listens here, so it
+works from behind any NAT. Every command ends by naming the next one, because
+the caller is usually an agent whose entire world is what it types and what
+comes back.
 """
 
 from __future__ import annotations
@@ -35,8 +37,7 @@ USAGE = """co proxy — share this computer's internet connection.
 
 Options:
   --json          emit the complete stable JSON envelope
-  --ttl SEC       stop sharing automatically after this long
-  --bind HOST     address to listen on (default: the one a peer reaches)
+  --ttl SEC       stop sharing automatically after this long (default: 24h)
 
 Start with: co proxy share to 0xHOST"""
 
@@ -76,20 +77,50 @@ def _emit(envelope: dict, as_json: bool) -> int:
     return 0 if envelope["ok"] else 1
 
 
-def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> int:
-    """Serve the share until the operator stops it.
+def _share(address: str, as_json: bool, ttl: int | None) -> int:
+    """Stay attached to the host until the operator stops it.
 
-    This command holds the process open on purpose. A share is a listening
-    socket owned by this process: returning after printing "sharing" would
+    This command holds the process open on purpose. The share is a socket this
+    process dialled to the host: returning after printing "sharing" would
     close it the moment the shell got its prompt back, so the command would
-    report success and leave nothing running. Background it with `&` or a
+    report success and leave nothing attached. Background it with `&` or a
     supervisor if you want the shell back; `--ttl` stops it on a timer.
     """
-    from ...network.proxy_egress import ProxyEgressService
+    from ...network.connect import _this_callers_identity
+    from ...network.proxy_egress import DEFAULT_TTL, ProxyShare, ProxyShareRefused
+
+    keys = _this_callers_identity()
+    if keys is None:
+        print("This computer has no identity to sign the grant with.", file=sys.stderr)
+        print("Create one with: co init", file=sys.stderr)
+        return 2
+    ttl = ttl or DEFAULT_TTL
+
+    def record(state: str, detail: str) -> None:
+        """Every transition lands in the registry, so status/diagnose read
+        what the share is doing rather than what it once printed."""
+        if state == "error":
+            print(f"  {detail}", file=sys.stderr, flush=True)
+            return
+        current = _load()
+        if address in current:
+            current[address].update(state=state, detail=detail, since=int(time.time()))
+            _save(current)
+        if as_json:
+            print(json.dumps({"ok": True, "command": "share", "state": state, "detail": detail}), flush=True)
+        elif state == "attached":
+            print(
+                f"Attached to {address}. Traffic that agent's browser sends now "
+                "leaves from your address. Serving until you stop it.",
+                flush=True,
+            )
+            print("  Check it is being used with: co proxy status", flush=True)
+            print(f"  Stop lending with: co proxy stop {address}", flush=True)
+        elif state == "reconnecting":
+            print(f"Connection to {address} dropped: {detail}", flush=True)
 
     async def run() -> int:
-        service = ProxyEgressService(bind_host=bind)
-        endpoint = await service.start()
+        share = ProxyShare(address, keys=keys, ttl=ttl, on_state=record)
         stop = asyncio.Event()
         control_token = secrets.token_urlsafe(32)
 
@@ -113,51 +144,48 @@ def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> in
         control_host, control_port = controller.sockets[0].getsockname()[:2]
         state = _load()
         state[address] = {
-            "url": endpoint.url,
-            "host": endpoint.host,
-            "port": endpoint.port,
-            "username": endpoint.username,
-            "password": endpoint.password,
-            "ttl": ttl,
+            "state": "connecting",
+            "detail": "",
+            "since": int(time.time()),
+            "expires_at": int(share.expires_at),
+            "pid": os.getpid(),
             "control_host": control_host,
             "control_port": control_port,
             "control_token": control_token,
         }
         _save(state)
-        _emit(
-            {
-                "ok": True,
-                "command": "share",
-                "summary": (
-                    f"Sharing this computer's connection with {address} at "
-                    f"{endpoint.url}. Traffic that agent's browser sends now "
-                    "leaves from your address. Serving until you stop it."
-                ),
-                "result": {"address": address, "url": endpoint.url},
-                "next_actions": [
-                    "Check it is being used with: co proxy status",
-                    f"Stop lending with: co proxy stop {address}",
-                ],
-            },
-            as_json,
-        )
         # A supervisor stops this with SIGTERM, not Ctrl-C, and a share that
         # outlives its process in the registry is a share every later command
-        # reports as live while nothing listens.
+        # reports as live while nothing is attached.
         loop = asyncio.get_running_loop()
         for signal_name in ("SIGTERM", "SIGINT"):
             number = getattr(signal, signal_name, None)
             if number is not None:
                 with contextlib.suppress(NotImplementedError):
                     loop.add_signal_handler(number, stop.set)
+        serving = asyncio.create_task(share.serve(stop))
         try:
-            await asyncio.wait_for(stop.wait(), timeout=ttl or None)
-        except (asyncio.TimeoutError, KeyboardInterrupt, asyncio.CancelledError):
-            pass
+            await asyncio.wait_for(asyncio.shield(serving), timeout=ttl)
+        except asyncio.TimeoutError:
+            stop.set()
+            await serving
+        except ProxyShareRefused as refused:
+            return _emit(
+                {
+                    "ok": False,
+                    "code": "SHARE_REFUSED",
+                    "command": "share",
+                    "summary": f"{address} refused this computer's share: {refused}",
+                    "next_actions": [
+                        f"Check the host can be reached with: co remote-browser {address} sessions",
+                        "Ask the host's admin to make this computer a contact.",
+                    ],
+                },
+                as_json,
+            )
         finally:
             controller.close()
             await controller.wait_closed()
-            await service.stop()
             remaining = _load()
             remaining.pop(address, None)
             _save(remaining)
@@ -169,6 +197,50 @@ def _share(address: str, as_json: bool, bind: str | None, ttl: int | None) -> in
         print(f"Stopped sharing with {address}.")
         print("  Lend it again with: co proxy share to " + address)
         return 0
+
+
+def _alive(share: dict) -> bool:
+    """Is the process behind this registry entry still there?
+
+    The control socket answers REFUSED to anything but its own stop token,
+    which is exactly the proof needed: something is listening, and it is not
+    being stopped by the question.
+    """
+
+    async def probe() -> bool:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(share["control_host"], int(share["control_port"])),
+                timeout=2,
+            )
+        except (KeyError, TypeError, ValueError, OSError, asyncio.TimeoutError):
+            return False
+        writer.write(b"probe\n")
+        await writer.drain()
+        reply = await asyncio.wait_for(reader.readline(), timeout=2)
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+        return reply == b"REFUSED\n"
+
+    return asyncio.run(probe())
+
+
+def _row(address: str, share: dict) -> dict:
+    return {
+        "address": address,
+        "state": share.get("state", "unknown"),
+        "detail": share.get("detail", ""),
+        "alive": _alive(share),
+    }
+
+
+def _describe(row: dict) -> str:
+    if not row["alive"]:
+        return f"{row['address']}: recorded but its process is gone"
+    if row["state"] == "attached":
+        return f"{row['address']}: attached"
+    return f"{row['address']}: {row['state']} ({row['detail'] or 'no detail'})"
 
 
 def _status(as_json: bool) -> int:
@@ -184,13 +256,14 @@ def _status(as_json: bool) -> int:
             },
             as_json,
         )
+    rows = [_row(a, s) for a, s in state.items()]
     return _emit(
         {
             "ok": True,
             "command": "status",
             "summary": f"Sharing with {len(state)} agent(s): "
-            + ", ".join(f"{a} at {s['url']}" for a, s in state.items()),
-            "result": {"shares": [{"address": a, **{"url": s["url"]}} for a, s in state.items()]},
+            + "; ".join(_describe(row) for row in rows),
+            "result": {"shares": rows},
             "next_actions": [
                 f"Stop lending with: co proxy stop {next(iter(state))}",
                 f"Investigate one with: co proxy diagnose {next(iter(state))}",
@@ -275,10 +348,7 @@ def _stop(address: str, as_json: bool) -> int:
 
 
 def _diagnose(address: str, as_json: bool) -> int:
-    from ...network.proxy_egress import local_egress_address
-
-    state = _load()
-    share = state.get(address)
+    share = _load().get(address)
     if share is None:
         return _emit(
             {
@@ -290,25 +360,45 @@ def _diagnose(address: str, as_json: bool) -> int:
             },
             as_json,
         )
-    reachable = local_egress_address()
-    bound = share["url"].split("//", 1)[1].split(":")[0]
+    row = _row(address, share)
+    if not row["alive"]:
+        return _emit(
+            {
+                "ok": False,
+                "code": "SHARE_PROCESS_GONE",
+                "command": "diagnose",
+                "summary": f"The share for {address} is recorded but nothing is serving it.",
+                "result": row,
+                "next_actions": [f"Start it again with: co proxy share to {address}"],
+            },
+            as_json,
+        )
+    if row["state"] != "attached":
+        return _emit(
+            {
+                "ok": False,
+                "code": "SHARE_NOT_ATTACHED",
+                "command": "diagnose",
+                "summary": (
+                    f"The share for {address} is {row['state']}: {row['detail'] or 'no detail'}. "
+                    "It keeps retrying; the host has to be reachable directly, not through the relay."
+                ),
+                "result": row,
+                "next_actions": [
+                    f"Check the host answers with: co remote-browser {address} sessions",
+                    f"Stop lending with: co proxy stop {address}",
+                ],
+            },
+            as_json,
+        )
     return _emit(
         {
             "ok": True,
             "command": "diagnose",
-            "summary": (
-                f"Share for {address} listens on {share['url']}; a peer reaches this "
-                f"machine at {reachable}."
-                + (
-                    ""
-                    if bound == reachable
-                    else "  The bound address differs, so a remote agent may not "
-                    "reach it — rebind with --bind."
-                )
-            ),
-            "result": {"url": share["url"], "reachable_address": reachable},
+            "summary": f"The share for {address} is attached and serving.",
+            "result": row,
             "next_actions": [
-                f"Rebind with: co proxy share to {address} --bind {reachable}",
+                "Use it with: co remote-browser start --proxy shared",
                 f"Stop lending with: co proxy stop {address}",
             ],
         },
@@ -321,21 +411,15 @@ def handle_proxy(args) -> int:
     as_json = "--json" in args
     args = [a for a in args if a != "--json"]
 
-    bind = None
     ttl = None
-    for flag, setter in (("--bind", "bind"), ("--ttl", "ttl")):
-        if flag in args:
-            index = args.index(flag)
-            if index + 1 >= len(args):
-                print(f"{flag} needs a value.", file=sys.stderr)
-                print("Start with: co proxy share to 0xHOST", file=sys.stderr)
-                return 2
-            value = args[index + 2 - 1]
-            if setter == "bind":
-                bind = value
-            else:
-                ttl = int(value)
-            del args[index : index + 2]
+    if "--ttl" in args:
+        index = args.index("--ttl")
+        if index + 1 >= len(args):
+            print("--ttl needs a value.", file=sys.stderr)
+            print("Start with: co proxy share to 0xHOST", file=sys.stderr)
+            return 2
+        ttl = int(args[index + 1])
+        del args[index : index + 2]
 
     if not args:
         print(USAGE)
@@ -360,9 +444,5 @@ def handle_proxy(args) -> int:
         print(NOT_CONFIGURED, file=sys.stderr)
         return 2
     if verb == "share":
-        return _share(target, as_json, bind, ttl)
+        return _share(target, as_json, ttl)
     return (_stop if verb == "stop" else _diagnose)(target, as_json)
-
-    print(f"Unknown command: co proxy {verb}", file=sys.stderr)
-    print(USAGE, file=sys.stderr)
-    return 2

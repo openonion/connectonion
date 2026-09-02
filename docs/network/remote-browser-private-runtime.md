@@ -58,7 +58,10 @@ There is no Direct fallback.
 For shared egress the loopback gateway replaces its system resolver and numeric
 dialer together: DNS asks the Laptop Proxy for its complete classified answer
 set, and the selected numeric connection returns to that same Laptop Proxy.
-Chromium and the remote operating system never resolve the destination.
+Chromium and the remote operating system never resolve the destination. The
+Laptop Proxy is reached through the channel the Laptop itself attached with
+`co proxy share` — a second loopback gateway in the host process, keyed by the
+Laptop's address — so the host never dials the Laptop.
 
 ## Requested Chromium launch policy
 

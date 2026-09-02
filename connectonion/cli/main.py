@@ -330,7 +330,7 @@ def browser(
 )
 def remote_browser(
     args: List[str] = typer.Argument(
-        None, help="[options] <address> <start|status|sessions|stop|diagnose>"
+        None, help="config <address> [--proxy shared] | [<address>] <start|status|sessions|stop|diagnose>"
     ),
 ):
     """Manage an owner-bound browser session on a remote agent over OIP."""

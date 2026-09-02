@@ -20,7 +20,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urlsplit
+
+from .proxy_channel import ProxyChannelRegistry
 
 SCHEMA_VERSION = "1"
 REQUEST_ID = re.compile(r"[\x21-\x7e]{1,128}")
@@ -97,35 +98,11 @@ class RemoteBrowserService:
             def daemon_request(line, **identity):
                 return request_target_as(self.daemon_target, line, **identity)
         self.daemon_request = daemon_request
-
-    @staticmethod
-    def _share_endpoint(share: dict):
-        """Return one validated Laptop Proxy endpoint without retaining its URL."""
-        from ..proxy_egress import ShareEndpoint
-        from .private_browser_runtime import _canonical_share_endpoint
-
-        value = dict(share)
-        if "host" not in value or "port" not in value:
-            try:
-                parsed = urlsplit(value.pop("url"))
-                if (
-                    parsed.scheme != "http"
-                    or parsed.hostname is None
-                    or parsed.username is not None
-                    or parsed.password is not None
-                    or parsed.path not in {"", "/"}
-                    or parsed.query
-                    or parsed.fragment
-                ):
-                    raise ValueError
-                value["host"] = parsed.hostname
-                value["port"] = parsed.port
-            except (KeyError, TypeError, ValueError):
-                raise ValueError("shared proxy endpoint is invalid") from None
-        endpoint = _canonical_share_endpoint(value)
-        return ShareEndpoint(
-            endpoint.host, endpoint.port, endpoint.username, endpoint.password
-        )
+        # Laptops that are lending this host their connection right now,
+        # keyed by their address. The WS session that carried PROXY_ATTACH
+        # registers and, in its finally, detaches; `start` with
+        # `proxy: shared` only reads it.
+        self.proxy_channels = ProxyChannelRegistry()
 
     @staticmethod
     def _share_binding(endpoint) -> str:
@@ -274,31 +251,27 @@ class RemoteBrowserService:
             )
         # `shared` sends this session's egress out through the caller's machine,
         # so pages see the caller's address rather than this host's. The caller
-        # must already be lending it (`co proxy share to <this host>`); the
-        # share endpoint arrives with the request because only the caller knows
-        # where its own connection is reachable.
-        share = args.get("share") if proxy_mode == "shared" else None
-        if proxy_mode == "shared" and not isinstance(share, dict):
-            return _failure(
-                request_id,
-                "start",
-                "REMOTE_SESSION_SHARE_MISSING",
-                "Shared egress needs the caller's share endpoint. "
-                "Run `co proxy share to <this host>` and retry.",
-                state={"fallback_applied": False},
-            )
+        # lends it by staying attached (`co proxy share`); the exit is the
+        # channel that same identity attached, never one this host guessed.
         share_endpoint = None
         share_binding = None
         if proxy_mode == "shared":
-            try:
-                share_endpoint = self._share_endpoint(share)
-            except ValueError as exc:
+            share_endpoint = self.proxy_channels.endpoint_for(owner)
+            if share_endpoint is None:
                 return _failure(
                     request_id,
                     "start",
-                    "REMOTE_SESSION_SHARE_INVALID",
-                    str(exc),
+                    "REMOTE_SESSION_PROXY_NOT_ATTACHED",
+                    "Shared egress needs your computer attached to this host. "
+                    "On your computer run: co proxy share",
                     state={"fallback_applied": False},
+                    next_actions=[
+                        {
+                            "id": "attach_share",
+                            "command": "co proxy share",
+                            "requires_user_approval": False,
+                        }
+                    ],
                 )
             share_binding = self._share_binding(share_endpoint)
         headless = args.get("headless", False)
