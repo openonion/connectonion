@@ -28,9 +28,10 @@ The skill walks these steps, each verified before the next, and self-corrects on
    `py -3`, needs 3.10+) as `PY`; pick the shell (the `bash` tool is Unix-only → `shell` on Windows)
 1. **Virtualenv** — isolate the install (also dodges "externally-managed-environment")
 2. **Install** — `PY -m pip install connectonion`, verify `co --version`
-3. **`co init --yes`** — scaffolds the project **and authenticates**, writing `keys.env`
-   (`OPENONION_API_KEY`, `AGENT_EMAIL`, `IS_EMAIL_ACTIVE=true`). `co auth` is the repair step
-   if that authentication didn't land (e.g. offline)
+3. **`co init --yes`** — initializes global credentials and attempts authentication,
+   writing `~/.co/keys.env`. It does not scaffold the current directory.
+   Use `co init ./ --yes` only for an explicitly requested project, adding
+   `--template co-ai` if code is wanted. `co auth` repairs incomplete authentication.
 4. **Confirm** — `co status` / `co doctor` prove the account and keys are wired up
 5. **Browser** (only if needed) — auto-installs on first use (1.2.1+, chromium: per-user,
    no admin); manual fallback `patchright install chromium`. Native on Windows/macOS/Linux
@@ -44,7 +45,7 @@ Earlier drafts of this skill were wrong about the setup flow. The current versio
 grounded in the actual CLI code:
 
 - **`co init` (and `co create`) already authenticate** — they call `authenticate()`
-  unconditionally, so after `co init --yes` the `keys.env` already holds
+  unconditionally, so after successful authentication `keys.env` holds
   `OPENONION_API_KEY` + `AGENT_EMAIL` + `IS_EMAIL_ACTIVE=true`. A separate `co auth` is the
   **repair** step (offline during init, expired token), not a required second command.
 - **`co email` is the built-in managed mailbox** (`…@mail.openonion.ai`), activated by that

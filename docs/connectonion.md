@@ -54,21 +54,24 @@ pip install connectonion
 ### Initialize a Project
 
 ```bash
-# Create a minimal agent (default)
+# Global credentials only
+co init
+
+# Add configuration to an explicit project
 mkdir my-agent
 cd my-agent
-co init
+co init ./
 
 # Create web automation agent
 mkdir browser-agent
 cd browser-agent
-co init --template co-ai
+co init ./ --template co-ai
 ```
 
 ### CLI Options
 
-- `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `co-ai` (default), `custom`
+- `co init [PATH]` - Global credentials by default; explicit PATH initializes a project
+  - `--template, -t` - Project template: `co-ai`, `custom` (default: configuration only)
   - `--key` - API key
   - `--description` - Description for custom template
   - `--yes, -y` - Skip prompts

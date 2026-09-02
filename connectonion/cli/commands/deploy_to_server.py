@@ -101,7 +101,7 @@ def _read_project(project_dir: Optional[Path] = None) -> Optional[dict]:
     project_dir = Path(project_dir) if project_dir else project_root()
     host_yaml = project_dir / ".co" / "host.yaml"
     if not host_yaml.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return None
 
     config = yaml.safe_load(host_yaml.read_text(encoding="utf-8")) or {}

@@ -364,11 +364,10 @@ except Exception as e:
 **No agent keys found:**
 ```bash
 # Create global identity and authenticate
-co auth
-
-# Or initialize a project first, then authenticate with project keys
 co init
-co auth
+
+# Or initialize an explicit project using the global identity
+co init ./
 ```
 
 **Token not loading:**

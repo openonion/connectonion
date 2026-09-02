@@ -90,13 +90,14 @@ pip install connectonion
 # Create an agent
 mkdir my-agent
 cd my-agent
-co init                    # .co folder only
-co init --template co-ai   # the full project
+co init                       # Global ~/.co/keys.env; no project files
+co init ./                    # Project config, .env, and docs
+co init ./ --template co-ai    # The full project
 ```
 
 ### CLI Options
 
-- `co init` - Initialize a new agent project
+- `co init [PATH]` - Global credentials by default; explicit PATH initializes a project
   - `--template, -t` - Choose template: `co-ai` or `custom`
   - `--key` - API key
   - `--description` - Description for custom template
