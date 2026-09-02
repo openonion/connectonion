@@ -1,52 +1,62 @@
 ---
 title: "Global unless you name a project"
 date: "2026-09-02"
-description: "Credential setup should not turn the current directory into a project."
+description: "An empty-directory regression revealed that credential setup was also making a project."
 ---
 
-Setting up ConnectOnion credentials should not turn whichever directory happens
-to be open into an agent project. Plain `co init` now sets up `~/.co/keys.env`
-and the machine identity. Project initialization requires `co init ./` or
-another explicit directory.
+The release was already building when the requirement became precise:
+`co init` should set up global keys. If someone wanted a project in the current
+directory, they should have to say `co init ./`.
 
-The previous command combined two operations: global authentication and project
-scaffolding. That made sense when every installation started with a new agent,
-but the CLI also works without a project—for email, browsers, and remote agents.
-Running setup in an unrelated checkout should leave that checkout alone.
+We had just fixed a related problem: running a command from a subdirectory
+could select a different environment from the project's identity. That fix made
+runtime loading consistent. It did not answer the earlier question of where
+setup was allowed to write.
 
-## An argument chooses the destination
+So the next regression started with an empty temporary directory and a fake
+home. It ran `co init --yes`, checked that global credentials existed, and
+compared the working directory with its original empty state. The comparison
+failed with more than 250 new files. They were project configuration and bundled
+documentation, not evidence of a damaged production checkout. But they made the
+mismatch concrete: a command intended to set up the machine had also made a
+project wherever it happened to run.
 
-An alternative was to infer scope from the current directory or from a template
-flag. That would leave identical commands writing different files depending on
-where they ran. We chose an explicit path instead:
+Running the same test inside an existing fake project made the distinction
+harder to dismiss. Its local environment changed too. The command had no way
+to express "configure my account, leave this checkout alone."
+
+An optional directory argument looked like a small fix. It was tempting to
+preserve the old behavior whenever a template flag appeared, or infer project
+mode from an existing `.co/` folder. Either choice would leave the destination
+implicit. We instead made the argument itself choose the scope:
 
 ```bash
 co init                          # global credentials
-co init ./                       # project configuration here
-co init ./ --template co-ai       # project configuration plus template
+co init ./                       # this project's configuration
+co init ./ --template co-ai       # configuration and template code
 ```
 
-The migration cost is deliberate: scripts that scaffold a project must add
-`./`. Template, description, and overwrite options without a path fail with a
-concrete example before writing anything. `co create` remains the way to make a
-new project directory.
+That costs existing scaffolding scripts one extra argument. Project-only
+options without a path now fail before writing files, with an example showing
+what to change. `co create` still creates a new project directory.
 
-## Global storage is not an environment snapshot
+There was a second trap inside the smaller global path. The old initializer
+looked for provider keys in the process environment. Package startup may have
+put them there by loading the current project's `.env`. Reusing that detection
+for global setup would silently turn a project credential into a machine-wide
+default. The new path saves a provider key only when explicitly supplied with
+`--key`; managed authentication uses its existing global destination.
 
-By the time the CLI runs, package startup may have loaded a project's `.env`
-into the process. Copying detected keys into global configuration would silently
-promote a project credential to a machine-wide default. Global init therefore
-persists a provider key only when explicitly supplied with `--key`; it preserves
-other global keys and writes managed credentials through the existing global
-authentication path.
+One last offline test removed `keys.env` but kept the signing key. Init
+reported a global configuration path, yet the file remained missing: the shared
+setup helper returned early because the identity already existed. Recreating
+the environment file from that same identity fixed the case without rotating
+the keypair or pretending authentication had succeeded.
 
-Project initialization keeps its existing global-identity and credential
-inheritance rules. It does not create an independent project keypair. Runtime
-precedence is unchanged: explicit process variables, then project `.env`, then
-global `keys.env`.
+The original 14 contract tests went from 11 failures to all passing; the
+missing-file case became a fifteenth. The installed-wheel checks then ran the
+actual executable outside the repository. Plain init left the scratch working
+directory empty. Explicit project init still filled its documentation folder.
 
-The regression checks exercise no-path setup inside and outside projects,
-relative and absolute project paths, spaces in paths, offline setup, explicit
-provider keys, and rejection before writes. The installed-wheel acceptance test
-also checks that the actual `co init` executable leaves the working directory
-empty while creating global state.
+The boundary is now visible in the command. A working directory tells the
+process where it is; it does not, by itself, ask setup to make a project there.
