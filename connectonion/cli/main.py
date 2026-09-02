@@ -145,7 +145,7 @@ def _show_help():
     # belong on a new user's first screen is a product call, not this one's.
     console.print("[bold]Common commands:[/bold]")
     console.print("  [green]create[/green]  <name>     Create new project")
-    console.print("  [green]init[/green]              Initialize in current directory")
+    console.print("  [green]init[/green]   [path]     Set up global keys, or an explicit project directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
     console.print("  [green]eval[/green]              Run evals and show status")
     console.print("  [green]trust[/green]             Manage trust lists")
@@ -172,15 +172,23 @@ def _show_help():
 
 @app.command()
 def init(
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: co-ai (default), custom"),
+    path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
+                                         help="Existing project directory; omit for global ~/.co/keys.env"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
 ):
-    """Initialize project in current directory."""
-    from .commands.init import handle_init
-    handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force)
+    """Initialize global ~/.co/keys.env, or use co init ./ for a project."""
+    from .commands.init import handle_global_init, handle_init
+    if path is None:
+        if template is not None or description is not None or force:
+            console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
+            raise typer.Exit(2)
+        handle_global_init(key=key)
+        return
+    handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
 
 @app.command()

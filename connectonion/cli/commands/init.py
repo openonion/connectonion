@@ -1,10 +1,10 @@
 """
-Purpose: Initialize ConnectOnion project in current directory with template files, authentication, and configuration
+Purpose: Initialize global ConnectOnion credentials by default, or an explicitly selected project
 LLM-Note:
   Dependencies: imports from [os, sys, shutil, subprocess, yaml, datetime, pathlib, rich.console, rich.prompt, __version__, address, auth_commands.authenticate, project_cmd_lib] | imported by [cli/main.py via handle_init()] | uses templates from [cli/templates/co-ai] | tested by [tests/e2e/cli/test_cli_init.py]
-  Data flow: receives args (ai, key, template, description, yes, force) from CLI parser → ensure_global_config() creates ~/.co/ with master keypair if needed → check_environment_for_api_keys() detects existing keys → api_key_setup_menu() or detect_api_provider() validates API key → generate_custom_template() if template='custom' → copy template files from cli/templates/{template}/ to current dir → authenticate() to get OPENONION_API_KEY → create/update .env with API keys from ~/.co/keys.env → create .co/host.yaml with project metadata and global identity → copy vibe coding docs to .co/docs/ and project root → update .gitignore if git repo → display success message with next steps
-  State/Effects: modifies ~/.co/ (host.yaml, keys.env, keys/, logs/) on first run | writes to current dir: .co/host.yaml, .env, agent.py (if template), .gitignore | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files (agent.py, requirements.txt, etc.) | creates temp_project_dir during auth flow (cleaned up at end) | writes to stdout via rich.Console
-  Integration: exposes handle_init(ai, key, template, description, yes, force) | calls ensure_global_config() to create global identity | calls authenticate(global_co_dir, save_to_project=False) for managed keys | uses template files from cli/templates/ | relies on project_cmd_lib for shared functions | the project gets no keypair of its own: ensure_global_config() creates the machine identity in ~/.co and the project uses it | template options: 'co-ai', 'custom', 'none' (default)
+  Data flow: CLI without a path calls handle_global_init() → ensure_global_config() creates ~/.co/ identity → explicit --key saved in keys.env → authenticate(save_to_project=False); CLI with a path calls handle_init() → global setup and auth → selected project .env, .co/host.yaml, docs, optional template and gitignore
+  State/Effects: global mode writes only ~/.co/ (keys.env, keys/, logs/) and stdout; project mode additionally writes selected path/.env, .co/host.yaml, .co/docs/, .co/admins.txt, optional template files and .gitignore | authenticate() writes managed credentials into ~/.co/keys.env
+  Integration: exposes handle_global_init(key) and handle_init(ai, key, template, description, yes, force, path) | both use ensure_global_config() and authenticate(global_co_dir, save_to_project=False) | project initialization uses templates from cli/templates/ and project_cmd_lib | the project gets no keypair of its own: ensure_global_config() creates the machine identity in ~/.co | project template options: 'co-ai', 'custom', 'none' (default)
   Performance: authenticate() makes network call to backend (2-5s) | generate_custom_template() calls LLM API if template='custom' | template file copying is O(n) files | config/env file operations are I/O bound
   Errors: fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | warns if directory not empty (requires --force or confirmation) | warns for special directories (home, root, system dirs) | skips duplicate .env keys (safe append) | creates temp_project_dir but cleans up on completion
 """
@@ -25,6 +25,7 @@ from .project_cmd_lib import (
     PROVIDER_TO_ENV,
     mint_invite_code,
     ensure_global_config,
+    upsert_env,
     copy_docs,
     create_host_yaml,
     record_creator_as_admin,
@@ -42,13 +43,30 @@ from .project_cmd_lib import (
 console = Console()
 
 
+def handle_global_init(key: Optional[str] = None) -> None:
+    """Set up this machine without writing into the current project."""
+    ensure_global_config()
+    global_dir = Path.home() / ".co"
+    # Startup may already have loaded a project's .env into os.environ. Only
+    # an explicit --key may promote a provider credential into global storage.
+    if key:
+        provider, _ = detect_api_provider(key)
+        upsert_env(global_dir / "keys.env", {PROVIDER_TO_ENV[provider]: key})
+    authenticated = authenticate(global_dir, save_to_project=False)
+    console.print(f"[green]✓ Global configuration: {global_dir / 'keys.env'}[/green]")
+    if not authenticated:
+        console.print("[yellow]Managed-key setup is incomplete. Run co auth when ready.[/yellow]")
+    console.print("[dim]For a project, pass its directory explicitly: co init ./[/dim]")
+
+
 def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
-                description: Optional[str], yes: bool, force: bool):
-    """Initialize a ConnectOnion project in the current directory."""
+                description: Optional[str], yes: bool, force: bool,
+                path: Optional[Path] = None):
+    """Initialize a project at path (cwd for existing programmatic callers)."""
     # Ensure global config exists first
     ensure_global_config()
 
-    current_dir = os.getcwd()
+    current_dir = str(path.resolve()) if path is not None else os.getcwd()
     project_name = os.path.basename(current_dir) or "my-agent"
 
     # Track temp directory for cleanup

@@ -99,14 +99,31 @@ my-agent/
 
 ---
 
-#### `co init` - Add to Existing Directory
+#### `co init` - Global Setup
+
+Without a path, `co init` creates or reuses the global identity and authenticates
+into `~/.co/keys.env`. It does not create or modify project files, even inside
+an existing project. Pass a directory explicitly for project setup.
+
+```bash
+co init --yes                 # Global setup only
+co init ./ --yes              # This project's config, .env, and docs
+co init /path/to/project      # Another existing project directory
+```
+
+`--key` explicitly saves a provider key globally in no-path mode; implicitly
+loaded project or process keys are not copied there. Project-only `--template`,
+`--description`, and `--force` require a path. See [init](init.md) for migration
+and offline behavior.
+
+#### `co init ./` - Add to Existing Directory
 
 Adds ConnectOnion to existing project safely.
 
 **Basic usage:**
 ```bash
 cd my-existing-project
-co init                      # Safe - preserves existing files
+co init ./                      # Safe - preserves existing files
 ```
 
 **What it does:**
@@ -116,19 +133,20 @@ co init                      # Safe - preserves existing files
 - ✅ **Skips** existing files (like `agent.py`)
 
 **Options:**
-Same as `co create` (except no `[name]` parameter).
+An explicit existing directory replaces `co create`'s new project name.
+Templates are optional: omit `--template` for configuration only.
 
 **Examples:**
 ```bash
 # Add to existing project
 cd my-django-app
-co init
+co init ./
 
 # With template
-co init --template co-ai
+co init ./ --template co-ai
 
 # Update docs only
-co init  # Refreshes .co/docs/ to latest version
+co init ./  # Refreshes .co/docs/ to latest version
 ```
 
 **Safe for existing projects:**
@@ -137,7 +155,7 @@ co init  # Refreshes .co/docs/ to latest version
 DATABASE_URL=postgres://localhost/mydb
 SECRET_KEY=mysecret
 
-# After co init - preserved and appended
+# After co init ./ - preserved and appended
 DATABASE_URL=postgres://localhost/mydb    # ← kept
 SECRET_KEY=mysecret                        # ← kept
 
@@ -862,7 +880,7 @@ $ cat .env
 DATABASE_URL=postgres://localhost/mydb
 SECRET_KEY=mysecret
 
-$ co init
+$ co init ./
 
 ✓ Using global identity
 ✓ Found existing .env
@@ -930,7 +948,7 @@ Every installation generates master Ed25519 keypair:
 co create my-new-project
 
 # Existing project?
-cd my-project && co init
+cd my-project && co init ./
 ```
 
 ### 2. Use Templates
@@ -1026,7 +1044,7 @@ $ co create my-agent
 
 # Or add to existing
 cd my-agent
-co init
+co init ./
 ```
 
 ---
@@ -1057,7 +1075,7 @@ done
 ```bash
 # Refresh to latest
 cd my-old-project
-co init  # Updates .co/docs/ without changing code
+co init ./  # Updates .co/docs/ without changing code
 ```
 
 ---
@@ -1073,7 +1091,7 @@ co deploy
 
 **Requirements:**
 - Git repository with committed code
-- `.co/host.yaml` (created by `co create` or `co init`)
+- `.co/host.yaml` (created by `co create` or `co init ./`)
 - Authenticated (`co auth`)
 
 **Example:**
@@ -1118,7 +1136,7 @@ See [server.md](server.md).
 | Command | Purpose | Interactive | Safe for Existing |
 |---------|---------|-------------|-------------------|
 | `co create` | New project | Yes | N/A (creates new dir) |
-| `co init` | Add to existing | Yes | ✅ Yes |
+| `co init ./` | Add to existing | Yes | ✅ Yes |
 | `co copy` | Copy built-in tools/plugins/skills/prompts | No | ✅ Yes |
 | `co skills` | Discover/import skills | No | ✅ Yes |
 | `co setup` | Global identity + skill library | No | ✅ Yes (idempotent) |
