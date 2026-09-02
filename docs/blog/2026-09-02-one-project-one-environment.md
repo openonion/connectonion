@@ -43,7 +43,8 @@ The lesson is small: a correct project boundary is useful only when every
 loader uses it. A second definition of the project can undo the first without
 ever raising an exception.
 
-The stable release target is 1.7.2. It also includes the previously merged
+The stable release target is 1.7.3, after the 1.7.2 candidate was stopped before
+publication to clarify global versus explicit-project initialization. It also includes the previously merged
 canonical `oo` useful skill and dependency-lock security update. The environment
 fix and its regressions are carried to the active 1.8 line separately; stable
 version metadata does not travel with that forward-port. Publication is gated

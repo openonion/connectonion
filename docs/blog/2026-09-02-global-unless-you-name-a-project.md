@@ -60,3 +60,10 @@ directory empty. Explicit project init still filled its documentation folder.
 
 The boundary is now visible in the command. A working directory tells the
 process where it is; it does not, by itself, ask setup to make a project there.
+
+The first release attempt stopped before publication while this distinction
+was being clarified. Keeping that tag immutable meant cutting a new candidate,
+1.7.3, rather than quietly replacing the code behind 1.7.2. The fixes have also
+reached the public 1.8.0b1 preview, so trying the newer line does not restore
+the old setup behavior. The [release record](../releases/v1.7.3.md) keeps the
+command migration and captured filesystem results beside the version.
