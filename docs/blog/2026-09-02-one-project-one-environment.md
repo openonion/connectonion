@@ -42,3 +42,9 @@ reloads. It tests source selection, not the contents of anyone's credentials.
 The lesson is small: a correct project boundary is useful only when every
 loader uses it. A second definition of the project can undo the first without
 ever raising an exception.
+
+The stable release target is 1.7.2. It also includes the previously merged
+canonical `oo` useful skill and dependency-lock security update. The environment
+fix and its regressions are carried to the active 1.8 line separately; stable
+version metadata does not travel with that forward-port. Publication is gated
+on the reviewed tag's cross-platform tests and installed-artifact checks.

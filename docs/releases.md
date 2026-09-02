@@ -10,9 +10,24 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
-- Stable release: `1.6.10`
-- Preview target: `1.7.0a13`
-- Browser client: `@connectonion/react@0.4.2-alpha.11`
+- Stable release target: `1.7.2`
+- Active preview train: `1.8` (opt-in)
+
+1.7.2 fixes directory-dependent dotenv loading: commands launched from a
+project subdirectory now read the same project `.env` as commands launched
+at its root. Shell overrides and global credential fallback are preserved.
+The package also includes the canonical `oo` useful skill, corrected `co sub
+sync` hint, and pypdf lockfile security update. It makes no browser product change.
+
+See [environment precedence](cli/README.md#priority-order) and
+[the design journal](blog/2026-09-02-one-project-one-environment.md).
+The immutable tag workflow verifies the wheel and source archive before
+publication; merging a release candidate alone is not a published release.
+
+## Historical 1.7 alpha development notes
+
+The following records the earlier `1.7.0a13` development snapshot, paired with
+`@connectonion/react@0.4.2-alpha.11`; these are not current installation targets.
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
 Host serves the authenticated `/ws` connection; `@connectonion/react` owns the
@@ -74,7 +89,8 @@ right Work Room card instead of a generic outer tool. The default UI presents a
 bounded semantic activity snapshot; raw commands and outputs stay behind
 disclosure.
 
-Normal upgrades stay on stable. Preview testers opt in explicitly:
+Normal upgrades stay on stable. Preview testers opt in explicitly (the exact
+pin below is the historical Alpha 13 example):
 
 ```bash
 python -m pip install --pre --upgrade connectonion

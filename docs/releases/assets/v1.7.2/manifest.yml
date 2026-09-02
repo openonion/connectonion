@@ -1,0 +1,2 @@
+version: v1.7.2
+no_visual_change: "No graphical or layout changes: canonical project-root dotenv resolution, bundled oo skill instructions and subscription-hint correction, and a dependency lock security update. Existing terminal presentation and browser behavior are unchanged."
