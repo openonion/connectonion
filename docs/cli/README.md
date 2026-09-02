@@ -792,11 +792,26 @@ The CLI automatically detects providers:
 
 ### Priority Order
 
-1. `--key` flag
-2. Environment variables
-3. `~/.co/keys.env` (global)
-4. Interactive prompt
-5. Skip (add later)
+For runtime environment loading, the first source defining a variable wins:
+
+1. Existing process environment (shell, container, or service configuration)
+2. The project's `.env`
+3. `~/.co/keys.env` (global fallback)
+
+The project is the nearest directory containing `.co/`, bounded by the current
+Git repository and home directory. Running `co` from `project/src/` loads
+`project/.env`, not `project/src/.env`; Python imports use the same rule.
+Outside a project, `.env` in the current directory is still supported. Loading
+never searches across another repository or treats `~/.co` as a parent project.
+
+Gmail, Outlook, GDrive, and Synology CLI loaders use this same boundary. A
+subdirectory `.env` cannot add missing values behind the project's back.
+Explicit API-key arguments remain caller-controlled; setup commands can prompt
+for missing credentials. No existing environment value is overwritten.
+
+Use `co status` or `co doctor` for redacted credential diagnostics. Set
+`CO_DEBUG_ENV=1` to show the dotenv file paths loaded at startup, even when
+output is piped. It does not print secret values.
 
 ### Backend selection
 

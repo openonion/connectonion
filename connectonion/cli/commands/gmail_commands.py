@@ -26,9 +26,10 @@ INBOX_CACHE = Path.home() / ".co" / "gmail_last_inbox.json"
 def _gmail():
     """Load GOOGLE_* credentials from .env files and return a Gmail instance. Exits 1 with a hint if not connected."""
     from dotenv import load_dotenv
+    from ...project import project_root
 
-    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
-        if env_path.exists():
+    for env_path in [project_root() / ".env", Path.home() / ".co" / "keys.env"]:
+        if env_path.is_file():
             load_dotenv(env_path)
 
     if not os.getenv("GOOGLE_ACCESS_TOKEN"):
