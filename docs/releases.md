@@ -10,10 +10,14 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
-- Stable release target: `1.7.2`
+- Stable release target: `1.7.3`
 - Active preview train: `1.8` (opt-in)
 
-1.7.2 fixes directory-dependent dotenv loading: commands launched from a
+1.7.3 makes plain `co init` global-only: it initializes `~/.co/keys.env` and
+the machine identity without writing project files. Use `co init ./` or another
+explicit existing directory for project configuration and templates.
+
+It also fixes directory-dependent dotenv loading: commands launched from a
 project subdirectory now read the same project `.env` as commands launched
 at its root. Shell overrides and global credential fallback are preserved.
 The package also includes the canonical `oo` useful skill, corrected `co sub
@@ -21,6 +25,9 @@ sync` hint, and pypdf lockfile security update. It makes no browser product chan
 
 See [environment precedence](cli/README.md#priority-order) and
 [the design journal](blog/2026-09-02-one-project-one-environment.md).
+The [1.7.3 release notes](releases/v1.7.3.md) include the CLI migration and
+captured before/after behavior. Both fixes are already included in `1.8.0b1`.
+The `v1.7.2` candidate was cancelled before publication; its tag remains unchanged.
 The immutable tag workflow verifies the wheel and source archive before
 publication; merging a release candidate alone is not a published release.
 

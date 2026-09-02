@@ -1,0 +1,9 @@
+version: v1.7.3
+images:
+  - file: global-init.png
+    alt: "Before and after terminal output: plain init stops creating project files; explicit init still creates them"
+    caption: "Rendered capture of actual offline CLI stdout and measured filesystem state using disposable homes; temporary paths and identity addresses are redacted. Before: v1.7.2 candidate. After: the 1.7.3 candidate with the merged global-init fix."
+    scenario: "Run co init --yes without a path, inspect project files, then run co init ./ --yes and inspect again"
+    viewport: "1926x1080, dark terminal transcript; no graphical client changed"
+    commit: e57a0313e0bfb95bfd76270bda64b52a976f568f
+    source_run: "Local offline subprocess capture; merged product CI: https://github.com/openonion/connectonion/actions/runs/33607159128"
