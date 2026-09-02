@@ -127,6 +127,36 @@ class TestItIsTheWheelBeingTested:
         assert "False" in result.stdout, "the source tree shadowed the installed package"
 
 
+def test_installed_cli_and_sdk_share_the_project_env(installed, tmp_path):
+    """The public entry point must not fall back to a subdirectory's secrets."""
+    python, bin_dir, _, _ = installed
+    home = tmp_path / "home"
+    (home / ".co").mkdir(parents=True)
+    (home / ".co" / "keys.env").write_text("CO_WHEEL_ENV=global\n", encoding="utf-8")
+    project = home / "project"
+    (project / ".co").mkdir(parents=True)
+    (project / ".env").write_text("CO_WHEEL_ENV=project\n", encoding="utf-8")
+    nested = project / "src"
+    nested.mkdir()
+    (nested / ".env").write_text("CO_WHEEL_ENV=nested\n", encoding="utf-8")
+    env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT") if key in os.environ}
+    env.update(HOME=str(home), USERPROFILE=str(home), CO_DEBUG_ENV="1")
+    result = subprocess.run(
+        [str(python), "-c", "import connectonion, os; print(os.environ['CO_WHEEL_ENV'])"],
+        cwd=nested, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "project"
+    co = bin_dir / ("co.exe" if os.name == "nt" else "co")
+    result = subprocess.run(
+        [str(co), "--version"], cwd=nested, env=env,
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"[env] {(project / '.env').resolve()}" in result.stderr
+    assert f"[env] {(nested / '.env').resolve()}" not in result.stderr
+
+
 class TestTheDataFilesShipped:
     """Every non-.py file the runtime loads."""
 
