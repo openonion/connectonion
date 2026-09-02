@@ -1,38 +1,50 @@
-# Beta means someone else ran it
+# The page that must not load
 
-1.8 went through eight alphas. Each one shipped a piece: the egress gateway,
-the destination policy, the private browser runtime, the paid engine, the
-Laptop Proxy, the SMS inbox. Each was measured by the person who built it, on
-the machines they built it on.
+This morning the two-machine run got further than it ever had. A laptop on a
+home connection in Sydney attached to a Google Cloud server, `co remote-browser
+start` came back `active`, and the browser on the server opened
+`api.ipify.org` — and the page said `129.94.43.159`. The laptop's address.
+Eight alphas of gateway, policy, private runtime and paid engine had finally
+lined up, and the number on the screen was the right one.
 
-`1.8.0b1` is the first cut where the whole path was run as a user would run
-it: a laptop behind a home router, a server in a data centre, `co proxy
-share`, `co remote-browser start`, a page, a bill.
+That is the moment it is tempting to stop. The feature is "working". Cut the
+beta, write the post, go to lunch.
 
-## What the beta line means here
+## The second check
 
-The versioning policy says `X.Y.0` is earned, not reached. A beta is the
-step before that: the feature set stops moving, and the release exists to be
-exercised by people who did not write it. The 1.8 list is now fixed —
+Instead we ran `co proxy stop` on the laptop and reloaded the tab on the
+server.
 
-- the Remote Browser leaves the internet from your computer, from anywhere,
-- the paid Onion engine can actually pay (Onionwright 0.0.13),
-- `co init` defaults to global credentials,
-- a phone can join an Agent's SMS inbox without holding its key.
-
-What is left before `1.8.0` is not code. It is the second and third run of
-the cross-NAT path on machines nobody in this repository set up, and the
-first run of the paid engine by someone who had to top up first.
-
-## The one number
+The interesting outcome would not have been an error. It would have been a
+page that loaded — showing `35.229.135.74`, the server's own address. Every
+piece of the chain was built so that cannot happen: the Remote Browser is
+pinned to the loopback gateway, the gateway dials only through the share, and
+the share is gone. But "built so that cannot happen" is a claim about code,
+and the earlier same-network demo had never tested it. If the browser had any
+path back to the data centre's connection, this reload was the first time
+anyone would have seen it — and a user would not have seen it at all. Their
+tab would simply keep working, from the wrong country, while they believed
+their traffic left from home.
 
 ```text
-co proxy stop; reload → ERR_TUNNEL_CONNECTION_FAILED
+This site can't be reached
+ERR_TUNNEL_CONNECTION_FAILED
 ```
 
-Every earlier measurement of this feature was a success number: the site saw
-the laptop's address. This is the first release where the failure number is
-in the notes too. Stopping the share breaks the tab. It does not fall back to
-the data centre's address while you believe the traffic is leaving from home.
-That is the property the whole feature is for, and it is now something a beta
-tester can check in one line.
+The tab broke. That is the result the whole feature exists to produce, and it
+is the first time it has been observed on two real machines rather than
+asserted in a test.
+
+## Why this is the beta
+
+`1.8.0b1` is cut from this run. The successful number has been in the alphas'
+notes since a3; the failing one had not. A beta is where the feature set stops
+moving and other people run the path — and the one-line check they should
+run is not "does the site see my address" but "does the tab die when I stop
+sharing". Anyone who gets a page after `co proxy stop` has found a bug worth
+more than every green matrix on this branch.
+
+What is left before `1.8.0` is exactly that: the second and third run of this
+path on machines nobody in this repository set up, and one run of the paid
+engine by someone who had to top up first. The session that produced the
+screenshot above cost $0.025.
