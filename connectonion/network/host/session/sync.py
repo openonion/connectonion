@@ -107,11 +107,23 @@ class SessionSyncService:
         return {record.session_id: record for record in records}
 
     @staticmethod
-    def _is_retained(record: Session, at: float) -> bool:
-        return (
-            record.status == "running"
-            or record.expires is None
-            or record.expires > at
+    def _has_user_turn(record: Session) -> bool:
+        # CONNECT persists the selected Host mode before the first INPUT so
+        # reconnect policy survives a process restart. That transport-only row
+        # is not chat history and must stay invisible until the user actually
+        # starts the conversation. Keep prompt as a legacy fallback because
+        # older stored sessions may not contain reconstructed message IDs.
+        if isinstance(record.prompt, str) and record.prompt.strip():
+            return True
+        return any(
+            item.get("type") == "user"
+            for item in session_to_chat_items(record.session or {})
+        )
+
+    @classmethod
+    def _is_retained(cls, record: Session, at: float) -> bool:
+        return cls._has_user_turn(record) and (
+            record.status == "running" or record.expires is None or record.expires > at
         )
 
     @staticmethod
