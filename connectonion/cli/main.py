@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
-from dotenv import load_dotenv
 from rich.console import Console
 
 # From _version, not from the package: `from .. import __version__` pulled in
@@ -35,13 +34,9 @@ from rich.console import Console
 from .._version import __version__
 from ..core.usage import DEFAULT_MODEL
 
-# Load both env files for all CLI commands. keys.env stays first — that is
-# already the CLI's effective precedence, since commands that load .env do so
-# after this import and load_dotenv never overrides. Adding .env here only
-# fills in keys it alone defines.
-for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
-    if _env_file.exists():
-        load_dotenv(_env_file)
+# Package startup already loads project-root .env, then global keys.env,
+# without overriding the process environment. Do not reload cwd/.env here:
+# inside a subdirectory it belongs to neither the selected project nor identity.
 
 console = Console()
 

@@ -25,9 +25,10 @@ INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
 def _outlook(required_scope: str = "Mail"):
     """Load Microsoft credentials and require the Graph scope this command needs."""
     from dotenv import load_dotenv
+    from ...project import project_root
 
-    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
-        if env_path.exists():
+    for env_path in [project_root() / ".env", Path.home() / ".co" / "keys.env"]:
+        if env_path.is_file():
             load_dotenv(env_path)
 
     if not os.getenv("MICROSOFT_ACCESS_TOKEN"):

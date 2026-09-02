@@ -2,10 +2,10 @@
 Purpose: Main package entry point exposing public API for ConnectOnion framework
 LLM-Note:
   Dependencies: imports from [core/, logger.py, llm_do.py, transcribe.py, prompts.py, debug/, useful_tools/, network/, address.py] | imported by [user code, tests/, examples/] | no direct tests (integration tests import from here)
-  Data flow: loads cwd .env then ~/.co/keys.env via load_dotenv() (first file to define a key wins) → exports all public API symbols → user imports `from connectonion import Agent, llm_do, ...`
-  State/Effects: auto-loads both the cwd .env (NOT module directory) and the global ~/.co/keys.env at import time
+  Data flow: loads project-root .env then ~/.co/keys.env via load_dotenv() (existing process values win) → exports all public API symbols → user imports `from connectonion import Agent, llm_do, ...`
+  State/Effects: auto-loads the canonical project .env and global ~/.co/keys.env at import time, without crossing repository or home boundaries
   Integration: exposes complete public API: Agent, LLM, Logger, create_tool_from_function, llm_do, transcribe, xray, event decorators, built-in tools, networking functions | __all__ defines explicit public exports
-  Performance: .env loading happens once at first import (dotenv caches)
+  Performance: .env loading happens at first package import
   Errors: none (import errors bubble from submodules)
 ConnectOnion - A simple agent framework with behavior tracking.
 """
@@ -19,12 +19,15 @@ import sys as _sys
 from types import ModuleType as _ModuleType
 from dotenv import load_dotenv
 from pathlib import Path as _Path
+from .project import project_root as _project_root
 
 # Load BOTH the project .env and the global ~/.co/keys.env, in that order.
 # load_dotenv never overrides an already-set variable, so the first file to
 # define a key wins: the project .env overrides, keys.env fills in the rest.
 # Loading only one of them silently hid every credential that lives solely in
 # keys.env (OAuth tokens land there) from any project that had its own .env.
+# Resolve the same project as identity/status/auth. A command started inside
+# src/ must not miss the project's keys or pick up src/.env from another app.
 # The [env] diagnostic answers "which file won?" for a human at a terminal.
 # It is written to stderr only when stderr IS a terminal: agents drive `co`
 # through bash, which appends any stderr to the tool result as "STDERR:" no
@@ -32,8 +35,8 @@ from pathlib import Path as _Path
 # successful command look like it had failed. CO_DEBUG_ENV=1 forces it on for
 # piped or redirected debugging.
 _show_env = _sys.stderr.isatty() or _os.getenv("CO_DEBUG_ENV") == "1"
-for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
-    if _env_file.exists():
+for _env_file in (_project_root() / ".env", _Path.home() / ".co" / "keys.env"):
+    if _env_file.is_file():
         load_dotenv(_env_file)
         if _show_env:
             print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
