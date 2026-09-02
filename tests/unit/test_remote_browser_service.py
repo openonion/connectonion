@@ -118,6 +118,34 @@ def test_owner_can_reconnect_from_a_new_service_instance(tmp_path):
     assert status["state"]["session"] == "active"
 
 
+def test_restart_releases_sessions_when_the_browser_daemon_is_gone(tmp_path):
+    first = RemoteBrowserService(tmp_path / "sessions.json")
+    first.daemon_request = Daemon()
+    attach(first, "0xalice", port=43123, password="old-proxy")
+    started = first.handle(
+        request("start", args={"proxy": "shared"}),
+        owner="0xalice",
+        transport="direct",
+    )
+    assert first.daemon_target.shared_proxy_path.is_file()
+
+    restarted = RemoteBrowserService(tmp_path / "sessions.json", clock=lambda: 1001)
+    restarted.daemon_request = Daemon()
+    attach(restarted, "0xalice", port=43999, password="new-proxy")
+    assert not restarted.daemon_target.shared_proxy_path.exists()
+
+    replacement = restarted.handle(
+        request("start", request_id="req-replacement", args={"proxy": "shared"}),
+        owner="0xalice",
+        transport="direct",
+    )
+
+    assert replacement["ok"] is True
+    saved = json.loads((tmp_path / "sessions.json").read_text())
+    assert saved["sessions"][started["result"]["session_id"]]["status"] == "stopped"
+    assert saved["sessions"][replacement["result"]["session_id"]]["status"] == "active"
+
+
 def test_stop_is_idempotent_and_keeps_a_tombstone(tmp_path):
     remote, daemon = service(tmp_path)
     started = remote.handle(request("start"), owner="0xalice", transport="direct")
@@ -247,6 +275,8 @@ def test_one_wtf_runtime_cannot_mix_direct_and_shared_sessions(tmp_path):
 
     assert first["ok"] is True
     assert second["code"] == "REMOTE_SESSION_PROXY_LOCKED"
+    assert "WTF Browser" not in second["message"]
+    assert "Remote Browser" in second["message"]
     assert len(daemon.calls) == 1
 
 

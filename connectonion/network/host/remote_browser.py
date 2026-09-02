@@ -103,6 +103,31 @@ class RemoteBrowserService:
         # registers and, in its finally, detaches; `start` with
         # `proxy: shared` only reads it.
         self.proxy_channels = ProxyChannelRegistry()
+        self._reconcile_dead_daemon(self._load())
+
+    def _daemon_is_running(self) -> bool | None:
+        """Return private daemon liveness, or None for an embedded test seam."""
+        if self.daemon_target is None:
+            return None
+        from ...cli.browser_agent.client import _owner_alive
+
+        return _owner_alive(self.daemon_target.address)
+
+    def _reconcile_dead_daemon(self, state: dict) -> None:
+        """Drop runtime-only locks left by a daemon that did not survive a restart."""
+        if self._daemon_is_running() is not False:
+            return
+        now = int(self.clock())
+        changed = False
+        for session in state["sessions"].values():
+            if session.get("status") == "active":
+                session["status"] = "stopped"
+                session["updated_at"] = now
+                changed = True
+        if changed:
+            self._save(state)
+            if self.daemon_target is not None and self.daemon_target.shared_proxy_path is not None:
+                self.daemon_target.shared_proxy_path.unlink(missing_ok=True)
 
     @staticmethod
     def _share_binding(endpoint) -> str:
@@ -281,6 +306,7 @@ class RemoteBrowserService:
             )
         with self._lock:
             state = self._load()
+            self._reconcile_dead_daemon(state)
             for session in state["sessions"].values():
                 if (
                     session.get("owner") == owner
@@ -310,7 +336,7 @@ class RemoteBrowserService:
                     request_id,
                     "start",
                     "REMOTE_SESSION_PROXY_LOCKED",
-                    "The running WTF Browser is already pinned to another proxy.",
+                    "The running Remote Browser is already pinned to another proxy.",
                     state={"fallback_applied": False},
                 )
             if share_endpoint is not None and self.daemon_target is not None:
