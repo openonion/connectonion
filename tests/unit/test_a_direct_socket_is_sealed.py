@@ -297,3 +297,34 @@ class TestTheHostSealsADirectSocket:
         connect = {"type": "CONNECT", "payload": {"timestamp": 1}, "from": client["address"], "signature": "00"}
         frames_out, _ = self._run([connect], host, lambda *a, **k: ("hello", client["address"], True, None))
         assert "CONNECTED" in [f["type"] for f in frames_out]
+
+
+class TestTheSealedSocketBehavesLikeAWebsocket:
+
+    def test_it_can_be_iterated_like_a_websockets_connection(self):
+        """ProxyShare._read_frames does `async for raw in ws`. The first live
+        run on the sealed build crashed with 'requires an object with
+        __aiter__ method, got SealedSocket'."""
+        client, host = _pair()
+        hello, eph = sealed.client_hello(client, host["address"])
+        reply, host_channel = sealed.host_accept(hello, host)
+        client_channel = sealed.client_finish(reply, hello, eph)
+
+        class Ws:
+            def __init__(self):
+                self.frames = [json.dumps(host_channel.seal({"type": "PING"})),
+                               json.dumps(host_channel.seal({"type": "PROXY_ATTACHED"}))]
+
+            async def recv(self):
+                if not self.frames:
+                    from websockets.exceptions import ConnectionClosedOK
+                    raise ConnectionClosedOK(None, None)
+                return self.frames.pop(0)
+
+        async def read_all():
+            seen = []
+            async for raw in sealed.SealedSocket(Ws(), client_channel):
+                seen.append(json.loads(raw)["type"])
+            return seen
+
+        assert asyncio.run(read_all()) == ["PING", "PROXY_ATTACHED"]

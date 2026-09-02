@@ -186,6 +186,20 @@ class SealedSocket:
     async def close(self, *args, **kwargs) -> None:
         await self._ws.close(*args, **kwargs)
 
+    def __aiter__(self):
+        # A websockets connection iterates its frames; the share's reader
+        # does `async for raw in ws`. The first two-machine run on the sealed
+        # build died here with "requires an object with __aiter__".
+        return self
+
+    async def __anext__(self) -> str:
+        try:
+            return await self.recv()
+        except Exception as closed:
+            if type(closed).__name__ == "ConnectionClosedOK":
+                raise StopAsyncIteration from closed
+            raise
+
     async def __aenter__(self):
         await self._ws.__aenter__()
         return self
