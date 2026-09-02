@@ -27,9 +27,9 @@ from packaging.version import InvalidVersion, Version
 from connectonion.backend import backend_url
 from connectonion.credentials import require_ambient_api_key
 
-ONIONWRIGHT_VERSION = "0.0.12"
+ONIONWRIGHT_VERSION = "0.0.13"
 ONIONWRIGHT_ARTIFACT = (
-    "onionwright/0.0.12/onionwright-0.0.12-py3-none-any.whl"
+    "onionwright/0.0.13/onionwright-0.0.13-py3-none-any.whl"
 )
 
 # This is the public half of oo-api's production licence-signing key.  Fetching
