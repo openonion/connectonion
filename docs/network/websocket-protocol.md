@@ -52,6 +52,11 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 
 `EXEC` is the direct-execution fast path: it runs one named tool with no LLM, no session, and no history, replying with a single `EXEC_RESULT`. It requires the same CONNECT auth as INPUT, and the tool is gated by the host's `.co/host.yaml` permission whitelist. See [remote-call.md](remote-call.md).
 
+On a **direct** socket the very first frame may be `SEAL` instead: the client
+offers a one-time key, the host answers `SEALED_OK` with its own, and every
+frame after that — CONNECT included — travels inside `SEALED`. See
+[Sealed direct channel](#sealed-direct-channel). The relay path is unchanged.
+
 A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not part of the
 normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
 See [Trust Gate](#trust-gate-onboarding).
@@ -533,6 +538,53 @@ Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
 
 Sent on the same socket as the CONNECT it answers. A wrong code comes back as `ERROR` and
 the stashed CONNECT is **kept**, so the reader can simply try again — no reconnect needed.
+
+#### SEAL / SEALED_OK / SEALED {#sealed-direct-channel}
+
+End-to-end encryption for a direct socket, so a host may announce plain
+`ws://IP:port` and needs no domain, certificate or TLS front. Before this a
+signed CONNECT captured on a plaintext link could be replayed inside its
+five-minute window (#649), and direct connections were therefore limited to
+TLS or loopback.
+
+Handshake, first two frames on the socket:
+
+```json
+{"type": "SEAL", "to": "0xHOST", "from": "0xCLIENT",
+ "ephemeral": "<hex X25519 public key, one-time>", "timestamp": 1756800000,
+ "signature": "<Ed25519 over the canonical JSON of the other five fields, by 0xCLIENT>"}
+
+{"type": "SEALED_OK", "to": "0xCLIENT", "from": "0xHOST",
+ "ephemeral": "<hex X25519 public key, one-time>", "client_ephemeral": "<the SEAL's key>",
+ "signature": "<Ed25519 over the canonical JSON of the other five fields, by 0xHOST>"}
+```
+
+Both sides derive one NaCl `Box` from the two one-time keys. The address *is*
+the Ed25519 public key, so each side verifies the other's signature with
+nothing but the address it already had; the relay is not involved. A `SEAL`
+older than the CONNECT freshness window, addressed to another host, or signed
+by someone other than `from` is answered with `ERROR seal refused: …` and the
+socket is closed (code 4003) — no plaintext second try.
+
+Every later frame in either direction:
+
+```json
+{"type": "SEALED", "n": 7, "c": "<base64 ciphertext>"}
+```
+
+`n` is a per-direction counter starting at 1; the nonce is the direction tag
+plus `n`, so a captured frame replayed or reordered fails to open and ends the
+session. Inside `c` is the ordinary frame (CONNECT, INPUT, EXEC, PING/PONG,
+PROXY_STREAM…), and the router never sees the difference. Signed CONNECT and
+v2 command signatures are still required inside the seal: the seal makes the
+link private, the signatures still say who is speaking.
+
+Client rule (`_open_best_connection`): every direct socket is offered a
+`SEAL`. A host that does not answer `SEALED_OK` is used bare only if the link
+is already private — TLS or loopback — or the client has no keys and so
+nothing signed to lose; otherwise the socket is closed and the client moves
+on to the relay. `PROXY_ATTACH` still requires a direct socket; a sealed
+plaintext one qualifies.
 
 #### PROXY_ATTACH
 

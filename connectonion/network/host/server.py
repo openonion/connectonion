@@ -1134,6 +1134,8 @@ def host(
         mode_policy=_host_mode_policy(sample),
         remote_browser_service=remote_browser_service,
     )
+    # The host signs its half of a sealed direct channel with this.
+    route_handlers["identity"] = addr_data
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)

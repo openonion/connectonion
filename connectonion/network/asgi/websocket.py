@@ -66,6 +66,11 @@ async def handle_websocket(
                     })
                     continue
 
+    send_msg, recv_msg = await _maybe_seal(send_msg, recv_msg, route_handlers)
+    if send_msg is None:
+        await send({"type": "websocket.close", "code": 4003})
+        return
+
     await run_ws_session(
         send_msg, recv_msg,
         route_handlers=route_handlers,
@@ -78,3 +83,55 @@ async def handle_websocket(
     )
 
     console.print(f"[dim]⚡ ws-[/dim] [dim]({registry.count()} active)[/dim]")
+
+
+async def _maybe_seal(send_msg, recv_msg, route_handlers):
+    """Seal the socket if the client opens with SEAL; pass an older client through.
+
+    The first frame decides. SEAL is answered with SEALED_OK and from then on
+    both adapters carry sealed frames, so the router never sees the
+    difference. Anything else is handed to the router unchanged, as the first
+    frame it reads. A SEAL that does not verify closes the socket: an
+    unauthenticated stranger gets no second try at a plaintext CONNECT.
+    """
+    from ..sealed import SEAL, SealError, SealRefused, host_accept
+
+    first = await recv_msg()
+    if first is None:
+        return None, None
+    if first.get("type") != SEAL:
+        async def recv_with_first():
+            nonlocal first
+            if first is not None:
+                frame, first = first, None
+                return frame
+            return await recv_msg()
+        return send_msg, recv_with_first
+
+    identity = route_handlers.get("identity")
+    if identity is None:
+        await send_msg({"type": "ERROR", "message": "this host cannot seal"})
+        return None, None
+    try:
+        reply, channel = host_accept(first, identity)
+    except SealRefused as refused:
+        await send_msg({"type": "ERROR", "message": f"seal refused: {refused}"})
+        return None, None
+    await send_msg(reply)
+
+    async def send_sealed(data):
+        await send_msg(channel.seal(data, default=pydantic_json_encoder))
+
+    async def recv_sealed():
+        frame = await recv_msg()
+        if frame is None:
+            return None
+        try:
+            return channel.open(frame)
+        except SealError as failed:
+            # A frame that does not open is a break-in or a bug; either way
+            # the session ends here rather than guessing.
+            await send_msg({"type": "ERROR", "message": f"sealed frame rejected: {failed}"})
+            return None
+
+    return send_sealed, recv_sealed
