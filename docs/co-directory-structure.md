@@ -22,7 +22,7 @@ Created automatically on first `co` command. Stores your identity and shared API
 
 ## Project Directory (`.co/`)
 
-Created by `co create` or `co init`. Contains project-specific runtime data.
+Created by `co create` or `co init ./`. Contains project-specific runtime data.
 
 ```
 .co/

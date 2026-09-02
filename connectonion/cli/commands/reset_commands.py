@@ -114,7 +114,7 @@ def handle_reset():
         console.print("\n[yellow]Your existing projects still have the old API key.[/yellow]")
         console.print("[yellow]To use your new account in each project:[/yellow]")
         console.print("  [bold cyan]1.[/bold cyan] cd into the project directory")
-        console.print("  [bold cyan]2.[/bold cyan] Run: [bold]co init[/bold]")
+        console.print("  [bold cyan]2.[/bold cyan] Run: [bold]co init ./[/bold]")
         console.print("\n[dim]This will update the project's .env file with your new account.[/dim]\n")
     else:
         console.print("\n[yellow]⚠️  Reset complete, but authentication failed.[/yellow]")

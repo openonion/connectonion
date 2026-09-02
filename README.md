@@ -519,9 +519,12 @@ ConnectOnion CLI provides templates to get you started quickly:
 # Create an agent (the co-ai template)
 co create my-agent
 
-# Initialize in existing directory
-co init                # Adds .co folder only
-co init --template co-ai   # Adds the full project
+# Initialize global credentials (no project files)
+co init
+
+# Initialize an explicit existing directory
+co init ./                   # Adds project config, .env, and docs
+co init ./ --template co-ai   # Adds the full project
 ```
 
 **Available Templates:**
