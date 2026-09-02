@@ -53,5 +53,36 @@ if not result["success"]:
 ```
 
 Messages are sent as plain text; no HTML or Markdown parse mode is enabled.
-Inbound Telegram messages triggering an agent are a separate feature tracked
-in issue #352.
+
+## Listen: the bot as a directory of files
+
+The same bot can receive. `co telegram listen` long-polls Telegram with the
+same token and writes every message into `~/.co/telegram/`: one line in
+`inbox.jsonl` (the log, never deleted) and one file in `new/` (the queue).
+Anything that can read a file can answer; the verbs are the same as
+[`co feishu`](feishu.md):
+
+```bash
+co telegram listen                 # hold the long poll, write the directory; Ctrl-C stops
+m=$(co telegram receive)           # block for the next message, take it, print one JSON line
+echo "on it" | co telegram reply -100123.55     # quote the message it answers, in its chat
+co telegram serve -- claude -p     # one command per message, stdout is the reply
+co telegram check | ls | log -f
+```
+
+```json
+{"id":"-100123.55","chat":"-100123","thread":null,"sender":"4242",
+ "text":"@OpsBot look at the deploy","mentioned":true,"at":"2026-09-02T10:31:07Z"}
+```
+
+Telegram numbers messages per chat, so the id is `<chat>.<message_id>`.
+`thread` is the forum topic when there is one. `mentioned` is true in a private
+chat, and in a group when the message @s the bot's username or replies to one
+of its messages. With privacy mode on (the BotFather default) a group delivers
+only commands and replies to the bot anyway; turn it off with `/setprivacy` and
+re-add the bot if you want it to see everything.
+
+`receive` starts a listener if none is running. Telegram keeps unacknowledged
+updates for a day, so a listener that was down for an hour catches up; the
+mailbox drops anything it has already logged. The full directory layout and
+the `serve` contract are in [feishu.md](feishu.md); only the ids differ.
