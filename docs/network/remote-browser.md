@@ -54,8 +54,11 @@ you, so this works from behind any home or office NAT. The share is keyed by
 your identity on the host — `start --proxy shared` from the same identity
 finds it by itself, and nothing about it travels in the start request.
 
-Measured on a Google Cloud server egressing through a laptop in Sydney: the
-server's own address is `34.21.243.229`, and the site saw `129.94.43.159`.
+Measured 2026-09-02 on a Google Cloud server (`35.229.135.74`) with the paid
+Onion engine, egressing through a laptop behind a home NAT in Sydney:
+`https://api.ipify.org` and `https://ifconfig.me/ip` both saw `129.94.43.159`.
+After `co proxy stop` the same tab got `ERR_TUNNEL_CONNECTION_FAILED` — no
+fallback to the server's address. The session cost one interval, $0.025.
 
 `--proxy direct` (the default) keeps the host on its own connection. Asking for
 `shared` while your computer is not attached answers
