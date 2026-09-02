@@ -140,13 +140,17 @@ async def test_detaching_ends_every_open_stream(keys):
 
     pair = _Pair(keys, dialer=to_echo, allowed_ports=(port,))
     reader, _writer = await pair.host.dial(NumericEndpoint(socket.AF_INET, "8.8.8.8", port), 5)
+    # The socket dropping is what detaches both ends at once.
     await pair.host.close()
-    server.close()
-    await server.wait_closed()
+    await pair.laptop._abandon_streams()
 
     assert await asyncio.wait_for(reader.read(), timeout=5) == b""
     with pytest.raises(OSError, match="detached"):
         await pair.host.resolve("example.com", 443)
+    assert not pair.laptop._streams
+    # Python ≥ 3.12 waits for every connection here; the laptop's must be gone.
+    server.close()
+    await asyncio.wait_for(server.wait_closed(), timeout=5)
 
 
 @pytest.mark.asyncio
