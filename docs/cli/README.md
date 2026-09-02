@@ -270,6 +270,19 @@ Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
 are involved. The same `send_telegram` function is available as an agent tool.
 See [telegram.md](telegram.md) for setup, credential handling, and errors.
 
+#### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files
+
+```bash
+co feishu listen                      # hold the connection; every message → ~/.co/feishu/
+co feishu receive                     # next message as one JSON line
+echo "done" | co feishu reply om_9f8e # back to where it was asked
+co feishu serve -- claude -p          # one command per message, stdout is the reply
+```
+
+Uses your own self-built Feishu application over the official long connection:
+no public address, no OpenOnion credential, nothing billed. Anything that can
+read a file can consume the directory. See [feishu.md](feishu.md).
+
 ---
 
 #### `co gmail` - Send & Read Gmail

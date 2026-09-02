@@ -340,6 +340,9 @@ Worth saying out loud on any page that sells to a business:
 - `@expose` has a design document and no implementation.
 - `logger.load_messages()` has no callers, so "replay a past run" is a data format,
   not a feature. `co eval` is the real replay path.
+- `co feishu listen / receive / send / reply` (`cli/commands/listen_commands.py`,
+  `listen/`) is wired and unit-tested but has not passed the live acceptance run
+  in #1310 against a real Feishu group. Until it has, it is a preview, not a claim.
 
 ### One security finding, not a marketing note
 

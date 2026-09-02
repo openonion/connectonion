@@ -178,6 +178,9 @@ connectonion/
 │   │       ├── tools.py            # Verification tools
 │   │       ├── trust_agent.py      # TrustAgent class
 │   │       └── policies/           # Trust level policy markdown
+│   ├── listen/                     # Chat platforms as mailbox directories (co feishu listen/receive/send)
+│   │   ├── mailbox.py              # ~/.co/<provider>/: inbox.jsonl log, new/ queue, cur/, outbox.jsonl
+│   │   └── feishu.py               # Feishu/Lark long connection → files; REST reply
 │   ├── tui/                        # Terminal UI components
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich
