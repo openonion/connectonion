@@ -75,7 +75,7 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
     })
     wheel_response = _Response(chunks=[wheel[:7], b"", wheel[7:]])
     requests_seen = []
-    installed_versions = iter([None, "0.0.12"])
+    installed_versions = iter([None, "0.0.13"])
     pip_calls = []
 
     monkeypatch.setattr(installer, "RELEASE_VERIFY_KEY_HEX", bytes(signing_key.verify_key).hex())
@@ -105,7 +105,7 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
 
     result = installer.install_onionwright()
 
-    assert result == installer.InstallResult(version="0.0.12", already_installed=False)
+    assert result == installer.InstallResult(version="0.0.13", already_installed=False)
     assert requests_seen == [
         (
             "get",
@@ -230,12 +230,12 @@ def test_cli_install_returns_before_contacting_browser_daemon(monkeypatch, capsy
     monkeypatch.setattr(
         installer,
         "install_onionwright",
-        lambda: installer.InstallResult(version="0.0.12", already_installed=False),
+        lambda: installer.InstallResult(version="0.0.13", already_installed=False),
     )
 
     assert browser_commands.handle_browser(["install-onion"]) == 0
     output = capsys.readouterr()
-    assert "Installed Onionwright 0.0.12" in output.out
+    assert "Installed Onionwright 0.0.13" in output.out
     assert output.err == ""
 
 
