@@ -31,10 +31,23 @@ repository yet, so a compatibility layer would have been code protecting nobody.
 The production catalogue simply gained one entry, and ConnectOnion's pin moved
 from 0.0.12 to 0.0.13.
 
-## What it enables
+## Measured
 
 The two-machine Remote Browser acceptance — a laptop behind a home router
-lending its connection to a browser on a GCP host — was stuck at exactly this
-point: attached, session started, page blocked. With a client that can pay, the
-next step is the one the whole feature is about: the page's traffic leaving from
-the laptop's address.
+lending its connection to a browser on a GCP host — had been stuck at exactly
+this point: attached, session started, page blocked. With a client that can
+pay, the run went through in one sitting:
+
+```text
+Mac egress            129.94.43.159
+host egress           35.229.135.74
+tab → api.ipify.org   129.94.43.159
+tab → ifconfig.me/ip  129.94.43.159
+co proxy stop; reload ERR_TUNNEL_CONNECTION_FAILED
+/api/v1/usage         total_cost_usd: 0.025
+```
+
+The last two lines are the ones worth keeping. Stopping the share breaks the
+tab instead of quietly sending it out of the data centre, and a session that
+lived a few minutes cost exactly one interval. The docs now carry this run in
+place of the earlier same-network figure.
