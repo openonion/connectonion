@@ -66,7 +66,7 @@ def handle_trust_list():
         console.print()
         console.print(f"[yellow]No agent here[/yellow] — {agent_dir} does not exist.")
         console.print("[dim]Trust lists belong to one agent. Run this from its "
-                      "directory, or 'co init' to make one.[/dim]")
+                      "directory, or 'co init ./' to make one.[/dim]")
         console.print()
         return
 

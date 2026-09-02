@@ -149,7 +149,7 @@ output** — are now all UTF-8 regardless of the Windows locale codepage.
 # 1. Install
 pip install connectonion
 
-# 2. Initialize project
+# 2. Initialize global credentials
 co init
 ```
 

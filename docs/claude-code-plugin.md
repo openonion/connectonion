@@ -57,7 +57,7 @@ for those details.
 
 ## Give Claude Code framework context
 
-`co create` and `co init` put the framework reference in `.co/docs/`. The
+`co create` and `co init ./` put the framework reference in `.co/docs/`. The
 plugin provides explicit build and review procedures; the project docs provide
 the version-specific ConnectOnion API and design context.
 

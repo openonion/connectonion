@@ -168,7 +168,12 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP "co-first-run-project"
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           Set-Location $dir
-          $out = co init --yes 2>&1 | Out-String
+          $globalInitOutput = co init --yes 2>&1 | Out-String
+          Write-Host $globalInitOutput
+          if ($LASTEXITCODE -ne 0 -or $globalInitOutput -match "Traceback") { Write-Error "global init failed offline"; exit 1 }
+          if ((Test-Path ".co") -or (Test-Path ".env")) { Write-Error "global init wrote project files"; exit 1 }
+          if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys.env"))) { Write-Error "global keys.env missing"; exit 1 }
+          $out = co init ./ --yes 2>&1 | Out-String
           Write-Host $out
           if ($LASTEXITCODE -ne 0) { Write-Error "offline first run exited $LASTEXITCODE"; exit 1 }
           if ($out -match "Traceback") { Write-Error "offline first run printed a traceback"; exit 1 }
@@ -305,12 +310,12 @@ jobs:
           New-Item -ItemType Directory -Path $proj -Force | Out-Null
           Set-Location $proj
 
-          $out = co init --yes 2>&1 | Out-String
+          $out = co init ./ --yes 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $out -match "Traceback") { Write-Host $out; Write-Error "init failed in CJK home"; exit 1 }
           if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys\agent.key"))) { Write-Error "keypair missing under CJK home"; exit 1 }
 
           # Idempotency: a second init must not corrupt the project.
-          $out2 = co init --yes --force 2>&1 | Out-String
+          $out2 = co init ./ --yes --force 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $out2 -match "Traceback") { Write-Host $out2; Write-Error "second init corrupted the project"; exit 1 }
           if (!(Test-Path ".env")) { Write-Error ".env lost on re-init"; exit 1 }
 

@@ -475,7 +475,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     host_yaml_path = project_dir / ".co" / "host.yaml"
 
     if not host_yaml_path.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return False
 
     # `--skills PATH` means "copy this folder into remote .co/skills".

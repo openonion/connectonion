@@ -46,7 +46,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
 
             # Should succeed
             assert result.exit_code == 0
@@ -61,7 +61,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check that agent.py is valid Python
@@ -78,7 +78,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             agent_code = Path("agent.py").read_text()
@@ -101,7 +101,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             # Check config file
@@ -116,7 +116,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             assert os.path.exists("agent.py")
@@ -126,7 +126,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai', '--key', 'sk-test-key'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai', '--key', 'sk-test-key'])
 
             if result.exit_code == 0:
                 assert os.path.exists("agent.py")
@@ -136,7 +136,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai', '--description', 'Test agent'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai', '--description', 'Test agent'])
 
             if result.exit_code == 0:
                 assert os.path.exists("agent.py")
@@ -150,7 +150,7 @@ class TestCliInit:
             Path("existing.txt").write_text("content")
 
             # Should ask for confirmation
-            result = self.runner.invoke(cli, ['init'], input='n\n')
+            result = self.runner.invoke(cli, ['init', './'], input='n\n')
 
             # User said no, should not create agent.py
             if result.exit_code == 0 and 'agent.py' not in os.listdir('.'):
@@ -164,7 +164,7 @@ class TestCliInit:
             # Create existing agent.py
             Path("agent.py").write_text("# Custom agent")
 
-            result = self.runner.invoke(cli, ['init'], input='y\n')
+            result = self.runner.invoke(cli, ['init', './'], input='y\n')
 
             # Should preserve existing file
             with open("agent.py") as f:
@@ -178,7 +178,7 @@ class TestCliInit:
             # Create .git directory
             os.makedirs(".git")
 
-            result = self.runner.invoke(cli, ['init'], input='y\n')
+            result = self.runner.invoke(cli, ['init', './'], input='y\n')
             assert result.exit_code == 0
 
             # Should create .gitignore
@@ -197,7 +197,7 @@ class TestCliInit:
             Path("existing.txt").write_text("content")
 
             # Should not prompt with --yes flag
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai', '--yes'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai', '--yes'])
             assert result.exit_code == 0
 
             assert os.path.exists("agent.py")
@@ -211,7 +211,7 @@ class TestCliInit:
             Path("agent.py").write_text("# Old agent")
 
             # Force flag should allow overwrite (if implemented)
-            result = self.runner.invoke(cli, ['init', '--force'])
+            result = self.runner.invoke(cli, ['init', './', '--force'])
 
             # Check if force flag is implemented
             if '--force' in result.stderr or 'unrecognized arguments' in result.stderr:
@@ -230,7 +230,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             assert os.path.exists(".env")
@@ -244,7 +244,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check that agent.py is readable and executable
@@ -257,7 +257,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             # Check directory structure
@@ -270,7 +270,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check that .env contains AGENT_ADDRESS
@@ -289,7 +289,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             # Global keys should exist
@@ -307,7 +307,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             assert os.path.exists(".env")
@@ -319,7 +319,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check that .env contains default model comment
@@ -343,7 +343,7 @@ class TestCliInit:
         monkeypatch.setattr(Path, "home", lambda: fake_home)
 
         with self.runner.isolated_filesystem():
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check global keys.env in our fake home
@@ -367,7 +367,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             keys_env = fake_home / ".co" / "keys.env"
@@ -382,7 +382,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             with open(".co/host.yaml") as f:
@@ -403,7 +403,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             config = yaml.safe_load(open(".co/host.yaml"))
@@ -419,7 +419,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init'])
+            result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
             config = yaml.safe_load(open(".co/host.yaml"))
@@ -430,7 +430,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check that .co/docs/ directory exists
@@ -452,7 +452,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # archive folder should NOT exist in .co/docs/
@@ -463,7 +463,7 @@ class TestCliInit:
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # docs README should only be in .co/docs/, not project root
@@ -483,7 +483,7 @@ class TestCliInit:
             os.makedirs("My_Project")
             os.chdir("My_Project")
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
@@ -499,7 +499,7 @@ class TestCliInit:
             os.makedirs("my-project")
             os.chdir("my-project")
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
@@ -519,7 +519,7 @@ class TestCliInit:
             os.makedirs("我的 项目")
             os.chdir("我的 项目")
 
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
             assert "Traceback" not in result.output
 

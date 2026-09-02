@@ -1194,11 +1194,15 @@ def _state_the_address_the_key_has(global_dir: Path) -> None:
     applies to authorized_keys and admins.txt. A no-op when they already agree.
     """
     keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        return
-
     data = address.load(global_dir)
     if not data or not data.get("address"):
+        return
+
+    if not keys_env.exists():
+        # Losing the environment file must not require rotating a valid keypair,
+        # and offline init still needs to leave usable global configuration.
+        upsert_env(keys_env, {"AGENT_ADDRESS": data["address"],
+                              "AGENT_CONFIG_PATH": str(global_dir)})
         return
 
     lines = keys_env.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -1222,7 +1226,7 @@ def ensure_global_config() -> None:
 
     Creates the global config directory, generates an Ed25519 keypair,
     and writes keys.env with AGENT_CONFIG_PATH and AGENT_ADDRESS.
-    No-op if ~/.co/keys/agent.key already exists.
+    Reuses an existing keypair, reconciling its address or restoring keys.env.
     """
     global_dir = Path.home() / ".co"
     key_file = global_dir / "keys" / "agent.key"

@@ -624,7 +624,7 @@ def _invite_line(trust_config) -> str | None:
 
     if from_env:
         return (f"Invite: no one can onboard — {', '.join(from_env)} is not set. "
-                f"Add it to {env_file}, or run `co init` to mint one.")
+                f"Add it to {env_file}, or run `co init ./` to mint one.")
     return None
 
 
@@ -866,7 +866,7 @@ def host(
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
 
     Configuration: .co/host.yaml (required) with code param overrides.
-    Run 'co init' to generate the config file.
+    Run 'co init ./' to generate the config file.
 
     Passing an Agent instance is the simple path and shares that instance.
     Passing a factory creates a fresh Agent for each request.
