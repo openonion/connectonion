@@ -50,6 +50,43 @@ def test_a_share_signs_a_grant_the_host_can_hold():
     assert share._grant()["expires_at"] == grant["expires_at"]
 
 
+class _Socket:
+    """A host that pushes its profile before answering the attach."""
+
+    def __init__(self, frames):
+        self.frames = list(frames)
+        self.sent = []
+
+    async def recv(self):
+        return json.dumps(self.frames.pop(0))
+
+    async def send(self, raw):
+        self.sent.append(json.loads(raw))
+
+
+@pytest.mark.asyncio
+async def test_the_attach_answer_is_read_past_the_hosts_other_frames():
+    """A real host sends AGENT_PROFILE (and pings) right after CONNECTED. The
+    first frame after PROXY_ATTACH is not the answer; the first PROXY_ATTACHED
+    or ERROR is. Taking the profile as a refusal broke the very first
+    two-machine run."""
+    laptop, host = address.generate(), address.generate()
+    share = ProxyShare(host["address"], keys=laptop, ttl=60)
+    ws = _Socket([
+        {"type": "AGENT_PROFILE", "name": "host"},
+        {"type": "PING"},
+        {"type": "PROXY_ATTACHED", "expires_at": "2030-01-01T00:00:00Z"},
+    ])
+
+    reply = await share._attach_reply(ws)
+
+    assert reply["type"] == "PROXY_ATTACHED"
+    assert ws.sent == [{"type": "PONG"}]
+
+    refused = _Socket([{"type": "AGENT_PROFILE"}, {"type": "ERROR", "message": "proxy attach refused: no"}])
+    assert (await share._attach_reply(refused))["message"] == "proxy attach refused: no"
+
+
 @pytest.mark.asyncio
 async def test_a_share_still_refuses_the_sharer_s_own_network():
     """Lending a connection must not lend the network behind it.

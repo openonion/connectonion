@@ -163,8 +163,8 @@ class ProxyShare:
             if error:
                 raise ProxyShareRefused(error)
             await self._send({"type": wire.ATTACH, "grant": self._grant()})
-            reply = await self._next_frame(ws)
-            if reply.get("type") != wire.ATTACHED:
+            reply = await self._attach_reply(ws)
+            if reply["type"] != wire.ATTACHED:
                 raise ProxyShareRefused(reply.get("message", "attach refused"))
             self._set_state("attached", self.remote.address)
             reader = asyncio.create_task(self._read_frames(ws))
@@ -195,6 +195,17 @@ class ProxyShare:
                 await ws.send(json.dumps({"type": "PONG"}))
                 continue
             return frame
+
+    async def _attach_reply(self, ws) -> dict:
+        """The host's answer to PROXY_ATTACH, past whatever else it pushes.
+
+        A real host follows CONNECTED with AGENT_PROFILE and the like; only
+        PROXY_ATTACHED or ERROR says whether the share is up.
+        """
+        while True:
+            frame = await self._next_frame(ws)
+            if frame.get("type") in {wire.ATTACHED, "ERROR"}:
+                return frame
 
     async def _read_frames(self, ws) -> None:
         async for raw in ws:
