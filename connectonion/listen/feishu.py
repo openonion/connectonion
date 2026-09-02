@@ -30,7 +30,17 @@ SDK_MISSING = "The Feishu SDK is not installed. Run: pip install lark-oapi"
 # the same message cannot post twice even across processes.
 _REPLY_NAMESPACE = uuid.UUID("7d2a5b1e-0c4f-4e8a-9b3d-2f6c1a0e5d47")
 
-_RATE_LIMITED = {99991400, 99991403}
+# 99991400 is a per-minute frequency limit: wait and retry. 99991403 is the
+# tenant's monthly API quota (10,000 calls on the free edition, across every
+# self-built app): retrying only burns time. Receiving messages and fetching
+# the tenant token are not counted; replies are.
+_RATE_LIMITED = {99991400}
+QUOTA_EXHAUSTED = 99991403
+QUOTA_MESSAGE = (
+    "Feishu's monthly API quota for this tenant is used up (error 99991403). "
+    "Replies count against it, receiving does not. It resets on the 1st of the "
+    "month; a paid Feishu edition removes the cap. Usage: 管理后台 > 费用中心 > 权益数据."
+)
 
 
 def _sdk():
@@ -221,7 +231,10 @@ class Feishu:
         delay = 1.0
         for attempt in range(3):
             response = requests.post(f"{self.base}{path}", headers=self._headers(), json=body, timeout=15)
-            if response.status_code == 429 or _code(response) in _RATE_LIMITED:
+            code = _code(response)
+            if code == QUOTA_EXHAUSTED:
+                raise RuntimeError(QUOTA_MESSAGE)
+            if response.status_code == 429 or code in _RATE_LIMITED:
                 if attempt == 2:
                     break
                 time.sleep(delay)

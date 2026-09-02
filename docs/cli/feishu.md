@@ -135,6 +135,28 @@ sends nothing and is noted in `log`.
 - Retries a rate-limited send three times with backoff. Feishu allows five
   messages per second per group, shared with every bot in that group.
 
+## The free edition's API quota
+
+Feishu's free edition (基础免费版) caps **all self-built apps in a tenant,
+together, at 10,000 counted API calls a month** since November 2024, and
+refuses counted calls for the rest of the month once it is spent (error
+`99991403`). Paid editions lift it. Feishu raised the free cap to 1,000,000
+in June 2026 as a limited-time change; the admin console (管理后台 > 费用中心
+> 权益数据) shows the number that applies to you today.
+
+What this tool spends, per Feishu's own list of what counts:
+
+| call | counted? | when |
+|---|---|---|
+| receiving a message over the long connection | no (event subscription) | every message |
+| `tenant_access_token` | no (authentication) | every process, at most once |
+| `bot/v3/info` | yes | once per `listen` start and per `check` |
+| `messages/{id}/reply`, `messages` (send) | yes | once per `reply` or `send` |
+
+So 10,000 a month is 10,000 replies, and listening costs nothing. Do not poll
+`check` on a timer: a bot that probed itself every minute is how others burnt
+the whole month in a week.
+
 ## What it does not do
 
 It does not decide who may command an agent. Feishu's `group_at_msg` scope

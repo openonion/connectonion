@@ -216,3 +216,22 @@ def test_bad_credentials_are_reported_not_raised(creds, monkeypatch):
     (problem,) = Feishu().check()
 
     assert "invalid app_secret" in problem
+
+
+def test_an_exhausted_monthly_quota_is_not_retried(creds, monkeypatch):
+    """99991403 is the tenant's monthly cap, not a per-minute limit. Retrying
+    three times with backoff would only delay the same answer."""
+    posts = []
+    monkeypatch.setattr(feishu_module.time, "sleep", lambda s: posts.append(f"slept {s}"))
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        if url.endswith("/internal"):
+            return FakeResponse({"code": 0, "tenant_access_token": "t", "expire": 7200})
+        posts.append("post")
+        return FakeResponse({"code": 99991403, "msg": "This month's API call quota has been exceeded"}, status_code=429)
+
+    monkeypatch.setattr(feishu_module.requests, "post", fake_post)
+
+    with pytest.raises(RuntimeError, match="monthly API quota"):
+        Feishu().send("oc_x", "hi")
+    assert posts == ["post"]
