@@ -209,9 +209,11 @@ async def resolve_endpoint(
         sorted_endpoints = _sort_endpoints(agent_info["endpoints"])
 
         # Step 3: Try each HTTP endpoint
+        # Plaintext public endpoints are candidates too: _open_best_connection
+        # seals the socket end to end before any signed frame goes onto it,
+        # and drops it if the host cannot seal (see _seal_direct).
         http_endpoints = [ep for ep in sorted_endpoints
-                          if (ep.startswith("http://") or ep.startswith("https://"))
-                          and endpoint_is_safe(ep)]
+                          if ep.startswith("http://") or ep.startswith("https://")]
 
         for http_url in http_endpoints:
             try:
@@ -716,11 +718,48 @@ class RemoteAgent:
         """
         for ws_url, is_direct in self._ways_to_reach():
             try:
-                return await websockets.connect(ws_url), is_direct
+                ws = await websockets.connect(ws_url)
             except OSError:
                 if not is_direct:
                     raise          # the relay is the last resort; there is no next
                 self._forget_direct_endpoint()
+                continue
+            if not is_direct:
+                return ws, False
+            sealed = await self._seal_direct(ws, ws_url)
+            if sealed is not None:
+                return sealed, True
+            if endpoint_is_safe(ws_url) or not self._keys:
+                # TLS or loopback: the link itself is private. No keys: nothing
+                # signed will go onto it, so there is nothing to capture.
+                return ws, True
+            # Plaintext to a host that cannot seal: a signed frame on that link
+            # is a captured CONNECT waiting to happen (#649). Not this way.
+            await ws.close()
+            self._forget_direct_endpoint()
+        raise OSError("no way to reach the agent")
+
+    async def _seal_direct(self, ws, ws_url: str):
+        """Seal a direct socket end to end; None if the host does not seal.
+
+        Every direct socket is offered a SEAL first. A host that understands
+        it answers SEALED_OK and every later frame is encrypted with one-time
+        keys signed by both identities; a plaintext public endpoint is then
+        as private as TLS. An older host answers something else or nothing,
+        and the caller decides whether the bare link is acceptable.
+        """
+        from . import sealed
+
+        if not self._keys:
+            return None
+        hello, ephemeral = sealed.client_hello(self._keys, self.address)
+        await ws.send(json.dumps(hello))
+        try:
+            reply = json.loads(await asyncio.wait_for(ws.recv(), timeout=sealed.HANDSHAKE_TIMEOUT))
+            channel = sealed.client_finish(reply, hello, ephemeral)
+        except (asyncio.TimeoutError, sealed.SealRefused, ValueError):
+            return None
+        return sealed.SealedSocket(ws, channel)
 
     def _forget_direct_endpoint(self) -> None:
         """Stop trying a corpse on every turn; resolve again when next asked."""
