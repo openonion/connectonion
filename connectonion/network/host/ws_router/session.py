@@ -16,7 +16,7 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
-from .connect import establish_connection, handle_authenticated_reconnect, handle_connect
+from .connect import establish_connection, handle_authenticated_reconnect, handle_connect, replay_check_for
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
@@ -110,16 +110,21 @@ async def _send_provider_permission_ack(
     await send_msg(frame)
 
 
-async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown"):
+async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown", sealed_by=None):
     """Run one client session from connect to disconnect.
 
     Reads frames, dispatches by type, cleans up on close. Used by both the
     direct ASGI WebSocket path and the relay-routed path, each providing its
     own send_msg/recv_msg adapters.
+
+    ``sealed_by`` is the address that opened the seal this session runs
+    inside, or None on a bare socket. Inside a seal the CONNECT must be signed
+    by that same address and the replay ledger is not consulted: nobody else
+    can put a frame on this socket, so there is nothing for it to catch.
     """
     conn = {"authenticated": False, "agent_address": None, "session_id": None,
             "session": None, "signed_commands": False, "recipient_address": None,
-            "transport": transport}
+            "transport": transport, "sealed_by": sealed_by}
     active_io = None
     forward_task = None
     exec_tasks = set()
@@ -161,7 +166,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 signed_frame = data
                 verified, command_error = authenticated_command_payload(
                     data, conn["agent_address"], conn.get("recipient_address"),
-                    route_handlers.get("replay"),
+                    replay_check_for(conn, route_handlers),
                 )
                 if command_error:
                     await send_msg({"type": "ERROR", "message": command_error})
@@ -216,6 +221,13 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
             elif msg_type == "ONBOARD_SUBMIT":
+                if conn.get("sealed_by") and data.get("from") != conn["sealed_by"]:
+                    # Inside a seal the ledger is not consulted, so a captured
+                    # ONBOARD_SUBMIT from another identity must be refused on
+                    # the peer's name alone: a successful onboard would finish
+                    # the stashed CONNECT as that other identity.
+                    await send_msg({"type": "ERROR", "message": "unauthorized: ONBOARD_SUBMIT is not signed by the sealed peer"})
+                    continue
                 agent_address = await handle_onboard_submit(data, send_msg, route_handlers)
                 # Pop the stashed CONNECT only on a successful onboard: a failed one
                 # (e.g. wrong invite code) keeps it so a retry on the same socket can
