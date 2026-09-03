@@ -6,6 +6,7 @@ Errors: raises ReplayProtectionError so callers can fail closed with a safe mess
 """
 
 import hashlib
+import logging
 import math
 import os
 import sqlite3
@@ -13,6 +14,8 @@ import time
 from contextlib import closing
 from pathlib import Path
 
+
+logger = logging.getLogger(__name__)
 
 SIGNATURE_EXPIRY_SECONDS = 300
 # A healthy transaction is tiny, but another OS worker can be descheduled while
@@ -44,45 +47,49 @@ class SignatureReplayStore:
         self.expiry_seconds = expiry_seconds
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
-            os.close(descriptor)
-            if os.name != "nt":
-                os.chmod(self.path, 0o600)
-            with closing(self._connect()) as database:
-                with database:
-                    # Serialize schema inspection and migration across workers.
-                    database.execute("BEGIN IMMEDIATE")
-                    database.execute(
-                        "CREATE TABLE IF NOT EXISTS used_signatures ("
-                        "digest BLOB PRIMARY KEY, seen_at REAL NOT NULL"
-                        ", expires_at REAL"
-                        ") WITHOUT ROWID"
-                    )
-                    columns = {
-                        row[1] for row in database.execute(
-                            "PRAGMA table_info(used_signatures)"
-                        )
-                    }
-                    if "expires_at" not in columns:
-                        database.execute(
-                            "ALTER TABLE used_signatures "
-                            "ADD COLUMN expires_at REAL"
-                        )
-                    # A pre-fix row may have represented a future-dated
-                    # signature. Retain it for the maximum validity window.
-                    database.execute(
-                        "UPDATE used_signatures SET expires_at = seen_at + ? "
-                        "WHERE expires_at IS NULL",
-                        (2 * self.expiry_seconds,),
-                    )
-                    database.execute(
-                        "CREATE INDEX IF NOT EXISTS used_signatures_expiry "
-                        "ON used_signatures(expires_at)"
-                    )
+            self._prepare_schema()
         except (OSError, sqlite3.Error) as exc:
             raise ReplayProtectionError(
                 f"replay protection storage is unavailable: {self.path}"
             ) from exc
+
+    def _prepare_schema(self) -> None:
+        """Create the ledger, or migrate an older one, at the current path."""
+        descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
+        os.close(descriptor)
+        if os.name != "nt":
+            os.chmod(self.path, 0o600)
+        with closing(self._connect()) as database:
+            with database:
+                # Serialize schema inspection and migration across workers.
+                database.execute("BEGIN IMMEDIATE")
+                database.execute(
+                    "CREATE TABLE IF NOT EXISTS used_signatures ("
+                    "digest BLOB PRIMARY KEY, seen_at REAL NOT NULL"
+                    ", expires_at REAL"
+                    ") WITHOUT ROWID"
+                )
+                columns = {
+                    row[1] for row in database.execute(
+                        "PRAGMA table_info(used_signatures)"
+                    )
+                }
+                if "expires_at" not in columns:
+                    database.execute(
+                        "ALTER TABLE used_signatures "
+                        "ADD COLUMN expires_at REAL"
+                    )
+                # A pre-fix row may have represented a future-dated
+                # signature. Retain it for the maximum validity window.
+                database.execute(
+                    "UPDATE used_signatures SET expires_at = seen_at + ? "
+                    "WHERE expires_at IS NULL",
+                    (2 * self.expiry_seconds,),
+                )
+                database.execute(
+                    "CREATE INDEX IF NOT EXISTS used_signatures_expiry "
+                    "ON used_signatures(expires_at)"
+                )
 
     def _connect(self):
         database = sqlite3.connect(self.path, timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
@@ -110,19 +117,66 @@ class SignatureReplayStore:
         expires_at = self._expires_at(data, seen_at)
         digest = signature_digest(signature)
         try:
-            with closing(self._connect()) as database:
-                with database:
-                    database.execute(
-                        "DELETE FROM used_signatures WHERE expires_at < ?",
-                        (seen_at,),
-                    )
-                    inserted = database.execute(
-                        "INSERT OR IGNORE INTO used_signatures "
-                        "(digest, seen_at, expires_at) VALUES (?, ?, ?)",
-                        (digest, seen_at, expires_at),
-                    ).rowcount
-            return inserted == 0
-        except (OSError, sqlite3.Error) as exc:
+            return self._claim(digest, seen_at, expires_at)
+        except sqlite3.DatabaseError as exc:
+            # The ledger this process opened at startup can be deleted or
+            # replaced underneath it -- a deploy that rsyncs `.co/` without
+            # protecting `replay.sqlite3` is enough, and the file it leaves
+            # behind has no schema (#1401). Nothing is wrong with this
+            # process, so a rebuild here is the difference between one
+            # recovered request and every signed call failing until somebody
+            # notices. Rebuild once and retry; a second failure is a live
+            # fault rather than a swapped file, and still fails closed.
+            if not self._is_missing_ledger(exc):
+                raise ReplayProtectionError(
+                    f"replay protection storage is unavailable: {self.path}"
+                ) from exc
+            try:
+                self._prepare_schema()
+                claimed = self._claim(digest, seen_at, expires_at)
+            except (OSError, sqlite3.Error) as retry_exc:
+                raise ReplayProtectionError(
+                    "replay protection storage is unavailable after rebuild: "
+                    f"{self.path}"
+                ) from retry_exc
+            logger.warning(
+                "Replay ledger at %s was missing its schema (%s) and has been "
+                "rebuilt. It was most likely deleted or replaced by a deploy; "
+                "exclude it from any sync that owns %s. Signatures recorded "
+                "before the rebuild are forgotten, so a captured signature can "
+                "be replayed until it expires (%ss).",
+                self.path, exc, self.path.parent, self.expiry_seconds,
+            )
+            return claimed
+        except OSError as exc:
             raise ReplayProtectionError(
                 f"replay protection storage is unavailable: {self.path}"
             ) from exc
+
+    @staticmethod
+    def _is_missing_ledger(exc: sqlite3.DatabaseError) -> bool:
+        """Tell a vanished ledger from a lock, a disk fault or real damage.
+
+        Only the missing-table case is safe to rebuild: it means the file at
+        this path is a fresh empty database. Corruption, `database is locked`
+        and I/O errors must keep failing closed, because rebuilding would
+        discard a ledger that is still the authority on what has been used.
+        """
+        return isinstance(exc, sqlite3.OperationalError) and (
+            "no such table" in str(exc).lower()
+        )
+
+    def _claim(self, digest: bytes, seen_at: float, expires_at: float) -> bool:
+        """Record one digest, returning whether it was already present."""
+        with closing(self._connect()) as database:
+            with database:
+                database.execute(
+                    "DELETE FROM used_signatures WHERE expires_at < ?",
+                    (seen_at,),
+                )
+                inserted = database.execute(
+                    "INSERT OR IGNORE INTO used_signatures "
+                    "(digest, seen_at, expires_at) VALUES (?, ?, ?)",
+                    (digest, seen_at, expires_at),
+                ).rowcount
+        return inserted == 0
