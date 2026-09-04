@@ -101,7 +101,7 @@ def _read_project(project_dir: Optional[Path] = None) -> Optional[dict]:
     project_dir = Path(project_dir) if project_dir else project_root()
     host_yaml = project_dir / ".co" / "host.yaml"
     if not host_yaml.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return None
 
     config = yaml.safe_load(host_yaml.read_text(encoding="utf-8")) or {}
@@ -262,6 +262,13 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
         # is how a second agent on this machine avoids 8000 without its author
         # knowing anything about what else runs here.
         environment += f"Environment=AGENT_PORT={port}\n"
+    # Host startup diagnostics must name the file systemd actually loaded.
+    # Without this marker the generic host layer sends an operator to the
+    # project's .env even though deploy keeps secrets outside the rsync root.
+    environment += (
+        "Environment=CONNECTONION_ENV_FILE="
+        f"{ENV_FILE_TEMPLATE.format(agent=agent)}\n"
+    )
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target

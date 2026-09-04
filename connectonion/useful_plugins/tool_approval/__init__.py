@@ -1,10 +1,10 @@
 """
-Purpose: WebSocket-based tool approval plugin with permission profiles and unified permissions
+Purpose: WebSocket-based tool approval plugin with canonical modes and unified permissions
 LLM-Note:
-  Dependencies: imports from [./approval.py (check_approval, load_config_permissions, poll_mode_changes, poll_interrupt, handle_permission_profile_change, get_current_permission_profile), ./constants.py (VALID_PERMISSION_PROFILES)] | imported by [../.__init__.py useful_plugins package, cli/co_ai/agent.py, cli/templates/minimal/agent.py, full_access.py, skills.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/unit/test_shell_approval.py]
+  Dependencies: imports approval event hooks and VALID_PERMISSION_MODES
   Data flow: agent loads plugin → [load_config_permissions, poll_mode_changes, poll_interrupt, check_approval] registered as event handlers → after_user_input fires → load_config_permissions() loads .co/host.yaml → before_iteration fires → poll_mode_changes() checks WebSocket for mode_change → before_each_tool fires → check_approval() validates tool → if dangerous: WebSocket approval protocol → if approved: tool executes | if rejected: ValueError raised → after_iteration fires → poll_interrupt() checks WebSocket for INTERRUPT (sets stop_signal so the loop's existing check halts)
   State/Effects: exports tool_approval plugin list | exports canonical permission-profile utilities plus deprecated source aliases | no module state
-  Integration: exposes tool_approval (list of 4 event handlers), handle_permission_profile_change(agent, profile), get_current_permission_profile(agent), VALID_PERMISSION_PROFILES | used by Agent(plugins=[tool_approval]) | integrates with co ai CLI for WebSocket-based coding agent
+  Integration: exposes tool_approval, handle_mode_change, get_current_mode, and VALID_PERMISSION_MODES
   Performance: plugin registration is O(1) | event handler overhead per tool call depends on approval.py check_approval()
   Errors: no errors at import time | errors from approval.py bubble up during agent execution
 
@@ -26,10 +26,10 @@ Tool Classification:
 - DANGEROUS_TOOLS remains a public reference set for known effectful tools
 - Unknown tools require approval when live IO is present
 
-Permission profiles:
-- ":read-only": Every unpermitted tool needs approval
-- ":workspace": Named file edits are auto-approved; other unpermitted tools need approval
-- ":danger-full-access": Handled by full_access plugin with a bounded Host grant
+Permission modes:
+- "read-only": Every unpermitted tool needs approval
+- "auto": Named file edits are auto-approved; other unpermitted tools need approval
+- "full-access": Handled by full_access with a bounded Host grant
 
 Session Memory:
 - scope="once": Approve for this call only
@@ -110,7 +110,7 @@ Architecture - Unified Permission System Lifecycle:
     │                                                                         │
     │ 3. TOOL EXECUTION (@before_each_tool)                                   │
     │    check_approval()                                                     │
-    │    ├─ Check skip flags (no_io, skip_tool_approval)                      │
+    │    ├─ Check no-IO and canonical bounded Full access state              │
     │    ├─ Check permission profile                                          │
     │    ├─ Iterate permissions dict:                                         │
     │    │  ├─ matches_permission_pattern(tool_name, args, key)               │
@@ -165,7 +165,7 @@ Architecture - Unified Permission System Lifecycle:
 
 Integration with other plugins:
     - skills plugin: grants turn-scoped permissions, snapshots/restores
-    - full_access plugin: sets skip_tool_approval=True to bypass all checks
+    - full_access plugin: canonical bounded state bypasses routine approval
     - tool_approval: owns matches_permission_pattern() for validation
     - co_ai CLI: includes tool_approval by default for WebSocket agent
 
@@ -185,18 +185,12 @@ File Relationships:
 from .approval import (
     check_approval,
     get_current_mode,
-    get_current_permission_profile,
     handle_mode_change,
-    handle_permission_profile_change,
     load_config_permissions,
     poll_interrupt,
     poll_mode_changes,
 )
-from .constants import (
-    DEFAULT_MODE,
-    VALID_MODES,
-    VALID_PERMISSION_PROFILES,
-)
+from .constants import VALID_PERMISSION_MODES
 from .policy import apply_auto_approve_policy
 
 # Export as plugin (list of event handlers)
@@ -212,12 +206,7 @@ tool_approval = [
 # Export mode functions for external use
 __all__ = [
     'tool_approval',
-    'handle_permission_profile_change',
-    'get_current_permission_profile',
-    'VALID_PERMISSION_PROFILES',
-    # One source-compatibility window for existing plugin consumers.
     'handle_mode_change',
     'get_current_mode',
-    'VALID_MODES',
-    'DEFAULT_MODE',
+    'VALID_PERMISSION_MODES',
 ]

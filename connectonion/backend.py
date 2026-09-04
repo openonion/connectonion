@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 
-
 DEFAULT_BACKEND_URL = "https://oo.openonion.ai"
 DEFAULT_BACKEND_WS_URL = DEFAULT_BACKEND_URL.replace("https://", "wss://", 1)
 _LEGACY_ENV_VARS = ("OPENONION_API_URL", "OPENONION_BASE_URL")

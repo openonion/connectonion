@@ -24,9 +24,10 @@ LIST_CACHE = Path.home() / ".co" / "gdrive_last_list.json"
 def _gdrive():
     """Load GOOGLE_* credentials from .env files and return a GDrive instance. Exits 1 with a hint if not connected."""
     from dotenv import load_dotenv
+    from ...project import project_root
 
-    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
-        if env_path.exists():
+    for env_path in [project_root() / ".env", Path.home() / ".co" / "keys.env"]:
+        if env_path.is_file():
             load_dotenv(env_path)
 
     if not os.getenv("GOOGLE_ACCESS_TOKEN"):
@@ -181,4 +182,4 @@ def handle_gdrive_rm(file_id: str):
         raise typer.Exit(1)
 
     drive.delete(resolved)
-    console.print(f"\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")
+    console.print("\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")

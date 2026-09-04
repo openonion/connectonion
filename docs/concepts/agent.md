@@ -534,6 +534,30 @@ agent.last_usage.cache_write_tokens # Tokens written to cache (Anthropic)
 agent.last_usage.cost              # Cost for this call in USD
 ```
 
+Managed `co/` models also preserve the backend's exact accounting contract.
+This is the contract used for the final charge, so clients can explain a turn
+without guessing from provider-specific fields:
+
+```python
+usage = agent.last_usage
+usage.input_tokens_total             # All provider input tokens
+usage.input_tokens_uncached          # Newly billed input
+usage.cache_read_input_tokens        # Input read from cache
+usage.cache_write_input_tokens       # Input written to cache
+usage.cache_write_5m_input_tokens    # Anthropic 5-minute writes, when reported
+usage.cache_write_1h_input_tokens    # Anthropic 1-hour writes, when reported
+usage.cache_metadata_status          # reported | unavailable | unsupported
+usage.provider                       # Normalized provider identity
+usage.provider_model                 # Model reported by that provider
+usage.pricing_version                # Server pricing snapshot used to settle
+usage.pricing_tier                   # Applied tier, such as standard
+usage.cost_details                   # Auditable server-side cost breakdown
+```
+
+These fields are optional for direct-provider calls and sessions created by an
+older Host. Use the legacy fields as the compatibility view; do not reconstruct
+a managed charge locally when `cost` and the exact fields are present.
+
 ### Multi-Turn Cost Tracking
 
 ```python

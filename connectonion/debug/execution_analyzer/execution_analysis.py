@@ -14,8 +14,10 @@ Analyzes the entire execution trace and provides suggestions for improvement.
 """
 
 from pathlib import Path
-from pydantic import BaseModel
 from typing import List
+
+from pydantic import BaseModel
+
 from ...llm_do import llm_do
 
 

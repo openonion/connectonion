@@ -76,8 +76,9 @@ class _Todo:
 class _Agent:
     system_prompt = "system"
 
-    def __init__(self, noise="progress"):
+    def __init__(self, noise="progress", outcome="natural"):
         self.noise = noise
+        self.outcome = outcome
         self.current_session = None
         self.received_session = None
         self.tools = _ToolRegistry(_Todo())
@@ -94,9 +95,13 @@ class _Agent:
         self.current_session = {
             **base,
             "messages": messages,
-            "trace": list(base.get("trace", [])),
+            "trace": [
+                *base.get("trace", []),
+                {"type": "turn_result", "reason": self.outcome},
+            ],
             "turn": base.get("turn", 0) + 1,
-            "mode": ":danger-full-access",
+            "mode": "full-access",
+            "turns_left": 7,
         }
         self.tools.todo.state.append(_todo(prompt))
         self.current_session["plan"] = [
@@ -117,7 +122,8 @@ def test_snapshot_round_trip_preserves_full_session_and_tool_state(tmp_path):
         "messages": [{"role": "system", "content": "s"}],
         "trace": [],
         "turn": 2,
-        "mode": ":danger-full-access",
+        "mode": "full-access",
+        "turns_left": 7,
         "permissions": {"Bash(git *)": {"allowed": True}},
         "plan": _plan("ship"),
     }
@@ -862,7 +868,7 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     monkeypatch.setattr("connectonion.cli.co_ai.agent.create_agent", create_agent)
 
     ai_commands.handle_ai(
-        prompt="first", json_output=True, yolo=True, yolo_turns=7
+        prompt="first", json_output=True, full_access=True, full_access_turns=7
     )
 
     captured = capsys.readouterr()
@@ -870,17 +876,42 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
     assert envelope == {
         "session_id": envelope["session_id"],
         "result": "done",
+        "outcome": "natural",
         "error": None,
     }
     assert captured.out.count("\n") == 1
     assert "progress" in captured.err
-    assert created["yolo_turns"] == 7
+    assert created["full_access_turns"] == 7
     assert created["background_tools"] is False
 
     stored, tools = load_snapshot(tmp_path, envelope["session_id"])
-    assert stored["mode"] == ":danger-full-access"
+    assert stored["mode"] == "full-access"
     assert stored["turn"] == 1
     assert tools == {"todolist": [_todo("first")]}
+
+
+def test_json_max_iterations_preserves_result_and_exits_nonzero(
+    tmp_path, monkeypatch, capsys
+):
+    agent = _Agent(outcome="max_iterations")
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.GLOBAL_CO_DIR", tmp_path)
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent", lambda **_: agent
+    )
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_commands.handle_ai(prompt="unfinished", json_output=True)
+
+    assert caught.value.exit_code == 1
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope == {
+        "session_id": envelope["session_id"],
+        "result": "done",
+        "outcome": "max_iterations",
+        "error": None,
+    }
+    stored, _ = load_snapshot(tmp_path, envelope["session_id"])
+    assert stored["trace"][-1]["reason"] == "max_iterations"
 
 
 def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, capsys):
@@ -892,7 +923,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
             "messages": [{"role": "system", "content": "old"}],
             "trace": [{"type": "old"}],
             "turn": 4,
-            "mode": ":workspace",
+            "mode": "auto",
             "plan": _plan("old todo"),
         },
         {"todolist": [_todo("old todo")]},
@@ -905,7 +936,7 @@ def test_resume_restores_messages_plugin_state_and_todos(tmp_path, monkeypatch, 
 
     envelope = json.loads(capsys.readouterr().out)
     assert envelope["session_id"] == session_id
-    assert agent.received_session["mode"] == ":workspace"
+    assert agent.received_session["mode"] == "auto"
     assert agent.received_session["turn"] == 4
     assert agent.tools.todo.state == [_todo("old todo"), _todo("next")]
 
@@ -919,7 +950,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
         "messages": [{"role": "system", "content": "old"}],
         "trace": [{"type": "old"}],
         "turn": 4,
-        "mode": ":workspace",
+        "mode": "auto",
         "plan": _plan("old todo"),
     }
     save_snapshot(tmp_path, original, {"todolist": [_todo("old todo")]})
@@ -947,6 +978,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
     assert envelope == {
         "session_id": session_id,
         "result": None,
+        "outcome": "error",
         "error": "follow-up failed",
     }
     stored, tools = load_snapshot(tmp_path, session_id)
@@ -973,6 +1005,7 @@ def test_json_failure_is_structured_and_nonzero(tmp_path, monkeypatch, capsys):
     assert json.loads(captured.out) == {
         "session_id": None,
         "result": None,
+        "outcome": "error",
         "error": "our bug",
     }
     assert "before failure" in captured.err
@@ -994,6 +1027,7 @@ def test_transient_one_shot_rejects_resume_without_echoing_the_session_id(capsys
     assert json.loads(capsys.readouterr().out) == {
         "session_id": None,
         "result": None,
+        "outcome": "error",
         "error": "A transient one-shot run cannot resume a session.",
     }
 
@@ -1037,7 +1071,7 @@ def test_virtual_session_cwd_is_opaque_protocol_data(tmp_path):
         "messages": [],
         "trace": [],
         "turn": 0,
-        "mode": ":read-only",
+        "mode": "read-only",
         "plan": [],
     }
 

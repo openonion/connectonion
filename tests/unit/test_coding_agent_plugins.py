@@ -15,6 +15,26 @@ class _LLM:
     model = "test"
 
 
+def test_replayed_tool_card_keeps_the_model_written_summary():
+    items = session_to_chat_items({
+        "messages": [{"role": "user", "content": "inspect it"}],
+        "trace": [{
+            "type": "tool_result",
+            "tool_id": "call-1",
+            "name": "read_file",
+            "args": {"path": "README.md"},
+            "summary": "Reading the project guide to find the documented behavior",
+            "status": "success",
+            "result": "contents",
+        }],
+    })
+
+    tool = next(item for item in items if item["type"] == "tool_call")
+    assert tool["summary"] == (
+        "Reading the project guide to find the documented behavior"
+    )
+
+
 @pytest.mark.parametrize(
     ("plugin", "tool_name"),
     [(CodexPlugin, "codex"), (ClaudeCodePlugin, "claude_code")],
@@ -29,24 +49,43 @@ def test_plugin_registers_provider_tool_without_model_owned_authority(tmp_path, 
     assert "approval" not in parameters
 
 
-def test_compatibility_permission_names_are_normalized(tmp_path):
-    assert CodexPlugin(permission_mode=":read-only", workspace=tmp_path).permission_mode is PermissionMode.MANUAL
-    assert CodexPlugin(permission_mode=":workspace", workspace=tmp_path).permission_mode is PermissionMode.AUTO_APPROVE
-    assert CodexPlugin(permission_mode=":danger-full-access", workspace=tmp_path).permission_mode is PermissionMode.FULL_ACCESS
+def test_plugins_accept_only_the_three_exact_public_modes(tmp_path):
+    assert CodexPlugin(permission_mode="read-only", workspace=tmp_path).permission_mode is PermissionMode.READ_ONLY
+    assert CodexPlugin(permission_mode="auto", workspace=tmp_path).permission_mode is PermissionMode.AUTO
+    assert CodexPlugin(permission_mode="full-access", workspace=tmp_path).permission_mode is PermissionMode.FULL_ACCESS
+    with pytest.raises(ValueError, match="Unknown permission mode"):
+        CodexPlugin(permission_mode=":workspace", workspace=tmp_path)
 
 
-def test_workspace_traversal_and_symlink_escape_fail_closed(tmp_path):
-    workspace = tmp_path / "workspace"
-    outside = tmp_path / "outside"
+@pytest.mark.parametrize("plugin", [CodexPlugin, ClaudeCodePlugin])
+def test_plugin_workspace_errors_fail_closed_without_exposing_host_paths(tmp_path, plugin):
+    workspace = tmp_path / "customer-secret-workspace"
+    outside = tmp_path / "private-host-directory"
     workspace.mkdir()
     outside.mkdir()
+    missing = workspace / "confidential-missing-directory"
+    not_directory = workspace / "private-file"
+    not_directory.write_text("private", encoding="utf-8")
     link = workspace / "escape"
     try:
         link.symlink_to(outside, target_is_directory=True)
     except OSError:
         pytest.skip("symlinks unavailable")
-    result = json.loads(CodexPlugin(workspace=workspace).codex("inspect", cwd="escape"))
-    assert "must stay inside workspace" in result["error"]
+
+    installed = plugin(workspace=workspace)
+    tool = getattr(installed, installed.provider)
+    unavailable = json.loads(tool("inspect", cwd=str(missing)))
+    file_target = json.loads(tool("inspect", cwd=str(not_directory)))
+    escaped = json.loads(tool("inspect", cwd="escape"))
+
+    assert unavailable["error"] == "Working directory is unavailable."
+    assert file_target["error"] == "Working directory is not a directory."
+    assert escaped["error"] == (
+        "Working directory must stay inside the configured workspace."
+    )
+    public = json.dumps([unavailable, file_target, escaped])
+    for private_path in (workspace, outside, missing, not_directory, link):
+        assert str(private_path) not in public
 
 
 def test_invocation_lifecycle_is_parented_and_terminal(monkeypatch, tmp_path):
@@ -180,22 +219,20 @@ def test_invocation_terminal_summary_uses_only_recorded_safe_activity(monkeypatc
 @pytest.mark.parametrize(
     ("session", "sandbox", "approval"),
     [
-        ({"mode": ":read-only"}, "read-only", "manual"),
-        ({"mode": ":workspace"}, "workspace-write", "manual"),
+        ({"mode": "read-only"}, "read-only", "manual"),
+        ({"mode": "auto"}, "workspace-write", "manual"),
         (
             {
-                "mode": ":danger-full-access",
-                "full_access_turns": 2,
-                "full_access_turns_used": 0,
-                "skip_tool_approval": True,
+                "mode": "full-access",
+                "turns_left": 2,
             },
             "danger-full-access",
             "deny",
         ),
         (
-            {"mode": ":workspace", "requester": {"level": "contact"}},
-            "read-only",
-            "deny",
+            {"mode": "auto", "requester": {"level": "contact"}},
+            "workspace-write",
+            "manual",
         ),
     ],
 )
@@ -232,14 +269,12 @@ def test_codex_plugin_can_follow_the_authenticated_host_permission_ceiling(
 @pytest.mark.parametrize(
     ("session", "permission_mode"),
     [
-        ({"mode": ":read-only"}, "manual"),
-        ({"mode": ":workspace"}, "acceptEdits"),
+        ({"mode": "read-only"}, "manual"),
+        ({"mode": "auto"}, "auto"),
         (
             {
-                "mode": ":danger-full-access",
-                "full_access_turns": 2,
-                "full_access_turns_used": 0,
-                "skip_tool_approval": True,
+                "mode": "full-access",
+                "turns_left": 2,
             },
             "auto",
         ),
@@ -277,15 +312,22 @@ def test_claude_plugin_can_follow_the_authenticated_host_permission_ceiling(
     assert seen["permission_mode"] == permission_mode
 
 
-def test_hosted_contact_cannot_launch_claude_plugin(monkeypatch, tmp_path):
+def test_hosted_contact_uses_the_same_claude_mode_contract(monkeypatch, tmp_path):
     import connectonion.plugins.coding_agents as module
 
-    monkeypatch.setattr(module, "_run_claude_code", pytest.fail)
+    seen = {}
+
+    def fake_claude(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"provider": "claude_code", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
     io = SimpleNamespace(log=MagicMock())
     agent = SimpleNamespace(
         current_session={
             "_active_tool_call_id": "call-10",
-            "mode": ":danger-full-access",
+            "mode": "full-access",
+            "turns_left": 3,
             "requester": {"address": "0xcontact", "level": "contact"},
         },
         io=io,
@@ -297,15 +339,37 @@ def test_hosted_contact_cannot_launch_claude_plugin(monkeypatch, tmp_path):
             use_host_permissions=True,
         ).claude_code(
             "change it",
-            cwd=str(tmp_path.parent / "private-repository-name"),
+            cwd=str(tmp_path),
             session_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             agent=agent,
         )
     )
 
-    assert result["status"] == "error"
-    assert "only to the operator" in result["error"]
-    io.log.assert_not_called()
+    assert result["exit_code"] == 0
+    assert seen["permission_mode"] == "auto"
+
+
+def test_claude_plugin_defaults_to_its_configured_workspace(monkeypatch, tmp_path):
+    import connectonion.plugins.coding_agents as module
+
+    seen = {}
+
+    def fake_claude(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"provider": "claude_code", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
+    agent = SimpleNamespace(
+        current_session={"_active_tool_call_id": "call-default-cwd"},
+        io=SimpleNamespace(log=MagicMock()),
+    )
+
+    result = json.loads(
+        ClaudeCodePlugin(workspace=tmp_path).claude_code("inspect", agent=agent)
+    )
+
+    assert result["exit_code"] == 0
+    assert seen["cwd"] == str(tmp_path.resolve())
 
 
 def test_public_signature_matches_the_provider_contract(tmp_path):
@@ -320,6 +384,9 @@ def test_public_signature_matches_the_provider_contract(tmp_path):
     assert inspect.signature(CodexPlugin(workspace=tmp_path).codex).parameters[
         "timeout"
     ].default == 1800
+    assert inspect.signature(
+        ClaudeCodePlugin(workspace=tmp_path).claude_code
+    ).parameters["cwd"].default == "."
 
 
 def test_codex_prompt_is_optional_so_open_does_not_invent_a_task(tmp_path):

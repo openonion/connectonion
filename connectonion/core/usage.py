@@ -23,6 +23,22 @@ class TokenUsage(BaseModel):
     cache_write_tokens: int = 0  # Tokens written to cache (Anthropic only)
     cost: float = 0.0           # USD cost for this call
     total_tokens: int = 0       # What the server says it billed for; 0 = it didn't say
+    # Exact managed-backend contract. Optional keeps direct providers and old
+    # saved sessions backward-compatible; co/ responses populate every field.
+    input_tokens_total: int | None = None
+    input_tokens_uncached: int | None = None
+    cache_read_input_tokens: int | None = None
+    cache_write_input_tokens: int | None = None
+    cache_write_5m_input_tokens: int | None = None
+    cache_write_1h_input_tokens: int | None = None
+    cache_metadata_status: str | None = None
+    provider: str | None = None
+    requested_model: str | None = None
+    provider_model: str | None = None
+    provider_reported_cost_usd: float | None = None
+    pricing_version: str | None = None
+    pricing_tier: str | None = None
+    cost_details: dict | None = None
 
     @property
     def billed_tokens(self) -> int:
@@ -391,6 +407,18 @@ def turn_usage_from_trace(trace: list) -> dict | None:
         'total_tokens': 0,
         'cost': 0.0,
     }
+    measured_cache_fields = {
+        'input_tokens_total': 0,
+        'input_tokens_uncached': 0,
+        'cache_read_input_tokens': 0,
+        'cache_write_input_tokens': 0,
+        'cache_write_5m_input_tokens': 0,
+        'cache_write_1h_input_tokens': 0,
+    }
+    measured_present = {
+        field: any(field in usage and usage[field] is not None for usage in usages)
+        for field in measured_cache_fields
+    }
     for usage in usages:
         input_tokens = _usage_int(usage, 'input_tokens')
         output_tokens = _usage_int(usage, 'output_tokens')
@@ -404,6 +432,26 @@ def turn_usage_from_trace(trace: list) -> dict | None:
         cost = usage.get('cost', 0.0)
         if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
             totals['cost'] += float(cost)
+        for field in measured_cache_fields:
+            if measured_present[field]:
+                measured_cache_fields[field] += _usage_int(usage, field)
+
+    totals.update(
+        {
+            field: value
+            for field, value in measured_cache_fields.items()
+            if measured_present[field]
+        }
+    )
+    statuses = {
+        usage.get('cache_metadata_status')
+        for usage in usages
+        if usage.get('cache_metadata_status')
+    }
+    if statuses:
+        totals['cache_metadata_status'] = (
+            next(iter(statuses)) if len(statuses) == 1 else 'mixed'
+        )
     return totals
 
 

@@ -9,15 +9,16 @@ LLM-Note:
   Errors: no error handling (let I/O errors bubble up) | assumes log_file parent can be created | assumes stderr is available
 """
 
+import os
 import re
 from datetime import datetime
-import os
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Union
+from typing import Any, Dict, List, Optional, Union
+
 from rich.console import Console as RichConsole
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 from rich.text import Text
-from rich.markup import escape as rich_escape
 
 # Use stderr so console output doesn't mix with agent results
 _rich_console = RichConsole(stderr=True)
@@ -325,8 +326,8 @@ class Console:
             timing: Execution time in milliseconds
             agent: Agent instance with current_session
         """
-        from rich.table import Table
         from rich.console import Group
+        from rich.table import Table
 
         table = Table(show_header=False, box=None, padding=(0, 1))
         table.add_column("Key", style="dim")
@@ -644,8 +645,27 @@ class Console:
         _rich_console.print()
         self.print(f"[{DIM_COLOR}]═══════════════════════════════════════════════[/{DIM_COLOR}]")
 
-        # Print summary: green check, white "complete", dim metadata
-        self.print(f"[{SUCCESS_COLOR}]{SUCCESS_SYMBOL}[/{SUCCESS_COLOR}] complete [{DIM_COLOR}]· {tokens_str} tokens · {cost_str} · {time_str}[/{DIM_COLOR}]")
+        latest_outcome = next(
+            (
+                entry.get("reason")
+                for entry in reversed(session.get("trace", []))
+                if entry.get("type") == "turn_result"
+            ),
+            None,
+        )
+        if latest_outcome == "max_iterations":
+            status_color = ERROR_COLOR
+            status_symbol = ERROR_SYMBOL
+            status_text = "incomplete"
+        else:
+            status_color = SUCCESS_COLOR
+            status_symbol = SUCCESS_SYMBOL
+            status_text = "complete"
+
+        self.print(
+            f"[{status_color}]{status_symbol}[/{status_color}] {status_text} "
+            f"[{DIM_COLOR}]· {tokens_str} tokens · {cost_str} · {time_str}[/{DIM_COLOR}]"
+        )
 
         # Print session path if provided (dim)
         if session_path:

@@ -9,7 +9,8 @@ LLM-Note:
 
 import shutil
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
+
 from rich.console import Console
 from rich.table import Table
 
@@ -58,7 +59,6 @@ PLUGINS = {
     "system_reminder": "system_reminder.py",
     "ui_stream": "ui_stream.py",
     "ulw": "ulw.py",  # Deprecated compatibility shim.
-    "yolo": "full_access.py",
 }
 
 # Registry of copyable plugin directories
@@ -105,6 +105,7 @@ SKILLS = {
     "co-mail-and-drive": "co-mail-and-drive",
     "commit": "commit",
     "install-connectonion": "install-connectonion",
+    "oo": "oo",
     "review-pr": "review-pr",
     "ship-feature": "ship-feature",
 }
@@ -124,12 +125,12 @@ def handle_copy(
         return
 
     # Get source directories using import system (works for installed packages)
-    import connectonion.useful_tools as tools_module
-    import connectonion.useful_plugins as plugins_module
-    import connectonion.useful_skills as skills_module
-    import connectonion.tui as tui_module
-    import connectonion.useful_prompts as prompts_module
     import connectonion
+    import connectonion.tui as tui_module
+    import connectonion.useful_plugins as plugins_module
+    import connectonion.useful_prompts as prompts_module
+    import connectonion.useful_skills as skills_module
+    import connectonion.useful_tools as tools_module
 
     useful_tools_dir = Path(tools_module.__file__).parent
     useful_plugins_dir = Path(plugins_module.__file__).parent

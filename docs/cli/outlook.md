@@ -118,6 +118,21 @@ Sends a threaded reply to an email from your last listing. Use `-` as the
 message to read the reply body from stdin, and `--at +2h` (or a UTC ISO
 time) to schedule the reply like a scheduled send.
 
+**Options**
+- `--attach, -a FILE` — attach a local file; repeat for multiple
+- `--at` — schedule delivery: `+30m`, `+2h`, or a UTC ISO time
+
+**Attachments** — same files, limit, and flag as `send`, still a real reply:
+
+```bash
+co outlook reply 3 "Signed copy attached." \
+    --attach signed.pdf --attach cover.png
+```
+
+The files ride on Graph's reply action, so the message stays in the original
+conversation instead of going out as a new email. Attachments and `--at`
+combine — a scheduled reply keeps its files.
+
 ### `co outlook send <to> <subject> <message>` — Send
 
 ```bash
@@ -235,8 +250,10 @@ outlook.send(
 - **Missing Mail scopes** → run `co auth microsoft` again to re-consent.
 - **Missing `Contacts.ReadWrite`** → run `co auth microsoft` again; an older
   token cannot gain the new permission through refresh alone.
-- **Token expired** → tokens auto-refresh; if issues persist, re-run
-  `co auth microsoft`.
+- **OpenOnion authentication failed during token refresh** → run `co auth`.
+- **Microsoft authorization expired or permission denied** → tokens
+  auto-refresh when possible; re-run `co auth microsoft` if Microsoft revoked
+  the refresh token or the operation needs another scope.
 - **`No email #N in your inbox`** → the number is out of range; run
   `co outlook inbox` to refresh the listing.
 - **`co outlook cancel` rejected with 403** → some Exchange work/school

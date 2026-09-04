@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
-from dotenv import load_dotenv
 from rich.console import Console
 
 # From _version, not from the package: `from .. import __version__` pulled in
@@ -35,13 +34,9 @@ from rich.console import Console
 from .._version import __version__
 from ..core.usage import DEFAULT_MODEL
 
-# Load both env files for all CLI commands. keys.env stays first — that is
-# already the CLI's effective precedence, since commands that load .env do so
-# after this import and load_dotenv never overrides. Adding .env here only
-# fills in keys it alone defines.
-for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
-    if _env_file.exists():
-        load_dotenv(_env_file)
+# Package startup already loads project-root .env, then global keys.env,
+# without overriding the process environment. Do not reload cwd/.env here:
+# inside a subdirectory it belongs to neither the selected project nor identity.
 
 console = Console()
 
@@ -150,13 +145,14 @@ def _show_help():
     # belong on a new user's first screen is a product call, not this one's.
     console.print("[bold]Common commands:[/bold]")
     console.print("  [green]create[/green]  <name>     Create new project")
-    console.print("  [green]init[/green]              Initialize in current directory")
+    console.print("  [green]init[/green]   [path]     Set up global keys, or an explicit project directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
     console.print("  [green]eval[/green]              Run evals and show status")
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
+    console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
@@ -177,15 +173,23 @@ def _show_help():
 
 @app.command()
 def init(
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: co-ai (default), custom"),
+    path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
+                                         help="Existing project directory; omit for global ~/.co/keys.env"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
 ):
-    """Initialize project in current directory."""
-    from .commands.init import handle_init
-    handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force)
+    """Initialize global ~/.co/keys.env, or use co init ./ for a project."""
+    from .commands.init import handle_global_init, handle_init
+    if path is None:
+        if template is not None or description is not None or force:
+            console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
+            raise typer.Exit(2)
+        handle_global_init(key=key)
+        return
+    handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
 
 @app.command()
@@ -314,12 +318,43 @@ def doctor(
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
+    engine: str = typer.Option("auto", "--engine", help="Browser engine: auto, system, or onion"),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
     use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
     from .commands.browser_commands import handle_browser
-    raise typer.Exit(handle_browser(args or [], headless=headless))
+    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=engine))
+
+
+@app.command(
+    "remote-browser",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def remote_browser(
+    args: List[str] = typer.Argument(
+        None, help="config <address> [--proxy shared] | [<address>] <start|status|sessions|stop|diagnose>"
+    ),
+):
+    """Manage an owner-bound browser session on a remote agent over OIP."""
+    from .commands.remote_browser_commands import handle_remote_browser
+
+    raise typer.Exit(handle_remote_browser(args or []))
+
+
+@app.command(
+    "proxy",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def proxy(
+    args: List[str] = typer.Argument(
+        None, help="share to <address> | status | stop <address> | diagnose <address>"
+    ),
+):
+    """Share this computer's internet connection with an authorized agent."""
+    from .commands.proxy_commands import handle_proxy
+
+    raise typer.Exit(handle_proxy(args or []))
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -351,12 +386,16 @@ def ai(
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
-    yolo: bool = typer.Option(False, "--yolo", help="Skip approvals and keep working autonomously"),
-    yolo_turns: int = typer.Option(
+    full_access: bool = typer.Option(
+        False,
+        "--full-access",
+        help="Bypass tool approvals for this bounded user-driven turn budget",
+    ),
+    full_access_turns: int = typer.Option(
         100,
-        "--yolo-turns",
+        "--full-access-turns",
         min=1,
-        help="Autonomous turns before a checkpoint (requires --yolo)",
+        help="User-driven turns before Full access expires to Auto",
     ),
     evaluate: bool = typer.Option(
         False,
@@ -369,6 +408,12 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
+    invite_code: Optional[str] = typer.Option(
+        None, "--invite-code", help="Invite code for this web-server run only"
+    ),
+    invite_code_file: Optional[Path] = typer.Option(
+        None, "--invite-code-file", help="Read this run's invite code from a file"
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -377,11 +422,13 @@ def ai(
         port=port,
         model=model,
         max_iterations=max_iterations,
-        yolo=yolo,
-        yolo_turns=yolo_turns,
+        full_access=full_access,
+        full_access_turns=full_access_turns,
         evaluate=evaluate,
         json_output=json_output,
         resume=resume,
+        invite_code=invite_code,
+        invite_code_file=invite_code_file,
     )
 
 
@@ -478,11 +525,13 @@ def server_check(
 def server_new(
     name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
+    region: Optional[str] = typer.Option(None, "--region",
+                                         help="Where to provision (default: australia-southeast1)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
     """Have a server created for you. Charges 12 months of credit up front."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
         raise typer.Exit(1)
 
 
@@ -674,6 +723,69 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
     handle_admin_remove(address)
 
 
+# SMS command group. `co sms` (no args) shows the inbox without changing state.
+sms_app = _typer_app(help="Pair a phone and read the Agent's encrypted SMS inbox")
+app.add_typer(sms_app, name="sms")
+
+
+@sms_app.callback(invoke_without_command=True)
+def sms_callback(ctx: typer.Context):
+    """With no subcommand, show the inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sms_commands import handle_sms_inbox
+        handle_sms_inbox()
+
+
+@sms_app.command("pair")
+def sms_pair(
+    expires: int = typer.Option(
+        600, "--expires", min=60, max=1800,
+        help="One-time challenge lifetime in seconds",
+    ),
+    wait: bool = typer.Option(
+        True, "--wait/--no-wait",
+        help="Wait to compare and approve the phone's six-digit code",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable JSON and do not wait"),
+):
+    """Create an Agent-signed QR challenge for one Android phone."""
+    from .commands.sms_commands import handle_sms_pair
+    handle_sms_pair(expires=expires, wait=wait and not json_output, json_output=json_output)
+
+
+@sms_app.command("inbox")
+def sms_inbox(
+    last: int = typer.Option(10, "--last", "-n", min=1, max=100),
+    pending: bool = typer.Option(False, "--pending", help="Only unacknowledged messages"),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable JSON"),
+):
+    """List decrypted SMS without acknowledging them."""
+    from .commands.sms_commands import handle_sms_inbox
+    handle_sms_inbox(last=last, pending=pending, json_output=json_output)
+
+
+sms_devices_app = _typer_app(help="List and revoke paired SMS phones")
+sms_app.add_typer(sms_devices_app, name="devices")
+
+
+@sms_devices_app.callback(invoke_without_command=True)
+def sms_devices_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
+    """With no subcommand, list paired phones."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sms_commands import handle_sms_devices
+        handle_sms_devices(json_output=json_output)
+
+
+@sms_devices_app.command("revoke")
+def sms_devices_revoke(
+    device_id: str = typer.Argument(..., help="Device UUID from co sms devices"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+):
+    """Revoke one phone's upload credential."""
+    from .commands.sms_commands import handle_sms_revoke
+    handle_sms_revoke(device_id, yes=yes)
+
+
 # Email command group. `co email` (no args) shows the inbox.
 email_app = _typer_app(help="Send and read email from the agent's address")
 app.add_typer(email_app, name="email")
@@ -782,6 +894,28 @@ def email_name(
     """Check a custom email name's availability, or --buy to claim it."""
     from .commands.email_commands import handle_email_name
     handle_email_name(name, buy=buy)
+
+
+@email_app.command("share")
+def email_share(
+    address: Optional[str] = typer.Argument(None, help="One of your addresses (omit with --list)"),
+    with_: Optional[str] = typer.Option(None, "--with", help="Grantee: public key or one of their addresses"),
+    can: Optional[str] = typer.Option(None, "--can", help="Comma-separated capabilities: send,read"),
+    list_: bool = typer.Option(False, "--list", help="Show what you've shared, and what's shared with you"),
+):
+    """Let another account send and/or read as one of your addresses, without moving it."""
+    from .commands.email_commands import handle_email_share
+    handle_email_share(address, with_=with_, can=can, list_=list_)
+
+
+@email_app.command("unshare")
+def email_unshare(
+    address: str = typer.Argument(..., help="One of your addresses"),
+    with_: str = typer.Option(..., "--with", help="Grantee to revoke: public key or one of their addresses"),
+):
+    """Revoke a grant. No key rotation — the address was never shared, only access to it."""
+    from .commands.email_commands import handle_email_unshare
+    handle_email_unshare(address, with_=with_)
 
 
 @email_app.command("upgrade")
@@ -1141,21 +1275,28 @@ def outlook_read(
 def outlook_download(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
+    include_inline: bool = typer.Option(
+        False, "--include-inline",
+        help="Also save embedded signature images and logos (skipped by default)",
+    ),
 ):
     """Save an email's attachments to disk."""
     from .commands.outlook_commands import handle_outlook_download
-    handle_outlook_download(email_id, out_dir)
+    handle_outlook_download(email_id, out_dir, include_inline=include_inline)
 
 
-@outlook_app.command("reply")
+@outlook_app.command("reply", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "
+                                     "cat notes.txt | co outlook reply 3 -  |  "
+                                     "co outlook reply 3 \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+    attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
 ):
     """Reply to an email (threaded), now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, at=at)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at)
 
 
 @outlook_app.command("scheduled")

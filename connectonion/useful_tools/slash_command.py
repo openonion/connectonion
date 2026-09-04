@@ -35,10 +35,12 @@ tools:
 Your command prompt here...
 """
 
-import yaml
 from pathlib import Path
+from typing import List, Optional
+
+import yaml
+
 from ..project import project_co_dir, project_root
-from typing import Dict, List, Optional
 
 
 class SlashCommand:

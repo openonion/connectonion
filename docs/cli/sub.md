@@ -153,7 +153,7 @@ Idempotent — removing something you haven't subscribed to prints `Not subscrib
 ```
 # ~/.co/subscriptions.txt — agents you follow
 # Format: <address> <alias>
-# Managed by `co sub`. Re-run `co sub <address>` to refresh.
+# Managed by `co sub`. Re-run `co sub sync <address>` to refresh one.
 0xcd92510bb6cc090374ecc345ef8c19b9d3797624fd1fbf7e078a9372fc31bdc1 changxing
 0xabc...                                                              alice
 ```

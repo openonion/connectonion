@@ -21,7 +21,7 @@ reader-before-writer deployment:
 
 Within 0.1, new non-authoritative fields and events are additive. Readers ignore
 what they do not understand and retain generic provider/tool rendering. Identity,
-session ownership, permission profiles, approvals, cancellation, terminal state,
+session ownership, modes, approvals, cancellation, terminal state,
 and protocol/version are authoritative: malformed or unknown values are rejected
 instead of guessed.
 
@@ -52,6 +52,11 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 
 `EXEC` is the direct-execution fast path: it runs one named tool with no LLM, no session, and no history, replying with a single `EXEC_RESULT`. It requires the same CONNECT auth as INPUT, and the tool is gated by the host's `.co/host.yaml` permission whitelist. See [remote-call.md](remote-call.md).
 
+On a **direct** socket the very first frame may be `SEAL` instead: the client
+offers a one-time key, the host answers `SEALED_OK` with its own, and every
+frame after that — CONNECT included — travels inside `SEALED`. See
+[Sealed direct channel](#sealed-direct-channel). The relay path is unchanged.
+
 A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not part of the
 normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
 See [Trust Gate](#trust-gate-onboarding).
@@ -77,6 +82,41 @@ it is not the terminal outcome. The matching `provider_invocation` event with
 `accepted: false` with the stable reason `not_active` or `invalid_request`, so
 the client can restore a retry action. Legacy requests without `requestId`
 retain the older no-ack behaviour during the rolling compatibility window.
+
+### Provider-native permission change
+
+`PROVIDER_PERMISSION_CHANGE` selects one Host-advertised Codex or Claude Code
+profile for subsequent work in the exact Work Room on screen:
+
+```json
+{
+  "type": "PROVIDER_PERMISSION_CHANGE",
+  "requestId": "permission-1",
+  "invocationId": "codex:call-7",
+  "stateRevision": 4,
+  "optionId": "codex:workspace-auto",
+  "confirmRisk": false
+}
+```
+
+The authenticated requester must own the session and be its Operator. The
+option must exist in the latest durable invocation catalog and fit inside the
+outer Host mode ceiling. An elevated Full Access option additionally requires
+`confirmRisk: true`. Browser state is never authority.
+
+An accepted request returns `PROVIDER_PERMISSION_ACK` with the matching request
+and invocation IDs, a strictly newer revision, and the complete authoritative
+`providerPermission` state. Host then streams that same revision as a canonical
+`provider_invocation` for replay and other readers. A rejection has
+`accepted: false` and one safe reason code such as `stale_revision`,
+`ceiling_denied`, `operator_required`, or `confirmation_required`; it never
+changes durable state.
+
+When an outer `mode_change` also narrows one or more Work Rooms, the Host sends
+`mode_changed` followed by one canonical `provider_invocation` per affected
+Work Room. Each provider frame reflects only the transaction's final ceiling;
+the Host never streams an intermediate repair under the previous mode, even if
+the latest completed, failed, or cancelled continuation omitted its catalog.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -452,24 +492,25 @@ request.
 
 #### mode_change
 
-An authenticated client selects one Host-advertised permission profile:
+An authenticated client selects one Host-advertised permission mode:
 
 ```json
 {
   "type": "mode_change",
-  "mode": ":workspace"
+  "mode": "auto"
 }
 ```
 
 The request is accepted only while the durable session is idle and owned by
-the authenticated caller. `:read-only` is always available; `:workspace` and
-`:danger-full-access` are identity- and launch-authority-bounded. No client
-field can supply or extend Full access turns. Success is `mode_changed` and
+the authenticated caller. `read-only` and `auto` are always available;
+`full-access` is offered only under a positive Host launch ceiling. Every
+authenticated participant receives the same available modes. No client field
+can supply or extend Full access turns. Success is `mode_changed` and
 means the durable commit completed; busy, policy, ownership, and persistence
 failures return `ERROR`.
 `@connectonion/react` owns this browser operation; O Chat consumes it without
-constructing protocol frames. Default and Plan are separate client
-collaboration modes and do not appear in this Host permission list.
+constructing protocol frames. Plan is not a mode; Todo List progress carries
+no authority.
 
 #### ONBOARD_SUBMIT
 
@@ -498,6 +539,106 @@ Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
 Sent on the same socket as the CONNECT it answers. A wrong code comes back as `ERROR` and
 the stashed CONNECT is **kept**, so the reader can simply try again — no reconnect needed.
 
+#### SEAL / SEALED_OK / SEALED {#sealed-direct-channel}
+
+End-to-end encryption for a direct socket, so a host may announce plain
+`ws://IP:port` and needs no domain, certificate or TLS front. Before this a
+signed CONNECT captured on a plaintext link could be replayed inside its
+five-minute window (#649), and direct connections were therefore limited to
+TLS or loopback.
+
+Handshake, first two frames on the socket:
+
+```json
+{"type": "SEAL", "to": "0xHOST", "from": "0xCLIENT",
+ "ephemeral": "<hex X25519 public key, one-time>", "timestamp": 1756800000,
+ "signature": "<Ed25519 over the canonical JSON of the other five fields, by 0xCLIENT>"}
+
+{"type": "SEALED_OK", "to": "0xCLIENT", "from": "0xHOST",
+ "ephemeral": "<hex X25519 public key, one-time>", "client_ephemeral": "<the SEAL's key>",
+ "signature": "<Ed25519 over the canonical JSON of the other five fields, by 0xHOST>"}
+```
+
+Both sides derive one NaCl `Box` from the two one-time keys. The address *is*
+the Ed25519 public key, so each side verifies the other's signature with
+nothing but the address it already had; the relay is not involved. A `SEAL`
+older than the CONNECT freshness window, addressed to another host, or signed
+by someone other than `from` is answered with `ERROR seal refused: …` and the
+socket is closed (code 4003) — no plaintext second try.
+
+Every later frame in either direction:
+
+```json
+{"type": "SEALED", "n": 7, "c": "<base64 ciphertext>"}
+```
+
+`n` is a per-direction counter starting at 1; the nonce is the direction tag
+plus `n`, so a captured frame replayed or reordered fails to open and ends the
+session. Inside `c` is the ordinary frame (CONNECT, INPUT, EXEC, PING/PONG,
+PROXY_STREAM…), and the router never sees the difference. Signed CONNECT and
+v2 command signatures are still required inside the seal: the seal makes the
+link private, the signatures still say who is speaking.
+
+Client rule (`_open_best_connection`): every direct socket is offered a
+`SEAL`. A host that does not answer `SEALED_OK` is used bare only if the link
+is already private — TLS or loopback — or the client has no keys and so
+nothing signed to lose; otherwise the socket is closed and the client moves
+on to the relay. `PROXY_ATTACH` still requires a direct socket; a sealed
+plaintext one qualifies.
+
+#### PROXY_ATTACH
+
+Lend this computer's internet connection to the host (`co proxy share`). Sent
+once per socket after a signed CONNECT, on a **direct** connection only — the
+relay never carries page bytes. Signed like every other command.
+
+```json
+{
+  "type": "PROXY_ATTACH",
+  "payload": {
+    "grant": {
+      "type": "proxy_grant", "grant_id": "pxg_...",
+      "grantor": "0xLaptop", "holder": "0xHost", "scope": "public_internet",
+      "expires_at": "2026-09-03T10:00:00Z", "max_bytes": null,
+      "signature": "..."
+    },
+    "to": "0xHost", "timestamp": 1702234567, "nonce": "..."
+  },
+  "from": "0xLaptop",
+  "signature": "0x..."
+}
+```
+
+The host verifies the grant (it must name this host as holder, be unexpired,
+and be signed by the identity on this socket), requires contact-or-better
+trust, and answers `PROXY_ATTACHED` or `ERROR`. A later attach from the same
+identity replaces the earlier one; the attachment ends when the socket closes.
+
+#### PROXY_STREAM
+
+One multiplexed stream operation, in either direction, while a share is
+attached. The host opens streams; the laptop answers them.
+
+```json
+{"type": "PROXY_STREAM", "payload": {"id": 7, "op": "connect", "address": "93.184.216.34", "port": 443}}
+```
+
+| `op` | Direction | Fields | Meaning |
+|------|-----------|--------|---------|
+| `resolve` | host → laptop | `host`, `port` | resolve this name with the laptop's DNS and policy |
+| `resolve` | laptop → host | `addresses` | the complete answer set |
+| `connect` | host → laptop | `address`, `port` | open a socket to this numeric address, re-classified on the laptop |
+| `connect` | laptop → host | — | the socket is open |
+| `data` | both | `data` (base64, ≤ 32 KiB) | bytes on the stream |
+| `eof` | both | — | half-close: no more bytes this way |
+| `close` | both | — | the stream is finished; forget it |
+| `error` | both | `code` | the request failed (`EGRESS_*` / `DESTINATION_*` codes) |
+
+Laptop → host frames are signed like every command. Host → laptop frames carry
+no signature: they travel inside the TLS session the laptop opened to an
+endpoint whose identity it already verified. At most 64 streams per share; the
+grant's `expires_at` and `max_bytes` are enforced by the host.
+
 ### Server → Client
 
 #### CONNECTED
@@ -511,11 +652,12 @@ Response to CONNECT.
   "status": "new",
   "protocol": {"name": "oip", "version": "0.1"},
   "session_modes": {
-    "currentModeId": ":read-only",
+    "currentModeId": "auto",
+    "turnsLeft": null,
     "availableModes": [
-      {"id": ":read-only", "name": "Read only", "description": "Read freely; ask before edits, commands, or broader access."},
-      {"id": ":workspace", "name": "Auto", "description": "Edit the workspace automatically; broader actions still ask."},
-      {"id": ":danger-full-access", "name": "Full access", "description": "Run without approval prompts within the Host launch ceiling."}
+      {"id": "read-only", "name": "Read only"},
+      {"id": "auto", "name": "Auto"},
+      {"id": "full-access", "name": "Full access"}
     ]
   },
   "server_newer": true,
@@ -567,8 +709,8 @@ After a successful TodoList state change, the Host sends one complete plan:
 ```
 
 Every update replaces the complete plan; an empty `entries` list clears it.
-The plan has no message or plan ID. The event is observational and
-cannot answer `plan_review` or grant execution permission.
+The plan has no message or plan ID. The event is observational and cannot
+grant execution permission or change the session mode.
 
 #### EXEC_RESULT
 
@@ -605,7 +747,6 @@ Keep-alive. Sent every 30 seconds.
 | `ask_user` | Agent needs human input |
 | `approval_needed` | Tool requires approval |
 | `plan` | Complete observational TodoList replacement |
-| `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
 #### AGENT_PROFILE
@@ -746,6 +887,19 @@ Fields beyond `action` are whatever the trust handler returned for that operatio
 Also how a **refused onboard** comes back — `{"type": "ERROR", "message": "Invalid invite
 code"}`. There is no dedicated failure frame, and no repeat of `ONBOARD_REQUIRED`: a client
 waiting for one of those to detect the refusal will wait forever.
+
+#### PROXY_ATTACHED
+
+The share offered by `PROXY_ATTACH` is accepted and registered under the
+sender's address. A refused attach is an `ERROR` whose message starts with
+`proxy attach refused:`.
+
+```json
+{ "type": "PROXY_ATTACHED", "expires_at": "2026-09-03T10:00:00Z", "max_bytes": null }
+```
+
+From here the host sends `PROXY_STREAM` frames (unsigned, see above) down this
+socket until it closes.
 
 ---
 

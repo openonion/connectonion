@@ -10,8 +10,8 @@ LLM-Note:
   Errors: none — event emission plus a best-effort clipboard round-trip; if the page is closed the underlying Playwright/CDP call raises and bubbles (fail fast)
 """
 
-import math
 import base64
+import math
 import platform
 import random
 import shutil

@@ -9,24 +9,24 @@ LLM-Note:
   Errors: REPL errors caught and displayed with syntax highlighting | getsource() failures handled gracefully (shows "unavailable") | questionary keyboard interrupts propagate up | assumes terminal supports Rich formatting
 """
 
-from typing import Any, Dict, Optional, Tuple, List
-from dataclasses import dataclass
-from enum import Enum
-import json
 import ast
 import inspect
+import json
+from dataclasses import dataclass
+from enum import Enum
 from pprint import pformat
+from typing import Any, Dict, List, Optional, Tuple
 
 import questionary
 from questionary import Style
+from rich import box
 from rich.console import Console as RichConsole
 from rich.console import Group
 from rich.panel import Panel
-from rich.table import Table
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
-from rich import box
 
 
 class BreakpointAction(Enum):
@@ -185,6 +185,7 @@ class AutoDebugUI:
 
         # Customize REPL display hook to auto pretty-print
         import sys
+
         from rich.pretty import pprint
 
         original_displayhook = sys.displayhook
@@ -677,7 +678,7 @@ class AutoDebugUI:
         Args:
             value: The newly updated value to display
         """
-        self.console.print(f"\n[green]✅ Result updated successfully![/green]\n")
+        self.console.print("\n[green]✅ Result updated successfully![/green]\n")
 
         # Create a table for the updated value
         value_table = Table(show_header=False, box=None)
@@ -825,7 +826,7 @@ class AutoDebugUI:
 
         # Functions (like pp helper)
         elif callable(value):
-            return f"[dim]<function>[/dim] [dim italic]- helper for pretty printing[/dim italic]"
+            return "[dim]<function>[/dim] [dim italic]- helper for pretty printing[/dim italic]"
 
         # Other types - just show string representation
         else:
@@ -951,7 +952,7 @@ class AutoDebugUI:
             modifications: Dict of variable_name -> new_value pairs
         """
         self.console.print("\n[bold green]✅ Modifications Applied:[/bold green]\n")
-        
+
         for key, value in modifications.items():
             # Format the value for display
             if isinstance(value, str):
@@ -960,7 +961,7 @@ class AutoDebugUI:
                 formatted = json.dumps(value, indent=2)[:100]
             else:
                 formatted = str(value)
-            
+
             self.console.print(f"  [yellow]{key}[/yellow] = [cyan]{formatted}[/cyan]")
 
         self.console.print()

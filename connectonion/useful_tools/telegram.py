@@ -12,7 +12,6 @@ import os
 
 import requests
 
-
 API = "https://api.telegram.org"
 
 NO_TOKEN = (

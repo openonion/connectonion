@@ -25,9 +25,11 @@ Usage:
 """
 
 import sys
+
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+
 from .keys import read_key
 
 

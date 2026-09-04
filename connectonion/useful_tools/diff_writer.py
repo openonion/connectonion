@@ -36,7 +36,6 @@ from typing import Optional, Tuple
 
 from ..core.interrupt import UserInterrupt
 
-
 # Permission modes (like Claude Code's Shift+Tab cycle)
 MODE_NORMAL = "normal"      # Prompt for every edit
 MODE_AUTO = "auto"          # Auto-approve edits

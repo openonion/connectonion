@@ -9,9 +9,8 @@ LLM-Note:
   Errors: wraps AI analysis in try/except to avoid cascading failures | shows "AI analysis failed" message if agent crashes | handles missing frames gracefully | skips analysis if no relevant frame found
 """
 
-import sys
-import traceback
 import os
+import sys
 
 
 def auto_debug_exception(model: str = "o4-mini"):
@@ -178,4 +177,4 @@ You have LIVE ACCESS to the crashed program's state! Use your tools to investiga
     # Simple confirmation
     from ..console import Console
     console = Console()
-    console.print(f"[green]✅ Exception debugging enabled[/green] - AI will analyze uncaught exceptions with runtime inspection")
+    console.print("[green]✅ Exception debugging enabled[/green] - AI will analyze uncaught exceptions with runtime inspection")

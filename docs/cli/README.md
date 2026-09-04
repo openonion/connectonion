@@ -99,14 +99,31 @@ my-agent/
 
 ---
 
-#### `co init` - Add to Existing Directory
+#### `co init` - Global Setup
+
+Without a path, `co init` creates or reuses the global identity and authenticates
+into `~/.co/keys.env`. It does not create or modify project files, even inside
+an existing project. Pass a directory explicitly for project setup.
+
+```bash
+co init --yes                 # Global setup only
+co init ./ --yes              # This project's config, .env, and docs
+co init /path/to/project      # Another existing project directory
+```
+
+`--key` explicitly saves a provider key globally in no-path mode; implicitly
+loaded project or process keys are not copied there. Project-only `--template`,
+`--description`, and `--force` require a path. See [init](init.md) for migration
+and offline behavior.
+
+#### `co init ./` - Add to Existing Directory
 
 Adds ConnectOnion to existing project safely.
 
 **Basic usage:**
 ```bash
 cd my-existing-project
-co init                      # Safe - preserves existing files
+co init ./                      # Safe - preserves existing files
 ```
 
 **What it does:**
@@ -116,19 +133,20 @@ co init                      # Safe - preserves existing files
 - ✅ **Skips** existing files (like `agent.py`)
 
 **Options:**
-Same as `co create` (except no `[name]` parameter).
+An explicit existing directory replaces `co create`'s new project name.
+Templates are optional: omit `--template` for configuration only.
 
 **Examples:**
 ```bash
 # Add to existing project
 cd my-django-app
-co init
+co init ./
 
 # With template
-co init --template co-ai
+co init ./ --template co-ai
 
 # Update docs only
-co init  # Refreshes .co/docs/ to latest version
+co init ./  # Refreshes .co/docs/ to latest version
 ```
 
 **Safe for existing projects:**
@@ -137,7 +155,7 @@ co init  # Refreshes .co/docs/ to latest version
 DATABASE_URL=postgres://localhost/mydb
 SECRET_KEY=mysecret
 
-# After co init - preserved and appended
+# After co init ./ - preserved and appended
 DATABASE_URL=postgres://localhost/mydb    # ← kept
 SECRET_KEY=mysecret                        # ← kept
 
@@ -224,6 +242,20 @@ co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 The same `send_email` / `get_emails` functions also work as agent tools, so
 your agent can do everything `co email` does. See [email.md](email.md) for
 details and current limitations.
+
+---
+
+#### `co sms` - Pair & Read Encrypted SMS
+
+```bash
+co sms pair
+co sms inbox --pending
+co sms devices
+```
+
+Pair an OpenOnion Messages Android phone with an Agent-signed QR and explicit
+six-digit device-key comparison. SMS is decrypted inside the current Agent
+process; server storage remains ciphertext-only. See [sms.md](sms.md).
 
 ---
 
@@ -659,6 +691,25 @@ See [sub documentation](sub.md) for the full fan-out behavior and v1 limitations
 
 ---
 
+#### `co proxy <command>` - Share This Computer's Connection
+
+A browser on a server reaches the internet from a data-centre address. Lend
+yours and its traffic arrives from here instead. See [proxy.md](proxy.md).
+
+```bash
+co proxy share to 0xHOST     # lend your connection to one agent
+co proxy status              # what is shared right now
+co proxy stop 0xHOST         # stop lending
+```
+
+Then: `co remote-browser 0xHOST start --proxy shared`.
+
+The share applies the same destination policy as the host's own egress gateway,
+so a remote agent gets an outbound path to the public web and **not** your
+router, your NAS, or anything else on your LAN.
+
+---
+
 #### `co browser <command>` - Browser Automation
 
 Drive one persistent browser from the shell. Call a browser function directly, or use `do` for the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).
@@ -759,11 +810,26 @@ The CLI automatically detects providers:
 
 ### Priority Order
 
-1. `--key` flag
-2. Environment variables
-3. `~/.co/keys.env` (global)
-4. Interactive prompt
-5. Skip (add later)
+For runtime environment loading, the first source defining a variable wins:
+
+1. Existing process environment (shell, container, or service configuration)
+2. The project's `.env`
+3. `~/.co/keys.env` (global fallback)
+
+The project is the nearest directory containing `.co/`, bounded by the current
+Git repository and home directory. Running `co` from `project/src/` loads
+`project/.env`, not `project/src/.env`; Python imports use the same rule.
+Outside a project, `.env` in the current directory is still supported. Loading
+never searches across another repository or treats `~/.co` as a parent project.
+
+Gmail, Outlook, GDrive, and Synology CLI loaders use this same boundary. A
+subdirectory `.env` cannot add missing values behind the project's back.
+Explicit API-key arguments remain caller-controlled; setup commands can prompt
+for missing credentials. No existing environment value is overwritten.
+
+Use `co status` or `co doctor` for redacted credential diagnostics. Set
+`CO_DEBUG_ENV=1` to show the dotenv file paths loaded at startup, even when
+output is piped. It does not print secret values.
 
 ### Backend selection
 
@@ -847,7 +913,7 @@ $ cat .env
 DATABASE_URL=postgres://localhost/mydb
 SECRET_KEY=mysecret
 
-$ co init
+$ co init ./
 
 ✓ Using global identity
 ✓ Found existing .env
@@ -915,7 +981,7 @@ Every installation generates master Ed25519 keypair:
 co create my-new-project
 
 # Existing project?
-cd my-project && co init
+cd my-project && co init ./
 ```
 
 ### 2. Use Templates
@@ -1011,7 +1077,7 @@ $ co create my-agent
 
 # Or add to existing
 cd my-agent
-co init
+co init ./
 ```
 
 ---
@@ -1042,7 +1108,7 @@ done
 ```bash
 # Refresh to latest
 cd my-old-project
-co init  # Updates .co/docs/ without changing code
+co init ./  # Updates .co/docs/ without changing code
 ```
 
 ---
@@ -1058,7 +1124,7 @@ co deploy
 
 **Requirements:**
 - Git repository with committed code
-- `.co/host.yaml` (created by `co create` or `co init`)
+- `.co/host.yaml` (created by `co create` or `co init ./`)
 - Authenticated (`co auth`)
 
 **Example:**
@@ -1103,7 +1169,7 @@ See [server.md](server.md).
 | Command | Purpose | Interactive | Safe for Existing |
 |---------|---------|-------------|-------------------|
 | `co create` | New project | Yes | N/A (creates new dir) |
-| `co init` | Add to existing | Yes | ✅ Yes |
+| `co init ./` | Add to existing | Yes | ✅ Yes |
 | `co copy` | Copy built-in tools/plugins/skills/prompts | No | ✅ Yes |
 | `co skills` | Discover/import skills | No | ✅ Yes |
 | `co setup` | Global identity + skill library | No | ✅ Yes (idempotent) |

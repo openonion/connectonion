@@ -8,39 +8,53 @@ LLM-Note:
   Errors: ImportError if dependency not installed (e.g., google-auth for GoogleCalendar, httpx for Outlook/MicrosoftCalendar)
 """
 
-from .send_email import send_email
-from .get_emails import get_emails, mark_read, mark_unread
-from .memory import Memory
-from .gmail import Gmail
-from .gdrive import GDrive
-from .synology import Synology
-from .google_calendar import GoogleCalendar
-from .outlook import Outlook
-from .microsoft_calendar import MicrosoftCalendar
 from .web_fetch import WebFetch
 from .youcom_search import YoucomSearch
-from .shell import Shell
-from .bash import bash
-from .codex import codex
-from .claude_code import ClaudeCode, claude_code
-from .diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
 from ..tui import pick
-from .terminal import yes_no, autocomplete
-from .todo_list import TodoList
-from .slash_command import SlashCommand
 from .ask_user import ask_user
-from .telegram import send_telegram
+from .bash import bash
+from .claude_code import ClaudeCode, claude_code
+from .codex import codex
+from .diff_writer import MODE_AUTO, MODE_NORMAL, MODE_PLAN, DiffWriter
 
 # Claude Code-style file tools
 from .file_tools import (
     FileTools,
-    read_file,
     edit,
-    multi_edit,
-    write,
     glob,
     grep,
+    multi_edit,
+    read_file,
+    write,
 )
+from .gdrive import GDrive
+from .get_emails import get_emails, mark_read, mark_unread
+from .gmail import Gmail
+from .google_calendar import GoogleCalendar
+from .memory import Memory
+from .microsoft_calendar import MicrosoftCalendar
+from .outlook import Outlook
+from .send_email import send_email
+from .sms import (
+    acknowledge_sms,
+    confirm_sms_pairing,
+    create_sms_pairing,
+    delete_sms,
+    get_sms,
+    get_sms_pairing,
+    list_sms_devices,
+    pairing_confirmation_code,
+    revoke_sms_device,
+    wait_for_sms,
+)
+from .shell import Shell
+from .slash_command import SlashCommand
+from .synology import Synology
+from .telegram import send_telegram
+from .terminal import autocomplete, yes_no
+from .todo_list import TodoList
+from .web_fetch import WebFetch
+from .youcom_search import YoucomSearch
 
 __all__ = [
     # Email tools
@@ -48,6 +62,16 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    "create_sms_pairing",
+    "get_sms_pairing",
+    "pairing_confirmation_code",
+    "confirm_sms_pairing",
+    "get_sms",
+    "wait_for_sms",
+    "acknowledge_sms",
+    "delete_sms",
+    "list_sms_devices",
+    "revoke_sms_device",
     # Class-based tools
     "Memory",
     "Gmail",

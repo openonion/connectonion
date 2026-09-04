@@ -220,8 +220,9 @@ class AutoDebugger:
                     context.max_iterations = modifications['max_iterations']
             elif action == BreakpointAction.WHY:
                 # User wants AI explanation of why tool was chosen
-                from .debug_explainer import explain_tool_choice
                 from rich.console import Console
+
+                from .debug_explainer import explain_tool_choice
 
                 # Show progress indicator while analyzing
                 console = Console()
@@ -322,8 +323,9 @@ class AutoDebugger:
             user_prompt: The user's original request
             result: Final result from agent
         """
-        from .execution_analyzer import analyze_execution
         from rich.console import Console
+
+        from .execution_analyzer import analyze_execution
 
         # Get execution data
         session = self.agent.current_session or {}

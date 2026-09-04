@@ -26,48 +26,55 @@ don't interfere between concurrent requests.
 """
 
 import asyncio
+import json
+import os
 import random
 from functools import partial
-import os
 from pathlib import Path
-import json
 from typing import Callable, Optional, Union
 
 import uvicorn
-import websockets
 from rich.console import Console
 
 from ... import address
 from ...backend import DEFAULT_BACKEND_WS_URL
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
-from .ws_router import run_ws_session
-from .schedule import create_schedule_lifespan
-from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
+from ..trust import TRUST_LEVELS, TrustAgent, parse_policy
 from ..trust.factory import PROMPTS_DIR
 from .auth import authenticate_connect, extract_and_authenticate
-from .replay import SignatureReplayStore
-from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
-from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
-from .session.mode import HostPermissionPolicy
+from .config import (
+    DEFAULT_FILE_LIMITS,
+    load_host_config,
+    load_list_file,
+    project_co_dir,
+    validate_files,
+    validate_images,
+)
 from .http_router import (
-    input_handler,
-    exec_handler,
-    session_handler,
-    sessions_handler,
-    health_handler,
-    info_handler,
-    admin_logs_handler,
-    admin_sessions_handler,
-    admin_trust_promote_handler,
-    admin_trust_demote_handler,
-    admin_trust_block_handler,
-    admin_trust_unblock_handler,
-    admin_trust_level_handler,
     admin_admins_add_handler,
     admin_admins_remove_handler,
+    admin_logs_handler,
+    admin_sessions_handler,
+    admin_trust_block_handler,
+    admin_trust_demote_handler,
+    admin_trust_level_handler,
+    admin_trust_promote_handler,
+    admin_trust_unblock_handler,
+    exec_handler,
+    health_handler,
+    info_handler,
+    input_handler,
+    session_handler,
+    sessions_handler,
 )
-
+from .provider_workroom import prepare_provider_workroom_turn
+from .remote_browser import RemoteBrowserService
+from .replay import SignatureReplayStore
+from .schedule import create_schedule_lifespan
+from .session import ActiveSessionRegistry, SessionStorage, start_cleanup_job
+from .session.mode import HostPermissionPolicy
+from .ws_router import run_ws_session
 
 EXEC_REQUIRES = ("admin", "whitelist", "contact")
 
@@ -110,12 +117,80 @@ def _make_ws_exec(create_agent, exec_permissions, trust_agent):
     return handle_ws_exec
 
 
+def _make_remote_browser(remote_browser_service, trust_agent):
+    """Bind Remote Browser to authenticated contact-or-admin authority."""
+    def handle_remote_browser(request, requester_address=None, transport="unknown"):
+        if not requester_address:
+            return {
+                "schema_version": "1",
+                "ok": False,
+                "command": "remote-browser",
+                "request_id": request.get("request_id", ""),
+                "code": "AUTH_REQUIRED",
+                "message": "Remote Browser requires an authenticated caller.",
+                "retryable": False,
+                "retry_after_seconds": None,
+                "state": {},
+                "tips": [],
+                "warnings": [],
+                "next_actions": [],
+            }
+        level = (
+            "admin"
+            if trust_agent.is_admin(requester_address)
+            else trust_agent.get_level(requester_address)
+        )
+        if level not in EXEC_REQUIRES:
+            return {
+                "schema_version": "1",
+                "ok": False,
+                "command": "remote-browser",
+                "request_id": request.get("request_id", ""),
+                "code": "FORBIDDEN",
+                "message": (
+                    "Remote Browser requires a contact or admin; "
+                    f"the authenticated caller is {level}."
+                ),
+                "retryable": False,
+                "retry_after_seconds": None,
+                "state": {},
+                "tips": [],
+                "warnings": [],
+                "next_actions": [],
+            }
+        if remote_browser_service is None:
+            return {
+                "schema_version": "1",
+                "ok": False,
+                "command": "remote-browser",
+                "request_id": request.get("request_id", ""),
+                "code": "REMOTE_BROWSER_UNAVAILABLE",
+                "message": "Remote Browser is not configured on this host.",
+                "retryable": False,
+                "retry_after_seconds": None,
+                "state": {},
+                "tips": [],
+                "warnings": [],
+                "next_actions": [],
+            }
+        return remote_browser_service.handle(
+            request,
+            owner=requester_address,
+            transport=transport,
+        )
+
+    return handle_remote_browser
+
+
 def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     """Parse trust config from trust parameter.
 
     Returns YAML config dict if trust is a level or file path, None otherwise.
     Used to extract onboard info for /info endpoint.
     """
+    if isinstance(trust, TrustAgent):
+        return trust.config
+
     if not isinstance(trust, str):
         return None
 
@@ -223,6 +298,7 @@ def _create_route_handlers(
     exec_permissions: dict | None = None,
     replay_check=None,
     mode_policy: HostPermissionPolicy | None = None,
+    remote_browser_service=None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -283,6 +359,26 @@ def _create_route_handlers(
                              is_admin=bool(requester and requester["level"] == "admin"))
 
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
+    handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent)
+
+    def handle_prepare_provider_workroom_turn(
+        storage,
+        session_id,
+        invocation_id,
+        text,
+        request_id,
+        requester_address,
+    ):
+        return prepare_provider_workroom_turn(
+            create_agent,
+            storage,
+            session_id,
+            invocation_id,
+            text,
+            request_id,
+            requester_address,
+            host_full_access_turns_ceiling=mode_policy.full_access_turns,
+        )
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
@@ -308,6 +404,13 @@ def _create_route_handlers(
         "replay": replay_check,
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,
+        "remote_browser": handle_remote_browser,
+        # Laptops currently lending this host their connection (PROXY_ATTACH).
+        "proxy_channels": (
+            None if remote_browser_service is None
+            else remote_browser_service.proxy_channels
+        ),
+        "prepare_provider_workroom_turn": handle_prepare_provider_workroom_turn,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
         # TrustAgent instance for direct access in http.py/websocket.py
@@ -332,7 +435,7 @@ def _create_route_handlers(
 
 def _host_mode_policy(sample) -> HostPermissionPolicy:
     """Capture only an explicitly configured positive Full access ceiling."""
-    turns = getattr(sample, "_yolo_turns", None)
+    turns = getattr(sample, "_full_access_turns", None)
     if (
         isinstance(turns, bool)
         or not isinstance(turns, int)
@@ -575,6 +678,10 @@ def _invite_line(trust_config) -> str | None:
     from_env = [str(c)[1:] for c in declared if str(c).startswith("$")]
     literals = [c for c in declared if not str(c).startswith("$")]
     live = _resolve_codes(declared)
+    # `co deploy --to` loads secrets from a root-owned systemd EnvironmentFile,
+    # not from the project tree. Its unit sets this non-secret marker so the
+    # generic Host diagnostic can send the operator to the file actually read.
+    env_file = os.environ.get("CONNECTONION_ENV_FILE", "").strip() or ".env"
 
     if live:
         # Say *where* the code is, not just that there is one. Telling an
@@ -582,9 +689,12 @@ def _invite_line(trust_config) -> str | None:
         # sends them looking for something that is not there.
         resolved_from_env = [n for n in from_env if os.environ.get(n, "").strip()]
         if resolved_from_env and literals:
-            where = f"{', '.join(resolved_from_env)} in .env, and one in the trust policy"
+            where = (
+                f"{', '.join(resolved_from_env)} in {env_file}, "
+                "and one in the trust policy"
+            )
         elif resolved_from_env:
-            where = f"{', '.join(resolved_from_env)} in .env"
+            where = f"{', '.join(resolved_from_env)} in {env_file}"
         else:
             where = "in the trust policy"
         dead = [n for n in from_env if not os.environ.get(n, "").strip()]
@@ -593,7 +703,7 @@ def _invite_line(trust_config) -> str | None:
 
     if from_env:
         return (f"Invite: no one can onboard — {', '.join(from_env)} is not set. "
-                f"Add it to .env, or run `co init` to mint one.")
+                f"Add it to {env_file}, or run `co init ./` to mint one.")
     return None
 
 
@@ -768,7 +878,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
                         # the truth was a three-second blip — telling them apart
                         # meant inspecting sockets on the box.
                         relay_console.print(
-                            f"[magenta]\\[host][/magenta] [dim]relay reconnected[/dim]"
+                            "[magenta]\\[host][/magenta] [dim]relay reconnected[/dim]"
                         )
                     failures = 0  # clean disconnect — next reconnect is immediate
                 except asyncio.CancelledError:
@@ -835,7 +945,7 @@ def host(
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
 
     Configuration: .co/host.yaml (required) with code param overrides.
-    Run 'co init' to generate the config file.
+    Run 'co init ./' to generate the config file.
 
     Passing an Agent instance is the simple path and shares that instance.
     Passing a factory creates a fresh Agent for each request.
@@ -1015,11 +1125,17 @@ def host(
     exec_permissions = load_permission_patterns(co_dir)
 
     replay_store = SignatureReplayStore(co_dir / "replay.sqlite3")
+    remote_browser_service = RemoteBrowserService(
+        co_dir / "remote-browser-sessions.json"
+    )
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent, config,
         exec_permissions, replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
+        remote_browser_service=remote_browser_service,
     )
+    # The host signs its half of a sealed direct channel with this.
+    route_handlers["identity"] = addr_data
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -1152,11 +1268,15 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
     replay_store = SignatureReplayStore(replay_dir / "replay.sqlite3")
+    remote_browser_service = RemoteBrowserService(
+        replay_dir / "remote-browser-sessions.json"
+    )
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent,
         DEFAULT_FILE_LIMITS, load_permission_patterns(),
         replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
+        remote_browser_service=remote_browser_service,
     )
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata

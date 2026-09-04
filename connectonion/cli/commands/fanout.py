@@ -18,7 +18,6 @@ Per-tool layout produced:
 from __future__ import annotations
 
 import re
-import shutil
 from pathlib import Path
 
 HOME = Path.home()

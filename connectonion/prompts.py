@@ -14,7 +14,6 @@ import warnings
 from pathlib import Path
 from typing import Union
 
-
 DEFAULT_PROMPT = "You are a helpful assistant that can use tools to complete tasks."
 
 
@@ -96,7 +95,7 @@ def load_system_prompt(prompt: Union[str, Path, None]) -> str:
     """
     if prompt is None:
         return DEFAULT_PROMPT
-    
+
     if isinstance(prompt, Path):
         # Explicit Path object - must exist
         if not prompt.exists():
@@ -104,7 +103,7 @@ def load_system_prompt(prompt: Union[str, Path, None]) -> str:
         if not prompt.is_file():
             raise ValueError(f"Path is not a file: {prompt}")
         return _read_text_file(prompt)
-    
+
     if isinstance(prompt, str):
         # Check if it's an existing file
         if os.path.exists(prompt) and os.path.isfile(prompt):
@@ -115,7 +114,7 @@ def load_system_prompt(prompt: Union[str, Path, None]) -> str:
 
         # Treat as literal prompt text
         return prompt
-    
+
     raise TypeError(f"Invalid prompt type: {type(prompt).__name__}. Expected str, Path, or None.")
 
 

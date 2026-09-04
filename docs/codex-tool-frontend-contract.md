@@ -43,7 +43,7 @@ events already in that vocabulary:
 |---|---|---|
 | `item/started` (commandExecution, fileChange, mcpToolCall, webSearch) | `tool_call` `{tool_id, name, args, status: in_progress}` | running tool card |
 | `item/completed` (same item) | `tool_result` `{tool_id, status: completed\|failed}` | card completes / errors |
-| `item/completed` (agentMessage) | — (returned as the tool result `last_message`) | agent's own reply |
+| `item/completed` (agentMessage) | bounded `provider_message` | native Codex conversation bubble |
 | `item/*/requestApproval` (server → client) | `agent.io.request_approval(...)` → `approval_needed` | approval card, answer flows back |
 
 Key points:
@@ -69,6 +69,57 @@ Key points:
   A tool error names `codex()` as the next action, while unrelated commands that
   only mention the word continue normally.
 
+## Direct Work Room messages
+
+The browser does not send a Work Room follow-up through the outer agent's
+`INPUT` path. It sends a signed `PROVIDER_INPUT` frame containing the visible
+Codex invocation, its positive `stateRevision`, a request ID, and bounded text.
+Host validates that correlation before choosing one native-only path:
+
+| Source state | Native action | When the browser receives an accepted ACK |
+| --- | --- | --- |
+| Live Codex invocation | queue then `turn/steer` on the active app-server turn | only after `turn/steer` succeeds |
+| Caller-owned terminal Codex invocation | atomically claim the durable thread, `thread/resume`, then `turn/start` | only after the resumed `turn/start` returns a native turn ID |
+
+An input mailbox enqueue, a Host worker allocation, or a `thread/resume` request
+alone is deliberately **not** an accepted `PROVIDER_INPUT_ACK`. Each can race a
+terminal native turn. React retains the browser draft until the native adapter
+emits the matching positive acknowledgement, so an unaccepted message remains
+available for retry instead of disappearing from the operator's composer.
+
+The direct terminal path executes `agent.execute_tool("codex", ...)` only. It
+does not call `Agent.input()`, create an outer COAI prompt, or expose native
+command output in the provider conversation. User and assistant text are emitted
+as bounded `provider_message` entries; commands and local paths remain semantic
+activity or private provider state.
+
+## Provider-native permission profiles
+
+Work Room permissions do not reuse or rename the outer three COAI modes. The
+outer mode remains the authoritative Host ceiling; each typed
+`provider_invocation` may additionally carry a finite `providerPermission`
+catalog for the native provider. Codex keeps sandbox boundary and reviewer as
+separate fields, so **Ask for approval** and **Approve for me** both map to the
+native `:workspace` boundary without becoming the same policy. Claude Code
+exposes its own native Plan, Default, Accept edits, Auto, and Bypass permissions
+profiles through the same bounded shape.
+
+The browser changes a profile with a signed `PROVIDER_PERMISSION_CHANGE`
+containing the invocation ID, observed positive `stateRevision`, advertised
+option ID, and a separate elevated-risk confirmation when required. Host checks
+session ownership, Operator level, the latest durable revision, and the outer
+mode ceiling before persisting the selection. Only then does it return
+`PROVIDER_PERMISSION_ACK` and append a newer canonical `provider_invocation`.
+The selected profile applies to subsequent native provider work; it cannot
+retroactively alter an active action or replace an individual approval.
+
+Old or malformed clients fail closed: missing catalogs render no selector,
+unadvertised and stale choices are rejected, and lowering the outer COAI mode
+immediately reconciles any stored provider profile to the narrower ceiling. A
+single outer-mode transaction streams at most one new permission revision for
+each Work Room: the final committed ceiling. Terminal continuations without a
+catalog never cause an intermediate old-ceiling repair to reach the browser.
+
 ## What the frontend team should know
 
 - The React package owns normalization and child correlation. O Chat consumes
@@ -83,5 +134,6 @@ Key points:
 Verified end-to-end against the real `codex` 0.145.0 `app-server`: `initialize`
 + `thread/start` return a real thread id with no auth; `turn/start` runs and the
 tool surfaces the real auth error cleanly when unauthenticated. Unit tests cover
-the native-event conversion and the approval gate; the real-binary e2e lives in
+the native-event conversion, the truthful direct-message acknowledgement, and
+the approval gate; the real-binary e2e lives in
 `tests/e2e/real_api/test_real_codex.py`.

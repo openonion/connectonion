@@ -13,12 +13,15 @@ Usage:
     from scroll import scroll
     result = scroll(page, take_screenshot, times=5, description="the email list")
 """
-from pathlib import Path
-from pydantic import BaseModel
-from connectonion import llm_do
-from . import humanize
 import random
 import time
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from connectonion import llm_do
+
+from . import humanize
 
 _PROMPT = (Path(__file__).parent / "prompts" / "scroll_strategy.md").read_text(encoding="utf-8")
 
@@ -140,14 +143,17 @@ def _page_scroll(page, times: int):
         time.sleep(0.8)
 
 
-def _screenshots_different(file1: str, file2: str) -> bool:
+def _screenshots_different(
+    file1: str, file2: str, base_dir: str = "screenshots"
+) -> bool:
     """Compare screenshots using PIL pixel difference."""
     try:
-        from PIL import Image
         import os
 
-        img1 = Image.open(os.path.join("screenshots", file1)).convert('RGB')
-        img2 = Image.open(os.path.join("screenshots", file2)).convert('RGB')
+        from PIL import Image
+
+        img1 = Image.open(os.path.join(base_dir, file1)).convert('RGB')
+        img2 = Image.open(os.path.join(base_dir, file2)).convert('RGB')
 
         diff = sum(
             abs(a - b)

@@ -2,8 +2,8 @@
 Purpose: Run one client session — read loop, per-type dispatch, lifecycle of forward + ping tasks
 LLM-Note:
   Dependencies: imports from [.connect, .agent_io, .exec, .mode, .ping, ...trust.ws_admin, asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
-  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime frames → bounded response → cancel spawned tasks on close
-  State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
+  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime/PROXY_ATTACH/PROXY_STREAM frames → bounded response → cancel spawned tasks on close
+  State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task, proxy_channel | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally | an attached laptop share is registered on PROXY_ATTACH and detached in finally
   Integration: OIP mode_change uses .mode durable authority; interrupt requires registered active IO; signed-command clients execute only verified payload copies
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
   Errors: recv_msg returning None → exit loop normally | other exceptions propagate out (transport-level errors, programmer bugs)
@@ -14,11 +14,14 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
-from .agent_io import start_agent
+from ..provider_permissions import ProviderPermissionError, commit_provider_permission
+from .agent_io import start_agent, start_provider_workroom_turn
 from .connect import establish_connection, handle_authenticated_reconnect, handle_connect
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
+from .proxy import attach_proxy, detach_proxy
+from .remote_browser import run_remote_browser
 
 console = Console()
 
@@ -50,6 +53,63 @@ async def _send_provider_interrupt_ack(
     await send_msg(frame)
 
 
+async def _send_provider_input_ack(
+    send_msg,
+    *,
+    request_id: str,
+    invocation_id: str | None,
+    accepted: bool,
+    state_revision: int | None = None,
+    reason: str | None = None,
+):
+    """Reply to one direct Codex Work Room message without exposing internals."""
+    frame = {
+        "type": "PROVIDER_INPUT_ACK",
+        "requestId": request_id,
+        "invocationId": invocation_id,
+        "accepted": accepted,
+    }
+    if (
+        not isinstance(state_revision, bool)
+        and isinstance(state_revision, int)
+        and state_revision > 0
+    ):
+        frame["stateRevision"] = state_revision
+    if reason:
+        frame["reason"] = reason
+    await send_msg(frame)
+
+
+async def _send_provider_permission_ack(
+    send_msg,
+    *,
+    request_id: str,
+    invocation_id: str | None,
+    accepted: bool,
+    state_revision: int | None = None,
+    provider_permission: dict | None = None,
+    reason: str | None = None,
+):
+    """Settle one revision-bound Work Room provider-profile request."""
+    frame = {
+        "type": "PROVIDER_PERMISSION_ACK",
+        "requestId": request_id,
+        "invocationId": invocation_id,
+        "accepted": accepted,
+    }
+    if (
+        not isinstance(state_revision, bool)
+        and isinstance(state_revision, int)
+        and state_revision > 0
+    ):
+        frame["stateRevision"] = state_revision
+    if provider_permission is not None:
+        frame["providerPermission"] = provider_permission
+    if reason:
+        frame["reason"] = reason
+    await send_msg(frame)
+
+
 async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown"):
     """Run one client session from connect to disconnect.
 
@@ -63,6 +123,9 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     active_io = None
     forward_task = None
     exec_tasks = set()
+    # The laptop share attached on this socket, if any. It lives exactly as
+    # long as the socket: registered on PROXY_ATTACH, detached in finally.
+    proxy_channel = None
     ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
 
     try:
@@ -234,6 +297,43 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
 
+            elif msg_type == "PROXY_ATTACH":
+                if proxy_channel is not None:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "a share is already attached on this connection",
+                    })
+                else:
+                    proxy_channel = await attach_proxy(data, send_msg, conn, route_handlers)
+
+            elif msg_type == "PROXY_STREAM":
+                if proxy_channel is None:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "no share attached (send PROXY_ATTACH first)",
+                    })
+                else:
+                    await proxy_channel.receive(data)
+
+            elif msg_type == "REMOTE_BROWSER":
+                if not conn["authenticated"]:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "authenticate first (send CONNECT)",
+                    })
+                else:
+                    task = asyncio.create_task(
+                        run_remote_browser(
+                            data,
+                            send_msg,
+                            route_handlers,
+                            requester_address=conn["agent_address"],
+                            transport=conn["transport"],
+                        )
+                    )
+                    exec_tasks.add(task)
+                    task.add_done_callback(exec_tasks.discard)
+
             elif msg_type == "mode_change":
                 await handle_mode_change(
                     data, send_msg, conn, route_handlers, storage, registry
@@ -355,6 +455,134 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     reason=None if accepted else (reason or "not_active"),
                 )
 
+            elif msg_type == "PROVIDER_INPUT":
+                invocation_id = data.get("invocationId")
+                request_id = data.get("requestId")
+                state_revision = data.get("stateRevision")
+                text = data.get("text")
+                if (
+                    not isinstance(request_id, str)
+                    or not request_id
+                    or len(request_id) > 128
+                    or not isinstance(invocation_id, str)
+                    or not invocation_id
+                    or len(invocation_id) > 512
+                    or not isinstance(text, str)
+                    or not text.strip()
+                    or len(text) > 12_000
+                    or isinstance(state_revision, bool)
+                    or not isinstance(state_revision, int)
+                    or state_revision < 1
+                ):
+                    await _send_provider_input_ack(
+                        send_msg,
+                        request_id=request_id if isinstance(request_id, str) else "",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason="invalid_request",
+                    )
+                    continue
+                sid = conn.get("session_id")
+                registered = registry.get(sid) if sid else None
+                request_provider_input = getattr(active_io, "request_provider_input", None)
+                if (
+                    active_io
+                    and registered
+                    and registered.status == "running"
+                    and registered.io is active_io
+                    and callable(request_provider_input)
+                ):
+                    result = request_provider_input(
+                        invocation_id,
+                        state_revision,
+                        text,
+                        request_id,
+                    )
+                    if not result:
+                        await _send_provider_input_ack(
+                            send_msg,
+                            request_id=request_id,
+                            invocation_id=invocation_id,
+                            accepted=False,
+                            state_revision=getattr(result, "state_revision", None),
+                            reason=getattr(result, "reason", "not_active"),
+                        )
+                    # A queued mailbox item is not an accepted Codex turn.
+                    # The native adapter emits the positive ACK only after its
+                    # matching ``turn/steer`` succeeds, so the browser retains
+                    # its draft if a terminal race prevents delivery.
+                    continue
+
+                started, reason = await start_provider_workroom_turn(
+                    data,
+                    send_msg,
+                    conn,
+                    route_handlers,
+                    storage,
+                    registry,
+                )
+                if started is None:
+                    await _send_provider_input_ack(
+                        send_msg,
+                        request_id=request_id,
+                        invocation_id=invocation_id,
+                        accepted=False,
+                        reason=reason or "not_active",
+                    )
+                    continue
+                active_io, forward_task, _state_revision = started
+                # A terminal continuation is similarly acknowledged by the
+                # native adapter only after ``thread/resume`` + ``turn/start``
+                # succeed. Starting a Host worker is deliberately not enough
+                # to let the composer clear its unsent text.
+
+            elif msg_type == "PROVIDER_PERMISSION_CHANGE":
+                request_id = data.get("requestId")
+                invocation_id = data.get("invocationId")
+                try:
+                    committed = await asyncio.to_thread(
+                        commit_provider_permission,
+                        storage,
+                        conn.get("session_id"),
+                        conn.get("agent_address"),
+                        invocation_id,
+                        data.get("stateRevision"),
+                        data.get("optionId"),
+                        request_id=request_id,
+                        confirm_risk=data.get("confirmRisk") is True,
+                    )
+                except ProviderPermissionError as exc:
+                    await _send_provider_permission_ack(
+                        send_msg,
+                        request_id=request_id if isinstance(request_id, str) else "",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason=exc.code,
+                    )
+                    continue
+                except Exception:
+                    await _send_provider_permission_ack(
+                        send_msg,
+                        request_id=request_id if isinstance(request_id, str) else "",
+                        invocation_id=invocation_id if isinstance(invocation_id, str) else None,
+                        accepted=False,
+                        reason="unavailable",
+                    )
+                    continue
+                await _send_provider_permission_ack(
+                    send_msg,
+                    request_id=request_id,
+                    invocation_id=invocation_id,
+                    accepted=True,
+                    state_revision=committed["stateRevision"],
+                    provider_permission=committed["providerPermission"],
+                )
+                # Other readers and a same-tab reconnect consume the same
+                # canonical lifecycle event. The requesting React client has
+                # already committed the ACK and idempotently ignores this equal
+                # revision when it arrives immediately afterwards.
+                await send_msg(committed["event"])
+
             elif msg_type == "APPROVAL_RESPONSE" and active_io:
                 resolver = getattr(active_io, "resolve_legacy_permission", None)
                 if resolver is None:
@@ -387,6 +615,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     "message": f"unknown message type: {msg_type!r}",
                 })
     finally:
+        if proxy_channel is not None:
+            await detach_proxy(proxy_channel, route_handlers)
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
         # that await is the expected exit signal — not a bug, swallow it.

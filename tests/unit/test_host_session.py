@@ -823,6 +823,94 @@ class TestSessionToChatItems:
             },
         }]
 
+    def test_replays_bounded_direct_codex_messages_inside_explicit_workroom_lineage(self):
+        session = {
+            'trace': [
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:root',
+                    'parentToolCallId': 'root',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'workroomId': 'codex:root',
+                    'status': 'completed',
+                    'stateRevision': 3,
+                },
+                {
+                    'type': 'provider_message',
+                    'provider': 'codex',
+                    'invocationId': 'codex:root',
+                    'parentToolCallId': 'root',
+                    'messageId': 'assistant:1',
+                    'role': 'assistant',
+                    'text': 'The initial tests are passing.',
+                    'workroomId': 'codex:root',
+                },
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:continued',
+                    'parentToolCallId': 'continued',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'workroomId': 'codex:root',
+                    'continuationOf': 'codex:root',
+                    'status': 'running',
+                    'stateRevision': 1,
+                },
+                {
+                    'type': 'provider_message',
+                    'provider': 'codex',
+                    'invocationId': 'codex:continued',
+                    'parentToolCallId': 'continued',
+                    'messageId': 'user:2',
+                    'role': 'user',
+                    'text': 'Please add a reverse-order fixture.',
+                    'workroomId': 'codex:root',
+                    'continuationOf': 'codex:root',
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items == [
+            {
+                'type': 'provider_invocation',
+                'invocationId': 'codex:root',
+                'parentToolCallId': 'root',
+                'provider': 'codex',
+                'providerDisplayName': 'Codex',
+                'workroomId': 'codex:root',
+                'status': 'completed',
+                'stateRevision': 3,
+                'id': 'codex:root',
+                'activities': [],
+                'messages': [{
+                    'id': 'assistant:1',
+                    'role': 'assistant',
+                    'text': 'The initial tests are passing.',
+                }],
+            },
+            {
+                'type': 'provider_invocation',
+                'invocationId': 'codex:continued',
+                'parentToolCallId': 'continued',
+                'provider': 'codex',
+                'providerDisplayName': 'Codex',
+                'workroomId': 'codex:root',
+                'continuationOf': 'codex:root',
+                'status': 'running',
+                'stateRevision': 1,
+                'id': 'codex:continued',
+                'activities': [],
+                'messages': [{
+                    'id': 'user:2',
+                    'role': 'user',
+                    'text': 'Please add a reverse-order fixture.',
+                }],
+            },
+        ]
+
     def test_drops_a_persisted_artifact_that_only_claims_to_be_a_png(self):
         session = {
             'trace': [

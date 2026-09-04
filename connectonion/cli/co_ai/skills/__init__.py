@@ -42,10 +42,10 @@ Usage:
 """
 
 from connectonion.cli.co_ai.skills.loader import (
-    load_skills,
+    SKILLS_REGISTRY,
     get_skill,
     get_skills_for_prompt,
-    SKILLS_REGISTRY,
+    load_skills,
 )
 from connectonion.cli.co_ai.skills.tool import skill
 

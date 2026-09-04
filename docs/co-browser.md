@@ -157,6 +157,7 @@ co browser get_links_from_page                   # every link, one per line
 co browser take_screenshot                       # saves a PNG, prints its path
 co browser click_element_by_selector "#submit"   # deterministic click by CSS selector
 co browser type_text_by_selector "#email" "aaron@example.com"
+co browser fill_text_by_selector "#invite" --stdin < invite.txt  # controlled input; keep secrets out of argv
 co browser save_state auth.json                  # export cookies/localStorage (keep it secret!)
 ```
 
@@ -177,8 +178,10 @@ co browser -t scrape do "collect every plan name and monthly price into a list"
 
 Describe the **end state** you want ("download the June invoice PDF"), not the
 steps. `do` costs LLM calls and is slower than direct functions — use functions
-for anything deterministic, `do` for judgment. While a `do` runs, the daemon is
-busy: other commands queue behind it (or exit 4 if they target its tab).
+for anything deterministic, `do` for judgment. The model loop runs in the CLI
+process; each browser action takes one short daemon turn, so other tabs can make
+progress while the model thinks. A command targeting the same claimed tab still
+exits 4, preserving ownership instead of interleaving two tasks on one page.
 
 ## Visible or Headless
 
@@ -212,24 +215,50 @@ own flags (`co browser status` shows `headless=true/false`). To switch modes,
   registered before `-t` can drive it.
 - **Scripting:** `TAB=$(co browser tab open --for "job")` captures the tab name
   (that's the only thing `tab open` prints to stdout); branch on the exit code, and
-  read `tab ls --json` to see the shared state.
+  read `tab ls --json` to see the shared state. Its `active_requests` entries carry
+  request id, caller, command, and start time while work is in flight; they disappear
+  on success, failure, disconnect, or cancellation.
 
 ## How It Works
 
-A small **daemon** owns the one browser and listens on a Unix socket; each
+A small **daemon** owns the one browser and listens on a Unix socket (or an
+authenticated named pipe on Windows); each
 `co browser …` invocation is a short-lived client that sends one request and prints
 the reply. Every terminal on the machine talks to the **same** daemon — there is
-one browser, one board, no matter where you type. The daemon serializes commands,
-tracks per-tab ownership, and keeps the browser alive between commands. It starts
-automatically on first use and exits when you `close` it (or when the browser is
-no longer usable).
+one browser, one board, no matter where you type. One asyncio runtime owns that
+browser. Operations on the same tab are serialized; operations on independent
+named tabs can progress together. Claim admission remains atomic, so two agents
+racing for one tab still get one winner and one exit-4 refusal rather than
+interleaved page mutations. It starts automatically on first use and exits when
+you `close` it (or when the browser is no longer usable).
 
 The daemon records its pid next to the socket, so a daemon that is merely **busy**
-(a long `do` holding the single-threaded loop) is never mistaken for a dead one:
-clients wait up to ~15s for it to come free and then say so ("daemon is busy"),
-instead of spawning a rival daemon over a live browser. Startup itself is
-race-proof: a kernel lock makes two terminals' simultaneous first commands elect
-exactly one daemon — the loser exits and its command is served by the winner.
+(for example, its bounded connection capacity is full) is never mistaken for a
+dead one: clients wait briefly and report capacity instead of spawning a rival
+daemon over a live browser. Each request is capped at 1 MiB, reads and replies
+have absolute 120-second deadlines, and at most 32 client tasks are admitted.
+Cancellation or disconnect clears that request's active audit lease without
+erasing another task's tab ownership. Startup itself is race-proof: a kernel lock
+makes two terminals' simultaneous first commands elect exactly one daemon — the
+loser exits and its command is served by the winner.
+
+### Restart the daemon after an upgrade or downgrade
+
+Installing a new ConnectOnion package does not replace a browser daemon that is
+already running. Before the first `co browser do` on the new version, stop the
+old process cleanly:
+
+```bash
+co browser close
+```
+
+The next page command starts a daemon from the newly installed package. Browser
+logins survive because they live in the persistent profile, not in the daemon.
+This restart matters for the 1.7 responsiveness update: a new client can still
+send ordinary actions to the previous daemon, but that daemon does not know the
+new raw screenshot response used by the client-side model loop, so vision would
+silently receive a saved-file message instead of image data. Do the same before
+downgrading so an older client never talks to a newer daemon.
 
 ## Troubleshooting
 
@@ -245,8 +274,9 @@ exactly one daemon — the loser exits and its command is served by the winner.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
-- **"daemon is busy" after ~15s** — a long `do` is holding the single-threaded
-  daemon. Wait for it, or find the culprit with `co browser status` once it frees up.
+- **"daemon is … at connection capacity" after ~15s** — 32 clients are already
+  admitted (or all bounded Windows transport workers are occupied). Retry shortly;
+  an unrelated slow browser action on another named tab no longer blocks yours.
 - **Nuclear option** — kill the daemon and let the next command start fresh
   (logins survive: they live in the profile, not the daemon):
 

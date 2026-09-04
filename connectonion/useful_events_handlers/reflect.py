@@ -24,9 +24,9 @@ Usage:
     agent = Agent("assistant", tools=[search], on_events=[reflect])
 """
 
-import time
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict
+from typing import TYPE_CHECKING, Dict, List
+
 from ..core.events import after_tools
 from ..llm_do import llm_do
 

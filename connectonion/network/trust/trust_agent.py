@@ -51,33 +51,62 @@ Extensibility:
     host(create_agent, trust=MyTrustAgent("careful"))
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from ...project import project_co_dir
-from typing import Optional
-import logging
 
-from .fast_rules import parse_policy, evaluate_request
+from ...project import project_co_dir
+from .factory import PROMPTS_DIR, TRUST_LEVELS
+from .fast_rules import evaluate_request, parse_policy
 from .tools import (
-    is_whitelisted as _is_whitelisted,
-    is_blocked as _is_blocked,
-    is_contact as _is_contact,
-    is_stranger as _is_stranger,
-    promote_to_contact as _promote_to_contact,
-    promote_to_whitelist as _promote_to_whitelist,
-    demote_to_contact as _demote_to_contact,
-    demote_to_stranger as _demote_to_stranger,
+    add_admin as _add_admin,
+)
+from .tools import (
     block as _block,
-    unblock as _unblock,
+)
+from .tools import (
+    demote_to_contact as _demote_to_contact,
+)
+from .tools import (
+    demote_to_stranger as _demote_to_stranger,
+)
+from .tools import (
     get_level as _get_level,
+)
+from .tools import (
+    get_self_address as _get_self_address,
+)
+from .tools import (
     # Admin functions
     is_admin as _is_admin,
+)
+from .tools import (
+    is_blocked as _is_blocked,
+)
+from .tools import (
+    is_contact as _is_contact,
+)
+from .tools import (
+    is_stranger as _is_stranger,
+)
+from .tools import (
     is_super_admin as _is_super_admin,
-    get_self_address as _get_self_address,
-    add_admin as _add_admin,
+)
+from .tools import (
+    is_whitelisted as _is_whitelisted,
+)
+from .tools import (
+    promote_to_contact as _promote_to_contact,
+)
+from .tools import (
+    promote_to_whitelist as _promote_to_whitelist,
+)
+from .tools import (
     remove_admin as _remove_admin,
 )
-from .factory import PROMPTS_DIR, TRUST_LEVELS
+from .tools import (
+    unblock as _unblock,
+)
 
 
 @dataclass
@@ -108,7 +137,8 @@ class TrustAgent:
     """
 
     def __init__(self, trust: str = "careful", *, api_key: str = None,
-                 model: str = "co/gemini-3.7-flash", co_dir: Path = None):
+                 model: str = "co/gemini-3.7-flash", co_dir: Path = None,
+                 invite_code: str = None):
         """
         Create a TrustAgent.
 
@@ -118,6 +148,7 @@ class TrustAgent:
             model: Model to use for LLM decisions
             co_dir: Project .co directory. Bound at construction so trust state
                 does not move with, or disappear with, the process cwd.
+            invite_code: Optional in-memory override for this instance.
         """
         self.trust = trust
         self.api_key = api_key
@@ -126,6 +157,13 @@ class TrustAgent:
 
         # Load policy and parse config
         self._config, self._prompt = self._load_policy(trust)
+        if invite_code is not None:
+            invite_code = invite_code.strip()
+            if not invite_code:
+                raise ValueError("invite_code cannot be empty")
+            onboard = dict(self._config.get("onboard") or {})
+            onboard["invite_code"] = [invite_code]
+            self._config = {**self._config, "onboard": onboard}
 
         # Lazy-loaded LLM agent (only created if needed)
         self._llm_agent = None
@@ -213,9 +251,9 @@ class TrustAgent:
 
     def _llm_decide(self, client_id: str, request: dict) -> Decision:
         """Use LLM to make trust decision (only for 'ask' cases)."""
-        from ...core.agent import Agent
-        from ...llm_do import llm_do
         from pydantic import BaseModel
+
+        from ...llm_do import llm_do
 
         class TrustDecision(BaseModel):
             allow: bool
@@ -317,10 +355,7 @@ justify admitting them, it is not enough."""
 
     def _verify_transfer_via_api(self, from_addr: str, to_addr: str, min_amount: float) -> bool:
         """Call oo-api to verify a transfer was made."""
-        import os
-        import json
         import time
-        from pathlib import Path
 
         try:
             import httpx

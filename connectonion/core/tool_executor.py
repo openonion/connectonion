@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_call then tool_result entries | calls logger.log_tool_call() and logger.log_tool_result() for user feedback | injects/clears xray context via thread-local storage
   Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | uses logger.log_tool_call(name, args) for natural function-call style output: greet(name='Alice') | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
   Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it | agent injection uses cached _needs_agent flag (set by tool_factory) instead of inspect.signature() for zero overhead
-  Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗
+  Errors: catches tool exceptions and recognizes explicit ToolFailure results | wraps failures in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗
 """
 
 import asyncio
@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from ..debug.xray import clear_xray_context, inject_xray_context, is_xray_enabled
 from .interrupt import InterruptibleIO, UserInterrupt, run_interruptible
+from .tool_result import ToolFailure
 
 _async_loop: Optional[asyncio.AbstractEventLoop] = None
 _async_loop_thread: Optional[threading.Thread] = None
@@ -275,6 +276,15 @@ def execute_single_tool(
     Returns:
         Dict trace entry with: type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
     """
+    # Detach the model's presentation sentence from ordinary implementation
+    # arguments. Old sessions and third-party callers may omit it; execution
+    # remains compatible and readers provide a deterministic fallback.
+    tool_args = dict(tool_args)
+    tool_func = tools.get(tool_name)
+    summary = _bounded_tool_summary(tool_args.get("summary"))
+    if not getattr(tool_func, "_summary_is_function_argument", False):
+        tool_args.pop("summary", None)
+
     # Log tool call before execution
     logger.log_tool_call(tool_name, tool_args)
 
@@ -287,19 +297,23 @@ def execute_single_tool(
         "result": None,
         "timing_ms": 0,
     }
+    if summary:
+        trace_entry["summary"] = summary
 
     # Every result must have a preceding start with the same stable ID.  This
     # is required by streaming clients and also avoids a completion that cannot be
     # correlated by ConnectOnion clients when the requested tool is unknown.
-    agent._record_trace({
+    start_entry = {
         "type": "tool_call",
         "tool_id": tool_id,
         "name": tool_name,
         "args": tool_args,
-    })
+    }
+    if summary:
+        start_entry["summary"] = summary
+    agent._record_trace(start_entry)
 
     # Check if tool exists
-    tool_func = tools.get(tool_name)
     if tool_func is None:
         error_msg = f"Tool '{tool_name}' not found"
 
@@ -488,7 +502,12 @@ def execute_single_tool(
 
         trace_entry["timing_ms"] = tool_duration
         trace_entry["result"] = str(result)
-        trace_entry["status"] = "success"
+        if isinstance(result, ToolFailure):
+            trace_entry["status"] = "error"
+            trace_entry["error"] = str(result)
+            trace_entry["error_type"] = type(result).__name__
+        else:
+            trace_entry["status"] = "success"
 
     except UserInterrupt:
         return interrupted_tool_result()
@@ -535,7 +554,12 @@ def execute_single_tool(
             agent._record_trace(trace_entry, wire_extras=wire_extras)
         else:
             agent._record_trace(trace_entry)
-        logger.log_tool_result(trace_entry["result"], tool_duration)
+        if trace_entry["status"] == "error":
+            logger.log_tool_result(
+                trace_entry["result"], tool_duration, success=False
+            )
+        else:
+            logger.log_tool_result(trace_entry["result"], tool_duration)
 
         if xray_enabled:
             logger.print_xray_table(
@@ -560,6 +584,16 @@ def execute_single_tool(
         clear_xray_context()
 
     return trace_entry
+
+
+def _bounded_tool_summary(value: Any) -> str | None:
+    """Return a bounded action summary or no summary for old callers."""
+    if not isinstance(value, str):
+        return None
+    value = " ".join(value.split())
+    if not value:
+        return None
+    return value[:240]
 
 
 def _add_assistant_message(messages: List[Dict], tool_calls: List) -> None:

@@ -10,25 +10,26 @@ LLM-Note:
 """
 
 import fnmatch
+import io
 import json
 import re
 import shutil
 import subprocess
-import io
 import tarfile
 import tempfile
 import time
-import yaml
+from pathlib import Path
+
 import requests
 import typer
-from pathlib import Path
-from rich.console import Console
+import yaml
 from dotenv import dotenv_values
-from ...backend import backend_url
+from rich.console import Console
 
+from ...backend import backend_url
 from .project_cmd_lib import (
-    GITIGNORE_CONTENT,
     DEPLOY_NAME_PATTERN,
+    GITIGNORE_CONTENT,
     load_api_key,
     normalize_deploy_name,
 )
@@ -328,6 +329,7 @@ def _print_deploy_skill_problems(
 ) -> None:
     """Show a real repair path; only payload problems look like deploy failures."""
     from rich.markup import escape
+
     from ...useful_plugins.skills import find_skill_problem_details
 
     entries = payload_entries or set()
@@ -475,7 +477,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     host_yaml_path = project_dir / ".co" / "host.yaml"
 
     if not host_yaml_path.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return False
 
     # `--skills PATH` means "copy this folder into remote .co/skills".

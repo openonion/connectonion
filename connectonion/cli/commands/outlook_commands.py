@@ -2,7 +2,7 @@
 Purpose: CLI surface for Outlook email and contacts — send/read/search mail and add/list/search contacts from the terminal
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
-  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env and checks the operation scope → Outlook() instance | mail commands use list/read/send methods and the numbered inbox cache | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
+  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env and checks the operation scope → Outlook() instance | mail commands use list/read/send/reply methods and the numbered inbox cache | send and reply share _check_attachments() to reject missing or oversize --attach files before megabytes are base64-encoded | handle_outlook_reply(email_id, message, at, *, attachments) keeps `at` third positional for pre-attachment callers, so attachments is keyword-only | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
   State/Effects: writes ~/.co/outlook_last_inbox.json for mail numbering | read changes mailbox state only with --mark-read; send/reply/contact commands mutate their named data | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
   Integration: exposes handle_outlook_* functions for cli/main.py, including handle_outlook_contact_add/list/search | presentation mirrors existing mail tables | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
   Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/Mail/Contacts.ReadWrite scopes, invalid files/times/ids | Graph API errors propagate from Outlook
@@ -25,9 +25,10 @@ INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
 def _outlook(required_scope: str = "Mail"):
     """Load Microsoft credentials and require the Graph scope this command needs."""
     from dotenv import load_dotenv
+    from ...project import project_root
 
-    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
-        if env_path.exists():
+    for env_path in [project_root() / ".env", Path.home() / ".co" / "keys.env"]:
+        if env_path.is_file():
             load_dotenv(env_path)
 
     if not os.getenv("MICROSOFT_ACCESS_TOKEN"):
@@ -214,7 +215,7 @@ def handle_outlook_read(email_id: str, mark_read: bool = False):
     console.print(f"\n[dim]{marked}Reply with:[/dim] [bold]co outlook reply <#> <message>[/bold]\n")
 
 
-def handle_outlook_download(email_id: str, out_dir: str = "."):
+def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: bool = False):
     """Save an email's attachments to disk. Accepts the listing # or a full message id."""
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
@@ -222,9 +223,10 @@ def handle_outlook_download(email_id: str, out_dir: str = "."):
         console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook download <#>.[/yellow]\n")
         raise typer.Exit(1)
 
-    saved = outlook.download_attachments(resolved, out_dir)
+    saved = outlook.download_attachments(resolved, out_dir, include_inline=include_inline)
     if not saved:
-        console.print("\n[yellow]No file attachments on that email.[/yellow]\n")
+        console.print("\n[yellow]No file attachments on that email.[/yellow]")
+        console.print("[dim]Embedded signature images are skipped — --include-inline saves them too.[/dim]\n")
         return
 
     console.print()
@@ -233,11 +235,17 @@ def handle_outlook_download(email_id: str, out_dir: str = "."):
     console.print()
 
 
-def handle_outlook_reply(email_id: str, message: str, at: str = None):
-    """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin."""
+def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachments: list = None):
+    """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin.
+
+    `at` keeps its third-positional slot from before attachments existed;
+    attachments is keyword-only so no caller can pass a schedule as a file.
+    """
     if message == "-":
         message = sys.stdin.read()
     send_at = _parse_send_at(at) if at else None
+    if attachments:
+        _check_attachments(attachments)
 
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
@@ -245,11 +253,15 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None):
         console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook reply <#> <message>.[/yellow]\n")
         raise typer.Exit(1)
 
-    outlook.reply(resolved, message, send_at=send_at)
+    outlook.reply(resolved, message, attachments=attachments, send_at=send_at)
     if send_at:
-        console.print(f"\n[green]✓ Reply scheduled[/green] for [bold]{send_at}[/bold] to email {email_id}\n")
+        console.print(f"\n[green]✓ Reply scheduled[/green] for [bold]{send_at}[/bold] to email {email_id}")
     else:
-        console.print(f"\n[green]✓ Replied[/green] to email {email_id}\n")
+        console.print(f"\n[green]✓ Replied[/green] to email {email_id}")
+    if attachments:
+        names = ", ".join(Path(p).name for p in attachments)
+        console.print(f"  Attached: {names}")
+    console.print()
 
 
 def handle_outlook_sent(last: int = 10):

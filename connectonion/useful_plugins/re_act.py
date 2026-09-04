@@ -33,6 +33,7 @@ Usage:
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+
 from ..core.events import after_user_input
 from ..llm_do import llm_do
 from ..useful_events_handlers.reflect import reflect

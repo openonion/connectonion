@@ -1,34 +1,53 @@
 """
-Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI requests to it over the platform transport (POSIX Unix socket / Windows named pipe), arbitrating concurrent agents through per-tab ownership.
+Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
-  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.agent (resolve_api_key, build_browser_agent), browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: client sends wire-v1 JSON {v,caller,account,tab,line} (or a legacy plain line) → page verbs stay shared; model-backed `do` runs only when both public account addresses are present and equal (legacy/missing/mismatched payer data fails closed) → reply includes process exit code (2 usage, 3 unknown tab, 4 busy, 5 payer mismatch)
-  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds the endpoint at default_sock_path() via `transport` — POSIX: a raw AF_UNIX socket (unchanged); Windows: a native named pipe (multiprocessing.connection) with an HMAC authkey — under a lifetime OS lock (transport.lock_path: fcntl.flock POSIX / msvcrt Windows, released by the OS on any death, so simultaneous cold-starts can't both bind) and records its owner pid in transport.pid_path so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes the listener (POSIX also unlinks the socket) + pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the endpoint) when browser._context_is_alive() goes false or _launch_failed()
-  Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
-  Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
-  Errors: dispatch/handler exceptions are caught at the request boundary in serve() and returned to THAT client (never unwind the loop and kill the shared browser) | a client that vanishes mid-reply is logged to ~/.co/browser.log, not fatal | bind race with a second daemon → loser exits
+  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
+  Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
+  State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
+  Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
+  Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
+  Errors: malformed/oversized/stalled clients are bounded at their own connection boundary; cancellation clears only its request lease; vanished readers are logged and cannot stop the daemon; launch failure or closed shared runtime releases the endpoint
 """
 
+import argparse
+import asyncio
+import atexit
+import contextlib
+import inspect
+import json
 import os
 import platform
-import sys
-import time
-import socket
-import json
 import shlex
-import inspect
 import signal
-import atexit
+import socket
+import sys
+import tempfile
 import threading
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
+from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserCore
 from connectonion.useful_tools.browser_tools.browser import (
-    driver_stealth_status, installed_browser_path,
+    driver_stealth_status,
+    installed_browser_path,
 )
-from .agent import resolve_api_key, build_browser_agent
+from connectonion.network.oip import browser_daemon_pb2 as oip_wire
+from connectonion.network.oip.framing import (
+    MAGIC as OIP_MAGIC,
+    PROTOCOL_VERSION as OIP_VERSION,
+    ProtocolError,
+    decode_frame,
+    encode_frame,
+    frame_size_from_header,
+    read_async_frame,
+)
+
 from . import transport
+from .artifacts import ArtifactStager, StagedArtifact
 
 
 def default_sock_path() -> str:
@@ -99,6 +118,12 @@ def list_functions() -> str:
 
 GUARD_WINDOW = 120  # seconds a tab's last claim keeps excluding other callers
 
+REQUEST_TIMEOUT = 120.0
+REPLY_TIMEOUT = 120.0
+MAX_REQUEST_BYTES = 1024 * 1024
+MAX_IN_FLIGHT = 32
+WINDOWS_TRANSPORT_WORKERS = 8
+
 # Tabs are closed by the agent that opened them. This is only a janitor for tabs
 # whose opener is never coming back — a crashed process, a machine left running
 # for weeks. It is deliberately far longer than any real task: reclaiming early
@@ -114,26 +139,6 @@ def _key(name):
 
 def _tab_label(key) -> str:
     return "main" if key is None else key
-
-
-def _daemon_account() -> "str | None":
-    """The address whose credits `do` spends, or None if there is none to name.
-
-    The daemon is shared and long-lived, and `do` runs the agent inside it, so
-    the model is paid for out of *this process's* environment — the directory
-    whoever started the browser was standing in, not the caller's. Running `do`
-    from a worktree holding a different key charged 0x561605f3 and reported its
-    balance, an account the reader had no way to place (#728).
-
-    Page verbs touch no model and are unaffected; only `do` spends.
-
-    The address is public — an agent announces it to the relay — so naming it
-    here reveals nothing. The key is never read out.
-    """
-    from ... import address
-
-    data = address.load(Path.cwd() / ".co") or address.load(Path.home() / ".co")
-    return (data or {}).get("address")
 
 
 def _owner_alive(sock_path: str) -> bool:
@@ -229,25 +234,83 @@ def launch_failure_advice(first_line: str) -> str:
 
 
 class BrowserDaemon:
-    """Single-threaded server owning one BrowserAutomation, dispatching verbs to it."""
+    """Concurrent server owning one asyncio-native browser runtime."""
 
-    def __init__(self, sock_path: str, headless: bool = False):
+    def __init__(
+        self,
+        sock_path: str,
+        headless: bool = False,
+        engine_mode: str = "auto",
+        *,
+        profile_dir: str | Path | None = None,
+        remote_egress: bool = False,
+        authkey_path: str | Path | None = None,
+        shared_proxy_path: str | Path | None = None,
+        gateway_factory=None,
+        browser_factory=AsyncBrowserCore,
+    ):
+        if engine_mode not in ("auto", "system", "onion"):
+            raise ValueError(f"invalid browser engine mode: {engine_mode}")
+        if remote_egress and engine_mode != "onion":
+            raise ValueError("remote browser daemon requires engine=onion")
         self.sock_path = sock_path
-        self.browser = BrowserAutomation(headless=headless)
+        self.engine_mode = engine_mode
+        self._headless = headless
+        self._profile_dir = (
+            Path(profile_dir).expanduser().resolve() if profile_dir is not None else None
+        )
+        self._remote_egress = remote_egress
+        self._authkey_path = Path(authkey_path) if authkey_path is not None else None
+        self._shared_proxy_path = (
+            Path(shared_proxy_path).expanduser().resolve()
+            if shared_proxy_path is not None
+            else None
+        )
+        if self._shared_proxy_path is not None and not self._remote_egress:
+            raise ValueError("a shared proxy requires --remote-egress")
+        self._gateway_factory = gateway_factory
+        self._browser_factory = browser_factory
+        self._proxy_auth_path = None
+        if self._remote_egress and self._profile_dir is None:
+            raise ValueError("remote browser daemon requires an explicit profile")
+        if not self._remote_egress and self._profile_dir is not None:
+            # A profile only reaches the browser through the launch policy, which
+            # exists in remote-egress mode. Accepting it here and using the
+            # shared local profile anyway would give a caller its own socket,
+            # lock and log while silently pooling cookies with `co browser`.
+            raise ValueError("a profile directory requires --remote-egress")
+        self._gateway = None
+        self.browser = (
+            None
+            if self._remote_egress
+            else self._browser_factory(headless=headless, engine_mode=engine_mode)
+        )
         self._srv = None
         # Set by _cleanup before it closes the listener, so serve() can tell "we are
         # stopping" from "the socket broke while we were meant to be serving".
         self._closing = False
+        self._shutdown_started = False
         self._had_browser = False
+        self._defer_context_probe = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
         self._next_tab = 1        # id allocator for auto-named tabs
+        self._registry_lock = asyncio.Lock()
+        self._health_lock = asyncio.Lock()
+        self._loop = None
+        self._client_tasks = set()
+        self._transport_pool = None
+        artifact_root = (
+            Path(tempfile.gettempdir())
+            / f"connectonion-browser-artifacts-{uuid.uuid5(uuid.NAMESPACE_URL, sock_path).hex[:16]}"
+        )
+        self._artifact_stager = ArtifactStager(artifact_root)
 
     def _parse_envelope(self, raw: str) -> tuple:
-        """Wire v1: JSON {caller,account,tab,line} — quote-safe by construction
+        """Wire v1: JSON {caller,account,tab,line,raw,engine} — quote-safe by construction
         (a caller or tab name can hold any character without breaking shlex). A plain
         line (old client) is accepted as an anonymous request for the main tab."""
         if not raw.startswith("{"):
-            return "", "", None, raw
+            return "", "", None, raw, False, self.engine_mode
         req = json.loads(raw)
         tab = req.get("tab")
         return (
@@ -255,97 +318,138 @@ class BrowserDaemon:
             str(req.get("account") or ""),
             (str(tab) if tab is not None else None),
             str(req.get("line") or ""),
+            bool(req.get("raw", False)),
+            str(req.get("engine") or "auto"),
         )
 
     # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
     # -t target is fine (you may inspect or create it). `help` never reaches the daemon —
     # the CLI answers it locally.
-    READONLY = ("tab", "status", "use", "switch")
+    READONLY = ("tab", "status", "engine_status", "use", "switch")
 
     def dispatch(self, raw: str) -> tuple:
-        """Run one request. Returns (ok, payload); ok is True, False, or an int error
-        code the client mirrors into its exit (2 usage · 3 unknown tab · 4 tab busy)."""
+        """Synchronous test/embedding bridge; production uses ``dispatch_async``.
+
+        The daemon process calls the async method on its one owned event loop.  This
+        bridge preserves the long-standing pure-dispatch test seam without creating
+        a second browser worker or being callable from the runtime loop itself.
+        """
         try:
-            caller, caller_account, tab, line = self._parse_envelope(raw)
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.dispatch_async(raw))
+        raise RuntimeError("dispatch() cannot run inside an event loop; await dispatch_async()")
+
+    async def dispatch_async(
+        self,
+        raw: str,
+        *,
+        artifact_stager: ArtifactStager | None = None,
+        request_id: str | None = None,
+    ) -> tuple:
+        """Run one request without blocking unrelated tabs.
+
+        Returns ``(ok, payload)``; ok is True, False, or an integer error code
+        mirrored by the client (2 usage · 3 unknown tab · 4 tab busy).
+        Claim admission and active-request audit leases are atomic even though the
+        browser operation itself may overlap work on independent tabs.
+        """
+        try:
+            caller, _caller_account, tab, line, raw_result, requested_engine = self._parse_envelope(raw)
             tokens = shlex.split(line)
         except (ValueError, TypeError) as exc:  # malformed envelope/quoting is the CLIENT's error
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return 2, "empty request"
+        # Not `getattr(..., False)`: a missing attribute here would skip the
+        # gateway-health gate entirely, which is the wrong direction to fail
+        # for the check that keeps an unproven browser from serving commands.
+        if self._remote_egress and (
+            self._gateway is None or not self._gateway.is_running
+        ):
+            return False, "EGRESS_GATEWAY_UNAVAILABLE"
+        if requested_engine != self.engine_mode:
+            return 6, (
+                f"browser daemon is pinned to engine={self.engine_mode}; this request asked "
+                f"for engine={requested_engine}. Close it with `co browser close`, then retry."
+            )
         verb = tokens[0]
 
         # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
         # command that would DRIVE the tab — read-only/lifecycle verbs may name a tab that
         # is not registered yet (to inspect it, or `tab open` it).
         session = _key(tab)
-        if session is not None and session not in self.browser._tab_meta and verb not in self.READONLY:
-            return 3, self._unknown_tab(session)
+        async with self._registry_lock:
+            if session is not None and session not in self.browser._tab_meta and verb not in self.READONLY:
+                return 3, await self._unknown_tab_async(session)
         self.browser._bind_session(session)
 
         if verb == "tab":  # tab lifecycle: open / ls / close
-            return self._tab(tokens[1:], caller)
+            return await self._tab_async(tokens[1:], caller)
         if verb == "status":  # read-only report; does not count as the last command
-            return self._status()
+            return await self._status_async()
+        if verb == "engine_status":  # protocol/diagnostic probe; no claim and no launch
+            return await self._call_verb_async("engine_status", [])
         if verb in ("use", "switch"):  # removed: no server-side cursor, targeting is per-command
             return False, "use/switch removed — target a tab per command instead:  co browser -t <tab> <verb>"
         if verb == "newtab":  # legacy spelling of `tab open` + go_to
             if session is not None:  # it allocates its OWN tab — a -t target would be ignored
                 return 2, "newtab allocates its own tab and ignores -t — use:  co browser tab open <name>, then  co browser -t <name> go_to <url>"
-            return self._newtab(line, tokens, caller)
+            return await self._newtab_async(line, tokens, caller)
         if verb == "closetab":  # legacy spelling of `tab close`
-            return self._closetab(tokens[1:], caller)
+            return await self._closetab_async(tokens[1:], caller)
 
         # `close` with no -t is a deliberate whole-browser shutdown (unguarded). `-t X close`
         # closes ONE tab and so must pass the same ownership guard as any destructive write.
         if verb == "close" and session is None:
-            return self._call_verb("close", tokens[1:])
+            return await self._call_verb_async("close", tokens[1:])
 
         # A command that would execute nothing must not acquire anything: reject an
         # unknown verb BEFORE the claim, or a typo would hold the tab for GUARD_WINDOW.
-        if verb != "do" and not _is_verb(self.browser, verb):
+        if verb == "do":
+            return 2, (
+                "`do` runs in the CLI process so model waits do not block the shared "
+                "browser daemon. Upgrade this client and retry."
+            )
+        if not _is_verb(self.browser, verb):
             return False, (
                 f"unknown command: {verb}\n"
                 f"Run 'co browser help' to list functions, or "
                 f"'co browser do \"<instruction>\"' for natural language."
             )
 
-        # `do` spends credits in this long-lived process. Old clients have no
-        # account field, and a broken daemon identity cannot prove whose credits
-        # would be spent, so both cases must fail closed. Do this before claiming
-        # the tab: a rejected billing attempt must not make the page look busy.
-        if verb == "do":
-            try:
-                daemon_account = str(_daemon_account() or "").strip()
-            except Exception:
-                daemon_account = ""
-            caller_account = caller_account.strip()
-            if not caller_account or not daemon_account:
-                return 5, (
-                    "refusing `do`: cannot verify that the caller and browser "
-                    "daemon use the same OpenOnion billing account. Upgrade the "
-                    "client, then run `co status` or `co auth`; page commands "
-                    "remain available."
-                )
-            if caller_account.casefold() != daemon_account.casefold():
-                return 5, (
-                    "refusing `do`: this browser daemon bills "
-                    f"{daemon_account[:10]}…, but this command came from "
-                    f"{caller_account[:10]}…. Page commands remain available. "
-                    "Stop the daemon and retry from this project so the payer matches."
-                )
-
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
         # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
         # never silent interleaving on one page.
-        meta = self._register_tab(session, caller)
-        if _held_by_other(meta, caller):
-            return 4, self._tab_busy(session, meta)
-        self._stamp_claim(meta, caller, line)
-        self.last_command = {"line": line, "at": time.time()}
-        if verb == "do":  # explicit natural-language agent — use the PARSED remainder,
-            command = " ".join(tokens[1:])  # not the still-quoted raw line
-            return self._run_nl(command)
-        return self._call_verb(verb, tokens[1:])
+        # Preserve the authenticated transaction ID supplied by OIP. Legacy
+        # in-process callers do not have one, so allocate it only for them.
+        request_id = request_id or uuid.uuid4().hex
+        async with self._registry_lock:
+            meta = self._register_tab(session, caller)
+            if _held_by_other(meta, caller):
+                return 4, self._tab_busy(session, meta)
+            self._stamp_claim(meta, caller, line)
+            meta.setdefault("active_requests", {})[request_id] = {
+                "caller": caller,
+                "line": line,
+                "started_at": time.time(),
+            }
+            self.last_command = {"line": line, "at": time.time()}
+        try:
+            return await self._call_verb_async(
+                verb,
+                tokens[1:],
+                raw_result=raw_result,
+                artifact_stager=artifact_stager,
+                request_id=request_id,
+            )
+        finally:
+            async with self._registry_lock:
+                active = meta.get("active_requests")
+                if active is not None:
+                    active.pop(request_id, None)
+                    if not active:
+                        meta.pop("active_requests", None)
 
     def _register_tab(self, key, caller: str) -> dict:
         """Return the tab's board entry, creating the shared main tab's on first use.
@@ -376,8 +480,33 @@ class BrowserDaemon:
             meta["caller"], meta["claim_at"] = caller, time.time()
         meta["last_line"], meta["last_at"] = line, time.time()
 
-    def _call_verb(self, verb: str, raw_args) -> tuple:
-        """Match the verb to a browser method and execute it with coerced args."""
+    def _call_verb(self, verb: str, raw_args, raw_result: bool = False) -> tuple:
+        """Synchronous compatibility bridge for pure dispatch tests."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._call_verb_async(verb, raw_args, raw_result))
+        raise RuntimeError("await _call_verb_async() inside an event loop")
+
+    def _launch_failed(self) -> bool:
+        probe = getattr(self.browser, "_launch_failed", None)
+        if callable(probe):
+            return bool(probe())
+        return (
+            getattr(self.browser, "playwright", None) is not None
+            and getattr(self.browser, "browser", None) is None
+        )
+
+    async def _call_verb_async(
+        self,
+        verb: str,
+        raw_args,
+        raw_result: bool = False,
+        *,
+        artifact_stager: ArtifactStager | None = None,
+        request_id: str | None = None,
+    ) -> tuple:
+        """Match a verb to an async browser method and await its result."""
         method = getattr(self.browser, verb)
         positional, kwargs = _split_tokens(raw_args)
 
@@ -390,10 +519,26 @@ class BrowserDaemon:
             ann = param_by_name[k].annotation if k in param_by_name else str
             kw[k] = v if v is True else _coerce(v, ann)
 
+        staged_path = None
+        if artifact_stager is not None and verb == "take_screenshot":
+            if positional or "path" in kw:
+                return 2, (
+                    "the screenshot destination belongs to the caller; use the local "
+                    "output path option instead of sending a daemon path"
+                )
+            staged_path = artifact_stager.reserve(request_id or uuid.uuid4().hex)
+            kw["path"] = str(staged_path)
+
         try:
             result = method(*args, **kw)
+            if inspect.isawaitable(result):
+                result = await result
         except Exception as exc:  # dispatch boundary: report to client as ERR
-            if self.browser._launch_failed():
+            if staged_path is not None:
+                staged_path.unlink(missing_ok=True)
+                with contextlib.suppress(OSError):
+                    staged_path.parent.rmdir()
+            if self._launch_failed():
                 # Chrome aborted at startup: str(exc) is a huge patchright "Call log".
                 # Keep the first line and point at the full log instead of dumping it.
                 first = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
@@ -405,18 +550,93 @@ class BrowserDaemon:
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
             return False, f"{type(exc).__name__}: {exc}{hint}"
 
+        if staged_path is not None and staged_path.is_file():
+            return True, artifact_stager.adopt(
+                staged_path,
+                proposed_name=f"screenshot-{(request_id or uuid.uuid4().hex)[:12]}.png",
+                media_type="image/png",
+                request_id=request_id or uuid.uuid4().hex,
+            )
+        if staged_path is not None:
+            with contextlib.suppress(OSError):
+                staged_path.parent.rmdir()
+
         payload = _stringify(result)
-        if payload.startswith("data:image/"):
+        if payload.startswith("data:image/") and not raw_result:
             # A human at the shell doesn't want a base64 blob — the image is on disk.
-            # (The NL agent path keeps the data URL for vision; it goes through _run_nl.)
+            # The client-side NL agent asks for raw results so vision still gets the data URL.
             return True, f"Screenshot saved to: {self.browser.last_screenshot_path}"
         return True, payload
 
     def _status(self) -> tuple:
+        """Synchronous compatibility bridge for status tests."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._status_async())
+        raise RuntimeError("await _status_async() inside an event loop")
+
+    async def _browser_is_alive(self) -> bool:
+        probe = getattr(self.browser, "is_alive", None)
+        if probe is None:
+            probe = getattr(self.browser, "_context_is_alive", None)
+        if probe is None:
+            return False
+        result = probe()
+        return bool(await result) if inspect.isawaitable(result) else bool(result)
+
+    async def _browser_tab_status(self) -> str:
+        result = self.browser.tab_status()
+        return await result if inspect.isawaitable(result) else result
+
+    async def _status_async(self) -> tuple:
         """Report browser state, the last command, and the tab board."""
-        open_state = "open" if self.browser._context_is_alive() else "not open"
+        open_state = "open" if await self._browser_is_alive() else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
         lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
+        engine_status = getattr(self.browser, "engine_status", None)
+        try:
+            engine = engine_status() if callable(engine_status) else {
+                "requested_engine": "auto",
+                "resolved_engine": None,
+                "reason": "not_started",
+                "artifact_id": None,
+            }
+            if inspect.isawaitable(engine):
+                engine = await engine
+        except Exception:
+            # Status is the diagnostic path. A broken optional paid client must
+            # be reported as unresolved, not take the whole report down.
+            engine = {
+                "requested_engine": getattr(self.browser, "_engine_mode", "auto"),
+                "resolved_engine": None,
+                "reason": "status_unavailable",
+                "artifact_id": None,
+            }
+        # The paid engine charges per interval the moment a command uses it —
+        # like tokens, no confirmation. So the price and the live session ride
+        # here in status, which is where an operator looks to see what a running
+        # browser is doing and costing.
+        price = engine.get("interval_usd")
+        cost = (
+            f" · ${price:.3f}/interval"
+            if isinstance(price, (int, float))
+            else ""
+        )
+        session = (
+            f" · paid session {engine['paid_session_id']}"
+            if engine.get("paid_session_id")
+            else ""
+        )
+        lines.append(
+            "Engine: "
+            f"requested={engine['requested_engine']} · "
+            f"resolved={engine['resolved_engine'] or 'not-started'} · "
+            f"reason={engine['reason']}"
+            + (f" · artifact={engine['artifact_id']}" if engine.get("artifact_id") else "")
+            + cost
+            + session
+        )
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
         # visible where users look for browser state, not only in `co doctor`.
         stealth, version, detail = driver_stealth_status()
@@ -426,46 +646,66 @@ class BrowserDaemon:
         # every page command answered "Executable doesn't exist at
         # .../chromium-1228/chrome-linux64/chrome", so the one thing that has to
         # be true before anything works was the one thing not reported.
-        try:
-            binary = installed_browser_path()
-        except Exception:
-            binary = None  # status is what you run when things are already broken
+        # A paid resolution runs the downloaded artifact, not the driver's
+        # default install. Reporting the default here said "/usr/bin/google-chrome"
+        # while every page was served by a Chromium under .onionwright/runtimes,
+        # which is the wrong answer to the one question this line exists for.
+        binary = engine.get("executable")
+        if not binary:
+            try:
+                binary = installed_browser_path()
+            except Exception:
+                binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
                      "Browser binary: ✗ none installed — run: patchright install chromium")
-        # Whose credits `do` spends. Never lets status fail: this is the command
-        # you run when something is already wrong.
-        try:
-            account = _daemon_account()
-        except Exception:
-            account = None
-        if account:
-            lines.append(f"`do` is billed to: {account[:10]}… "
-                         f"(the account this daemon was started under, not the caller's)")
         if self.last_command:
             lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
         else:
             lines.append("Last command: (none yet)")
         lines.append("")
-        lines.append(self.browser.tab_status())
+        lines.append(await self._browser_tab_status())
         return True, "\n".join(lines)
 
     def _tab(self, args, caller: str = "") -> tuple:
-        """Tab lifecycle: `tab open [NAME] [--who X] [--for "..."]` · `tab ls [--json]` · `tab close NAME`."""
+        """Synchronous compatibility bridge for tab lifecycle tests."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._tab_async(args, caller))
+        raise RuntimeError("await _tab_async() inside an event loop")
+
+    async def _tab_async(self, args, caller: str = "") -> tuple:
+        """Tab lifecycle: open/list/close with atomic registry transitions."""
         if not args:
             return 2, self._tab_usage()
         action, rest = args[0], args[1:]
         if action == "open":
-            return self._tab_open(rest, caller)
+            async with self._registry_lock:
+                return self._tab_open(rest, caller)
         if action in ("ls", "list"):
+            await self._reap_abandoned_tabs()
             if "--json" in rest:
-                board = [
-                    {"tab": _tab_label(k), **{f: m.get(f) for f in ("who", "purpose", "last_line", "last_at")}}
-                    for k, m in self.browser._tab_meta.items()
-                ]
+                async with self._registry_lock:
+                    board = [
+                        {
+                            "tab": _tab_label(k),
+                            **{
+                                field: m.get(field)
+                                for field in ("who", "purpose", "last_line", "last_at")
+                            },
+                            "active_requests": [
+                                {"request_id": request_id, **request}
+                                for request_id, request in m.get(
+                                    "active_requests", {}
+                                ).items()
+                            ],
+                        }
+                        for k, m in self.browser._tab_meta.items()
+                    ]
                 return True, json.dumps(board)
-            return self._status()
+            return await self._status_async()
         if action == "close":
-            return self._closetab(rest, caller)
+            return await self._closetab_async(rest, caller)
         return 2, self._tab_usage()
 
     def _tab_open(self, rest, caller: str = "") -> tuple:
@@ -549,7 +789,7 @@ class BrowserDaemon:
             f"see who owns what:  co browser tab ls"
         )
 
-    def _reap_abandoned_tabs(self) -> None:
+    async def _reap_abandoned_tabs(self) -> None:
         """Close tabs whose opener never came back. Runs before tab listings.
 
         Owner-only closing means a crashed agent's tab would otherwise live as
@@ -558,19 +798,26 @@ class BrowserDaemon:
         for ABANDONED_AFTER (3 days). Every reclamation is logged, so the first
         person surprised by one can find out why.
         """
-        now = time.time()
-        for key, meta in list(self.browser._tab_meta.items()):
-            if key is None:  # main is shared and never reaped
-                continue
-            if _held_by_other(meta, ""):  # someone is actively driving it
-                continue
-            last = meta.get("last_at") or meta.get("claim_at")
-            if not last or now - last < ABANDONED_AFTER:
-                continue
-            owner = meta.get("opened_by") or meta.get("who") or "unknown"
-            self.browser.close_tab(_tab_label(key))
-            print(f"[reap] closed tab '{_tab_label(key)}' opened by {owner} — "
-                  f"idle {_ago(now - last)}", file=sys.stderr, flush=True)
+        async with self._registry_lock:
+            now = time.time()
+            for key, meta in list(self.browser._tab_meta.items()):
+                if key is None:  # main is shared and never reaped
+                    continue
+                if _held_by_other(meta, ""):  # someone is actively driving it
+                    continue
+                last = meta.get("last_at") or meta.get("claim_at")
+                if not last or now - last < ABANDONED_AFTER:
+                    continue
+                owner = meta.get("opened_by") or meta.get("who") or "unknown"
+                result = self.browser.close_tab(_tab_label(key))
+                if inspect.isawaitable(result):
+                    await result
+                print(
+                    f"[reap] closed tab '{_tab_label(key)}' opened by {owner} — "
+                    f"idle {_ago(now - last)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     def _tab_not_yours(self, key, owner: str) -> str:
         """Error-as-documentation: you may close your own tabs, not other agents'."""
@@ -594,127 +841,580 @@ class BrowserDaemon:
             f"when finished:    co browser tab close {name}"
         )
 
+    async def _unknown_tab_async(self, name: str) -> str:
+        board = await self._browser_tab_status()
+        return (
+            f"no tab named '{name}'\n\n"
+            f"{board}\n\n"
+            f"create it first:  co browser tab open {name} --who <your-name> --for \"<one-line purpose>\"\n"
+            f"then target it on every command, including do:\n"
+            f"                  co browser -t {name} <verb> [args]\n"
+            f"when finished:    co browser tab close {name}"
+        )
+
     def _newtab(self, line, tokens, caller: str = "") -> tuple:
-        """Legacy `newtab <url> --purpose=.. --who=..`: register + occupy a fresh tab.
-        Unlike the old behavior it does NOT repoint what bare commands target."""
+        """Synchronous compatibility bridge for the legacy newtab tests."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._newtab_async(line, tokens, caller))
+        raise RuntimeError("await _newtab_async() inside an event loop")
+
+    async def _newtab_async(self, line, tokens, caller: str = "") -> tuple:
+        """Register and occupy a fresh tab without changing bare targeting."""
         # A numeric id can collide with a NAME someone registered via `tab open` —
         # skip taken keys or this would occupy another agent's live tab.
-        while str(self._next_tab) in self.browser._tab_meta:
+        async with self._registry_lock:
+            while str(self._next_tab) in self.browser._tab_meta:
+                self._next_tab += 1
+            key = str(self._next_tab)
             self._next_tab += 1
-        key = str(self._next_tab)
-        self._next_tab += 1
-        self.browser._bind_session(key)
-        self.last_command = {"line": line, "at": time.time()}
-        ok, payload = self._call_verb("newtab", tokens[1:])
-        if not ok:
-            return False, payload
-        meta = self.browser._tab_meta.get(key)
-        if meta is not None and caller:
-            meta["caller"], meta["claim_at"] = caller, time.time()
-        return True, f"[tab {key}] {payload}"
+            self.browser._bind_session(key)
+            self.last_command = {"line": line, "at": time.time()}
+            ok, payload = await self._call_verb_async("newtab", tokens[1:])
+            if not ok:
+                return False, payload
+            meta = self.browser._tab_meta.get(key)
+            if meta is not None and caller:
+                meta["caller"], meta["claim_at"] = caller, time.time()
+            return True, f"[tab {key}] {payload}"
 
     def _closetab(self, args, caller: str = "") -> tuple:
-        """Close ONE tab, leaving the rest of the browser open."""
+        """Synchronous compatibility bridge for close-tab tests."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._closetab_async(args, caller))
+        raise RuntimeError("await _closetab_async() inside an event loop")
+
+    async def _closetab_async(self, args, caller: str = "") -> tuple:
+        """Close one tab atomically with respect to claim admission."""
         if not args:
             return 2, "usage: co browser tab close <tab>   (a name from `co browser tab ls`)"
         target = args[0]
         key = _key(target)
-        meta = self.browser._tab_meta.get(key)
-        if key not in self.browser._pages and meta is None:
-            if key is None:  # main always exists conceptually; nothing to release is fine
-                return True, "main is already free — nothing to close."
-            return 3, self._unknown_tab(target)
-        # Closing someone else's tab is fine once the time they asked for has
-        # passed — every agent here is cooperative, and a declaration that
-        # elapsed with the tab still open means its owner is gone, not busy.
-        # Before that, refuse: 120s of silence is not evidence a task ended.
-        if meta and _held_by_other(meta, caller):
-            return 4, self._tab_busy(key, meta)
-        self.last_command = {"line": "closetab " + target, "at": time.time()}
-        # close_tab releases the page, the registration (claim included), AND the
-        # remembered URL — a later tab reusing this name must start blank, never
-        # on the previous owner's page.
-        message = self.browser.close_tab(_tab_label(key))
-        return True, f"Closed tab {_tab_label(key)}. {message}"
-
-    def _run_nl(self, command: str) -> tuple:
-        """Hand the command to the NL agent driving the same live browser."""
-        api_key = resolve_api_key()
-        if not api_key:
-            return False, "Browser agent requires authentication. Run: co auth"
-        try:
-            result = build_browser_agent(self.browser, api_key).input(command)
-        except Exception as exc:
-            return False, f"{type(exc).__name__}: {exc}"
-        return True, _stringify(result)
+        async with self._registry_lock:
+            meta = self.browser._tab_meta.get(key)
+            if key not in self.browser._pages and meta is None:
+                if key is None:  # main always exists conceptually; nothing to release is fine
+                    return True, "main is already free — nothing to close."
+                return 3, await self._unknown_tab_async(target)
+            # Closing someone else's tab is fine once the time they asked for has
+            # passed — every agent here is cooperative, and a declaration that
+            # elapsed with the tab still open means its owner is gone, not busy.
+            # Before that, refuse: 120s of silence is not evidence a task ended.
+            if meta and _held_by_other(meta, caller):
+                return 4, self._tab_busy(key, meta)
+            self.last_command = {"line": "closetab " + target, "at": time.time()}
+            # close_tab releases the page, registration/claim, and remembered URL.
+            result = self.browser.close_tab(_tab_label(key))
+            message = await result if inspect.isawaitable(result) else result
+            return True, f"Closed tab {_tab_label(key)}. {message}"
 
     def serve(self):
-        self._bind()
-        atexit.register(self._cleanup)
-        if threading.current_thread() is threading.main_thread():
-            signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+        """Own one event loop for the daemon's complete lifetime."""
+        asyncio.run(self.serve_async())
 
-        while True:
+    async def serve_async(self):
+        self._loop = asyncio.get_running_loop()
+        try:
+            # Bind before preparing the runtime, not after. `_bind` takes the
+            # singleton lock and a loser exits there; preparing first meant a
+            # loser had already written proxy-auth.json (its path derives from
+            # the shared profile) and started a gateway, and its
+            # `finally: _shutdown_async()` then removed the *winner's* live
+            # credential on the way out — a silent, unattributable 407 for the
+            # daemon that actually owns the socket.
+            self._bind()
+            await self._prepare_runtime()
+            atexit.register(self._cleanup)
+            if threading.current_thread() is threading.main_thread():
+                with contextlib.suppress(NotImplementedError, RuntimeError):
+                    self._loop.add_signal_handler(signal.SIGTERM, self._begin_shutdown)
+            if transport.IS_WINDOWS:
+                self._transport_pool = ThreadPoolExecutor(
+                    max_workers=WINDOWS_TRANSPORT_WORKERS,
+                    thread_name_prefix="browser-transport",
+                )
+                await self._serve_windows()
+            else:
+                raw_listener = self._srv
+                self._srv = await asyncio.start_unix_server(
+                    self._accept_posix_client,
+                    sock=raw_listener,
+                    limit=MAX_REQUEST_BYTES + 1,
+                    backlog=MAX_IN_FLIGHT,
+                )
+                await self._srv.serve_forever()
+        except asyncio.CancelledError:
+            if not self._closing:
+                raise
+        except OSError:
+            if not self._closing:
+                raise
+        finally:
+            await self._shutdown_async()
+
+    async def _prepare_runtime(self) -> None:
+        """Start private network authority before exposing the daemon endpoint."""
+        if not self._remote_egress:
+            return
+        if self._gateway is not None or self.browser is not None:
+            if (
+                self._gateway is not None
+                and self.browser is not None
+                and self._gateway.is_running
+            ):
+                return
+            raise RuntimeError("private browser runtime is only prepared once")
+        from connectonion.network.host.egress_gateway import EgressGateway
+        from connectonion.network.host.private_browser_runtime import (
+            load_shared_proxy_file,
+            proxy_auth_path_for_profile,
+            remote_browser_launch_policy,
+            remove_proxy_auth_file,
+            write_proxy_auth_file,
+        )
+        from connectonion.network.proxy_egress import shared_egress_gateway
+
+        gateway = (
+            self._gateway_factory()
+            if self._gateway_factory is not None
+            else (
+                shared_egress_gateway(load_shared_proxy_file(self._shared_proxy_path))
+                if self._shared_proxy_path is not None
+                else EgressGateway()
+            )
+        )
+        endpoint = await gateway.start()
+        proxy_auth_path = proxy_auth_path_for_profile(self._profile_dir)
+        try:
+            write_proxy_auth_file(proxy_auth_path, endpoint)
+            policy = remote_browser_launch_policy(
+                self._profile_dir,
+                endpoint,
+                proxy_auth_path,
+            )
+            browser = self._browser_factory(
+                headless=self._headless,
+                engine_mode=self.engine_mode,
+                launch_policy=policy,
+                egress_gateway=gateway,
+            )
+        except BaseException:
+            remove_proxy_auth_file(proxy_auth_path)
+            await gateway.stop()
+            raise
+        self._gateway = gateway
+        self._proxy_auth_path = proxy_auth_path
+        self.browser = browser
+
+    def _accept_posix_client(self, reader, writer) -> None:
+        """Admit at most ``MAX_IN_FLIGHT`` clients; shed excess immediately."""
+        if self._closing or len(self._client_tasks) >= MAX_IN_FLIGHT:
+            writer.transport.abort()
+            return
+        task = asyncio.create_task(self._handle_posix_client(reader, writer))
+        self._track_client(task)
+
+    def _track_client(self, task: asyncio.Task) -> None:
+        self._client_tasks.add(task)
+        task.add_done_callback(self._client_done)
+
+    def _client_done(self, task: asyncio.Task) -> None:
+        self._client_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            print(f"browser client task failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    async def _read_posix_request(self, reader):
+        deadline = asyncio.get_running_loop().time() + REQUEST_TIMEOUT
+        try:
+            prefix = await asyncio.wait_for(
+                reader.readexactly(4), timeout=REQUEST_TIMEOUT
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError("request timed out") from exc
+        except asyncio.IncompleteReadError as exc:
+            return exc.partial.decode().strip()
+        if prefix == OIP_MAGIC:
             try:
-                conn = self._accept()
+                length_bytes = await asyncio.wait_for(
+                    reader.readexactly(4), timeout=REQUEST_TIMEOUT
+                )
+                size = frame_size_from_header(prefix + length_bytes)
+                payload = await asyncio.wait_for(
+                    reader.readexactly(size), timeout=REQUEST_TIMEOUT
+                )
+            except asyncio.IncompleteReadError as exc:
+                raise ProtocolError("peer closed during an OIP frame") from exc
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError("request timed out") from exc
+            return decode_frame(prefix + length_bytes + payload)
+
+        chunks = [prefix]
+        size = len(prefix)
+        while True:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError("request timed out")
+            try:
+                chunk = await asyncio.wait_for(reader.read(65536), timeout=remaining)
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError("request timed out") from exc
+            if not chunk:
+                return b"".join(chunks).decode().strip()
+            size += len(chunk)
+            if size > MAX_REQUEST_BYTES:
+                raise ValueError(
+                    f"request exceeds the {MAX_REQUEST_BYTES}-byte limit"
+                )
+            chunks.append(chunk)
+
+    async def _handle_posix_client(self, reader, writer) -> None:
+        request = ""
+        try:
+            request = await self._read_posix_request(reader)
+            if isinstance(request, oip_wire.Envelope):
+                async def send_frame(frame):
+                    writer.write(encode_frame(frame))
+                    await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
+
+                async def receive_frame():
+                    return await asyncio.wait_for(
+                        read_async_frame(reader), timeout=REQUEST_TIMEOUT
+                    )
+
+                await self._serve_oip_command(request, send_frame, receive_frame)
+                return
+            ok, payload = await self._dispatch_boundary(request)
+            writer.write(self._reply_bytes(ok, payload))
+            await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
+            if await self._should_stop(ok, payload):
+                self._begin_shutdown()
+        except (
+            BrokenPipeError,
+            ConnectionResetError,
+            TimeoutError,
+            asyncio.TimeoutError,
+        ):
+            preview = request[:80] if isinstance(request, str) else request.request_id
+            print(f"client vanished before reply: {preview!r}", file=sys.stderr)
+        except ValueError as exc:
+            with contextlib.suppress(
+                BrokenPipeError,
+                ConnectionResetError,
+                TimeoutError,
+                asyncio.TimeoutError,
+            ):
+                writer.write(self._reply_bytes(2, str(exc)))
+                await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
+        finally:
+            writer.close()
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                await writer.wait_closed()
+
+    async def _serve_windows(self) -> None:
+        slots = asyncio.Semaphore(MAX_IN_FLIGHT)
+        while not self._closing:
+            await slots.acquire()
+            try:
+                conn = await self._transport_call(self._accept)
             except OSError:
-                # Closing the listener is how this daemon is told to stop, and
-                # _accept's docstring says the raise is the mechanism. Letting it
-                # escape is the part that hurt: each serve() thread printed a
-                # traceback on the way out, and several doing that at once while
-                # the interpreter finalised aborted the process --
-                #   Fatal Python error: _enter_buffered_busy: could not acquire
-                #   lock for <_io.BufferedWriter name='<stderr>'> at interpreter
-                #   shutdown, possibly due to daemon threads
-                # -- taking whatever was still buffered with it. Seen at the end
-                # of a full test run: everything passed, exit code 134.
-                #
-                # Only when it is us doing the closing. A listener that breaks
-                # while this is supposed to be serving is a real failure.
+                slots.release()
                 if self._closing:
                     return
                 raise
             if conn is None:
-                continue  # a client that failed the auth handshake (Windows) — keep serving
-            request = ""
-            try:
-                request = self._read_request(conn)  # a client that connects then stalls
-                if request is None:                  # must not wedge the single-threaded daemon
-                    conn.close()
-                    continue
-                ok, payload = self.dispatch(request)
-            except Exception as exc:
-                # Request boundary: one bad request (malformed envelope, encoding, an
-                # unexpected dispatch bug) is reported to ITS client — it must never
-                # unwind serve() and take the shared browser down with it.
-                ok, payload = False, f"{type(exc).__name__}: {exc}"
-            try:
-                # ok is True, False, or an int error code (2/3/4) so orchestrating
-                # agents can branch on the exit code without parsing prose.
-                header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
-                self._send_reply(conn, (header + "\n" + payload).encode())
-            except (BrokenPipeError, ConnectionResetError, socket.timeout, EOFError):
-                # The client died or stalled mid-reply (bash timeout, Ctrl-C; on Windows
-                # socket.timeout IS TimeoutError, which bounded_io raises for a reader
-                # that stopped consuming). Its death must not kill the daemon — log the
-                # drop (stderr goes to ~/.co/browser.log) so "my command printed
-                # nothing" stays diagnosable. Any OTHER OSError is a daemon-side fault
-                # and propagates: a broken daemon must die and be respawned, not loop.
-                print(f"client vanished before reply: {request[:80]!r}", file=sys.stderr)
-            finally:
+                slots.release()
+                continue
+            # Listener.close() does not interrupt an already-blocked Windows
+            # named-pipe accept. Shutdown authenticates one internal connection
+            # to wake it; discard that sentinel instead of starting a request
+            # reader that would keep the transport pool alive for 120 seconds.
+            if self._closing:
                 conn.close()
+                slots.release()
+                return
+            task = asyncio.create_task(self._handle_windows_client(conn, slots))
+            self._track_client(task)
 
-            # Exit (releasing the socket) when the browser can no longer be driven, so the
-            # next command spawns a fresh daemon instead of reusing a dead one. This is a
-            # SHARED-context decision, not a per-session one: a command on a page-less tab
-            # must not be read as "browser dead" and tear down every other session's tabs.
-            alive = self.browser._context_is_alive()
+    async def _transport_call(self, fn):
+        return await asyncio.get_running_loop().run_in_executor(
+            self._transport_pool, fn
+        )
+
+    async def _handle_windows_client(self, conn, slots) -> None:
+        request = ""
+        try:
+            request = await self._transport_call(lambda: self._read_request(conn))
+            if request is None:
+                return
+            if isinstance(request, oip_wire.Envelope):
+                async def send_frame(frame):
+                    await self._transport_call(
+                        lambda: self._send_reply(conn, encode_frame(frame))
+                    )
+
+                async def receive_frame():
+                    data = await self._transport_call(
+                        lambda: transport.bounded_io(
+                            conn,
+                            lambda: conn.recv_bytes(),
+                            REQUEST_TIMEOUT,
+                        )
+                    )
+                    return decode_frame(data)
+
+                await self._serve_oip_command(request, send_frame, receive_frame)
+                return
+            if len(request.encode()) > MAX_REQUEST_BYTES:
+                ok, payload = 2, f"request exceeds the {MAX_REQUEST_BYTES}-byte limit"
+            else:
+                ok, payload = await self._dispatch_boundary(request)
+            await self._transport_call(
+                lambda: self._send_reply(conn, self._reply_bytes(ok, payload))
+            )
+            if await self._should_stop(ok, payload):
+                self._begin_shutdown()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, EOFError):
+            preview = request[:80] if isinstance(request, str) else request.request_id
+            print(f"client vanished before reply: {preview!r}", file=sys.stderr)
+        except ValueError as exc:
+            message = str(exc)
+            with contextlib.suppress(
+                BrokenPipeError, ConnectionResetError, TimeoutError, EOFError
+            ):
+                await self._transport_call(
+                    lambda: self._send_reply(conn, self._reply_bytes(2, message))
+                )
+        finally:
+            try:
+                conn.close()
+            finally:
+                slots.release()
+
+    async def _dispatch_boundary(self, request: str) -> tuple:
+        try:
+            return await self.dispatch_async(request)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return False, f"{type(exc).__name__}: {exc}"
+
+    async def _serve_oip_command(self, request, send_frame, receive_frame) -> None:
+        """Serve one typed command and any artifact streams on the same channel."""
+        staged = None
+        try:
+            if request.WhichOneof("frame") != "command":
+                raise ProtocolError("the first browser frame must be BrowserCommand")
+            command = request.command
+            if not command.argv:
+                raise ProtocolError("browser command argv is empty")
+            raw = json.dumps(
+                {
+                    "v": OIP_VERSION,
+                    "caller": command.caller,
+                    "account": command.account,
+                    "tab": command.tab if command.has_tab else None,
+                    "line": shlex.join(command.argv),
+                    "raw": False,
+                    "engine": command.engine or "auto",
+                }
+            )
+            ok, payload = await self.dispatch_async(
+                raw,
+                artifact_stager=self._artifact_stager,
+                request_id=request.request_id,
+            )
+            staged = payload if isinstance(payload, StagedArtifact) else None
+            exit_code = 0 if ok is True else (1 if ok is False else int(ok))
+            result_text = "" if staged is not None else str(payload)
+            await send_frame(
+                oip_wire.Envelope(
+                    protocol_version=OIP_VERSION,
+                    request_id=request.request_id,
+                    sequence=0,
+                    result=oip_wire.BrowserResult(
+                        exit_code=exit_code,
+                        text=result_text,
+                        artifact_count=1 if staged is not None else 0,
+                    ),
+                )
+            )
+            if staged is not None:
+                await send_frame(staged.open_frame())
+                for data_frame in staged.data_frames():
+                    await send_frame(data_frame)
+                finished = staged.fin_frame()
+                await send_frame(finished)
+                commit = await receive_frame()
+                if commit.WhichOneof("frame") != "stream_commit":
+                    raise ProtocolError("artifact receiver did not send StreamCommit")
+                if (
+                    commit.request_id != request.request_id
+                    or commit.stream_id != staged.stream_id
+                    or commit.stream_commit.actual_size != staged.size
+                    or bytes(commit.stream_commit.sha256) != staged.digest
+                ):
+                    raise ProtocolError(
+                        "artifact StreamCommit does not match the stream "
+                        f"(request={commit.request_id == request.request_id}, "
+                        f"stream={commit.stream_id}/{staged.stream_id}, "
+                        f"size={commit.stream_commit.actual_size}/{staged.size}, "
+                        f"digest={bytes(commit.stream_commit.sha256) == staged.digest})"
+                    )
+                # Success is observable only after daemon ownership has ended.
+                # Without this confirmation the client can return while the
+                # staging file still exists (a real race on Windows named pipes).
+                staged.discard()
+                await send_frame(
+                    oip_wire.Envelope(
+                        protocol_version=OIP_VERSION,
+                        request_id=request.request_id,
+                        stream_id=staged.stream_id,
+                        sequence=commit.sequence + 1,
+                        offset=staged.size,
+                        stream_commit=oip_wire.StreamCommit(
+                            actual_size=staged.size,
+                            sha256=staged.digest,
+                        ),
+                    )
+                )
+                staged = None
+            if await self._should_stop(ok, result_text):
+                self._begin_shutdown()
+        except (ProtocolError, ValueError) as exc:
+            await send_frame(
+                oip_wire.Envelope(
+                    protocol_version=OIP_VERSION,
+                    request_id=request.request_id or uuid.uuid4().hex,
+                    failure=oip_wire.ProtocolFailure(
+                        code="PROTOCOL_ERROR", message=str(exc)
+                    ),
+                )
+            )
+        finally:
+            if staged is not None:
+                staged.discard()
+
+    @staticmethod
+    def _reply_bytes(ok, payload: str) -> bytes:
+        header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
+        return (header + "\n" + payload).encode()
+
+    async def _should_stop(self, ok, payload: str) -> bool:
+        """Serialize shared runtime health transitions after concurrent replies."""
+        async with self._health_lock:
+            if ok is False and payload.startswith("TimeoutError:"):
+                self._had_browser = True
+                self._defer_context_probe = True
+                return False
+            closed = payload.startswith("Browser closed") or (
+                ok is False
+                and (
+                    payload.startswith("TargetClosedError:")
+                    or "context or browser has been closed" in payload
+                )
+            )
+            if self._defer_context_probe:
+                if self._launch_failed() or closed:
+                    return True
+                if ok is True and payload.startswith("Navigated to "):
+                    self._defer_context_probe = False
+                else:
+                    return False
+            if closed:
+                return True
+            if getattr(self.browser, "_closing", False):
+                # A concurrent bare close owns teardown and will stop the server
+                # after its reply. Do not race that teardown with a health probe.
+                return False
+            alive = await self._browser_is_alive()
             self._had_browser = self._had_browser or alive
-            #   - a launch that never produced a context (Chrome aborted at startup) — a
-            #     daemon that can't open a browser must not linger as a socket-holding zombie;
-            #   - a context that was alive and has since closed/crashed.
-            if self.browser._launch_failed() or (self._had_browser and not alive):
-                break
+            return self._launch_failed() or closed or (self._had_browser and not alive)
+
+    def _begin_shutdown(self) -> None:
+        if self._shutdown_started:
+            return
+        self._shutdown_started = True
+        self._closing = True
+        if (
+            transport.IS_WINDOWS
+            and self._srv
+            and self._loop is not None
+            and self._transport_pool is not None
+        ):
+            # multiprocessing.connection.Listener.close() does not wake a
+            # ConnectNamedPipe already blocked in another thread. Connect with
+            # our own key before closing the listener; _serve_windows discards
+            # this sentinel and can then enter deterministic shutdown.
+            self._loop.run_in_executor(
+                self._transport_pool, self._wake_windows_accept
+            )
+        elif self._srv:
+            self._srv.close()
+
+    def _wake_windows_accept(self) -> None:
+        """Authenticate one no-payload client so a blocked pipe accept returns."""
+        try:
+            conn = transport.win_connect(self.sock_path, self._authkey)
+        except (
+            transport.AuthenticationError,
+            EOFError,
+            FileNotFoundError,
+            ConnectionError,
+            OSError,
+        ):
+            return
+        conn.close()
+
+    async def _shutdown_async(self) -> None:
+        self._closing = True
+        if self._srv:
+            self._srv.close()
+            wait_closed = getattr(self._srv, "wait_closed", None)
+            if wait_closed is not None:
+                await wait_closed()
+        current = asyncio.current_task()
+        pending = [task for task in self._client_tasks if task is not current]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._client_tasks.clear()
+        close = getattr(self.browser, "close", None)
+        if callable(close):
+            try:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as exc:
+                print(
+                    f"browser cleanup failed: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+        from connectonion.network.host.private_browser_runtime import (
+            remove_proxy_auth_file,
+        )
+
+        remove_proxy_auth_file(self._proxy_auth_path)
+        self._proxy_auth_path = None
+        if self._gateway is not None:
+            try:
+                await self._gateway.stop()
+            except Exception as exc:
+                print(
+                    f"egress gateway cleanup failed: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+            self._gateway = None
+        if self._transport_pool is not None:
+            self._transport_pool.shutdown(wait=True, cancel_futures=True)
+            self._transport_pool = None
+        self._remove_endpoint()
 
     def _bind(self):
         """Bind the socket, yielding to any daemon that already owns it.
@@ -728,7 +1428,7 @@ class BrowserDaemon:
         fresh inode while a second still holds the old one.
 
         A refused probe is ambiguous: the owner died leaving a stale socket, OR the
-        owner is alive with a full backlog (a long `do` while clients hammer it — the
+        owner is alive with a full bounded backlog (many clients arriving together — the
         exact situation that spawns us). Unlinking a BUSY daemon's socket forks the
         world: two daemons, two Chromes fighting over one profile, and the original
         becomes an unreachable zombie. The pid file the owner wrote at bind time
@@ -737,11 +1437,14 @@ class BrowserDaemon:
         The lifetime lock, pid-file location, and (on Windows) the named-pipe wire live
         behind `transport` so POSIX behavior is byte-identical while Windows gets native
         named pipes with an HMAC-authenticated handshake."""
+        transport.ensure_endpoint_parent(self.sock_path)
         self._bind_lock = transport.acquire_singleton_lock(transport.lock_path(self.sock_path))
         if self._bind_lock is None:
             sys.exit(0)  # another daemon is binding or already serving
         if transport.IS_WINDOWS:
-            self._authkey = transport.load_or_create_authkey()  # the pipe wire's HMAC secret
+            self._authkey = transport.load_or_create_authkey(
+                self._authkey_path
+            )  # the pipe wire's HMAC secret
             self._bind_windows()
         else:
             self._bind_posix()
@@ -761,7 +1464,7 @@ class BrowserDaemon:
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
         Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
-        self._srv.listen(8)
+        self._srv.listen(MAX_IN_FLIGHT)
 
     def _bind_windows(self):
         """Named-pipe bind. A pipe vanishes WITH its owning process, so 'no pipe' is
@@ -793,20 +1496,27 @@ class BrowserDaemon:
         """Accept one client. Windows hands back only AUTHENTICATED connections — the
         HMAC challenge runs deadline-bounded in transport.accept_authenticated (mpc's
         own accept()-time handshake blocks forever on a stalled client), and a failed
-        handshake returns None instead of killing the single-threaded loop. A dead
+        handshake returns None instead of killing the asyncio accept loop. A dead
         listener still raises out on both platforms so a dying daemon exits."""
         if transport.IS_WINDOWS:
             return transport.accept_authenticated(self._srv, self._authkey)
         conn, _ = self._srv.accept()
         return conn
 
-    def _read_request(self, conn) -> str:
+    def _read_request(self, conn):
         """Read one request with EVERY blocking step bounded at 120s — waiting for the
         request, and (Windows) a partial frame from a stalled client. Returns the
         text, or None when the client stalled or vanished."""
         if transport.IS_WINDOWS:
             try:
-                return transport.bounded_io(conn, conn.recv_bytes, 120).decode().strip()
+                data = transport.bounded_io(
+                    conn,
+                    lambda: conn.recv_bytes(MAX_REQUEST_BYTES + 1),
+                    REQUEST_TIMEOUT,
+                )
+                if data.startswith(OIP_MAGIC):
+                    return decode_frame(data)
+                return data.decode().strip()
             except (TimeoutError, EOFError):
                 return None  # stalled mid-frame, or died before sending
         conn.settimeout(120)
@@ -820,42 +1530,35 @@ class BrowserDaemon:
         native send deadline, so a stalled-but-alive reader (full pipe) is bounded the
         same way — the daemon must never wedge on a client that stopped reading."""
         if transport.IS_WINDOWS:
-            transport.bounded_io(conn, lambda: conn.send_bytes(data), 120)
+            transport.bounded_io(
+                conn, lambda: conn.send_bytes(data), REPLY_TIMEOUT
+            )
         else:
             conn.sendall(data)
 
     def _cleanup(self):
-        self._closing = True   # read by serve() -- see the accept loop
-        # Wake a thread already blocked in accept(). Closing the listener raises
-        # out of accept() on macOS, which is where the abort was seen -- but not
-        # on Linux, where accept() simply keeps blocking and serve() never
-        # notices the flag. CI caught that: this file's own test failed on all
-        # four Linux jobs and passed on macOS and Windows.
-        #
-        # One throwaway connection is enough; connect_ex reports failure as a
-        # return value rather than an exception, and a failure here means the
-        # socket is already gone, which is the outcome we wanted anyway.
-        if self._srv and not transport.IS_WINDOWS and os.path.exists(self.sock_path):
-            waker = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            waker.connect_ex(self.sock_path)
-            waker.close()
-        # Stop accepting FIRST: closing/unlinking the socket before anything slow
-        # means a client connecting during shutdown fails immediately and spawns
-        # a fresh daemon, instead of reaching a daemon that will never accept its request.
+        """Thread-safe shutdown hook used by signals, tests, and ``atexit``."""
+        self._closing = True
+        if self._loop is not None and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._begin_shutdown)
+            return
         if self._srv:
-            self._srv.close()  # on Windows, mpc.Listener.close() removes the pipe itself
-        # Only remove what is still OURS (pid file names this process): a successor
-        # daemon may already own the path — a late-exiting zombie deleting the live
-        # socket or pid file would re-arm the very bug the pid file exists to prevent.
+            self._srv.close()
+        self._remove_endpoint()
+
+    def _remove_endpoint(self) -> None:
+        """Remove only endpoint state still owned by this process."""
         pid_file = Path(transport.pid_path(self.sock_path))
-        if pid_file.exists() and pid_file.read_text(encoding="utf-8").strip() == str(os.getpid()):
+        try:
+            owner = pid_file.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return
+        if owner == str(os.getpid()):
             if not transport.IS_WINDOWS and os.path.exists(self.sock_path):
-                os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
-            pid_file.unlink()
-        # No browser.close() here: by the time atexit runs, the interpreter has
-        # already shut the worker thread's executor down, so an in-process close
-        # can only raise ("cannot schedule new futures after shutdown"). Chrome
-        # exits with us anyway — the Playwright driver pipe closes on our death.
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
+            with contextlib.suppress(FileNotFoundError):
+                pid_file.unlink()
 
 
 def _ago(seconds: float) -> str:
@@ -896,9 +1599,24 @@ def main():
         for stream in (sys.stdout, sys.stderr):
             if hasattr(stream, "reconfigure"):
                 stream.reconfigure(encoding="utf-8", errors="replace")
-    sock_path = sys.argv[1] if len(sys.argv) > 1 else default_sock_path()
-    headless = "--headless" in sys.argv[2:]
-    BrowserDaemon(sock_path, headless=headless).serve()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("sock_path", nargs="?", default=default_sock_path())
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--profile-dir")
+    parser.add_argument("--authkey-file")
+    parser.add_argument("--remote-egress", action="store_true")
+    parser.add_argument("--shared-proxy-file")
+    parser.add_argument("--engine", choices=("auto", "system", "onion"), default="auto")
+    args = parser.parse_args()
+    BrowserDaemon(
+        args.sock_path,
+        headless=args.headless,
+        engine_mode=args.engine,
+        profile_dir=args.profile_dir,
+        authkey_path=args.authkey_file,
+        remote_egress=args.remote_egress,
+        shared_proxy_path=args.shared_proxy_file,
+    ).serve()
 
 
 if __name__ == "__main__":

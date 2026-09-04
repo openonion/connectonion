@@ -38,10 +38,11 @@ import tempfile
 from pathlib import Path
 
 from charset_normalizer import from_bytes
-from connectonion import transcribe
 from docx import Document
-from pypdf import PdfReader
 from pptx import Presentation
+from pypdf import PdfReader
+
+from connectonion import transcribe
 
 # Extensions handled by a dedicated path; everything else is read as text.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}

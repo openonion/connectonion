@@ -34,6 +34,25 @@ with BrowserAutomation() as browser:
     browser.close()
 ```
 
+### Synchronous API, async runtime
+
+`BrowserAutomation` remains synchronous in 1.8: existing calls, context managers,
+method names, signatures, and return values do not require an `await`. Internally,
+the class owns one async browser core on a private event-loop thread. This removes
+the old synchronous Patchright implementation from the execution path while
+preserving existing Python and Agent integrations.
+
+Calling these synchronous methods from a thread that already runs an asyncio loop
+is supported; the call blocks that caller until its browser operation completes.
+Calling from the browser's own private runtime thread raises a clear `RuntimeError`
+instead of deadlocking. An unbound `close()` closes the shared browser and joins the
+runtime thread; a session-bound `close()` releases only that session's tab.
+
+Compatibility policy for 1.8: no public `BrowserAutomation` method is deprecated,
+and the async core remains internal. `LegacyBrowserAutomation` is an internal test
+oracle for comparing the 1.7 contract; it is not a supported import and may be
+removed after the 1.8 transition without a deprecation period.
+
 ## Persistent Profile
 
 Browser state (cookies, sessions, localStorage) is saved automatically to `~/.co/browser_profile/`. On subsequent runs the browser is already logged into any site you've previously authenticated.
@@ -98,6 +117,11 @@ browser.click("email input field")       # Uses AI to find by description
 ```
 
 Element finding uses a vision LLM — describe what you see, not a CSS selector.
+The 1.8 async core keeps that same selection contract: it awaits DOM extraction,
+then runs the synchronous model match outside the browser event loop. A slow
+provider may delay the requesting tab, but it does not stop unrelated tabs from
+reading or acting. Main-page, named-iframe, and open-shadow-root targets retain
+their extracted locators or coordinate fallbacks.
 
 When you have a stable CSS selector, click it directly:
 
@@ -131,6 +155,13 @@ browser.double_click("the file name")   # Double-click to open/select
 
 `mouse_click(x, y)` is useful after `hover()` — clicking by description would re-scan the DOM and dismiss the hover menu.
 
+Stable workflows can avoid a page rescan with
+`click_element_by_selector(selector, index=0, text="")` and
+`type_text_by_selector(selector, text, index=0)`. Selector clicks use humanized
+pointer input when an element exposes a bounding box and retain a forced locator
+fallback for elements without one. Use `frame_url_contains` or `frame_name` when
+the target lives in an iframe; the index applies across all matching frames.
+
 ### System Info
 
 ```python
@@ -153,7 +184,26 @@ browser.keyboard_press("Escape")
 browser.keyboard_press("Tab")
 ```
 
-After `keyboard_type()`, call `take_screenshot()` to verify the text landed in the right field.
+Before replacing text, inspect focus instead of typing a canary or discovering a
+missed click after state has been destroyed:
+
+```python
+focus = browser.get_focused_element()
+# JSON includes tag, role, aria_label, contenteditable, and is_editable.
+# Password values are never returned.
+browser.keyboard_press("Meta+a")
+browser.keyboard_press("Backspace")
+```
+
+`keyboard_press()` refuses select-all, Backspace, and Delete when the focused
+element is not editable. For an intentional page-level shortcut, pass
+`allow_non_editable=True`. After `keyboard_type()`, call `take_screenshot()` to
+verify the text landed in the expected field.
+
+Inspection covers the top-level document and open shadow roots. Focus inside an
+iframe is reported as the iframe and fails the editable check; closed shadow
+roots are likewise opaque. Target the field directly in those cases, and only
+use the override after independently verifying the destination.
 
 ### Scrolling
 
@@ -196,6 +246,27 @@ browser.upload_file_after_click_by_selector(
 
 Both upload helpers accept `frame_url_contains` and `frame_name` for editors that render upload controls inside iframes. Pass `index` when the selector matches multiple file inputs or upload buttons.
 
+### Local Page and Frame Scripts
+
+Keep site-specific extraction or verification logic in a reviewed local
+JavaScript file, then execute it in the current authenticated page:
+
+```python
+# verify.js: (args) => ({ ok: document.title === args.title })
+browser.run_page_script("verify.js", '{"title": "Dashboard"}')
+
+browser.run_frame_script(
+    "verify.js",
+    '{"title": "Composer"}',
+    frame_name="editor",
+)
+```
+
+`run_frame_script()` scans matching frames and, by default, stops at the first
+object that returns `{"ok": true}`. Set `first_ok=False` to retain results from
+every matching frame. Relative script paths resolve from the current working
+directory; arguments must be valid JSON.
+
 ### Waiting
 
 ```python
@@ -233,7 +304,15 @@ agent.input("Navigate to github.com/trending and screenshot the page")
 agent.input("Fill in the contact form on example.com with test data")
 ```
 
-One `BrowserAutomation` instance is safe to reuse across turns and concurrent hosted sessions. Public methods are serialized onto one internal browser worker thread, so Playwright's sync API is always called from the thread that owns it. When `bind_browser_session` is enabled, each hosted session gets its own tab in the shared browser context.
+One `BrowserAutomation` instance is safe to reuse across turns and concurrent hosted sessions. Public calls remain synchronous, but the facade submits them to one owned async browser runtime. When `bind_browser_session` is enabled, each hosted session gets its own tab in the shared browser context.
+
+The async core remains internal; do not import it as an application API. Both the
+facade and `co browser` daemon use that core: independent tabs interleave,
+same-tab operations serialize, and the POSIX/Windows transports bound
+connections, reads, writes, and shutdown. The lifecycle, concurrency,
+cancellation, and compatibility boundaries are recorded in
+[DD-054](../design-decisions/054-one-async-browser-runtime.md).
+`BrowserAutomation` remains the supported Python API.
 
 ## Common Patterns
 

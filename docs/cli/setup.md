@@ -28,7 +28,7 @@ There is **no separate "bundle" directory**. `~/.co/` itself is what `oo-publish
 
 ## What it does (in order)
 
-1. **Identity.** If `~/.co/keys/agent.key` is missing, runs `co init --yes` in a temp directory to bootstrap one (the temp dir prevents `agent.py` / `.co/host.yaml` pollution).
+1. **Identity.** If `~/.co/keys/agent.key` is missing, runs global `co init --yes` to bootstrap one. The implementation retains its temporary working directory, but plain init no longer writes project files.
 2. **`~/.co/agent.json`.** Writes the profile with your signing address, alias, bio, and `skills[]`. Skips profile creation if the file already exists unless you pass `--force` (which backs up to `agent.json.bak`).
 3. **Skill library.** Runs `co skills discover && co skills copy --all && co skills manifest`. Idempotent — existing skills are not overwritten without `--force`; skill metadata is merged into `agent.json` with `publish: false` by default.
 4. **Auth check.** Reports whether `OPENONION_API_KEY` is in `keys.env`. If not, suggests `co auth` (publishing works without it; only the `co/*` managed models require it).
@@ -95,13 +95,16 @@ You can also just edit `~/.co/agent.json` directly — it's normal JSON. `oo-pub
 
 | Command | Scope | What it creates |
 |---------|-------|-----------------|
-| `co init` | **Project** (cwd) | `agent.py`, `.env`, `.co/host.yaml`, vibe-coding docs |
+| `co init` | **Global** (`~/.co/`) | Signing identity and `keys.env`; no project files |
+| `co init ./` | **Explicit project** | `.env`, `.co/host.yaml`, docs, and optionally template code |
 | `co setup` | **Global** (`~/.co/`) | `agent.json`, `skills/`, `keys/` (if missing) |
 
-They're orthogonal. Use `co init` to scaffold a new agent *project* (with template code). Use `co setup` to prepare your *identity* for publishing. Both can run on the same machine without conflict.
+Use `co init` for global credentials, `co init ./ --template co-ai` for a
+project scaffold, and `co setup` to prepare the global profile and skill library
+for publishing. These commands can run on the same machine without conflict.
 
 ## See Also
 
-- [co init](README.md#co-init---add-to-existing-directory) — Project scaffold (different scope)
+- [co init](init.md) — Global credentials or an explicit project
 - [co skills](skills.md) — The discover/copy/manifest commands that `co setup` orchestrates
 - publishing workflow — Higher-level flow that signs and announces `~/.co/agent.json`

@@ -15,10 +15,12 @@ Message Flow:
   Responses (with session_id) → Relay → Client
 """
 
-import json
 import asyncio
-from typing import Dict, Any
+import json
+from typing import Any, Dict
+
 import websockets
+
 # websockets >= 14 stopped re-exporting submodules lazily: `websockets.exceptions`
 # only resolves if some other module already imported it. The except at the
 # bottom of serve_loop needs the explicit import or it raises AttributeError
@@ -260,8 +262,9 @@ async def serve_loop(
         addr_data: Agent address data for re-signing heartbeat messages
         session_handler: async (send_msg, recv_msg) -> None, runs protocol for one session
     """
-    from . import announce as announce_module
     from rich.console import Console
+
+    from . import announce as announce_module
     console = Console()
     prefix = "[magenta]\\[host][/magenta]"
 

@@ -20,7 +20,7 @@ Streaming-only event types (llm_call, llm_result, compact, etc.) are not
 reconstructed — they're live-only feedback and don't survive reconnect by design.
 """
 
-from ....core.provider_events import provider_artifact_event
+from ....core.provider_events import provider_artifact_event, provider_message_event
 from ....useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
 
 
@@ -76,6 +76,9 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
     if entry_type == 'provider_artifact':
         return _provider_artifact_item(entry)
 
+    if entry_type == 'provider_message':
+        return _provider_message_item(entry)
+
     # tool_executor.py records two trace entries per tool: 'tool_call' (placeholder before
     # execute, no result) then 'tool_result' (final state, has status/result/timing_ms).
     # Emit one ChatItem per tool from the 'tool_result' so we don't double-render. Match
@@ -99,6 +102,8 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             'result': entry.get('result'),
             'timing_ms': entry.get('timing_ms'),
         }
+        if isinstance(entry.get('summary'), str) and entry['summary']:
+            item['summary'] = entry['summary']
         for key in ('provider', 'invocationId', 'parentToolCallId'):
             if key in entry:
                 item[key] = entry[key]
@@ -164,6 +169,23 @@ def _provider_artifact_item(entry: dict) -> dict | None:
             state_revision=revision,
             thumbnail_data_url=thumbnail,
             alt=alt,
+        )
+    except ValueError:
+        return None
+
+
+def _provider_message_item(entry: dict) -> dict | None:
+    """Replay only bounded, plain-text direct provider conversation content."""
+    try:
+        return provider_message_event(
+            provider=entry.get('provider'),
+            invocation_id=entry.get('invocationId'),
+            parent_tool_call_id=entry.get('parentToolCallId'),
+            message_id=entry.get('messageId'),
+            role=entry.get('role'),
+            text=entry.get('text'),
+            **({"workroom_id": entry["workroomId"]} if "workroomId" in entry else {}),
+            **({"continuation_of": entry["continuationOf"]} if "continuationOf" in entry else {}),
         )
     except ValueError:
         return None
@@ -271,9 +293,12 @@ def _nest_provider_invocations(items: list[dict]) -> list[dict]:
             invocations[invocation_id] = existing
         else:
             activities = existing['activities']
+            messages = existing.get('messages')
             existing.update(item)
             existing['id'] = invocation_id
             existing['activities'] = activities
+            if messages:
+                existing['messages'] = messages
 
     if not invocations:
         return items
@@ -297,6 +322,15 @@ def _nest_provider_invocations(items: list[dict]) -> list[dict]:
             if invocation_id not in emitted:
                 output.append(invocations[invocation_id])
                 emitted.add(invocation_id)
+            continue
+        if (
+            item.get('type') == 'provider_message'
+            and isinstance(invocation_id, str)
+            and invocation_id in invocations
+        ):
+            message = _nested_provider_message(item)
+            if message:
+                _upsert_provider_message(invocations[invocation_id], message)
             continue
         if (
             item.get('type') == 'provider_artifact'
@@ -370,9 +404,29 @@ def _nested_provider_artifact(item: dict) -> dict | None:
     }
 
 
+def _nested_provider_message(item: dict) -> dict | None:
+    required = ('messageId', 'role', 'text')
+    if any(key not in item for key in required):
+        return None
+    if item['role'] not in {'user', 'assistant'}:
+        return None
+    if not isinstance(item['messageId'], str) or not isinstance(item['text'], str):
+        return None
+    return {'id': item['messageId'], 'role': item['role'], 'text': item['text']}
+
+
 def _upsert_provider_activity(invocation: dict, activity: dict) -> None:
     for existing in invocation['activities']:
         if existing.get('id') == activity['id']:
             existing.update(activity)
             return
     invocation['activities'].append(activity)
+
+
+def _upsert_provider_message(invocation: dict, message: dict) -> None:
+    messages = invocation.setdefault('messages', [])
+    for existing in messages:
+        if existing.get('id') == message['id']:
+            existing.update(message)
+            return
+    messages.append(message)

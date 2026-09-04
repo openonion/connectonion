@@ -286,3 +286,81 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
         forward_agent_msgs_to_client(send_msg, io, session_id, result_holder=result_holder, conn=conn)
     )
     return io, task
+
+
+async def forward_provider_workroom_msgs_to_client(send_msg, io, session_id):
+    """Forward a direct Codex Work Room turn without creating an outer COAI reply."""
+    async for event in io.read_msgs_from_agent():
+        if event.get("type") == "approval_needed":
+            io.register_permission_request(event, session_id)
+        if session_id:
+            event["session_id"] = session_id
+        await send_msg(event)
+
+
+async def start_provider_workroom_turn(
+    data,
+    send_msg,
+    conn,
+    route_handlers,
+    storage,
+    registry,
+):
+    """Start a direct Codex continuation from a durable, owned Work Room.
+
+    The prepared callable is supplied by Host configuration and invokes the
+    native provider tool directly. It never calls ``Agent.input()``, so the
+    outer COAI model cannot see, rewrite, or execute the Work Room message.
+    """
+    prepare = route_handlers.get("prepare_provider_workroom_turn")
+    session_id = conn.get("session_id")
+    invocation_id = data.get("invocationId")
+    text = data.get("text")
+    request_id = data.get("requestId")
+    if not callable(prepare) or not isinstance(session_id, str):
+        return None, "not_active"
+    try:
+        prepared = await asyncio.to_thread(
+            prepare,
+            storage,
+            session_id,
+            invocation_id,
+            text,
+            request_id,
+            conn.get("agent_address"),
+        )
+    except Exception:
+        logger.exception("Unable to prepare direct provider Work Room turn")
+        return None, "not_active"
+    if not isinstance(prepared, dict) or not callable(prepared.get("run")):
+        return None, prepared.get("reason", "not_active") if isinstance(prepared, dict) else "not_active"
+
+    existing = registry.get(session_id)
+    if existing and existing.status == "running":
+        return None, "not_active"
+    io = WebSocketIO()
+
+    def worker() -> None:
+        try:
+            prepared["run"](io)
+        except Exception:
+            logger.exception("Direct provider Work Room turn failed for session %s", session_id)
+        finally:
+            registry.mark_session_connected(session_id)
+            io.mark_agent_done()
+
+    thread = threading.Thread(
+        target=worker,
+        name="connectonion-provider-workroom",
+        daemon=True,
+    )
+    if existing:
+        registry.mark_session_running(session_id, io, thread)
+    else:
+        registry.register(session_id, io, thread, owner=conn.get("agent_address"))
+    thread.start()
+    task = asyncio.create_task(
+        forward_provider_workroom_msgs_to_client(send_msg, io, session_id)
+    )
+    state_revision = prepared.get("stateRevision")
+    return (io, task, state_revision), None

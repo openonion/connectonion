@@ -11,9 +11,11 @@ Screenshot highlighting - draw bounding boxes and indices on screenshots.
 Inspired by browser-use's python_highlights.py approach.
 """
 
-from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 from typing import List
+
+from PIL import Image, ImageDraw, ImageFont
+
 from . import element_finder
 
 # Color scheme for different element types

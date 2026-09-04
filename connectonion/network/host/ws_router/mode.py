@@ -2,9 +2,9 @@
 Purpose: Dispatch acknowledged OIP Host mode commands
 LLM-Note:
   Dependencies: imports from [host.session.mode] | imported by [.session]
-  Data flow: run_ws_session routes mode_change here -> validate identity/session -> commit_host_session_mode() -> update conn only after append -> send mode_changed
+  Data flow: run_ws_session routes mode_change here -> validate identity/session -> commit_host_session_mode() -> update conn only after append -> send mode_changed then any provider ceiling revisions
   State/Effects: tracks a bounded insertion-ordered map of consumed request IDs in conn; mutates conn['session'] only after durable success
-  Integration: handle_mode_change maps the historical plan alias to :read-only
+  Integration: handle_mode_change accepts only the three canonical mode IDs
   Errors: policy failures retain their owned code; storage failure=-32603 without private exception details
 """
 
@@ -13,8 +13,10 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from ....core.approval_modes import READ_ONLY_PERMISSION_PROFILE
-from ..session.mode import ModeTransactionError, commit_host_session_mode
+from ..session.mode import (
+    ModeTransactionError,
+    commit_host_session_mode_with_events,
+)
 
 logger = logging.getLogger(__name__)
 async def handle_mode_change(
@@ -26,14 +28,10 @@ async def handle_mode_change(
     if not conn.get("authenticated") or policy is None or not session_id:
         await send_msg({"type": "ERROR", "message": "mode change is unavailable"})
         return
-    mode_id = (
-        READ_ONLY_PERMISSION_PROFILE
-        if frame.get("mode") == "plan"
-        else frame.get("mode")
-    )
+    mode_id = frame.get("mode")
     try:
-        record = await asyncio.to_thread(
-            commit_host_session_mode,
+        record, provider_events = await asyncio.to_thread(
+            commit_host_session_mode_with_events,
             storage,
             registry,
             session_id,
@@ -63,5 +61,12 @@ async def handle_mode_change(
     await send_msg({
         "type": "mode_changed",
         "mode": record.session["mode"],
+        "turns_left": record.session.get("turns_left"),
         "session_id": session_id,
     })
+    # The durable transaction may have narrowed one or more completed Work
+    # Rooms after the outer Host ceiling dropped. Stream only the lifecycle
+    # revisions appended by that exact transaction so the connected client
+    # cannot keep displaying broader authority until a later reconnect.
+    for event in provider_events:
+        await send_msg(event)

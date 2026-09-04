@@ -13,8 +13,8 @@ Creates a professional terminal prompt bar like powerlevel10k.
 """
 
 from dataclasses import dataclass
-from rich.text import Text
 
+from rich.text import Text
 
 # Powerline characters
 ARROW_RIGHT = ""  # U+E0B0 - requires powerline font

@@ -19,8 +19,8 @@ To customize, use `co copy system_reminder` which copies both the plugin
 and the prompt files to your project.
 """
 
-from pathlib import Path
 import fnmatch
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..core.events import after_each_tool

@@ -48,12 +48,13 @@ from pathlib import Path
 from ..core.provider_events import (
     command_phase,
     next_provider_state_revision,
+    provider_activity_event,
     provider_artifact_event,
     provider_artifact_for_state,
-    provider_activity_event,
+    provider_message_event,
     provider_status_summary,
-    remember_provider_artifact,
     remember_provider_activity,
+    remember_provider_artifact,
 )
 
 SANDBOX_LEVELS = ("read-only", "workspace-write", "danger-full-access")
@@ -78,6 +79,7 @@ _TOOL_ITEM_TYPES = ("commandExecution", "fileChange", "mcpToolCall", "webSearch"
 _OPEN_THREAD_TTL_SECONDS = 15 * 60
 _MAX_OPEN_THREADS = 8
 _MAX_WORKROOM_IMAGE_BYTES = 180 * 1024
+_MAX_WORKROOM_INPUT_LENGTH = 12_000
 _open_threads = {}
 _open_threads_lock = threading.Lock()
 
@@ -208,12 +210,37 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
             return _envelope(
                 sid, resumed=resumed, exit_code=0, opened=True
             )
-        turn = client.run_turn(
-            sid, prompt, cwd=cwd, timeout=_remaining(deadline)
-        )
+        turn_options = {
+            "cwd": cwd,
+            "timeout": _remaining(deadline),
+        }
+        # The built-in app-server client owns the native steering extension.
+        # Keeping it opt-in preserves the small adapter seam used by local
+        # integrations and test doubles which implement only the older
+        # ``run_turn(thread, prompt, cwd, timeout)`` contract.
+        if getattr(client, "supports_workroom_steering", False):
+            turn_options["on_workroom_input"] = lambda turn_id: _steer_workroom_inputs(
+                agent,
+                client,
+                sid,
+                turn_id,
+            )
+            turn_options["on_turn_started"] = lambda _turn_id: _confirm_started_workroom_turn(
+                agent,
+                prompt,
+            )
+        turn = client.run_turn(sid, prompt, **turn_options)
     except _ProviderCancelled as e:
+        # ``turn/interrupt`` is sent before this control path exits. The
+        # app-server owns the persisted native thread, but its local process
+        # must still be killed if it ignores shutdown; otherwise a revoked
+        # execution lease could keep mutating the workspace in the background.
         force_close = True
-        return _envelope(session_id, error=f"codex app-server: {e}")
+        return _envelope(
+            session_id,
+            status="cancelled",
+            error=f"codex app-server: {e}",
+        )
     except Exception as e:
         return _envelope(session_id, error=f"codex app-server: {e}")
     finally:
@@ -359,7 +386,15 @@ def _forward_ui(agent, event, *, workspace=None):
     parent_id = _active_parent_tool_call_id(agent)
     correlation = ({"invocationId": f"codex:{parent_id}",
                     "parentToolCallId": parent_id} if parent_id else {})
-    if kind == "tool_start":
+    if kind == "agent_message":
+        _emit_workroom_message(
+            agent,
+            correlation,
+            role="assistant",
+            text=event.get("text", ""),
+            message_id=f"assistant:{event.get('id') or time.monotonic_ns()}",
+        )
+    elif kind == "tool_start":
         _emit_safe_provider_activity(agent, event, "running", correlation)
         _emit_provider_event(agent, "tool_call", tool_id=event.get("id", ""),
                              name=event.get("name", "codex"),
@@ -513,6 +548,170 @@ def _provider_cancellation_check(agent):
         return bool(invocation_id and callable(targeted) and targeted(invocation_id))
 
     return cancelled
+
+
+def _workroom_context(agent, correlation):
+    """Return explicit Work Room grouping only from Host-owned session state."""
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return {}
+    default = correlation.get("invocationId")
+    workroom_id = session.get("_provider_workroom_id", default)
+    continuation_of = session.get("_provider_continuation_of")
+    fields = {}
+    if isinstance(workroom_id, str) and workroom_id:
+        fields["workroom_id"] = workroom_id
+    if isinstance(continuation_of, str) and continuation_of:
+        fields["continuation_of"] = continuation_of
+    return fields
+
+
+def _emit_workroom_message(agent, correlation, *, role, text, message_id):
+    """Stream a bounded Codex/user message without exposing native tool output."""
+    invocation_id = correlation.get("invocationId")
+    parent_id = correlation.get("parentToolCallId")
+    if not isinstance(invocation_id, str) or not isinstance(parent_id, str):
+        return
+    try:
+        event = provider_message_event(
+            provider="codex",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            message_id=message_id,
+            role=role,
+            text=text,
+            **_workroom_context(agent, correlation),
+        )
+    except ValueError:
+        return
+    _emit_provider_event(agent, "provider_message", **_without_event_type(event))
+
+
+def _steer_workroom_inputs(agent, client, thread_id, turn_id):
+    """Apply exact, already-authorized Work Room messages to a live Codex turn."""
+    if not isinstance(turn_id, str) or not turn_id:
+        return
+    io = getattr(agent, "io", None)
+    receive_all = getattr(io, "receive_all", None)
+    parent_id = _active_parent_tool_call_id(agent)
+    invocation_id = f"codex:{parent_id}" if parent_id else ""
+    if not callable(receive_all) or not invocation_id:
+        return
+    for message in receive_all("PROVIDER_INPUT"):
+        if (
+            not isinstance(message, dict)
+            or message.get("invocationId") != invocation_id
+            or not isinstance(message.get("text"), str)
+        ):
+            continue
+        text = message["text"].replace("\x00", "").strip()
+        if not text or len(text) > _MAX_WORKROOM_INPUT_LENGTH:
+            continue
+        message_id = message.get("requestId")
+        if not isinstance(message_id, str) or not message_id:
+            continue
+        try:
+            client.steer_turn(thread_id, turn_id, text, message_id)
+        except (RuntimeError, TimeoutError, _ProviderCancelled):
+            # The turn may complete between Host routing and this
+            # native request. Do not claim delivery; the unchanged composer is
+            # an honest retry affordance and a later resume starts a new turn.
+            continue
+        _emit_workroom_message(
+            agent,
+            {
+                "invocationId": invocation_id,
+                "parentToolCallId": parent_id,
+            },
+            role="user",
+            text=text,
+            message_id=f"user:{message_id}",
+        )
+        _emit_workroom_input_ack(
+            agent,
+            invocation_id,
+            message_id,
+            message.get("stateRevision"),
+        )
+
+
+def _confirm_direct_workroom_turn(agent):
+    """Publish the direct user message only after native Codex starts its turn."""
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return
+    text = session.get("_provider_direct_message")
+    request_id = session.get("_provider_direct_message_id")
+    parent_id = _active_parent_tool_call_id(agent)
+    if (
+        not isinstance(text, str)
+        or not text.strip()
+        or not isinstance(request_id, str)
+        or not request_id
+        or not isinstance(parent_id, str)
+        or not parent_id
+    ):
+        return
+    invocation_id = f"codex:{parent_id}"
+    _emit_workroom_message(
+        agent,
+        {"invocationId": invocation_id, "parentToolCallId": parent_id},
+        role="user",
+        text=text,
+        message_id=f"user:{request_id}",
+    )
+    target_invocation = session.get("_provider_continuation_of", invocation_id)
+    state_revision = session.get("_provider_direct_state_revision")
+    _emit_workroom_input_ack(
+        agent,
+        target_invocation,
+        request_id,
+        state_revision,
+    )
+
+
+def _confirm_started_workroom_turn(agent, prompt):
+    """Publish user text only after the native Codex turn starts."""
+    session = getattr(agent, "current_session", None)
+    if isinstance(session, dict) and session.get("_provider_direct_message"):
+        _confirm_direct_workroom_turn(agent)
+        return
+    parent_id = _active_parent_tool_call_id(agent)
+    if not isinstance(parent_id, str) or not parent_id:
+        return
+    _emit_workroom_message(
+        agent,
+        {
+            "invocationId": f"codex:{parent_id}",
+            "parentToolCallId": parent_id,
+        },
+        role="user",
+        text=prompt,
+        message_id="user:initial",
+    )
+
+
+def _emit_workroom_input_ack(agent, invocation_id, request_id, state_revision):
+    """Resolve a browser composer only after native Codex accepted its text."""
+    if (
+        not isinstance(invocation_id, str)
+        or not invocation_id
+        or not isinstance(request_id, str)
+        or not request_id
+        or isinstance(state_revision, bool)
+        or not isinstance(state_revision, int)
+        or state_revision < 1
+    ):
+        return
+    sender = getattr(getattr(agent, "io", None), "send", None)
+    if callable(sender):
+        sender({
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": request_id,
+            "invocationId": invocation_id,
+            "accepted": True,
+            "stateRevision": state_revision,
+        })
 
 
 def _emit_provider_event(agent, event_type, **fields):
@@ -846,7 +1045,7 @@ def _display_cwd(value):
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
               usage: dict = None, exit_code: int = -1, error: str = "",
-              opened: bool = False) -> str:
+              opened: bool = False, status: str = "") -> str:
     """Build the JSON result envelope returned to the calling agent."""
     result = {
         "provider": "codex",
@@ -858,6 +1057,8 @@ def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
     }
     if opened:
         result["opened"] = True
+    if status:
+        result["status"] = status
     if error:
         result["error"] = error
     return json.dumps(result)
@@ -950,6 +1151,8 @@ class _ProviderCancelled(Exception):
 class CodexAppServer:
     """Minimal client for `codex app-server`: JSON-RPC 2.0 over stdio."""
 
+    supports_workroom_steering = True
+
     def __init__(
         self,
         command,
@@ -969,6 +1172,9 @@ class CodexAppServer:
         self._lock = threading.Lock()
         self._turn_done = threading.Event()
         self._turn_result = {}
+        self._active_thread_id = None
+        self._active_turn_id = None
+        self._interrupt_sent_for_turn = None
         self._stderr_tail = ""
         self._stderr_thread = None
         self._exit_error = None
@@ -1077,23 +1283,75 @@ class CodexAppServer:
             )
         return returned_id
 
-    def run_turn(self, thread_id, prompt, cwd="", timeout=600):
+    def run_turn(
+        self,
+        thread_id,
+        prompt,
+        cwd="",
+        timeout=600,
+        on_workroom_input=None,
+        on_turn_started=None,
+    ):
         deadline = time.monotonic() + timeout
         approval_pause_mark = self._approval_pause_mark()
         self._turn_done.clear()
         self._turn_result = {}
-        self.request("turn/start", {
+        started = self.request("turn/start", {
             "threadId": thread_id, "cwd": cwd or self.cwd or ".",
             "input": [{"type": "text", "text": prompt}],
         }, timeout=_remaining(deadline))
+        turn = started.get("turn", {}) if isinstance(started, dict) else {}
+        turn_id = turn.get("id") if isinstance(turn, dict) else None
+        self._active_thread_id = thread_id
+        self._active_turn_id = turn_id if isinstance(turn_id, str) and turn_id else None
+        self._interrupt_sent_for_turn = None
+        if callable(on_turn_started) and self._active_turn_id:
+            on_turn_started(self._active_turn_id)
         self._wait_for_turn(
             self._turn_done,
             deadline,
             approval_pause_mark,
             "turn",
             timeout,
+            on_workroom_input=on_workroom_input,
         )
         return self._turn_result
+
+    def steer_turn(self, thread_id, expected_turn_id, text, client_user_message_id=""):
+        """Insert one user-authored message into the active native Codex turn."""
+        if not isinstance(thread_id, str) or not thread_id:
+            raise RuntimeError("turn/steer requires a thread id")
+        if not isinstance(expected_turn_id, str) or not expected_turn_id:
+            raise RuntimeError("turn/steer requires an active turn id")
+        params = {
+            "threadId": thread_id,
+            "expectedTurnId": expected_turn_id,
+            "input": [{"type": "text", "text": text}],
+        }
+        if isinstance(client_user_message_id, str) and client_user_message_id:
+            params["clientUserMessageId"] = client_user_message_id
+        return self.request("turn/steer", params, timeout=30)
+
+    def interrupt_active_turn(self):
+        """Ask Codex to interrupt its active turn before the Host closes it."""
+        thread_id = self._active_thread_id
+        turn_id = self._active_turn_id
+        if (
+            not isinstance(thread_id, str)
+            or not isinstance(turn_id, str)
+            or self._interrupt_sent_for_turn == turn_id
+        ):
+            return
+        self._interrupt_sent_for_turn = turn_id
+        try:
+            self.request("turn/interrupt", {
+                "threadId": thread_id,
+                "turnId": turn_id,
+            }, timeout=10)
+        except (RuntimeError, TimeoutError, _ProviderCancelled):
+            # A terminal notification can race this request. The caller still
+            # exits, but never fabricates a paused/resumed claim for that race.
+            pass
 
     # ── JSON-RPC plumbing ────────────────────────────────────────
 
@@ -1146,11 +1404,22 @@ class CodexAppServer:
                 paused += now - self._approval_started_at
         return max(0.0, paused)
 
-    def _wait_for_turn(self, event, deadline, approval_pause_mark, operation, timeout):
+    def _wait_for_turn(
+        self,
+        event,
+        deadline,
+        approval_pause_mark,
+        operation,
+        timeout,
+        on_workroom_input=None,
+    ):
         """Wait for a turn without charging an operator's approval review time."""
         while True:
             if self.cancelled():
+                self.interrupt_active_turn()
                 raise _ProviderCancelled(f"{operation} interrupted")
+            if callable(on_workroom_input) and self._active_turn_id:
+                on_workroom_input(self._active_turn_id)
             now = time.monotonic()
             remaining = deadline + self._approval_pause_since(approval_pause_mark, now) - now
             if remaining <= 0:
@@ -1249,9 +1518,11 @@ class CodexAppServer:
     def _handle_notification(self, method, params):
         if method == "turn/completed":
             self._turn_result = params.get("turn", params)
+            self._active_turn_id = None
             self._turn_done.set()
         elif method == "turn/failed":
             self._turn_result = {"status": "failed", **params}
+            self._active_turn_id = None
             self._turn_done.set()
         elif method == "item/started":
             self.on_event(self._item_event(params.get("item", {}), start=True))
@@ -1263,7 +1534,11 @@ class CodexAppServer:
         """Normalize a thread item into a flat event for forwarding."""
         itype = item.get("type", "")
         if itype == "agentMessage":
-            return {"kind": "agent_message", "text": item.get("text") or item.get("content", "")}
+            return {
+                "kind": "agent_message",
+                "id": item.get("id", ""),
+                "text": item.get("text") or item.get("content", ""),
+            }
         if itype == "imageView":
             # A thumbnail is emitted only once Codex completed the native image
             # viewer item; a started item can point at a partially written file.

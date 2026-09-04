@@ -176,7 +176,7 @@ def _run_evals(eval_files: list, agent_override: Optional[str] = None):
         agent_file = agent_override or data.get('agent')
         if not agent_file:
             console.print(f"[red]No agent specified for {eval_file.stem}[/red]")
-            console.print(f"[dim]Add 'agent: agent.py' to the YAML or use --agent flag[/dim]")
+            console.print("[dim]Add 'agent: agent.py' to the YAML or use --agent flag[/dim]")
             continue
 
         # A named agent file that is not there. This used to raise

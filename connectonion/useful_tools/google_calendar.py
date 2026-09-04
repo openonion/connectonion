@@ -44,8 +44,10 @@ Example:
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 
@@ -296,7 +298,7 @@ class GoogleCalendar:
         ]
 
         if attendee_list:
-            output.append(f"Attendees:\n  " + "\n  ".join(attendee_list))
+            output.append("Attendees:\n  " + "\n  ".join(attendee_list))
 
         return "\n".join(output)
 

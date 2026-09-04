@@ -163,6 +163,52 @@ class TestWebSocketIO:
         })
         assert io.request_provider_interrupt("codex:current", 8).accepted is False
 
+    def test_direct_codex_input_is_bound_to_the_exact_live_provider_revision(self):
+        io = WebSocketIO()
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "codex:current",
+            "provider": "codex",
+            "status": "running",
+            "stateRevision": 7,
+        })
+
+        accepted = io.request_provider_input(
+            "codex:current",
+            7,
+            "Please add the reverse-order fixture.",
+            "direct-1",
+        )
+        assert accepted.accepted is True
+        assert accepted.state_revision == 7
+        assert io.receive_all() == [{
+            "type": "PROVIDER_INPUT",
+            "invocationId": "codex:current",
+            "stateRevision": 7,
+            "text": "Please add the reverse-order fixture.",
+            "requestId": "direct-1",
+        }]
+
+        stale = io.request_provider_input(
+            "codex:current", 6, "Retry this", "direct-2"
+        )
+        assert stale.accepted is False
+        assert stale.state_revision == 7
+        assert stale.reason == "state_changed"
+
+        io.send({
+            "type": "provider_invocation",
+            "invocationId": "claude_code:current",
+            "provider": "claude_code",
+            "status": "running",
+            "stateRevision": 1,
+        })
+        unsupported = io.request_provider_input(
+            "claude_code:current", 1, "Continue", "direct-3"
+        )
+        assert unsupported.accepted is False
+        assert unsupported.reason == "unsupported_provider"
+
     def test_replayed_provider_state_cannot_reopen_a_newer_terminal_invocation(self):
         io = WebSocketIO()
         io.send({
@@ -267,20 +313,20 @@ class TestReceiveAll:
         io = WebSocketIO()
         io.send_to_agent({"type": "mode_change", "mode": "default"})
         io.send_to_agent({"type": "approval", "approved": True})
-        io.send_to_agent({"type": "mode_change", "mode": ":danger-full-access"})
+        io.send_to_agent({"type": "mode_change", "mode": "full-access"})
 
         result = io.receive_all("mode_change")
 
         assert len(result) == 2
         assert result[0] == {"type": "mode_change", "mode": "default"}
-        assert result[1] == {"type": "mode_change", "mode": ":danger-full-access"}
+        assert result[1] == {"type": "mode_change", "mode": "full-access"}
 
     def test_receive_all_with_type_filter_keeps_others_in_mailbox(self):
         """receive_all(msg_type) keeps non-matching messages in mailbox."""
         io = WebSocketIO()
         io.send_to_agent({"type": "mode_change", "mode": "default"})
         io.send_to_agent({"type": "approval", "approved": True})
-        io.send_to_agent({"type": "mode_change", "mode": ":danger-full-access"})
+        io.send_to_agent({"type": "mode_change", "mode": "full-access"})
 
         io.receive_all("mode_change")
 

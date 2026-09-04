@@ -25,22 +25,20 @@ Usage:
     co trust admin remove <address>  # Remove admin (super admin only)
 """
 
-from pathlib import Path
 from rich.console import Console
-from rich.table import Table
 
 from ...network.trust.tools import (
-    list_file,
+    add_admin,
+    block,
+    demote_to_stranger,
     get_level,
+    get_self_address,
+    list_file,
+    load_admins,
     promote_to_contact,
     promote_to_whitelist,
-    demote_to_stranger,
-    block,
-    unblock,
-    add_admin,
     remove_admin,
-    load_admins,
-    get_self_address,
+    unblock,
 )
 
 console = Console()
@@ -66,7 +64,7 @@ def handle_trust_list():
         console.print()
         console.print(f"[yellow]No agent here[/yellow] — {agent_dir} does not exist.")
         console.print("[dim]Trust lists belong to one agent. Run this from its "
-                      "directory, or 'co init' to make one.[/dim]")
+                      "directory, or 'co init ./' to make one.[/dim]")
         console.print()
         return
 

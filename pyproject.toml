@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.7.0a17"
+version = "1.8.0"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -25,7 +25,7 @@ keywords = [
     "xray",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -45,6 +45,7 @@ dependencies = [
     "requests>=2.33.0",
     "rich>=13.0.0",
     "PyNaCl>=1.6.2",
+    "qrcode>=8.2",
     "mnemonic>=0.20",
     "questionary>=2.0.0",
     "websockets>=11.0.0",
@@ -149,6 +150,7 @@ include = [
     "connectonion/**/*.md",
     "connectonion/**/*.txt",
     "connectonion/**/*.yaml",
+    "connectonion/**/*.proto",
     "connectonion/**/*.example",
     "connectonion/cli/templates/**/Dockerfile",
 ]

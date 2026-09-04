@@ -30,10 +30,6 @@ from typing import TYPE_CHECKING, Dict, List
 
 from pydantic import BaseModel
 
-from ..core.approval_modes import (
-    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
-    legacy_permission_profile_id,
-)
 from ..core.events import after_user_input, on_complete
 from ..core.trace import current_turn_trace
 from ..llm_do import llm_do
@@ -172,17 +168,9 @@ def evaluate_completion(agent: 'Agent') -> None:
     Generates expected outcome (if not set) and evaluates AFTER task completes.
     This avoids blocking the main workflow.
 
-    Skips evaluation in Full access mode since the agent is still working autonomously.
+    Full access changes approvals only, so it does not suppress completion evaluation.
     """
     import uuid
-
-    # Skip eval in Full access mode - agent is still working, not done yet
-    try:
-        profile = legacy_permission_profile_id(agent.current_session.get('mode'))
-    except ValueError:
-        profile = None
-    if profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE:
-        return
 
     _prepare_turn_state(agent)
 

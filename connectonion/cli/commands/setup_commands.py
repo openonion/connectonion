@@ -81,12 +81,12 @@ def handle_setup(
         _write_agent_json(alias, body, addr)
         console.print(f"[green]✓ Wrote[/green] {AGENT_JSON} (alias={alias})")
         if body.endswith("Edit ~/.co/agent.json to customize."):
-            console.print(f"  [yellow]Bio is a placeholder — edit before publishing.[/yellow]")
+            console.print("  [yellow]Bio is a placeholder — edit before publishing.[/yellow]")
 
     # Phase 3: skill library
     if not skip_skills:
         console.print("\n[cyan]Refreshing ~/.co/skills/ library...[/cyan]")
-        from .skills_commands import handle_skills_discover, handle_skills_copy, handle_skills_manifest
+        from .skills_commands import handle_skills_copy, handle_skills_discover, handle_skills_manifest
         handle_skills_discover(save=True, json_out=False)
         handle_skills_copy(names=[], all_=True, force=False)
         handle_skills_manifest()

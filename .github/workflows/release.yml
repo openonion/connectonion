@@ -32,6 +32,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     permissions:
       contents: read
+      issues: read
 
     steps:
       - name: Checkout the exact release commit
@@ -97,6 +98,26 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse a newer release while stable patch fixes are missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG is already public; allowing an immutable recovery retry."
+            exit 0
+          fi
+          open_issues="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --label forward-port-required \
+            --limit 100 \
+            --json number,title,url)"
+          python scripts/check_forward_port_gate.py \
+            --version "$VERSION" \
+            --issues-json "$open_issues"
 
       - name: Build and validate only this version's artifacts
         env:

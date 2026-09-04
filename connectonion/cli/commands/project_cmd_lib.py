@@ -11,22 +11,20 @@ LLM-Note:
 
 import os
 import re
+import shutil
 import sys
 import time
-import shutil
-from rich.console import Console
-from rich.prompt import Prompt, Confirm, IntPrompt
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
-from rich.panel import Panel
-from rich import box
-from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
-from ... import __version__
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm, IntPrompt, Prompt
+from rich.table import Table
+
 from ... import address
-from ...credentials import account_in_token
 
 # What a new user may spend free credits on. The list lives in core.usage with
 # the other model facts, and PaidModelRequiredError offers the same tuple when a
@@ -34,6 +32,7 @@ from ...credentials import account_in_token
 # and both copies had gone stale.
 from ...core.usage import FREE_MANAGED_MODELS as MANAGED_MODELS
 from ...core.usage import PAID_MANAGED_MODELS as PAID_MODELS
+from ...credentials import account_in_token
 
 console = Console()
 
@@ -291,8 +290,8 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
 
         elif result == "star":
             # Star for free credits - create temp project and authenticate immediately
-            import webbrowser
             import shutil
+            import webbrowser
             from pathlib import Path
 
             console.print("\n[cyan]⭐ Get 100k Free Tokens[/cyan]")
@@ -323,7 +322,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         temp_dir = Path(f"{temp_name}-{counter}")
                         counter += 1
 
-                    console.print(f"\n[yellow]Setting up temporary project for authentication...[/yellow]")
+                    console.print("\n[yellow]Setting up temporary project for authentication...[/yellow]")
                     temp_dir.mkdir(parents=True)
 
                     # Create .co directory and generate keys
@@ -581,6 +580,10 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     if api_key.startswith('sk-ant-'):
         return 'anthropic', 'claude'
 
+    # OpenRouter shares the generic sk- prefix, so match it before OpenAI.
+    if api_key.startswith('sk-or-'):
+        return 'openrouter', 'openrouter'
+
     # OpenAI formats
     if api_key.startswith('sk-proj-'):
         return 'openai', 'project'
@@ -598,10 +601,6 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     # xAI Grok
     if api_key.startswith('xai-'):
         return 'grok', 'xai'
-
-    # OpenRouter
-    if api_key.startswith('sk-or-'):
-        return 'openrouter', 'openrouter'
 
     # Default to OpenAI if unsure
     return 'openai', 'unknown'
@@ -653,7 +652,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     # Special handling for ConnectOnion managed keys
     if provider == 'connectonion':
         if api_key == 'managed':
-            return f"""# ConnectOnion Managed Keys Configuration
+            return """# ConnectOnion Managed Keys Configuration
 # Authenticate with: co auth
 # Purchase credits at: https://o.openonion.ai
 # Same pricing as OpenAI/Anthropic
@@ -670,7 +669,7 @@ MODEL=co/gemini-3.7-flash
 # TEMPERATURE=0.7
 """
         elif api_key == 'star':
-            return f"""# ConnectOnion Free Credits (100k tokens)
+            return """# ConnectOnion Free Credits (100k tokens)
 # 1. Star us: https://github.com/openonion/connectonion
 # 2. Authenticate with: co auth
 # 3. Your GitHub star will be verified automatically
@@ -753,7 +752,7 @@ CODE:
             ]
 
             if loading_animation:
-                loading_animation.update(f"Generating agent code...")
+                loading_animation.update("Generating agent code...")
 
             response = llm.complete(messages)
 
@@ -992,7 +991,7 @@ entrypoint: agent.py
     with open(host_yaml_path, "w", encoding='utf-8') as f:
         f.write(project_header + template_content)
 
-    console.print(f"  [green]Created[/green] .co/host.yaml")
+    console.print("  [green]Created[/green] .co/host.yaml")
     return True
 
 
@@ -1030,9 +1029,9 @@ def setup_gitignore(project_dir: Path) -> Optional[str]:
 def print_resources():
     """Print the standard resources/links block."""
     console.print("[bold cyan]📚 Resources:[/bold cyan]")
-    console.print(f"   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
-    console.print(f"   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
-    console.print(f"   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
+    console.print("   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
+    console.print("   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
+    console.print("   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
     console.print()
 
 
@@ -1055,6 +1054,7 @@ def load_api_key() -> Optional[str]:
         API key if found, None otherwise
     """
     from dotenv import load_dotenv
+
     from ...project import project_root
 
     if api_key := os.getenv("OPENONION_API_KEY"):
@@ -1084,8 +1084,8 @@ def _token_for_this_account(token: str) -> Optional[str]:
     waiting for a balance to look wrong. Cheap: a local decode, and a network
     call only when the two disagree.
     """
-    from .auth_commands import authenticate
     from ...project import project_co_dir, project_identity
+    from .auth_commands import authenticate
 
     project_dir = project_co_dir()
     global_dir = Path.home() / ".co"
@@ -1194,11 +1194,15 @@ def _state_the_address_the_key_has(global_dir: Path) -> None:
     applies to authorized_keys and admins.txt. A no-op when they already agree.
     """
     keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        return
-
     data = address.load(global_dir)
     if not data or not data.get("address"):
+        return
+
+    if not keys_env.exists():
+        # Losing the environment file must not require rotating a valid keypair,
+        # and offline init still needs to leave usable global configuration.
+        upsert_env(keys_env, {"AGENT_ADDRESS": data["address"],
+                              "AGENT_CONFIG_PATH": str(global_dir)})
         return
 
     lines = keys_env.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -1222,7 +1226,7 @@ def ensure_global_config() -> None:
 
     Creates the global config directory, generates an Ed25519 keypair,
     and writes keys.env with AGENT_CONFIG_PATH and AGENT_ADDRESS.
-    No-op if ~/.co/keys/agent.key already exists.
+    Reuses an existing keypair, reconciling its address or restoring keys.env.
     """
     global_dir = Path.home() / ".co"
     key_file = global_dir / "keys" / "agent.key"
@@ -1234,8 +1238,8 @@ def ensure_global_config() -> None:
         return
 
     # First time - create global config
-    console.print(f"\n🚀 Welcome to ConnectOnion!")
-    console.print(f"✨ Setting up global configuration...")
+    console.print("\n🚀 Welcome to ConnectOnion!")
+    console.print("✨ Setting up global configuration...")
 
     # parents=True: ~/.co is the first thing we put under HOME, and a HOME that
     # has not been created — containers, sandboxes — left mkdir with no parent to
@@ -1248,7 +1252,7 @@ def ensure_global_config() -> None:
     # Generate master keys - fail fast if libraries missing
     addr_data = address.generate()
     address.save(addr_data, global_dir)
-    console.print(f"  ✓ Generated master keypair")
+    console.print("  ✓ Generated master keypair")
     console.print(f"  ✓ Your address: {addr_data['short_address']}")
 
     # Create keys.env with config path and agent address
@@ -1284,7 +1288,7 @@ def ensure_global_config() -> None:
         keys_env.write_text(''.join(lines), encoding="utf-8")
         if sys.platform != 'win32':
             os.chmod(keys_env, 0o600)
-    console.print(f"  ✓ Created ~/.co/keys.env")
+    console.print("  ✓ Created ~/.co/keys.env")
 
 
 # Export shared utilities for use by init.py and create.py

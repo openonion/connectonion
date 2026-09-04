@@ -127,6 +127,36 @@ class TestItIsTheWheelBeingTested:
         assert "False" in result.stdout, "the source tree shadowed the installed package"
 
 
+def test_installed_cli_and_sdk_share_the_project_env(installed, tmp_path):
+    """The public entry point must not fall back to a subdirectory's secrets."""
+    python, bin_dir, _, _ = installed
+    home = tmp_path / "home"
+    (home / ".co").mkdir(parents=True)
+    (home / ".co" / "keys.env").write_text("CO_WHEEL_ENV=global\n", encoding="utf-8")
+    project = home / "project"
+    (project / ".co").mkdir(parents=True)
+    (project / ".env").write_text("CO_WHEEL_ENV=project\n", encoding="utf-8")
+    nested = project / "src"
+    nested.mkdir()
+    (nested / ".env").write_text("CO_WHEEL_ENV=nested\n", encoding="utf-8")
+    env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT") if key in os.environ}
+    env.update(HOME=str(home), USERPROFILE=str(home), CO_DEBUG_ENV="1")
+    result = subprocess.run(
+        [str(python), "-c", "import connectonion, os; print(os.environ['CO_WHEEL_ENV'])"],
+        cwd=nested, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "project"
+    co = bin_dir / ("co.exe" if os.name == "nt" else "co")
+    result = subprocess.run(
+        [str(co), "--version"], cwd=nested, env=env,
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"[env] {(project / '.env').resolve()}" in result.stderr
+    assert f"[env] {(nested / '.env').resolve()}" not in result.stderr
+
+
 class TestTheDataFilesShipped:
     """Every non-.py file the runtime loads."""
 
@@ -173,6 +203,25 @@ class TestTheDataFilesShipped:
 
 class TestTheCommandRuns:
 
+    def test_co_init_defaults_to_global_without_project_files(self, installed, tmp_path):
+        _, bin_dir, _, _ = installed
+        co = bin_dir / ("co.exe" if os.name == "nt" else "co")
+        project = tmp_path / "not-a-project"
+        project.mkdir()
+        home = tmp_path / "init-home"
+        home.mkdir()
+        env = dict(os.environ, HOME=str(home), USERPROFILE=str(home),
+                   HTTP_PROXY="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9",
+                   ALL_PROXY="http://127.0.0.1:9", NO_PROXY="")
+
+        result = subprocess.run([str(co), "init", "--yes"], cwd=project, env=env,
+                                capture_output=True, text=True, timeout=300)
+
+        assert result.returncode == 0, result.stderr[-400:]
+        assert (home / ".co" / "keys.env").is_file()
+        assert (home / ".co" / "keys" / "agent.key").is_file()
+        assert list(project.iterdir()) == []
+
     def test_co_version_matches_the_package(self, installed):
         python, bin_dir, elsewhere, _ = installed
         co = bin_dir / ("co.exe" if os.name == "nt" else "co")
@@ -193,7 +242,7 @@ class TestTheCommandRuns:
         project = tmp_path / "fresh"
         project.mkdir()
 
-        result = subprocess.run([str(co), "init", "--yes"], cwd=str(project),
+        result = subprocess.run([str(co), "init", "./", "--yes"], cwd=str(project),
                                 capture_output=True, text=True, timeout=600)
 
         assert result.returncode == 0, result.stderr[-400:]

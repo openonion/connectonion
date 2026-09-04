@@ -36,6 +36,21 @@ Restarting `co ai` keeps the same invite, so clients already given the code are
 not locked out. An explicit `CO_INVITE_CODE` in the current project or process
 continues to take precedence.
 
+For a clean test run, provide an invite that exists only for that Host process:
+
+```bash
+co ai --invite-code-file /path/to/private-invite
+```
+
+`--invite-code-file` is recommended for automation because the value does not
+appear in shell history or the process argument list. The file should be
+readable only by its owner. `--invite-code <code>` is also available for an
+interactive local run. Both forms override `CO_INVITE_CODE` in memory without
+changing `.env`, `~/.co/keys.env`, `host.yaml`, or the process environment.
+They are web-server options only and cannot be combined with a one-shot prompt.
+Successful onboarding still creates the normal durable contact; only the
+temporary way into that Host disappears when `co ai` exits.
+
 The published `@connectonion/react` package owns the browser OIP client, browser
 identity, onboarding, reconnect, approvals, and session normalization. O Chat
 pins one exact preview version. The Host advertises OIP 0.1 in `CONNECTED`; an
@@ -57,14 +72,16 @@ For scripts and other coding agents, request one stable JSON object:
 
 ```bash
 co ai "Fix the failing tests" --json
-# {"session_id":"...","result":"...","error":null}
+# {"session_id":"...","result":"...","outcome":"natural","error":null}
 
 co ai "Now update the docs" --resume <session-id> --json
 ```
 
 Human-oriented progress moves to stderr in JSON mode, so stdout is safe to
-parse. A successful run exits `0`; invalid sessions and execution failures put
-a concise message in `error` and exit non-zero. Resume never silently starts a
+parse. `outcome` is `natural`, `max_iterations`, or `error`. A naturally
+completed run exits `0`; hitting the iteration cap preserves the result with
+`outcome: "max_iterations"` and exits non-zero. Invalid sessions and execution
+failures put a concise message in `error` and exit non-zero. Resume never silently starts a
 new conversation when the requested session is missing or invalid. Resume must
 run from the same project directory, and concurrent turns for one session fail
 fast instead of overwriting each other.
@@ -82,31 +99,34 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 | `--port` | `-p` | `8000` | Port for web server |
 | `--model` | `-m` | `co/gemini-3.7-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
-| `--yolo` | | off | Skip tool approvals and keep working across turns |
-| `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
+| `--full-access` | | off | Skip routine tool approvals for a bounded user-driven turn budget |
+| `--full-access-turns` | | `100` | User-driven turns before Full access expires to Auto; must be positive |
 | `--eval` | | off | Debug a task with two extra model calls that score completion |
 | `--json` | | off | Emit one JSON envelope to stdout in one-shot mode |
 | `--resume` | | | With `--json`, continue a one-shot session by ID |
+| `--invite-code` | | | Use an in-memory invite for this web-server run |
+| `--invite-code-file` | | | Read this run's invite from a private file (recommended for automation) |
 
 ```bash
 co ai --port 9000
 co ai --model co/gemini-3.7-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
-co ai --yolo "Fix the failing suite" --yolo-turns 20
+co ai --full-access "Fix the failing suite" --full-access-turns 20
 co ai --eval "Check whether this agent really completed the task"
+co ai --invite-code-file /path/to/private-invite
 ```
 
-## Full access (`--yolo`)
+## Full access (`--full-access`)
 
-Use `--yolo` for a trusted task that should run without tool-approval prompts.
+Use `--full-access` for a trusted task that should run without routine tool-approval prompts.
 It works in both one-shot and web-server modes:
 
 ```bash
-# Run one task autonomously, then exit at the 20-turn bound
-co ai --yolo "Implement issue #123" --yolo-turns 20
+# Run one user-driven turn with a bounded approval bypass
+co ai --full-access "Implement issue #123" --full-access-turns 20
 
-# Start web chat with autonomous mode enabled for each session
-co ai --yolo --yolo-turns 20
+# Start web chat with Full access available under a 20-turn Host ceiling
+co ai --full-access --full-access-turns 20
 ```
 
 Slash skills are expanded before the first model call. Project skills can live
@@ -114,12 +134,56 @@ under either `.co/skills/` or `.claude/skills/`, so a project workflow can run
 directly:
 
 ```bash
-co ai --yolo "/deploy-oo-chat" --yolo-turns 10
+co ai --full-access "/deploy-oo-chat" --full-access-turns 10
 ```
 
-YOLO is the familiar CLI shorthand for Full access. It selects the canonical
-`:danger-full-access` permission profile and uses `full_access_turns` for the
-bounded autonomous checkpoint.
+The public mode is exactly `full-access`; its canonical `turns_left` budget
+decrements only after completed user-driven turns. It does not synthesize a
+follow-up prompt or continue the Agent on its own.
+
+## Unattended one-shot permissions
+
+One-shot commands launched by cron or CI have no approval dialog. Auto still
+fails closed for unknown, destructive, credential, publication, deployment,
+and external-effect calls, but it honors operator-authored `Bash(...)` command
+permissions from the active `.co/host.yaml` for ordinary commands.
+
+The shipped compatibility grant allows unattended `co status` and
+`co browser ...` commands, including browser workflows that already ran under
+1.6.x:
+
+```bash
+co ai -m co/gemini-3.7-flash "/linkedin-notifications ..." < /dev/null
+```
+
+The broad historical `Bash(co *)` entry does not silently authorize other
+framework effects such as `co deploy`, `co publish`, or `co email send` in
+headless Auto. Add a narrower project permission when an operator deliberately
+wants a particular ordinary command. Use bounded `--full-access` only when the
+whole unattended task is trusted to perform effects that still require a human
+under Auto.
+
+## Unattended one-shot permissions
+
+One-shot commands launched by cron or CI have no approval dialog. Auto still
+fails closed for unknown, destructive, credential, publication, deployment,
+and external-effect calls, but it honors operator-authored `Bash(...)` command
+permissions from the active `.co/host.yaml` for ordinary commands.
+
+The shipped compatibility grant allows unattended `co status` and
+`co browser ...` commands, including browser workflows that already ran under
+1.6.x:
+
+```bash
+co ai -m co/gemini-3.7-flash "/linkedin-notifications ..." < /dev/null
+```
+
+The broad historical `Bash(co *)` entry does not silently authorize other
+framework effects such as `co deploy`, `co publish`, or `co email send` in
+headless Auto. Add a narrower project permission when an operator deliberately
+wants a particular ordinary command. Use bounded `--full-access` only when the
+whole unattended task is trusted to perform effects that still require a human
+under Auto.
 
 ## What the Agent Can Do
 
@@ -159,9 +223,9 @@ session ID. Read only starts Codex read-only and asks when it requests more
 permission. Auto permits workspace changes but still asks about untrusted
 commands, while Full access runs without prompts using Codex's
 `danger-full-access` sandbox. The policy is reapplied when a Codex session is
-resumed. In a hosted session, only the operator can approve Codex's
-nested permission requests; shared contacts are always confined to read-only
-Codex runs with permission requests denied.
+resumed. Every authenticated participant receives the same selected session
+mode. Control-plane administrator authority remains separate from provider
+policy.
 
 An explicit request such as “run Codex”, “open Codex”, or `/codex …` always
 uses the native `codex()` adapter. Raw launches through `bash`, `shell`,

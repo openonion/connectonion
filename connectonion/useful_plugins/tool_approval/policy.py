@@ -1,8 +1,8 @@
-"""Deterministic, fail-closed policy for the OIP ``:workspace`` profile.
+"""Deterministic, fail-closed policy for canonical Auto mode.
 
 The Host owns the selected permission profile.  This module never persists a
-client-supplied profile or grants Full access; it only classifies one pending
-tool call after the Host has selected ``:workspace`` for an operator.
+client-supplied mode or grants Full access; it only classifies one pending
+tool call after the Host has selected ``auto``.
 """
 
 from __future__ import annotations
@@ -11,37 +11,26 @@ import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...core.approval_modes import (
-    DANGER_FULL_ACCESS_PERMISSION_PROFILE,
-    READ_ONLY_PERMISSION_PROFILE,
-    WORKSPACE_PERMISSION_PROFILE,
-    legacy_permission_profile_id,
-)
 from ...core.events import before_each_tool
+from ...core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_id, mode_of, set_mode
 from ...project import project_root
-from .bash_parser import _extract_subcommands
+from .bash_parser import _extract_subcommands, check_bash_chain_permitted
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
 
 
-POLICY_ID = "connectonion.workspace-auto-approve"
+POLICY_ID = "connectonion.auto"
 POLICY_VERSION = 1
-
-# Compatibility exports for integrations built against the 1.6.11 draft.
-DEFAULT_PROFILE = WORKSPACE_PERMISSION_PROFILE
-SAFE_PROFILE = READ_ONLY_PERMISSION_PROFILE
-FULL_ACCESS_PROFILE = DANGER_FULL_ACCESS_PERMISSION_PROFILE
+MANAGED_DELEGATION_TOOLS = frozenset({"codex", "claude_code"})
+MANAGED_DELEGATION_REASON = "managed delegation owns inner approval"
 
 READ_TOOLS = {
     "read", "read_file", "glob", "grep", "search", "list", "ls",
     "list_files", "get_file_info", "task_output", "get_emails", "get_events",
     "screenshot", "load_guide",
 }
-WORKFLOW_TOOLS = {
-    "task", "ask_user", "skill", "enter_plan_mode", "exit_plan_and_implement",
-    "write_plan",
-}
+WORKFLOW_TOOLS = {"task", "ask_user", "skill", "todo_list"}
 WORKSPACE_EDIT_TOOLS = {"write", "edit", "multi_edit"}
 DELETE_TOOLS = {"delete", "remove", "unlink", "rmdir", "delete_file"}
 EXTERNAL_EFFECT_TOOLS = {
@@ -77,55 +66,77 @@ def decision(
     }
 
 
-def canonical_profile(value: object) -> str | None:
-    """Read current and legacy profile spellings without granting authority."""
+def canonical_mode(value: object) -> str | None:
+    """Read one exact public mode without granting authority."""
     try:
-        return legacy_permission_profile_id(value)
+        return mode_id(value)
     except ValueError:
         return None
 
 
-def ensure_approval_profile(agent: "Agent") -> str:
-    """Canonicalize the already-authorized Host profile, failing closed."""
-    profile = canonical_profile(agent.current_session.get("mode"))
-    if profile is None:
-        profile = READ_ONLY_PERMISSION_PROFILE
-    agent.current_session["mode"] = profile
-    return profile
+def managed_delegation_permission() -> dict:
+    """Build the exact co ai grant consumed by the Auto classifier."""
+    return {
+        "allowed": True,
+        "source": "safe",
+        "reason": MANAGED_DELEGATION_REASON,
+        "expires": {"type": "never"},
+    }
 
 
-def set_approval_profile(agent: "Agent", profile_id: str, source: str = "user") -> str:
-    """Compatibility setter; Host transactions remain the remote authority."""
+def _has_managed_delegation_grant(session: dict, tool_name: object) -> bool:
+    """Recognize only the runtime grant injected by co ai for native adapters."""
+    name = str(tool_name)
+    if name not in MANAGED_DELEGATION_TOOLS:
+        return False
+    permissions = session.get("permissions")
+    return (
+        isinstance(permissions, dict)
+        and permissions.get(name) == managed_delegation_permission()
+    )
+
+
+def ensure_approval_mode(agent: "Agent") -> str:
+    """Canonicalize stored state through the one writer."""
+
+    canonical = mode_of(agent.current_session)
+    if canonical == FULL_ACCESS:
+        return canonical
+    set_mode(agent.current_session, canonical)
+    return canonical
+
+
+def set_approval_mode(agent: "Agent", mode: str, source: str = "user") -> str:
+    """Set Read only or Auto; Host transactions remain remote authority."""
     del source
-    profile = canonical_profile(profile_id)
-    if profile is None:
-        raise ValueError(f"Unknown approval profile: {profile_id}")
-    agent.current_session["mode"] = profile
-    return profile
+    canonical = mode_id(mode)
+    if canonical not in {READ_ONLY, AUTO}:
+        raise ValueError(f"Mode is not owned by Auto policy: {canonical}")
+    return set_mode(agent.current_session, canonical)
 
 
-def advertised_profile_state(
+def advertised_mode_state(
     session: dict | None, *, new_session: bool, allow_full_access: bool
 ) -> dict:
-    """Compatibility view; production CONNECT uses ``HostPermissionPolicy``."""
+    """Return the exact public state advertised by compatibility callers."""
     del new_session
-    profile = canonical_profile((session or {}).get("mode")) or READ_ONLY_PERMISSION_PROFILE
+    current = mode_of(session or {})
     available = [
-        {"id": READ_ONLY_PERMISSION_PROFILE, "name": "Read only"},
-        {"id": WORKSPACE_PERMISSION_PROFILE, "name": "Auto", "recommended": True},
+        {"id": READ_ONLY, "name": "Read only"},
+        {"id": AUTO, "name": "Auto", "recommended": True},
     ]
     if allow_full_access:
         available.append({
-            "id": DANGER_FULL_ACCESS_PERMISSION_PROFILE,
+            "id": FULL_ACCESS,
             "name": "Full access",
             "dangerous": True,
             "bound": "host-configured",
         })
-    if profile == DANGER_FULL_ACCESS_PERMISSION_PROFILE and not allow_full_access:
-        profile = READ_ONLY_PERMISSION_PROFILE
+    if current == FULL_ACCESS and not allow_full_access:
+        current = AUTO
     return {
         "schemaVersion": POLICY_VERSION,
-        "currentModeId": profile,
+        "currentModeId": current,
         "availableModes": available,
         "policy": {"id": POLICY_ID, "version": POLICY_VERSION},
     }
@@ -233,22 +244,22 @@ def evaluate_auto_approve(tool_name: str, args: dict, root: Path | None = None) 
     return decision("unknown", "ask", "unknown tools never run silently", "call", requires_human=True)
 
 
-def _operator(agent: "Agent") -> bool:
-    requester = agent.current_session.get("requester")
-    return not requester or requester.get("level") == "admin"
-
-
 def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
-    """Return an Auto decision only for an authorized Workspace session."""
-    # Local CLI agents retain their established no-IO behavior.  This policy
-    # defines the hosted Auto UI boundary, where a human approval channel is
-    # available for an ``ask`` result.
-    if not agent.io:
-        return None
-    if ensure_approval_profile(agent) != WORKSPACE_PERMISSION_PROFILE or not _operator(agent):
+    """Return a deterministic decision for any ordinary Auto session."""
+    if ensure_approval_mode(agent) != AUTO:
         return None
     try:
-        result = evaluate_auto_approve(pending["name"], pending.get("arguments") or {})
+        if _has_managed_delegation_grant(agent.current_session, pending.get("name")):
+            result = decision(
+                "managed_delegation",
+                "allow",
+                MANAGED_DELEGATION_REASON,
+                "session",
+            )
+        else:
+            result = evaluate_auto_approve(
+                pending["name"], pending.get("arguments") or {}
+            )
     except Exception as exc:
         result = decision(
             "policy_failure",
@@ -257,9 +268,69 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             "call",
             requires_human=bool(agent.io),
         )
+    if not agent.io and result["decision"] == "ask":
+        configured = _headless_configured_command(agent, pending, result)
+        if configured is not None:
+            result = configured
+        else:
+            result = decision(
+                result["effect_class"],
+                "deny",
+                f"{result['reason']}; no approval channel is available",
+                result["scope"],
+            )
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
     return result
+
+
+def _headless_configured_command(
+    agent: "Agent", pending: dict, result: dict
+) -> dict | None:
+    """Honor an operator's standing command grant without weakening Auto.
+
+    Only ordinary commands reach this path. Publication, deployment, network,
+    credential, deletion, and unknown effects keep their stronger verdict even
+    when a broad legacy pattern such as ``Bash(co *)`` happens to match.
+    """
+    if result.get("effect_class") != "command" or pending.get("name") != "bash":
+        return None
+    permissions = agent.current_session.get("permissions")
+    if not isinstance(permissions, dict):
+        return None
+    configured = {
+        pattern: permission
+        for pattern, permission in permissions.items()
+        if isinstance(permission, dict) and permission.get("source") == "config"
+    }
+    # The shipped historical Bash(co *) grant is broader than its "safe CLI"
+    # description. Preserve the unattended browser/status compatibility users
+    # relied on without silently authorizing email, account, server, or payment
+    # commands. Operators can still name a narrower command explicitly.
+    broad_co = configured.pop("Bash(co *)", None)
+    if broad_co is not None:
+        subcommands = _extract_subcommands(
+            str((pending.get("arguments") or {}).get("command", ""))
+        )
+        if subcommands and all(
+            full == "co status" or full.startswith("co browser ")
+            for _, full in subcommands
+        ):
+            configured["Bash(co *)"] = broad_co
+    try:
+        permitted, _, _ = check_bash_chain_permitted(
+            str((pending.get("arguments") or {}).get("command", "")), configured
+        )
+    except Exception:
+        return None
+    if not permitted:
+        return None
+    return decision(
+        "configured_command",
+        "allow",
+        "operator-configured command allowlist",
+        "call",
+    )
 
 
 @before_each_tool

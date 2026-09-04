@@ -7,9 +7,9 @@ LLM-Note:
   Integration: exposes Session, SessionStorage, ActiveSession, ActiveSessionRegistry, start_cleanup_job, merge_sessions, session_to_chat_items
 """
 
-from .storage import Session, SessionStorage, session_owner
 from .active import ActiveSession, ActiveSessionRegistry, start_cleanup_job
 from .merge import merge_sessions
+from .storage import Session, SessionStorage, session_owner
 from .ui import session_to_chat_items
 
 __all__ = [

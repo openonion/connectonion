@@ -27,7 +27,7 @@ Usage:
 import re
 from typing import TYPE_CHECKING
 
-from ..core.events import before_each_tool, after_each_tool
+from ..core.events import after_each_tool, before_each_tool
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
