@@ -205,10 +205,11 @@ def test_ensure_listener_starts_one_only_when_none_is_running(tmp_path, monkeypa
 
     def fake_popen(argv, **kwargs):
         spawned.append(argv)
+        box.lock.write_text("4242\n")  # what the child does once it is up
         return FakeProcess()
 
     monkeypatch.setattr(mailbox_module.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(mailbox_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mailbox_module, "_alive", lambda pid: pid in (4242, os.getpid()))
 
     assert box.ensure_listener() == 4242
     assert spawned[0][-2:] == ["feishu", "listen"]
@@ -273,3 +274,43 @@ def test_the_stale_clock_starts_at_the_claim_not_at_delivery(tmp_path):
 
     assert box.release_stale() == 0
     assert box.unread() == []
+
+
+def test_two_receives_in_the_same_instant_get_one_listener(tmp_path, monkeypatch):
+    """Parent B's child loses the lock race and exits; B must then report
+    A's listener, not a failure."""
+    box = make(tmp_path)
+
+    class LostTheRace:
+        pid = 5001
+        returncode = 1
+
+        def poll(self):
+            box.lock.write_text("5000\n")  # A's child took the lock meanwhile
+            return 1
+
+    monkeypatch.setattr(mailbox_module.subprocess, "Popen", lambda argv, **kw: LostTheRace())
+    monkeypatch.setattr(mailbox_module, "_alive", lambda pid: pid == 5000)
+
+    assert box.ensure_listener() == 5000
+
+
+def test_the_lock_is_taken_exclusively(tmp_path, monkeypatch):
+    box = make(tmp_path)
+    monkeypatch.setattr(mailbox_module, "_alive", lambda pid: True)
+    box.lock.write_text("77\n")
+
+    assert box.hold_lock() is False, "a live holder wins"
+    assert box.lock.read_text().strip() == "77"
+
+
+def test_done_clears_the_queue_too_and_matches_the_whole_id(tmp_path):
+    """A reply made from `ls` without a `receive` must not leave the message
+    waiting; and Telegram's 123.55 must not delete -123.55."""
+    box = make(tmp_path)
+    box.deliver(msg(i="123.55"))
+    box.deliver(msg(i="-123.55"))
+
+    box.done("123.55")
+
+    assert [p.name.split("-", 1)[1] for p in box.unread()] == ["-123.55"]

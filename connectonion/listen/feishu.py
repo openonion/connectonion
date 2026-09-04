@@ -8,16 +8,16 @@ LLM-Note:
   Errors: check() returns the missing item and the next action instead of raising | send() raises RuntimeError with Feishu's own code and message, after retrying a rate limit three times | a missing SDK is reported with the pip command
 """
 
+import hashlib
 import json
 import os
 import time
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 import requests
 
-from .mailbox import Mailbox, Message
+from .mailbox import Mailbox, Message, iso_utc
 
 DOMAINS = {
     "feishu": "https://open.feishu.cn",
@@ -121,9 +121,14 @@ class Feishu:
             mailbox.log(f"bot info failed: {exc}")
 
         def on_message(data) -> None:
-            message = self.to_message(data, raw=raw)
+            message = self.to_message(data)
             if message is None:
                 return
+            if raw:
+                try:
+                    message.raw = _raw_of(data)
+                except Exception as exc:
+                    mailbox.log(f"raw payload of {message.id} not kept: {exc}")
             if mailbox.deliver(message, raw=raw):
                 mailbox.log(f"received {message.id} chat={message.chat} sender={message.sender}")
             else:
@@ -186,10 +191,13 @@ class Feishu:
         message id."""
         content = json.dumps({"text": text}, ensure_ascii=False)
         if reply_to:
+            # Same message, same text: a retry, and Feishu drops the second
+            # copy. Same message, different text (`reply --again`): a new key.
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
             body = {
                 "msg_type": "text",
                 "content": content,
-                "uuid": str(uuid.uuid5(_REPLY_NAMESPACE, f"{self.name}:{reply_to}")),
+                "uuid": str(uuid.uuid5(_REPLY_NAMESPACE, f"{self.name}:{reply_to}:{digest}")),
             }
             result = self._post(f"/open-apis/im/v1/messages/{reply_to}/reply", body)
         else:
@@ -258,7 +266,12 @@ def _data(response) -> dict:
         raise RuntimeError(f"Feishu returned HTTP {response.status_code} without JSON")
     if body.get("code") != 0:
         raise RuntimeError(f"Feishu error {body.get('code')}: {body.get('msg')}")
-    return body.get("data") or {}
+    # Most endpoints wrap the payload in `data`; /bot/v3/info puts `bot` at the
+    # top level beside code and msg. Accept both.
+    data = body.get("data")
+    if isinstance(data, dict):
+        return data
+    return {k: v for k, v in body.items() if k not in ("code", "msg")}
 
 
 def _open_id(mention) -> Optional[str]:
@@ -301,15 +314,12 @@ def _post_text(content: dict) -> str:
 
 def _iso(create_time) -> str:
     try:
-        seconds = int(create_time) / 1000
+        return iso_utc(int(create_time) / 1000)
     except (TypeError, ValueError):
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    return datetime.fromtimestamp(seconds, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        return iso_utc()
 
 
-def _raw_of(data) -> Optional[dict]:
-    try:
-        lark = _sdk()
-        return json.loads(lark.JSON.marshal(data))
-    except Exception:
-        return None
+def _raw_of(data) -> dict:
+    """The provider payload as plain JSON. Raises if the SDK cannot marshal
+    it; the caller logs that, so a missing `raw` is never silent."""
+    return json.loads(_sdk().JSON.marshal(data))

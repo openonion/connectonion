@@ -73,7 +73,11 @@ def handle_listen(name: str, raw: bool = False) -> None:
 
     def sweep():
         while not stop.wait(60):
-            released = mailbox.release_stale()
+            try:
+                released = mailbox.release_stale()
+            except OSError as exc:  # the sweep must outlive one bad file
+                mailbox.log(f"stale sweep failed: {exc}")
+                continue
             if released:
                 mailbox.log(f"returned {released} stale message(s) to new/")
 
@@ -82,11 +86,26 @@ def handle_listen(name: str, raw: bool = False) -> None:
     try:
         p.run(mailbox, raw=raw)
     except KeyboardInterrupt:
-        pass
+        mailbox.log("stopped by Ctrl-C")
     finally:
         stop.set()
         mailbox.log("listener stopped")
         mailbox.release_lock()
+
+
+# While waiting with no deadline, look at the listener this often so a
+# listener that died an hour into the wait is restarted, not waited for.
+WATCH_SECONDS = 60
+
+
+def _receive(mailbox: Mailbox, timeout: Optional[float], watch: bool):
+    if not watch or timeout is not None:
+        return mailbox.receive(timeout)
+    while True:
+        message = mailbox.receive(WATCH_SECONDS)
+        if message is not None:
+            return message
+        _listener_or_exit(mailbox)
 
 
 def handle_receive(name: str, timeout: Optional[float] = None, start: bool = True) -> None:
@@ -95,7 +114,7 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
     if start:
         _configured(name)
         _listener_or_exit(mailbox)
-    message = mailbox.receive(timeout)
+    message = _receive(mailbox, timeout, watch=start)
     if message is None:
         sys.exit(EXIT_TIMEOUT)
     print(message.to_json())
@@ -186,7 +205,7 @@ def handle_serve(name: str, command: List[str], once: bool = False) -> None:
     _listener_or_exit(mailbox)
     try:
         while True:
-            message = mailbox.receive()
+            message = _receive(mailbox, None, watch=True)
             env = dict(
                 os.environ,
                 CO_PROVIDER=name,

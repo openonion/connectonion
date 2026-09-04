@@ -35,8 +35,15 @@ STALE_AFTER_SECONDS = 3600
 _UNSAFE = re.compile(r"[^A-Za-z0-9._:@+=-]")
 
 
+def iso_utc(seconds: Optional[float] = None) -> str:
+    """A UTC timestamp with second precision, `2026-09-02T10:31:07Z`. The one
+    spelling every provider and the outbox use."""
+    stamp = datetime.now(timezone.utc) if seconds is None else datetime.fromtimestamp(seconds, timezone.utc)
+    return stamp.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return iso_utc()
 
 
 def _safe(message_id: str) -> str:
@@ -174,29 +181,39 @@ class Mailbox:
         target = self.cur / path.name
         try:
             os.rename(path, target)
+            # rename keeps the delivery-time mtime; the stale clock starts at
+            # the claim, not at the delivery, or an old message is "stale" at
+            # once. The sweep can move the file back between these two calls,
+            # which is the same as losing the rename: try the next file.
+            os.utime(target, None)
+            return Message.from_dict(json.loads(target.read_text(encoding="utf-8")))
         except FileNotFoundError:
             return None
-        # rename keeps the delivery-time mtime; the stale clock starts at the
-        # claim, not at the delivery, or an old message is "stale" at once.
-        os.utime(target, None)
-        return Message.from_dict(json.loads(target.read_text(encoding="utf-8")))
 
     def done(self, message_id: str) -> None:
-        """Forget a taken message: the reply went out, or the consumer decided
-        there is nothing to say."""
-        suffix = f"-{_safe(message_id)}"
-        for path in self.cur.iterdir():
-            if path.name.endswith(suffix):
-                path.unlink(missing_ok=True)
+        """Forget a message: the reply went out, or the consumer decided there
+        is nothing to say. Clears the queue as well as cur/, so a reply made
+        straight from `ls` without a `receive` does not leave the message
+        waiting to be handed out again."""
+        wanted = _safe(message_id)
+        for directory in (self.cur, self.new):
+            for path in directory.iterdir():
+                # Exact match after the arrival stamp: Telegram ids can carry a
+                # leading "-", so a suffix test would let 123.55 delete -123.55.
+                if path.name.split("-", 1)[1:] == [wanted]:
+                    path.unlink(missing_ok=True)
 
     def release_stale(self, max_age: float = STALE_AFTER_SECONDS) -> int:
         """Return taken-but-never-replied messages to new/. Returns how many."""
         cutoff = time.time() - max_age
         released = 0
         for path in self.cur.iterdir():
-            if path.is_file() and path.stat().st_mtime < cutoff:
-                os.rename(path, self.new / path.name)
-                released += 1
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    os.rename(path, self.new / path.name)
+                    released += 1
+            except FileNotFoundError:
+                continue  # a consumer finished it between the listing and here
         return released
 
     # ---- outbound ----------------------------------------------------------
@@ -253,11 +270,21 @@ class Mailbox:
 
     def hold_lock(self) -> bool:
         """Claim the listener role for this process. False if another
-        listener is alive."""
-        if self.listener_pid() is not None:
-            return False
-        self.lock.write_text(f"{os.getpid()}\n", encoding="utf-8")
-        return True
+        listener is alive. O_EXCL makes two listeners starting in the same
+        instant see one winner; a lock left by a dead pid is removed and
+        claimed again."""
+        for _ in range(2):
+            try:
+                fd = os.open(self.lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                if self.listener_pid() is not None:
+                    return False
+                self.lock.unlink(missing_ok=True)
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(f"{os.getpid()}\n")
+            return True
+        return False
 
     def release_lock(self) -> None:
         if self.listener_pid() == os.getpid():
@@ -277,12 +304,26 @@ class Mailbox:
         else:  # pragma: no cover - Windows only
             kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0)
         process = subprocess.Popen(argv, **kwargs)
-        time.sleep(1.0)
-        if process.poll() is not None:
-            self.log(f"listener exited at once with {process.returncode}; see the lines above")
-            return None
-        self.log(f"listener started pid {process.pid}")
-        return process.pid
+        # Wait for the child to take the lock, for it to exit, or for a few
+        # seconds of interpreter start-up, whichever comes first.
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            if self.listener_pid() == process.pid:
+                self.log(f"listener started pid {process.pid}")
+                return process.pid
+            time.sleep(0.1)
+        if process.poll() is None:
+            self.log(f"listener started pid {process.pid} (lock not yet seen)")
+            return process.pid
+        # It exited. Another receive may have started a listener in the same
+        # instant and won the lock; then ours losing is the right outcome.
+        pid = self.listener_pid()
+        if pid is not None:
+            return pid
+        self.log(f"listener exited at once with {process.returncode}; see the lines above")
+        return None
 
     # ---- internals ----------------------------------------------------------
 

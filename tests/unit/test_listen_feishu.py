@@ -123,13 +123,15 @@ def test_reply_posts_to_the_message_with_a_stable_uuid(creds, monkeypatch):
 
     first = bot.send("oc_a1b2", "done", reply_to="om_9f8e")
     second = bot.send("oc_a1b2", "done", reply_to="om_9f8e")
+    again = bot.send("oc_a1b2", "done, and one more thing", reply_to="om_9f8e")
 
-    assert first == second == "om_reply"
+    assert first == second == again == "om_reply"
     url, body, headers = calls[1]
     assert url == "https://open.feishu.cn/open-apis/im/v1/messages/om_9f8e/reply"
     assert json.loads(body["content"]) == {"text": "done"}
     assert headers == {"Authorization": "Bearer t-abc"}
-    assert body["uuid"] == calls[2][1]["uuid"], "same message, same dedupe key"
+    assert body["uuid"] == calls[2][1]["uuid"], "same message, same text: a retry, one dedupe key"
+    assert body["uuid"] != calls[3][1]["uuid"], "same message, new text (--again): a new key"
     assert sum(1 for c in calls if c[0].endswith("/internal")) == 1, "token fetched once"
 
 
@@ -235,3 +237,56 @@ def test_an_exhausted_monthly_quota_is_not_retried(creds, monkeypatch):
     with pytest.raises(RuntimeError, match="monthly API quota"):
         Feishu().send("oc_x", "hi")
     assert posts == ["post"]
+
+
+def test_bot_info_reads_the_top_level_shape_feishu_actually_returns(creds, monkeypatch):
+    """/bot/v3/info puts `bot` beside code and msg, not under `data`."""
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
+        {"code": 0, "msg": "ok", "bot": {"open_id": "ou_bot", "app_name": "OpsAgent", "activate_status": 2}}))
+    bot = Feishu()
+
+    assert bot.bot_info() == {"open_id": "ou_bot", "name": "OpsAgent"}
+    assert bot._bot_open_id == "ou_bot"
+
+
+def test_a_raw_payload_that_cannot_be_marshalled_is_logged_not_dropped_silently(creds, monkeypatch, tmp_path):
+    from types import SimpleNamespace as NS
+
+    from connectonion.listen.mailbox import Mailbox
+
+    class FakeWs:
+        def __init__(self, *a, event_handler=None, **k):
+            self.handler = event_handler
+            self.on_reconnecting = self.on_reconnected = None
+
+        def start(self):
+            self.handler(event(text='{"text":"hi"}', chat_type="p2p"))
+
+    class Builder:
+        def register_p2_im_message_receive_v1(self, fn):
+            self.fn = fn
+            return self
+
+        def build(self):
+            return self.fn
+
+    class BadJSON:
+        @staticmethod
+        def marshal(data):
+            raise TypeError("not serialisable")
+
+    fake_sdk = NS(ws=NS(Client=FakeWs), LogLevel=NS(WARNING=1), JSON=BadJSON,
+                  EventDispatcherHandler=NS(builder=lambda a, b: Builder()))
+    monkeypatch.setitem(sys.modules, "lark_oapi", fake_sdk)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
+        {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
+    box = Mailbox("feishu", home=tmp_path / "feishu")
+
+    Feishu().run(box, raw=True)
+
+    assert len(box.unread()) == 1, "the message still arrives"
+    assert "raw payload of om_9f8e not kept: not serialisable" in box.logfile.read_text()
