@@ -52,10 +52,10 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 
 `EXEC` is the direct-execution fast path: it runs one named tool with no LLM, no session, and no history, replying with a single `EXEC_RESULT`. It requires the same CONNECT auth as INPUT, and the tool is gated by the host's `.co/host.yaml` permission whitelist. See [remote-call.md](remote-call.md).
 
-On a **direct** socket the very first frame may be `SEAL` instead: the client
-offers a one-time key, the host answers `SEALED_OK` with its own, and every
-frame after that — CONNECT included — travels inside `SEALED`. See
-[Sealed direct channel](#sealed-direct-channel). The relay path is unchanged.
+On any socket — direct or through the relay — the very first frame may be
+`SEAL` instead: the client offers a one-time key, the host answers `SEALED_OK`
+with its own, and every frame after that — CONNECT included — travels inside
+`SEALED`. See [Sealed channel](#sealed-direct-channel).
 
 A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not part of the
 normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
@@ -541,11 +541,12 @@ the stashed CONNECT is **kept**, so the reader can simply try again — no recon
 
 #### SEAL / SEALED_OK / SEALED {#sealed-direct-channel}
 
-End-to-end encryption for a direct socket, so a host may announce plain
-`ws://IP:port` and needs no domain, certificate or TLS front. Before this a
-signed CONNECT captured on a plaintext link could be replayed inside its
-five-minute window (#649), and direct connections were therefore limited to
-TLS or loopback.
+End-to-end encryption for a socket, direct or relayed. A host may announce
+plain `ws://IP:port` and needs no domain, certificate or TLS front, and a
+session through the relay is opaque to the relay. Before this a signed CONNECT
+captured on a plaintext link could be replayed inside its five-minute window
+(#649), direct connections were therefore limited to TLS or loopback, and the
+relay — which terminates TLS — read every frame it forwarded.
 
 Handshake, first two frames on the socket:
 
@@ -561,10 +562,19 @@ Handshake, first two frames on the socket:
 
 Both sides derive one NaCl `Box` from the two one-time keys. The address *is*
 the Ed25519 public key, so each side verifies the other's signature with
-nothing but the address it already had; the relay is not involved. A `SEAL`
-older than the CONNECT freshness window, addressed to another host, or signed
-by someone other than `from` is answered with `ERROR seal refused: …` and the
-socket is closed (code 4003) — no plaintext second try.
+nothing but the address it already had; no directory, and the relay is not
+involved. A `SEAL` older than the CONNECT freshness window, addressed to
+another host, or signed by someone other than `from` is answered with
+`ERROR seal refused: …` and the socket is closed (code 4003) — no plaintext
+second try.
+
+Through the relay the frames are the same. The relay proxy reads `to` from the
+first frame to pick the agent and forwards every frame after it verbatim,
+adding only `session_id`; `SEAL` carries `to`, so nothing on the relay changes.
+The relay's own frames to the client — its 30s `PING` and an `ERROR` such as
+`Agent not connected` — arrive in the clear and are passed up as-is; they hold
+no key and carry nothing a peer said. Everything else on a sealed socket must
+open.
 
 Every later frame in either direction:
 
@@ -579,12 +589,25 @@ PROXY_STREAM…), and the router never sees the difference. Signed CONNECT and
 v2 command signatures are still required inside the seal: the seal makes the
 link private, the signatures still say who is speaking.
 
-Client rule (`_open_best_connection`): every direct socket is offered a
-`SEAL`. A host that does not answer `SEALED_OK` is used bare only if the link
-is already private — TLS or loopback — or the client has no keys and so
-nothing signed to lose; otherwise the socket is closed and the client moves
-on to the relay. `PROXY_ATTACH` still requires a direct socket; a sealed
-plaintext one qualifies.
+Inside a seal the `CONNECT` (and an `ONBOARD_SUBMIT`) must be signed by the
+identity that signed the `SEAL`; a frame from anyone else is refused as
+`unauthorized: … not signed by the sealed peer`. That binding is what makes
+the host's one-use signature ledger unnecessary on a sealed socket: nobody
+but the sealed peer can put a frame on it, so a captured signature cannot be
+presented there by anyone else, and the ledger is not consulted. A bare
+socket — an older client — is still held to the ledger. A `co host` process
+runs one worker and keeps that ledger in memory; only `create_app()` served
+with several uvicorn workers keeps it in `.co/replay.sqlite3`, and that file
+now heals if it is removed under a running host (#1403).
+
+Client rule (`_open_best_connection`): every socket, direct or relayed, is
+offered a `SEAL` when the client has keys. A direct host that does not answer
+`SEALED_OK` is used bare only if the link is already private — TLS or
+loopback; otherwise the socket is closed and the client moves on to the relay.
+A relay host that does not answer (a 1.8.0 host) has already consumed that
+socket's first frame, so the client closes it and opens a fresh bare relay
+socket — TLS to the relay, every client's footing before 1.8.1. `PROXY_ATTACH`
+still requires a direct socket; a sealed plaintext one qualifies.
 
 #### PROXY_ATTACH
 

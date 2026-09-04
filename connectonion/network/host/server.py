@@ -70,7 +70,7 @@ from .http_router import (
 )
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
-from .replay import SignatureReplayStore
+from .replay import MemoryReplayStore, SignatureReplayStore
 from .schedule import create_schedule_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, start_cleanup_job
 from .session.mode import HostPermissionPolicy
@@ -1124,7 +1124,11 @@ def host(
     from ...useful_plugins.tool_approval.approval import load_permission_patterns
     exec_permissions = load_permission_patterns(co_dir)
 
-    replay_store = SignatureReplayStore(co_dir / "replay.sqlite3")
+    # One worker (usable_uvicorn_options never forks), so the one-use ledger
+    # for unsealed 1.7 clients is a dict. The SQLite ledger is create_app()'s,
+    # for deployments that fork; here it was only a file a deploy could
+    # delete, and on 2026-09-03 one did — see network/host/replay.py.
+    replay_store = MemoryReplayStore()
     remote_browser_service = RemoteBrowserService(
         co_dir / "remote-browser-sessions.json"
     )
