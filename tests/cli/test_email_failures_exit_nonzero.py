@@ -106,7 +106,7 @@ def test_inbox_forwards_the_page_size_and_offset():
         )
 
     assert result.exit_code == 0
-    get_emails.assert_called_once_with(last=1000, offset=2000)
+    get_emails.assert_called_once_with(last=1000, offset=2000, address=None)
 
 
 def test_a_successful_send_does_not_raise():

@@ -840,10 +840,16 @@ def email_inbox(
         help="Skip this many newer emails",
     ),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    address: str = typer.Option(
+        None,
+        "--address",
+        "-a",
+        help="Only mail delivered to this address (default: every address you can read)",
+    ),
 ):
-    """List recent received emails."""
+    """List recent received emails, across every address this account can read."""
     from .commands.email_commands import handle_email_inbox
-    handle_email_inbox(last=last, offset=offset, unread=unread)
+    handle_email_inbox(last=last, offset=offset, unread=unread, address=address)
 
 
 @email_app.command("read")
@@ -884,6 +890,15 @@ def email_addresses():
     """List every email address this account owns, marking the default sender."""
     from .commands.email_commands import handle_email_addresses
     handle_email_addresses()
+
+
+@email_app.command("default")
+def email_default(
+    address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
+):
+    """Choose which of your addresses is the default sender."""
+    from .commands.email_commands import handle_email_default
+    handle_email_default(address)
 
 
 @email_app.command("name")
