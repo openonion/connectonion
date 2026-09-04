@@ -18,6 +18,7 @@ MIN_ONIONWRIGHT_VERSION = "0.0.13"
 
 class Reason:
     SYSTEM_REQUESTED = "system_requested"
+    SYSTEM_DEFAULT = "system_default"
     ONION_READY = "onion_ready"
     INVALID_MODE = "invalid_engine_mode"
     ONIONWRIGHT_MISSING = "onionwright_missing"
@@ -47,7 +48,17 @@ class Resolution:
 
     @property
     def fallback(self) -> bool:
-        return self.requested == AUTO and self.resolved == SYSTEM
+        """Whether a paid engine was attempted and could not be used.
+
+        The plain default is not a fallback: since paying became opt-in,
+        `auto` resolves to system Chrome without attempting anything, and
+        calling that a fallback would report a failure that never happened.
+        """
+        return (
+            self.requested == AUTO
+            and self.resolved == SYSTEM
+            and self.reason != Reason.SYSTEM_DEFAULT
+        )
 
     @property
     def artifact_id(self) -> str | None:
@@ -70,11 +81,9 @@ class Resolution:
     def interval_usd(self) -> float | None:
         """What one billing interval costs, when the server said.
 
-        Surfaced so a paid session can say what it costs. `auto` resolves to
-        the paid engine whenever preparation succeeds, so an ordinary command
-        can start a billable session; spending money without saying so in the
-        output is the part of that which is wrong however the default is
-        settled (#1327).
+        Surfaced so a paid session can say what it costs. Only an explicit
+        `onion` request reaches a paid session now (#1327), and it still has to
+        say what that session costs.
         """
         capability = getattr(self.prepared, "capability", None)
         price = getattr(capability, "interval_usd", None)
@@ -132,6 +141,13 @@ def _system(requested: str, reason: str, next_action: str) -> Resolution:
 
 
 def _unavailable(requested: str, reason: str, next_action: str) -> Resolution:
+    """Report a paid engine that could not be prepared.
+
+    Only an explicit `onion` request reaches this now, and an explicit request
+    never becomes system silently. The `auto` branch is kept because the
+    fallback shape is what makes an added mode safe by default rather than
+    billable by accident.
+    """
     if requested == ONION:
         raise BrowserEngineError(reason, next_action)
     return _system(requested, reason, next_action)
@@ -147,11 +163,13 @@ def resolve(
 ) -> Resolution:
     """Resolve one immutable engine choice without starting a paid session.
 
-    `system` returns before importing Onionwright, loading a token, calling the
-    server, or touching the paid cache. `auto` and `onion` run Onionwright's
-    complete non-billing `prepare`: exact signed manifest, compatibility,
-    download, checksum, extraction, and executable readiness. Only the later
-    `launch()` call is allowed to create and charge a session.
+    `system` and `auto` return before importing Onionwright, loading a token,
+    calling the server, or touching the paid cache: the default engine is the
+    installed system Chrome, and money is never spent unless the caller asks
+    for it by name. `onion` runs Onionwright's complete non-billing `prepare`:
+    exact signed manifest, compatibility, download, checksum, extraction, and
+    executable readiness, and fails with a typed error rather than falling back.
+    Only the later `launch()` call is allowed to create and charge a session.
     """
     if requested not in MODES:
         raise BrowserEngineError(
@@ -163,6 +181,21 @@ def resolve(
             SYSTEM,
             Reason.SYSTEM_REQUESTED,
             "Start Patchright with the installed system Chrome.",
+        )
+    if requested == AUTO:
+        # Paying is opt-in. `auto` used to resolve to the paid engine whenever
+        # preparation succeeded, which meant an ordinary `co browser go_to`
+        # could open a billable session on a machine that merely had
+        # Onionwright installed (#1327 named the problem and left the default
+        # to be settled). It is settled here: nothing charges unless the caller
+        # names `onion`. `auto` stays a valid mode because the CLI, the client
+        # and the daemon all use it as the wire value for "not chosen", so a
+        # warm paid daemon still serves later verbs that name no engine.
+        return _system(
+            AUTO,
+            Reason.SYSTEM_DEFAULT,
+            "Start Patchright with the installed system Chrome; "
+            "use --engine onion to start a paid WTF Browser session.",
         )
 
     paid_home = home or Path.home() / ".onionwright"

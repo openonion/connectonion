@@ -318,7 +318,11 @@ def doctor(
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
-    engine: str = typer.Option("auto", "--engine", help="Browser engine: auto, system, or onion"),
+    engine: str = typer.Option(
+        "auto",
+        "--engine",
+        help="Browser engine: system Chrome by default; --engine onion pays for the WTF Browser",
+    ),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
