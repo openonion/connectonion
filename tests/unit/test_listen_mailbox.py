@@ -200,11 +200,15 @@ def test_ensure_listener_starts_one_only_when_none_is_running(tmp_path, monkeypa
     class FakeProcess:
         pid = 4242
 
+        def poll(self):
+            return None  # still running
+
     def fake_popen(argv, **kwargs):
         spawned.append(argv)
         return FakeProcess()
 
     monkeypatch.setattr(mailbox_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(mailbox_module.time, "sleep", lambda s: None)
 
     assert box.ensure_listener() == 4242
     assert spawned[0][-2:] == ["feishu", "listen"]
@@ -234,3 +238,38 @@ def test_message_json_has_the_same_seven_keys_in_order(tmp_path):
 def test_the_directory_is_private(tmp_path):
     box = make(tmp_path)
     assert oct(box.root.stat().st_mode & 0o777) == "0o700"
+
+
+def test_a_listener_that_dies_at_once_is_reported_not_waited_for(tmp_path, monkeypatch):
+    """No SDK, bad credentials: the child exits 3 within a second. receive()
+    must not then wait forever for files that will never come."""
+    box = make(tmp_path)
+
+    class DeadProcess:
+        pid = 4243
+        returncode = 3
+
+        def poll(self):
+            return 3
+
+    monkeypatch.setattr(mailbox_module.subprocess, "Popen", lambda argv, **kw: DeadProcess())
+    monkeypatch.setattr(mailbox_module.time, "sleep", lambda s: None)
+
+    assert box.ensure_listener() is None
+    assert "listener exited at once with 3" in box.logfile.read_text()
+
+
+def test_the_stale_clock_starts_at_the_claim_not_at_delivery(tmp_path):
+    """A message delivered two hours ago and taken a minute ago is not stale.
+    rename() keeps the old mtime, so the claim has to reset it, or the sweep
+    hands the message out a second time while the first consumer is on it."""
+    box = make(tmp_path)
+    box.deliver(msg())
+    (queued,) = box.unread()
+    old = time.time() - 7200
+    os.utime(queued, (old, old))
+
+    box.receive(timeout=0)
+
+    assert box.release_stale() == 0
+    assert box.unread() == []

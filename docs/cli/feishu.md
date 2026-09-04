@@ -86,18 +86,22 @@ co feishu receive -t 300         # give up after 5 minutes (exit 124, like timeo
 co feishu send oc_a1b2 "all green"
 echo "all green" | co feishu send oc_a1b2          # text from stdin, like mail
 co feishu reply om_9f8e "fixed"                     # back to the chat and thread that message came from
+co feishu done om_9f8e           # took it, decided not to answer; do not bring it back
 co feishu check                  # credentials, connectivity, listener, unread; exit 3 on a problem
 co feishu ls                     # unread: id, chat, sender, text
 co feishu log -f                 # inbox.jsonl, following
 ```
 
 `receive` starts a background `listen` if none is running, so there is no
-daemon to remember. `listen` in the foreground is for watching it work and
+daemon to remember; if that listener dies within a second (no SDK, bad
+credentials) `receive` exits 1 and points at `log`. `listen` in the foreground is for watching it work and
 for `systemd`; one listener per directory.
 
 `reply ID` needs only the id: chat and thread are read from `inbox.jsonl`. It
 refuses to answer the same message twice unless you pass `--again`, so a loop
-that re-runs cannot double-post. `send` and `reply` print the id Feishu gave
+that re-runs cannot double-post. A taken message that is neither replied to
+nor marked `done` comes back to `new/` after an hour, on the assumption that
+its consumer died; `done` is how a consumer says it chose silence. `send` and `reply` print the id Feishu gave
 the new message and exit 1 with Feishu's own reason if it was refused.
 
 ## Any agent, two lines

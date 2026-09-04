@@ -1013,6 +1013,12 @@ def _mailbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again)
 
+    @group.command("done")
+    def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
+        """Forget a taken message without replying, so it does not come back in an hour."""
+        from .commands.listen_commands import handle_done
+        handle_done(name, message_id)
+
     @group.command("check")
     def _check():
         """Credentials, connectivity, listener state, unread count. Exit 3 on a problem."""

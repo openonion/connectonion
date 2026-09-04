@@ -75,7 +75,7 @@ def test_receive_exits_124_when_nothing_arrives(box, fake):
 
 def test_receive_starts_a_listener_unless_told_not_to(box, fake, monkeypatch):
     started = []
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: started.append(self.provider))
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: started.append(self.provider) or 1)
     deliver(box)
 
     listen_commands.handle_receive("feishu", timeout=0)
@@ -155,7 +155,7 @@ def test_reply_to_an_unknown_id_exits_1(box, fake, capsys):
 
 
 def test_serve_pipes_the_message_through_a_command_and_replies_with_its_stdout(box, fake, monkeypatch):
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: None)
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_s", chat="oc_s", text="what is 2+2")
     command = [sys.executable, "-c",
                "import json,os,sys; m=json.load(sys.stdin); "
@@ -169,7 +169,7 @@ def test_serve_pipes_the_message_through_a_command_and_replies_with_its_stdout(b
 
 
 def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypatch):
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: None)
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_f")
     listen_commands.handle_serve("feishu", [sys.executable, "-c", "import sys; sys.exit(3)"], once=True)
     deliver(box, i="om_g")
@@ -221,3 +221,24 @@ def test_every_verb_that_talks_to_the_platform_exits_3_when_unconfigured(box, mo
             call()
         assert exit_.value.code == 3
     assert capsys.readouterr().err.count("FEISHU_APP_ID is not set") == 4
+
+
+def test_receive_exits_1_when_the_listener_could_not_start(box, fake, monkeypatch, capsys):
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: None)
+
+    with pytest.raises(SystemExit) as exit_:
+        listen_commands.handle_receive("feishu", timeout=0)
+
+    assert exit_.value.code == 1
+    assert "listener exited at once" in capsys.readouterr().err
+
+
+def test_done_forgets_a_taken_message_so_it_does_not_come_back(box, fake, capsys):
+    deliver(box, i="om_q")
+    listen_commands.handle_receive("feishu", timeout=0, start=False)
+    capsys.readouterr()
+
+    listen_commands.handle_done("feishu", "om_q")
+
+    assert list(box.cur.iterdir()) == []
+    assert box.release_stale(max_age=0) == 0

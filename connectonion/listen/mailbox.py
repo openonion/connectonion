@@ -176,6 +176,9 @@ class Mailbox:
             os.rename(path, target)
         except FileNotFoundError:
             return None
+        # rename keeps the delivery-time mtime; the stale clock starts at the
+        # claim, not at the delivery, or an old message is "stale" at once.
+        os.utime(target, None)
         return Message.from_dict(json.loads(target.read_text(encoding="utf-8")))
 
     def done(self, message_id: str) -> None:
@@ -262,8 +265,8 @@ class Mailbox:
 
     def ensure_listener(self) -> Optional[int]:
         """Start `co <provider> listen` in the background if none is running.
-        Returns the pid of the listener that is now running, or None if one
-        could not be started. Its output goes to the log."""
+        Returns the pid of the listener that is now running, or None if the
+        one we started died within a second (its reason is in the log)."""
         pid = self.listener_pid()
         if pid is not None:
             return pid
@@ -274,6 +277,10 @@ class Mailbox:
         else:  # pragma: no cover - Windows only
             kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0)
         process = subprocess.Popen(argv, **kwargs)
+        time.sleep(1.0)
+        if process.poll() is not None:
+            self.log(f"listener exited at once with {process.returncode}; see the lines above")
+            return None
         self.log(f"listener started pid {process.pid}")
         return process.pid
 

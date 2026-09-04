@@ -1,10 +1,10 @@
 """
-Purpose: The verbs of a mailbox provider — `co feishu listen | receive | send | reply | check | ls | log | serve`
+Purpose: The verbs of a mailbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | serve`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, listen/] | imported by [cli/main.py via _mailbox_group()] | tested by [tests/unit/test_listen_commands.py]
   Data flow: handle_listen → provider.run(mailbox) until Ctrl-C | handle_receive → mailbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → outbox.jsonl → the new message id on stdout | handle_serve → receive → subprocess(stdin=message) → reply(stdout)
   State/Effects: everything durable lives in the mailbox directory | listen holds listen.lock and returns stale cur/ files every minute | receive and serve start a background listener when none runs
-  Integration: one set of handlers for every provider name in listen.PROVIDERS; main.py registers the same eight commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
+  Integration: one set of handlers for every provider name in listen.PROVIDERS; main.py registers the same nine commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
 """
 
@@ -49,6 +49,18 @@ def _text_from(argument: Optional[str]) -> str:
     return sys.stdin.read().rstrip("\n")
 
 
+def _listener_or_exit(mailbox: Mailbox) -> None:
+    """Make sure a listener is running, or say why one could not start."""
+    if mailbox.ensure_listener() is None:
+        errors.print(f"the listener exited at once; the reason is at the end of {mailbox.logfile}", style="red")
+        sys.exit(1)
+
+
+def handle_done(name: str, message_id: str) -> None:
+    """Forget a taken message without replying, so it does not come back."""
+    Mailbox(name).done(message_id)
+
+
 def handle_listen(name: str, raw: bool = False) -> None:
     """Hold the connection and write every message to the mailbox."""
     p = _configured(name)
@@ -82,7 +94,7 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
     mailbox = Mailbox(name)
     if start:
         _configured(name)
-        mailbox.ensure_listener()
+        _listener_or_exit(mailbox)
     message = mailbox.receive(timeout)
     if message is None:
         sys.exit(EXIT_TIMEOUT)
@@ -171,7 +183,7 @@ def handle_serve(name: str, command: List[str], once: bool = False) -> None:
     stdout back as the reply. Empty stdout or a non-zero exit sends nothing."""
     p = _configured(name)
     mailbox = Mailbox(name)
-    mailbox.ensure_listener()
+    _listener_or_exit(mailbox)
     try:
         while True:
             message = mailbox.receive()
