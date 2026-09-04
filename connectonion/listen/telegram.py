@@ -1,7 +1,7 @@
 """
 Purpose: Telegram as a mailbox — getUpdates long polling writes files, replies go through sendMessage
 LLM-Note:
-  Dependencies: imports from [os, time, datetime, requests, listen/mailbox.py] | imported by [listen/__init__.py via provider()] | tested by [tests/unit/test_listen_telegram.py]
+  Dependencies: imports from [os, time, requests, listen/mailbox.py, useful_tools/telegram.py (API, NO_TOKEN)] | imported by [listen/__init__.py via provider()] | tested by [tests/unit/test_listen_telegram.py]
   Data flow: run(mailbox) → GET /bot<token>/getUpdates?offset&timeout=50 → to_message() → mailbox.deliver() → offset = update_id + 1 | send() → POST /bot<token>/sendMessage → message id
   State/Effects: reads TELEGRAM_BOT_TOKEN, the same token `co telegram send` uses | one outbound long poll at a time, so no port is opened | the offset lives only in memory: Telegram keeps unacknowledged updates for 24 hours, and re-randomises ids after a week idle, so a persisted cursor would be wrong more often than useful
   Integration: message ids are "<chat>.<message_id>" because Telegram's message_id is only unique within a chat; reply parses that back | a group message counts as mentioned when it @s the bot's username or replies to one of its messages; in a private chat everything is
@@ -10,20 +10,12 @@ LLM-Note:
 
 import os
 import time
-from datetime import datetime, timezone
 from typing import Optional
 
 import requests
 
-from .mailbox import Mailbox, Message
-
-API = "https://api.telegram.org"
-
-NO_TOKEN = (
-    "TELEGRAM_BOT_TOKEN is not set. Create a bot by messaging @BotFather on "
-    "Telegram, then put the token it gives you in ~/.co/keys.env as "
-    "TELEGRAM_BOT_TOKEN. The bot is yours — nothing is billed to it."
-)
+from ..useful_tools.telegram import API, NO_TOKEN
+from .mailbox import Mailbox, Message, iso_utc
 
 # Long poll length. Telegram holds the request open this long when nothing
 # is happening; 50 keeps well under the usual 60 s proxy idle limit.
@@ -131,11 +123,14 @@ class Telegram:
         replied = (m.get("reply_to_message") or {}).get("from") or {}
         if me.get("id") and replied.get("id") == me["id"]:
             return True
+        # Telegram counts entity offsets in UTF-16 code units, so an emoji
+        # before the @ is two units, not one; slice the UTF-16 form.
+        utf16 = text.encode("utf-16-le")
         handles = []
         for entity in m.get("entities") or m.get("caption_entities") or []:
             if entity.get("type") in ("mention", "bot_command"):
-                offset, length = entity.get("offset", 0), entity.get("length", 0)
-                handles.append(text[offset:offset + length])
+                offset, length = int(entity.get("offset", 0)), int(entity.get("length", 0))
+                handles.append(utf16[2 * offset:2 * (offset + length)].decode("utf-16-le", "replace"))
         if not me.get("username"):
             return any(h.startswith("@") for h in handles)
         needle = f"@{me['username']}".lower()
@@ -156,7 +151,8 @@ class Telegram:
 
     def _call(self, method: str, body: dict, *, timeout: float = 15, method_kind: str = "post") -> dict:
         url = f"{API}/bot{self.token}/{method}"
-        for attempt in range(2):
+        retried = False
+        while True:
             try:
                 if method_kind == "get":
                     response = requests.get(url, timeout=timeout)
@@ -172,17 +168,16 @@ class Telegram:
             if payload.get("ok"):
                 return payload.get("result")
             retry_after = (payload.get("parameters") or {}).get("retry_after")
-            if response.status_code == 429 and retry_after and attempt == 0:
+            if response.status_code == 429 and retry_after and not retried:
+                retried = True  # honour Telegram's own wait once, then report
                 time.sleep(float(retry_after))
                 continue
             description = str(payload.get("description", f"HTTP {response.status_code}"))
             raise RuntimeError(f"Telegram refused: {description.replace(self.token, '[redacted]')}")
-        raise RuntimeError("Telegram rate-limited this chat twice; try again later")
 
 
 def _iso(date) -> str:
     try:
-        stamp = datetime.fromtimestamp(int(date), timezone.utc)
+        return iso_utc(int(date))
     except (TypeError, ValueError):
-        stamp = datetime.now(timezone.utc)
-    return stamp.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        return iso_utc()

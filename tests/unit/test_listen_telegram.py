@@ -188,3 +188,17 @@ def test_missing_token_names_botfather_and_check_reports_a_bad_token(monkeypatch
         {"ok": False, "description": "Unauthorized"}, status_code=401))
     (problem,) = Telegram().check()
     assert "Unauthorized" in problem
+
+
+def test_a_mention_after_an_emoji_is_still_ours(bot):
+    """Telegram counts entity offsets in UTF-16 code units: the rocket is
+    two units, so offset 3 means "after the emoji and a space"."""
+    message = bot.to_message(update(text="🚀 @OpsBot deploy", entities=[{"type": "mention", "offset": 3, "length": 7}]))
+    assert message.mentioned is True
+
+
+def test_the_missing_token_message_is_the_one_co_telegram_send_already_uses(monkeypatch):
+    from connectonion.useful_tools.telegram import NO_TOKEN
+
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    assert Telegram().missing() == [NO_TOKEN]
