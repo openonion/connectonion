@@ -333,8 +333,6 @@ Worth saying out loud on any page that sells to a business:
   /sessions /new /resume /undo /redo` are defined and imported nowhere — issue #965.
   Working slash commands are skill names.
 - `cli/co_ai/sessions.py` and its SQLite store are reachable only from those commands.
-- `cli/co_ai/agents/registry.py` duplicates the explore and plan subagents; the running
-  agent uses `useful_plugins/builtin_agents/` — issue #966.
 - `create_app()` advertises `sha256(agent.name)` as the agent address — a fake
   unrelated to the Ed25519 key, inconsistent with `host()`.
 - `@expose` has a design document and no implementation.
