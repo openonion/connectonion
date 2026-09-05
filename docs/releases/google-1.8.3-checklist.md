@@ -19,16 +19,17 @@ until the immutable-tag workflow publishes and verifies 1.8.3.
 - SDK #1440 merged at `968dcd10991b62ca4e0cefd5c8ebf2a5d5f9fc3b` with
   all hosted Python/platform checks green.
 - Local full regression: 8,120 passed, 22 skipped, 211 deselected; one
-  unrelated installed-Onionwright fixture mismatch remains. The synthetic
+  unrelated installed-Onionwright fixture mismatch was found. The synthetic
   `test_paid_async_cross_repo` fixture omits five newly required `Artifact`
   constructor fields; it fails before any browser/session is created. No
-  real paid session is started by this test. Resolve the cross-repository
-  test dependency before treating the local release run as fully green.
+  real paid session is started by this test. The fixture now supplies the
+  inert Linux metadata accepted by the installed version; its isolated
+  rerun passes. A full rerun follows this correction.
 
 ## Before publication
 
 - [x] Confirm SDK #1440 is merged with all CI checks green.
-- [ ] Resolve the local Onionwright fixture/dependency mismatch and rerun it.
+- [x] Resolve the local Onionwright fixture/dependency mismatch and rerun it.
 - [x] Verify deployed oo-api revision contains #230 and its health check passes:
   `1ee5af128f0f1bf620719b161bbc0ae1b944c380`, deployment run `33963449009`.
   Service active and public relay health healthy on 2026-09-05.
