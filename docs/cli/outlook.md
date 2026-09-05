@@ -116,7 +116,9 @@ co outlook reply 3 "Sounds good, see you then."
 
 Sends a threaded reply to an email from your last listing. Use `-` as the
 message to read the reply body from stdin, and `--at +2h` (or a UTC ISO
-time) to schedule the reply like a scheduled send.
+time) to schedule the reply like a scheduled send. A scheduled reply is a
+reply draft that Exchange holds until then, so it needs the `Mail.ReadWrite`
+scope and shows up in `co outlook scheduled` like any other scheduled send.
 
 **Options**
 - `--attach, -a FILE` — attach a local file; repeat for multiple
@@ -131,7 +133,8 @@ co outlook reply 3 "Signed copy attached." \
 
 The files ride on Graph's reply action, so the message stays in the original
 conversation instead of going out as a new email. Attachments and `--at`
-combine — a scheduled reply keeps its files.
+combine — a scheduled reply keeps its files (they are added to the reply
+draft before it is scheduled).
 
 ### `co outlook send <to> <subject> <message>` — Send
 
@@ -159,8 +162,10 @@ co outlook send bob@example.com "Report" "See attached." \
 > the CLI may explicitly name a file outside the project; agent-facing
 > `Outlook()` tools remain limited to project files.
 
-**Scheduling** — Exchange holds delivery until the time you give (deferred
-send), so it works with just the `Mail.Send` scope and no extra setup:
+**Scheduling** — the message is created as a draft carrying a deferred-send
+time, and Exchange holds it until then. Creating the draft needs the
+`Mail.ReadWrite` scope, which `co auth microsoft` grants by default; a token
+issued before that scope was added needs one more `co auth microsoft`:
 
 ```bash
 co outlook send bob@example.com "Reminder" "Standup in 30." --at +30m
