@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from ..core.events import after_user_input, on_complete
 from ..core.trace import current_turn_trace
+from ..core.usage import DEFAULT_MODEL
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ Focus on the USER'S INTENT, not exact text matching:
 Be lenient - if the core task was done, mark it passed."""
 
 
-DEFAULT_SCORING_MODEL = "co/gemini-3.7-flash"
+DEFAULT_SCORING_MODEL = DEFAULT_MODEL
 
 
 def _scoring_model(agent: 'Agent') -> str:

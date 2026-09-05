@@ -38,7 +38,7 @@ class ProgressSegment:
         from connectonion.tui import StatusBar, ProgressSegment
 
         status = StatusBar([
-            ("🤖", "co/gemini-3.7-flash", "magenta"),
+            ("🤖", "co/gemini-3.8-flash", "magenta"),
             ProgressSegment(percent=78, bg_color="green"),
         ])
     """
@@ -68,19 +68,19 @@ class StatusBar:
 
         # Text segments only
         bar = StatusBar([
-            ("🤖", "co/gemini-3.7-flash", "magenta"),
+            ("🤖", "co/gemini-3.8-flash", "magenta"),
             ("", "main", "blue"),
         ])
 
         # With progress bar for context window
         bar = StatusBar([
-            ("🤖", "co/gemini-3.7-flash", "magenta"),
+            ("🤖", "co/gemini-3.8-flash", "magenta"),
             ProgressSegment(percent=78, bg_color="green"),
         ])
         console.print(bar.render())
 
     Output (with powerline font):
-        🤖 co/gemini-3.7-flash  ███████░░░ 78%
+        🤖 co/gemini-3.8-flash  ███████░░░ 78%
     """
 
     def __init__(
@@ -144,13 +144,13 @@ class SimpleStatusBar:
 
     Usage:
         bar = SimpleStatusBar([
-            ("🤖", "co/gemini-3.7-flash", "magenta"),
+            ("🤖", "co/gemini-3.8-flash", "magenta"),
             ("📊", "50%", "green"),
         ])
         console.print(bar.render())
 
     Output:
-        [🤖 co/gemini-3.7-flash] [📊 50%]
+        [🤖 co/gemini-3.8-flash] [📊 50%]
     """
 
     def __init__(self, segments: list[tuple[str, str, str]]):

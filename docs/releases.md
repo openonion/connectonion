@@ -12,6 +12,8 @@ Preview releases never replace the stable recommendation. Install one with
 
 - Stable release: `1.6.10`
 - Preview target: `1.7.0a13`
+- Planned patch: `1.8.2` — Gemini 3.8 Flash support and product-wide default
+  migration; this work is not part of 1.8.1.
 - Browser client: `@connectonion/react@0.4.2-alpha.11`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python

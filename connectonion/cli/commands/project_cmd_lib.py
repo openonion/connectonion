@@ -30,8 +30,12 @@ from ... import address
 # the other model facts, and PaidModelRequiredError offers the same tuple when a
 # free account picks a paid model. It used to be written out twice in this file,
 # and both copies had gone stale.
-from ...core.usage import FREE_MANAGED_MODELS as MANAGED_MODELS
-from ...core.usage import PAID_MANAGED_MODELS as PAID_MODELS
+from ...core.usage import (
+    DEFAULT_DIRECT_GEMINI_MODEL,
+    DEFAULT_MODEL,
+    FREE_MANAGED_MODELS as MANAGED_MODELS,
+    PAID_MANAGED_MODELS as PAID_MODELS,
+)
 from ...credentials import account_in_token
 
 console = Console()
@@ -627,7 +631,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'google': {
             'var': 'GEMINI_API_KEY',
-            'model': 'gemini-3.7-flash'
+            'model': DEFAULT_DIRECT_GEMINI_MODEL,
         },
         'groq': {
             'var': 'GROQ_API_KEY',
@@ -643,7 +647,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gemini-3.7-flash'  # Prefixed models for managed keys
+            'model': DEFAULT_MODEL,
         }
     }
 
@@ -652,14 +656,14 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     # Special handling for ConnectOnion managed keys
     if provider == 'connectonion':
         if api_key == 'managed':
-            return """# ConnectOnion Managed Keys Configuration
+            return f"""# ConnectOnion Managed Keys Configuration
 # Authenticate with: co auth
 # Purchase credits at: https://o.openonion.ai
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.7-flash
-# Available models: co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
+MODEL={DEFAULT_MODEL}
+# Available models: {DEFAULT_MODEL}, co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
 # With purchased credits: co/gpt-5, co/o4-mini, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
@@ -669,13 +673,13 @@ MODEL=co/gemini-3.7-flash
 # TEMPERATURE=0.7
 """
         elif api_key == 'star':
-            return """# ConnectOnion Free Credits (100k tokens)
+            return f"""# ConnectOnion Free Credits (100k tokens)
 # 1. Star us: https://github.com/openonion/connectonion
 # 2. Authenticate with: co auth
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.7-flash
+MODEL={DEFAULT_MODEL}
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -702,7 +706,7 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
     Args:
         description: What the agent should do
         api_key: API key or token for LLM
-        model: Optional model to use (e.g., "co/gemini-3.7-flash")
+        model: Optional model to use (e.g., "co/gemini-3.8-flash")
         loading_animation: Optional LoadingAnimation instance to update
 
     Returns:
@@ -718,8 +722,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...core.llm import create_llm
 
-            # Use the model specified or default to co/gemini-3.7-flash
-            llm_model = model if model else "co/gemini-3.7-flash"
+            # Use the model specified or the product default.
+            llm_model = model if model else DEFAULT_MODEL
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -804,7 +808,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{model if model and model.startswith('co/') else 'co/gemini-3.7-flash'}",
+    model="{model if model and model.startswith('co/') else DEFAULT_MODEL}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",

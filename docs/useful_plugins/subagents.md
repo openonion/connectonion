@@ -38,7 +38,7 @@ builtin/{name}/AGENT.md         # Built-in agents
 ---
 name: explore
 description: Fast codebase exploration agent
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 15
 tools:
   - glob

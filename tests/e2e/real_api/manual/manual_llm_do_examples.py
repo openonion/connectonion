@@ -33,7 +33,7 @@ print(f"  ConnectOnion: {'✓' if has_co_auth else '✗'}")
 
 # Test 1: Simple string response with default model
 print("\n" + "=" * 70)
-print("Test 1: Simple string response with default model (co/gemini-3.7-flash)")
+print("Test 1: Simple string response with default model (co/gemini-3.8-flash)")
 print("=" * 70)
 
 if has_co_auth:
@@ -47,9 +47,9 @@ if has_co_auth:
 else:
     print("⊘ Skipped - No ConnectOnion auth (run 'co auth')")
 
-# Test 2: With ConnectOnion managed keys - co/gemini-3.7-flash
+# Test 2: Explicit Gemini 3.7 rollback
 print("\n" + "=" * 70)
-print("Test 2: With ConnectOnion managed keys (co/gemini-3.7-flash)")
+print("Test 2: Explicit Gemini 3.7 rollback (co/gemini-3.7-flash)")
 print("=" * 70)
 
 if has_co_auth:
@@ -179,7 +179,7 @@ print("=" * 70)
 
 tests_run = sum([
     has_co_auth,  # Test 1: default model
-    has_co_auth,  # Test 2: co/gemini-3.7-flash
+    has_co_auth,  # Test 2: explicit 3.7 rollback
     has_anthropic,  # Test 3: Claude
     has_gemini,  # Test 4: Gemini
     # Test 5 skipped (Ollama)
@@ -189,7 +189,7 @@ tests_run = sum([
 
 print(f"\nTests run: {tests_run}/7 (Ollama skipped)")
 print(f"\nDefault model configuration:")
-print(f"  llm_do default: co/gemini-3.7-flash")
+print(f"  llm_do default: co/gemini-3.8-flash")
 print(f"  Requires: ConnectOnion auth ('co auth')")
 print(f"\nOverride examples:")
 print(f"  llm_do('Hello', model='o4-mini', api_key='sk-...')")

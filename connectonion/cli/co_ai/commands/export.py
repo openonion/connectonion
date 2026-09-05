@@ -11,7 +11,7 @@ Key function:
 Export format:
 - Markdown file with conversation metadata header
 - Date and timestamp
-- Model name (e.g., co/gemini-3.7-flash)
+- Model name (e.g., co/gemini-3.8-flash)
 - Formatted message history (user/assistant/tool)
 - Tool calls displayed with formatting
 - Tool results in code blocks

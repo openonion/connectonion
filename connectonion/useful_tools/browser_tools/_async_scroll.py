@@ -91,7 +91,7 @@ def _choose_strategy(description, scrollable, html):
             simplified_html=html,
         ),
         output=rules.ScrollStrategy,
-        model="co/gemini-3.7-flash",
+        model=rules.DEFAULT_MODEL,
         temperature=0.1,
     )
 

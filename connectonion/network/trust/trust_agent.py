@@ -55,6 +55,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...core.usage import DEFAULT_MODEL
 from ...project import project_co_dir
 from .factory import PROMPTS_DIR, TRUST_LEVELS
 from .fast_rules import evaluate_request, parse_policy
@@ -137,7 +138,7 @@ class TrustAgent:
     """
 
     def __init__(self, trust: str = "careful", *, api_key: str = None,
-                 model: str = "co/gemini-3.7-flash", co_dir: Path = None,
+                 model: str = DEFAULT_MODEL, co_dir: Path = None,
                  invite_code: str = None):
         """
         Create a TrustAgent.

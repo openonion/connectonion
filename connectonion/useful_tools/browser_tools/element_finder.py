@@ -29,6 +29,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from connectonion import llm_do
+from connectonion.core.usage import DEFAULT_MODEL
 
 
 class ElementNotFoundError(Exception):
@@ -209,7 +210,7 @@ def find_element(
     result = llm_do(
         prompt,
         output=ElementMatch,
-        model="co/gemini-3.7-flash",
+        model=DEFAULT_MODEL,
         temperature=0.1
     )
 
