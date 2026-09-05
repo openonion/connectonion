@@ -85,19 +85,13 @@ class Gmail:
         Validates that gmail.readonly scope is authorized.
         Raises ValueError if scope is missing.
         """
-        scopes = os.getenv("GOOGLE_SCOPES", "")
-        if "gmail.readonly" not in scopes:
+        from .google_scopes import granted_scopes
+        scopes = granted_scopes()
+        if not scopes.intersection({"gmail.readonly", "gmail.modify", "https://mail.google.com/"}):
             raise ValueError(
                 "Missing 'gmail.readonly' scope.\n"
                 f"Current scopes: {scopes}\n"
                 "Please authorize Gmail access:\n"
-                "  co auth google"
-            )
-        if "gmail.send" not in scopes:
-            raise ValueError(
-                "Missing 'gmail.send' scope.\n"
-                f"Current scopes: {scopes}\n"
-                "Please authorize Gmail send access:\n"
                 "  co auth google"
             )
 
@@ -212,7 +206,11 @@ class Gmail:
         }
         if new_refresh_token:
             values["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
+        if "scopes" in data:
+            values["GOOGLE_SCOPES"] = data["scopes"]
+        os.environ.update(values)
         upsert_env(env_file, values)
+        env_file.chmod(0o600)
 
         return new_access_token
 
@@ -505,7 +503,7 @@ class Gmail:
     def _require_draft_write_scope(self) -> None:
         """Require one of the scopes accepted by Gmail's draft write APIs."""
         scopes = self._scopes
-        if not any(scope in scopes for scope in ("gmail.modify", "gmail.compose", "mail.google.com")):
+        if not any(scope in scopes for scope in ("gmail.modify", "gmail.compose", "https://mail.google.com/")):
             raise ValueError(
                 "Gmail draft permission missing.\n"
                 "Reconnect Google to grant draft access:\n"

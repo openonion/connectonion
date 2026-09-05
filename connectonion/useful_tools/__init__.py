@@ -26,6 +26,7 @@ from .file_tools import (
     write,
 )
 from .gdrive import GDrive
+from .youtube import YouTube
 from .get_emails import get_emails, mark_read, mark_unread
 from .gmail import Gmail
 from .google_calendar import GoogleCalendar
@@ -74,6 +75,7 @@ __all__ = [
     "Memory",
     "Gmail",
     "GDrive",
+    "YouTube",
     "Synology",
     "GoogleCalendar",
     "Outlook",

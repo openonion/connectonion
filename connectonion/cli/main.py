@@ -155,6 +155,8 @@ def _show_help():
     console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]gcalendar[/green]         Calendar events, free slots and Meet links (co auth google)")
+    console.print("  [green]youtube[/green]           Video metadata and preview-first uploads (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
@@ -243,6 +245,9 @@ def deploy(
 def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube.")):
     """Authenticate with OpenOnion."""
+    if scopes is not None and service != "google":
+        print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
     if service == "google":
         from .commands.auth_commands import handle_google_auth
         handle_google_auth(scopes=scopes)
@@ -1215,6 +1220,80 @@ def gdrive_rm(
 
 # Synology command group. `co syno` (no args) lists your shared folders.
 # Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
+_YOUTUBE_AUTH_HELP = (
+    "Connect once with co auth google, then use the saved Google login like co gmail. "
+    "Tokens refresh automatically through the existing Google OAuth broker. "
+    "YouTube operations use the official Data API. Uploads default to private; "
+    "unverified API projects can force private visibility. --confirm is an external write."
+)
+youtube_app = _typer_app(help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
+app.add_typer(youtube_app, name="youtube")
+
+
+@youtube_app.callback(invoke_without_command=True)
+def youtube_callback(ctx: typer.Context,
+                     json_output: bool = typer.Option(False, "--json", help="Emit one JSON object")):
+    if ctx.invoked_subcommand is None:
+        from .commands.youtube_commands import handle_youtube_list
+        handle_youtube_list(json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Place --json after the subcommand; see co youtube --help.")
+
+
+@youtube_app.command("channel", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_channel(target: Optional[str] = typer.Argument(None, help="UC channel ID, @handle, or channel URL; default is your channel"),
+                    json_output: bool = typer.Option(False, "--json")):
+    """Read a channel and its uploads playlist ID."""
+    from .commands.youtube_commands import handle_youtube_channel
+    handle_youtube_channel(target, json_output=json_output)
+
+
+@youtube_app.command("list", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_list(target: Optional[str] = typer.Argument(None, help="Channel ID, @handle or URL; default is your channel"),
+                 last: int = typer.Option(20, "--last", "-n", min=1, max=200),
+                 json_output: bool = typer.Option(False, "--json")):
+    """List recent uploads; numbers refer to this exact listing."""
+    from .commands.youtube_commands import handle_youtube_list
+    handle_youtube_list(target, last, json_output=json_output)
+
+
+@youtube_app.command("video", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_video(item: str = typer.Argument(..., help="Number from your last listing, video ID, or URL; no media download"),
+                  json_output: bool = typer.Option(False, "--json")):
+    """Read one video's metadata and returned counts."""
+    from .commands.youtube_commands import handle_youtube_video
+    handle_youtube_video(item, json_output=json_output)
+
+
+@youtube_app.command("put", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_put(path: str = typer.Argument(..., help="Local video file"),
+                title: str = typer.Option(..., "--title"),
+                channel: str = typer.Option(..., "--channel", help="Exact UC channel ID, checked again before upload"),
+                description: str = typer.Option("", "--description"),
+                privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
+                category: str = typer.Option("22", "--category"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact preview digest; consumes this plan once and uploads"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Preview locally; upload only with the current plan's --confirm digest."""
+    from .commands.youtube_commands import handle_youtube_put
+    handle_youtube_put(path, title, channel, description, privacy, category, dry_run, confirm, json_output)
+
+
+@youtube_app.command("update", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_update(item: str = typer.Argument(..., help="Listing number, video ID, or URL"),
+                   title: Optional[str] = typer.Option(None, "--title"),
+                   description: Optional[str] = typer.Option(None, "--description"),
+                   dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact digest of the current metadata preview; performs one update"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Preview title/description edits without changing privacy or other parts."""
+    from .commands.youtube_commands import handle_youtube_update
+    handle_youtube_update(item, title, description, dry_run, confirm, json_output)
+
+from .commands.gcalendar_commands import gcalendar_app
+app.add_typer(gcalendar_app, name="gcalendar")
+
 syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
 app.add_typer(syno_app, name="syno")
 

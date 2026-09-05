@@ -42,15 +42,16 @@ def _gmail(require_draft_write: bool = False):
 
     # Gmail() itself requires both scopes — check them here so a partially
     # authorized token gets the hint instead of a raw ValueError traceback.
-    scopes = os.getenv("GOOGLE_SCOPES", "")
-    if "gmail.readonly" not in scopes or "gmail.send" not in scopes:
+    from ...useful_tools.google_scopes import granted_scopes
+    scopes = granted_scopes()
+    if not scopes.intersection({"gmail.readonly", "gmail.modify", "https://mail.google.com/"}):
         console.print("\n❌ [bold red]Gmail permission missing[/bold red]")
         console.print("\n[cyan]Reconnect Google to grant it:[/cyan]")
         console.print("  [bold]co auth google[/bold]     Re-authorize with Gmail access\n")
         raise typer.Exit(1)
 
     if require_draft_write and not any(
-        scope in scopes for scope in ("gmail.modify", "gmail.compose", "mail.google.com")
+        scope in scopes for scope in ("gmail.modify", "gmail.compose", "https://mail.google.com/")
     ):
         console.print("\n❌ [bold red]Gmail draft permission missing[/bold red]")
         console.print("\n[cyan]Reconnect Google to grant it:[/cyan]")

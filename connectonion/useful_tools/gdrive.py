@@ -38,6 +38,7 @@ Example:
 import io
 import mimetypes
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
@@ -74,8 +75,9 @@ class GDrive:
         Validates that Google OAuth is configured with the Drive scope.
         Raises ValueError if it is missing.
         """
-        scopes = os.getenv("GOOGLE_SCOPES", "")
-        if "drive" not in scopes:
+        from .google_scopes import granted_scopes
+        scopes = granted_scopes()
+        if not scopes.intersection({"drive", "drive.readonly"}):
             raise ValueError(
                 "Missing 'drive' scope.\n"
                 f"Current scopes: {scopes}\n"
@@ -107,15 +109,26 @@ class GDrive:
 
         creds = Credentials(
             token=access_token,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=None,
-            client_secret=None,
+            expiry=self._token_expiry(),
+            refresh_handler=self._refresh_handler,
             scopes=["https://www.googleapis.com/auth/drive"]
         )
 
         self._service = build('drive', 'v3', credentials=creds)
         return self._service
+
+    def _token_expiry(self) -> datetime:
+        value = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
+        if not value:
+            return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=55)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
+
+    def _refresh_handler(self, request, scopes=None):
+        token = os.getenv("GOOGLE_REFRESH_TOKEN")
+        if not token:
+            raise ValueError("Local Google refresh token missing. Run: co auth google")
+        return self._refresh_via_backend(token), self._token_expiry()
 
     def _refresh_via_backend(self, refresh_token: str) -> str:
         """Refresh the access token via the backend and persist it.

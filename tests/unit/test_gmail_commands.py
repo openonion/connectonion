@@ -93,17 +93,16 @@ class TestGmailGuard:
         assert "Gmail permission missing" in output
         assert "co auth google" in output
 
-    def test_readonly_without_send_exits_with_hint(self, capsys):
-        """Gmail() needs gmail.send too — the guard must catch it, not traceback."""
+    def test_readonly_without_send_can_read(self, capsys):
+        """A deliberately restricted read grant must remain usable."""
         with patch.dict(
             os.environ,
             {"GOOGLE_ACCESS_TOKEN": "test-token", "GOOGLE_SCOPES": "gmail.readonly"},
             clear=False,
         ):
-            with pytest.raises(typer.Exit):
-                _gmail()
+            assert _gmail() is not None
 
-        assert "Gmail permission missing" in capsys.readouterr().out
+        assert "Gmail permission missing" not in capsys.readouterr().out
 
     def test_send_without_readonly_exits_with_hint(self, capsys):
         with patch.dict(

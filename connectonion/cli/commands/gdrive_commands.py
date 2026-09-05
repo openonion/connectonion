@@ -37,7 +37,8 @@ def _gdrive():
         console.print("  [bold]co auth google[/bold]     Authorize Drive access\n")
         raise typer.Exit(1)
 
-    if "drive" not in os.getenv("GOOGLE_SCOPES", ""):
+    from ...useful_tools.google_scopes import granted_scopes
+    if not granted_scopes().intersection({"drive", "drive.readonly"}):
         # Drive was added to the OAuth scopes after Gmail and Calendar — a token
         # from before that grants everything else but not this.
         console.print("\n❌ [bold red]Google Drive permission missing[/bold red]")

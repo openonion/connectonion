@@ -318,6 +318,15 @@ The CLI wraps the same `Gmail` tool your agents use. See
 
 See [gdrive.md](gdrive.md) for details.
 
+#### Google Calendar and YouTube
+
+The Google-only 1.8.3 candidate adds `co gcalendar` and `co youtube` alongside
+Gmail and Drive. Default `co auth google` requests all four supported services;
+tokens and granted scopes remain local. See [Google auth](../integrations/google.md).
+
+- [co gcalendar](gcalendar.md): list/read events, find free slots, preview and confirm Calendar writes and Meet creation.
+- [co youtube](youtube.md): read channels/videos and preview or confirm uploads and metadata updates.
+
 ---
 
 #### `co syno` - Synology NAS Files

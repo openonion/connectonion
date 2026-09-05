@@ -84,12 +84,10 @@ class TestGmailInit:
         assert "gmail.readonly" in str(exc_info.value)
 
     @patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly"}, clear=True)
-    def test_init_missing_send_scope(self):
-        """Test Gmail raises error when gmail.send scope is missing."""
+    def test_init_readonly_grant(self):
+        """Read-only consent must permit reading without requesting send."""
         from connectonion.useful_tools.gmail import Gmail
-        with pytest.raises(ValueError) as exc_info:
-            Gmail()
-        assert "gmail.send" in str(exc_info.value)
+        assert Gmail()._service is None
 
 
 class TestGmailGetService:
