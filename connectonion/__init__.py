@@ -89,6 +89,7 @@ _FROM = {
         "list_sms_devices", "revoke_sms_device",
         "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
         "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
+        "youcom_search", "youcom_contents", "youcom_research",
         "claude_code",
         "DiffWriter",
         "MODE_NORMAL", "MODE_AUTO", "MODE_PLAN",

@@ -52,6 +52,7 @@ from .telegram import send_telegram
 from .terminal import autocomplete, yes_no
 from .todo_list import TodoList
 from .web_fetch import WebFetch
+from .youcom_search import youcom_contents, youcom_research, youcom_search
 
 __all__ = [
     # Email tools
@@ -78,6 +79,9 @@ __all__ = [
     "Outlook",
     "MicrosoftCalendar",
     "WebFetch",
+    "youcom_search",
+    "youcom_contents",
+    "youcom_research",
     "Shell",
     "bash",
     "codex",
