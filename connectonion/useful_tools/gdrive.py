@@ -150,10 +150,17 @@ class GDrive:
         from ..cli.commands.project_cmd_lib import upsert_env
         env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
         env_file.parent.mkdir(parents=True, exist_ok=True)
-        upsert_env(env_file, {
+        values = {
             "GOOGLE_ACCESS_TOKEN": new_access_token,
             "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
-        })
+        }
+        if data.get("refresh_token"):
+            values["GOOGLE_REFRESH_TOKEN"] = data["refresh_token"]
+        if "scopes" in data:
+            values["GOOGLE_SCOPES"] = data["scopes"]
+        os.environ.update(values)
+        upsert_env(env_file, values)
+        env_file.chmod(0o600)
 
         return new_access_token
 

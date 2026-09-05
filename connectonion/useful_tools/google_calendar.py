@@ -117,11 +117,15 @@ class GoogleCalendar:
         # Get backend URL and auth
         selected_backend = backend_url()
         api_key = require_ambient_api_key()
+        refresh_token = refresh_token or os.getenv("GOOGLE_REFRESH_TOKEN")
+        if not refresh_token:
+            raise ValueError("Local Google refresh token missing. Run: co auth google")
 
         # Call backend refresh endpoint
         response = httpx.post(
             f"{selected_backend}/api/v1/oauth/google/refresh",
             headers={"Authorization": f"Bearer {api_key}"},
+            json={"refresh_token": refresh_token},
             timeout=15.0,
         )
 

@@ -240,112 +240,9 @@ def _print_oauth_url(auth_url: str) -> None:
     console.print()
 
 
-def handle_google_auth():
-    """Authenticate with Google OAuth for Gmail/Calendar access."""
-
-    # Check if user is authenticated with OpenOnion first
-    api_key = load_api_key()
-    if not api_key:
-        console.print("\n❌ [bold red]Not authenticated with OpenOnion[/bold red]")
-        console.print("\n[cyan]Authenticate first:[/cyan]")
-        console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
-        return
-
-    api_url = f"{backend_url()}/api/v1/oauth"
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    # Keep the existing refresh token alive while re-authenticating. Deleting it
-    # here breaks deployed agents immediately. Remember the old expiry instead,
-    # then wait until the callback writes a newer credential row.
-    previous_expiry = None
-    previously_connected = False
-    previous_status = requests.get(
-        f"{api_url}/google/status",
-        headers=headers,
-        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-    )
-    if previous_status.status_code == 200:
-        previous = previous_status.json()
-        previously_connected = bool(previous.get("connected"))
-        previous_expiry = previous.get("expires_at")
-
-    # Get OAuth URL
-    console.print("🔑 Initializing Google OAuth...", style="cyan")
-
-    response = requests.get(
-        f"{api_url}/google/init",
-        headers=headers,
-        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-    )
-    if response.status_code != 200:
-        console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
-        return
-
-    auth_url = response.json()['auth_url']
-
-    # Open browser
-    console.print("\n🌐 Opening browser for Google authentication...")
-    _print_oauth_url(auth_url)
-
-    webbrowser.open(auth_url)
-
-    # Poll for completion
-    console.print("⏳ Waiting for authorization...", style="yellow")
-    console.print("   (Complete the authorization in your browser)\n", style="dim")
-
-    max_attempts = 60  # 5 minutes (5 second intervals)
-    for attempt in range(max_attempts):
-        time.sleep(5)
-
-        status_response = requests.get(
-            f"{api_url}/google/status",
-            headers=headers,
-            timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-        )
-        if status_response.status_code == 200:
-            status = status_response.json()
-            if status.get('connected') and (
-                not previously_connected or status.get('expires_at') != previous_expiry
-            ):
-                console.print("✓ Authorization successful!", style="green")
-                break
-    else:
-        console.print("\n❌ Authorization timed out", style="red")
-        console.print("Please try again with: [bold]co auth google[/bold]\n")
-        return
-
-    # Get credentials
-    creds_response = requests.get(
-        f"{api_url}/google/credentials",
-        headers=headers,
-        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-    )
-    if creds_response.status_code != 200:
-        console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
-        return
-
-    credentials = creds_response.json()
-
-    # Save credentials
-    console.print("\n💾 Saving credentials...", style="cyan")
-
-    # Save to global ~/.co/keys.env (always, so every project can use the tokens)
-    global_keys_env = Path.home() / ".co" / "keys.env"
-    global_keys_env.parent.mkdir(parents=True, exist_ok=True)
-    _save_google_to_env(global_keys_env, credentials)
-    console.print(f"   ✓ Saved to {global_keys_env}", style="green")
-
-    # Save to local .env
-    local_env = Path(".env")
-    _save_google_to_env(local_env, credentials)
-    console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
-
-    # Success message
-    console.print("\n✅ [bold green]Google account connected![/bold green]")
-    console.print(f"   Email: {credentials['google_email']}", style="green")
-    console.print("\n📧 You can now use Google tools in your agents:")
-    console.print("   [dim]from connectonion.tools import gmail_send[/dim]")
-    console.print("   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
+def handle_google_auth(scopes: str | None = None):
+    from .google_auth import handle_google_auth as local_auth
+    return local_auth(scopes=scopes)
 
 
 def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
@@ -359,7 +256,7 @@ def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
     }, strip_prefix="MICROSOFT_")
 
 
-def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict:
+def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str, provider: str = "microsoft") -> dict:
     """Open the one-time callback result that was sealed to this CLI."""
     try:
         plaintext = SealedBox(private_key).decrypt(
@@ -371,7 +268,7 @@ def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict
 
     required = {
         "access_token", "refresh_token", "expires_at",
-        "scopes", "microsoft_email",
+        "scopes", f"{provider}_email",
     }
     if not required.issubset(credentials) or not all(
         isinstance(credentials[name], str) and credentials[name]
@@ -381,7 +278,7 @@ def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict
     return credentials
 
 
-def _microsoft_callback_server():
+def _microsoft_callback_server(provider: str = "Microsoft"):
     """Bind a one-command loopback receiver; nothing is written by the backend."""
     result = {}
     expected_state = {"value": None}
@@ -401,11 +298,11 @@ def _microsoft_callback_server():
             if error:
                 result["error"] = error
                 status = 400
-                message = b"Microsoft authorization was cancelled. You may close this tab."
+                message = f"{provider} authorization was cancelled. You may close this tab.".encode()
             elif ciphertext:
                 result["ciphertext"] = ciphertext
                 status = 200
-                message = b"Microsoft authorization complete. You may close this tab."
+                message = f"{provider} authorization complete. You may close this tab.".encode()
             else:
                 self.send_response(400)
                 self.end_headers()

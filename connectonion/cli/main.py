@@ -240,11 +240,12 @@ def deploy(
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
+def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft"),
+         scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube.")):
     """Authenticate with OpenOnion."""
     if service == "google":
         from .commands.auth_commands import handle_google_auth
-        handle_google_auth()
+        handle_google_auth(scopes=scopes)
     elif service == "microsoft":
         from .commands.auth_commands import handle_microsoft_auth
         handle_microsoft_auth()

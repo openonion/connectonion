@@ -154,10 +154,10 @@ class Gmail:
         return self._refresh_via_backend(None), self._token_expiry()
 
     def _refresh_via_backend(self, refresh_token: str | None) -> str:
-        """Ask the backend to refresh its stored Google credentials.
+        """Ask the stateless broker to refresh the locally held Google token.
 
         Args:
-            refresh_token: Ignored; retained for compatibility with copied tools.
+            refresh_token: Optional explicit local token; otherwise read local configuration.
 
         Returns:
             New access token
@@ -167,11 +167,15 @@ class Gmail:
         # Get backend URL and auth
         selected_backend = backend_url()
         api_key = require_ambient_api_key()
+        refresh_token = refresh_token or os.getenv("GOOGLE_REFRESH_TOKEN")
+        if not refresh_token:
+            raise ValueError("Local Google refresh token missing. Run: co auth google")
 
         # Call backend refresh endpoint
         response = httpx.post(
             f"{selected_backend}/api/v1/oauth/google/refresh",
             headers={"Authorization": f"Bearer {api_key}"},
+            json={"refresh_token": refresh_token},
             timeout=15.0,
         )
 

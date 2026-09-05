@@ -232,7 +232,7 @@ class TestGmailGetService:
             token = Gmail.__new__(Gmail)._refresh_via_backend("stale-local-token")
 
         assert token == "fresh-access"
-        assert "json" not in post.call_args.kwargs
+        assert post.call_args.kwargs["json"] == {"refresh_token": "stale-local-token"}
         assert post.call_args.kwargs["timeout"] == 15.0
         assert os.environ["GOOGLE_REFRESH_TOKEN"] == "rotated-refresh"
         saved = (tmp_path / "keys.env").read_text()
