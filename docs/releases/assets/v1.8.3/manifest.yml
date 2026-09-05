@@ -1,0 +1,23 @@
+version: v1.8.3
+images:
+  - file: google-cli-help.svg
+    alt: Google auth, Calendar and YouTube CLI help from the candidate
+    caption: One Google authorization entry point and discoverable Calendar and YouTube commands.
+    scenario: Account-free CLI help capture; no Google account actions performed.
+    viewport: 100-column terminal
+    commit: d20a8d9f
+    source_run: scripts/capture_google_release_cli.py
+  - file: google-docs-desktop.png
+    alt: Google integration documentation on desktop
+    caption: Four Google command groups with local credential ownership.
+    scenario: Isolated Chrome opens the locally built candidate documentation.
+    viewport: 1440px desktop
+    commit: 1262f2f
+    source_run: https://github.com/wu-changxing/connectonion-docs-site/pull/139
+  - file: google-docs-mobile.png
+    alt: Google integration documentation on mobile
+    caption: The authorization and command routing instructions remain readable on a narrow screen.
+    scenario: Isolated Chrome checks mobile layout without horizontal page overflow.
+    viewport: 390px mobile
+    commit: 1262f2f
+    source_run: https://github.com/wu-changxing/connectonion-docs-site/pull/139
