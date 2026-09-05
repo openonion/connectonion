@@ -18,11 +18,13 @@ co gmail read 3
 
 # Create, review, and then explicitly send a draft
 co gmail draft create alice@example.com "Hello" "Thanks for the meeting today!"
+co gmail draft list               # choose the new draft's row from this listing
 co gmail draft preview 1
 co gmail draft send 1
 ```
 
-That's the whole surface. Everything below is detail.
+Use the row that matches your draft; `create` prints its full ID but does not
+assign it row 1. You can use that ID directly instead of listing again.
 
 ## Setup
 
@@ -55,6 +57,8 @@ co gmail inbox -u        # unread only
 Emails are numbered. **Numbers mean your last listing** — `co gmail read 3`
 opens the third row of the table you just saw. Running `co gmail` again
 renumbers.
+An empty inbox or search result clears older message numbers, so a later
+`read 1` cannot silently use a row from the previous listing.
 
 A green ● marks unread.
 
@@ -90,6 +94,7 @@ asks for interactive confirmation. There is no confirmation-bypass flag.
 ```bash
 co gmail draft list
 co gmail draft create alice@example.com "Report" "Please review."
+co gmail draft list               # select the matching row before using a number
 co gmail draft attach 1 report.pdf
 co gmail draft preview 1
 co gmail draft send 1
@@ -99,6 +104,9 @@ Drafts are numbered independently from inbox messages. A draft number means a
 row from the most recent `co gmail draft list`; the mapping is cached in
 `~/.co/gmail_last_drafts.json`. Attachment numbers come from `draft preview`.
 A full Gmail draft ID works anywhere a draft number does.
+Creating a draft does not change this numbering. An empty draft list clears it.
+Answering no, ending input, or interrupting the confirmation prompt keeps the
+draft, exits 1, and prints its preview command again.
 
 Use local or Drive files without first copying Drive content to disk:
 
@@ -143,6 +151,8 @@ co gmail sent -n 25
 ```
 
 Read-only listing; it does **not** touch the read/reply numbering.
+To read a sent message, run `co gmail search in:sent`, then choose a number from
+that search result.
 
 ### `co gmail search <query>` — Search
 
@@ -197,6 +207,19 @@ gmail.get_draft(draft["id"])
 ```
 
 ## Troubleshooting
+
+| Exit / result | Recovery command |
+|---|---|
+| 0, inbox or search result | `co gmail read <# from this listing>` |
+| 1, missing permission | `co auth google` |
+| 1, unknown message number or unreadable numbering cache | `co gmail inbox` |
+| 1, send/reply connection failure | `co gmail sent` |
+| 1, declined draft confirmation | `co gmail draft preview <draft ID>` |
+| 2, missing read argument | `co gmail read --help` |
+
+Read the printed cause and next command even when piping output. Provider error
+bodies are omitted. A connection failure after sending can mean the response
+was lost after delivery: inspect sent mail before repeating the send or reply.
 
 - **"Google account not connected"** → run `co auth google`.
 - **Missing Gmail scopes** → run `co auth google` again to re-consent.
