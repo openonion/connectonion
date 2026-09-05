@@ -202,6 +202,7 @@ co gmail read 3 --mark-read                         # explicitly mark read
 co gmail send bob@example.com "Hi" "Body text"
 co gmail search "from:alice@example.com is:unread"
 co gmail draft create bob@example.com "Report" "Please review."
+co gmail draft list               # choose the matching row; create prints an ID
 co gmail draft attach 1 report.pdf
 co gmail draft preview 1
 co gmail draft send 1          # previews and asks; there is no --yes

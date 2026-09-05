@@ -20,7 +20,7 @@ co gdrive get 3
 co gdrive put report.pdf
 ```
 
-That's the whole surface. Everything below is detail.
+Each result prints a next command, including when output is piped.
 
 ## Setup
 
@@ -47,6 +47,8 @@ co gdrive list -n 50
 Files are numbered. **Numbers mean your last listing** — `co gdrive get 3`
 downloads the third row of the table you just saw. Running `co gdrive` again
 renumbers.
+List and search share their numbering cache. An empty result clears the old
+numbers; it does not leave an earlier row available for `get` or `rm`.
 
 Trashed files are excluded.
 
@@ -81,13 +83,14 @@ Google Docs, Sheets, and Slides have no file bytes of their own, so they are
 | Google Drawing | PDF (`.pdf`) |
 
 Everything else downloads byte-for-byte. Folders and Forms have no export
-format at all — the command says so rather than writing a broken file.
+format at all — the command fails rather than writing a broken file.
 Shortcuts resolve to whatever they point at.
 
 To stage a Drive file directly into an unsent Gmail draft, keep the current
 Drive listing and use its row number:
 
 ```bash
+co gmail draft list               # select an existing draft independently
 co gdrive list -n 20
 co gmail draft attach 1 3 --drive
 co gmail draft attach 1 3 --drive --link
@@ -126,6 +129,15 @@ co gdrive list -n 100 | cut -f4      # just the ids
 co gdrive search report | cut -f1    # just the names
 ```
 
+These commands also print a final tip line, which is not a file row. If parsing
+rows, filter for five tab-separated fields first:
+
+```bash
+co gdrive list | awk -F '\t' 'NF == 5 { print $4 }'
+```
+
+The tip names the fifth column as the source of the number for `co gdrive get`.
+
 ## Using it from an agent
 
 ```python
@@ -146,6 +158,20 @@ drive.upload("report.pdf")
 ```
 
 ## Troubleshooting
+
+| Exit / result | Recovery command |
+|---|---|
+| 0, listing or search results | `co gdrive get <# from this listing>` |
+| 0, empty search | `co gdrive list` |
+| 1, missing permission | `co auth google` |
+| 1, unknown row or unreadable cache | `co gdrive list` |
+| 1, missing upload file | `co gdrive put <path to an existing file>` |
+| 1, provider, connection, or local I/O failure | `co gdrive list` |
+| 2, missing download argument | `co gdrive get --help` |
+
+Provider error bodies are omitted. A lost upload response does not establish
+that the upload failed. Inspect the latest listing before uploading again to
+avoid duplicates. The printed recovery command remains visible through pipes.
 
 - **"Google account not connected"** → run `co auth google`.
 - **"Google Drive permission missing"** → your token predates Drive support;
