@@ -21,7 +21,7 @@ and refresh tokens through the same backend as Gmail. Tokens are never supplied
 as command arguments or pasted for each command. YouTube operations call the
 API directly.
 
-This requires [oo-api #228](https://github.com/openonion/oo-api/pull/228) for
+This requires [oo-api #229](https://github.com/openonion/oo-api/pull/229) for
 YouTube in the standard Google consent bundle and actual granted-scope reporting.
 Existing Google users rerun `co auth google` once to approve the added permission;
 upgrading or refreshing an old token cannot grant it. Partial consent or an older

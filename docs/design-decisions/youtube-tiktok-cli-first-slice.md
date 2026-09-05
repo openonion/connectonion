@@ -36,7 +36,7 @@ tool use the Google login saved by `co auth google`, with automatic
 refresh through the same account-bound broker as Gmail. There is no YouTube
 browser adapter or per-command token input.
 
-The companion [oo-api #228](https://github.com/openonion/oo-api/pull/228) includes
+The companion [oo-api #229](https://github.com/openonion/oo-api/pull/229) includes
 YouTube in the standard Google consent bundle, with no separate CLI switch.
 It records actual granted scopes, including partial consent, and reports
 them on credentials/refresh responses. Legacy Gmail grants do not become
