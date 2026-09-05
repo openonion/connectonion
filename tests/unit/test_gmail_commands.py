@@ -612,6 +612,27 @@ class TestGmailDraftCommands:
 
         assert "co gmail draft create" in plain(capsys.readouterr().out)
 
+    def test_empty_list_invalidates_previous_numbers(self):
+        gmail_commands.DRAFT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        gmail_commands.DRAFT_CACHE.write_text(json.dumps({"1": "old-draft"}))
+        gmail = MagicMock()
+        gmail.list_drafts.return_value = []
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_list()
+        assert gmail_commands._resolve_draft_id("1") == ""
+
+    @pytest.mark.parametrize("interruption", [typer.Abort, KeyboardInterrupt, EOFError])
+    def test_interrupted_confirmation_keeps_draft_and_prints_tip(self, interruption, capsys):
+        gmail = MagicMock()
+        gmail.get_draft.return_value = sample_draft()
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with patch.object(typer, "confirm", side_effect=interruption):
+                with pytest.raises(typer.Exit) as exc:
+                    gmail_commands.handle_gmail_draft_send("draft-1")
+        assert exc.value.exit_code == 1
+        gmail._send_draft.assert_not_called()
+        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+
     def test_create_stays_unsent_and_points_to_attach(self, capsys):
         gmail = MagicMock()
         gmail.create_draft.return_value = sample_draft()

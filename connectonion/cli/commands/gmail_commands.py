@@ -347,6 +347,8 @@ def handle_gmail_draft_list(last: int = 20):
     gmail = _gmail()
     drafts = _draft_call(lambda: gmail.list_drafts(last=last), "co gmail draft list")
     if not drafts:
+        DRAFT_CACHE.parent.mkdir(exist_ok=True)
+        DRAFT_CACHE.write_text("{}", encoding="utf-8")
         console.print("\nGmail drafts: none")
         console.print("Create one with: [bold]co gmail draft create <to> <subject> <message>[/bold]\n")
         return
@@ -474,7 +476,11 @@ def handle_gmail_draft_send(draft_id: str):
     resolved = _draft_id_or_exit(draft_id)
     draft = _draft_call(lambda: gmail.get_draft(resolved), "co gmail draft list")
     _print_draft_preview(draft, tip=False)
-    if not typer.confirm("\nSend this Gmail draft now?", default=False):
+    try:
+        confirmed = typer.confirm("\nSend this Gmail draft now?", default=False)
+    except (typer.Abort, KeyboardInterrupt, EOFError):
+        confirmed = False
+    if not confirmed:
         console.print("\n[yellow]Not sent; the Gmail draft was kept.[/yellow]")
         console.print(f"Preview again: [bold]co gmail draft preview {resolved}[/bold]\n")
         raise typer.Exit(1)
