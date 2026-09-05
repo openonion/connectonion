@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [json, os, pathlib, httpx] | imported by [useful_tools/__init__.py] | requires SYNOLOGY_* env vars from 'co syno login' | tested by [tests/unit/test_synology.py]
   Data flow: Agent calls Synology methods → _request() attaches the cached sid and hits /webapi/<path> → DSM returns {"success":bool,"data":...} → returns file dicts or confirmations | list_files() uses SYNO.FileStation.List (list_share at the root, list inside a share) | search_files() runs the Search start→poll→clean dance | download() streams bytes | upload() posts multipart with the file part last
   State/Effects: reads SYNOLOGY_URL/ACCOUNT/PASSWORD/SID env vars | makes HTTP calls to the NAS | re-login on an expired session rewrites SYNOLOGY_SID in ~/.co/keys.env | download() writes local files, upload() writes remote ones
-  Integration: exposes Synology class with list_files(), search_files(), download(), upload(), share() | resolve_quickconnect() turns a QuickConnect ID into ordered base-URL candidates | used as agent tool via Agent(tools=[Synology()])
+  Integration: exposes Synology class with status(), list_files(), search_files(), list_sharing_links(), download(), upload(), share() | resolve_quickconnect() turns a QuickConnect ID into ordered base-URL candidates | used as agent tool via Agent(tools=[Synology()])
   Performance: network I/O per call | QuickConnect relay is throttled, so the LAN candidate is probed first | search polls at 0.3s intervals
   Errors: raises ValueError when not configured, on failed login, and on any DSM error code (decoded via ERRORS) | httpx errors propagate except while probing connection candidates, where an unreachable candidate falls through to the next
 
@@ -56,6 +56,14 @@ ERRORS = {
 STALE_SESSION = {106, 107, 119}
 
 QUICKCONNECT_GLOBAL = "https://global.quickconnect.to/Serv.php"
+
+
+class SynologyError(ValueError):
+    """A guarded Synology failure with a stable machine-readable code."""
+
+    def __init__(self, message: str, code: str = "synology_error"):
+        super().__init__(message)
+        self.code = code
 
 
 def _payload(command: str, server_id: str) -> dict:
@@ -297,7 +305,14 @@ class Synology:
         entries = data.get("shares") or data.get("files") or []
         return [self._file_dict(item) for item in entries]
 
-    def search_files(self, query: str, path: str = "/", last: int = 20) -> list:
+    def search_files(
+        self,
+        query: str,
+        path: str = "/",
+        last: int = 20,
+        poll_attempts: int = 100,
+        poll_interval: float = 0.3,
+    ) -> list:
         """Search for files by name under a folder.
 
         File Station search is non-blocking: start a task, poll until it reports
@@ -320,15 +335,62 @@ class Synology:
         )
         task = started["taskid"]
 
-        # Results stream in as the task walks the tree; poll until DSM says done.
-        for _ in range(100):
-            found = self._request("SYNO.FileStation.Search", "list", taskid=task, limit=last)
-            if found.get("finished"):
-                break
-            time.sleep(0.3)
+        try:
+            # Results stream in as the task walks the tree; poll until DSM says
+            # done. Never present an unfinished page as a complete search.
+            for _ in range(poll_attempts):
+                found = self._request("SYNO.FileStation.Search", "list", taskid=task, limit=last)
+                if found.get("finished"):
+                    break
+                time.sleep(poll_interval)
+            else:
+                raise SynologyError(
+                    f"Synology search did not finish after {poll_attempts} checks",
+                    code="search_timeout",
+                )
+        except Exception:
+            # Do not let a cleanup failure hide the reason the search failed.
+            try:
+                self._request("SYNO.FileStation.Search", "clean", taskid=task)
+            except Exception:
+                pass
+            raise
 
         self._request("SYNO.FileStation.Search", "clean", taskid=task)
         return [self._file_dict(item) for item in found.get("files", [])]
+
+    # === Diagnostics and sharing-link inventory ===
+
+    def status(self) -> dict:
+        """Verify authenticated File Station access without changing NAS state."""
+        self._request("SYNO.FileStation.List", "list_share", limit=1)
+        return {
+            "connected": True,
+            "url": self.url,
+            "account": self.account,
+            "session_cached": bool(self.sid),
+            # Kept explicit until certificate verification becomes configurable.
+            "tls_verification": False,
+        }
+
+    def list_sharing_links(self, last: int = 20) -> list:
+        """List existing File Station sharing links without creating new ones."""
+        if last < 1:
+            return []
+
+        data = self._request(
+            "SYNO.FileStation.Sharing", "list", version=3, offset=0, limit=last
+        )
+        return [
+            {
+                "id": item.get("id", ""),
+                "path": item.get("path", ""),
+                "url": item.get("url", ""),
+                "expires": item.get("date_expired", ""),
+                "status": item.get("status", ""),
+            }
+            for item in data.get("links", [])
+        ]
 
     # === Transfer ===
 
