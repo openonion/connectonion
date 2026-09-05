@@ -341,7 +341,8 @@ Worth saying out loud on any page that sells to a business:
 - `logger.load_messages()` has no callers, so "replay a past run" is a data format,
   not a feature. `co eval` is the real replay path.
 - `co feishu listen / receive / send / reply`, `co telegram listen / receive / reply`,
-  and `co discord listen / receive / send / reply`
+  `co discord listen / receive / send / reply`, and
+  `co whatsapp bind / listen / receive / send / reply`
   (`cli/commands/listen_commands.py`, `listen/`) are wired and unit-tested but have
   not passed a live acceptance run against a real group (#1310, #352). Until they
   have, they are a preview, not a claim.

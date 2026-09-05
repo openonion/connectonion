@@ -158,6 +158,7 @@ def _show_help():
     console.print("  [green]telegram[/green]          Telegram bot as a mailbox: listen, receive, send, reply")
     console.print("  [green]feishu[/green]            Feishu bot as a mailbox: listen, receive, send, reply")
     console.print("  [green]discord[/green]           Discord bot as a mailbox: listen, receive, send, reply")
+    console.print("  [green]whatsapp[/green]          WhatsApp Cloud API as a mailbox: bind, listen, receive, send, reply")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
@@ -973,7 +974,7 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Mailbox providers: feishu, lark. One directory per provider under ~/.co/,
+# Mailbox providers. One directory per provider under ~/.co/,
 # the same eight verbs on each. The tool knows nothing about agents; anything
 # that can read a file consumes it (DD-063).
 def _mailbox_group(name: str, help_text: str, *, group=None, with_send: bool = True) -> typer.Typer:
@@ -1057,6 +1058,15 @@ def _mailbox_group(name: str, help_text: str, *, group=None, with_send: bool = T
 app.add_typer(_mailbox_group("feishu", "Feishu bot as a mailbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_mailbox_group("lark", "Lark (global Feishu) bot as a mailbox: listen, receive, send, reply."), name="lark")
 app.add_typer(_mailbox_group("discord", "Discord bot as a mailbox: listen, receive, send, reply."), name="discord")
+whatsapp_app = _mailbox_group("whatsapp", "WhatsApp Cloud API as a mailbox: listen, receive, send, reply.")
+app.add_typer(whatsapp_app, name="whatsapp")
+
+
+@whatsapp_app.command("bind")
+def whatsapp_bind():
+    """Register WABA webhook routing from environment variables."""
+    from .commands.listen_commands import handle_bind
+    handle_bind("whatsapp")
 # Telegram keeps the `send` it shipped with (its output is part of its contract)
 # and gains the other seven verbs on the same group, same token.
 _mailbox_group("telegram", "", group=telegram_app, with_send=False)

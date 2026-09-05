@@ -403,6 +403,9 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
         "TELEGRAM_BOT_TOKEN": "set TELEGRAM_BOT_TOKEN in ~/.co/keys.env",
         "DISCORD_BOT_TOKEN": "set DISCORD_BOT_TOKEN in ~/.co/keys.env",
+        "WHATSAPP_ACCESS_TOKEN": "set WHATSAPP_ACCESS_TOKEN in ~/.co/keys.env",
+        "WHATSAPP_APP_SECRET": "set WHATSAPP_APP_SECRET in ~/.co/keys.env",
+        "WHATSAPP_VERIFY_TOKEN": "set WHATSAPP_VERIFY_TOKEN in ~/.co/keys.env",
     }
     project_dir = project_co_dir().parent
     selected_api_key = _selected_credential_values(
