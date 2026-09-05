@@ -259,11 +259,14 @@ process; server storage remains ciphertext-only. See [sms.md](sms.md).
 
 ---
 
-#### `co telegram` - Send from Your Telegram Bot
+#### `co telegram` - Your Telegram Bot as a Directory of Files
 
 ```bash
 co telegram send 123456789 "The deployment needs attention"
 co telegram send @my_channel "Version 1.7 is ready for review"
+co telegram listen                       # every message → ~/.co/telegram/
+m=$(co telegram receive)                 # next message as one JSON line
+echo "done" | co telegram reply -100123.55
 ```
 
 Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits

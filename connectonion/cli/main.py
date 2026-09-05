@@ -155,7 +155,7 @@ def _show_help():
     console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
-    console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
+    console.print("  [green]telegram[/green]          Telegram bot as a mailbox: listen, receive, send, reply")
     console.print("  [green]feishu[/green]            Feishu bot as a mailbox: listen, receive, send, reply")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
@@ -958,7 +958,7 @@ def transfer(
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
-telegram_app = _typer_app(help="Send a message from your Telegram bot.")
+telegram_app = _typer_app(help="Telegram bot as a mailbox: listen, receive, send, reply.")
 app.add_typer(telegram_app, name="telegram")
 
 
@@ -975,8 +975,10 @@ def telegram_send(
 # Mailbox providers: feishu, lark. One directory per provider under ~/.co/,
 # the same eight verbs on each. The tool knows nothing about agents; anything
 # that can read a file consumes it (DD-063).
-def _mailbox_group(name: str, help_text: str) -> typer.Typer:
-    group = _typer_app(help=help_text)
+def _mailbox_group(name: str, help_text: str, *, group=None, with_send: bool = True) -> typer.Typer:
+    """The eight verbs on a fresh group, or on an existing one that already
+    has its own `send` (Telegram shipped `co telegram send` first)."""
+    group = group if group is not None else _typer_app(help=help_text)
 
     @group.command("listen")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
@@ -993,7 +995,6 @@ def _mailbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_receive
         handle_receive(name, timeout=timeout, start=not no_start)
 
-    @group.command("send")
     def _send(
         chat: str = typer.Argument(..., help="Chat id"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
@@ -1002,6 +1003,9 @@ def _mailbox_group(name: str, help_text: str) -> typer.Typer:
         """Send text to a chat. Prints the new message id."""
         from .commands.listen_commands import handle_send
         handle_send(name, chat, text, reply_to=reply_to)
+
+    if with_send:
+        group.command("send")(_send)
 
     @group.command("reply")
     def _reply(
@@ -1051,6 +1055,9 @@ def _mailbox_group(name: str, help_text: str) -> typer.Typer:
 
 app.add_typer(_mailbox_group("feishu", "Feishu bot as a mailbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_mailbox_group("lark", "Lark (global Feishu) bot as a mailbox: listen, receive, send, reply."), name="lark")
+# Telegram keeps the `send` it shipped with (its output is part of its contract)
+# and gains the other seven verbs on the same group, same token.
+_mailbox_group("telegram", "", group=telegram_app, with_send=False)
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
