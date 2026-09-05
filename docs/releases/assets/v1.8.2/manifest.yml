@@ -1,0 +1,6 @@
+version: v1.8.2
+no_visual_change: >-
+  Model routing, provider compatibility, pricing, and default configuration
+  changes only. No rendered UI or interaction layout changes. Existing model
+  labels display Gemini 3.8 Flash through the shared model constant; request,
+  selection, and generated-configuration behavior is covered by regression tests.

@@ -97,7 +97,7 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--port` | `-p` | `8000` | Port for web server |
-| `--model` | `-m` | `co/gemini-3.7-flash` | LLM model to use |
+| `--model` | `-m` | `co/gemini-3.8-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
 | `--full-access` | | off | Skip routine tool approvals for a bounded user-driven turn budget |
 | `--full-access-turns` | | `100` | User-driven turns before Full access expires to Auto; must be positive |
@@ -109,7 +109,7 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 
 ```bash
 co ai --port 9000
-co ai --model co/gemini-3.7-flash
+co ai --model co/gemini-3.8-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
 co ai --full-access "Fix the failing suite" --full-access-turns 20
 co ai --eval "Check whether this agent really completed the task"
@@ -153,7 +153,7 @@ The shipped compatibility grant allows unattended `co status` and
 1.6.x:
 
 ```bash
-co ai -m co/gemini-3.7-flash "/linkedin-notifications ..." < /dev/null
+co ai -m co/gemini-3.8-flash "/linkedin-notifications ..." < /dev/null
 ```
 
 The broad historical `Bash(co *)` entry does not silently authorize other
@@ -175,7 +175,7 @@ The shipped compatibility grant allows unattended `co status` and
 1.6.x:
 
 ```bash
-co ai -m co/gemini-3.7-flash "/linkedin-notifications ..." < /dev/null
+co ai -m co/gemini-3.8-flash "/linkedin-notifications ..." < /dev/null
 ```
 
 The broad historical `Bash(co *)` entry does not silently authorize other
@@ -365,7 +365,7 @@ co ai "Add rate limiting to the API endpoint in oo-api/routes/llm.py"
 co ai "The test test_agent_loop is failing, investigate and fix it"
 
 # Use a different model
-co ai --model co/gemini-3.7-flash
+co ai --model co/gemini-3.8-flash
 
 # Run on a different port
 co ai --port 9000

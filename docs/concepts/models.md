@@ -80,13 +80,27 @@ agent = Agent("assistant", model="o4-mini")         # Your key
 #### Gemini 3 (Newest - State-of-the-Art Reasoning)
 ```python
 # Newest Flash workhorse - frontier intelligence built for speed (the default)
-agent = Agent("assistant", model="co/gemini-3.7-flash")  # Managed
-agent = Agent("assistant", model="gemini-3.7-flash")     # Your key
+agent = Agent("assistant", model="co/gemini-3.8-flash")  # Managed
+agent = Agent("assistant", model="gemini-3.8-flash")     # Your key
 
 # Image generation model with grounded generation
 agent = Agent("assistant", model="co/gemini-3-pro-image-preview")  # Managed
 agent = Agent("assistant", model="gemini-3-pro-image-preview")     # Your key
 ```
+
+Gemini 3.8 Flash supports function calling, structured output, and
+`reasoning_effort="low"`, `"medium"`, or `"high"`. Google's 3.8 migration
+guidance deprecates `temperature`, `top_p`, `top_k`, and `candidate_count`, so
+ConnectOnion removes those fields before sending a 3.8 request. Use
+`reasoning_effort` instead of `thinking_budget`; unsupported reasoning values
+fail locally with an actionable error. ConnectOnion's Agent API remains
+synchronous, so `stream` and `stream_options` are ignored at this boundary even
+though Google's raw OpenAI-compatible endpoint supports streaming.
+
+The managed `co/` route and direct-key route both use Google's documented
+[OpenAI compatibility endpoint](https://ai.google.dev/gemini-api/docs/openai).
+The [Gemini 3.8 Flash model page](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+is the source for the context and capability values below.
 
 #### Gemini 2.5 (Previous generation)
 ```python
@@ -161,8 +175,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-3.7-flash | Google | Default model, newest fast Gemini | ✅ |
-| gemini-3.6-flash | Google | Previous default, fast Gemini | ✅ |
+| gemini-3.8-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-3.7-flash | Google | Selectable rollback model | ✅ |
+| gemini-3.6-flash | Google | Legacy fast Gemini | ✅ |
 | gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 | mistral-large-latest | Mistral | High performance European model | ✅ |
@@ -178,6 +193,7 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | gpt-4o | 128K tokens |
 | o4-mini | 128K tokens |
 | **Google** | |
+| gemini-3.8-flash | 1,048,576 input tokens; 65,536 output tokens |
 | gemini-3.7-flash | 1M tokens |
 | gemini-3.6-flash | 1M tokens |
 | gemini-2.5-pro | 1M tokens |
@@ -207,8 +223,9 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-3.7-flash | $0.75 | $3.75 | **Default model** - intro pricing through 2026-12-31, then $1.50/$7.50 |
-| gemini-3.6-flash | $1.50 | $7.50 | Previous default, fast Gemini |
+| gemini-3.8-flash | $0.75 | $3.75 | **Default model** - promotional pricing through 2026-12-31 |
+| gemini-3.7-flash | $0.75 | $3.75 | Selectable rollback model with the same promotional rates |
+| gemini-3.6-flash | $1.50 | $7.50 | Legacy fast Gemini |
 | gemini-3.5-flash | $1.50 | $9.00 | Previous fast Gemini |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
 | gemini-2.5-pro | $1.25 | $10.00 | Strong multimodal model for agents |
@@ -235,12 +252,12 @@ All prices are **per 1M tokens** and match official provider pricing:
 ```python
 # Typical conversation (~1000 input, ~500 output tokens)
 # gpt-5:           $0.00125 + $0.005 = $0.00625 (~$6.25 per 1000 requests)
-# gemini-3.7-flash: $0.00075 + $0.001875 = $0.002625 (~$2.63 per 1000 requests)
+# gemini-3.8-flash: $0.00075 + $0.001875 = $0.002625 (~$2.63 per 1000 requests)
 # claude-sonnet-4-5: $0.003 + $0.0075 = $0.0105 (~$10.50 per 1000 requests)
 
 # With 100K free tokens, you can make approximately:
 # - 66 requests with gpt-5 (1500 tokens each)
-# - 66 requests with gemini-3.7-flash
+# - 66 requests with gemini-3.8-flash
 # - 66 requests with claude-sonnet-4-5
 ```
 
@@ -266,7 +283,7 @@ class Result(BaseModel):
 
 # Works with all OpenAI and Gemini models
 result = llm_do("What is 2+2?", output=Result, model="co/gpt-4o-mini")
-result = llm_do("What is 2+2?", output=Result, model="co/gemini-3.7-flash")
+result = llm_do("What is 2+2?", output=Result, model="co/gemini-3.8-flash")
 
 # Works with Claude 4.5/4.1 models only
 result = llm_do("What is 2+2?", output=Result, model="co/claude-sonnet-4-5")  # ✅
@@ -291,7 +308,7 @@ def calculate(expression: str) -> float:
 tools = [search, calculate]
 
 agent_openai = Agent("assistant", model="gpt-5", tools=tools)
-agent_google = Agent("assistant", model="gemini-3.7-flash", tools=tools)
+agent_google = Agent("assistant", model="gemini-3.8-flash", tools=tools)
 agent_claude = Agent("assistant", model="claude-sonnet-4-5", tools=tools)
 ```
 
@@ -311,7 +328,7 @@ from connectonion import Agent
 
 # Use any model with co/ prefix
 agent = Agent("assistant", model="co/gpt-5")
-agent = Agent("assistant", model="co/gemini-3.7-flash")
+agent = Agent("assistant", model="co/gemini-3.8-flash")
 agent = Agent("assistant", model="co/claude-sonnet-4-5")
 ```
 
@@ -367,7 +384,7 @@ from connectonion import Agent
 
 # Use models without co/ prefix
 agent = Agent("assistant", model="gpt-5")
-agent = Agent("assistant", model="gemini-3.7-flash")
+agent = Agent("assistant", model="gemini-3.8-flash")
 agent = Agent("assistant", model="claude-opus-4.1")
 agent = Agent("assistant", model="groq/llama-3.3-70b-versatile")
 agent = Agent("assistant", model="openrouter/openai/gpt-4o-mini")
@@ -409,7 +426,7 @@ agent = Agent("assistant", model="mistral/mistral-large-latest")
 ```python
 # Top tier models from each provider
 agent = Agent("assistant", model="gpt-5")             # OpenAI flagship
-agent = Agent("assistant", model="gemini-3.7-flash")  # Google flagship
+agent = Agent("assistant", model="gemini-3.8-flash")  # Google flagship
 agent = Agent("assistant", model="claude-sonnet-4-5") # Anthropic flagship
 ```
 
@@ -426,7 +443,7 @@ agent = Agent("coder", model="claude-sonnet-4-5")
 ```python
 # Fastest options from each provider
 agent = Agent("quick", model="gpt-5-nano")       # OpenAI fastest
-agent = Agent("quick", model="gemini-3.7-flash") # Google fast
+agent = Agent("quick", model="gemini-3.8-flash") # Google fast
 agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```
 
@@ -440,13 +457,13 @@ agent = Agent("budget", model="gemini-2.5-flash-lite") # Google cheapest
 **Long Context (>200K tokens)**
 ```python
 # Models with longest context windows
-agent = Agent("reader", model="gemini-3.7-flash")      # 1M tokens
+agent = Agent("reader", model="gemini-3.8-flash")      # 1M tokens
 ```
 
 **Multimodal (Images, Audio, Video)**
 ```python
 # Gemini Flash models are fully multimodal
-agent = Agent("multimodal", model="gemini-3.7-flash")  # Audio, video, images, PDF
+agent = Agent("multimodal", model="gemini-3.8-flash")  # Audio, video, images, PDF
 
 # Alternatives
 agent = Agent("multimodal", model="gpt-5")           # Images, text
@@ -462,12 +479,12 @@ from connectonion import Agent
 
 # With managed keys (easiest)
 agent_openai = Agent("assistant", model="co/gpt-5")
-agent_google = Agent("assistant", model="co/gemini-3.7-flash")
+agent_google = Agent("assistant", model="co/gemini-3.8-flash")
 agent_claude = Agent("assistant", model="co/claude-opus-4.1")
 
 # OR with your own API keys
 agent_openai = Agent("assistant", model="gpt-5")
-agent_google = Agent("assistant", model="gemini-3.7-flash")
+agent_google = Agent("assistant", model="gemini-3.8-flash")
 agent_claude = Agent("assistant", model="claude-opus-4.1")
 
 # Same interface for all
@@ -480,7 +497,7 @@ response = agent_claude.input("Explain quantum computing")
 
 ```python
 # Compare responses from top models (using managed keys)
-models = ["co/gpt-5", "co/gemini-3.7-flash", "co/claude-sonnet-4-5"]
+models = ["co/gpt-5", "co/gemini-3.8-flash", "co/claude-sonnet-4-5"]
 prompt = "Write a Python implementation of binary search"
 
 for model in models:
@@ -500,16 +517,16 @@ def select_model(task_type: str, speed_priority: bool = False) -> str:
         return {
             "code": "gpt-5-mini",
             "chat": "gpt-5-nano",
-            "analysis": "gemini-3.7-flash",
+            "analysis": "gemini-3.8-flash",
             "creative": "claude-haiku-4-5"
         }.get(task_type, "gpt-5-nano")
     else:
         # Best quality models
         return {
             "code": "gpt-5",
-            "reasoning": "gemini-3.7-flash",
+            "reasoning": "gemini-3.8-flash",
             "analysis": "claude-opus-4.1",
-            "multimodal": "gemini-3.7-flash"
+            "multimodal": "gemini-3.8-flash"
         }.get(task_type, "gpt-5")
 
 # Use appropriate model
@@ -529,7 +546,7 @@ def create_agent_with_fallback(name: str):
     model_chain = [
         "gpt-5",              # Best overall
         "claude-sonnet-4-5",  # Strong alternative
-        "gemini-3.7-flash",   # Multimodal option
+        "gemini-3.8-flash",   # Multimodal option
         "gpt-5-mini",         # Faster fallback
         "gpt-4o"              # Legacy fallback
     ]
@@ -617,7 +634,7 @@ def create_robust_agent(name: str, model: str, max_retries: int = 3):
                 # Try alternative model
                 alternatives = {
                     "gpt-5": "gpt-5-mini",
-                    "gemini-3.7-flash": "gemini-2.5-flash",
+                    "gemini-3.8-flash": "gemini-3.7-flash",
                     "claude-sonnet-4-5": "claude-sonnet-4"
                 }
                 alt_model = alternatives.get(model)
@@ -652,7 +669,7 @@ agent = Agent("assistant", model="gpt-4o-mini")
 ```python
 # Any provider, any model
 agent = Agent("assistant", model="gpt-5")
-agent = Agent("assistant", model="gemini-3.7-flash")
+agent = Agent("assistant", model="gemini-3.8-flash")
 agent = Agent("assistant", model="claude-sonnet-4-5")
 ```
 

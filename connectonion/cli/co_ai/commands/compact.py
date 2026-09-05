@@ -15,7 +15,7 @@ Compaction strategy:
 - Replaces old messages with single summary message
 
 Summarization:
-- Uses fast model: co/gemini-3.7-flash
+- Uses the product default: co/gemini-3.8-flash
 - Prompt asks for concise summary preserving key decisions/facts
 - Summary becomes new "assistant" message in conversation
 - Reduces token count while maintaining continuity
@@ -38,6 +38,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from connectonion import llm_do
+from connectonion.core.usage import DEFAULT_MODEL
 
 console = Console()
 
@@ -166,7 +167,7 @@ Keep the summary under 1000 words but preserve all critical technical details.""
 
     summary = llm_do(
         summary_prompt,
-        model="co/gemini-3.7-flash",  # Fast model for summarization
+        model=DEFAULT_MODEL,
     )
 
     # Create compacted messages

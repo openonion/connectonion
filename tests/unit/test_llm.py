@@ -53,6 +53,7 @@ class TestMultiLLMSupport:
         assert MODEL_REGISTRY["claude-opus-4.1"] == "anthropic"
 
         # Test Google models
+        assert MODEL_REGISTRY["gemini-3.8-flash"] == "google"
         assert MODEL_REGISTRY["gemini-3.6-flash"] == "google"
         # gemini-3-pro-preview was here; Google retired it — see
         # test_the_registry_offers_models_that_exist.

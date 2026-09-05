@@ -50,6 +50,11 @@ ships the agent, while `co status` and `co doctor` explain what is running and
 what needs attention. The Python runtime below remains directly available when
 you need a custom tool, hook, provider, or host boundary.
 
+The 1.8.2 default is `co/gemini-3.8-flash`, routed through the managed gateway
+without exposing Google's key to the client. Select `gemini-3.8-flash` to use
+your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
+Gemini model. Provider failures do not silently move a request to another model.
+
 Common delivery commands include:
 
 - `co browser` for a persistent browser;
@@ -670,7 +675,7 @@ agent = Agent(name="test", api_key="your-api-key-here")
 
 ### Model Selection
 ```python
-agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.7-flash
+agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.8-flash
 ```
 
 ### Iteration Control

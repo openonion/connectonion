@@ -19,6 +19,7 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 
+from ...core.usage import DEFAULT_MODEL
 from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
@@ -278,14 +279,14 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Write .env
     if not env_existed:
         if keys_to_add or global_keys:
-            env_content = "# Default model: co/gemini-3.7-flash (managed keys with free credits)\n\n"
+            env_content = f"# Default model: {DEFAULT_MODEL} (managed keys with free credits)\n\n"
             # Add all global keys + detected keys
             all_keys = list(global_keys.values()) + [k for k in keys_to_add if k not in global_keys.values()]
             env_content += '\n'.join(all_keys) + '\n'
             env_path.write_text(env_content, encoding='utf-8')
             console.print(f"[green]✓ Saved to {env_path}[/green]")
         else:
-            env_content = """# Add your LLM API key(s) below (uncomment one and set value)
+            env_content = f"""# Add your LLM API key(s) below (uncomment one and set value)
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
 # GEMINI_API_KEY=
@@ -294,7 +295,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # OPENROUTER_API_KEY=
 
 # Optional: Override default model
-# MODEL=co/gemini-3.7-flash
+# MODEL={DEFAULT_MODEL}
 """
             env_path.write_text(env_content, encoding='utf-8')
         files_created.append(".env")

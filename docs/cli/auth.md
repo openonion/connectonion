@@ -36,11 +36,10 @@ response = llm_do("Hello", model="co/gpt-4o")
 Works across providers:
 - `co/gpt-4o`, `co/gpt-4o-mini`
 - `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- `co/gemini-3.7-flash` (default), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 
 ## Troubleshooting
 
 - Missing token? Run `co auth` again
 - Network issue? Try again or check your connection
 - Global vs project: `co auth` prefers local `.co` if keys exist, otherwise uses `~/.co`
-

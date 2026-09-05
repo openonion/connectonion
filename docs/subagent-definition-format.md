@@ -28,7 +28,7 @@ Each file has:
 ---
 name: explore
 description: Fast agent for exploring codebases and finding files
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 15
 tools:
   - glob
@@ -166,7 +166,7 @@ def parse_subagent_file(file_path: Path) -> Optional[SubAgentDefinition]:
         ---
         name: explore
         description: Fast codebase exploration
-        model: co/gemini-3.7-flash
+        model: co/gemini-3.8-flash
         max_iterations: 15
         tools: [glob, grep, read_file]
         plugins: []
@@ -210,7 +210,7 @@ def parse_subagent_file(file_path: Path) -> Optional[SubAgentDefinition]:
     return SubAgentDefinition(
         name=config.get('name', file_path.stem),
         description=config.get('description', ''),
-        model=config.get('model', 'co/gemini-3.7-flash'),
+        model=config.get('model', 'co/gemini-3.8-flash'),
         max_iterations=config.get('max_iterations', 15),
         tools=config.get('tools', []),
         plugins=config.get('plugins', []),
@@ -376,7 +376,7 @@ __all__ = ["task", "load_subagents", "get_available_agent_types"]
 ---
 name: explore
 description: Fast agent for exploring codebases and finding files
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 15
 tools: [glob, grep, read_file]
 plugins: []
@@ -396,7 +396,7 @@ You are a read-only exploration agent specialized in quickly understanding codeb
 ---
 name: plan
 description: Design implementation plans and architecture strategies
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 10
 tools: [glob, grep, read_file]
 plugins: []
@@ -416,7 +416,7 @@ You are a planning agent specialized in designing implementation strategies.
 ---
 name: debug
 description: Analyze errors and suggest fixes
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 20
 tools: [glob, grep, read_file, bash]
 plugins: []
@@ -471,7 +471,7 @@ How to verify the fix works
 ---
 name: research
 description: Research topics using web search and documentation
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 20
 tools: [WebFetch]
 plugins: []
@@ -591,7 +591,7 @@ class SubAgentSchema(BaseModel):
 
     name: str = Field(..., description="Unique agent identifier")
     description: str = Field(..., description="One-line description")
-    model: str = Field(default="co/gemini-3.7-flash", description="LLM model")
+    model: str = Field(default="co/gemini-3.8-flash", description="LLM model")
     max_iterations: int = Field(default=15, ge=1, le=100)
     tools: List[str] = Field(default_factory=list)
     plugins: List[str] = Field(default_factory=list)

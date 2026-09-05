@@ -44,9 +44,25 @@ and must be forward-ported to `main`, where new feature work continues on the
 1.8 train. Pre-releases are opt-in and must be marked as pre-releases on PyPI
 and GitHub.
 
-## Current Version: 1.8.1
+## Release candidate: 1.8.2
+
+Gemini 3.8 Flash becomes the shared default for `Agent`, `llm_do`, `co ai`,
+transcription, generated configuration, built-in subagents, and internal helper
+calls. Both the managed `co/gemini-3.8-flash` route and direct-key
+`gemini-3.8-flash` route use Google's OpenAI-compatible API and preserve tool
+calls and thought signatures. Gemini 3.7 remains an explicit rollback choice;
+OpenAI and Anthropic choices remain available; missing Google configuration
+fails closed instead of silently changing provider. Publication is verified by
+the tagged release workflow.
+
+## Current Version: 1.8.2
 
 ### Version History
+- 1.8.2 (**Gemini 3.8 Flash:** add Gemini 3.8 Flash to the managed and
+  direct-provider paths and make it the product-wide default. Remove deprecated
+  3.8 sampling fields, validate reasoning levels, keep the synchronous Agent
+  response boundary explicit, and retain Gemini 3.7 plus OpenAI/Anthropic as
+  deliberate selections. Backend and client regression suites gate the change.)
 
 **1.8.1 final acceptance:** the free system browser remains the default; only
 explicit `--engine onion` selects paid operation. Linux CLI free → close → Onion
