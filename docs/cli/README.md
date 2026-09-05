@@ -43,6 +43,10 @@ The CLI automatically:
 
 ## All Commands
 
+Creator workflows: [YouTube](youtube.md) provides API reads and confirmed
+upload/metadata writes; [TikTok](tiktok.md) provides local plans and browser
+readiness checks, with submission still unavailable.
+
 ### Project Commands
 
 #### `co create [name]` - Create New Project

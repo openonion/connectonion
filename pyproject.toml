@@ -152,6 +152,7 @@ include = [
     "connectonion/**/*.yaml",
     "connectonion/**/*.proto",
     "connectonion/**/*.example",
+    "connectonion/useful_skills/co-creator/scripts/*.js",
     "connectonion/cli/templates/**/Dockerfile",
 ]
 

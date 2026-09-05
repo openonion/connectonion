@@ -240,8 +240,8 @@ def _print_oauth_url(auth_url: str) -> None:
     console.print()
 
 
-def handle_google_auth():
-    """Authenticate with Google OAuth for Gmail/Calendar access."""
+def handle_google_auth(youtube: bool = False):
+    """Connect Google, optionally adding YouTube to the existing grant."""
 
     # Check if user is authenticated with OpenOnion first
     api_key = load_api_key()
@@ -274,6 +274,7 @@ def handle_google_auth():
 
     response = requests.get(
         f"{api_url}/google/init",
+        **({"params": {"youtube": "true"}} if youtube else {}),
         headers=headers,
         timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
     )
@@ -282,6 +283,13 @@ def handle_google_auth():
         return
 
     auth_url = response.json()['auth_url']
+    if youtube:
+        from urllib.parse import parse_qs, urlsplit
+        requested = parse_qs(urlsplit(auth_url).query).get("scope", [""])[0].split()
+        if "https://www.googleapis.com/auth/youtube" not in requested:
+            console.print("Google authorization backend needs YouTube support before this login can continue.", style="red")
+            console.print("Next: co youtube --help")
+            raise SystemExit(1)
 
     # Open browser
     console.print("\n🌐 Opening browser for Google authentication...")
@@ -346,6 +354,17 @@ def handle_google_auth():
     console.print("\n📧 You can now use Google tools in your agents:")
     console.print("   [dim]from connectonion.tools import gmail_send[/dim]")
     console.print("   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
+    if youtube:
+        # Inspect the returned grant, not the scopes merely requested in the URL.
+        import re
+        granted = {scope.removeprefix("https://www.googleapis.com/auth/")
+                   for scope in re.split(r"[,\s]+", credentials.get("scopes", ""))}
+        if "youtube" not in granted:
+            console.print("Google connected, but YouTube permission was not granted.", style="yellow")
+            console.print("Next: co auth google --youtube")
+            raise SystemExit(1)
+        console.print("Read your recent uploads: co youtube")
+
 
 
 def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
