@@ -155,6 +155,8 @@ def _show_help():
     console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]gcalendar[/green]         Calendar events, free slots and Meet links (co auth google)")
+    console.print("  [green]youtube[/green]           Video metadata and preview-first uploads (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
@@ -240,11 +242,15 @@ def deploy(
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
+def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft"),
+         scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube.")):
     """Authenticate with OpenOnion."""
+    if scopes is not None and service != "google":
+        print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
     if service == "google":
         from .commands.auth_commands import handle_google_auth
-        handle_google_auth()
+        handle_google_auth(scopes=scopes)
     elif service == "microsoft":
         from .commands.auth_commands import handle_microsoft_auth
         handle_microsoft_auth()
@@ -1067,6 +1073,89 @@ def gmail_search(
     """Search your mail with Gmail query syntax."""
     from .commands.gmail_commands import handle_gmail_search
     handle_gmail_search(query, last=last)
+
+
+# Drafts are a nested, explicit workflow: editing never sends, and the send
+# command always previews and confirms. Keeping these under `co gmail draft`
+# makes the safe path discoverable without changing the immediate-send command.
+gmail_draft_app = _typer_app(help="Create, inspect, and edit Gmail drafts; sending always asks for confirmation.")
+gmail_app.add_typer(gmail_draft_app, name="draft")
+
+
+@gmail_draft_app.command("list")
+def gmail_draft_list(
+    last: int = typer.Option(20, "--last", "-n", min=1, max=500, help="How many drafts to show"),
+):
+    """List Gmail drafts, numbered for later draft commands."""
+    from .commands.gmail_commands import handle_gmail_draft_list
+    handle_gmail_draft_list(last=last)
+
+
+@gmail_draft_app.command("create")
+def gmail_draft_create(
+    to: str = typer.Argument(..., help="Recipient address (comma-separated for several)"),
+    subject: str = typer.Argument(..., help="Email subject"),
+    message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+):
+    """Create an unsent Gmail draft."""
+    from .commands.gmail_commands import handle_gmail_draft_create
+    handle_gmail_draft_create(to, subject, message, cc=cc, bcc=bcc)
+
+
+@gmail_draft_app.command("attach")
+def gmail_draft_attach(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
+    link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
+):
+    """Stage a local/Drive file, or append a Drive link, without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_attach
+    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link)
+
+
+@gmail_draft_app.command("remove")
+def gmail_draft_remove(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+):
+    """Remove one staged attachment; the draft remains unsent."""
+    from .commands.gmail_commands import handle_gmail_draft_remove
+    handle_gmail_draft_remove(draft_id, attachment)
+
+
+@gmail_draft_app.command("replace")
+def gmail_draft_replace(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
+):
+    """Atomically replace one staged attachment without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_replace
+    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive)
+
+
+@gmail_draft_app.command("preview")
+def gmail_draft_preview(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+):
+    """Print recipients, body, and the final attachment manifest."""
+    from .commands.gmail_commands import handle_gmail_draft_preview
+    handle_gmail_draft_preview(draft_id)
+
+
+@gmail_draft_app.command("send")
+def gmail_draft_send(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+):
+    """Preview a draft and send it only after interactive confirmation."""
+    from .commands.gmail_commands import handle_gmail_draft_send
+    handle_gmail_draft_send(draft_id)
+
+
 # Google Drive command group. `co gdrive` (no args) lists recent files.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
 gdrive_app = _typer_app(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
@@ -1131,6 +1220,81 @@ def gdrive_rm(
 
 # Synology command group. `co syno` (no args) lists your shared folders.
 # Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
+_YOUTUBE_AUTH_HELP = (
+    "Connect once with co auth google, then use the saved Google login like co gmail. "
+    "Tokens refresh automatically through the existing Google OAuth broker. "
+    "YouTube operations use the official Data API. Uploads default to private; "
+    "unverified API projects can force private visibility. --confirm is an external write."
+)
+youtube_app = _typer_app(help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
+app.add_typer(youtube_app, name="youtube")
+
+
+@youtube_app.callback(invoke_without_command=True)
+def youtube_callback(ctx: typer.Context,
+                     json_output: bool = typer.Option(False, "--json", help="Emit one JSON object")):
+    if ctx.invoked_subcommand is None:
+        from .commands.youtube_commands import handle_youtube_list
+        handle_youtube_list(json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Place --json after the subcommand; see co youtube --help.")
+
+
+@youtube_app.command("channel", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_channel(target: Optional[str] = typer.Argument(None, help="UC channel ID, @handle, or channel URL; default is your channel"),
+                    json_output: bool = typer.Option(False, "--json")):
+    """Read a channel and its uploads playlist ID."""
+    from .commands.youtube_commands import handle_youtube_channel
+    handle_youtube_channel(target, json_output=json_output)
+
+
+@youtube_app.command("list", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_list(target: Optional[str] = typer.Argument(None, help="Channel ID, @handle or URL; default is your channel"),
+                 last: int = typer.Option(20, "--last", "-n", min=1, max=200),
+                 json_output: bool = typer.Option(False, "--json")):
+    """List recent uploads; numbers refer to this exact listing."""
+    from .commands.youtube_commands import handle_youtube_list
+    handle_youtube_list(target, last, json_output=json_output)
+
+
+@youtube_app.command("video", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_video(item: str = typer.Argument(..., help="Number from your last listing, video ID, or URL; no media download"),
+                  json_output: bool = typer.Option(False, "--json")):
+    """Read one video's metadata and returned counts."""
+    from .commands.youtube_commands import handle_youtube_video
+    handle_youtube_video(item, json_output=json_output)
+
+
+@youtube_app.command("put", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_put(path: str = typer.Argument(..., help="Local video file"),
+                title: str = typer.Option(..., "--title"),
+                channel: str = typer.Option(..., "--channel", help="Exact UC channel ID, checked again before upload"),
+                description: str = typer.Option("", "--description"),
+                privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
+                category: str = typer.Option("22", "--category"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact preview digest; consumes this plan once and uploads"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Preview locally; upload only with the current plan's --confirm digest."""
+    from .commands.youtube_commands import handle_youtube_put
+    handle_youtube_put(path, title, channel, description, privacy, category, dry_run, confirm, json_output)
+
+
+@youtube_app.command("update", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_update(item: str = typer.Argument(..., help="Listing number, video ID, or URL"),
+                   title: Optional[str] = typer.Option(None, "--title"),
+                   description: Optional[str] = typer.Option(None, "--description"),
+                   dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact digest of the current metadata preview; performs one update"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Preview title/description edits without changing privacy or other parts."""
+    from .commands.youtube_commands import handle_youtube_update
+    handle_youtube_update(item, title, description, dry_run, confirm, json_output)
+
+from .commands.gcalendar_commands import gcalendar_app
+gcalendar_app.info.cls = _OneSuggestion
+app.add_typer(gcalendar_app, name="gcalendar")
+
 syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
 app.add_typer(syno_app, name="syno")
 

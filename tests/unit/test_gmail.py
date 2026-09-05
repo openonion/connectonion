@@ -51,7 +51,7 @@ class TestGmailInit:
     """Tests for Gmail initialization and scope validation."""
 
     @patch.dict(os.environ, {
-        "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+        "GOOGLE_SCOPES": "gmail.readonly gmail.send gmail.modify",
         "GOOGLE_ACCESS_TOKEN": "test_token",
         "GOOGLE_REFRESH_TOKEN": "test_refresh"
     })
@@ -84,12 +84,10 @@ class TestGmailInit:
         assert "gmail.readonly" in str(exc_info.value)
 
     @patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly"}, clear=True)
-    def test_init_missing_send_scope(self):
-        """Test Gmail raises error when gmail.send scope is missing."""
+    def test_init_readonly_grant(self):
+        """Read-only consent must permit reading without requesting send."""
         from connectonion.useful_tools.gmail import Gmail
-        with pytest.raises(ValueError) as exc_info:
-            Gmail()
-        assert "gmail.send" in str(exc_info.value)
+        assert Gmail()._service is None
 
 
 class TestGmailGetService:
@@ -232,7 +230,7 @@ class TestGmailGetService:
             token = Gmail.__new__(Gmail)._refresh_via_backend("stale-local-token")
 
         assert token == "fresh-access"
-        assert "json" not in post.call_args.kwargs
+        assert post.call_args.kwargs["json"] == {"refresh_token": "stale-local-token"}
         assert post.call_args.kwargs["timeout"] == 15.0
         assert os.environ["GOOGLE_REFRESH_TOKEN"] == "rotated-refresh"
         saved = (tmp_path / "keys.env").read_text()
@@ -1247,6 +1245,9 @@ class TestGmailIntegration:
         assert 'search_emails' in agent.tools
         assert 'send' in agent.tools
         assert 'reply' in agent.tools
+        assert 'create_draft' in agent.tools
+        assert 'add_draft_attachment' in agent.tools
+        assert '_send_draft' not in agent.tools
         assert 'get_labels' in agent.tools
         assert 'get_all_contacts' in agent.tools
         assert 'update_contact' in agent.tools
@@ -1545,3 +1546,209 @@ class TestGmailSendAttachments:
             gmail.send("r@example.com", "S", "B", attachments=[str(huge)])
 
         gmail._get_service.assert_not_called()
+
+
+class TestGmailDraftAttachments:
+    """Draft edits rewrite one raw MIME message and never call messages.send."""
+
+    @staticmethod
+    def _raw(body="Body", attachments=()):
+        import base64
+        from email.message import EmailMessage
+
+        message = EmailMessage()
+        message["To"] = "recipient@example.com"
+        message["Subject"] = "Quarterly report"
+        message.set_content(body)
+        for name, mime_type, data in attachments:
+            main, sub = mime_type.split("/", 1)
+            message.add_attachment(data, maintype=main, subtype=sub, filename=name)
+        return base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+
+    @staticmethod
+    def _gmail(service, scopes="gmail.readonly gmail.send gmail.modify drive"):
+        from connectonion.useful_tools.gmail import Gmail
+
+        with patch.dict(os.environ, {"GOOGLE_SCOPES": scopes}):
+            gmail = Gmail(allow_external_attachments=True)
+        gmail._get_service = Mock(return_value=service)
+        return gmail
+
+    @staticmethod
+    def _updated_message(service):
+        from connectonion.useful_tools.gmail import Gmail
+
+        body = service.users().drafts().update.call_args.kwargs["body"]
+        return Gmail._decode_message(body["message"]["raw"])
+
+    def test_draft_write_needs_compose_or_modify_scope(self):
+        service = MagicMock()
+        gmail = self._gmail(service, scopes="gmail.readonly gmail.send")
+
+        with pytest.raises(ValueError, match="co auth google"):
+            gmail.create_draft("r@example.com", "S", "B")
+
+        service.users.assert_not_called()
+
+    def test_create_makes_a_draft_not_a_sent_message(self):
+        service = MagicMock()
+        service.users().drafts().create().execute.return_value = {"id": "draft-1"}
+        gmail = self._gmail(service)
+
+        result = gmail.create_draft("r@example.com", "Subject", "Exact body")
+
+        assert result["id"] == "draft-1"
+        raw = service.users().drafts().create.call_args.kwargs["body"]["message"]["raw"]
+        message = gmail._decode_message(raw)
+        assert message["To"] == "r@example.com"
+        assert message["Subject"] == "Subject"
+        assert message.get_content().strip() == "Exact body"
+        service.users().messages().send.assert_not_called()
+
+    def test_list_fetches_details_and_counts_nested_attachments(self):
+        service = MagicMock()
+        service.users().drafts().list().execute.return_value = {
+            "drafts": [{"id": "draft-1"}]
+        }
+        service.users().drafts().get().execute.return_value = {
+            "message": {
+                "payload": {
+                    "headers": [
+                        {"name": "To", "value": "r@example.com"},
+                        {"name": "Subject", "value": "Report"},
+                    ],
+                    "parts": [{
+                        "mimeType": "multipart/mixed",
+                        "parts": [{"filename": "report.pdf", "body": {"size": 4}}],
+                    }],
+                }
+            }
+        }
+
+        drafts = self._gmail(service).list_drafts(last=5)
+
+        assert drafts == [{
+            "id": "draft-1",
+            "to": "r@example.com",
+            "subject": "Report",
+            "attachments": 1,
+        }]
+        assert service.users().drafts().get.call_args.kwargs["format"] == "full"
+
+    def test_preview_returns_body_and_attachment_manifest(self):
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw(attachments=[
+                ("report.pdf", "application/pdf", b"%PDF"),
+            ])}
+        }
+
+        draft = self._gmail(service).get_draft("draft-1")
+
+        assert draft["body"].strip() == "Body"
+        assert draft["attachments"] == [{
+            "name": "report.pdf", "type": "application/pdf", "size": 4,
+        }]
+        assert draft["attachment_size"] == 4
+
+    def test_local_file_is_staged_with_detected_type(self, tmp_path):
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw()}
+        }
+        local = tmp_path / "invoice.pdf"
+        local.write_bytes(b"%PDF")
+
+        result = self._gmail(service).add_draft_attachment("draft-1", str(local))
+
+        part = list(self._updated_message(service).iter_attachments())[0]
+        assert part.get_filename() == "invoice.pdf"
+        assert part.get_content_type() == "application/pdf"
+        assert part.get_payload(decode=True) == b"%PDF"
+        assert result["attachment_size"] == 4
+        service.users().messages().send.assert_not_called()
+
+    def test_combined_size_is_checked_before_update(self, tmp_path):
+        from connectonion.useful_tools import gmail as gmail_module
+
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw(attachments=[
+                ("old.bin", "application/octet-stream", b"123"),
+            ])}
+        }
+        local = tmp_path / "new.bin"
+        local.write_bytes(b"456")
+
+        with patch.object(gmail_module, "GMAIL_ATTACHMENT_LIMIT", 5):
+            with pytest.raises(ValueError, match="25MB"):
+                self._gmail(service).add_draft_attachment("draft-1", str(local))
+
+        service.users().drafts().update.assert_not_called()
+
+    def test_remove_uses_one_based_preview_number(self):
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw(attachments=[
+                ("one.txt", "text/plain", b"1"),
+                ("two.txt", "text/plain", b"2"),
+            ])}
+        }
+
+        result = self._gmail(service).remove_draft_attachment("draft-1", 1)
+
+        assert [item["name"] for item in result["attachments"]] == ["two.txt"]
+        assert [part.get_filename() for part in self._updated_message(service).iter_attachments()] == ["two.txt"]
+
+    def test_missing_attachment_number_does_not_update(self):
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw()}
+        }
+
+        with pytest.raises(ValueError, match="#2"):
+            self._gmail(service).remove_draft_attachment("draft-1", 2)
+
+        service.users().drafts().update.assert_not_called()
+
+    def test_replace_is_one_atomic_update(self, tmp_path):
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw(attachments=[
+                ("old.txt", "text/plain", b"old"),
+            ])}
+        }
+        local = tmp_path / "new.csv"
+        local.write_bytes(b"a,b")
+
+        result = self._gmail(service).replace_draft_attachment("draft-1", 1, str(local))
+
+        assert result["attachments"] == [{
+            "name": "new.csv", "type": "text/csv", "size": 3,
+        }]
+        service.users().drafts().update.assert_called_once()
+
+    def test_drive_link_changes_plain_body_but_not_attachment_manifest(self):
+        service = MagicMock()
+        service.users().drafts().get().execute.return_value = {
+            "message": {"raw": self._raw(attachments=[
+                ("old.txt", "text/plain", b"old"),
+            ])}
+        }
+
+        result = self._gmail(service).add_draft_link(
+            "draft-1", "Budget", "https://drive.google.com/file/d/1/view"
+        )
+
+        assert "Budget: https://drive.google.com/file/d/1/view" in result["body"]
+        assert [item["name"] for item in result["attachments"]] == ["old.txt"]
+
+    def test_send_draft_uses_drafts_send_only(self):
+        service = MagicMock()
+        service.users().drafts().send().execute.return_value = {"id": "message-1"}
+
+        result = self._gmail(service)._send_draft("draft-1")
+
+        assert result == {"id": "message-1"}
+        assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1"}
+        service.users().messages().send.assert_not_called()

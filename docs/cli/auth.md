@@ -8,7 +8,7 @@ One-time setup for managed models — no provider keys needed.
 # Authenticate with OpenOnion (required first)
 co auth
 
-# Optional: Connect your Google account for Gmail & Calendar
+# Optional: Connect Gmail, Drive, Calendar and YouTube
 co auth google
 ```
 
@@ -19,9 +19,10 @@ What `co auth` does:
 - `~/.co/keys.env` gains `IS_EMAIL_ACTIVE=true`
 
 What `co auth google` does:
-- Connects your Google account for Gmail Send and Calendar Read
+- Requests the supported Gmail, Drive, Calendar and YouTube permissions by default
 - Opens browser for OAuth authorization
-- Saves credentials to `.env` for your agents to use
+- Saves credentials only locally in `~/.co/keys.env` and an existing project `.env`
+- Accepts `--scopes youtube.readonly` (or a comma-separated subset) for restricted consent
 - Running again will switch to a different Google account
 - See [Google Integration](../integrations/google.md) for details
 

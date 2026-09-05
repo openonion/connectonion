@@ -52,7 +52,7 @@ class TestAuthGoogleHelp:
         assert result.exit_code == 0
         assert 'google' in result.output.lower()
 
-    @patch('connectonion.cli.commands.auth_commands.load_api_key')
+    @patch('connectonion.cli.commands.google_auth.load_api_key')
     def test_auth_google_requires_openonion_auth(self, mock_load_key):
         """Test that co auth google requires prior OpenOnion authentication."""
         # Mock _load_api_key to return None (no API key found)
@@ -63,7 +63,7 @@ class TestAuthGoogleHelp:
 
             # co auth google should fail without OPENONION_API_KEY
             result = self.runner.invoke(cli, ['auth', 'google'])
-            assert 'Not authenticated with OpenOnion' in result.output
+            assert 'OpenOnion account not connected' in result.output
 
 
 class TestLoadApiKey:
@@ -219,130 +219,6 @@ OTHER_VAR=keep-this
             assert oct(stat.st_mode)[-3:] == '600'
 
 
-class TestAuthGoogleFlow:
-    """Test the co auth google flow with mocked backend."""
 
-    def setup_method(self):
-        """Setup test environment."""
-        self.runner = ArgparseCliRunner()
-
-    @patch('connectonion.cli.commands.auth_commands.webbrowser')
-    @patch('connectonion.cli.commands.auth_commands.requests')
-    def test_auth_google_success_flow(self, mock_requests, mock_webbrowser):
-        """Test successful Google OAuth flow."""
-        with self.runner.isolated_filesystem():
-            # Setup: Create .env with API key
-            Path('.env').write_text('OPENONION_API_KEY=test-key\n')
-
-            mock_init_response = Mock()
-            mock_init_response.status_code = 200
-            mock_init_response.json.return_value = {
-                'auth_url': 'https://accounts.google.com/o/oauth2/v2/auth?...'
-            }
-
-            mock_status_response = Mock()
-            mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {
-                'connected': True,
-                'expires_at': '2025-12-31T23:59:59',
-            }
-
-            mock_previous_status = Mock()
-            mock_previous_status.status_code = 200
-            mock_previous_status.json.return_value = {
-                'connected': True,
-                'expires_at': '2025-12-31T22:59:59',
-            }
-
-            mock_creds_response = Mock()
-            mock_creds_response.status_code = 200
-            mock_creds_response.json.return_value = {
-                'access_token': 'ya29.test',
-                'refresh_token': '1//0g.test',
-                'expires_at': '2025-12-31T23:59:59',
-                'scopes': 'gmail.send,calendar.readonly',
-                'google_email': 'test@gmail.com'
-            }
-
-            # Setup mock to return different responses
-            mock_requests.get.side_effect = [
-                mock_previous_status,  # existing /google/status baseline
-                mock_init_response,  # /google/init
-                mock_status_response,  # /google/status
-                mock_creds_response  # /google/credentials
-            ]
-
-            # Mock webbrowser.open to not actually open browser
-            mock_webbrowser.open.return_value = True
-
-            # Mock time.sleep to speed up test
-            with patch('time.sleep', return_value=None):
-                from connectonion.cli.main import cli
-                result = self.runner.invoke(cli, ['auth', 'google'])
-
-            # Re-auth must not revoke credentials used by running deployments.
-            mock_requests.delete.assert_not_called()
-
-            # Verify browser was opened
-            mock_webbrowser.open.assert_called_once()
-
-            # Verify credentials were saved to .env
-            env_content = Path('.env').read_text()
-            assert 'GOOGLE_ACCESS_TOKEN=ya29.test' in env_content
-            assert 'GOOGLE_REFRESH_TOKEN=1//0g.test' in env_content
-            assert 'GOOGLE_EMAIL=test@gmail.com' in env_content
-
-    @patch('connectonion.cli.commands.auth_commands.requests')
-    def test_auth_google_init_failure(self, mock_requests):
-        """Test handling of OAuth init failure."""
-        with self.runner.isolated_filesystem():
-            # Setup: Create .env with API key
-            Path('.env').write_text('OPENONION_API_KEY=test-key\n')
-
-            # Mock failed init response
-            mock_response = Mock()
-            mock_response.status_code = 500
-            mock_response.text = 'Internal Server Error'
-            mock_previous_status = Mock()
-            mock_previous_status.status_code = 200
-            mock_previous_status.json.return_value = {'connected': False}
-            mock_requests.get.side_effect = [mock_previous_status, mock_response]
-
-            from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['auth', 'google'])
-
-            # Should show error message
-            assert 'Failed to initialize OAuth' in result.output or result.exit_code != 0
-
-    @patch('connectonion.cli.commands.auth_commands.webbrowser')
-    @patch('connectonion.cli.commands.auth_commands.requests')
-    @patch('time.sleep')
-    def test_auth_google_timeout(self, mock_sleep, mock_requests, mock_webbrowser):
-        """Test handling of authorization timeout."""
-        with self.runner.isolated_filesystem():
-            # Setup: Create .env with API key
-            Path('.env').write_text('OPENONION_API_KEY=test-key\n')
-
-            # Mock init response
-            mock_init_response = Mock()
-            mock_init_response.status_code = 200
-            mock_init_response.json.return_value = {
-                'auth_url': 'https://accounts.google.com/o/oauth2/v2/auth?...'
-            }
-
-            # Mock status always returns not connected
-            mock_status_response = Mock()
-            mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {'connected': False}
-
-            mock_requests.get.side_effect = [
-                mock_status_response,  # existing /google/status baseline
-                mock_init_response,
-                *[mock_status_response] * 60  # Never becomes connected
-            ]
-
-            from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['auth', 'google'])
-
-            # Should timeout and show error
-            assert 'timed out' in result.output.lower() or result.exit_code != 0
+# The remote polling flow is retired. Encrypted CLI handoff, denial, and
+# provider failure regressions are covered in tests/unit/test_google_local_auth.py.

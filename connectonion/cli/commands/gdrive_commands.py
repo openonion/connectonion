@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: _gdrive() loads GOOGLE_* from .env / ~/.co/keys.env and checks the drive scope → GDrive() instance | list/search: list_files()/search_files() → numbered Rich table (tab-separated with full ids when piped) → saves {#: file_id} to ~/.co/gdrive_last_list.json | get/rm: resolve short numbers via that cache → download()/delete()
   State/Effects: writes ~/.co/gdrive_last_list.json (last listing's # → file id map; "numbers mean your last listing") | downloads write local files | put uploads to Drive | rm trashes (recoverable) rather than deleting
   Integration: exposes handle_gdrive_list(), handle_gdrive_search(), handle_gdrive_get(), handle_gdrive_put(), handle_gdrive_rm() for cli/main.py | presentation mirrors gmail_commands.py / outlook_commands.py | Drive logic lives in useful_tools/gdrive.py | requires prior 'co auth google'
-  Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/drive scope, unresolvable file #, missing upload path | Drive API errors propagate from the GDrive tool
+  Errors: guarded failures print a next command and exit 1 (typer.Exit); google_errors sanitizes provider/transport failures | empty list/search clears old numbers; piped rows append their row number as column five
 """
 
 import json
@@ -15,6 +15,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.table import Table
+from .google_errors import google_errors
 
 console = Console()
 
@@ -36,7 +37,8 @@ def _gdrive():
         console.print("  [bold]co auth google[/bold]     Authorize Drive access\n")
         raise typer.Exit(1)
 
-    if "drive" not in os.getenv("GOOGLE_SCOPES", ""):
+    from ...useful_tools.google_scopes import granted_scopes
+    if not granted_scopes().intersection({"drive", "drive.readonly"}):
         # Drive was added to the OAuth scopes after Gmail and Calendar — a token
         # from before that grants everything else but not this.
         console.print("\n❌ [bold red]Google Drive permission missing[/bold red]")
@@ -91,11 +93,11 @@ def _print_listing(files: list, title: str):
         # Scripts and agents get full file ids, never a truncated column.
         # Plain print, not console.print: Rich expands \t into spaces, which
         # silently turns tab-separated output into something cut -f can't read.
-        for item in files:
-            print(f"{item['name']}\t{item['type']}\t{item['size']}\t{item['id']}")
+        for i, item in enumerate(files, 1):
+            print(f"{item['name']}\t{item['type']}\t{item['size']}\t{item['id']}\t{i}")
         # Same next-step tip as the terminal table: piped callers are exactly
         # the AI audience the tip exists for.
-        print("Download one with: co gdrive get <#>")
+        print("Download one with: co gdrive get <# from column 5>")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -113,23 +115,31 @@ def _print_listing(files: list, title: str):
     console.print("\n[dim]Download one with:[/dim] [bold]co gdrive get <#>[/bold]\n")
 
 
+@google_errors("co gdrive list")
 def handle_gdrive_list(last: int = 20):
     """List recently modified Drive files as a numbered table."""
     drive = _gdrive()
     files = drive.list_files(last=last)
     if not files:
+        LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        LIST_CACHE.write_text("{}", encoding="utf-8")
         console.print("\n[cyan]Google Drive:[/cyan] no files\n")
+        print("Search by name: co gdrive search <name prefix>")
         return
     _print_listing(files, f"📁 Drive — {os.getenv('GOOGLE_EMAIL', '')}")
 
 
+@google_errors("co gdrive list")
 def handle_gdrive_search(query: str, last: int = 20):
     """Search Drive by file name, numbered like the listing."""
     drive = _gdrive()
     files = drive.search_files(query, last=last)
     if not files:
+        LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        LIST_CACHE.write_text("{}", encoding="utf-8")
         console.print(f"\n[cyan]Drive search:[/cyan] no files matching [bold]{query}[/bold]")
         console.print("[dim]Drive matches word prefixes, not any substring.[/dim]\n")
+        print("Show recent files: co gdrive list")
         return
     _print_listing(files, f"🔎 Drive — {query}")
 
@@ -147,22 +157,26 @@ def _resolve_file_id(file_id: str) -> str:
     return file_id
 
 
+@google_errors("co gdrive list")
 def handle_gdrive_get(file_id: str, dest: str = "."):
     """Download a Drive file. Accepts the listing # or a full file id."""
     drive = _gdrive()
     resolved = _resolve_file_id(file_id)
     if not resolved:
-        console.print(f"\n[yellow]No file #{file_id} in your last listing — run co gdrive, then co gdrive get <#>.[/yellow]\n")
+        console.print(f"\nNo file #{file_id} in your last listing.", markup=False)
+        print("Refresh the listing: co gdrive list")
         raise typer.Exit(1)
 
     console.print(drive.download(resolved, dest=dest).replace("Downloaded to", "\n[green]✓ Downloaded[/green]"))
-    console.print()
+    print("Show more files: co gdrive list")
 
 
+@google_errors("co gdrive list")
 def handle_gdrive_put(path: str, name: str = None):
     """Upload a local file to Drive."""
     if not Path(path).expanduser().is_file():
         console.print(f"\n❌ [bold red]File not found:[/bold red] {path}\n")
+        print("Retry with: co gdrive put <path to an existing file>")
         raise typer.Exit(1)
 
     drive = _gdrive()
@@ -170,16 +184,19 @@ def handle_gdrive_put(path: str, name: str = None):
     console.print(f"\n[green]✓ Uploaded[/green] [bold]{uploaded['name']}[/bold]")
     if uploaded["link"]:
         console.print(f"  {uploaded['link']}")
-    console.print()
+    print("Check uploaded files: co gdrive list")
 
 
+@google_errors("co gdrive list")
 def handle_gdrive_rm(file_id: str):
     """Move a Drive file to the trash. Accepts the listing # or a full file id."""
     drive = _gdrive()
     resolved = _resolve_file_id(file_id)
     if not resolved:
-        console.print(f"\n[yellow]No file #{file_id} in your last listing — run co gdrive, then co gdrive rm <#>.[/yellow]\n")
+        console.print(f"\nNo file #{file_id} in your last listing.", markup=False)
+        print("Refresh the listing: co gdrive list")
         raise typer.Exit(1)
 
     drive.delete(resolved)
     console.print("\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")
+    print("Show remaining files: co gdrive list")

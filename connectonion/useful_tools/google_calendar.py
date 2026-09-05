@@ -61,8 +61,9 @@ class GoogleCalendar:
         Validates that calendar scope is authorized.
         Raises ValueError if scope is missing.
         """
-        scopes = os.getenv("GOOGLE_SCOPES", "")
-        if "calendar" not in scopes:
+        from .google_scopes import granted_scopes
+        scopes = granted_scopes()
+        if not scopes.intersection({"calendar", "calendar.readonly"}):
             raise ValueError(
                 "Missing 'calendar' scope.\n"
                 f"Current scopes: {scopes}\n"
@@ -104,7 +105,7 @@ class GoogleCalendar:
         return self._refresh_via_backend(None), self._token_expiry()
 
     def _refresh_via_backend(self, refresh_token: str | None) -> str:
-        """Ask the backend to refresh its stored Google credentials.
+        """Refresh the locally held Google token through the stateless broker.
 
         Args:
             refresh_token: The refresh token
@@ -117,11 +118,15 @@ class GoogleCalendar:
         # Get backend URL and auth
         selected_backend = backend_url()
         api_key = require_ambient_api_key()
+        refresh_token = refresh_token or os.getenv("GOOGLE_REFRESH_TOKEN")
+        if not refresh_token:
+            raise ValueError("Local Google refresh token missing. Run: co auth google")
 
         # Call backend refresh endpoint
         response = httpx.post(
             f"{selected_backend}/api/v1/oauth/google/refresh",
             headers={"Authorization": f"Bearer {api_key}"},
+            json={"refresh_token": refresh_token},
             timeout=15.0,
         )
 
@@ -155,7 +160,11 @@ class GoogleCalendar:
         }
         if new_refresh_token:
             values["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
+        if "scopes" in data:
+            values["GOOGLE_SCOPES"] = data["scopes"]
+        os.environ.update(values)
         upsert_env(env_file, values)
+        env_file.chmod(0o600)
 
         return new_access_token
 
@@ -544,9 +553,11 @@ class GoogleCalendar:
         service = self._get_service()
 
         # Parse date
-        target_date = datetime.strptime(date, '%Y-%m-%d')
-        start_of_day = target_date.replace(hour=9, minute=0, second=0).isoformat() + 'Z'
-        end_of_day = target_date.replace(hour=17, minute=0, second=0).isoformat() + 'Z'
+        if duration_minutes <= 0:
+            raise ValueError("Duration must be positive")
+        target_date = datetime.strptime(date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        start_of_day = target_date.replace(hour=9, minute=0, second=0).isoformat()
+        end_of_day = target_date.replace(hour=17, minute=0, second=0).isoformat()
 
         # Get events for the day
         events_result = service.events().list(
@@ -558,6 +569,17 @@ class GoogleCalendar:
         ).execute()
 
         events = events_result.get('items', [])
+        seen = set()
+        while events_result.get('nextPageToken'):
+            cursor = events_result['nextPageToken']
+            if cursor in seen:
+                raise ValueError("Calendar returned a repeated page; cannot determine free slots")
+            seen.add(cursor)
+            events_result = service.events().list(
+                calendarId='primary', timeMin=start_of_day, timeMax=end_of_day,
+                singleEvents=True, orderBy='startTime', pageToken=cursor,
+            ).execute()
+            events.extend(events_result.get('items', []))
 
         # Find gaps
         free_slots = []
@@ -565,14 +587,17 @@ class GoogleCalendar:
         end_time = target_date.replace(hour=17, minute=0)
 
         for event in events:
-            event_start = datetime.fromisoformat(event['start'].get('dateTime', '').replace('Z', '+00:00'))
-            event_end = datetime.fromisoformat(event['end'].get('dateTime', '').replace('Z', '+00:00'))
+            if event.get('status') == 'cancelled' or event.get('transparency') == 'transparent':
+                continue
+            event_start = self._parse_time(event['start'].get('dateTime') or event['start']['date']).replace(tzinfo=timezone.utc)
+            event_end = self._parse_time(event['end'].get('dateTime') or event['end']['date']).replace(tzinfo=timezone.utc)
+            event_start = min(event_start, end_time)
 
             # Check if there's a gap before this event
             if (event_start - current_time).total_seconds() >= duration_minutes * 60:
                 free_slots.append(f"{current_time.strftime('%I:%M %p')} - {event_start.strftime('%I:%M %p')}")
 
-            current_time = max(current_time, event_end)
+            current_time = min(end_time, max(current_time, event_end))
 
         # Check gap at end of day
         if (end_time - current_time).total_seconds() >= duration_minutes * 60:
@@ -596,10 +621,10 @@ class GoogleCalendar:
         Returns:
             datetime object
         """
-        for fmt in ['%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M']:
-            try:
-                return datetime.strptime(time_str, fmt)
-            except ValueError:
-                continue
-
-        raise ValueError(f"Cannot parse time: {time_str}. Use format: YYYY-MM-DD HH:MM or ISO format")
+        try:
+            parsed = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        except ValueError:
+            raise ValueError("Cannot parse time. Use YYYY-MM-DD HH:MM or an ISO timestamp.") from None
+        if parsed.tzinfo:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed

@@ -1,6 +1,6 @@
 ---
 name: co-mail-and-drive
-description: Read and send mail from the user's own Gmail or Outlook account, send from the agent's own address, manage their Outlook contacts, and list/search/download/upload their Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about *their* inbox, an email they received or want to send, a contact, or a file in their Drive.
+description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, or a file in Drive.
 ---
 
 # co gmail / co outlook / co email / co gdrive
@@ -46,11 +46,62 @@ co outlook sent -n 20
 Gmail search takes full Gmail query syntax (`from:`, `subject:`, `after:2026/07/01`,
 `is:unread`). Outlook search is plain text over subject and body.
 
-`co gmail read` marks the mail read only when the token carries the `gmail.modify`
-scope; with read-only + send scopes it prints the body and leaves it unread. It says
-which happened — repeat what it says, don't assume.
+`co gmail read` preserves unread state by default. `co gmail read 3 --mark-read`
+marks it read only when the token carries `gmail.modify`; otherwise it prints
+a reauthorization hint. Repeat what the output says, don't assume.
 
 ## Send and reply
+
+For Gmail attachments, or whenever a person should review the final message,
+use the provider-native draft workflow. Only the last command can send, and it
+always previews and asks for interactive confirmation:
+
+| Intent | Command |
+|---|---|
+| List and number drafts | `co gmail draft list` |
+| Create an unsent draft | `co gmail draft create <to> <subject> <message>` |
+| Stage a local file | `co gmail draft attach <draft> <path>` |
+| Stage a Drive file | `co gmail draft attach <draft> <file> --drive` |
+| Append a Drive URL | `co gmail draft attach <draft> <file> --drive --link` |
+| Remove a staged file | `co gmail draft remove <draft> <attachment#>` |
+| Replace a staged file | `co gmail draft replace <draft> <attachment#> <source> [--drive]` |
+| Inspect recipients, body, and manifest | `co gmail draft preview <draft>` |
+| Preview, confirm, and send | `co gmail draft send <draft>` |
+
+```bash
+co gmail draft list
+co gmail draft create bob@example.com "Subject" "Body text"
+co gmail draft list           # create prints an ID; it does not assign row 1
+co gmail draft attach 1 report.pdf
+co gdrive list
+co gmail draft attach 1 3 --drive
+co gmail draft attach 1 3 --drive --link
+co gmail draft remove 1 2
+co gmail draft replace 1 1 corrected.pdf
+co gmail draft preview 1
+co gmail draft send 1
+```
+
+`draft create`, `attach`, `remove`, `replace`, and `preview` never send. `draft
+send` has no `--yes` or other confirmation bypass. A declined confirmation
+leaves the draft intact and exits `1`. EOF or interruption at the confirmation
+prompt does the same and prints the preview command again.
+
+A Gmail draft number comes from the immediately preceding `co gmail draft
+list`, cached separately at `~/.co/gmail_last_drafts.json`. Attachment numbers
+come from the current `draft preview`. Drive file numbers still come from the
+immediately preceding `co gdrive` listing. Re-list before acting rather than
+carrying numbers across listings.
+An empty draft listing clears its old numbers. After creating a draft, use the
+ID printed by `create`, or list again before choosing a row number.
+
+`--drive` attaches bytes without making a local copy. Native Docs, Sheets,
+Slides, and Drawings are exported using the same formats as `co gdrive get`.
+`--drive --link` appends the web URL but does not grant the recipient access or
+change Drive sharing.
+
+Each success and guarded failure prints a literal next command. Read it even
+when output is piped; it is part of the CLI contract.
 
 ```bash
 co gmail send bob@example.com "Subject" "Body text"
@@ -75,9 +126,9 @@ co outlook cancel 1           # pull one back before it goes
 Outlook can also save an email's attachments: `co outlook download 3 --to ~/Downloads`.
 Gmail has no download command — there is no way to save a Gmail attachment from this CLI.
 
-**Never send on the user's behalf without showing them the exact text first.**
-Draft it, print it, wait for a yes. Sending is not undoable — scheduling is, until
-it goes out.
+**Never send on the user's behalf without showing them the exact text and final
+attachment manifest first.** Prefer `co gmail draft`; print its preview and wait
+for a yes. Sending is not undoable — scheduling is, until it goes out.
 
 ## Contacts (Outlook only)
 
@@ -91,6 +142,7 @@ co outlook contact search yifei
 
 ```bash
 co gdrive                          # bare command = 20 most recently modified
+co gdrive list                     # explicit form of the same listing
 co gdrive search report -n 50
 co gdrive get 3 --to ~/Downloads   # download row 3
 co gdrive put report.pdf --name "Q3 report.pdf"
@@ -99,13 +151,15 @@ co gdrive rm 3                     # move to trash (recoverable)
 
 ## The two gotchas that make you report something false
 
-**1. Numbers mean your last listing.** `read 3` / `get 3` resolve against the
+**1. Numbers mean your last listing.** `read 3` / `get 3` / `draft preview 3`
+resolve against the
 numbering of the listing you just printed, cached in `~/.co/gmail_last_inbox.json`,
-`~/.co/outlook_last_inbox.json`, `~/.co/gdrive_last_list.json`. List again and the
-numbers move. Two consequences:
+`~/.co/gmail_last_drafts.json`, `~/.co/outlook_last_inbox.json`, and
+`~/.co/gdrive_last_list.json`. List again and the numbers move. Two consequences:
 
 - Never carry a number across two listings — re-list, then act.
-- Only `inbox`, `search` (and `outlook scheduled`) write the cache. `sent` does
+- Gmail `inbox`/`search`, Gmail `draft list`, and Drive `list`/`search` each
+  refresh their own numbering, including clearing it on an empty result. `sent` does
   **not**: after `co gmail sent`, `read 1` still opens row 1 of the older inbox listing.
 - A number that isn't in the cache gets `No email #N in your last listing` and exit
   `1` rather than a silently wrong email. Re-list and retry.
@@ -116,7 +170,7 @@ print the untruncated form with full IDs instead:
 
 ```bash
 co gmail inbox -n 50 | grep "ID:"   # full message ids, numbered 1., 2., ...
-co gdrive list -n 100 | cut -f4     # name<TAB>type<TAB>size<TAB>id
+co gdrive list -n 100 | cut -f4     # name<TAB>type<TAB>size<TAB>id<TAB>row-number
 co outlook contact list | cut -f2   # name<TAB>email<TAB>id
 ```
 
@@ -180,8 +234,31 @@ from credits) and `co email upgrade plus|pro` raises the quota.
 | exit | Meaning | What to do |
 |---|---|---|
 | `0`, clean output | success — including legitimately empty listings | continue |
-| `1` | guarded failure: account not connected, scope missing, unknown listing number, rejected send, unowned `--from` address, attachment missing/too large | the message names the fix (`co auth google`, `co email addresses`, re-list, correct the path) |
+| `1` | guarded failure: account not connected, scope missing, unknown listing or attachment number, declined/rejected send, unowned `--from` address, attachment missing/too large | run the literal next command (`co auth google`, re-list/preview, correct the path) |
 | `2` | usage error: unknown subcommand, missing or bad argument | fix the syntax; the error names the argument, `--help` lists the rest |
+
+For Gmail and Drive, these are the concrete recovery routes:
+
+| Result | Next command |
+|---|---|
+| Gmail listing succeeded | `co gmail read <# from this listing>` |
+| Drive listing succeeded | `co gdrive get <# from column 5 when piped>` |
+| Empty Gmail inbox | `co gmail search <query>` |
+| Empty Gmail search | `co gmail inbox` |
+| Empty Drive listing | `co gdrive search <name prefix>` |
+| Empty Drive search | `co gdrive list` |
+| Missing Google permission (exit 1) | `co auth google` |
+| Gmail read/list failure (exit 1) | `co gmail inbox` |
+| Gmail send/reply connection failure (exit 1, delivery uncertain) | `co gmail sent` |
+| Drive connection or local I/O failure (exit 1) | `co gdrive list` |
+| Missing upload path (exit 1) | `co gdrive put <path to an existing file>` |
+| Missing Gmail read argument (exit 2) | `co gmail read --help` |
+| Missing Drive get argument (exit 2) | `co gdrive get --help` |
+
+A connection failure does not prove a write failed: inspect the provider state
+before repeating a send, reply, upload, or draft creation. Provider error bodies
+are omitted from CLI error messages. Outlook and agent-mail recovery behavior
+is outside the Gmail/Drive audit.
 
 The printed messages carry the current recovery step — trust them over this table.
 
@@ -190,6 +267,7 @@ When a command says the account is not connected:
 ```
 ❌ Google account not connected     → co auth google
 ❌ Gmail permission missing         → co auth google      (re-consent)
+❌ Gmail draft permission missing   → co auth google      (re-consent)
 ❌ Google Drive permission missing  → co auth google      (re-consent)
 ❌ Microsoft account not connected  → co auth microsoft
 ❌ Microsoft <scope> permission missing → co auth microsoft
@@ -205,6 +283,7 @@ it themselves**, do not try to drive that flow.
 
 - [ ] Right mailbox chosen (asked, if both were connected)
 - [ ] Exact text shown to the user before any send
+- [ ] Final Gmail attachment manifest shown before any draft send
 - [ ] Numbers used from the listing printed immediately before the action
 - [ ] IDs taken from piped output, never from a truncated table column
 - [ ] `--from` address taken from `co email addresses`, never guessed
