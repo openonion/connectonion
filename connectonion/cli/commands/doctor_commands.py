@@ -402,6 +402,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
         "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
         "TELEGRAM_BOT_TOKEN": "set TELEGRAM_BOT_TOKEN in ~/.co/keys.env",
+        "DISCORD_BOT_TOKEN": "set DISCORD_BOT_TOKEN in ~/.co/keys.env",
     }
     project_dir = project_co_dir().parent
     selected_api_key = _selected_credential_values(

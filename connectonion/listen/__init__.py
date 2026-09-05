@@ -16,6 +16,7 @@ PROVIDERS = {
     "feishu": ("connectonion.listen.feishu", "Feishu", {"domain": "feishu"}),
     "lark": ("connectonion.listen.feishu", "Feishu", {"domain": "lark"}),
     "telegram": ("connectonion.listen.telegram", "Telegram", {}),
+    "discord": ("connectonion.listen.discord", "Discord", {}),
 }
 
 

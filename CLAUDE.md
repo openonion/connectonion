@@ -181,7 +181,8 @@ connectonion/
 │   ├── listen/                     # Chat platforms as mailbox directories (co feishu / co telegram listen, receive, send, reply)
 │   │   ├── mailbox.py              # ~/.co/<provider>/: inbox.jsonl log, new/ queue, cur/, outbox.jsonl
 │   │   ├── feishu.py               # Feishu/Lark long connection → files; REST reply
-│   │   └── telegram.py             # Telegram getUpdates long poll → files; sendMessage reply
+│   │   ├── telegram.py             # Telegram getUpdates long poll → files; sendMessage reply
+│   │   └── discord.py              # Discord Gateway → files; REST reply
 │   ├── tui/                        # Terminal UI components
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich
