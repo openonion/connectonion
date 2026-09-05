@@ -142,6 +142,7 @@ co outlook contact search yifei
 
 ```bash
 co gdrive                          # bare command = 20 most recently modified
+co gdrive list                     # explicit form of the same listing
 co gdrive search report -n 50
 co gdrive get 3 --to ~/Downloads   # download row 3
 co gdrive put report.pdf --name "Q3 report.pdf"
@@ -157,7 +158,8 @@ numbering of the listing you just printed, cached in `~/.co/gmail_last_inbox.jso
 `~/.co/gdrive_last_list.json`. List again and the numbers move. Two consequences:
 
 - Never carry a number across two listings — re-list, then act.
-- Only `inbox`, `search` (and `outlook scheduled`) write the cache. `sent` does
+- Gmail `inbox`/`search`, Gmail `draft list`, and Drive `list`/`search` each
+  refresh their own numbering, including clearing it on an empty result. `sent` does
   **not**: after `co gmail sent`, `read 1` still opens row 1 of the older inbox listing.
 - A number that isn't in the cache gets `No email #N in your last listing` and exit
   `1` rather than a silently wrong email. Re-list and retry.
@@ -168,7 +170,7 @@ print the untruncated form with full IDs instead:
 
 ```bash
 co gmail inbox -n 50 | grep "ID:"   # full message ids, numbered 1., 2., ...
-co gdrive list -n 100 | cut -f4     # name<TAB>type<TAB>size<TAB>id
+co gdrive list -n 100 | cut -f4     # name<TAB>type<TAB>size<TAB>id<TAB>row-number
 co outlook contact list | cut -f2   # name<TAB>email<TAB>id
 ```
 
@@ -234,6 +236,29 @@ from credits) and `co email upgrade plus|pro` raises the quota.
 | `0`, clean output | success — including legitimately empty listings | continue |
 | `1` | guarded failure: account not connected, scope missing, unknown listing or attachment number, declined/rejected send, unowned `--from` address, attachment missing/too large | run the literal next command (`co auth google`, re-list/preview, correct the path) |
 | `2` | usage error: unknown subcommand, missing or bad argument | fix the syntax; the error names the argument, `--help` lists the rest |
+
+For Gmail and Drive, these are the concrete recovery routes:
+
+| Result | Next command |
+|---|---|
+| Gmail listing succeeded | `co gmail read <# from this listing>` |
+| Drive listing succeeded | `co gdrive get <# from column 5 when piped>` |
+| Empty Gmail inbox | `co gmail search <query>` |
+| Empty Gmail search | `co gmail inbox` |
+| Empty Drive listing | `co gdrive search <name prefix>` |
+| Empty Drive search | `co gdrive list` |
+| Missing Google permission (exit 1) | `co auth google` |
+| Gmail read/list failure (exit 1) | `co gmail inbox` |
+| Gmail send/reply connection failure (exit 1, delivery uncertain) | `co gmail sent` |
+| Drive connection or local I/O failure (exit 1) | `co gdrive list` |
+| Missing upload path (exit 1) | `co gdrive put <path to an existing file>` |
+| Missing Gmail read argument (exit 2) | `co gmail read --help` |
+| Missing Drive get argument (exit 2) | `co gdrive get --help` |
+
+A connection failure does not prove a write failed: inspect the provider state
+before repeating a send, reply, upload, or draft creation. Provider error bodies
+are omitted from CLI error messages. Outlook and agent-mail recovery behavior
+is outside the Gmail/Drive audit.
 
 The printed messages carry the current recovery step — trust them over this table.
 

@@ -176,15 +176,15 @@ class TestHandleGmailInbox:
 
         assert "no emails" in capsys.readouterr().out
 
-    def test_empty_inbox_writes_no_cache(self, capsys):
-        """An empty listing must not clobber the numbering from the last one."""
+    def test_empty_inbox_clears_numbers(self, capsys):
+        """An empty listing must not retain older rows."""
         gmail = MagicMock()
         gmail.list_inbox.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_inbox(last=10, unread=True)
 
-        assert not gmail_commands.INBOX_CACHE.exists()
+        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {}
         assert "no unread emails" in capsys.readouterr().out
 
     def test_table_and_cache(self, monkeypatch, capsys):
@@ -478,14 +478,14 @@ class TestHandleGmailSendAndSearch:
         gmail.list_search.assert_called_once_with("invoice", max_results=5)
         assert "no emails matching" in capsys.readouterr().out
 
-    def test_search_empty_result_writes_no_cache(self):
+    def test_search_empty_result_clears_numbers(self):
         gmail = MagicMock()
         gmail.list_search.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_search("invoice", last=5)
 
-        assert not gmail_commands.INBOX_CACHE.exists()
+        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {}
 
     def test_search_results_share_the_inbox_numbering_contract(self, monkeypatch, capsys):
         """`co gmail read <#>` after a search must open the search hit."""

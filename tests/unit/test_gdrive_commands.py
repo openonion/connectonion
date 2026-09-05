@@ -131,7 +131,7 @@ class TestHandleList:
 
         assert "no files" in capsys.readouterr().out
 
-    def test_empty_listing_writes_no_cache(self):
+    def test_empty_listing_clears_numbers(self):
         """An empty listing must not clobber the numbering from the last one."""
         drive = MagicMock()
         drive.list_files.return_value = []
@@ -139,7 +139,7 @@ class TestHandleList:
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
             handle_gdrive_list()
 
-        assert not gdrive_commands.LIST_CACHE.exists()
+        assert json.loads(gdrive_commands.LIST_CACHE.read_text()) == {}
 
     def test_table_and_cache(self, monkeypatch, capsys):
         monkeypatch.setattr(gdrive_commands, "console", Console(force_terminal=True, width=120))
@@ -168,7 +168,7 @@ class TestHandleList:
         assert "file-1" in output and "file-2" in output
         # Real tabs, not Rich's space-expanded ones — `cut -f4` must work.
         assert output.splitlines()[0].split("\t") == [
-            "Document 1.pdf", "application/pdf", "2048", "file-1",
+            "Document 1.pdf", "application/pdf", "2048", "file-1", "1",
         ]
 
     def test_limit_reaches_the_tool(self):
