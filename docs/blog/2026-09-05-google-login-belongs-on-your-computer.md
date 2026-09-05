@@ -1,27 +1,30 @@
-# Google login belongs on your computer
+# The refresh token we already had
 
-The YouTube work exposed a mismatch. The CLI already saved a refresh token on
-the user's computer, but the backend refreshed a second copy from its database.
-Adding a granted-scopes column would have made the second copy more authoritative,
-not made the local login more useful.
+“Why does YouTube need a database migration?”
 
-We chose one durable owner: the computer where consent began. The CLI opens a
-loopback callback and creates a temporary public key. After Google exchanges the
-code, the broker encrypts the credentials for that key and sends them straight
-back to the CLI. Later refresh requests carry the local token. The application's
-client secret stays on the broker, but a user's refresh token does not stay there.
+That question stopped the release work. We had added a column to remember which
+Google permissions a user granted. It looked like a small extension to the
+existing login. But the user remembered something else: the refresh token was
+already saved on their computer. Why was a server column necessary to use it?
 
-This reuses the Microsoft handoff instead of introducing a second Google desktop
-application. It also avoids moving or resetting existing credential rows. The
-tradeoff is explicit: an older CLI that asks the server to find its login must
-upgrade. A server-side fallback would quietly restore the ownership mismatch.
+Following the refresh request answered the wrong question first. The backend
+could find a Google login by the OpenOnion account and renew it. That path worked
+on its own terms. Looking at the caller showed the mismatch: the CLI had a local
+refresh token, yet the request did not send it. The server renewed its own copy.
+We had been treating two copies as one login.
 
-Default consent asks for the four Google services the CLI implements. A caller
-can request fewer scopes, and the saved grant records what Google actually
-returned. Consent is still the user's decision; requesting a capability cannot
-make a denied capability true.
+Adding a scope column would have continued that assumption. Deleting the local
+file would not have removed the server's ability to refresh; inspecting the local
+grant would not have explained which credential the server used.
 
-The tests seal and decrypt synthetic credentials and fail if a Google credential
-table is touched. That proves the storage boundary, not that a real account or
-YouTube upload has been accepted. Live consent remains a separate release gate.
-The 1.8.3 package is being prepared, not announced as available here.
+The Microsoft flow in the same codebase offered a way out. It already sealed
+credentials to an ephemeral key created by the CLI and returned them to a local
+callback. We reused that handoff for Google, then changed refresh to carry the
+token the caller actually held. In a regression test, every credential-table
+function was replaced with a failure. Consent and refresh still completed with
+synthetic tokens.
+
+The question was not whether a scope fits in a database column. It was which
+copy of a login has authority. Once that was explicit, the new column had no job.
+Old clients still need an upgrade, and real Google consent still needs its own
+acceptance run. Neither is a reason to keep an invisible second login.

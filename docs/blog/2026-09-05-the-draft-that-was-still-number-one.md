@@ -1,42 +1,23 @@
 # The draft that was still number one
 
-The Gmail draft workflow looked straightforward: list drafts, choose a number,
-attach a file, and preview before sending. The first discoverability test found
-that the piped listing did not print row numbers. Given only that output, the
-model chose `co gmail draft preview 0`. Numbering the output fixed that test.
+The agent had just listed Gmail drafts. Its next command used a number, as the
+CLI invited it to do. That seemed harmless until an empty listing entered the
+same workflow.
 
-A second audit found a quieter problem. If a later listing returned no drafts,
-the command printed “none” but retained the previous numbering cache. Row one
-could still resolve to a draft from an earlier listing. The screen and the
-command disagreed about what “one” meant.
+The command printed that there were no drafts. But its local numbering cache
+still held the previous result. Asking for draft one could reach an older draft
+even though the last output said there was nothing to choose.
 
-An empty listing now clears those numbers. The skill also tells the reader to
-use the ID printed by draft creation, or list again before choosing a number.
-Creating a draft does not make it row one. That distinction matters when the
-next command changes attachment state.
+We first looked at the listing text. Making numbers visible in piped output had
+already corrected an output-only model test that chose row zero. This failure
+was different: the text was true. The hidden state that interpreted the next
+command was stale.
 
-The same audit followed the send prompt to its less visible exit. Answering
-“no” already kept the draft and printed a preview command. Ending input or
-interrupting the prompt needed the same recovery path. Those cases now exit
-with code 1, retain the draft, and name the command to inspect it again.
+An empty result now replaces the numbering cache with an empty mapping. The
+regression starts with an old row one, returns no drafts, then tries to resolve
+one again. It must not recover the old ID. A draft returned by creation has its
+own ID; it does not become row one simply because it is new.
 
-The focused suite passes 241 tests, including regressions for stale numbering
-and all three interruption signals. Two text-only tip tests gave a fresh model
-only synthetic output and a goal. It chose the existing create command after
-an empty listing and the exact preview command after an interrupted send.
-Neither test had access to a mailbox or a shell.
-
-The useful question turned out to be what the next caller can infer from the
-last output. A command can report a true result and still leave behind state
-that makes the next action wrong. Testing that transition caught what checking
-each success message on its own had missed.
-
-Expanding the audit to the rest of Gmail and Drive found the same stale-row
-problem after empty inbox and file searches. Drive's piped rows exposed full
-IDs but still invited the caller to choose a number it could not see. A fifth
-column now supplies that number without moving the original four columns.
-
-The expanded harness exercises twenty command paths, including both bare
-commands. All twenty output-only tip tests pass, and the focused suite now
-passes 277 tests. Send, upload, and trash calls in that harness go to mocks.
-The model only chooses a command; the harness never executes its reply.
+That changed what we watched during the audit. A successful command was not the
+end of the test. We had to follow the next reference it left behind. Otherwise
+the CLI could tell the truth in one response and make the next action wrong.
