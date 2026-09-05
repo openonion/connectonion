@@ -18,10 +18,13 @@ The browser stays open **between commands**. Each `co browser ...` call drives t
 ConnectOnion 1.8 resolves the engine once when the browser daemon starts:
 
 ```bash
-co browser --engine auto go_to example.com    # default
-co browser --engine system go_to example.com  # always Patchright + system Chrome
-co browser --engine onion go_to example.com   # strict paid Onion Browser
+co browser go_to example.com                  # default: Patchright + system Chrome, $0
+co browser --engine system go_to example.com  # the same thing, said explicitly
+co browser --engine onion go_to example.com   # paid WTF Browser, and only when asked
 ```
+
+Paying is opt-in. An ordinary command never starts a billable session, even on
+a machine where Onionwright is installed and in credit.
 
 The paid path requires Onionwright 0.0.13 or newer. Install or upgrade the real
 private wheel explicitly:
@@ -39,9 +42,13 @@ artifact endpoint, not the public PyPI placeholder.
 
 | mode | behavior |
 |---|---|
-| `auto` | Run Onionwright's non-billing compatibility/artifact preflight. Use the exact verified Onion artifact when ready; otherwise use system Chrome and report a typed fallback reason. |
-| `system` | Return before importing Onionwright, reading paid credentials, calling oo-api, downloading an artifact, or creating a paid session. Cost: $0 browser runtime. |
+| `auto` | The default, and what every command that names no engine sends. Resolves to system Chrome without importing Onionwright, reading paid credentials, calling oo-api, or downloading an artifact. Cost: $0. |
+| `system` | The same resolution, requested explicitly. |
 | `onion` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
+
+A daemon is pinned to the engine it started with, so `--engine onion go_to ...`
+followed by a plain `co browser get_text` keeps using the paid browser you
+opened. Starting fresh with no engine gives you system Chrome again.
 
 Artifact checking and download do not charge. A paid session starts only after
 the complete artifact is locally ready, then prepays $0.025 for one 15-minute
