@@ -156,6 +156,7 @@ def _show_help():
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
+    console.print("  [green]feishu[/green]            Feishu bot as a mailbox: listen, receive, send, reply")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
@@ -969,6 +970,87 @@ def telegram_send(
     """Send a Telegram message."""
     from .commands.telegram_commands import handle_telegram_send
     handle_telegram_send(chat, message)
+
+
+# Mailbox providers: feishu, lark. One directory per provider under ~/.co/,
+# the same eight verbs on each. The tool knows nothing about agents; anything
+# that can read a file consumes it (DD-063).
+def _mailbox_group(name: str, help_text: str) -> typer.Typer:
+    group = _typer_app(help=help_text)
+
+    @group.command("listen")
+    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
+        """Hold the connection; write every message to the mailbox. Ctrl-C stops."""
+        from .commands.listen_commands import handle_listen
+        handle_listen(name, raw=raw)
+
+    @group.command("receive")
+    def _receive(
+        timeout: Optional[float] = typer.Option(None, "--timeout", "-t", help="Seconds to wait; 0 looks once. Exit 124 if none."),
+        no_start: bool = typer.Option(False, "--no-start", help="Do not start a background listener"),
+    ):
+        """Print the next message as one JSON line, taking it from the queue."""
+        from .commands.listen_commands import handle_receive
+        handle_receive(name, timeout=timeout, start=not no_start)
+
+    @group.command("send")
+    def _send(
+        chat: str = typer.Argument(..., help="Chat id"),
+        text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
+        reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
+    ):
+        """Send text to a chat. Prints the new message id."""
+        from .commands.listen_commands import handle_send
+        handle_send(name, chat, text, reply_to=reply_to)
+
+    @group.command("reply")
+    def _reply(
+        message_id: str = typer.Argument(..., help="Id of a received message"),
+        text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
+        again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
+    ):
+        """Reply where a received message was asked. Prints the new id."""
+        from .commands.listen_commands import handle_reply
+        handle_reply(name, message_id, text, again=again)
+
+    @group.command("done")
+    def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
+        """Forget a taken message without replying, so it does not come back in an hour."""
+        from .commands.listen_commands import handle_done
+        handle_done(name, message_id)
+
+    @group.command("check")
+    def _check():
+        """Credentials, connectivity, listener state, unread count. Exit 3 on a problem."""
+        from .commands.listen_commands import handle_check
+        handle_check(name)
+
+    @group.command("ls")
+    def _ls():
+        """Unread messages: id, chat, sender, text."""
+        from .commands.listen_commands import handle_ls
+        handle_ls(name)
+
+    @group.command("log")
+    def _log(follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new messages")):
+        """Every message ever received, one JSON line each."""
+        from .commands.listen_commands import handle_log
+        handle_log(name, follow=follow)
+
+    @group.command("serve", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+    def _serve(
+        command: List[str] = typer.Argument(..., help="Command run per message: message on stdin, reply on stdout"),
+        once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
+    ):
+        """Loop: receive, run COMMAND with the message on stdin, reply with its stdout."""
+        from .commands.listen_commands import handle_serve
+        handle_serve(name, command, once=once)
+
+    return group
+
+
+app.add_typer(_mailbox_group("feishu", "Feishu bot as a mailbox: listen, receive, send, reply."), name="feishu")
+app.add_typer(_mailbox_group("lark", "Lark (global Feishu) bot as a mailbox: listen, receive, send, reply."), name="lark")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
