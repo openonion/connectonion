@@ -88,13 +88,49 @@ class _OneSuggestion(typer.core.TyperGroup):
 _SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
 
 
+# Typer 0.27 vendors Click; earlier supported versions use the installed Click.
+try:
+    from typer._click.exceptions import UsageError as _UsageError
+except ImportError:
+    from click import UsageError as _UsageError
+
+
+class _CreatorGroup(_OneSuggestion):
+    """Creator usage failures must survive a pipe along with their recovery tip."""
+
+    @staticmethod
+    def _usage_error(error, ctx):
+        current = error.ctx or ctx
+        names = []
+        while current.parent is not None:
+            names.append(current.info_name)
+            current = current.parent
+        command = "co " + " ".join(reversed(names)) + " --help"
+        message = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", error.format_message())
+        print(f"Usage error: {message}")
+        print(f"Next: {command}")
+        raise typer.Exit(2)
+
+    def parse_args(self, ctx, args):
+        try:
+            return super().parse_args(ctx, args)
+        except _UsageError as error:
+            self._usage_error(error, ctx)
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except _UsageError as error:
+            self._usage_error(error, ctx)
+
+
 def _typer_app(**kwargs) -> typer.Typer:
     """Every group in this CLI. One place, so no sub-app is left behind.
 
     The doubling above was present on all twelve groups, and a fix applied at
     the call sites is a fix that the thirteenth group will not get.
     """
-    return typer.Typer(cls=_OneSuggestion, **kwargs)
+    return typer.Typer(cls=kwargs.pop("cls", _OneSuggestion), **kwargs)
 
 
 # pretty_exceptions_show_locals defaults to True in Typer, which dumps every
@@ -1141,7 +1177,7 @@ _YOUTUBE_AUTH_HELP = (
     "YouTube operations use the official Data API. Uploads default to private; "
     "unverified API projects can force private visibility. --confirm is an external write."
 )
-youtube_app = _typer_app(help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
+youtube_app = _typer_app(cls=_CreatorGroup, help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
 app.add_typer(youtube_app, name="youtube")
 
 
@@ -1207,7 +1243,7 @@ def youtube_update(item: str = typer.Argument(..., help="Listing number, video I
     handle_youtube_update(item, title, description, dry_run, confirm, json_output)
 
 
-tiktok_app = _typer_app(help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
+tiktok_app = _typer_app(cls=_CreatorGroup, help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
 app.add_typer(tiktok_app, name="tiktok")
 
 

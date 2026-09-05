@@ -21,7 +21,8 @@ the verified upload form. The @handle is supplied intent, not proof of login.
 the boundary reproducible in tests; it is not a working publish adapter. Both
 normal output and `--json` explicitly call this a local plan.
 
-For browser inspection, first use the `co-browser` skill to reserve your own
+The preview's next command, `co browser tab ls`, lists available tabs. For
+browser inspection, first use the `co-browser` skill to reserve your own
 tab and open `https://www.tiktok.com/tiktokstudio/upload`. Set `CO_WHO` on every
 command. The CLI captures a viewport screenshot and context before reading
 anything; its skill-local script verifies the login heading by exact text/hash.
@@ -51,3 +52,5 @@ comments, private messages, drafts, or analytics.
 Exit 0 means a local preview; exit 1 means invalid input, unsupported submission,
 login/unknown-page state or browser failure; exit 2 means CLI usage error. Each
 operational output includes one literal next command, including when piped.
+Usage errors print their cause and next command to stdout as plain text, even
+when `--json` is requested.

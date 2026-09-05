@@ -81,14 +81,21 @@ separate work. No package release or production deployment occurs in this PR.
 
 ## Verification recorded for review
 
-- Client focused suite: 538 passed, 3 skipped, covering creators, Google auth,
-  Gmail, Drive, packaging and executable documentation examples.
+- Client focused suite after the CLI skill audit: 578 passed, 3 skipped,
+  covering creators, Google auth, Gmail, Drive, packaging and executable
+  documentation examples. Minimum supported Typer 0.20 CLI/help compatibility:
+  67 passed, plus all seven pipes, eight exit cases and help/skill parity.
 - TikTok jsdom: 4 passed. Installed-wheel pipe checks and pinned text-only
-  `co/gemini-3.7-flash` next-command checks: 7/7 each. Model-returned commands
-  were recorded, never executed.
+  `co/gemini-3.7-flash` next-command checks: 7/7 each after correcting the audit.
+  The first harness incorrectly accepted three help-seeking replies; those
+  results are superseded. Preview tips now name the exact confirmed operation,
+  and TikTok planning points to the tab board. Model-returned commands were
+  recorded, never executed. Eight exit cases and both help/skill comparisons
+  are included in the PR audit tables.
 - Backend complete mocked suite: 843 passed, 167 skipped; focused OAuth/state/
   migration suite: 73 passed.
-- Client full suite under `PYTHON_DOTENV_DISABLED=1`: 7,363 passed, 659 failed,
+- Client full suite before the CLI skill audit, under
+  `PYTHON_DOTENV_DISABLED=1`: 7,363 passed, 659 failed,
   8 errors, 22 skipped, 182 deselected. The untouched baseline run had 661
   failures and 8 errors, mostly existing environment/browser-loop failures.
   The three Google flow failures were corrected by making those tests use a

@@ -3,6 +3,7 @@
 import io
 import json
 import re
+import shlex
 import stat
 import subprocess
 from pathlib import Path
@@ -74,6 +75,8 @@ def test_usage_errors_never_enter_a_provider(arguments, monkeypatch):
     result = runner.invoke(app, arguments)
     assert result.exit_code == 2
     assert "--help" in result.output
+    assert result.stdout.splitlines()[-1].startswith("Next: co ")
+    assert not result.stderr
 
 
 def test_default_list_routes_and_json_counts_are_typed(client):
@@ -85,7 +88,8 @@ def test_default_list_routes_and_json_counts_are_typed(client):
     client.list_videos.assert_called_once_with(None, 20)
 
 
-def test_pipe_rows_have_number_full_id_and_one_literal_tip(client):
+def test_pipe_rows_have_number_full_id_and_one_literal_tip(client, monkeypatch):
+    monkeypatch.setattr(shared, "console", Console(force_terminal=False))
     result = runner.invoke(app, ["youtube", "list"])
     assert result.exit_code == 0
     assert f"1\t{VIDEO}\tVisible title\tpublic\t0" in result.output
@@ -231,3 +235,29 @@ def test_youtube_never_enters_browser_and_has_no_token_flag(client, monkeypatch)
         assert runner.invoke(app, ["youtube", *arguments]).exit_code == 0
     assert runner.invoke(app, ["youtube", "inspect", "--tab", "own"]).exit_code == 2
     assert runner.invoke(app, ["youtube", "list", "--token-stdin"]).exit_code == 2
+
+
+def test_upload_tip_binds_exact_arguments_and_digest_without_running_it(clip, monkeypatch):
+    monkeypatch.setattr(youtube, "_client", lambda *a, **k: pytest.fail("Preview accessed provider"))
+    result = runner.invoke(app, ["youtube", "put", clip, "--title", "A 'quoted' demo", "--description", "literal $(no-command)", "--channel", CHANNEL, "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert shlex.split(data["next_command"]) == ["co", "youtube", "put", str(Path(clip).resolve()),
+        "--title", "A 'quoted' demo", "--channel", CHANNEL, "--description", "literal $(no-command)",
+        "--privacy", "private", "--category", "22", "--confirm", data["plan"]["confirmation"]]
+    assert "After the user approves" in data["next_tip"]
+
+
+def test_update_tip_uses_full_id_and_preserves_an_explicit_empty_description(client):
+    result = runner.invoke(app, ["youtube", "update", VIDEO, "--description", "", "--json"])
+    data = json.loads(result.output)
+    assert shlex.split(data["next_command"]) == ["co", "youtube", "update", VIDEO, "--description", "", "--confirm", "a" * 64]
+    assert "After the user approves" in data["next_tip"]
+
+
+@pytest.mark.parametrize("arguments", [["youtube", "--bad-option"], ["youtube", "list", "--bad-option"], ["youtube", "--json", "list"]])
+def test_group_and_leaf_usage_errors_end_with_a_piped_recovery(arguments):
+    result = runner.invoke(app, arguments)
+    assert result.exit_code == 2
+    assert result.stdout.splitlines()[-1].startswith("Next: co youtube")
+    assert not result.stderr

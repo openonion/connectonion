@@ -5,6 +5,10 @@ description: Read YouTube video metadata, prepare and explicitly confirm YouTube
 
 # YouTube and TikTok
 
+**Always read the output, not just the exit code.** The Google login prerequisite
+can print an authentication failure and exit 0. A direct `co browser` primitive
+can also fail with exit 0. Never use `&&` alone to decide whether to continue.
+
 Required tool: the shell for `co` commands. This skill grants no tool permissions.
 
 | Intent | Command | Boundary |
@@ -18,7 +22,8 @@ Required tool: the shell for `co` commands. This skill grants no tool permission
 | Check TikTok browser state | `co tiktok inspect --tab creator-tiktok` | Login or unknown surface is an error, never “ready” |
 
 All leaves support `--json`: stdout is one JSON object with `ok`, `mode` on
-success, `next_command`, and `next_tip`. Otherwise the final line is one literal
+success, `next_command`, and `next_tip`. Usage errors (exit 2) use plain text,
+including when `--json` was requested. Otherwise the final line is one literal
 next command, including under `| cat`. Piped YouTube lists include row number,
 untruncated ID, title, visibility and views as tab-separated fields. Missing
 counts are null in JSON and “not returned” in text; zero remains zero.
@@ -45,7 +50,9 @@ Unverified API projects may force private visibility. The local preview cannot
 report remaining quota, classify a Short, validate the codec, or prove processing.
 
 Only after the user has approved that concrete plan, rerun the same command and
-arguments with `--confirm <the exact plan.confirmation>`.
+arguments with `--confirm <the exact plan.confirmation>`. The preview prints
+that complete command with POSIX shell quoting; its presence does not grant
+permission to run it. A confirmed success points to the returned video ID.
 `--dry-run` and `--confirm` together are rejected. The API-selected channel must
 match the plan. A changed file or metadata invalidates confirmation. Upload
 uses a private temporary copy of the confirmed bytes; enough local disk for
@@ -63,7 +70,8 @@ TikTok `--confirm` checks the plan digest, then **refuses submission** with exit
 1. As of 2026-09-05, the real Studio URL redirected to login. The upload form,
 account identity, caption editor, privacy choices, upload-complete state, and
 final publish control have not been observed. No submission adapter is shipped.
-Local plan acceptance is not publication approval.
+Local plan acceptance is not publication approval. The post preview points to
+`co browser tab ls` so the agent can find its owned tab without guessing a name.
 
 ## TikTok browser evidence workflow
 
@@ -131,11 +139,12 @@ before each step, capture before/after evidence, and click final publish once.
 
 | Exit | Meaning | Next command |
 |---|---|---|
-| 0 | Read or local preview succeeded, including empty API lists | Follow the result's one literal `next_command` |
+| 0 | Creator read, preview or confirmed write succeeded | Printed command, e.g. `co youtube video 1` |
+| 0, error text | `co auth google --youtube` has no OpenOnion login | `co auth` |
 | 1 | Missing/expired token, scope, provider failure, stale number, wrong account, changed confirmation, or unsupported TikTok submit | `co auth google --youtube` for authentication, otherwise the printed recovery |
 | 1 | Browser ownership/evidence failure | `co browser tab ls` |
 | 1 | TikTok login or unknown upload surface | Printed `co browser -t <owned-tab> get_current_url`; user login and a new workflow discovery pass are required |
-| 2 | Missing argument, invalid option/range, unknown command | `co youtube --help` / `co tiktok --help` as named by Typer |
+| 2 | Missing argument, invalid option/range, unknown command | `co youtube --help` / `co tiktok --help` as printed on stdout, after the cause |
 
 YouTube numbers refer to the immediately preceding API listing. The only listing
 cache is an atomic, user-only number-to-ID map at `~/.co/youtube_last_list.json`.

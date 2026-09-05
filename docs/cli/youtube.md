@@ -69,7 +69,8 @@ ETag. Only title and description can be changed; omitted snippet fields are
 preserved and the status part is never sent.
 
 After the user reviews and approves the concrete plan, rerun its identical
-command with `--confirm <plan.confirmation>`. There
+command with `--confirm <plan.confirmation>`. The preview prints the full
+command, with POSIX shell quoting, for use only after approval. There
 is no broad `--yes` switch. Changed file bytes, metadata, channel or ETag invalidate
 the digest. Confirmed upload creates a temporary private snapshot of the exact
 bytes and sends one resumable request with chunk progress on stderr. It needs
@@ -100,6 +101,11 @@ or media download ships here. See the
 relationship to #261, #262 and the separate #1426 creator-data proposal.
 
 Exit 0 means a read/preview/write result; exit 1 means an operational failure
-with a sanitized cause and next command; exit 2 is a Typer usage error. Preview
+with a sanitized cause and next command; exit 2 is a usage error whose cause
+and recovery command are printed on stdout, including under a pipe. Preview
 mode is always explicit in output. Provider error bodies, URLs and token locals
 are never printed.
+
+The `co auth google --youtube` prerequisite can print an authentication failure
+and still exit 0. Always read its output before proceeding. `--json` applies to
+creator operation results; usage errors use plain text even with `--json`.

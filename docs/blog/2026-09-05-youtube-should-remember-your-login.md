@@ -37,10 +37,15 @@ previous capabilities without acquiring an invented YouTube permission.
 The tests now begin with saved synthetic Google credentials and exercise broker
 refresh, including a second refresh on a cached client. They check that missing
 scope stops before an API request and that read permission cannot authorize a
-write. The focused client checks passed 538 tests, and the backend's complete
-mocked suite passed 843. All seven creator command tips also survived a pipe
-and the text-only next-command check. The larger client suite still has
-documented baseline failures; those numbers are not a claim of live acceptance.
+write. The focused client checks passed 578 tests, and the backend's complete
+mocked suite passed 843. A closer skill audit caught a mistake in the first tip
+test: three goals merely asked the model to find help. We had rewarded another
+lookup instead of the next operation. The corrected previews spell out the exact
+command to run after approval, and all seven operational tips passed the text-only
+check.
+Parameter-error recovery now survives the pipe as well. The larger client suite
+still has documented baseline failures; those numbers are not a claim of live
+acceptance.
 
 The remaining test needs an approved account after the companion backend is
 deployed. No real upload or edit has been attempted. The change under review
