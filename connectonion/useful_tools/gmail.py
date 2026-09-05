@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [os, base64, google.oauth2.credentials, googleapiclient.discovery, googleapiclient.errors] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gmail.py]
   Data flow: Agent calls Gmail methods → validates the ambient OpenOnion account and refreshes server-owned Google credentials via oo-api → builds Gmail API service → API calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
   State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
-  Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
+  Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), draft CRUD/attachment methods, send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately (lazy loading)
   Errors: raises ValueError if OAuth not configured | HttpError from Google API propagates | returns error strings for display to user
 
@@ -102,6 +102,7 @@ class Gmail:
             )
 
         self._service = None
+        self._scopes = scopes
         self.emails_csv = emails_csv
         self.contacts_csv = contacts_csv
         self._attachment_root = project_root().resolve()
@@ -498,6 +499,242 @@ class Gmail:
             output.append(f"   ID: {att['id']}\n")
 
         return "\n".join(output)
+
+    # === Drafts ===
+
+    def _require_draft_write_scope(self) -> None:
+        """Require one of the scopes accepted by Gmail's draft write APIs."""
+        scopes = self._scopes
+        if not any(scope in scopes for scope in ("gmail.modify", "gmail.compose", "mail.google.com")):
+            raise ValueError(
+                "Gmail draft permission missing.\n"
+                "Reconnect Google to grant draft access:\n"
+                "  co auth google"
+            )
+
+    @staticmethod
+    def _decode_message(raw: str):
+        """Decode Gmail's base64url `raw` field into an EmailMessage."""
+        from email import policy
+        from email.parser import BytesParser
+
+        padded = raw + "=" * (-len(raw) % 4)
+        return BytesParser(policy=policy.default).parsebytes(base64.urlsafe_b64decode(padded))
+
+    @staticmethod
+    def _encode_message(message) -> str:
+        """Encode an EmailMessage for Gmail's `raw` field."""
+        return base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+
+    @staticmethod
+    def _attachment_parts(message) -> list[tuple[object, object]]:
+        """Return every attachment with its parent, including nested MIME parts."""
+        found = []
+
+        def visit(parent):
+            if not parent.is_multipart():
+                return
+            for part in parent.iter_parts():
+                if part.get_filename() or part.get_content_disposition() == "attachment":
+                    found.append((parent, part))
+                else:
+                    visit(part)
+
+        visit(message)
+        return found
+
+    @staticmethod
+    def _attachment_dict(part) -> dict:
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            payload = part.as_bytes()
+        return {
+            "name": part.get_filename() or "attachment",
+            "type": part.get_content_type(),
+            "size": len(payload),
+        }
+
+    @staticmethod
+    def _message_body(message) -> str:
+        """Return the draft body without treating an attachment as content."""
+        part = message.get_body(preferencelist=("plain", "html")) if message.is_multipart() else message
+        if part is None or part.get_content_disposition() == "attachment":
+            return ""
+        content = part.get_content()
+        return content if isinstance(content, str) else ""
+
+    def _draft_message(self, draft_id: str):
+        draft = self._get_service().users().drafts().get(
+            userId="me", id=draft_id, format="raw"
+        ).execute()
+        return draft, self._decode_message(draft["message"]["raw"])
+
+    def _draft_dict(self, draft_id: str, message) -> dict:
+        attachments = [self._attachment_dict(part) for _, part in self._attachment_parts(message)]
+        return {
+            "id": draft_id,
+            "to": str(message.get("To", "")),
+            "cc": str(message.get("Cc", "")),
+            "bcc": str(message.get("Bcc", "")),
+            "subject": str(message.get("Subject", "")),
+            "body": self._message_body(message),
+            "attachments": attachments,
+            "attachment_size": sum(item["size"] for item in attachments),
+        }
+
+    def list_drafts(self, last: int = 20) -> list:
+        """List Gmail drafts with recipient, subject, and attachment metadata."""
+        if last < 1:
+            return []
+        service = self._get_service()
+        stubs = service.users().drafts().list(
+            userId="me", maxResults=last
+        ).execute().get("drafts", [])
+        drafts = []
+        for stub in stubs:
+            full = service.users().drafts().get(
+                userId="me", id=stub["id"], format="full"
+            ).execute()
+            message = full.get("message", {})
+            headers = {
+                header.get("name", "").lower(): header.get("value", "")
+                for header in message.get("payload", {}).get("headers", [])
+            }
+
+            def count(parts) -> int:
+                return sum(
+                    (1 if part.get("filename") else count(part.get("parts", [])))
+                    for part in parts
+                )
+
+            drafts.append({
+                "id": stub["id"],
+                "to": headers.get("to", ""),
+                "subject": headers.get("subject", ""),
+                "attachments": count(message.get("payload", {}).get("parts", [])),
+            })
+        return drafts
+
+    def create_draft(self, to: str, subject: str, body: str, cc: str = None,
+                     bcc: str = None) -> dict:
+        """Create a Gmail draft without sending it."""
+        from email.message import EmailMessage
+
+        self._require_draft_write_scope()
+        message = EmailMessage()
+        message.set_content(body)
+        message["To"] = to
+        message["Subject"] = subject
+        if cc:
+            message["Cc"] = cc
+        if bcc:
+            message["Bcc"] = bcc
+        created = self._get_service().users().drafts().create(
+            userId="me", body={"message": {"raw": self._encode_message(message)}}
+        ).execute()
+        return self._draft_dict(created["id"], message)
+
+    def get_draft(self, draft_id: str) -> dict:
+        """Return a draft's exact headers/body and attachment manifest."""
+        _, message = self._draft_message(draft_id)
+        return self._draft_dict(draft_id, message)
+
+    def _update_draft(self, draft_id: str, message) -> dict:
+        self._require_draft_write_scope()
+        self._get_service().users().drafts().update(
+            userId="me",
+            id=draft_id,
+            body={"message": {"raw": self._encode_message(message)}},
+        ).execute()
+        return self._draft_dict(draft_id, message)
+
+    def _add_draft_attachment(self, draft_id: str, name: str, mime_type: str,
+                              data: bytes) -> dict:
+        _, message = self._draft_message(draft_id)
+        existing = sum(
+            item["size"]
+            for item in (self._attachment_dict(part) for _, part in self._attachment_parts(message))
+        )
+        if existing + len(data) > GMAIL_ATTACHMENT_LIMIT:
+            raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+        main, _, sub = (mime_type or "application/octet-stream").partition("/")
+        message.add_attachment(data, maintype=main, subtype=sub or "octet-stream", filename=name)
+        return self._update_draft(draft_id, message)
+
+    def add_draft_attachment(self, draft_id: str, path: str) -> dict:
+        """Stage a local file into a Gmail draft; the draft remains unsent."""
+        from contextlib import ExitStack
+        import mimetypes
+
+        with ExitStack() as stack:
+            name, handle = self._open_attachments([path], stack)[0]
+            data = handle.read(GMAIL_ATTACHMENT_LIMIT + 1)
+        mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return self._add_draft_attachment(draft_id, name, mime_type, data)
+
+    def add_draft_link(self, draft_id: str, name: str, url: str) -> dict:
+        """Append a Drive link to a plain-text draft without changing sharing."""
+        _, message = self._draft_message(draft_id)
+        part = message.get_body(preferencelist=("plain",)) if message.is_multipart() else message
+        if part is None or part.get_content_type() != "text/plain":
+            raise ValueError("Draft has no plain-text body; attach the Drive file instead.")
+        body = part.get_content()
+        separator = "" if body.endswith("\n\n") else ("\n" if body.endswith("\n") else "\n\n")
+        part.set_content(f"{body}{separator}{name}: {url}\n")
+        return self._update_draft(draft_id, message)
+
+    def remove_draft_attachment(self, draft_id: str, attachment: int) -> dict:
+        """Remove one attachment by its one-based preview number."""
+        _, message = self._draft_message(draft_id)
+        parts = self._attachment_parts(message)
+        if attachment < 1 or attachment > len(parts):
+            raise ValueError(f"Draft has no attachment #{attachment}.")
+        parent, selected = parts[attachment - 1]
+        parent.set_payload([part for part in parent.iter_parts() if part is not selected])
+        return self._update_draft(draft_id, message)
+
+    def _replace_draft_attachment(self, draft_id: str, attachment: int, name: str,
+                                  mime_type: str, data: bytes) -> dict:
+        _, message = self._draft_message(draft_id)
+        parts = self._attachment_parts(message)
+        if attachment < 1 or attachment > len(parts):
+            raise ValueError(f"Draft has no attachment #{attachment}.")
+        total_without_selected = sum(
+            self._attachment_dict(part)["size"]
+            for index, (_, part) in enumerate(parts, 1)
+            if index != attachment
+        )
+        if total_without_selected + len(data) > GMAIL_ATTACHMENT_LIMIT:
+            raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+        parent, selected = parts[attachment - 1]
+        payload = list(parent.iter_parts())
+        position = payload.index(selected)
+        from email.message import EmailMessage
+        replacement = EmailMessage()
+        main, _, sub = (mime_type or "application/octet-stream").partition("/")
+        replacement.set_content(data, maintype=main, subtype=sub or "octet-stream")
+        replacement.add_header("Content-Disposition", "attachment", filename=name)
+        payload[position] = replacement
+        parent.set_payload(payload)
+        return self._update_draft(draft_id, message)
+
+    def replace_draft_attachment(self, draft_id: str, attachment: int, path: str) -> dict:
+        """Replace one draft attachment with a local file in one update."""
+        from contextlib import ExitStack
+        import mimetypes
+
+        with ExitStack() as stack:
+            name, handle = self._open_attachments([path], stack)[0]
+            data = handle.read(GMAIL_ATTACHMENT_LIMIT + 1)
+        mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return self._replace_draft_attachment(draft_id, attachment, name, mime_type, data)
+
+    def _send_draft(self, draft_id: str) -> dict:
+        """Send an existing draft after the CLI has obtained confirmation."""
+        self._require_draft_write_scope()
+        return self._get_service().users().drafts().send(
+            userId="me", body={"id": draft_id}
+        ).execute()
 
     def _open_attachments(self, attachments: list, stack) -> list[tuple[str, object]]:
         """Open and validate attachments, retaining the checked file objects."""

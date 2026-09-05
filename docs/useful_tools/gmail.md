@@ -88,6 +88,35 @@ Your agent can now read and manage Gmail.
 - Agent-facing `Gmail()` instances can attach only files inside the current project; resolved symlinks cannot escape it
 - Attachments have a 25 MB combined limit, enforced before file contents are read
 
+### Drafts
+
+Draft methods edit provider-native Gmail drafts and never send them. The
+terminal's separate `co gmail draft send` command performs the final preview
+and confirmation; draft sending is intentionally not exposed as a public agent
+method.
+
+**`list_drafts(last=20)`**
+- List draft IDs, recipients, subjects, and attachment counts
+
+**`create_draft(to, subject, body, cc=None, bcc=None)`**
+- Create and return an unsent draft
+
+**`get_draft(draft_id)`**
+- Return recipients, body, and the exact attachment manifest
+
+**`add_draft_attachment(draft_id, path)`**
+- Stage a local project file; the draft remains unsent
+- Uses the same path and 25 MB protections as `send()`
+
+**`add_draft_link(draft_id, name, url)`**
+- Append a link to a plain-text body; this does not change sharing permissions
+
+**`remove_draft_attachment(draft_id, attachment)`**
+- Remove the one-based attachment number from `get_draft()`
+
+**`replace_draft_attachment(draft_id, attachment, path)`**
+- Replace one attachment with a local project file in one draft update
+
 **`mark_read(email_id)`**
 - Mark email as read
 
@@ -172,6 +201,10 @@ co gmail read 3                                     # open #3, preserve unread s
 co gmail read 3 --mark-read                         # explicitly mark read
 co gmail send bob@example.com "Hi" "Body text"
 co gmail search "from:alice@example.com is:unread"
+co gmail draft create bob@example.com "Report" "Please review."
+co gmail draft attach 1 report.pdf
+co gmail draft preview 1
+co gmail draft send 1          # previews and asks; there is no --yes
 ```
 
 ## See Also

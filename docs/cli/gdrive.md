@@ -84,6 +84,18 @@ Everything else downloads byte-for-byte. Folders and Forms have no export
 format at all — the command says so rather than writing a broken file.
 Shortcuts resolve to whatever they point at.
 
+To stage a Drive file directly into an unsent Gmail draft, keep the current
+Drive listing and use its row number:
+
+```bash
+co gdrive list -n 20
+co gmail draft attach 1 3 --drive
+co gmail draft attach 1 3 --drive --link
+```
+
+The first form reads the file into the Gmail draft without writing a local
+copy. The link form changes neither Drive content nor sharing permissions.
+
 ### `co gdrive put <path>` — Upload
 
 ```bash

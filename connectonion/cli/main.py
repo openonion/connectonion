@@ -1068,6 +1068,89 @@ def gmail_search(
     """Search your mail with Gmail query syntax."""
     from .commands.gmail_commands import handle_gmail_search
     handle_gmail_search(query, last=last)
+
+
+# Drafts are a nested, explicit workflow: editing never sends, and the send
+# command always previews and confirms. Keeping these under `co gmail draft`
+# makes the safe path discoverable without changing the immediate-send command.
+gmail_draft_app = _typer_app(help="Create, inspect, and edit Gmail drafts; sending always asks for confirmation.")
+gmail_app.add_typer(gmail_draft_app, name="draft")
+
+
+@gmail_draft_app.command("list")
+def gmail_draft_list(
+    last: int = typer.Option(20, "--last", "-n", min=1, max=500, help="How many drafts to show"),
+):
+    """List Gmail drafts, numbered for later draft commands."""
+    from .commands.gmail_commands import handle_gmail_draft_list
+    handle_gmail_draft_list(last=last)
+
+
+@gmail_draft_app.command("create")
+def gmail_draft_create(
+    to: str = typer.Argument(..., help="Recipient address (comma-separated for several)"),
+    subject: str = typer.Argument(..., help="Email subject"),
+    message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+):
+    """Create an unsent Gmail draft."""
+    from .commands.gmail_commands import handle_gmail_draft_create
+    handle_gmail_draft_create(to, subject, message, cc=cc, bcc=bcc)
+
+
+@gmail_draft_app.command("attach")
+def gmail_draft_attach(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
+    link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
+):
+    """Stage a local/Drive file, or append a Drive link, without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_attach
+    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link)
+
+
+@gmail_draft_app.command("remove")
+def gmail_draft_remove(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+):
+    """Remove one staged attachment; the draft remains unsent."""
+    from .commands.gmail_commands import handle_gmail_draft_remove
+    handle_gmail_draft_remove(draft_id, attachment)
+
+
+@gmail_draft_app.command("replace")
+def gmail_draft_replace(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
+):
+    """Atomically replace one staged attachment without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_replace
+    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive)
+
+
+@gmail_draft_app.command("preview")
+def gmail_draft_preview(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+):
+    """Print recipients, body, and the final attachment manifest."""
+    from .commands.gmail_commands import handle_gmail_draft_preview
+    handle_gmail_draft_preview(draft_id)
+
+
+@gmail_draft_app.command("send")
+def gmail_draft_send(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+):
+    """Preview a draft and send it only after interactive confirmation."""
+    from .commands.gmail_commands import handle_gmail_draft_send
+    handle_gmail_draft_send(draft_id)
+
+
 # Google Drive command group. `co gdrive` (no args) lists recent files.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
 gdrive_app = _typer_app(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
