@@ -1,230 +1,216 @@
-"""Tests for YoucomSearch tool integration."""
+"""Tests for the You.com function tools."""
 
-import json
-import os
-import pytest
-from unittest.mock import patch, Mock, MagicMock
-
-from connectonion.useful_tools.youcom_search import YoucomSearch
+from unittest.mock import Mock, patch
 
 import httpx as _real_httpx
 
+from connectonion.useful_tools.youcom_search import (
+    youcom_contents,
+    youcom_research,
+    youcom_search,
+)
 
-def _patched_httpx():
-    """Patch httpx in the module but keep real exception classes so the
-    module's `except httpx.HTTPStatusError` clauses work."""
-    patcher = patch('connectonion.useful_tools.youcom_search.httpx')
+MODULE = "connectonion.useful_tools.youcom_search"
+
+
+def _mock_httpx():
+    """Patch httpx in the module but keep the real exception classes so the
+    module's `except httpx.RequestError` clause works."""
+    patcher = patch(f"{MODULE}.httpx")
     mock_httpx = patcher.start()
-    mock_httpx.HTTPStatusError = _real_httpx.HTTPStatusError
     mock_httpx.RequestError = _real_httpx.RequestError
     return patcher, mock_httpx
 
 
-def test_youcom_search_init():
-    """Test YoucomSearch initialization with default settings."""
-    search = YoucomSearch()
-    assert search.timeout == 30
-    assert search.base_url == 'https://api.you.com'
-    assert 'User-Agent' in search.headers
-    assert search.headers['User-Agent'] == 'ConnectOnion/1.0 (Agent Framework)'
+def _response(status_code=200, json_body=None, text=""):
+    response = Mock()
+    response.status_code = status_code
+    response.is_error = status_code >= 400
+    if json_body is not None:
+        response.json.return_value = json_body
+    else:
+        response.json.side_effect = ValueError(text)
+    return response
 
 
-def test_youcom_search_init_with_api_key():
-    """Test YoucomSearch initialization with API key."""
-    with patch.dict(os.environ, {'YDC_API_KEY': 'test-key'}):
-        search = YoucomSearch()
-        assert 'Authorization' in search.headers
-        assert search.headers['Authorization'] == 'Bearer test-key'
+# --- no key: every tool returns the same auth_required shape ----------
 
 
-def test_youcom_search_init_custom_base_url():
-    """Test YoucomSearch initialization with custom base URL."""
-    with patch.dict(os.environ, {'YOUCOM_BASE_URL': 'https://custom.api.com'}):
-        search = YoucomSearch()
-        assert search.base_url == 'https://custom.api.com'
+def test_search_without_key(monkeypatch):
+    monkeypatch.delenv("YDC_API_KEY", raising=False)
+    result = youcom_search("anything")
+    assert result["error"] == "auth_required"
+    assert "YDC_API_KEY" in result["message"]
 
 
-@patch('connectonion.useful_tools.youcom_search.httpx')
-def test_search_success(mock_httpx):
-    """Test successful search request."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.text = '{"results": ["test result"]}'
-    mock_httpx.post.return_value = mock_response
-    
-    search = YoucomSearch()
-    result = search.search("test query")
-    
-    assert result == '{"results": ["test result"]}'
-    mock_httpx.post.assert_called_once()
+def test_contents_without_key(monkeypatch):
+    monkeypatch.delenv("YDC_API_KEY", raising=False)
+    result = youcom_contents("https://example.com")
+    assert result["error"] == "auth_required"
+    assert "YDC_API_KEY" in result["message"]
 
 
-@patch('connectonion.useful_tools.youcom_search.httpx')
-def test_search_payment_required(mock_httpx):
-    """Test search with 402 payment required response."""
-    mock_response = Mock()
-    mock_response.status_code = 402
-    mock_httpx.post.return_value = mock_response
-    
-    search = YoucomSearch()
-    result = search.search("test query")
-    
-    result_data = json.loads(result)
-    assert result_data['error'] == 'payment_required'
-    assert 'x402-aware' in result_data['message']
+def test_research_without_key(monkeypatch):
+    monkeypatch.delenv("YDC_API_KEY", raising=False)
+    result = youcom_research("anything")
+    assert result["error"] == "auth_required"
+    assert "YDC_API_KEY" in result["message"]
 
 
-@patch('connectonion.useful_tools.youcom_search.httpx')
-def test_search_auth_failure_with_fallback(mock_httpx):
-    """Test search with authentication failure and free search fallback."""
-    mock_httpx.HTTPStatusError = _real_httpx.HTTPStatusError
-    mock_httpx.RequestError = _real_httpx.RequestError
-
-    # First call (authenticated) fails with 401
-    mock_response_auth = Mock()
-    mock_response_auth.status_code = 401
-    mock_response_auth.text = "Unauthorized"
-    mock_response_auth.raise_for_status.side_effect = _real_httpx.HTTPStatusError(
-        "401 Unauthorized", request=Mock(), response=mock_response_auth
-    )
-
-    # Second call (free search) succeeds
-    mock_response_free = Mock()
-    mock_response_free.status_code = 200
-    mock_response_free.text = '{"results": ["free result"]}'
-    mock_response_free.raise_for_status.return_value = None
-
-    mock_httpx.post.side_effect = [mock_response_auth, mock_response_free]
-
-    with patch.dict(os.environ, {'YDC_API_KEY': 'invalid-key'}):
-        search = YoucomSearch()
-        result = search.search("test query")
-
-    result_data = json.loads(result)
-    assert "_fallback_notice" in result_data
-    assert "free search" in result_data["_fallback_notice"]
+# --- happy paths ------------------------------------------------------
 
 
-@patch('connectonion.useful_tools.youcom_search.httpx')
-def test_get_contents_success(mock_httpx):
-    """Test successful content extraction."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.text = '{"contents": [{"url": "test.com", "text": "content"}]}'
-    mock_httpx.post.return_value = mock_response
-    
-    search = YoucomSearch()
-    result = search.get_contents("https://test.com")
-    
-    assert result == '{"contents": [{"url": "test.com", "text": "content"}]}'
-
-
-@patch('connectonion.useful_tools.youcom_search.httpx')
-def test_get_contents_auth_required(mock_httpx):
-    """Test content extraction requiring authentication."""
-    mock_httpx.HTTPStatusError = _real_httpx.HTTPStatusError
-    mock_httpx.RequestError = _real_httpx.RequestError
-
-    mock_response = Mock()
-    mock_response.status_code = 401
-    mock_response.text = "Unauthorized"
-    mock_httpx.post.return_value = mock_response
-    mock_response.raise_for_status.side_effect = _real_httpx.HTTPStatusError(
-        "401", request=Mock(), response=mock_response
-    )
-
-    search = YoucomSearch()
-    result = search.get_contents("https://test.com")
-
-    result_data = json.loads(result)
-    assert result_data['error'] == 'auth_required'
-    assert 'YDC_API_KEY' in result_data['message']
-
-
-def test_research_no_api_key():
-    """Test research method without API key."""
-    search = YoucomSearch()
-    result = search.research("test query")
-    
-    result_data = json.loads(result)
-    assert result_data['error'] == 'auth_required'
-    assert 'YDC_API_KEY' in result_data['message']
-
-
-@patch('connectonion.useful_tools.youcom_search.httpx')
-def test_research_success(mock_httpx):
-    """Test successful research synthesis."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.text = '{"synthesis": "research result", "citations": []}'
-    mock_httpx.post.return_value = mock_response
-    
-    with patch.dict(os.environ, {'YDC_API_KEY': 'test-key'}):
-        search = YoucomSearch()
-        result = search.research("test query")
-    
-    assert result == '{"synthesis": "research result", "citations": []}'
-
-
-def test_search_parameter_limits():
-    """Test search parameter validation and limits."""
-    search = YoucomSearch()
-    
-    # Test count limits
-    with patch('connectonion.useful_tools.youcom_search.httpx') as mock_httpx:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = '{}'
-        mock_httpx.post.return_value = mock_response
-        
-        search.search("test", count=25)  # Should be capped at 20
-        call_args = mock_httpx.post.call_args[1]['json']
-        assert call_args['count'] == 20
-        
-        search.search("test", count=0)  # Should be raised to 1
-        call_args = mock_httpx.post.call_args[1]['json']
-        assert call_args['count'] == 1
-
-
-def test_get_contents_url_handling():
-    """Test URL handling in get_contents method."""
-    search = YoucomSearch()
-    
-    with patch('connectonion.useful_tools.youcom_search.httpx') as mock_httpx:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = '{}'
-        mock_httpx.post.return_value = mock_response
-        
-        # Test single URL string
-        search.get_contents("https://test.com")
-        call_args = mock_httpx.post.call_args[1]['json']
-        assert call_args['urls'] == ["https://test.com"]
-        
-        # Test URL list
-        urls = ["https://test1.com", "https://test2.com"]
-        search.get_contents(urls)
-        call_args = mock_httpx.post.call_args[1]['json']
-        assert call_args['urls'] == urls
-        
-        # Test URL limit (max 10)
-        many_urls = [f"https://test{i}.com" for i in range(15)]
-        search.get_contents(many_urls)
-        call_args = mock_httpx.post.call_args[1]['json']
-        assert len(call_args['urls']) == 10
-
-
-def test_network_error_handling():
-    """Test network error handling."""
-    patcher, mock_httpx = _patched_httpx()
+def test_search_success(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
     try:
-        mock_httpx.post.side_effect = Exception("Network timeout")
+        mock_httpx.post.return_value = _response(200, {"results": ["r"]})
+        result = youcom_search("test query")
+        assert result == {"results": ["r"]}
+        args, kwargs = mock_httpx.post.call_args
+        assert args[0] == "https://api.you.com/api/search"
+        assert kwargs["json"]["query"] == "test query"
+        assert kwargs["json"]["count"] == 10
+        assert kwargs["headers"]["Authorization"] == "Bearer test-key"
+    finally:
+        patcher.stop()
 
-        search = YoucomSearch()
-        result = search.search("test query")
 
-        result_data = json.loads(result)
-        assert result_data['error'] == 'network_error'
-        assert 'Network timeout' in result_data['message']
+def test_search_clamps_count(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, {})
+        youcom_search("q", count=99)
+        assert mock_httpx.post.call_args[1]["json"]["count"] == 20
+        youcom_search("q", count=0)
+        assert mock_httpx.post.call_args[1]["json"]["count"] == 1
+    finally:
+        patcher.stop()
+
+
+def test_search_freshness_only_when_given(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, {})
+        youcom_search("q")
+        assert "freshness" not in mock_httpx.post.call_args[1]["json"]
+        youcom_search("q", freshness="week")
+        assert mock_httpx.post.call_args[1]["json"]["freshness"] == "week"
+    finally:
+        patcher.stop()
+
+
+def test_search_reads_key_at_call_time(monkeypatch):
+    """A key exported after import is picked up without any re-init."""
+    monkeypatch.delenv("YDC_API_KEY", raising=False)
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, {})
+        assert youcom_search("q")["error"] == "auth_required"
+        mock_httpx.post.assert_not_called()
+        monkeypatch.setenv("YDC_API_KEY", "late-key")
+        assert youcom_search("q") == {}
+        assert mock_httpx.post.call_args[1]["headers"]["Authorization"] == "Bearer late-key"
+    finally:
+        patcher.stop()
+
+
+def test_contents_success_single_url_and_cap(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, {"contents": []})
+        youcom_contents("https://test.com")
+        assert mock_httpx.post.call_args[1]["json"]["urls"] == ["https://test.com"]
+        many = [f"https://t{i}.com" for i in range(15)]
+        youcom_contents(many)
+        assert len(mock_httpx.post.call_args[1]["json"]["urls"]) == 10
+    finally:
+        patcher.stop()
+
+
+def test_research_success(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, {"synthesis": "s", "citations": []})
+        result = youcom_research("test query")
+        assert result["synthesis"] == "s"
+        assert mock_httpx.post.call_args[0][0] == "https://api.you.com/api/research"
+    finally:
+        patcher.stop()
+
+
+# --- failure translation ----------------------------------------------
+
+
+def test_search_payment_required(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(402)
+        result = youcom_search("q")
+        assert result["error"] == "payment_required"
+    finally:
+        patcher.stop()
+
+
+def test_search_rejected_credentials(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "bad-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(401)
+        result = youcom_search("q")
+        assert result["error"] == "auth_required"
+    finally:
+        patcher.stop()
+
+
+def test_contents_http_error(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(500)
+        result = youcom_contents(["https://test.com"])
+        assert result["error"] == "contents_failed"
+        assert "500" in result["message"]
+    finally:
+        patcher.stop()
+
+
+def test_network_error_names_class_not_url(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.side_effect = _real_httpx.ConnectTimeout("boom https://api.you.com")
+        result = youcom_search("q")
+        assert result["error"] == "network_error"
+        # The class name, not the URL (or anything in it), reaches the agent.
+        assert "ConnectTimeout" in result["message"]
+        assert "you.com" not in result["message"]
+    finally:
+        patcher.stop()
+
+
+def test_non_dict_json_body(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, ["not", "a", "dict"])
+        result = youcom_search("q")
+        assert result["error"] == "search_failed"
+    finally:
+        patcher.stop()
+
+
+def test_200_without_json(monkeypatch):
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    patcher, mock_httpx = _mock_httpx()
+    try:
+        mock_httpx.post.return_value = _response(200, None)
+        result = youcom_research("q")
+        assert result["error"] == "research_failed"
     finally:
         patcher.stop()

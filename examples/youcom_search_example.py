@@ -1,86 +1,47 @@
 """
-Example: Using YoucomSearch tool with ConnectOnion agents.
+Example: You.com search tools with ConnectOnion agents.
 
-This demonstrates how to add You.com web search capabilities to your agents
-for current information retrieval, URL content extraction, and research synthesis.
+Three plain functions — youcom_search, youcom_contents, youcom_research —
+give an agent current web search, URL content extraction, and cited
+research synthesis. All are opt-in through YDC_API_KEY.
 """
 
 import os
-from connectonion import Agent
-from connectonion.useful_tools import YoucomSearch
+
+from connectonion import Agent, youcom_contents, youcom_research, youcom_search
 
 
 def create_research_agent():
     """Create an agent with You.com search capabilities."""
-    search = YoucomSearch()
-    
-    agent = Agent(
+    return Agent(
         name="researcher",
         system_prompt="""You are a research assistant with access to current web information.
-        
-Use your search tools to find up-to-date information, extract content from 
-specific URLs, and provide well-researched answers with citations.
 
-Always cite your sources when using web search results.""",
-        tools=[search]
+Use youcom_search for up-to-date information, youcom_contents to read
+specific URLs, and youcom_research for a cited synthesis. Always cite
+your sources.""",
+        tools=[youcom_search, youcom_contents, youcom_research],
     )
-    
-    return agent
-
-
-def create_web_assistant():
-    """Create a general assistant with web search for current information."""
-    search = YoucomSearch()
-    
-    agent = Agent(
-        name="web_assistant", 
-        system_prompt="""You are a helpful assistant with web search capabilities.
-
-When users ask about current events, recent developments, or need information
-that might have changed since your training, use web search to provide 
-accurate, up-to-date answers.""",
-        tools=[search]
-    )
-    
-    return agent
 
 
 def main():
-    """Demonstrate You.com search integration."""
-    # Check for API key (optional but recommended)
-    api_key = os.getenv('YDC_API_KEY')
-    if not api_key:
-        print("💡 Tip: Set YDC_API_KEY environment variable for full You.com features")
-        print("   Without it, you'll have access to free search with limited functionality")
-    else:
-        print("✅ You.com API key found - full features available")
-    
-    print("\n🔍 Creating research agent with You.com search...")
+    """Demonstrate the You.com tools."""
+    if not os.getenv("YDC_API_KEY"):
+        print("YDC_API_KEY is not set — the tools will return auth_required.")
+        print("Create a key at you.com/platform/api-keys and export it to run this example.")
+        return
+
     agent = create_research_agent()
-    
-    # Example: Current web search
-    print("\n--- Example 1: Current Information Search ---")
-    result = agent.input("What are the latest developments in AI agent frameworks?")
-    print(f"Agent: {result}")
-    
-    # Example: URL content extraction
-    print("\n--- Example 2: URL Content Analysis ---")
-    result = agent.input("Analyze the content at https://docs.connectonion.com and summarize the key features")
-    print(f"Agent: {result}")
-    
-    # Example: Research synthesis (requires API key)
-    if api_key:
-        print("\n--- Example 3: Research Synthesis ---")
-        result = agent.input("Research and synthesize information about the current state of multi-agent AI systems")
-        print(f"Agent: {result}")
-    else:
-        print("\n--- Example 3: Skipped (requires YDC_API_KEY for research synthesis)")
-    
-    print("\n✨ You.com integration complete!")
+
+    print("\n--- Example 1: Current information search ---")
+    print(agent.input("What are the latest developments in AI agent frameworks?"))
+
+    print("\n--- Example 2: URL content analysis ---")
+    print(agent.input("Analyze the content at https://docs.connectonion.com and summarize the key features"))
+
+    print("\n--- Example 3: Cited research synthesis ---")
+    print(agent.input("Research the current state of multi-agent AI systems, with citations"))
 
 
 if __name__ == "__main__":
-    # Example environment setup (uncomment to use)
-    # os.environ['YDC_API_KEY'] = 'your-api-key-here'
-    
     main()

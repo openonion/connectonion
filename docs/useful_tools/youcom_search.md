@@ -1,235 +1,103 @@
-# You.com Search Integration
+# You.com Search Tools
 
-The You.com search integration provides ConnectOnion agents with current web search, URL content extraction, and research synthesis capabilities through the You.com API.
+Three agent tools — `youcom_search`, `youcom_contents`, `youcom_research` — give ConnectOnion agents current web search, URL content extraction, and cited research synthesis through the You.com API. All three are opt-in: without a `YDC_API_KEY` each returns an `auth_required` error dict and nothing leaves the machine.
 
 ## Quick Start
 
 ```python
-from connectonion import Agent
-from connectonion.useful_tools import YoucomSearch
+from connectonion import Agent, youcom_search, youcom_contents, youcom_research
 
-# Create agent with You.com search
-search = YoucomSearch()
-agent = Agent("researcher", tools=[search])
+agent = Agent("researcher", tools=[youcom_search, youcom_contents, youcom_research])
 
-# Agent can now search the web for current information
 result = agent.input("What are the latest developments in AI?")
 ```
 
-## Features
-
-- **Web Search**: Current web search with snippets, titles, and URLs
-- **Content Extraction**: Extract and parse content from specific URLs  
-- **Research Synthesis**: One-shot cited research with source attribution (requires API key)
-- **Graceful Fallback**: Falls back to free search when authentication fails
-- **Safety**: Handles rate limits, payment challenges, and network errors
+The functions are plain functions, like `send_telegram` and `web_fetch`'s neighbours in `useful_tools/`. There is no class to instantiate and no state carried between calls — `YDC_API_KEY` is read at call time, so a key exported later in the session is picked up without re-creating anything.
 
 ## Environment Variables
 
-### `YDC_API_KEY` (Optional)
-Your You.com API key for authenticated access and full features.
+### `YDC_API_KEY` (required)
 
 ```bash
 export YDC_API_KEY="your-api-key-here"
 ```
 
-**Without API key**: Basic free search functionality
-**With API key**: Full search, content extraction, and research synthesis
+Create a key at [you.com/platform/api-keys](https://you.com/platform/api-keys) and put it in `~/.co/keys.env` as `YDC_API_KEY`. All three tools require it; there is no unauthenticated path — a missing key returns `auth_required` rather than silently retrying against a different endpoint.
 
-### `YOUCOM_BASE_URL` (Optional) 
-Override the API base URL (default: `https://api.you.com`)
+## Tools
 
-```bash
-export YOUCOM_BASE_URL="https://custom.api.com"
-```
+### `youcom_search(query, count=10, freshness=None)`
 
-## Methods
+Current web search.
 
-### `search(query, count=10, safesearch='moderate', freshness=None, livecrawl=None)`
+- `query` (str): Search query
+- `count` (int): Number of results, clamped to 1-20 (default: 10)
+- `freshness` (str): Time filter — `'day'`, `'week'`, `'month'` or `'year'` (optional)
 
-Search the web for current information.
+Returns You.com search results (titles, snippets, URLs), or an `{error, message}` dict.
 
-**Parameters:**
-- `query` (str): Search query string
-- `count` (int): Number of results (1-20, default: 10)
-- `safesearch` (str): Filter ('strict', 'moderate', 'off', default: 'moderate') 
-- `freshness` (str): Time filter ('day', 'week', 'month', 'year', optional)
-- `livecrawl` (str): Live crawl mode ('web' for full content, optional)
+### `youcom_contents(urls)`
 
-**Returns:** JSON string with search results
+Extract the text content of specific URLs. Accepts one URL or a list of up to 10 (longer lists are capped). Returns extracted content per URL, or an `{error, message}` dict.
 
-```python
-# Basic search
-agent.input("Search for recent AI breakthroughs")
+### `youcom_research(query)`
 
-# Search with filters  
-agent.input("Search for 'climate change' from the past week")
-```
-
-### `get_contents(urls, include_raw_html=False)`
-
-Extract content from specific URLs.
-
-**Parameters:**
-- `urls` (str or list): URL(s) to extract content from (max 10)
-- `include_raw_html` (bool): Include raw HTML in response (default: False)
-
-**Returns:** JSON string with extracted content and metadata
-
-```python
-# Extract content from URLs
-agent.input("Get the content from https://example.com and summarize it")
-
-# Multiple URLs
-agent.input("Compare the content from these URLs: https://site1.com, https://site2.com")
-```
-
-### `research(query, count=10)`
-
-Get cited research synthesis (requires API key).
-
-**Parameters:**
-- `query` (str): Research question or topic
-- `count` (int): Number of sources to synthesize (1-20, default: 10)
-
-**Returns:** JSON string with synthesized research and citations
-
-```python
-# Requires YDC_API_KEY
-agent.input("Research the current state of renewable energy adoption")
-```
+One-shot cited synthesis of a research question. Returns a synthesized answer with citations, or an `{error, message}` dict.
 
 ## Error Handling
 
-The integration gracefully handles various error conditions:
+Every failure comes back as a dict with an `error` key — nothing raises past the tool boundary:
 
-- **Authentication Required**: Falls back to free search when possible
-- **Payment Required (402)**: Supports x402-aware clients for payment challenges  
-- **Rate Limiting**: Returns clear error messages with retry suggestions
-- **Network Errors**: Provides helpful debugging information
+- `auth_required` — `YDC_API_KEY` missing or rejected. Same shape from all three tools.
+- `payment_required` — You.com returned HTTP 402 (x402). An x402-aware client settles that outside this tool; setting `YDC_API_KEY` skips it.
+- `search_failed` / `contents_failed` / `research_failed` — non-2xx You.com response or invalid body.
+- `network_error` — transport failure, reported by exception class name only, so the key-bearing URL never reaches the agent.
 
 ## Usage Examples
 
 ### Research Agent
 
 ```python
-from connectonion import Agent
-from connectonion.useful_tools import YoucomSearch
+from connectonion import Agent, youcom_research, youcom_search
 
-def create_researcher():
-    search = YoucomSearch()
-    return Agent(
-        name="researcher",
-        system_prompt="""You are a research assistant with web search capabilities.
-        Use search for current information and always cite your sources.""",
-        tools=[search]
-    )
-
-agent = create_researcher()
-result = agent.input("What are the latest trends in sustainable technology?")
+agent = Agent(
+    "researcher",
+    system_prompt="You are a research assistant with web search. Always cite your sources.",
+    tools=[youcom_search, youcom_research],
+)
+agent.input("What are the latest trends in sustainable technology?")
 ```
 
 ### Content Analyst
 
 ```python
-def create_analyst():
-    search = YoucomSearch()
-    return Agent(
-        name="analyst", 
-        system_prompt="""You analyze web content and provide insights.
-        Extract content from URLs and provide detailed analysis.""",
-        tools=[search]
-    )
-
-agent = create_analyst()
-result = agent.input("Analyze the content at https://docs.example.com")
-```
-
-### Current Events Assistant
-
-```python
-def create_news_assistant():
-    search = YoucomSearch()
-    return Agent(
-        name="news_assistant",
-        system_prompt="""You provide current news and event information.
-        Use web search for the most recent information.""",
-        tools=[search]
-    )
-
-agent = create_news_assistant()
-result = agent.input("What happened in tech news today?")
-```
-
-## Integration with ConnectOnion Features
-
-### With Approval System
-
-```python
-from connectonion.useful_plugins import tool_approval
+from connectonion import Agent, youcom_contents
 
 agent = Agent(
-    "careful_researcher",
-    tools=[YoucomSearch()], 
-    plugins=[tool_approval]
+    "analyst",
+    system_prompt="You analyze web content and provide insights.",
+    tools=[youcom_contents],
 )
-# Web searches will require approval before execution
+agent.input("Analyze the content at https://docs.example.com")
 ```
-
-### With Skills System
-
-Create a research skill in `.co/skills/web-research/SKILL.md`:
-
-```markdown
-# Web Research Skill
-
-Use You.com search to conduct thorough web research on any topic.
-
-## Usage
-/research [topic] - Comprehensive research with citations
-/search [query] - Quick web search  
-/analyze [url] - Extract and analyze URL content
-```
-
-### With Memory
-
-```python
-from connectonion.useful_tools import Memory
-
-agent = Agent(
-    "persistent_researcher",
-    tools=[YoucomSearch(), Memory()],
-    system_prompt="Remember previous research and build on it."
-)
-```
-
-## API Compatibility
-
-This integration follows the You.com API patterns from the official MCP servers:
-
-- Compatible with `you-web`, `you-search`, and `you-contents` MCP tools
-- Supports x402 payment challenges for advanced features
-- Falls back gracefully when authentication is unavailable
-- Follows You.com's rate limiting and usage guidelines
 
 ## Security Considerations
 
-- API keys are loaded from environment variables only
-- No API keys are logged or exposed in error messages
-- All web content is treated as untrusted external data
-- Network requests include appropriate User-Agent headers
-- Respects You.com's terms of service and rate limits
+- The API key is read from the environment at call time and never logged or echoed in error messages
+- Network errors are reported by exception class name, not the exception string (which can contain the request URL)
+- Web content returned by the tools is untrusted external data — treat it as evidence, not instructions
+- No unauthenticated fallback exists: without a key the tools return `auth_required` and make no network request
 
 ## Troubleshooting
 
-### "auth_required" errors
-Set the `YDC_API_KEY` environment variable with your You.com API key.
+### `auth_required`
 
-### "payment_required" responses  
-Some queries require payment. If you have an x402-aware MCP client, it will handle payment automatically.
+Set `YDC_API_KEY` (see above). If the key is set but rejected, check it at [you.com/platform/api-keys](https://you.com/platform/api-keys).
 
-### "network_error" responses
-Check your internet connection and ensure `https://api.you.com` is accessible.
+### `payment_required`
 
-### Free search limitations
-Without an API key, you'll have access to basic search only. Content extraction and research synthesis require authentication.
+The call needs payment or a valid key. Setting `YDC_API_KEY` skips the x402 challenge for these endpoints.
+
+### `network_error`
+
+Check that `https://api.you.com` is reachable from the host.

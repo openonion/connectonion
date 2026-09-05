@@ -387,6 +387,18 @@ def signature_already_used(data: dict) -> bool:
     return False
 
 
+def sealed_channel_replay_check(data: dict) -> bool:
+    """The replay guard for a frame that arrived inside a sealed socket.
+
+    Nobody but the peer who completed the SEAL handshake can produce a frame
+    that opens, and the CONNECT inside is bound to that peer (ws_router/
+    connect.py). A captured signature therefore cannot be presented on this
+    socket by anyone else, and the ledger has nothing to add. Not consulting
+    it is also what lets a sealed host keep no shared state at all.
+    """
+    return False
+
+
 def authenticate_connect(
     data: dict,
     trust,

@@ -1,278 +1,134 @@
 """
-Purpose: You.com search and content tools for current web information, URL content extraction, and cited research
+Purpose: You.com web search, URL content extraction, and cited research for agents that need current information
 LLM-Note:
-  Dependencies: imports from [httpx, json] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_youcom_search.py]
-  Data flow: Agent calls YoucomSearch methods → httpx requests to You.com API → returns search results, URL contents, or research synthesis
-  State/Effects: makes HTTP requests to api.you.com | requires YDC_API_KEY env var for authenticated access | no local file persistence
-  Integration: exposes YoucomSearch class with search(query), get_contents(urls), research(query) | used as agent tool via Agent(tools=[YoucomSearch()])
-  Performance: network I/O per request | configurable timeout (default 30s) | API rate limits apply | authenticated requests preferred
-  Errors: httpx exceptions propagate on network errors | graceful fallback to free search when no API key
-
-You.com search and content extraction tools for AI agents.
-
-Usage:
-    from connectonion import Agent, YoucomSearch
-    
-    search = YoucomSearch()
-    agent = Agent("assistant", tools=[search])
-    
-    # Agent can now use:
-    # - search(query) - Current web search with snippets and links
-    # - get_contents(urls) - Extract content from specific URLs 
-    # - research(query) - One-shot cited research synthesis (requires API key)
-
-Environment Variables:
-    YDC_API_KEY: Optional You.com API key for authenticated access
-                 If not provided, falls back to free search with basic functionality
-    
-    YOUCOM_BASE_URL: Optional API base URL override (default: https://api.you.com)
+  Dependencies: imports from [os, httpx] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_youcom_search.py]
+  Data flow: youcom_search(query) → reads YDC_API_KEY → POST api.you.com/api/search → returns dict of results (same for contents/research)
+  State/Effects: one HTTP request per call | no local state | YDC_API_KEY is read at call time so a key exported later in the session is picked up without re-instantiating anything
+  Integration: exposed as agent tools and via `from connectonion import youcom_search, youcom_contents, youcom_research` | opt-in through YDC_API_KEY — with no key every function returns the same auth_required shape and nothing leaves the machine
+  Errors: returns {error: auth_required|payment_required|search_failed|contents_failed|research_failed|network_error, message} without echoing the key-bearing header
 """
 
-import httpx
-import json
 import os
-from typing import List, Dict, Optional, Union
+
+import httpx
+
+API = "https://api.you.com"
+TIMEOUT = 30
+
+NO_KEY = (
+    "YDC_API_KEY is not set. Create a key at you.com/platform/api-keys and put "
+    "it in ~/.co/keys.env as YDC_API_KEY. Every You.com tool needs it; there "
+    "is no unauthenticated path."
+)
 
 
-class YoucomSearch:
-    """You.com search and content tools with optional authentication."""
+def _headers() -> dict[str, str]:
+    """Build the request headers, reading the key at call time."""
+    return {
+        "Authorization": f"Bearer {os.getenv('YDC_API_KEY')}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
 
-    def __init__(self, timeout: int = 30, base_url: Optional[str] = None):
-        """Initialize You.com search tool.
 
-        Args:
-            timeout: Request timeout in seconds (default: 30)
-            base_url: API base URL override (default: https://api.you.com)
-        """
-        self.timeout = timeout
-        self.base_url = base_url or os.getenv('YOUCOM_BASE_URL', 'https://api.you.com')
-        self.api_key = os.getenv('YDC_API_KEY')
-        
-        # Setup headers
-        self.headers = {
-            'User-Agent': 'ConnectOnion/1.0 (Agent Framework)',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-        
-        if self.api_key:
-            self.headers['Authorization'] = f'Bearer {self.api_key}'
+def _failure(error: str, message: str, **extra) -> dict[str, object]:
+    return {"error": error, "message": message, **extra}
 
-    def search(self, query: str, count: int = 10, safesearch: str = 'moderate', 
-               freshness: Optional[str] = None, livecrawl: Optional[str] = None) -> str:
-        """Search the web using You.com API.
 
-        Args:
-            query: Search query string
-            count: Number of results to return (1-20, default: 10)
-            safesearch: Safe search filter ('strict', 'moderate', 'off', default: 'moderate')
-            freshness: Time filter ('day', 'week', 'month', 'year', optional)
-            livecrawl: Live crawl mode ('web' for full content, optional)
+def _post(endpoint: str, payload: dict, error_kind: str) -> dict[str, object]:
+    """POST to a You.com endpoint and translate the envelope.
 
-        Returns:
-            JSON string with search results containing snippets, titles, URLs, and metadata
-        """
-        params = {
-            'query': query,
-            'count': min(max(count, 1), 20),
-            'safesearch': safesearch
-        }
-        
-        if freshness:
-            params['freshness'] = freshness
-        if livecrawl:
-            params['livecrawl'] = livecrawl
+    Raises nothing: every failure path comes back as a dict with an `error`
+    key, the same shape the three tools below return.
+    """
+    try:
+        response = httpx.post(
+            f"{API}{endpoint}",
+            headers=_headers(),
+            json=payload,
+            timeout=TIMEOUT,
+            follow_redirects=True,
+        )
+    except httpx.RequestError as exc:
+        # Exception strings can contain the URL; the class name says the
+        # failure without echoing anything the caller could replay.
+        return _failure("network_error", f"You.com request failed ({type(exc).__name__}).")
 
-        try:
-            response = httpx.post(
-                f'{self.base_url}/api/search',
-                headers=self.headers,
-                json=params,
-                timeout=self.timeout,
-                follow_redirects=True
-            )
-            
-            # Handle payment required (402) for x402-aware clients
-            if response.status_code == 402:
-                return json.dumps({
-                    'error': 'payment_required',
-                    'message': 'This query requires payment. If you have an x402-aware MCP client, it will handle payment automatically.',
-                    'fallback': 'Consider using free search with basic functionality.'
-                })
-            
-            response.raise_for_status()
-            return response.text
-            
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                # Fallback to free search if authentication fails
-                return self._free_search(query, count, safesearch)
-            else:
-                return json.dumps({
-                    'error': 'search_failed',
-                    'status_code': e.response.status_code,
-                    'message': f'Search request failed: {e.response.text}'
-                })
-        except Exception as e:
-            return json.dumps({
-                'error': 'network_error', 
-                'message': f'Failed to connect to You.com API: {str(e)}'
-            })
+    if response.status_code == 402:
+        return _failure(
+            "payment_required",
+            "You.com returned payment required for this call. An x402-aware "
+            "client settles that outside this tool; set YDC_API_KEY to skip it.",
+        )
+    if response.status_code == 401:
+        return _failure(
+            "auth_required",
+            "You.com rejected the credentials. Check YDC_API_KEY at "
+            "you.com/platform/api-keys.",
+        )
+    if response.is_error:
+        return _failure(error_kind, f"You.com returned HTTP {response.status_code}.")
 
-    def get_contents(self, urls: Union[str, List[str]], 
-                     include_raw_html: bool = False) -> str:
-        """Extract content from specific URLs using You.com API.
+    try:
+        body = response.json()
+    except ValueError:
+        return _failure(error_kind, "You.com returned HTTP 200 without JSON.")
 
-        Args:
-            urls: Single URL string or list of URLs to fetch content from
-            include_raw_html: Whether to include raw HTML in response (default: False)
+    if not isinstance(body, dict):
+        return _failure(error_kind, "You.com returned an invalid response.")
+    return body
 
-        Returns:
-            JSON string with extracted content, titles, and metadata for each URL
-        """
-        if isinstance(urls, str):
-            urls = [urls]
-            
-        params = {
-            'urls': urls[:10],  # Limit to 10 URLs for performance
-            'include_raw_html': include_raw_html
-        }
 
-        try:
-            response = httpx.post(
-                f'{self.base_url}/api/contents',
-                headers=self.headers,
-                json=params,
-                timeout=self.timeout,
-                follow_redirects=True
-            )
-            
-            # Handle payment required (402)
-            if response.status_code == 402:
-                return json.dumps({
-                    'error': 'payment_required',
-                    'message': 'URL content extraction requires payment or authentication.',
-                    'fallback': 'Consider providing a You.com API key via YDC_API_KEY environment variable.'
-                })
-            
-            response.raise_for_status()
-            return response.text
-            
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                return json.dumps({
-                    'error': 'auth_required',
-                    'message': 'URL content extraction requires authentication. Set YDC_API_KEY environment variable.',
-                    'urls_requested': urls
-                })
-            else:
-                return json.dumps({
-                    'error': 'contents_failed',
-                    'status_code': e.response.status_code,
-                    'message': f'Content extraction failed: {e.response.text}',
-                    'urls_requested': urls
-                })
-        except Exception as e:
-            return json.dumps({
-                'error': 'network_error',
-                'message': f'Failed to connect to You.com API: {str(e)}',
-                'urls_requested': urls
-            })
+def youcom_search(query: str, count: int = 10, freshness: str | None = None) -> dict[str, object]:
+    """Search the web for current information.
 
-    def research(self, query: str, count: int = 10) -> str:
-        """Get cited research synthesis using You.com API (requires authentication).
+    Args:
+        query: What to look for
+        count: Number of results (1-20, default: 10)
+        freshness: Time filter — 'day', 'week', 'month' or 'year' (optional)
 
-        Args:
-            query: Research question or topic
-            count: Number of sources to synthesize (1-20, default: 10)
+    Returns:
+        dict: You.com search results (titles, snippets, URLs), or
+        {error, message} — `auth_required` when YDC_API_KEY is not set.
+    """
+    if not os.getenv("YDC_API_KEY"):
+        return _failure("auth_required", NO_KEY)
 
-        Returns:
-            JSON string with synthesized research and citations
-        """
-        if not self.api_key:
-            return json.dumps({
-                'error': 'auth_required',
-                'message': 'Research synthesis requires authentication. Set YDC_API_KEY environment variable.',
-                'fallback': 'Use search() method for basic web search without synthesis.'
-            })
+    payload = {"query": query, "count": min(max(count, 1), 20)}
+    if freshness:
+        payload["freshness"] = freshness
+    return _post("/api/search", payload, "search_failed")
 
-        params = {
-            'query': query,
-            'count': min(max(count, 1), 20)
-        }
 
-        try:
-            response = httpx.post(
-                f'{self.base_url}/api/research',
-                headers=self.headers,
-                json=params,
-                timeout=self.timeout,
-                follow_redirects=True
-            )
-            
-            # Handle payment required (402)
-            if response.status_code == 402:
-                return json.dumps({
-                    'error': 'payment_required',
-                    'message': 'Research synthesis requires payment.',
-                    'fallback': 'Use basic search() method for individual results.'
-                })
-            
-            response.raise_for_status()
-            return response.text
-            
-        except httpx.HTTPStatusError as e:
-            return json.dumps({
-                'error': 'research_failed',
-                'status_code': e.response.status_code,
-                'message': f'Research request failed: {e.response.text}'
-            })
-        except Exception as e:
-            return json.dumps({
-                'error': 'network_error',
-                'message': f'Failed to connect to You.com API: {str(e)}'
-            })
+def youcom_contents(urls) -> dict[str, object]:
+    """Extract the text content of specific URLs.
 
-    def _free_search(self, query: str, count: int = 10, 
-                     safesearch: str = 'moderate') -> str:
-        """Fallback to free search when authentication fails.
-        
-        Args:
-            query: Search query string
-            count: Number of results (limited in free tier)
-            safesearch: Safe search filter
-            
-        Returns:
-            JSON string with basic search results
-        """
-        params = {
-            'query': query,
-            'count': min(count, 5),  # Free tier typically has lower limits
-            'safesearch': safesearch
-        }
+    Args:
+        urls: One URL, or a list of up to 10
 
-        try:
-            # Use free profile endpoint
-            response = httpx.post(
-                f'{self.base_url}/api/search?profile=free',
-                headers={'User-Agent': self.headers['User-Agent']},
-                json=params,
-                timeout=self.timeout,
-                follow_redirects=True
-            )
-            
-            response.raise_for_status()
-            
-            # Add fallback notice to results
-            result_data = json.loads(response.text)
-            if isinstance(result_data, dict):
-                result_data['_fallback_notice'] = 'Using free search - limited functionality. Set YDC_API_KEY for full features.'
-            
-            return json.dumps(result_data)
-            
-        except Exception as e:
-            return json.dumps({
-                'error': 'free_search_failed',
-                'message': f'Both authenticated and free search failed: {str(e)}',
-                'suggestion': 'Check your network connection and try again.'
-            })
+    Returns:
+        dict: Extracted content per URL, or {error, message} —
+        `auth_required` when YDC_API_KEY is not set.
+    """
+    if not os.getenv("YDC_API_KEY"):
+        return _failure("auth_required", NO_KEY)
+
+    if isinstance(urls, str):
+        urls = [urls]
+    return _post("/api/contents", {"urls": list(urls)[:10]}, "contents_failed")
+
+
+def youcom_research(query: str) -> dict[str, object]:
+    """Get a one-shot cited synthesis of a research question.
+
+    Args:
+        query: The research question or topic
+
+    Returns:
+        dict: Synthesized answer with citations, or {error, message} —
+        `auth_required` when YDC_API_KEY is not set.
+    """
+    if not os.getenv("YDC_API_KEY"):
+        return _failure("auth_required", NO_KEY)
+
+    return _post("/api/research", {"query": query}, "research_failed")
