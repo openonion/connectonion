@@ -1,22 +1,35 @@
-# A heartbeat is part of delivery
+# The message arrived. Then the connection lied.
 
-Receiving a Discord message is not just parsing `MESSAGE_CREATE`. Before that
-event can exist, the client must discover the Gateway, identify with the right
-intents, answer heartbeats, remember sequence numbers, resume sessions, and
-reconnect without turning one outage into a message storm.
+The first Discord fixture looked encouraging. `MESSAGE_CREATE` crossed the fake
+socket, became a seven-field message, and appeared in the mailbox. Then the next
+fixture stopped sending events. The listener did exactly what a naïve WebSocket
+client does: it waited forever.
 
-The 1.8.5 preview keeps that protocol machinery inside the adapter and exposes
-the same seven-field local mailbox used by Feishu and Telegram. Bot, webhook,
-and self-authored events are filtered before storage. Direct messages are
-addressed by definition; guild messages record whether the bot was mentioned or
-replied to, so a consumer can decide when to act.
+Nothing had crashed. That was the problem.
 
-The token remains in `~/.co/keys.env`. REST replies have an explicit 2,000
-character boundary and retry one Discord rate-limit response using the server's
-delay. Gateway logs contain error classes and state transitions, never the bot
-token or raw payload.
+Discord's Gateway had sent `HELLO` with a heartbeat interval, and the client had
+sent heartbeats, but our test never returned the matching acknowledgement. From
+the application's point of view the socket was still open. From Discord's point
+of view the session was no longer healthy. A parser-only adapter could pass every
+message fixture and still become a silent listener in production.
 
-Fixture tests exercise identify, resume, heartbeat-driven sessions, filtering,
-normalization, rate limiting, and redaction. Enabling the privileged Message
-Content intent and completing a real server run remain external acceptance
-gates; the preview label stays until those checks happen.
+That changed the unit under test. It was no longer “turn this JSON into a
+message.” The fixture had to walk through `HELLO`, Identify, heartbeat, ACK,
+sequence updates, reconnect, and Resume. When an ACK is missing, the listener
+now tears down the stale session. When Discord asks it to reconnect, it keeps the
+session id and last sequence number so the resumed stream does not start from an
+invented point.
+
+The same test exposed another boundary. Replaying a dispatch after reconnect is
+normal, so Gateway recovery cannot promise exactly-once delivery. The durable
+local mailbox owns deduplication instead. The adapter can reconnect aggressively
+without making a second message actionable.
+
+That was the useful turn: heartbeat handling is not connection housekeeping.
+For an event-driven inbox, it is part of message delivery. A green parser test
+proves almost nothing until the test also shows how the connection discovers
+that it has stopped telling the truth.
+
+The preview still needs a live bot with Message Content intent enabled before it
+can lose that label. The fixture proves the state machine we control; it does not
+pretend to prove Discord account configuration.
