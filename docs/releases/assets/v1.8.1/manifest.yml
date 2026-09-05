@@ -1,0 +1,6 @@
+version: v1.8.1
+no_visual_change: >-
+  Backend and CLI diagnostic corrections only. No rendered UI or panel is added
+  or changed. System Chrome remains the default, explicit Onion selection is
+  unchanged, and proxy rejection now reports a typed command failure. Real CLI
+  acceptance and error-output regressions are recorded in the release notes.

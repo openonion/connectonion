@@ -10,6 +10,14 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
+The current final candidate is **1.8.1**. It keeps the system browser free by
+default, requires explicit CLI selection for paid Onion, and includes the
+browser-status and proxy-navigation failure corrections. See `VERSIONING.md`
+for the current version and release history. The sections below describe
+historical 1.7 preview work, not current installation recommendations.
+
+## Historical 1.7 preview work
+
 - Stable release: `1.6.10`
 - Preview target: `1.7.0a13`
 - Browser client: `@connectonion/react@0.4.2-alpha.11`
