@@ -1,5 +1,6 @@
 """Tests for the You.com function tools."""
 
+import importlib
 from unittest.mock import Mock, patch
 
 import httpx as _real_httpx
@@ -15,8 +16,15 @@ MODULE = "connectonion.useful_tools.youcom_search"
 
 def _mock_httpx():
     """Patch httpx in the module but keep the real exception classes so the
-    module's `except httpx.RequestError` clause works."""
-    patcher = patch(f"{MODULE}.httpx")
+    module's `except httpx.RequestError` clause works.
+
+    The package re-exports a *function* named youcom_search, so the dotted
+    path "connectonion.useful_tools.youcom_search" resolves to that function
+    on Python 3.10, where mock.patch walks it with getattr; 3.11+ resolves
+    it through pkgutil and finds the module. Import the module explicitly
+    so the patch lands on the same object on every supported version.
+    """
+    patcher = patch.object(importlib.import_module(MODULE), "httpx")
     mock_httpx = patcher.start()
     mock_httpx.RequestError = _real_httpx.RequestError
     return patcher, mock_httpx
