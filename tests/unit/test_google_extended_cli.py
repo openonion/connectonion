@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
+from rich.text import Text
 from typer.testing import CliRunner
 from typer.main import get_command
 from connectonion.cli.main import app
@@ -62,7 +63,7 @@ def test_youtube_help_skill_parity():
 
 def test_youtube_usage_error_names_help():
     result = CliRunner().invoke(app, ['youtube', 'video'], prog_name='co')
-    assert result.exit_code == 2 and 'co youtube video --help' in result.output
+    assert result.exit_code == 2 and 'co youtube video --help' in Text.from_ansi(result.output).plain
 
 if __name__ == '__main__':
     with tempfile.TemporaryDirectory(prefix='google-extended-audit-') as directory:

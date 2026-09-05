@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.console import Console
+from rich.text import Text
 from typer.testing import CliRunner
 from typer.main import get_command
 
@@ -57,7 +58,7 @@ def test_help_and_skill_parity(path):
     result = CliRunner().invoke(app, [*path, '--help'])
     assert result.exit_code == 0
     assert visible == documented
-    assert all(re.search(r'\b' + name + r'\b', result.output) for name in visible)
+    assert all(re.search(r'\b' + name + r'\b', Text.from_ansi(result.output).plain) for name in visible)
 
 
 def capture(args, root, failure=None):
@@ -155,7 +156,7 @@ def test_empty_listing_cannot_reuse_old_row(module, cache, handler, args, method
 def test_usage_error_names_help(surface, subcommand, tmp_path):
     result = capture([surface, subcommand], tmp_path)
     assert result.exit_code == 2
-    assert f' {surface} {subcommand} --help' in result.output
+    assert f' {surface} {subcommand} --help' in Text.from_ansi(result.output).plain
 
 
 if __name__ == '__main__':
