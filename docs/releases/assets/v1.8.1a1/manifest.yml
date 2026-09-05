@@ -1,0 +1,6 @@
+version: v1.8.1a1
+no_visual_change: >-
+  Backend and default-selection only. The relay seal changes bytes on the wire,
+  and the browser change decides which binary a command launches; neither adds
+  or alters a rendered surface. What a user can see differs only in the text of
+  `co browser status`, which is already covered by its own tests.
