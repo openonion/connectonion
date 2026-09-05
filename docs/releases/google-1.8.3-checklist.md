@@ -18,13 +18,15 @@ until the immutable-tag workflow publishes and verifies 1.8.3.
 - Forward-integration ledger: #1441.
 - SDK #1440 merged at `968dcd10991b62ca4e0cefd5c8ebf2a5d5f9fc3b` with
   all hosted Python/platform checks green.
-- Local full regression: 8,120 passed, 22 skipped, 211 deselected; one
-  unrelated installed-Onionwright fixture mismatch was found. The synthetic
-  `test_paid_async_cross_repo` fixture omits five newly required `Artifact`
-  constructor fields; it fails before any browser/session is created. No
-  real paid session is started by this test. The fixture now supplies the
-  inert Linux metadata accepted by the installed version; its isolated
-  rerun passes. A full rerun follows this correction.
+- Local full regression after fixture correction: **8,121 passed, 22 skipped,
+  211 deselected** (`not slow and not real_api and not network`). The synthetic
+  Onionwright fixture now supplies the inert Linux metadata accepted by the
+  installed version. No real paid session is started by this test.
+- Existing-account production reads on 2026-09-05: `co gmail inbox`,
+  `co gdrive list` and `co gcalendar list` exited 0. `co youtube channel`
+  exited 1 with a `co auth google` recovery hint. Only outcomes were retained,
+  not account content. The new consent attempt ended without completing;
+  existing credentials were preserved.
 
 ## Before publication
 
