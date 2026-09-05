@@ -16,10 +16,19 @@ until the immutable-tag workflow publishes and verifies 1.8.3.
 - Disposable wheel installation and packaged runtime checks: 11 passed.
 - CLI help and responsive documentation captures in `assets/v1.8.3/`.
 - Forward-integration ledger: #1441.
+- SDK #1440 merged at `968dcd10991b62ca4e0cefd5c8ebf2a5d5f9fc3b` with
+  all hosted Python/platform checks green.
+- Local full regression: 8,120 passed, 22 skipped, 211 deselected; one
+  unrelated installed-Onionwright fixture mismatch remains. The synthetic
+  `test_paid_async_cross_repo` fixture omits five newly required `Artifact`
+  constructor fields; it fails before any browser/session is created. No
+  real paid session is started by this test. Resolve the cross-repository
+  test dependency before treating the local release run as fully green.
 
 ## Before publication
 
-- [ ] Confirm SDK #1440 is merged with all CI checks green.
+- [x] Confirm SDK #1440 is merged with all CI checks green.
+- [ ] Resolve the local Onionwright fixture/dependency mismatch and rerun it.
 - [ ] Verify deployed oo-api revision contains #230 and its health check passes.
 - [ ] Complete `co auth google` interactively. Consent is the user's action;
   do not auto-accept or put token values into test evidence.
