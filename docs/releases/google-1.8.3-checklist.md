@@ -29,7 +29,9 @@ until the immutable-tag workflow publishes and verifies 1.8.3.
 
 - [x] Confirm SDK #1440 is merged with all CI checks green.
 - [ ] Resolve the local Onionwright fixture/dependency mismatch and rerun it.
-- [ ] Verify deployed oo-api revision contains #230 and its health check passes.
+- [x] Verify deployed oo-api revision contains #230 and its health check passes:
+  `1ee5af128f0f1bf620719b161bbc0ae1b944c380`, deployment run `33963449009`.
+  Service active and public relay health healthy on 2026-09-05.
 - [ ] Complete `co auth google` interactively. Consent is the user's action;
   do not auto-accept or put token values into test evidence.
 - [ ] Run read-only `co gmail inbox`, `co gdrive list`, `co gcalendar list`,
