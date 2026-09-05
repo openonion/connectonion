@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [io, mimetypes, os, pathlib, googleapiclient.discovery, googleapiclient.http, google.oauth2.credentials] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gdrive.py]
   Data flow: Agent calls GDrive methods → _get_service() validates the ambient OpenOnion account and refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() picks get_media() for binary files and export_media() for Google-native docs | upload() sends a MediaFileUpload
   State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates/overwrites local files on download and remote files on upload | token refresh rewrites ~/.co/keys.env
-  Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | list_files()/search_files() return dicts for the CLI (cli/commands/gdrive_commands.py) | used as agent tool via Agent(tools=[GDrive()])
+  Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | private metadata/byte helpers let the Gmail CLI stage a Drive file without writing it locally | used as agent tool via Agent(tools=[GDrive()])
   Performance: network I/O per API call | listings page at 100/request | downloads stream in chunks
   Errors: raises ValueError if OAuth not configured, if the Drive scope is missing, on unknown file ids, and on Google-native types with no export format | HttpError from the Drive API propagates
 
@@ -272,6 +272,56 @@ class GDrive:
             return self._get_meta(shortcut["targetId"])
         return item
 
+    def _get_file(self, file_id: str) -> dict:
+        """Get one Drive file's normalized metadata without downloading it."""
+        return self._file_dict(self._get_meta(file_id))
+
+    def _read_file(self, file_id: str, max_bytes: int | None = None) -> dict:
+        """Read a Drive file for another provider, exporting native docs.
+
+        This is the in-memory counterpart of download(). It never writes a
+        local file and can fail before or during download when `max_bytes` is
+        exceeded.
+        """
+        item = self._get_meta(file_id)
+        name, mime = item["name"], item["mimeType"]
+        if max_bytes is not None and item.get("size") and int(item["size"]) > max_bytes:
+            raise ValueError(f"Drive file exceeds the {max_bytes}-byte attachment limit.")
+
+        service = self._get_service()
+        if mime.startswith(NATIVE_PREFIX):
+            if mime not in EXPORT_FORMATS:
+                raise ValueError(
+                    f"'{name}' is a {mime.replace(NATIVE_PREFIX, '')} — Drive has "
+                    "no export format for it, so it cannot be downloaded or attached."
+                )
+            mime, suffix = EXPORT_FORMATS[mime]
+            request = service.files().export_media(fileId=item["id"], mimeType=mime)
+            name = f"{name}{suffix}"
+        else:
+            request = service.files().get_media(fileId=item["id"], supportsAllDrives=True)
+
+        buffer = io.BytesIO()
+        # The library default is a 100 MB chunk, which would defeat the
+        # attachment limit for sizeless Google-native exports. Keep memory
+        # bounded to at most roughly one small chunk beyond max_bytes.
+        chunk_size = min(1024 * 1024, max_bytes + 1) if max_bytes is not None else 1024 * 1024
+        downloader = MediaIoBaseDownload(buffer, request, chunksize=chunk_size)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+            if max_bytes is not None and buffer.tell() > max_bytes:
+                raise ValueError(f"Drive file exceeds the {max_bytes}-byte attachment limit.")
+
+        return {
+            "id": item["id"],
+            "name": name,
+            "type": mime,
+            "size": len(buffer.getvalue()),
+            "link": item.get("webViewLink", ""),
+            "data": buffer.getvalue(),
+        }
+
     def download(self, file_id: str, dest: str = ".") -> str:
         """Download a Drive file, exporting Google-native docs to a real format.
 
@@ -282,33 +332,14 @@ class GDrive:
         Returns:
             Confirmation with the path written
         """
-        item = self._get_meta(file_id)
-        name, mime = item["name"], item["mimeType"]
-        service = self._get_service()
-
-        if mime.startswith(NATIVE_PREFIX):
-            if mime not in EXPORT_FORMATS:
-                raise ValueError(
-                    f"'{name}' is a {mime.replace(NATIVE_PREFIX, '')} — Drive has "
-                    "no export format for it, so it cannot be downloaded."
-                )
-            export_mime, suffix = EXPORT_FORMATS[mime]
-            request = service.files().export_media(fileId=item["id"], mimeType=export_mime)
-            name = f"{name}{suffix}"
-        else:
-            request = service.files().get_media(fileId=item["id"], supportsAllDrives=True)
+        item = self._read_file(file_id)
+        name = item["name"]
 
         path = Path(dest).expanduser()
         if path.is_dir():
             path = path / name
 
-        buffer = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-
-        path.write_bytes(buffer.getvalue())
+        path.write_bytes(item["data"])
         return f"Downloaded to {path}"
 
     def upload(self, path: str, name: str = None) -> dict:

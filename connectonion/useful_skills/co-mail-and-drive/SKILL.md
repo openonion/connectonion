@@ -1,6 +1,6 @@
 ---
 name: co-mail-and-drive
-description: Read and send mail from the user's own Gmail or Outlook account, send from the agent's own address, manage their Outlook contacts, and list/search/download/upload their Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about *their* inbox, an email they received or want to send, a contact, or a file in their Drive.
+description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, or a file in Drive.
 ---
 
 # co gmail / co outlook / co email / co gdrive
@@ -52,6 +52,53 @@ which happened — repeat what it says, don't assume.
 
 ## Send and reply
 
+For Gmail attachments, or whenever a person should review the final message,
+use the provider-native draft workflow. Only the last command can send, and it
+always previews and asks for interactive confirmation:
+
+| Intent | Command |
+|---|---|
+| List and number drafts | `co gmail draft list` |
+| Create an unsent draft | `co gmail draft create <to> <subject> <message>` |
+| Stage a local file | `co gmail draft attach <draft> <path>` |
+| Stage a Drive file | `co gmail draft attach <draft> <file> --drive` |
+| Append a Drive URL | `co gmail draft attach <draft> <file> --drive --link` |
+| Remove a staged file | `co gmail draft remove <draft> <attachment#>` |
+| Replace a staged file | `co gmail draft replace <draft> <attachment#> <source> [--drive]` |
+| Inspect recipients, body, and manifest | `co gmail draft preview <draft>` |
+| Preview, confirm, and send | `co gmail draft send <draft>` |
+
+```bash
+co gmail draft list
+co gmail draft create bob@example.com "Subject" "Body text"
+co gmail draft attach 1 report.pdf
+co gdrive list
+co gmail draft attach 1 3 --drive
+co gmail draft attach 1 3 --drive --link
+co gmail draft remove 1 2
+co gmail draft replace 1 1 corrected.pdf
+co gmail draft preview 1
+co gmail draft send 1
+```
+
+`draft create`, `attach`, `remove`, `replace`, and `preview` never send. `draft
+send` has no `--yes` or other confirmation bypass. A declined confirmation
+leaves the draft intact and exits `1`.
+
+A Gmail draft number comes from the immediately preceding `co gmail draft
+list`, cached separately at `~/.co/gmail_last_drafts.json`. Attachment numbers
+come from the current `draft preview`. Drive file numbers still come from the
+immediately preceding `co gdrive` listing. Re-list before acting rather than
+carrying numbers across listings.
+
+`--drive` attaches bytes without making a local copy. Native Docs, Sheets,
+Slides, and Drawings are exported using the same formats as `co gdrive get`.
+`--drive --link` appends the web URL but does not grant the recipient access or
+change Drive sharing.
+
+Each success and guarded failure prints a literal next command. Read it even
+when output is piped; it is part of the CLI contract.
+
 ```bash
 co gmail send bob@example.com "Subject" "Body text"
 co gmail reply 3 "Sounds good, see you then."
@@ -75,9 +122,9 @@ co outlook cancel 1           # pull one back before it goes
 Outlook can also save an email's attachments: `co outlook download 3 --to ~/Downloads`.
 Gmail has no download command — there is no way to save a Gmail attachment from this CLI.
 
-**Never send on the user's behalf without showing them the exact text first.**
-Draft it, print it, wait for a yes. Sending is not undoable — scheduling is, until
-it goes out.
+**Never send on the user's behalf without showing them the exact text and final
+attachment manifest first.** Prefer `co gmail draft`; print its preview and wait
+for a yes. Sending is not undoable — scheduling is, until it goes out.
 
 ## Contacts (Outlook only)
 
@@ -99,10 +146,11 @@ co gdrive rm 3                     # move to trash (recoverable)
 
 ## The two gotchas that make you report something false
 
-**1. Numbers mean your last listing.** `read 3` / `get 3` resolve against the
+**1. Numbers mean your last listing.** `read 3` / `get 3` / `draft preview 3`
+resolve against the
 numbering of the listing you just printed, cached in `~/.co/gmail_last_inbox.json`,
-`~/.co/outlook_last_inbox.json`, `~/.co/gdrive_last_list.json`. List again and the
-numbers move. Two consequences:
+`~/.co/gmail_last_drafts.json`, `~/.co/outlook_last_inbox.json`, and
+`~/.co/gdrive_last_list.json`. List again and the numbers move. Two consequences:
 
 - Never carry a number across two listings — re-list, then act.
 - Only `inbox`, `search` (and `outlook scheduled`) write the cache. `sent` does
@@ -180,7 +228,7 @@ from credits) and `co email upgrade plus|pro` raises the quota.
 | exit | Meaning | What to do |
 |---|---|---|
 | `0`, clean output | success — including legitimately empty listings | continue |
-| `1` | guarded failure: account not connected, scope missing, unknown listing number, rejected send, unowned `--from` address, attachment missing/too large | the message names the fix (`co auth google`, `co email addresses`, re-list, correct the path) |
+| `1` | guarded failure: account not connected, scope missing, unknown listing or attachment number, declined/rejected send, unowned `--from` address, attachment missing/too large | run the literal next command (`co auth google`, re-list/preview, correct the path) |
 | `2` | usage error: unknown subcommand, missing or bad argument | fix the syntax; the error names the argument, `--help` lists the rest |
 
 The printed messages carry the current recovery step — trust them over this table.
@@ -190,6 +238,7 @@ When a command says the account is not connected:
 ```
 ❌ Google account not connected     → co auth google
 ❌ Gmail permission missing         → co auth google      (re-consent)
+❌ Gmail draft permission missing   → co auth google      (re-consent)
 ❌ Google Drive permission missing  → co auth google      (re-consent)
 ❌ Microsoft account not connected  → co auth microsoft
 ❌ Microsoft <scope> permission missing → co auth microsoft
@@ -205,6 +254,7 @@ it themselves**, do not try to drive that flow.
 
 - [ ] Right mailbox chosen (asked, if both were connected)
 - [ ] Exact text shown to the user before any send
+- [ ] Final Gmail attachment manifest shown before any draft send
 - [ ] Numbers used from the listing printed immediately before the action
 - [ ] IDs taken from piped output, never from a truncated table column
 - [ ] `--from` address taken from `co email addresses`, never guessed

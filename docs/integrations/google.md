@@ -1,6 +1,6 @@
 # Google Integration (co auth google)
 
-> Send emails via Gmail and read calendar events from your AI agents. 30-second setup.
+> Work with Gmail, Google Calendar, and Google Drive from ConnectOnion.
 
 ---
 
@@ -13,11 +13,11 @@ co auth google
 What happens:
 1. Clears any existing Google connection (allows switching accounts)
 2. Opens browser to Google OAuth consent screen
-3. You authorize Gmail Send + Calendar Read permissions
+3. You authorize the Gmail, Calendar, and Drive permissions used by the tools
 4. Credentials saved to `.env` (both local and global `~/.co/keys.env`)
 5. Ready to use Gmail and Calendar tools immediately
 
-**That's it.** Your agents can now send emails and read your calendar.
+**That's it.** Your agents can now work with Gmail, Calendar, and Drive.
 
 **Switching accounts?** Just run `co auth google` again - it will clear the old connection and let you pick a new Google account.
 
@@ -37,16 +37,10 @@ This creates your `OPENONION_API_KEY` which is required for Google OAuth to work
 
 ## What Gets Saved
 
-After successful authentication, your `.env` file contains:
-
-```bash
-# Google OAuth Credentials
-GOOGLE_ACCESS_TOKEN=ya29.a0A...
-GOOGLE_REFRESH_TOKEN=1//0g...
-GOOGLE_TOKEN_EXPIRES_AT=2025-12-31T23:59:59
-GOOGLE_SCOPES=gmail.send,calendar.readonly
-GOOGLE_EMAIL=your.email@gmail.com
-```
+After successful authentication, ConnectOnion saves the Google account email,
+granted scopes, access token, refresh token, and expiry. Treat both credential
+files as secrets; use `co status` to check the connection rather than
+printing either file.
 
 **Security notes:**
 - Credentials are saved to both local `.env` and `~/.co/keys.env`
@@ -62,14 +56,16 @@ When you run `co auth google`, we request these Google scopes:
 
 | Scope | Purpose | What agents can do |
 |-------|---------|-------------------|
-| `gmail.send` | Send emails on your behalf | Use `send_email()` tool to send emails |
-| `calendar.readonly` | Read calendar events | Read your calendar to check availability |
-| `userinfo.email` | Get your email address | Identify which Google account is connected |
+| `gmail.send` | Send email | Send a direct message or confirmed Gmail draft |
+| `gmail.readonly` | Read Gmail | List, search, and inspect messages and drafts |
+| `gmail.modify` | Modify Gmail | Mark messages, reply, and create/edit drafts |
+| `calendar` | Work with Calendar | Read and manage calendar events |
+| `drive` | Work with Drive | List, read, upload, and trash Drive files |
+| `userinfo.email`, `userinfo.profile` | Account identity | Identify the connected Google account |
 
-**Privacy**: We only request the minimum permissions needed. We cannot:
-- Read your inbox (use built-in `get_emails()` for that)
-- Delete or modify calendar events
-- Access your Google Drive or other services
+These are broad account permissions. Only connect an account whose Gmail,
+Calendar, and Drive data you intend ConnectOnion to access. Draft attachment
+commands read Drive content but do not change Drive files or sharing.
 
 ---
 
@@ -183,14 +179,10 @@ co auth google
 
 ### Credentials Not Working
 
-Check if credentials are properly saved:
+Check the connection without printing credentials:
 
 ```bash
-# Check local .env
-cat .env | grep GOOGLE_
-
-# Check global keys
-cat ~/.co/keys.env | grep GOOGLE_
+co status
 ```
 
 If credentials exist but don't work, re-authenticate:
@@ -225,14 +217,8 @@ To disconnect your Google account:
    - Visit https://o.openonion.ai
    - Click "Disconnect Google Account"
 
-3. Manually remove credentials:
-   ```bash
-   # Remove from local .env
-   sed -i '' '/^GOOGLE_/d' .env
-
-   # Remove from global keys
-   sed -i '' '/^GOOGLE_/d' ~/.co/keys.env
-   ```
+3. Remove the Google connection from the OpenOnion dashboard and revoke it in
+   Google Account Settings. Avoid printing or copying the local token files.
 
 ---
 
