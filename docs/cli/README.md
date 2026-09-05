@@ -273,6 +273,17 @@ Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
 are involved. The same `send_telegram` function is available as an agent tool.
 See [telegram.md](telegram.md) for setup, credential handling, and errors.
 
+#### `co discord` - Your Discord Bot as a Directory of Files
+
+```bash
+co discord listen
+m=$(co discord receive)
+echo "done" | co discord reply 123456789012345678
+```
+
+The Gateway connection dials out from the local listener and the bot token
+stays in `~/.co/keys.env`. See [discord.md](discord.md).
+
 #### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files
 
 ```bash
