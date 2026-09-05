@@ -24,6 +24,13 @@ class ProxyNavigationTests(unittest.TestCase):
             def log_message(self, *args):
                 pass
 
+            def handle(self):
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError):
+                    # Chromium cancels background requests when the test closes.
+                    pass
+
             def do_GET(self):
                 if self.headers.get("Proxy-Authorization") != expected:
                     rejected.append(True)
@@ -71,7 +78,7 @@ class ProxyNavigationTests(unittest.TestCase):
                         else:
                             self.assertNotEqual(result.returncode, 0)
                             self.assertIn("BrowserNavigationError", result.stdout + result.stderr)
-                            self.assertIn("NAVIGATION_", result.stdout + result.stderr)
+                            self.assertIn("NAVIGATION_PROXY_AUTH_FAILED", result.stdout + result.stderr)
                             self.assertNotIn("Navigated to", result.stdout)
                             self.assertEqual(len(accepted), before)
                             self.assertGreater(len(rejected), rejected_before)
