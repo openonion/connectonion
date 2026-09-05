@@ -21,14 +21,18 @@ refreshing that login could not create a permission the user had never granted.
 Reusing a token alone would turn the first ordinary video listing into a
 permission error.
 
-The revised flow extends the existing login with `co auth google --youtube`.
+The revised flow uses `co auth google` for Gmail, Calendar, Drive and YouTube
+together. The first revision added a YouTube switch, but that still made the
+user learn a second way to connect the same Google account. The standard
+Google consent bundle now includes YouTube; existing users approve the new
+permission by running the same login command once more.
 After consent, `co youtube` uses the saved Google connection and the same refresh
 broker as Gmail. The OAuth client secret stays on the backend. YouTube reads,
 uploads and metadata edits go through the official API, so the user does not
 need a YouTube tab for those operations.
 
 That exposed another assumption in the backend. Its credentials response
-reported a fixed list of requested capabilities. With optional YouTube consent,
+reported a fixed list of requested capabilities. With YouTube in the consent bundle,
 the distinction between asking and receiving matters: a user can decline the
 new permission. Both callbacks now record the scope string returned by Google,
 and credential refresh reports that recorded grant. Old connections keep their
@@ -37,12 +41,12 @@ previous capabilities without acquiring an invented YouTube permission.
 The tests now begin with saved synthetic Google credentials and exercise broker
 refresh, including a second refresh on a cached client. They check that missing
 scope stops before an API request and that read permission cannot authorize a
-write. The focused client checks passed 578 tests, and the backend's complete
-mocked suite passed 843. A closer skill audit caught a mistake in the first tip
+write. The focused client checks passed 580 tests, and the backend's complete
+mocked suite passed 844. A closer skill audit caught a mistake in the first tip
 test: three goals merely asked the model to find help. We had rewarded another
 lookup instead of the next operation. The corrected previews spell out the exact
-command to run after approval, and all seven operational tips passed the text-only
-check.
+command to run after approval. All nine tip scenarios passed the text-only check,
+including the unified login with full or partial consent.
 Parameter-error recovery now survives the pipe as well. The larger client suite
 still has documented baseline failures; those numbers are not a claim of live
 acceptance.

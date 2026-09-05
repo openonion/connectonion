@@ -278,14 +278,11 @@ def deploy(
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft"),
-         youtube: bool = typer.Option(False, "--youtube", help="Include YouTube access when connecting Google")):
-    """Authenticate with OpenOnion."""
-    if youtube and service != "google":
-        raise typer.BadParameter("--youtube requires co auth google.")
+def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
+    """Authenticate with OpenOnion, or connect Google (Gmail, Calendar, Drive, YouTube)."""
     if service == "google":
         from .commands.auth_commands import handle_google_auth
-        handle_google_auth(youtube=True) if youtube else handle_google_auth()
+        handle_google_auth()
     elif service == "microsoft":
         from .commands.auth_commands import handle_microsoft_auth
         handle_microsoft_auth()
@@ -1172,7 +1169,7 @@ def gdrive_rm(
 
 # YouTube uses the same saved Google login and refresh broker as Gmail.
 _YOUTUBE_AUTH_HELP = (
-    "Connect once with co auth google --youtube, then use the saved Google login like co gmail. "
+    "Connect once with co auth google, then use the saved Google login like co gmail. "
     "Tokens refresh automatically through the existing Google OAuth broker. "
     "YouTube operations use the official Data API. Uploads default to private; "
     "unverified API projects can force private visibility. --confirm is an external write."

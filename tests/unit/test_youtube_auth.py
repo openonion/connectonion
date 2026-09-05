@@ -45,7 +45,7 @@ def test_refresh_uses_existing_broker_and_persists_rotated_credentials(login, mo
 def test_read_requires_exact_youtube_scope_before_network(login, monkeypatch, scopes):
     monkeypatch.setenv("GOOGLE_SCOPES", scopes)
     monkeypatch.setattr(auth.httpx, "post", lambda *a, **k: pytest.fail("Missing scope reached network"))
-    with pytest.raises(CreatorError, match="co auth google --youtube"):
+    with pytest.raises(CreatorError, match="co auth google"):
         login.credentials()
 
 

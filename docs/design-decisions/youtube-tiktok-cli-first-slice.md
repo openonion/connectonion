@@ -32,16 +32,18 @@ PR existed in the repository search at the start of this task.
 ## Decisions
 
 YouTube uses the official Data API exclusively. Its CLI and reusable `YouTube()`
-tool use the Google login saved by `co auth google --youtube`, with automatic
+tool use the Google login saved by `co auth google`, with automatic
 refresh through the same account-bound broker as Gmail. There is no YouTube
 browser adapter or per-command token input.
 
-The companion [oo-api #228](https://github.com/openonion/oo-api/pull/228) adds opt-in YouTube consent to the existing Google
-flow. It records actual granted scopes, including partial consent, and reports
+The companion [oo-api #228](https://github.com/openonion/oo-api/pull/228) includes
+YouTube in the standard Google consent bundle, with no separate CLI switch.
+It records actual granted scopes, including partial consent, and reports
 them on credentials/refresh responses. Legacy Gmail grants do not become
-YouTube grants merely by upgrading the client. Regular Google consent retains
-its existing requested scope bundle. This reuses the current Google credential
-store; it is not #1426's separately namespaced read-only grant design.
+YouTube grants merely by upgrading the client: existing users run `co auth google`
+once more to approve the added scope. A partial grant still connects the granted
+Google tools and reports missing full YouTube access. This reuses the current
+Google credential store; it is not #1426's separately namespaced read-only grant design.
 
 Writes preview by default. Exact plan digests bind account, operation, file
 bytes and metadata; updates also bind the current ETag. A private file snapshot
@@ -81,29 +83,28 @@ separate work. No package release or production deployment occurs in this PR.
 
 ## Verification recorded for review
 
-- Client focused suite after the CLI skill audit: 578 passed, 3 skipped,
+- Client focused suite after unifying Google login: 580 passed, 3 skipped,
   covering creators, Google auth, Gmail, Drive, packaging and executable
-  documentation examples. Minimum supported Typer 0.20 CLI/help compatibility:
-  67 passed, plus all seven pipes, eight exit cases and help/skill parity.
+  documentation examples. Minimum supported Typer 0.20 auth/CLI/help compatibility:
+  84 passed.
 - TikTok jsdom: 4 passed. Installed-wheel pipe checks and pinned text-only
-  `co/gemini-3.7-flash` next-command checks: 7/7 each after correcting the audit.
+  `co/gemini-3.7-flash` next-command checks: 9/9 each, covering seven creator
+  leaves plus Google login's full and partial grants.
   The first harness incorrectly accepted three help-seeking replies; those
   results are superseded. Preview tips now name the exact confirmed operation,
   and TikTok planning points to the tab board. Model-returned commands were
-  recorded, never executed. Eight exit cases and both help/skill comparisons
+  recorded, never executed. Nine exit cases and both help/skill comparisons
   are included in the PR audit tables.
-- Backend complete mocked suite: 843 passed, 167 skipped; focused OAuth/state/
-  migration suite: 73 passed.
-- Client full suite before the CLI skill audit, under
-  `PYTHON_DOTENV_DISABLED=1`: 7,363 passed, 659 failed,
-  8 errors, 22 skipped, 182 deselected. The untouched baseline run had 661
-  failures and 8 errors, mostly existing environment/browser-loop failures.
-  The three Google flow failures were corrected by making those tests use a
-  synthetic broker key. One formerly skipped cross-repository Onionwright
-  test became runnable after a local dependency change and failed because its
-  Artifact fixture lacks newly required fields; that exact failure was then
-  reproduced separately on both baseline and candidate. No creator/auth
-  regression remains in the focused checks. The complete suite is not green.
+- Backend complete mocked suite: 844 passed, 167 skipped; focused OAuth/state/
+  migration suite: 74 passed.
+- Client full suite after unifying Google login, under
+  `PYTHON_DOTENV_DISABLED=1`: 7,369 passed, 660 failed,
+  8 errors, 22 skipped, 182 deselected. The previous candidate had 659 failures;
+  the additional failure is the missing 1.8.2 entry in VERSIONING.md and was
+  reproduced on the untouched baseline. Existing environment/browser-loop
+  failures remain. The previously documented Onionwright Artifact mismatch was
+  also reproduced on both baseline and candidate. No creator/auth regression
+  remains in the focused checks. The complete suite is not green.
 
 The installed wheel contains the creator skill, two TikTok scripts and Google
 refresh helper, with no YouTube browser scripts. No production deployment,

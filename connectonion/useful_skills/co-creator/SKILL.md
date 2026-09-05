@@ -30,16 +30,19 @@ counts are null in JSON and “not returned” in text; zero remains zero.
 
 ## API input and confirmation
 
-Connect Google with `co auth google --youtube`, then run `co youtube` like
-`co gmail`. Normal commands use the saved Google login and refresh access tokens
-through the existing OAuth broker. The one-time consent flow adds YouTube
-access to the Google grant. No YouTube webpage is used for operations.
+Connect Google with `co auth google`, then run `co youtube` like
+`co gmail`. The same consent flow requests Gmail, Calendar, Drive and YouTube.
+Existing users rerun that command once to approve the new permission. Login can
+succeed with a partial grant and print a missing-YouTube warning; the actual
+saved scopes determine which operations can run. Normal commands use the saved
+Google login and refresh access tokens through the existing OAuth broker.
+No YouTube webpage is used for operations.
 
 Use the CLI to authenticate; never inspect credential files, dump GOOGLE_*
 variables or print tokens. If the backend lacks YouTube authorization support,
 report the printed error. Production API enablement and app approval are
 operator prerequisites. A missing, expired or insufficient grant prints the
-same `co auth google --youtube` recovery command. Read-only grants cannot be
+same `co auth google` recovery command. Read-only grants cannot be
 used for a confirmed upload or edit.
 
 Upload and update commands preview by default; `--dry-run` makes that explicit.
@@ -140,8 +143,9 @@ before each step, capture before/after evidence, and click final publish once.
 | Exit | Meaning | Next command |
 |---|---|---|
 | 0 | Creator read, preview or confirmed write succeeded | Printed command, e.g. `co youtube video 1` |
-| 0, error text | `co auth google --youtube` has no OpenOnion login | `co auth` |
-| 1 | Missing/expired token, scope, provider failure, stale number, wrong account, changed confirmation, or unsupported TikTok submit | `co auth google --youtube` for authentication, otherwise the printed recovery |
+| 0, error text | `co auth google` has no OpenOnion login | `co auth` |
+| 0, partial-grant warning | Google connected without full YouTube permission | `co auth google` |
+| 1 | Missing/expired token, scope, provider failure, stale number, wrong account, changed confirmation, or unsupported TikTok submit | `co auth google` for authentication, otherwise the printed recovery |
 | 1 | Browser ownership/evidence failure | `co browser tab ls` |
 | 1 | TikTok login or unknown upload surface | Printed `co browser -t <owned-tab> get_current_url`; user login and a new workflow discovery pass are required |
 | 2 | Missing argument, invalid option/range, unknown command | `co youtube --help` / `co tiktok --help` as printed on stdout, after the cause |

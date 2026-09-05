@@ -5,7 +5,7 @@ List recent uploads, read channels/videos, and preview uploads or metadata edits
 Writes require the exact digest of the current preview.
 
 ```bash
-co auth google --youtube
+co auth google
 co youtube
 co youtube --help
 co youtube channel @YouTube --json
@@ -15,17 +15,20 @@ co youtube put clip.mp4 --title "Demo #Shorts" --channel UCxxxxxxxxxxxxxxxxxxxxx
 co youtube update 1 --title "A clearer title" --dry-run --json
 ```
 
-Connect once using `co auth google --youtube`. This extends the normal Google
-OAuth flow with YouTube permission; subsequent commands use the saved login
+Connect once using `co auth google`. The normal Google OAuth flow requests
+Gmail, Calendar, Drive and YouTube together; subsequent commands use the saved login
 and refresh tokens through the same backend as Gmail. Tokens are never supplied
 as command arguments or pasted for each command. YouTube operations call the
 API directly.
 
 This requires [oo-api #228](https://github.com/openonion/oo-api/pull/228) for
-opt-in YouTube consent and actual granted-scope reporting. An older backend is detected before opening consent.
-Normal Google login does not request the new permission unless `--youtube` is
-selected. If permission is denied, expired or missing, reconnect using the
-printed command. The CLI accepts read-only grants for reads but checks upload
+YouTube in the standard Google consent bundle and actual granted-scope reporting.
+Existing Google users rerun `co auth google` once to approve the added permission;
+upgrading or refreshing an old token cannot grant it. Partial consent or an older
+backend still permits the granted Google tools; login reports missing full YouTube
+permission without claiming YouTube is ready. If permission is denied, expired or
+missing, reconnect using the printed command. The CLI accepts read-only grants
+for reads but checks upload
 and management permission before a confirmed write.
 
 The operator must enable YouTube Data API for the existing Google OAuth project
@@ -106,6 +109,6 @@ and recovery command are printed on stdout, including under a pipe. Preview
 mode is always explicit in output. Provider error bodies, URLs and token locals
 are never printed.
 
-The `co auth google --youtube` prerequisite can print an authentication failure
+The `co auth google` prerequisite can print an authentication failure
 and still exit 0. Always read its output before proceeding. `--json` applies to
 creator operation results; usage errors use plain text even with `--json`.

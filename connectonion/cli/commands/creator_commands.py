@@ -96,7 +96,7 @@ def run(provider: str, action: Callable[[], tuple[dict, str, str]], json_output:
         message = str(error) if isinstance(error, CreatorError) else "Cannot access local evidence, cache, or operation receipt."
         command = recovery or f"co {provider} --help"
         if code == "auth_required":
-            command = "co auth google --youtube"
+            command = "co auth google"
         elif code in {"invalid_metadata", "invalid_file", "invalid_target"}:
             command = f"co {provider} --help"
         elif code == "stale_number":

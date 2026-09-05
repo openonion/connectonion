@@ -36,15 +36,30 @@ def inspect(tab):
 
 def client(*args, **kwargs):
     if os.getenv("CREATOR_CLI_FIXTURE_MODE") == "missing_google":
-        raise CreatorError("auth_required", "Connect Google with YouTube access: co auth google --youtube")
+        raise CreatorError("auth_required", "Connect Google with YouTube access: co auth google")
     return YouTube(service=api)
+
+
+mode = os.getenv("CREATOR_CLI_FIXTURE_MODE", "normal")
+google_payloads = [
+    {"connected": False},
+    {"auth_url": "https://accounts.google.com/o/oauth2/v2/auth?scope=fixture"},
+    {"connected": True, "expires_at": "2030-01-01T00:00:00Z"},
+    {"access_token": "synthetic", "refresh_token": "synthetic-refresh",
+     "expires_at": "2030-01-01T00:00:00Z", "google_email": "fixture@example.com",
+     "scopes": "gmail.readonly,youtube" if mode == "auth_full" else "gmail.readonly"},
+]
+google_responses = [MagicMock(status_code=200, json=MagicMock(return_value=payload)) for payload in google_payloads]
 
 
 with (
     tempfile.TemporaryDirectory(prefix="creator-pipe-") as directory,
     patch.object(Path, "home", return_value=Path(directory)),
     patch.object(youtube_commands, "_client", side_effect=client),
-    patch.object(auth_commands, "load_api_key", return_value=None),
+    patch.object(auth_commands, "load_api_key", return_value="synthetic-broker-key" if mode.startswith("auth_") else None),
+    patch.object(auth_commands.requests, "get", side_effect=google_responses),
+    patch.object(auth_commands.webbrowser, "open", return_value=True),
+    patch.object(auth_commands.time, "sleep", return_value=None),
     patch.object(tiktok_browser_commands, "inspect_page", side_effect=inspect),
 ):
     app(prog_name="co")

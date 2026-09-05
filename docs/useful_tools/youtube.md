@@ -1,7 +1,7 @@
 # YouTube
 
 `YouTube` uses the official Data API with the Google login saved by
-`co auth google --youtube`. Credentials refresh through the same broker as Gmail.
+`co auth google`. Credentials refresh through the same broker as Gmail.
 
 ```python
 from connectonion import YouTube

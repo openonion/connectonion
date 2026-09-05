@@ -14,7 +14,7 @@ from ..credentials import require_ambient_api_key
 from ..project import project_root
 from .creator_plan import CreatorError
 
-AUTH_COMMAND = "co auth google --youtube"
+AUTH_COMMAND = "co auth google"
 SCOPES = {
     "read": {"youtube", "youtube.force-ssl", "youtube.readonly"},
     "upload": {"youtube", "youtube.upload"},

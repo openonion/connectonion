@@ -62,7 +62,7 @@ def _markdown(report: dict) -> str:
     lines += ["", "| group | CLI help | skill | difference |", "|---|---|---|---|"]
     for provider, row in report["parity"].items():
         lines.append(f"| {provider} | {', '.join(row['cli'])} | {', '.join(row['skill'])} | none |")
-    lines += ["", "All seven creator leaves are covered. Bare `co youtube` is the list alias; bare TikTok and `--help` are routing/help views. External `co auth` and `co browser` commands are dependencies, not new creator leaves. The Google prerequisite's exit-0 failure is reproduced above and called out at the start of the skill.", ""]
+    lines += ["", "All seven creator leaves and Google login's full/partial grant outcomes are covered. Bare `co youtube` is the list alias; bare TikTok and `--help` are routing/help views. External `co auth` and `co browser` commands are dependencies, not new creator leaves. The Google prerequisite's exit-0 failure and partial-grant warning are reproduced above and called out in the skill.", ""]
     return "\n".join(lines)
 
 
@@ -87,22 +87,25 @@ def main() -> int:
         clip.write_bytes(b"Synthetic fixture: never uploaded")
         channel = "UC" + "a" * 22
         cases = [
-            (["youtube", "channel"], "List the channel's uploads.", f"co youtube list {channel}", 0),
-            (["youtube", "list"], "Inspect the first video in this listing.", "co youtube video 1", 0),
-            (["youtube", "video", "Abcdefgh_01"], "Read this video's channel.", f"co youtube channel {channel}", 0),
-            (["youtube", "put", str(clip), "--title", "Demo", "--channel", channel], "The user approved this exact preview. Upload the shown video with its reviewed metadata.", _upload_next, 0),
-            (["youtube", "update", "Abcdefgh_01", "--title", "New title"], "The user approved this exact preview. Apply the shown title change.", _update_next, 0),
-            (["tiktok", "post", str(clip), "--caption", "Demo", "--account", "@creator"], "Find your owned browser tab before checking TikTok readiness.", "co browser tab ls", 0),
-            (["tiktok", "inspect", "--tab", "creator-tiktok"], "Check the current page before asking the user to log in.", "co browser -t creator-tiktok get_current_url", 1),
+            (["youtube", "channel"], "List the channel's uploads.", f"co youtube list {channel}", 0, "normal"),
+            (["youtube", "list"], "Inspect the first video in this listing.", "co youtube video 1", 0, "normal"),
+            (["youtube", "video", "Abcdefgh_01"], "Read this video's channel.", f"co youtube channel {channel}", 0, "normal"),
+            (["youtube", "put", str(clip), "--title", "Demo", "--channel", channel], "The user approved this exact preview. Upload the shown video with its reviewed metadata.", _upload_next, 0, "normal"),
+            (["youtube", "update", "Abcdefgh_01", "--title", "New title"], "The user approved this exact preview. Apply the shown title change.", _update_next, 0, "normal"),
+            (["tiktok", "post", str(clip), "--caption", "Demo", "--account", "@creator"], "Find your owned browser tab before checking TikTok readiness.", "co browser tab ls", 0, "normal"),
+            (["tiktok", "inspect", "--tab", "creator-tiktok"], "Check the current page before asking the user to log in.", "co browser -t creator-tiktok get_current_url", 1, "normal"),
+            (["auth", "google"], "List your recent YouTube uploads using the saved Google login.", "co youtube", 0, "auth_full"),
+            (["auth", "google"], "Request the missing YouTube permission through the Google login.", "co auth google", 0, "auth_partial"),
         ]
-        for command, goal, expected, exit_code in cases:
-            actual_exit, output, stderr = _capture(fixture, command, environment, directory, "normal")
+        for command, goal, expected, exit_code, mode in cases:
+            actual_exit, output, stderr = _capture(fixture, command, environment, directory, mode)
             assert actual_exit == exit_code and not stderr, "Unexpected CLI exit/stderr; details withheld"
             expected = expected(output) if callable(expected) else expected
             assert "--help" not in shlex.split(expected), "An action tip cannot pass by asking for help"
             tip = output.splitlines()[-1]
             assert tip.endswith(expected), f"Missing final tip for {command[:2]}"
-            row = {"command": "co " + " ".join(command[:2]), "exit": exit_code,
+            label = "co " + " ".join(command[:2]) + (f" (fixture: {mode})" if mode.startswith("auth_") else "")
+            row = {"command": label, "exit": exit_code,
                    "output": output, "tip": tip, "goal": goal, "expected": expected, "pipe_pass": True}
             if args.tip_model:
                 from connectonion import llm_do
@@ -116,13 +119,14 @@ def main() -> int:
             report["tips"].append(row)
         exit_cases = [
             (["youtube", "list"], "normal", 0, "co youtube video 1", "Abcdefgh_01"),
-            (["youtube", "list"], "missing_google", 1, "co auth google --youtube", "auth_required"),
+            (["youtube", "list"], "missing_google", 1, "co auth google", "auth_required"),
             (["youtube", "video", "1"], "normal", 1, "co youtube list", "stale_number"),
             (["tiktok", "inspect", "--tab", "creator-tiktok"], "normal", 1, "co browser -t creator-tiktok get_current_url", "login_required"),
             (["youtube", "video"], "normal", 2, "co youtube video --help", "Missing argument"),
             (["youtube", "list", "-n", "201"], "normal", 2, "co youtube list --help", "Invalid value"),
             (["tiktok", "inspect"], "normal", 2, "co tiktok inspect --help", "Missing option"),
-            (["auth", "google", "--youtube"], "normal", 0, "co auth", "Not authenticated with OpenOnion"),
+            (["auth", "google"], "normal", 0, "co auth", "Not authenticated with OpenOnion"),
+            (["auth", "google"], "auth_partial", 0, "co auth google", "full YouTube permission was not granted"),
         ]
         for command, mode, expected_exit, next_command, cause in exit_cases:
             exit_code, output, stderr = _capture(fixture, command, environment, directory, mode)

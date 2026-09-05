@@ -65,7 +65,7 @@ def test_missing_auth_is_json_error_with_one_recovery(arguments, monkeypatch):
     assert result.exit_code == 1
     data = json.loads(result.output)
     assert data["code"] == "auth_required"
-    assert data["next_command"] == "co auth google --youtube"
+    assert data["next_command"] == "co auth google"
 
 
 @pytest.mark.parametrize("arguments", [["youtube", "video"], ["youtube", "list", "-n", "201"],
