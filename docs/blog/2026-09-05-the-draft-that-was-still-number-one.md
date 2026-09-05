@@ -30,3 +30,13 @@ The useful question turned out to be what the next caller can infer from the
 last output. A command can report a true result and still leave behind state
 that makes the next action wrong. Testing that transition caught what checking
 each success message on its own had missed.
+
+Expanding the audit to the rest of Gmail and Drive found the same stale-row
+problem after empty inbox and file searches. Drive's piped rows exposed full
+IDs but still invited the caller to choose a number it could not see. A fifth
+column now supplies that number without moving the original four columns.
+
+The expanded harness exercises twenty command paths, including both bare
+commands. All twenty output-only tip tests pass, and the focused suite now
+passes 277 tests. Send, upload, and trash calls in that harness go to mocks.
+The model only chooses a command; the harness never executes its reply.

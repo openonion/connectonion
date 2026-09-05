@@ -117,8 +117,9 @@ it from drive.google.com if that was a mistake.
 ## Piping
 
 In a terminal you get a Rich table with truncated columns. When output is
-piped, each file is one tab-separated row of `name`, `type`, `size`, and the
-**full file id**, so scripts never receive a truncated value:
+piped, each file is one tab-separated row of `name`, `type`, `size`, the
+**full file id**, and the **row number** used by `get`. The original four
+columns keep their positions; the row number is column five:
 
 ```bash
 co gdrive list -n 100 | cut -f4      # just the ids
