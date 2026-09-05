@@ -41,7 +41,7 @@ def capture(args, root):
     youtube.channel.return_value = {'id': CHANNEL}
     youtube.video.return_value = {'id': VIDEO, 'channel_id': CHANNEL}
     youtube.update.return_value = {'confirmation': 'synthetic-digest'}
-    with patch.object(gc, 'GoogleCalendar', return_value=calendar), patch.object(yt, '_client', return_value=youtube), \
+    with patch.object(gc, '_client', return_value=calendar), patch.object(yt, '_client', return_value=youtube), \
          patch.object(yt, 'prepare_upload', return_value={'confirmation': 'synthetic-digest'}), \
          patch.object(rendering, '_cache', return_value=root / 'listing.json'):
         return CliRunner().invoke(app, args, prog_name='co')

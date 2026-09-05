@@ -1292,6 +1292,7 @@ def youtube_update(item: str = typer.Argument(..., help="Listing number, video I
     handle_youtube_update(item, title, description, dry_run, confirm, json_output)
 
 from .commands.gcalendar_commands import gcalendar_app
+gcalendar_app.info.cls = _OneSuggestion
 app.add_typer(gcalendar_app, name="gcalendar")
 
 syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")

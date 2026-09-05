@@ -7,10 +7,18 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from ...useful_tools.google_calendar import GoogleCalendar
 from .google_errors import google_errors
 
 gcalendar_app = typer.Typer(help="Google Calendar events and Meet links. Bare co gcalendar lists events.", no_args_is_help=False)
+
+
+def _client():
+    from ...useful_tools.google_calendar import GoogleCalendar
+    try:
+        return GoogleCalendar()
+    except ValueError:
+        print("Google Calendar permission missing. Next: co auth google")
+        raise typer.Exit(1) from None
 
 
 @google_errors("co gcalendar list")
@@ -19,7 +27,7 @@ def _run(method: str, *args, **kwargs):
     from ...project import project_root
     load_dotenv(project_root() / ".env")
     load_dotenv(Path(os.getenv("AGENT_CONFIG_PATH", str(Path.home() / ".co"))) / "keys.env")
-    result = getattr(GoogleCalendar(), method)(*args, **kwargs)
+    result = getattr(_client(), method)(*args, **kwargs)
     Console().print(result, markup=False, highlight=False)
     first = re.search(r"\bID: ([a-zA-Z0-9_-]+)", result) if method == "list_events" else None
     print(f"Next: co gcalendar read {first[1]}" if first else "Next: co gcalendar list")

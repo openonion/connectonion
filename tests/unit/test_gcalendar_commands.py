@@ -20,7 +20,7 @@ WRITES = [(['create', 'Demo', '2026-09-05T10:00:00Z', '2026-09-05T11:00:00Z'], '
 def test_dispatch_and_piped_tip(args, method, monkeypatch):
     client = MagicMock()
     getattr(client, method).return_value = 'Event\nID: event-a'
-    monkeypatch.setattr(commands, 'GoogleCalendar', lambda: client)
+    monkeypatch.setattr(commands, '_client', lambda: client)
     result = CliRunner().invoke(app, ['gcalendar', *args, *(['--yes'] if (args, method) in WRITES else [])])
     assert result.exit_code == 0, result.output
     getattr(client, method).assert_called_once()
@@ -28,7 +28,7 @@ def test_dispatch_and_piped_tip(args, method, monkeypatch):
 
 @pytest.mark.parametrize('args,method', WRITES)
 def test_write_preview_never_constructs_client(args, method, monkeypatch):
-    monkeypatch.setattr(commands, 'GoogleCalendar', lambda: pytest.fail('Preview reached provider'))
+    monkeypatch.setattr(commands, '_client', lambda: pytest.fail('Preview reached provider'))
     result = CliRunner().invoke(app, ['gcalendar', *args])
     assert result.exit_code == 0 and 'No changes made' in result.output
     assert result.output.strip().endswith(f'co gcalendar {args[0]} --help')
@@ -49,7 +49,7 @@ def test_api_failure_is_sanitized(monkeypatch):
     from httplib2 import Response
     client = MagicMock()
     client.list_events.side_effect = HttpError(Response({'status': '403'}), b'PRIVATE')
-    monkeypatch.setattr(commands, 'GoogleCalendar', lambda: client)
+    monkeypatch.setattr(commands, '_client', lambda: client)
     result = CliRunner().invoke(app, ['gcalendar'])
     assert result.exit_code == 1 and 'PRIVATE' not in result.output and 'co auth google' in result.output
 
