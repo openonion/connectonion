@@ -10,20 +10,22 @@ exception. Chrome can also commit its own network-error document. Neither
 result is the destination the caller asked for, yet our code saved context and
 printed “Navigated to” for both.
 
-The fix checks those outcomes before announcing success. Proxy authentication
-failure becomes `BrowserNavigationError: NAVIGATION_PROXY_AUTH_FAILED`;
-Chromium network errors become `NAVIGATION_NETWORK_ERROR`. The existing daemon
-exception boundary then produces a nonzero CLI exit. The messages deliberately
-omit driver call logs and URLs, which can contain credentials. A blank body or
-an ordinary HTTP 404 is still a legitimate page to inspect, not a reason to
-invent a transport failure.
+The empty page looked like a useful clue, but it was the wrong boundary to put
+into the fix. A site is allowed to return nothing. A 404 page can contain exactly
+the explanation an agent needs to read. Rejecting either would replace one
+misleading answer with another. We needed to ask whether the browser had reached
+a document from the destination, not whether that document looked useful.
 
-Three focused regressions failed before the change. With the fix, the async
-core and daemon suites passed 58 tests. On the GCP acceptance machine, a real
-headed browser navigated through a loopback proxy using the correct password
-and read the expected marker, exiting 0. A fresh isolated session with the
-wrong password was rejected by the proxy and exited 1 with the typed error.
-No public site or purchased credit was needed for that check.
+That distinction led us back to the response and Chrome's internal error page.
+We checked them before saving context or announcing success. On the GCP machine,
+the correct proxy password still let the browser read our test marker. With the
+wrong password, the command now exited 1. Then a tighter assertion failed: we had
+expected a proxy-authentication error, but Chrome had surfaced a network error
+instead of handing us the 407. The rejection was real; our expectation about how
+the driver would describe it was too narrow.
 
-This closes a specific false-success path. It does not establish that every
-proxy deployment or the separate paid-panel flow has passed release acceptance.
+The final check accepts either of those explicit failure paths, but never a
+successful exit for the rejected navigation. Ordinary empty and 404 pages remain
+readable. The focused suite passed 58 tests, and the real proxy check passed both
+password cases. The useful change is small: an agent can now stop at the failed
+navigation instead of trying to make sense of a page it never reached.
