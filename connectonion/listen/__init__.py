@@ -10,6 +10,10 @@ LLM-Note:
 
 from .mailbox import Mailbox, Message
 
+
+class ProviderPolicyError(RuntimeError):
+    """A provider policy makes this send invalid without new user action."""
+
 # name → (module, class, constructor kwargs). Lark is Feishu with a different
 # domain and its own credentials, not a second implementation.
 PROVIDERS = {
@@ -17,6 +21,7 @@ PROVIDERS = {
     "lark": ("connectonion.listen.feishu", "Feishu", {"domain": "lark"}),
     "telegram": ("connectonion.listen.telegram", "Telegram", {}),
     "discord": ("connectonion.listen.discord", "Discord", {}),
+    "whatsapp": ("connectonion.listen.whatsapp", "WhatsApp", {}),
 }
 
 
@@ -32,4 +37,4 @@ def provider(name: str):
     return getattr(module, class_name)(**kwargs)
 
 
-__all__ = ["Mailbox", "Message", "provider", "PROVIDERS"]
+__all__ = ["Mailbox", "Message", "ProviderPolicyError", "provider", "PROVIDERS"]

@@ -18,7 +18,8 @@ from typing import List, Optional
 
 from rich.console import Console
 
-from ...listen import Mailbox, provider
+from ...backend import backend_url
+from ...listen import Mailbox, ProviderPolicyError, provider
 
 console = Console()
 errors = Console(stderr=True)
@@ -127,6 +128,10 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     body = _text_from(text)
     try:
         sent = p.send(chat, body, reply_to=reply_to)
+    except ProviderPolicyError as exc:
+        mailbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc))
+        errors.print(str(exc), style="red")
+        sys.exit(EXIT_CONFIG)
     except Exception as exc:
         mailbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc))
         errors.print(str(exc), style="red")
@@ -149,6 +154,10 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     body = _text_from(text)
     try:
         sent = p.send(original.chat, body, reply_to=message_id)
+    except ProviderPolicyError as exc:
+        mailbox.record_sent(chat=original.chat, text=body, reply_to=message_id, error=str(exc))
+        errors.print(str(exc), style="red")
+        sys.exit(EXIT_CONFIG)
     except Exception as exc:
         mailbox.record_sent(chat=original.chat, text=body, reply_to=message_id, error=str(exc))
         errors.print(str(exc), style="red")
@@ -170,6 +179,28 @@ def handle_check(name: str) -> None:
     pid = mailbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"[green]✓[/green] {name} reachable · {listener} · {len(mailbox.unread())} unread · {mailbox.root}")
+
+
+def handle_bind(name: str) -> None:
+    """Register provider webhook routing without placing secrets on argv."""
+    p = provider(name)
+    problems = p.bind_missing()
+    if problems:
+        for problem in problems:
+            errors.print(problem, style="red")
+        sys.exit(EXIT_CONFIG)
+    try:
+        result = p.bind()
+    except Exception as exc:
+        errors.print(str(exc), style="red")
+        sys.exit(1)
+    binding_id = result["id"]
+    print(binding_id)
+    errors.print(
+        f"set WHATSAPP_BINDING_ID={binding_id}; configure Meta's callback as "
+        f"{backend_url()}/api/v1/messaging/webhooks/whatsapp/{binding_id}",
+        style="dim",
+    )
 
 
 def handle_ls(name: str) -> None:

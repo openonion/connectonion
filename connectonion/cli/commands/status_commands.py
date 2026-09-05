@@ -41,6 +41,9 @@ CREDENTIAL_ENV_VARS = (
     ("MISTRAL_API_KEY", "Mistral"),
     ("TELEGRAM_BOT_TOKEN", "Telegram"),
     ("DISCORD_BOT_TOKEN", "Discord"),
+    ("WHATSAPP_ACCESS_TOKEN", "WhatsApp"),
+    ("WHATSAPP_APP_SECRET", "WhatsApp webhook"),
+    ("WHATSAPP_VERIFY_TOKEN", "WhatsApp verify"),
 )
 
 OAUTH_CONNECTIONS = (

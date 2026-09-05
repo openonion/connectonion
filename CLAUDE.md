@@ -178,11 +178,12 @@ connectonion/
 │   │       ├── tools.py            # Verification tools
 │   │       ├── trust_agent.py      # TrustAgent class
 │   │       └── policies/           # Trust level policy markdown
-│   ├── listen/                     # Chat platforms as mailbox directories (co feishu / co telegram listen, receive, send, reply)
+│   ├── listen/                     # Chat platforms as mailbox directories (co feishu / co telegram / co discord / co whatsapp)
 │   │   ├── mailbox.py              # ~/.co/<provider>/: inbox.jsonl log, new/ queue, cur/, outbox.jsonl
 │   │   ├── feishu.py               # Feishu/Lark long connection → files; REST reply
 │   │   ├── telegram.py             # Telegram getUpdates long poll → files; sendMessage reply
-│   │   └── discord.py              # Discord Gateway → files; REST reply
+│   │   ├── discord.py              # Discord Gateway → files; REST reply
+│   │   └── whatsapp.py             # O API webhook inbox → files; Meta REST reply
 │   ├── tui/                        # Terminal UI components
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich

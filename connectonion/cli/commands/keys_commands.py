@@ -73,6 +73,9 @@ def _load_env_vars(
         "MICROSOFT_REFRESH_TOKEN",
         "TELEGRAM_BOT_TOKEN",
         "DISCORD_BOT_TOKEN",
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_APP_SECRET",
+        "WHATSAPP_VERIFY_TOKEN",
     )
     return _selected_credential_values(
         names,
@@ -234,6 +237,18 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
             "Discord Bot",
             discord_token if reveal else _mask(discord_token, secret=True),
         )
+
+    for name, label in (
+        ("WHATSAPP_ACCESS_TOKEN", "WhatsApp Access"),
+        ("WHATSAPP_APP_SECRET", "WhatsApp App"),
+        ("WHATSAPP_VERIFY_TOKEN", "WhatsApp Verify"),
+    ):
+        value = env_vars.get(name)
+        if value:
+            sec_table.add_row(
+                label,
+                value if reveal else _mask(value, secret=True),
+            )
 
     console.print(Panel(sec_table, title="[bold]Secrets[/bold]", border_style="yellow"))
 
