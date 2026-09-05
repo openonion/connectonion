@@ -10,13 +10,19 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
-The current final candidate is **1.8.2**. Gemini 3.8 Flash becomes the shared
-model default, with Gemini 3.7 and other providers still explicitly selectable.
-It keeps the system browser free by
-default, requires explicit CLI selection for paid Onion, and includes the
-browser-status and proxy-navigation failure corrections. See `VERSIONING.md`
-for the current version and release history. The sections below describe
-historical 1.7 preview work, not current installation recommendations.
+The published stable release is **1.8.2**. **1.8.3 is prepared, not published**:
+Gmail, Drive, Calendar and YouTube share local Google authorization, with
+default supported scopes and an optional `--scopes` restriction. It adds
+Gmail draft attachments and Calendar/YouTube command surfaces with explicit
+confirmation for their writes. See [Google integration](integrations/google.md)
+for the commands, permission scope and upgrade path.
+
+Publication still requires real-account consent and read-only production
+acceptance, reviewed release evidence, and the immutable-tag release workflow.
+Do not install an unpublished version or update the public stable badge yet.
+TikTok and new messaging adapters are deferred until after 1.8.5.
+The sections below describe historical 1.7 preview work, not current
+installation recommendations.
 
 ## Historical 1.7 preview work
 

@@ -39,25 +39,36 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-Stable users are on the 1.7.x line. Stabilisation fixes target `release/1.7`
-and must be forward-ported to `main`, where new feature work continues on the
-1.8 train. Pre-releases are opt-in and must be marked as pre-releases on PyPI
-and GitHub.
+The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
+must still be forward-ported to `main`. Pre-releases are opt-in and must be
+marked as pre-releases on PyPI and GitHub.
 
-## Release candidate: 1.8.2
+## Release candidate: 1.8.3 (prepared, not published)
 
-Gemini 3.8 Flash becomes the shared default for `Agent`, `llm_do`, `co ai`,
-transcription, generated configuration, built-in subagents, and internal helper
-calls. Both the managed `co/gemini-3.8-flash` route and direct-key
-`gemini-3.8-flash` route use Google's OpenAI-compatible API and preserve tool
-calls and thought signatures. Gemini 3.7 remains an explicit rollback choice;
-OpenAI and Anthropic choices remain available; missing Google configuration
-fails closed instead of silently changing provider. Publication is verified by
-the tagged release workflow.
+Google authorization belongs on the user's computer. One `co auth google`
+requests the supported Gmail, Drive, Calendar and YouTube scopes by default;
+`--scopes` restricts that request. Tokens and actual granted scopes stay in
+local credential files. The backend exchanges tokens transiently and does not
+add Google credential columns or migrate users' data. Upgrade the CLI before
+using the new backend flow; older server-owned credential endpoints return 410.
 
-## Current Version: 1.8.2
+The four command groups are `co gmail`, `co gdrive`, `co gcalendar` and
+`co youtube`, documented together in `co-google`. Gmail adds draft attachments;
+Calendar and YouTube writes require explicit confirmation after preview.
+Automated fixtures do not count as real-account acceptance: consent and the
+four read-only production checks remain a publication gate. TikTok and new
+messaging adapters are deferred until after 1.8.5. Do not create a release tag
+or advertise this candidate as published until the remaining gates pass.
+
+## Current Version: 1.8.3
 
 ### Version History
+- 1.8.3 (**prepared, not published — Google tools with local credentials:**
+  unify Gmail, Drive, Calendar and YouTube authorization and command discovery;
+  add Gmail draft attachments, Calendar CLI and preview-confirmed YouTube
+  uploads/metadata updates. Preserve local token ownership, refresh rotation
+  and granted scopes. Include output-only discoverability tests, safe error
+  messages and upgrade instructions. No TikTok or new messaging adapters.)
 - 1.8.2 (**Gemini 3.8 Flash:** add Gemini 3.8 Flash to the managed and
   direct-provider paths and make it the product-wide default. Remove deprecated
   3.8 sampling fields, validate reasoning levels, keep the synchronous Agent
