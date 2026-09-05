@@ -406,3 +406,84 @@ def test_non_finite_timestamps_are_rejected_before_replay_claim(
     assert payload is None
     assert error == "unauthorized: timestamp must be finite"
     assert claimed == []
+
+
+def test_a_ledger_deleted_under_a_running_host_is_rebuilt(tmp_path):
+    """A deploy can replace `.co/replay.sqlite3` while the host is running.
+
+    The store was opened at startup, so init-time checks are long past. Before
+    #1401 every later claim raised `no such table: used_signatures`, and the
+    agent refused every signed call until someone restarted it by hand.
+    """
+    path = tmp_path / "replay.sqlite3"
+    store = SignatureReplayStore(path)
+    assert store.already_used({"signature": "before-deploy"}) is False
+
+    os.remove(path)
+    path.write_bytes(b"")
+
+    assert store.already_used({"signature": "after-deploy"}) is False
+    assert store.already_used({"signature": "after-deploy"}) is True
+
+
+def test_a_rebuilt_ledger_still_claims_atomically(tmp_path):
+    path = tmp_path / "replay.sqlite3"
+    store = SignatureReplayStore(path)
+    os.remove(path)
+
+    store.already_used({"signature": "captured"})
+
+    with sqlite3.connect(path) as database:
+        indexes = {
+            row[1] for row in database.execute(
+                "PRAGMA index_list(used_signatures)"
+            )
+        }
+        columns = {
+            row[1] for row in database.execute(
+                "PRAGMA table_info(used_signatures)"
+            )
+        }
+    # The rebuild must produce the full schema, not just enough to insert:
+    # a ledger without its expiry index or column stops pruning and grows.
+    assert "used_signatures_expiry" in indexes
+    assert {"digest", "seen_at", "expires_at"} <= columns
+
+
+def test_a_locked_ledger_is_never_rebuilt(tmp_path):
+    """Rebuilding on lock contention would discard a live worker's ledger."""
+    path = tmp_path / "replay.sqlite3"
+    store = SignatureReplayStore(path)
+    store.already_used({"signature": "claimed-by-a-peer"})
+
+    with sqlite3.connect(path) as blocker:
+        blocker.execute("BEGIN EXCLUSIVE")
+        with pytest.raises(ReplayProtectionError, match="storage is unavailable"):
+            store.already_used({"signature": "captured"})
+
+    # The prior claim survived, so a replay is still caught after the lock.
+    assert store.already_used({"signature": "claimed-by-a-peer"}) is True
+
+
+def test_a_corrupt_ledger_keeps_failing_closed(tmp_path):
+    """Corruption is not a vanished file; its history is still authoritative."""
+    path = tmp_path / "replay.sqlite3"
+    store = SignatureReplayStore(path)
+    path.write_bytes(b"SQLite format 3\x00" + b"\xde\xad\xbe\xef" * 64)
+
+    with pytest.raises(ReplayProtectionError):
+        store.already_used({"signature": "captured"})
+
+
+def test_rebuild_is_not_retried_forever(tmp_path, monkeypatch):
+    path = tmp_path / "replay.sqlite3"
+    store = SignatureReplayStore(path)
+    os.remove(path)
+
+    def still_broken():
+        raise sqlite3.OperationalError("no such table: used_signatures")
+
+    monkeypatch.setattr(store, "_prepare_schema", lambda: None)
+    monkeypatch.setattr(store, "_claim", lambda *args: still_broken())
+    with pytest.raises(ReplayProtectionError, match="unavailable after rebuild"):
+        store.already_used({"signature": "captured"})
