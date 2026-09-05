@@ -282,6 +282,50 @@ def test_async_core_has_no_sync_patchright_dependency():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["407", "chrome-error", "net-error"])
+async def test_navigation_rejects_proxy_and_browser_error_pages(monkeypatch, tmp_path, failure):
+    install_fake_runtime(monkeypatch, tmp_path)
+    browser = async_mod.AsyncBrowserCore(headless=True)
+    await browser.open_browser()
+
+    async def goto(url, **kwargs):
+        browser.page.url = url
+        if failure == "net-error":
+            raise RuntimeError("net::ERR_PROXY_CONNECTION_FAILED at https://secret:password@example.com")
+        return SimpleNamespace(status=407 if failure == "407" else 200)
+
+    monkeypatch.setattr(browser.page, "goto", goto)
+    if failure == "chrome-error":
+        browser.page.evaluate_result = "chrome-error://chromewebdata/"
+    try:
+        with pytest.raises(RuntimeError, match="NAVIGATION_") as caught:
+            await browser.go_to("https://example.com", purpose="test", who="tester")
+        assert "password" not in str(caught.value)
+        assert browser.current_url != "https://example.com"
+    finally:
+        await browser.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [200, 204, 404])
+async def test_navigation_preserves_real_http_pages(monkeypatch, tmp_path, status):
+    install_fake_runtime(monkeypatch, tmp_path)
+    browser = async_mod.AsyncBrowserCore(headless=True)
+    await browser.open_browser()
+
+    async def goto(url, **kwargs):
+        browser.page.url = url
+        return SimpleNamespace(status=status)
+
+    monkeypatch.setattr(browser.page, "goto", goto)
+    browser.page.evaluate_result = "https://example.com"
+    try:
+        assert "Navigated to" in await browser.go_to("https://example.com", purpose="test", who="tester")
+    finally:
+        await browser.close()
+
+
+@pytest.mark.asyncio
 async def test_open_reuses_one_async_context_and_seeds_before_navigation(
     monkeypatch, tmp_path
 ):

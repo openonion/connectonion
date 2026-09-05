@@ -810,14 +810,18 @@ class TestOutlookReply:
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_reply_scheduled(self, mock_httpx):
-        """Test scheduled reply carries the deferred-send property."""
-        mock_response = MagicMock()
-        mock_response.status_code = 202
-        mock_response.text = ""
-        mock_httpx.request.return_value = mock_response
+        """A scheduled reply is a reply draft that carries the deferred-send
+        properties and is submitted as that exact draft — never the one-shot
+        reply action, which delivered at once the way sendMail did (#1198)."""
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=201, text='{"id": "reply-draft-1"}',
+                      json=MagicMock(return_value={"id": "reply-draft-1"})),
+            MagicMock(status_code=200, text=""),   # PATCH
+            MagicMock(status_code=202, text=""),   # send
+        ]
 
         with patch.dict(os.environ, {
-            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
             "MICROSOFT_ACCESS_TOKEN": "test-token",
             "MICROSOFT_REFRESH_TOKEN": "test-refresh",
             "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
@@ -827,10 +831,54 @@ class TestOutlookReply:
             result = outlook.reply("msg-1", "See you then", send_at="2026-07-06T15:30:00Z")
 
             assert "scheduled" in result.lower()
-            payload = mock_httpx.request.call_args.kwargs["json"]
-            assert payload["comment"] == "<p>See you then</p>"
-            prop = payload["message"]["singleValueExtendedProperties"][0]
-            assert prop == {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
+            calls = mock_httpx.request.call_args_list
+            assert [(c.args[0], c.args[1].split("/v1.0")[1]) for c in calls] == [
+                ("POST", "/me/messages/msg-1/createReply"),
+                ("PATCH", "/me/messages/reply-draft-1"),
+                ("POST", "/me/messages/reply-draft-1/send"),
+            ]
+            assert calls[0].kwargs["json"] == {"comment": "<p>See you then</p>"}
+            assert calls[1].kwargs["json"] == {"singleValueExtendedProperties": [
+                {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"},
+                {"id": "SystemTime 0x000F", "value": "2026-07-06T15:30:00Z"},
+            ]}
+            assert "json" not in calls[2].kwargs
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_scheduled_requires_readwrite_scope(self, mock_httpx):
+        """Draft creation needs Mail.ReadWrite; fail before any request, not
+        with a Graph 403 after the reply action already went out."""
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+
+            with pytest.raises(ValueError, match="Mail.ReadWrite"):
+                Outlook().reply("msg-1", "See you then", send_at="2026-07-06T15:30:00Z")
+
+        mock_httpx.request.assert_not_called()
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_scheduled_without_draft_id_is_not_sent(self, mock_httpx):
+        """No draft id means nothing to schedule — do not fall back to sending."""
+        mock_httpx.request.return_value = MagicMock(status_code=201, text="{}",
+                                                    json=MagicMock(return_value={}))
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+
+            with pytest.raises(ValueError, match="createReply"):
+                Outlook().reply("msg-1", "See you then", send_at="2026-07-06T15:30:00Z")
+
+        assert mock_httpx.request.call_count == 1
 
     @patch('connectonion.useful_tools.outlook.httpx')
     def test_reply_immediate_has_no_message_block(self, mock_httpx):
@@ -958,9 +1006,20 @@ class TestOutlookReplyAttachments:
         assert "report.pdf, chart.png" in result
 
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_scheduled_reply_keeps_both_attachments_and_deferred_send(self, mock_httpx, tmp_path):
-        """--attach and --at are not a choice: one message carries both."""
-        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+    def test_scheduled_reply_keeps_both_attachments_and_deferred_send(self, mock_httpx, tmp_path, monkeypatch):
+        """--attach and --at are not a choice: the reply draft carries both.
+
+        PATCH does not take attachments, so each file is posted to the
+        draft's attachments collection before the deferred-send PATCH."""
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.ReadWrite,Mail.Send")
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=201, text='{"id": "reply-draft-1"}',
+                      json=MagicMock(return_value={"id": "reply-draft-1"})),
+            MagicMock(status_code=201, text='{"id": "att-1"}',
+                      json=MagicMock(return_value={"id": "att-1"})),
+            MagicMock(status_code=200, text=""),
+            MagicMock(status_code=202, text=""),
+        ]
         signed = tmp_path / "signed.pdf"
         signed.write_bytes(b"%PDF-1.4 fake")
 
@@ -970,11 +1029,30 @@ class TestOutlookReplyAttachments:
         assert "scheduled" in result.lower()
         assert "signed.pdf" in result
 
-        message = mock_httpx.request.call_args.kwargs["json"]["message"]
-        assert message["attachments"][0]["name"] == "signed.pdf"
-        assert message["singleValueExtendedProperties"] == [
-            {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
+        calls = mock_httpx.request.call_args_list
+        assert [(c.args[0], c.args[1].split("/v1.0")[1]) for c in calls] == [
+            ("POST", "/me/messages/msg-1/createReply"),
+            ("POST", "/me/messages/reply-draft-1/attachments"),
+            ("PATCH", "/me/messages/reply-draft-1"),
+            ("POST", "/me/messages/reply-draft-1/send"),
         ]
+        attachment = calls[1].kwargs["json"]
+        assert attachment["@odata.type"] == "#microsoft.graph.fileAttachment"
+        assert attachment["name"] == "signed.pdf"
+        assert calls[2].kwargs["json"]["singleValueExtendedProperties"][0] == {
+            "id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"
+        }
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_rejected_attachment_leaves_no_reply_draft(self, mock_httpx, tmp_path, monkeypatch):
+        """A missing file fails before createReply, so no stray draft is left in Drafts."""
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.ReadWrite,Mail.Send")
+
+        with pytest.raises(ValueError, match="Attachment not found"):
+            self._outlook().reply("msg-1", "Tomorrow", attachments=[str(tmp_path / "missing.pdf")],
+                                  send_at="2026-07-06T15:30:00Z")
+
+        mock_httpx.request.assert_not_called()
 
     def test_missing_attachment_reports_no_reply_sent(self, tmp_path):
         """A path that isn't there must fail before anything reaches Graph."""
@@ -1043,19 +1121,27 @@ class TestOutlookReplyPositionalCompatibility:
         return Outlook(allow_external_attachments=True)
 
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_legacy_third_positional_argument_still_schedules(self, mock_httpx):
+    def test_legacy_third_positional_argument_still_schedules(self, mock_httpx, monkeypatch):
         """A caller written before attachments existed still schedules, not attaches."""
-        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.ReadWrite,Mail.Send")
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=201, text='{"id": "reply-draft-1"}',
+                      json=MagicMock(return_value={"id": "reply-draft-1"})),
+            MagicMock(status_code=200, text=""),
+            MagicMock(status_code=202, text=""),
+        ]
 
         result = self._outlook().reply("msg-1", "See you then", "2026-07-06T15:30:00Z")
 
         assert "scheduled" in result.lower()
-        payload = mock_httpx.request.call_args.kwargs["json"]
-        assert payload["message"]["singleValueExtendedProperties"] == [
-            {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
-        ]
+        urls = [c.args[1] for c in mock_httpx.request.call_args_list]
+        assert urls[0].endswith("/me/messages/msg-1/createReply")
         # The timestamp must never be read as a file path.
-        assert "attachments" not in payload["message"]
+        assert not any(url.endswith("/attachments") for url in urls)
+        patched = mock_httpx.request.call_args_list[1].kwargs["json"]
+        assert patched["singleValueExtendedProperties"][0] == {
+            "id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"
+        }
 
     def test_attachments_cannot_be_passed_positionally(self, tmp_path):
         """Keyword-only attachments freeze the positional order for good."""

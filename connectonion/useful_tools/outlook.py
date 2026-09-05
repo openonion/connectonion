@@ -2,7 +2,7 @@
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at never use the one-shot sendMail / reply actions (they delivered at once, #1198): send() creates a draft carrying PidTagDeferredSendTime (SystemTime 0x3FEF) and PidTagDeferredDeliveryTime (0x000F) and submits it; reply() does createReply → POST attachments → PATCH the same two properties → send, so Exchange holds the exact draft until then (needs Mail.ReadWrite) | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh rewrites ~/.co/keys.env
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments) keeps send_at third positional for pre-attachment callers, so attachments is keyword-only
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
@@ -789,7 +789,8 @@ class Outlook:
             email_id: Outlook message ID to reply to
             body: Reply message body (plain text)
             send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
-                schedule delivery — Exchange holds the reply until then
+                schedule delivery — the reply becomes a deferred draft that
+                Exchange holds until then (needs the Mail.ReadWrite scope)
             attachments: Optional list of local file paths to attach — same
                 files and ~3MB total Graph limit as send()
 
@@ -801,32 +802,51 @@ class Outlook:
         paragraphs = [html.escape(p.strip()).replace("\n", "<br>") for p in body.split("\n\n") if p.strip()]
         body = "".join(f"<p>{p}</p>" for p in paragraphs)
 
-        endpoint = f"/me/messages/{email_id}/reply"
+        # Encode first: a rejected file must not leave a reply already sent
+        # (or a draft already created) and unattached.
+        encoded = self._encoded_attachments(attachments) if attachments else []
+        suffix = self._attachment_suffix(attachments)
+
+        if send_at:
+            self._scheduled_reply(email_id, body, encoded, send_at)
+            return f"Reply scheduled for {send_at}{suffix}"
+
         # The reply action takes writable message properties beside the
         # comment, so attachments ride along without giving up the threading
         # Graph does for us (In-Reply-To, References, same conversation).
-        reply_message = {}
-        if attachments:
-            # Encode first: a rejected file must not leave a reply already
-            # sent and unattached.
-            reply_message["attachments"] = self._encoded_attachments(attachments)
-        if send_at:
-            # Same deferred-send property as send(); the reply action accepts
-            # message properties alongside the comment.
-            reply_message["singleValueExtendedProperties"] = [
-                {"id": "SystemTime 0x3FEF", "value": send_at}
-            ]
-
         data = {"comment": body}
-        if reply_message:
-            data["message"] = reply_message
-
-        self._request("POST", endpoint, json=data)
-
-        suffix = self._attachment_suffix(attachments)
-        if send_at:
-            return f"Reply scheduled for {send_at}{suffix}"
+        if encoded:
+            data["message"] = {"attachments": encoded}
+        self._request("POST", f"/me/messages/{email_id}/reply", json=data)
         return f"Reply sent successfully{suffix}"
+
+    def _scheduled_reply(self, email_id: str, body: str, encoded: list, send_at: str) -> str:
+        """Create a reply draft, set the deferred-send properties, submit it.
+
+        The reply action is create-and-send in one step, like sendMail was
+        for send() (#1198): Graph does not list either as a place to set an
+        extended property, so the deferred-send time never reached the copy
+        that went out.  A draft is where the property is documented to live:
+        createReply keeps the threading, PATCH is the documented way to put an
+        extended property on an existing message, and send submits that exact
+        draft.  Returns the draft id.
+        """
+        self._require_scope("Mail.ReadWrite")
+        draft = self._request("POST", f"/me/messages/{email_id}/createReply", json={"comment": body})
+        draft_id = draft.get("id")
+        if not draft_id:
+            raise ValueError("Microsoft Graph createReply response did not include an id")
+        for attachment in encoded:
+            # PATCH does not take attachments; the attachments collection does.
+            self._request("POST", f"/me/messages/{draft_id}/attachments", json=attachment)
+        self._request("PATCH", f"/me/messages/{draft_id}", json={
+            "singleValueExtendedProperties": [
+                {"id": "SystemTime 0x3FEF", "value": send_at},
+                {"id": "SystemTime 0x000F", "value": send_at},
+            ]
+        })
+        self._request("POST", f"/me/messages/{draft_id}/send")
+        return draft_id
 
     def get_scheduled(self, max_results: int = 25) -> list:
         """List emails waiting for scheduled delivery (deferred-send drafts).

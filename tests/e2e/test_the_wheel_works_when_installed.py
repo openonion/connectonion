@@ -30,9 +30,9 @@ Marked `slow` — CI selects `-m "not slow and not real_api and not network"`, s
 this runs when a release is being prepared, and VERSIONING.md's checklist says
 to run it.
 
-The build is deliberately cheap. The venv is created with
-`--system-site-packages` and the wheel installed `--no-deps`, so the dependency
-tree is not downloaded again: what is being tested is our own files, not pip.
+The install is self-contained: a fresh venv installs the candidate wheel and
+its declared dependencies. Inheriting system packages and using `--no-deps`
+hid missing dependencies until HOME isolation made the user-site disappear.
 
 The one thing this must not get wrong is *which* connectonion it imports. A
 subprocess started in the repo has `''` on `sys.path` and the source tree wins,
@@ -66,7 +66,17 @@ def _build_wheel(into: Path) -> Path:
         wheels = list(into.glob("*.whl"))
         if result.returncode == 0 and wheels:
             return wheels[0]
-    pytest.skip(f"could not build a wheel here: {result.stderr.strip()[-300:]}")
+    pytest.fail(f"could not build a wheel here: {result.stderr.strip()[-300:]}")
+
+
+def _runtime_env():
+    """Keep installed-package probes independent and initialization offline."""
+    env = {key: value for key, value in os.environ.items()
+           if key not in {"PYTHONPATH", "PYTHONHOME"}}
+    env.update(CONNECTONION_BACKEND_URL="http://127.0.0.1:9",
+               HTTP_PROXY="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9",
+               ALL_PROXY="http://127.0.0.1:9", NO_PROXY="")
+    return env
 
 
 @pytest.fixture(scope="module")
@@ -79,14 +89,14 @@ def installed(tmp_path_factory):
     wheel = _build_wheel(root / "dist")
 
     env_dir = root / "venv"
-    venv.EnvBuilder(with_pip=True, system_site_packages=True).create(env_dir)
+    venv.EnvBuilder(with_pip=True, system_site_packages=False).create(env_dir)
     bin_dir = env_dir / ("Scripts" if os.name == "nt" else "bin")
     python = bin_dir / ("python.exe" if os.name == "nt" else "python")
 
     install = subprocess.run(
-        [str(python), "-m", "pip", "install", "--quiet", "--no-deps",
+        [str(python), "-I", "-m", "pip", "install", "--quiet",
          "--force-reinstall", str(wheel)],
-        capture_output=True, text=True, timeout=900,
+        cwd=root, capture_output=True, text=True, timeout=900,
     )
     assert install.returncode == 0, install.stderr[-500:]
 
@@ -99,19 +109,38 @@ def _run(installed, code: str, cwd=None) -> subprocess.CompletedProcess:
     python, _, elsewhere, _env = installed
     return subprocess.run([str(python), "-c", code],
                           cwd=str(cwd or elsewhere),
+                          env=_runtime_env(),
                           capture_output=True, text=True, timeout=300)
 
 
 class TestItIsTheWheelBeingTested:
+    def test_declared_dependencies_survive_without_user_or_system_site(self, installed):
+        python, _, elsewhere, env_dir = installed
+        config = (env_dir / "pyvenv.cfg").read_text()
+        assert "include-system-site-packages = false" in config.lower()
+        result = subprocess.run(
+            [str(python), "-I", "-c",
+             "import dotenv, requests, pathlib; "
+             "print(pathlib.Path(dotenv.__file__).resolve()); "
+             "print(pathlib.Path(requests.__file__).resolve())"],
+            cwd=elsewhere, env=_runtime_env(), capture_output=True, text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert all(str(env_dir) in line for line in result.stdout.splitlines())
+        check = subprocess.run([str(python), "-I", "-m", "pip", "check"],
+                               cwd=elsewhere, env=_runtime_env(),
+                               capture_output=True, text=True, timeout=30)
+        assert check.returncode == 0, check.stdout + check.stderr
+
     """If this is wrong, everything below is measuring the source tree."""
 
     def test_the_import_comes_from_the_venv(self, installed):
         """Not merely "some site-packages" -- *this* venv's.
 
-        The venv is built with --system-site-packages so the dependency tree is
-        not downloaded again, which means an outer installed connectonion is also
-        importable. Asserting only that the path contains "site-packages" would
-        pass while measuring that other copy.
+        Asserting only that the path contains "site-packages" would pass while
+        measuring an outer installation injected by the caller's environment.
+        The exact fresh venv must own the imported candidate.
         """
         *_, env_dir = installed
         result = _run(installed, "import connectonion, pathlib;"
@@ -210,7 +239,7 @@ class TestTheCommandRuns:
         project.mkdir()
         home = tmp_path / "init-home"
         home.mkdir()
-        env = dict(os.environ, HOME=str(home), USERPROFILE=str(home),
+        env = dict(_runtime_env(), HOME=str(home), USERPROFILE=str(home),
                    HTTP_PROXY="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9",
                    ALL_PROXY="http://127.0.0.1:9", NO_PROXY="")
 
@@ -229,6 +258,7 @@ class TestTheCommandRuns:
         assert co.exists(), "the `co` entry point was not installed"
 
         result = subprocess.run([str(co), "--version"], cwd=str(elsewhere),
+                                env=_runtime_env(),
                                 capture_output=True, text=True, timeout=300)
         version = (REPO / "connectonion" / "_version.py").read_text(encoding="utf-8")
         expected = version.split('__version__ = "')[1].split('"')[0]
@@ -243,6 +273,7 @@ class TestTheCommandRuns:
         project.mkdir()
 
         result = subprocess.run([str(co), "init", "./", "--yes"], cwd=str(project),
+                                env=_runtime_env(),
                                 capture_output=True, text=True, timeout=600)
 
         assert result.returncode == 0, result.stderr[-400:]

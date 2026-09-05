@@ -44,7 +44,7 @@ and must be forward-ported to `main`, where new feature work continues on the
 1.8 train. Pre-releases are opt-in and must be marked as pre-releases on PyPI
 and GitHub.
 
-## Planned release: 1.8.2
+## Release candidate: 1.8.2
 
 Gemini 3.8 Flash becomes the shared default for `Agent`, `llm_do`, `co ai`,
 transcription, generated configuration, built-in subagents, and internal helper
@@ -52,17 +52,29 @@ calls. Both the managed `co/gemini-3.8-flash` route and direct-key
 `gemini-3.8-flash` route use Google's OpenAI-compatible API and preserve tool
 calls and thought signatures. Gemini 3.7 remains an explicit rollback choice;
 OpenAI and Anthropic choices remain available; missing Google configuration
-fails closed instead of silently changing provider. This entry reserves the
-work for 1.8.2 and does not declare it published or move the package version.
+fails closed instead of silently changing provider. Publication is verified by
+the tagged release workflow.
 
-## Current Version: 1.8.1a1
+## Current Version: 1.8.2
 
 ### Version History
-- 1.8.2 (**planned, not published:** add Gemini 3.8 Flash to the managed and
+- 1.8.2 (**Gemini 3.8 Flash:** add Gemini 3.8 Flash to the managed and
   direct-provider paths and make it the product-wide default. Remove deprecated
   3.8 sampling fields, validate reasoning levels, keep the synchronous Agent
   response boundary explicit, and retain Gemini 3.7 plus OpenAI/Anthropic as
   deliberate selections. Backend and client regression suites gate the change.)
+
+**1.8.1 final acceptance:** the free system browser remains the default; only
+explicit `--engine onion` selects paid operation. Linux CLI free → close → Onion
+→ normal actions → close → free passed against the exercised candidate, costing
+one $0.025 interval on a dedicated test account. The final release also includes
+#1425 (status probes no longer falsely report installed Chromium missing) and
+#1430 (proxy rejection and Chrome network-error documents produce typed nonzero
+navigation failures). Correct proxy credentials still navigate successfully.
+There is no paid UI-panel requirement: engine selection is a CLI/session-level
+operation, not per-read/write switching. macOS paid production artifacts remain
+unavailable; system Chrome is supported and Apple signing is not this release's
+gate. No new paid session is required for final non-billing regression checks.
 - 1.8.1a1 (**the preview that exercises 1.8.1 before it is called stable, and the release where paying for a browser became something you ask for.** Everything listed under 1.8.1 below is here; what is new to this line is the browser. `co browser go_to example.com` could open a paid Onion session and charge $0.025 per fifteen minutes on any machine that happened to have Onionwright installed and credit in the account, because `auto` — which is also the value a command sends when it names no engine at all — resolved to the paid engine whenever its preflight succeeded (#1327). It now resolves to the installed system Chrome without importing Onionwright, reading paid credentials or calling oo-api; `--engine onion` is the only way to spend money, and it still fails with a typed error rather than falling back. Fixing the CLI option alone would not have done it: an Agent gets its engine from the browser core's own default, so what changed is where `auto` resolves rather than what the flag says. The paid target moves to Chromium 151.0.7922.222 with Onionwright 0.0.14, whose Linux x86_64 and arm64 artifacts are live in the production catalogue and whose bytes were hashed from the bucket rather than read off the pull request that listed them. macOS has no production .222 object yet, so an explicit `--engine onion` on a Mac returns the typed unavailable error until openonion/browser#127 lands. This is an opt-in preview for exercise, not Stable or Latest; 1.8.1 is cut once it has been run.)
 - 1.8.1 (**a relayed session is now opaque to the relay, and a host keeps no file it can be taken down by.** The `SEAL` handshake 1.8.0 gave direct sockets is offered on the relay socket too; the oo-api proxy reads only `to` from the first frame and forwards the rest verbatim, so no relay change was needed and every frame of a relayed session — CONNECT, INPUT, EXEC, outputs, files — is ciphertext to the relay. Inside a seal the CONNECT and any ONBOARD_SUBMIT must be signed by the identity that sealed the socket, which is what makes the one-use signature ledger unnecessary there: it is not consulted. A `co host` process runs one worker and keeps the ledger it still needs for older clients in memory; `.co/replay.sqlite3` is written only by `create_app()` deployments that fork workers, and it now recreates its own schema if the file is removed under a running host. Why now: on 2026-09-03 a deploy's `rsync --delete` removed that file on the Melbourne rental host, the deploy helper died before restarting the service, and every signed request was refused for 2h44m — 217 refusals, all `misconfigured: replay protection unavailable` — until a manual restart (#1402, #1403). A 1.8.0 host behind the relay still works with a 1.8.1 client: the client's SEAL comes back as an unknown type and it opens a fresh bare relay socket, TLS to the relay as before.)
 - 1.8.0 (**stable: a browser on a server leaves the internet from your own computer, and a self-hosted agent needs one open port to be reached directly.** Since b1 the direct OIP socket is sealed end to end: `SEAL`/`SEALED_OK` exchange one-time X25519 keys signed by both Ed25519 identities (the address already is the key), and every frame after travels in a NaCl Box with a per-direction counter. A captured frame is unreadable and a replayed one does not open, so the "public endpoints must be https" rule is gone — no domain, certificate or Caddy on the host; the relay keeps forwarding control frames only. Exercised on a second, independently provisioned pair the same day: a Parrot OS laptop in Sydney lending its connection to the internal Melbourne rental host (GCP e2-small, hand-provisioned under 1.6, announcing `http://34.129.161.131:8001`); `api.ipify.org` and `ifconfig.me` saw `129.94.43.159`, `co proxy stop` broke the tab with `ERR_TUNNEL_CONNECTION_FAILED`, and the host's own agent and Lark gateway stayed up through it. Found and fixed on that run: the sealed socket lacked `async for`. Found and recorded: a 2 GB host cannot carry a leftover crawl browser and the paid engine at once. Everything listed under 1.8.0b1 ships unchanged.)

@@ -10,10 +10,18 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
+The current final candidate is **1.8.2**. Gemini 3.8 Flash becomes the shared
+model default, with Gemini 3.7 and other providers still explicitly selectable.
+It keeps the system browser free by
+default, requires explicit CLI selection for paid Onion, and includes the
+browser-status and proxy-navigation failure corrections. See `VERSIONING.md`
+for the current version and release history. The sections below describe
+historical 1.7 preview work, not current installation recommendations.
+
+## Historical 1.7 preview work
+
 - Stable release: `1.6.10`
 - Preview target: `1.7.0a13`
-- Planned patch: `1.8.2` — Gemini 3.8 Flash support and product-wide default
-  migration; this work is not part of 1.8.1.
 - Browser client: `@connectonion/react@0.4.2-alpha.11`
 
 The preview uses OIP 0.1 as the only first-party browser protocol. The Python
