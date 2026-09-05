@@ -328,8 +328,10 @@ Your NAS from the terminal. Requires `co syno login` once (QuickConnect ID or
 **Basic usage:**
 ```bash
 co syno                                # your shared folders
+co syno status                         # read-only connection and TLS check
 co syno ls /home/photos                # inside one
 co syno search invoice --in /home      # find by name
+co syno shares --json                  # audit existing public links
 co syno get 3 --to ~/Downloads         # download #3 from the listing
 co syno put report.pdf /home/docs      # upload
 ```
@@ -337,14 +339,19 @@ co syno put report.pdf /home/docs      # upload
 **Subcommands:**
 
 - `co syno login` - connect by QuickConnect ID, or directly with `--url`
-- `co syno` / `co syno ls [path]` - shared folders, or one folder (`--last/-n`)
-- `co syno search <query>` - find by file name (`--in` to scope)
+- `co syno status` - verify access and show the current TLS posture (`--json`)
+- `co syno` / `co syno ls [path]` - shared folders, or one folder (`--last/-n`, `--json`)
+- `co syno search <query>` - find by file name (`--in` to scope, `--json`)
 - `co syno get <#>` - download (`--to`)
 - `co syno put <path> <nas-folder>` - upload (`--overwrite`)
 - `co syno share <#>` - create a public sharing link
+- `co syno shares` - list existing public links without changing them (`--json`)
 
 There is deliberately no `co syno rm` — File Station's delete API is permanent,
 so unlike `co gdrive rm` it could not be made recoverable.
+
+DSM 2FA login and TLS certificate verification are not implemented in 1.8.5;
+the detailed guide states the safe operating boundary.
 
 See [synology.md](synology.md) for details.
 

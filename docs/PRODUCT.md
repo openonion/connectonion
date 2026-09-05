@@ -109,7 +109,7 @@ answer to "do I have to buy into all of this?" is that you do not.
 | `co gmail` | inbox, read, reply, send, sent, search (`cli/main.py:498-569`) |
 | `co outlook` | mail plus contacts, deferred and scheduled send |
 | `co gdrive` | list, search, get, put, rm |
-| `co syno` | a Synology NAS: login, ls, search, get, put, share |
+| `co syno` | a Synology NAS: read-only status/list/search/share audit plus get, put, and public-link creation |
 | `co email` | the agent's **own** mailbox — see the limit below |
 | `co call <addr> <cmd>` | run one command on a *remote* agent, no LLM in the loop, gated by that agent's whitelist (`cli/commands/call_commands.py:51-135`) |
 | `co copy <name>` | vendor any built-in into your project to edit: 16 tools, 13 plugins, 10 TUI components, trust policies, skills (`cli/commands/copy_commands.py:20-104`) |

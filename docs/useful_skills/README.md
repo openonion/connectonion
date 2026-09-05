@@ -9,6 +9,7 @@ Pre-built skills you can copy into your project and invoke with `/skill-name`.
 | [browser-workflow-skill-builder](browser-workflow-skill-builder.md) | Build robust browser automation skills for logged-in sites — save page context, write skill-local extract/verify scripts, and lock flows with hash-verified one-shot actions | `/browser-workflow-skill-builder` |
 | [cli-skill-design](cli-skill-design.md) | Design a `co <thing>` command surface and its SKILL.md together — tip-tested discoverability and self-diagnosing errors, both as checks you run | `/cli-skill-design` |
 | [co-browser](co-browser.md) | Drive one persistent, logged-in browser from the shell — solo or multi-agent | `/co-browser` |
+| [co-synology](co-synology.md) | Inspect NAS files and public links read-only first, with explicit transfer and TLS safety boundaries | `/co-synology` |
 | [deploy-agent](deploy-agent.md) | Deploy and operate an agent in production: project shape, state outside the rsync root, incremental table writes, identity/billing verification, sandboxed control center, user comms — every rule paid for by a real incident | `/deploy-agent` |
 | [install-connectonion](install-connectonion.md) | Install & fully set up ConnectOnion so every `co` command works (init+auth→keys.env, email, browser) for a possibly non-technical user — auto-corrects, ends with a plain-language summary | `/install-connectonion` |
 | [oo](oo.md) | Connect to remote Agents, publish selected self-contained skills, and follow signed publisher profiles without confusing OIP with skill distribution | `/oo` |

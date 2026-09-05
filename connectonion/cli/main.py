@@ -1152,14 +1152,24 @@ def syno_login(
     handle_syno_login(url=url)
 
 
+@syno_app.command("status")
+def syno_status(
+    json_output: bool = typer.Option(False, "--json", help="Emit one stable JSON document"),
+):
+    """Verify the saved connection with a read-only File Station request."""
+    from .commands.synology_commands import handle_syno_status
+    handle_syno_status(json_output=json_output)
+
+
 @syno_app.command("ls")
 def syno_ls(
     path: str = typer.Argument(None, help="Folder path, e.g. /home/photos. Omit to list shared folders."),
     last: int = typer.Option(20, "--last", "-n", help="How many entries to show"),
+    json_output: bool = typer.Option(False, "--json", help="Emit one stable JSON document"),
 ):
     """List shared folders, or the contents of one folder."""
     from .commands.synology_commands import handle_syno_list
-    handle_syno_list(path=path, last=last)
+    handle_syno_list(path=path, last=last, json_output=json_output)
 
 
 @syno_app.command("search")
@@ -1167,10 +1177,11 @@ def syno_search(
     query: str = typer.Argument(..., help="Text or glob to look for in file names"),
     path: str = typer.Option("/", "--in", help="Folder to search under"),
     last: int = typer.Option(20, "--last", "-n", help="How many matches to show"),
+    json_output: bool = typer.Option(False, "--json", help="Emit one stable JSON document"),
 ):
     """Search the NAS by file name."""
     from .commands.synology_commands import handle_syno_search
-    handle_syno_search(query, path=path, last=last)
+    handle_syno_search(query, path=path, last=last, json_output=json_output)
 
 
 @syno_app.command("get")
@@ -1201,6 +1212,16 @@ def syno_share(
     """Create a public sharing link for a file or folder."""
     from .commands.synology_commands import handle_syno_share
     handle_syno_share(ref)
+
+
+@syno_app.command("shares")
+def syno_shares(
+    last: int = typer.Option(20, "--last", "-n", help="How many existing links to show"),
+    json_output: bool = typer.Option(False, "--json", help="Emit one stable JSON document"),
+):
+    """List existing public sharing links without changing them."""
+    from .commands.synology_commands import handle_syno_shares
+    handle_syno_shares(last=last, json_output=json_output)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.

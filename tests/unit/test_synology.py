@@ -6,10 +6,11 @@ Tests cover:
 - login: credentials go in the POST body, never the query string
 - stale-session retry on DSM codes 106/107/119
 - list_files/search_files normalization
+- connection status and existing sharing-link inventory
+- search cleanup after failures and bounded polling
 - upload: the binary part is written last, and overwrite is always explicit
 """
 
-import os
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -259,8 +260,94 @@ def test_search_runs_start_poll_clean():
     assert files[0]["name"] == "cat.jpg"
 
 
+def test_search_cleans_the_task_when_polling_fails():
+    """Temporary DSM search databases must not leak after a failed poll."""
+    from connectonion.useful_tools.synology import Synology
+
+    def request(_self, _api, method, **_params):
+        if method == "start":
+            return {"taskid": "task-1"}
+        if method == "list":
+            raise ValueError("network interrupted")
+        return {}
+
+    with patch.object(Synology, "_request", autospec=True, side_effect=request) as mocked:
+        with pytest.raises(ValueError, match="network interrupted"):
+            nas().search_files("cat")
+
+    assert [call.args[2] for call in mocked.call_args_list] == ["start", "list", "clean"]
+
+
+def test_search_times_out_instead_of_returning_partial_results():
+    """An unfinished search is not a successful, complete answer."""
+    from connectonion.useful_tools.synology import Synology, SynologyError
+
+    replies = [{"taskid": "task-1"}, {"finished": False, "files": []}, {}]
+    with patch.object(Synology, "_request", side_effect=replies) as request:
+        with pytest.raises(SynologyError) as failure:
+            nas().search_files("cat", poll_attempts=1, poll_interval=0)
+
+    assert failure.value.code == "search_timeout"
+    assert [call.args[1] for call in request.call_args_list] == ["start", "list", "clean"]
+
+
 def test_search_ignores_empty_query():
     assert nas().search_files("   ") == []
+
+
+# === Status and sharing-link inventory ===
+
+
+def test_status_proves_file_station_access_without_writing():
+    from connectonion.useful_tools.synology import Synology
+
+    with patch.object(Synology, "_request", return_value={"shares": []}) as request:
+        status = nas().status()
+
+    request.assert_called_once_with("SYNO.FileStation.List", "list_share", limit=1)
+    assert status == {
+        "connected": True,
+        "url": "https://nas.local:5001",
+        "account": "aaron",
+        "session_cached": True,
+        "tls_verification": False,
+    }
+
+
+def test_list_sharing_links_normalizes_existing_links():
+    from connectonion.useful_tools.synology import Synology
+
+    data = {
+        "links": [{
+            "id": "share-1",
+            "url": "https://nas.local/sharing/abc123",
+            "path": "/home/report.pdf",
+            "date_expired": "2026-09-30",
+            "status": "valid",
+        }],
+    }
+    with patch.object(Synology, "_request", return_value=data) as request:
+        links = nas().list_sharing_links(last=25)
+
+    request.assert_called_once_with(
+        "SYNO.FileStation.Sharing", "list", version=3, offset=0, limit=25
+    )
+    assert links == [{
+        "id": "share-1",
+        "path": "/home/report.pdf",
+        "url": "https://nas.local/sharing/abc123",
+        "expires": "2026-09-30",
+        "status": "valid",
+    }]
+
+
+def test_list_sharing_links_rejects_nonsense_count_without_a_request():
+    from connectonion.useful_tools.synology import Synology
+
+    with patch.object(Synology, "_request") as request:
+        assert nas().list_sharing_links(last=0) == []
+
+    request.assert_not_called()
 
 
 # === Transfer ===

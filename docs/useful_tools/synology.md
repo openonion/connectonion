@@ -1,7 +1,7 @@
 # Synology Tool
 
-Give an agent File Station access to a Synology NAS — list, search, download,
-upload, and share files.
+Give an agent File Station access to a Synology NAS — verify access, list,
+search, audit public links, download, upload, and share files.
 
 ```python
 from connectonion import Agent, Synology
@@ -28,8 +28,10 @@ Synology(url="https://nas.local:5001", account="aaron", password="…")
 
 | Method | Does |
 |---|---|
+| `status()` | Verify authenticated File Station access without changing NAS state |
 | `list_files(path=None, last=20)` | Shared folders, or one folder's contents |
 | `search_files(query, path="/", last=20)` | Find files by name |
+| `list_sharing_links(last=20)` | List existing public sharing links without changing them |
 | `download(path, dest=".")` | Fetch a file to disk |
 | `upload(local_path, path, overwrite=False)` | Send a file to a NAS folder |
 | `share(path)` | Create a public sharing link, returns the URL |
@@ -73,6 +75,8 @@ an agent cannot irreversibly destroy NAS files.
 ## TLS
 
 DSM ships a self-signed certificate by default, so certificate verification is
-off for NAS connections. Traffic is still HTTPS.
+off for NAS connections in 1.8.5. Traffic is encrypted, but the client does not
+verify the NAS identity. `status()` reports this explicitly. DSM accounts that
+require a one-time 2FA code are not supported yet.
 
 See the [CLI docs](../cli/synology.md) for the `co syno` commands.
