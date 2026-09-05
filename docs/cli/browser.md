@@ -46,9 +46,10 @@ artifact endpoint, not the public PyPI placeholder.
 | `system` | The same resolution, requested explicitly. |
 | `onion` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
 
-A daemon is pinned to the engine it started with, so `--engine onion go_to ...`
-followed by a plain `co browser get_text` keeps using the paid browser you
-opened. Starting fresh with no engine gives you system Chrome again.
+A daemon is pinned to the engine it started with. When you select an engine
+explicitly, keep that flag on subsequent commands, including `close`. Starting
+fresh with no engine gives you system Chrome again. This is session selection,
+not automatic read/write switching; there is no separate paid UI panel.
 
 Artifact checking and download do not charge. A paid session starts only after
 the complete artifact is locally ready, then prepays $0.025 for one 15-minute
@@ -60,7 +61,10 @@ The daemon is pinned to its chosen engine. Close it before changing modes:
 
 ```bash
 co browser close
-co browser --engine system go_to example.com
+co browser --engine onion go_to example.com
+co browser --engine onion get_text
+co browser --engine onion close
+co browser go_to example.com  # a fresh default session is free again
 ```
 
 System Chrome and Onion Browser use separate persistent profiles. Cookies and
@@ -301,6 +305,15 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
 
 ## Error Messages
+
+`go_to` returns exit code `1` with `BrowserNavigationError` when the proxy
+rejects authentication or Chromium returns a network error instead of the
+destination document. The code is `NAVIGATION_PROXY_AUTH_FAILED` for an observed
+407 or explicit authentication error, and `NAVIGATION_NETWORK_ERROR` for other
+Chromium network failures (including rejected challenges surfaced that way by
+the driver). These messages omit URLs and driver logs that may hold credentials.
+An ordinary empty page or HTTP 404 document remains readable and is not treated
+as a transport failure.
 
 Errors print to **stderr** and exit with code `1`. Each one tells you the next step — handy when an AI agent is driving the CLI and needs to self-correct.
 
