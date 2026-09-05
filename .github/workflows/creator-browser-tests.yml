@@ -1,0 +1,26 @@
+name: Creator browser scripts
+on:
+  pull_request:
+    paths:
+      - 'connectonion/useful_skills/co-creator/**'
+      - 'tests/creator_browser/**'
+      - '.github/workflows/creator-browser-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'connectonion/useful_skills/co-creator/**'
+      - 'tests/creator_browser/**'
+permissions:
+  contents: read
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: tests/creator_browser
+      - run: npm test
+        working-directory: tests/creator_browser

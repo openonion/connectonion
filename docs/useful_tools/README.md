@@ -17,6 +17,7 @@ Pre-built tools for common agent tasks.
 | [WebFetch](web_fetch.md) | Fetch web content | `from connectonion import WebFetch` |
 | [Gmail](gmail.md) | Gmail integration | `from connectonion import Gmail` |
 | [GDrive](gdrive.md) | Google Drive files | `from connectonion import GDrive` |
+| [YouTube](youtube.md) | Google-authenticated metadata and preview-first writes | `from connectonion import YouTube` |
 | [Synology](synology.md) | Synology NAS files | `from connectonion import Synology` |
 | [get_emails](get_emails.md) | Email parsing utilities | `from connectonion import get_emails` |
 | [send_email](send_email.md) | Send emails via API | `from connectonion import send_email` |

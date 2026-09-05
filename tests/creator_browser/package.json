@@ -1,0 +1,6 @@
+{
+  "name": "connectonion-creator-browser-tests",
+  "private": true,
+  "scripts": {"test": "node --test test-scripts.cjs"},
+  "devDependencies": {"jsdom": "26.1.0"}
+}

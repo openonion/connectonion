@@ -222,6 +222,11 @@ OTHER_VAR=keep-this
 class TestAuthGoogleFlow:
     """Test the co auth google flow with mocked backend."""
 
+    @pytest.fixture(autouse=True)
+    def _synthetic_broker_key(self, monkeypatch):
+        # These flow tests do not need dotenv or a real local credential source.
+        monkeypatch.setattr('connectonion.cli.commands.auth_commands.load_api_key', lambda: 'test-key')
+
     def setup_method(self):
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
@@ -346,3 +351,52 @@ class TestAuthGoogleFlow:
 
             # Should timeout and show error
             assert 'timed out' in result.output.lower() or result.exit_code != 0
+
+
+@pytest.mark.parametrize("granted", [True, False])
+@pytest.mark.parametrize("legacy_backend", [True, False])
+def test_google_login_uses_one_flow_and_reports_actual_youtube_grant(granted, legacy_backend, monkeypatch, tmp_path):
+    from urllib.parse import urlencode
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.cli.commands import auth_commands as auth
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(auth, "load_api_key", lambda: "synthetic-broker-key")
+    monkeypatch.setattr(auth.time, "sleep", lambda _: None)
+    browser = MagicMock()
+    monkeypatch.setattr(auth.webbrowser, "open", browser)
+    def response(data):
+        result = Mock(status_code=200)
+        result.json.return_value = data
+        return result
+    scopes = "https://www.googleapis.com/auth/gmail.readonly"
+    if not legacy_backend:
+        scopes += " https://www.googleapis.com/auth/youtube"
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({"scope": scopes})
+    get = MagicMock(side_effect=[response({"connected": False}), response({"auth_url": auth_url}),
+        response({"connected": True, "expires_at": "2030-01-01"}),
+        response({"access_token": "synthetic", "refresh_token": "synthetic-refresh", "expires_at": "2030-01-01",
+                  "google_email": "fixture@example.com", "scopes": "gmail.readonly,youtube" if granted else "gmail.readonly"})])
+    monkeypatch.setattr(auth.requests, "get", get)
+    result = CliRunner().invoke(app, ["auth", "google"])
+    assert result.exit_code == 0, result.output
+    assert "params" not in get.call_args_list[1].kwargs
+    browser.assert_called_once_with(auth_url)
+    assert "synthetic-refresh" not in result.output
+    assert ("Read your recent uploads: co youtube" if granted else "permission was not granted") in result.output
+    saved_scopes = next(line for line in Path(".env").read_text().splitlines() if line.startswith("GOOGLE_SCOPES="))
+    assert saved_scopes == ("GOOGLE_SCOPES=gmail.readonly,youtube" if granted else "GOOGLE_SCOPES=gmail.readonly")
+    if not granted:
+        assert result.output.splitlines()[-1] == "Next: co auth google"
+        assert "Read your recent uploads" not in result.output
+
+
+def test_google_auth_has_no_separate_youtube_switch(monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.cli.commands import auth_commands as auth
+    start = MagicMock()
+    monkeypatch.setattr(auth, "handle_google_auth", start)
+    result = CliRunner().invoke(app, ["auth", "google", "--youtube"])
+    assert result.exit_code == 2
+    start.assert_not_called()

@@ -241,7 +241,7 @@ def _print_oauth_url(auth_url: str) -> None:
 
 
 def handle_google_auth():
-    """Authenticate with Google OAuth for Gmail/Calendar access."""
+    """Connect Google tools, including YouTube, with one saved login."""
 
     # Check if user is authenticated with OpenOnion first
     api_key = load_api_key()
@@ -346,6 +346,17 @@ def handle_google_auth():
     console.print("\n📧 You can now use Google tools in your agents:")
     console.print("   [dim]from connectonion.tools import gmail_send[/dim]")
     console.print("   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
+    # Partial consent still connects the granted Google tools. YouTube checks
+    # its own scope before any API operation; requested scopes are not a grant.
+    import re
+    granted = {scope.removeprefix("https://www.googleapis.com/auth/")
+               for scope in re.split(r"[,\s]+", credentials.get("scopes", ""))}
+    if "youtube" in granted:
+        console.print("Read your recent uploads: co youtube")
+    else:
+        console.print("Google connected, but full YouTube permission was not granted.", style="yellow")
+        console.print("Next: co auth google")
+
 
 
 def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:

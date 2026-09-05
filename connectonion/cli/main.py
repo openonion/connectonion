@@ -88,13 +88,49 @@ class _OneSuggestion(typer.core.TyperGroup):
 _SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
 
 
+# Typer 0.27 vendors Click; earlier supported versions use the installed Click.
+try:
+    from typer._click.exceptions import UsageError as _UsageError
+except ImportError:
+    from click import UsageError as _UsageError
+
+
+class _CreatorGroup(_OneSuggestion):
+    """Creator usage failures must survive a pipe along with their recovery tip."""
+
+    @staticmethod
+    def _usage_error(error, ctx):
+        current = error.ctx or ctx
+        names = []
+        while current.parent is not None:
+            names.append(current.info_name)
+            current = current.parent
+        command = "co " + " ".join(reversed(names)) + " --help"
+        message = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", error.format_message())
+        print(f"Usage error: {message}")
+        print(f"Next: {command}")
+        raise typer.Exit(2)
+
+    def parse_args(self, ctx, args):
+        try:
+            return super().parse_args(ctx, args)
+        except _UsageError as error:
+            self._usage_error(error, ctx)
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except _UsageError as error:
+            self._usage_error(error, ctx)
+
+
 def _typer_app(**kwargs) -> typer.Typer:
     """Every group in this CLI. One place, so no sub-app is left behind.
 
     The doubling above was present on all twelve groups, and a fix applied at
     the call sites is a fix that the thirteenth group will not get.
     """
-    return typer.Typer(cls=_OneSuggestion, **kwargs)
+    return typer.Typer(cls=kwargs.pop("cls", _OneSuggestion), **kwargs)
 
 
 # pretty_exceptions_show_locals defaults to True in Typer, which dumps every
@@ -157,6 +193,8 @@ def _show_help():
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
+    console.print("  [green]youtube[/green]           Inspect videos and preview or confirm uploads and metadata edits")
+    console.print("  [green]tiktok[/green]            Prepare local post plans and inspect browser readiness")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
@@ -241,7 +279,7 @@ def deploy(
 
 @app.command()
 def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
-    """Authenticate with OpenOnion."""
+    """Authenticate with OpenOnion, or connect Google (Gmail, Calendar, Drive, YouTube)."""
     if service == "google":
         from .commands.auth_commands import handle_google_auth
         handle_google_auth()
@@ -1127,6 +1165,110 @@ def gdrive_rm(
     """Move a file to the Drive trash (recoverable)."""
     from .commands.gdrive_commands import handle_gdrive_rm
     handle_gdrive_rm(file_id)
+
+
+# YouTube uses the same saved Google login and refresh broker as Gmail.
+_YOUTUBE_AUTH_HELP = (
+    "Connect once with co auth google, then use the saved Google login like co gmail. "
+    "Tokens refresh automatically through the existing Google OAuth broker. "
+    "YouTube operations use the official Data API. Uploads default to private; "
+    "unverified API projects can force private visibility. --confirm is an external write."
+)
+youtube_app = _typer_app(cls=_CreatorGroup, help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
+app.add_typer(youtube_app, name="youtube")
+
+
+@youtube_app.callback(invoke_without_command=True)
+def youtube_callback(ctx: typer.Context,
+                     json_output: bool = typer.Option(False, "--json", help="Emit one JSON object")):
+    if ctx.invoked_subcommand is None:
+        from .commands.youtube_commands import handle_youtube_list
+        handle_youtube_list(json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Place --json after the subcommand; see co youtube --help.")
+
+
+@youtube_app.command("channel", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_channel(target: Optional[str] = typer.Argument(None, help="UC channel ID, @handle, or channel URL; default is your channel"),
+                    json_output: bool = typer.Option(False, "--json")):
+    """Read a channel and its uploads playlist ID."""
+    from .commands.youtube_commands import handle_youtube_channel
+    handle_youtube_channel(target, json_output=json_output)
+
+
+@youtube_app.command("list", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_list(target: Optional[str] = typer.Argument(None, help="Channel ID, @handle or URL; default is your channel"),
+                 last: int = typer.Option(20, "--last", "-n", min=1, max=200),
+                 json_output: bool = typer.Option(False, "--json")):
+    """List recent uploads; numbers refer to this exact listing."""
+    from .commands.youtube_commands import handle_youtube_list
+    handle_youtube_list(target, last, json_output=json_output)
+
+
+@youtube_app.command("video", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_video(item: str = typer.Argument(..., help="Number from your last listing, video ID, or URL; no media download"),
+                  json_output: bool = typer.Option(False, "--json")):
+    """Read one video's metadata and returned counts."""
+    from .commands.youtube_commands import handle_youtube_video
+    handle_youtube_video(item, json_output=json_output)
+
+
+@youtube_app.command("put", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_put(path: str = typer.Argument(..., help="Local video file"),
+                title: str = typer.Option(..., "--title"),
+                channel: str = typer.Option(..., "--channel", help="Exact UC channel ID, checked again before upload"),
+                description: str = typer.Option("", "--description"),
+                privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
+                category: str = typer.Option("22", "--category"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact preview digest; consumes this plan once and uploads"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Preview locally; upload only with the current plan's --confirm digest."""
+    from .commands.youtube_commands import handle_youtube_put
+    handle_youtube_put(path, title, channel, description, privacy, category, dry_run, confirm, json_output)
+
+
+@youtube_app.command("update", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_update(item: str = typer.Argument(..., help="Listing number, video ID, or URL"),
+                   title: Optional[str] = typer.Option(None, "--title"),
+                   description: Optional[str] = typer.Option(None, "--description"),
+                   dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact digest of the current metadata preview; performs one update"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Preview title/description edits without changing privacy or other parts."""
+    from .commands.youtube_commands import handle_youtube_update
+    handle_youtube_update(item, title, description, dry_run, confirm, json_output)
+
+
+tiktok_app = _typer_app(cls=_CreatorGroup, help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
+app.add_typer(tiktok_app, name="tiktok")
+
+
+@tiktok_app.callback(invoke_without_command=True)
+def tiktok_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+        print("Start a local post plan: co tiktok post --help")
+
+
+@tiktok_app.command("post")
+def tiktok_post(path: str = typer.Argument(..., help="Local video file; preview never uploads it"),
+                caption: str = typer.Option(..., "--caption"),
+                account: str = typer.Option(..., "--account", help="Intended @handle; not an authenticated identity assertion"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit local preview (the default)"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Validate a plan digest, then refuse submission until the browser adapter is verified"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Prepare a local plan. No TikTok draft, upload, or post is created."""
+    from .commands.tiktok_commands import handle_tiktok_post
+    handle_tiktok_post(path, caption, account, dry_run, confirm, json_output)
+
+
+@tiktok_app.command("inspect")
+def tiktok_inspect(tab: str = typer.Option(..., "--tab", help="An existing co browser tab owned by this task"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Capture and verify login/readiness evidence; never click or upload."""
+    from .commands.tiktok_browser_commands import handle_inspect
+    handle_inspect(tab, json_output)
 
 
 # Synology command group. `co syno` (no args) lists your shared folders.
