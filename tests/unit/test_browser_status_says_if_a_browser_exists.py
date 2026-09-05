@@ -27,6 +27,8 @@ wrong one for the page commands — which is why the client keys on the daemon's
 own launch failure instead.
 """
 
+import asyncio
+
 import pytest
 
 from connectonion.cli.browser_agent import daemon as daemon_module
@@ -101,6 +103,19 @@ class TestAnInstalledBrowserIsNamed:
         monkeypatch.setattr(daemon_module, "installed_browser_path", lambda: self.PATH)
 
         assert "none installed" not in status_text()
+
+    def test_sync_driver_probe_runs_outside_the_daemon_event_loop(self, status_text, monkeypatch):
+        def sync_probe():
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return self.PATH
+            raise RuntimeError("Patchright Sync API cannot run inside the asyncio loop")
+
+        monkeypatch.setattr(daemon_module, "installed_browser_path", sync_probe)
+        text = status_text()
+        assert self.PATH in text
+        assert "none installed" not in text
 
 
 class TestStatusStillAnswersWhenThingsAreBroken:
