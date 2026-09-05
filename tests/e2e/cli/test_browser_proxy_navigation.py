@@ -78,7 +78,10 @@ class ProxyNavigationTests(unittest.TestCase):
                         else:
                             self.assertNotEqual(result.returncode, 0)
                             self.assertIn("BrowserNavigationError", result.stdout + result.stderr)
-                            self.assertIn("NAVIGATION_PROXY_AUTH_FAILED", result.stdout + result.stderr)
+                            # Chromium can surface a rejected challenge as a
+                            # network error instead of returning its HTTP 407.
+                            self.assertRegex(result.stdout + result.stderr,
+                                             r"BrowserNavigationError: NAVIGATION_(PROXY_AUTH_FAILED|NETWORK_ERROR)")
                             self.assertNotIn("Navigated to", result.stdout)
                             self.assertEqual(len(accepted), before)
                             self.assertGreater(len(rejected), rejected_before)
