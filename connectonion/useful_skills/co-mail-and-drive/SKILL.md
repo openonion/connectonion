@@ -46,9 +46,9 @@ co outlook sent -n 20
 Gmail search takes full Gmail query syntax (`from:`, `subject:`, `after:2026/07/01`,
 `is:unread`). Outlook search is plain text over subject and body.
 
-`co gmail read` marks the mail read only when the token carries the `gmail.modify`
-scope; with read-only + send scopes it prints the body and leaves it unread. It says
-which happened — repeat what it says, don't assume.
+`co gmail read` preserves unread state by default. `co gmail read 3 --mark-read`
+marks it read only when the token carries `gmail.modify`; otherwise it prints
+a reauthorization hint. Repeat what the output says, don't assume.
 
 ## Send and reply
 
@@ -71,6 +71,7 @@ always previews and asks for interactive confirmation:
 ```bash
 co gmail draft list
 co gmail draft create bob@example.com "Subject" "Body text"
+co gmail draft list           # create prints an ID; it does not assign row 1
 co gmail draft attach 1 report.pdf
 co gdrive list
 co gmail draft attach 1 3 --drive
@@ -83,13 +84,16 @@ co gmail draft send 1
 
 `draft create`, `attach`, `remove`, `replace`, and `preview` never send. `draft
 send` has no `--yes` or other confirmation bypass. A declined confirmation
-leaves the draft intact and exits `1`.
+leaves the draft intact and exits `1`. EOF or interruption at the confirmation
+prompt does the same and prints the preview command again.
 
 A Gmail draft number comes from the immediately preceding `co gmail draft
 list`, cached separately at `~/.co/gmail_last_drafts.json`. Attachment numbers
 come from the current `draft preview`. Drive file numbers still come from the
 immediately preceding `co gdrive` listing. Re-list before acting rather than
 carrying numbers across listings.
+An empty draft listing clears its old numbers. After creating a draft, use the
+ID printed by `create`, or list again before choosing a row number.
 
 `--drive` attaches bytes without making a local copy. Native Docs, Sheets,
 Slides, and Drawings are exported using the same formats as `co gdrive get`.
