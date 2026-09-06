@@ -51,7 +51,9 @@ co youtube update VIDEO_ID --title "New title"
 
 Numbers belong to the most recent nonempty YouTube listing; prefer stable IDs for
 writes. `put` and `update` preview by default; `--confirm DIGEST` executes one
-specific preview. Never fabricate a digest or retry an uncertain write. Upload
+specific preview. Each preview prints the complete confirmation command, with
+metadata quoted and its digest filled in. Use it only after the user has approved
+that plan. Never fabricate a digest or retry an uncertain write. Upload
 preview is local, not proof of API approval, quota, or valid media. YouTube's
 API must be enabled; unaudited projects may be restricted to private uploads.
 `video` reads metadata, not video bytes. Every `--json` response includes `ok` and

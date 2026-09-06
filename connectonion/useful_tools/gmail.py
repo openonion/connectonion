@@ -2,7 +2,7 @@
 Purpose: Gmail integration tool for reading, sending, and managing emails via Google API
 LLM-Note:
   Dependencies: imports from [os, base64, google.oauth2.credentials, googleapiclient.discovery, googleapiclient.errors] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gmail.py]
-  Data flow: Agent calls Gmail methods → validates the ambient OpenOnion account and refreshes server-owned Google credentials via oo-api → builds Gmail API service → API calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
+  Data flow: Agent calls Gmail methods → refreshes the locally held Google token through oo-api's stateless exchange → builds Gmail API service → direct calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
   State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
   Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), draft CRUD/attachment methods, send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately (lazy loading)

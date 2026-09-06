@@ -1,5 +1,7 @@
 """Thin YouTube handlers; Google login matches Gmail and writes default to preview."""
 
+import shlex
+
 from .creator_commands import cache_listing, resolve_video, run
 from ...useful_tools.creator_plan import CreatorError, confirm_plan
 from ...useful_tools.youtube import YouTube, prepare_upload
@@ -45,9 +47,13 @@ def handle_youtube_put(path: str, title: str, channel: str, description: str = "
             raise CreatorError("conflicting_mode", "--dry-run and --confirm cannot be combined.")
         if confirm is None:
             plan = prepare_upload(path, title, channel, description, privacy, category)
-            command = "co youtube put --help"
+            command = shlex.join([
+                "co", "youtube", "put", plan["file"]["path"], "--title", title,
+                "--channel", channel, "--description", description, "--privacy", privacy,
+                "--category", category, "--confirm", plan["confirmation"],
+            ])
             return {"mode": "preview", "plan": plan, "quota_remaining": None,
-                    "note": "Local preview only. Account, quota, media validity and API approval are not verified."}, command, f"Review confirmation options: {command}"
+                    "note": "Local preview only. Account, quota, media validity and API approval are not verified."}, command, f"After the user approves this plan, upload with: {command}"
         import sys
         confirm_plan(prepare_upload(path, title, channel, description, privacy, category), confirm)
         client = _client(progress=lambda value: print(f"Upload: {value:.0%}", file=sys.stderr))
@@ -65,6 +71,16 @@ def handle_youtube_update(item: str, title: str | None = None, description: str 
             raise CreatorError("conflicting_mode", "--dry-run and --confirm cannot be combined.")
         identity = resolve_video(item)
         result = _client().update(identity, title, description, confirmation=confirm)
-        command = f"co youtube video {identity}" if confirm else "co youtube update --help"
-        return {"mode": "write" if confirm else "preview", "result" if confirm else "plan": result}, command, f"Next: {command}"
+        if confirm:
+            command = f"co youtube video {identity}"
+            tip = f"Inspect the update: {command}"
+        else:
+            arguments = ["co", "youtube", "update", identity]
+            if title is not None:
+                arguments.extend(["--title", title])
+            if description is not None:
+                arguments.extend(["--description", description])
+            command = shlex.join([*arguments, "--confirm", result["confirmation"]])
+            tip = f"After the user approves this plan, update with: {command}"
+        return {"mode": "write" if confirm else "preview", "result" if confirm else "plan": result}, command, tip
     run("youtube", action, json_output, recovery="co youtube list")

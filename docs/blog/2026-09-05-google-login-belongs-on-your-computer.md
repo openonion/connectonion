@@ -28,3 +28,17 @@ The question was not whether a scope fits in a database column. It was which
 copy of a login has authority. Once that was explicit, the new column had no job.
 Old clients still need an upgrade, and real Google consent still needs its own
 acceptance run. Neither is a reason to keep an invisible second login.
+
+Preparing 1.8.3 made that distinction concrete again. The package installed in
+a clean environment, and its commands and bundled documentation were present.
+The deployed backend could issue the new consent URL. None of those checks
+meant that a person had granted YouTube access. The release checklist keeps
+that next action separate: the user consents in Google, then a fresh CLI process
+reads through the four services using the local grant. An authorization screen
+is not an authorization result, just as a local refresh token was never proof
+that the server was using it.
+
+On 2026-09-07, that final check passed: four fresh command processes read
+Gmail, Drive, Calendar and YouTube from the existing local grant. The new broker
+refreshed the token the caller supplied. No new consent prompt was needed,
+and no mail, calendar or video write was used to prove the read path.

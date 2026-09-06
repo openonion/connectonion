@@ -106,6 +106,15 @@ class Client:
 
 
 def prepared_browser(tmp_path):
+    # Exercise both the minimum supported package and newer local checkouts.
+    # These are inert Linux fixture values, not a real artifact or paid grant.
+    metadata = {
+        "minimum_client_version": engine.MIN_ONIONWRIGHT_VERSION,
+        "signing_mode": "not_applicable",
+        "notarized": False,
+        "bundle_path": None,
+        "signing_identity_sha256": None,
+    }
     artifact = Artifact(
         artifact_id=f"chrome/{engine.BROWSER_REVISION}/linux-x86_64.tar.zst",
         browser_revision=engine.BROWSER_REVISION,
@@ -121,6 +130,8 @@ def prepared_browser(tmp_path):
         repository_commit="2" * 40,
         provenance_sha256="3" * 64,
         paid_ready=True,
+        **{key: value for key, value in metadata.items()
+           if key in Artifact.__dataclass_fields__},
     )
     capability = Capability(
         requested_engine="onion",
