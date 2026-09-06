@@ -37,3 +37,8 @@ that next action separate: the user consents in Google, then a fresh CLI process
 reads through the four services using the local grant. An authorization screen
 is not an authorization result, just as a local refresh token was never proof
 that the server was using it.
+
+On 2026-09-07, that final check passed: four fresh command processes read
+Gmail, Drive, Calendar and YouTube from the existing local grant. The new broker
+refreshed the token the caller supplied. No new consent prompt was needed,
+and no mail, calendar or video write was used to prove the read path.

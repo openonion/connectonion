@@ -102,3 +102,7 @@ Exit 0 means a read/preview/write result; exit 1 means an operational failure
 with a sanitized cause and next command; exit 2 is a Typer usage error. Preview
 mode is always explicit in output. Provider error bodies, URLs and token locals
 are never printed.
+
+Each write preview prints a complete `next_command` containing the exact arguments
+and confirmation digest. After approving that plan, use the printed command.
+The command remains visible when output is piped.

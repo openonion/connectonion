@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 from rich.text import Text
+from rich.console import Console
 from typer.testing import CliRunner
 from typer.main import get_command
 from connectonion.cli.main import app
@@ -30,8 +31,8 @@ CASES = [
     (['youtube', 'list'], 'Inspect the first listed video', 'co youtube video 1'),
     (['youtube', 'channel'], 'List this channel', f'co youtube list {CHANNEL}'),
     (['youtube', 'video', VIDEO], 'Inspect its channel', f'co youtube channel {CHANNEL}'),
-    (['youtube', 'put', 'clip.mp4', '--title', 'Demo', '--channel', CHANNEL], 'Review the confirmation options', 'co youtube put --help'),
-    (['youtube', 'update', VIDEO, '--title', 'Changed'], 'Review the confirmation options', 'co youtube update --help'),
+    (['youtube', 'put', 'clip.mp4', '--title', 'Demo', '--channel', CHANNEL], 'The user approved this exact upload preview; execute that upload', f'co youtube put clip.mp4 --title Demo --channel {CHANNEL} --description \"\" --privacy private --category 22 --confirm synthetic-digest'),
+    (['youtube', 'update', VIDEO, '--title', 'Changed'], 'The user approved this exact update preview; execute that update', f'co youtube update {VIDEO} --title Changed --confirm synthetic-digest'),
 ]
 
 def capture(args, root):
@@ -43,15 +44,16 @@ def capture(args, root):
     youtube.video.return_value = {'id': VIDEO, 'channel_id': CHANNEL}
     youtube.update.return_value = {'confirmation': 'synthetic-digest'}
     with patch.object(gc, '_client', return_value=calendar), patch.object(yt, '_client', return_value=youtube), \
-         patch.object(yt, 'prepare_upload', return_value={'confirmation': 'synthetic-digest'}), \
-         patch.object(rendering, '_cache', return_value=root / 'listing.json'):
+         patch.object(yt, 'prepare_upload', return_value={'confirmation': 'synthetic-digest', 'file': {'path': 'clip.mp4'}}), \
+         patch.object(rendering, '_cache', return_value=root / 'listing.json'), \
+         patch.object(rendering, 'console', Console(force_terminal=False, width=240)):
         return CliRunner().invoke(app, args, prog_name='co')
 
 @pytest.mark.parametrize('args,goal,expected', CASES)
 def test_piped_tip(args, goal, expected, tmp_path):
     result = capture(args, tmp_path)
     assert result.exit_code == 0, result.output
-    assert result.output.strip().splitlines()[-1].endswith(expected)
+    assert shlex.split(result.output.strip().splitlines()[-1].split(': ', 1)[-1]) == shlex.split(expected)
 
 def test_youtube_help_skill_parity():
     skill = (Path(__file__).resolve().parents[2] / 'connectonion/useful_skills/co-google/SKILL.md').read_text()
@@ -78,3 +80,26 @@ if __name__ == '__main__':
                            model='co/gemini-3.7-flash').strip()
             print(json.dumps(dict(command='co ' + ' '.join(args), tip=result.output.strip().splitlines()[-1],
                                   goal=goal, reply=reply, passed=shlex.split(reply) == shlex.split(expected))), flush=True)
+
+
+def test_upload_tip_preserves_quoted_metadata_and_exact_plan(tmp_path):
+    clip = tmp_path / "a clip.mp4"
+    clip.write_bytes(b"synthetic media")
+    with patch.object(yt, '_client', side_effect=AssertionError('preview reached provider')):
+        result = CliRunner().invoke(app, ['youtube', 'put', str(clip), '--title', "A 'quoted' demo",
+            '--description', 'literal $(no-command)', '--channel', CHANNEL, '--json'])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert shlex.split(data['next_command']) == ['co', 'youtube', 'put', str(clip.resolve()),
+        '--title', "A 'quoted' demo", '--channel', CHANNEL, '--description', 'literal $(no-command)',
+        '--privacy', 'private', '--category', '22', '--confirm', data['plan']['confirmation']]
+    assert 'After the user approves' in data['next_tip']
+
+
+def test_update_tip_preserves_explicit_empty_description(tmp_path):
+    result = capture(['youtube', 'update', VIDEO, '--description', '', '--json'], tmp_path)
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert shlex.split(data['next_command']) == ['co', 'youtube', 'update', VIDEO,
+        '--description', '', '--confirm', 'synthetic-digest']
+    assert 'After the user approves' in data['next_tip']

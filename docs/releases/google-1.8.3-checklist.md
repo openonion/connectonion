@@ -1,7 +1,7 @@
 # Google 1.8.3 publication checklist
 
-This is release preparation, not permission to publish. Stable remains 1.8.2
-until the immutable-tag workflow publishes and verifies 1.8.3.
+The owner authorized publication on 2026-09-07. Stable remains 1.8.2 until
+the immutable-tag workflow publishes and verifies 1.8.3.
 
 ## Prepared
 
@@ -35,17 +35,22 @@ until the immutable-tag workflow publishes and verifies 1.8.3.
 - [x] Verify deployed oo-api revision contains #230 and its health check passes:
   `1ee5af128f0f1bf620719b161bbc0ae1b944c380`, deployment run `33963449009`.
   Service active and public relay health healthy on 2026-09-05.
-- [ ] Complete `co auth google` interactively. Consent is the user's action;
-  do not auto-accept or put token values into test evidence.
-- [ ] Run read-only `co gmail inbox`, `co gdrive list`, `co gcalendar list`,
+- [x] Reuse the already completed Google consent. On 2026-09-07 a fresh
+  candidate process successfully refreshed the existing local grant and read
+  YouTube; another consent prompt was unnecessary. No consent was auto-accepted.
+- [x] Run read-only `co gmail inbox`, `co gdrive list`, `co gcalendar list`,
   `co youtube channel` against the consenting account. Record only outcomes,
-  not mail bodies, file names, calendar details or tokens.
-- [ ] Confirm actual granted scopes and token-file permissions locally without
-  printing secret values; verify a fresh CLI process reuses the local login.
+  not mail bodies, file names, calendar details or tokens. All four commands
+  exited 0 from the installed candidate on 2026-09-07.
+- [x] Confirm actual granted scopes and token-file permissions locally without
+  printing secret values: all six supported Gmail/Calendar/Drive/YouTube scopes
+  were present, both token types existed, and the credential file was mode 0600.
+  Separate fresh processes reused that local login successfully.
 - [ ] Review the captures and complete before/after evidence where necessary.
 - [ ] Merge the reviewed version-only release preparation PR.
-- [ ] Obtain the explicit publication go-ahead, create the immutable `v1.8.3`
-  tag, and let `.github/workflows/release.yml` publish through Trusted Publishing.
+- [x] Obtain explicit publication go-ahead (2026-09-07).
+- [ ] Create the immutable `v1.8.3` tag and let `.github/workflows/release.yml`
+  publish through Trusted Publishing.
 - [ ] Verify public package bytes and GitHub release, then update docs-site's
   stable version and publish its prepared Google documentation.
 
@@ -53,3 +58,12 @@ No real send, draft mutation, upload, event creation or delete was authorized
 for acceptance. These paths use isolated regression fixtures, not an assertion
 that production writes were exercised. TikTok and new messaging adapters are
 outside this release and deferred until after 1.8.5.
+
+## Final CLI audit correction — 2026-09-07
+
+The consolidation had retained help-only tips for YouTube write previews.
+Restored the full shell-quoted confirmation command for upload and update.
+Operational goals now pass for all six YouTube entry paths with the pinned
+`co/gemini-3.7-flash` text-only audit; no model-selected command is executed.
+Focused regression: 57 passed, including quote preservation, explicit empty
+descriptions, pipe output, help/skill parity, auth and confirmation binding.
