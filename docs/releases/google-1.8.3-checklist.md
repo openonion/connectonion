@@ -46,7 +46,8 @@ the immutable-tag workflow publishes and verifies 1.8.3.
   printing secret values: all six supported Gmail/Calendar/Drive/YouTube scopes
   were present, both token types existed, and the credential file was mode 0600.
   Separate fresh processes reused that local login successfully.
-- [ ] Review the captures and complete before/after evidence where necessary.
+- [x] Review desktop/mobile/CLI captures and include the prior installed CLI
+  help for before/after comparison; the prior CLI has no YouTube group.
 - [ ] Merge the reviewed version-only release preparation PR.
 - [x] Obtain explicit publication go-ahead (2026-09-07).
 - [ ] Create the immutable `v1.8.3` tag and let `.github/workflows/release.yml`

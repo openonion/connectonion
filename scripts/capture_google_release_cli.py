@@ -12,6 +12,16 @@ def main():
     root = Path(__file__).resolve().parents[1]
     destination = root / "docs/releases/assets/v1.8.3"
     destination.mkdir(parents=True, exist_ok=True)
+    before = Console(record=True, width=100, force_terminal=False)
+    installed = Path.home() / "Library/Python/3.14/bin/co"
+    if installed.is_file():
+        for args in (("--version",), ("auth", "--help"), ("youtube", "--help")):
+            result = subprocess.run([str(installed), *args], cwd=root,
+                capture_output=True, text=True, timeout=30,
+                env={**os.environ, "NO_COLOR": "1", "COLUMNS": "100"})
+            before.print("$ co " + " ".join(args), style="bold cyan")
+            before.print(Text.from_ansi(result.stdout + result.stderr))
+        before.save_svg(str(destination / "google-cli-before.svg"), title="Installed CLI before upgrade")
     console = Console(record=True, width=100, force_terminal=False)
     for args in (("auth", "--help"), ("gcalendar", "--help"), ("youtube", "--help")):
         result = subprocess.run(

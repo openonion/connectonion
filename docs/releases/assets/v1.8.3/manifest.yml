@@ -21,3 +21,10 @@ images:
     viewport: 390px mobile
     commit: 1262f2f
     source_run: https://github.com/wu-changxing/connectonion-docs-site/pull/139
+  - file: google-cli-before.svg
+    alt: Installed 1.8.1 CLI before the Google tools upgrade
+    caption: The existing installation has Google auth but no YouTube command group.
+    scenario: Account-free version and help capture from the user's prior installed CLI.
+    viewport: 100-column terminal
+    commit: e780430a
+    source_run: scripts/capture_google_release_cli.py
