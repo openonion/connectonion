@@ -6,6 +6,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
 from ..useful_tools.codex import CodexAppServer
@@ -26,6 +28,9 @@ def maintenance_instructions() -> str:
 def tool_specs() -> list[dict]:
     definitions = [
         ("wiki_list", "List current Markdown record paths; optional category.", {"category": {"type": "string"}}, []),
+        ("wiki_search", "Find records whose lines contain this text (case-insensitive); optional category. "
+         "Use it to find an existing page for a person, project or topic before creating one.",
+         {"query": {"type": "string"}, "category": {"type": "string"}}, ["query"]),
         ("wiki_read", "Read an existing Markdown record.", {"path": {"type": "string"}}, ["path"]),
         ("wiki_write", "Create or replace a Markdown record immediately.",
          {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
@@ -51,6 +56,8 @@ class FileTools:
             raise WikiError("File-tool arguments must be an object")
         if tool == "wiki_list" and set(args) <= {"category"}:
             result = self.notebook.list(args.get("category", ""))
+        elif tool == "wiki_search" and {"query"} <= set(args) <= {"query", "category"}:
+            result = self.notebook.search(args["query"], args.get("category", ""))[:50]
         elif tool == "wiki_read" and set(args) == {"path"}:
             result = self.notebook.read(args["path"])
         elif tool in ("wiki_write", "wiki_delete"):
@@ -80,16 +87,58 @@ def thread_parameters(cwd: str, config: dict) -> dict:
             "dynamicTools": tool_specs()}
 
 
+def native_env(codex_home: Path) -> dict:
+    allowed = ("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL", "SYSTEMROOT")
+    env = {name: os.environ[name] for name in allowed if name in os.environ}
+    env["CODEX_HOME"] = str(codex_home)
+    return env
+
+
+@contextmanager
+def isolated_codex_home():
+    """A CODEX_HOME that declares nothing but the login.
+
+    Codex reads MCP servers, plugins, hooks and AGENTS.md from CODEX_HOME, and a
+    `-c mcp_servers={}` override does not remove what config.toml already
+    declares (0.147.0, measured: two inherited servers survived). Rather than
+    editing the user's config, give the process a home where there is nothing
+    to inherit. Only auth.json is copied in; whatever Codex writes there
+    (state databases, caches) is thrown away with the directory.
+    """
+    real = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
+    auth = real / "auth.json"
+    if not auth.is_file():
+        raise WikiError("Codex login not found; run `codex login` before Wiki maintenance")
+    with tempfile.TemporaryDirectory(prefix="co-wiki-codex-home-") as directory:
+        home = Path(directory)
+        os.chmod(home, 0o700)
+        original = auth.read_bytes()
+        copy = home / "auth.json"
+        copy.write_bytes(original)
+        os.chmod(copy, 0o600)
+        yield home
+        # A refreshed token lands in the copy. If the refresh rotated the token,
+        # the user's own file is now stale, so write it back exactly as Codex
+        # would have -- but only if nothing else refreshed it meanwhile.
+        refreshed = copy.read_bytes() if copy.is_file() else original
+        if refreshed != original and auth.read_bytes() == original:
+            fd, name = tempfile.mkstemp(prefix=".auth-", dir=real)
+            with os.fdopen(fd, "wb") as output:
+                output.write(refreshed)
+            os.chmod(name, 0o600)
+            os.replace(name, auth)
+
+
 class WikiServer(CodexAppServer):
     """Reuse native transport/lifecycle; handle Wiki tools and usage events."""
 
-    def __init__(self, command, cwd, file_tools):
-        allowed_env = ("HOME", "CODEX_HOME", "PATH", "TMPDIR", "LANG", "LC_ALL", "SYSTEMROOT")
-        env = {name: os.environ[name] for name in allowed_env if name in os.environ}
+    def __init__(self, command, cwd, file_tools, env):
         super().__init__(command, cwd=cwd, env=env)
         self.file_tools = file_tools
         self.usage = None
         self.file_operation_failed = False
+        self.refused = 0
+        self.refusals = []  # safe WikiError texts, kept so the prompt can be tuned from real runs
 
     def initialize(self, timeout=30):
         self.request("initialize", {"clientInfo": {"name": "co_wiki", "version": "1"},
@@ -103,11 +152,20 @@ class WikiServer(CodexAppServer):
             result = self.file_tools.call(params.get("tool"), params.get("arguments"))
             response = {"success": True, "contentItems": [
                 {"type": "inputText", "text": json.dumps(result, ensure_ascii=False)}]}
-        except (WikiError, OSError, TypeError, ValueError):
-            self.file_operation_failed = True
-            # Tool errors may contain private filenames/content; do not echo arbitrary exceptions.
+        except WikiError as error:
+            # The boundary doing its job: tell the model why and let it continue. Failing
+            # the run here would keep the same batch (hostile message included) coming
+            # back every pass, and WikiError text is written to be safe to show.
+            self.refused += 1
+            if len(self.refusals) < 20:
+                self.refusals.append(f"{params.get('tool')}: {error}")
             response = {"success": False, "contentItems": [
-                {"type": "inputText", "text": "Wiki file operation refused: check path, arguments, and context limit."}]}
+                {"type": "inputText", "text": f"Wiki file operation refused: {error}"}]}
+        except (OSError, TypeError, ValueError):
+            self.file_operation_failed = True
+            # Disk/argument failures may name private paths; do not echo arbitrary exceptions.
+            response = {"success": False, "contentItems": [
+                {"type": "inputText", "text": "Wiki file operation failed; the run will not claim this material was processed."}]}
         self._send({"id": req_id, "result": response})
 
     def _handle_notification(self, method, params):
@@ -122,15 +180,15 @@ class WikiServer(CodexAppServer):
             super()._handle_notification(method, params)
 
 
-def native_command() -> list[str]:
+def native_command(env: dict) -> list[str]:
     """Pin the experimental adapter rather than silently accepting new tool surfaces."""
     executable = shutil.which("codex")
     if not executable:
         raise WikiError("Codex CLI is missing; install Codex and authenticate before running Wiki")
-    result = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=10)
+    result = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=10, env=env)
     if result.returncode or not re.fullmatch(r"codex-cli 0\.147\.\d+\s*", result.stdout):
         raise WikiError("This experimental Wiki adapter requires Codex CLI 0.147.x")
-    features = subprocess.run([executable, "features", "list"], capture_output=True, text=True, timeout=10)
+    features = subprocess.run([executable, "features", "list"], capture_output=True, text=True, timeout=10, env=env)
     names = [line.split()[0] for line in features.stdout.splitlines() if line.strip()]
     if features.returncode or not {"shell_tool", "unified_exec", "hooks", "plugins"} <= set(names):
         raise WikiError("Cannot verify the native tool configuration; refusing to invoke a model")
@@ -164,15 +222,15 @@ def verify_native_config(config: dict) -> None:
 
 
 def run_codex(notebook: Notebook, items: list[dict], config: dict) -> dict:
-    command = native_command()
     prompt = "Maintain the notebook from these new source messages:\n" + json.dumps(items, ensure_ascii=False)
     overhead = len(maintenance_instructions()) + len(json.dumps(tool_specs())) + len(prompt)
     remaining = config["limits"]["input_chars_per_batch"] - overhead
     if remaining < 1:
         raise WikiError("Source and Skill exceed the configured input limit")
     file_tools = FileTools(notebook, remaining)
-    with tempfile.TemporaryDirectory(prefix="co-wiki-run-") as directory:
-        server = WikiServer(command, directory, file_tools)
+    with isolated_codex_home() as codex_home, tempfile.TemporaryDirectory(prefix="co-wiki-run-") as directory:
+        env = native_env(codex_home)
+        server = WikiServer(native_command(env), directory, file_tools, env)
         try:
             server.start()
             server.initialize()
@@ -192,7 +250,8 @@ def run_codex(notebook: Notebook, items: list[dict], config: dict) -> dict:
                 raise WikiError("Native Codex maintenance did not complete")
             if server.file_operation_failed:
                 raise WikiError("A notebook operation failed; source progress was preserved")
-            return {"usage": server.usage, "changed": sorted(file_tools.changed)}
+            return {"usage": server.usage, "changed": sorted(file_tools.changed),
+                    "refused": server.refused, "refusals": server.refusals}
         except KeyboardInterrupt as error:
             error.usage = server.usage
             error.changed = sorted(file_tools.changed)

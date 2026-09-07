@@ -6,8 +6,9 @@ not installation instructions for a released feature.
 
 ## Implemented on the draft branch
 
-This first PR exposes inspection and explicit configuration only. It cannot yet
-collect sessions, remember a correction, or start background work through the CLI.
+This first PR exposes inspection, explicit configuration, and the local reader.
+It cannot yet collect sessions, remember a correction, or start background work
+through the CLI.
 
 ```bash
 co wiki
@@ -19,8 +20,18 @@ co wiki list people
 co wiki show people/alice.md
 co wiki search "Alice" --type people
 co wiki logs
+co wiki open
+co wiki open --no-launch
 co wiki doctor
 ```
+
+`open` renders the whole notebook into one self-contained HTML file under the
+system temporary directory (mode 0600, named after the notebook root) and opens
+it in the default browser; `--no-launch` only writes it and prints the path. The
+page is a snapshot with an "as of" time — a page opened from `file://` cannot
+read the Markdown beside it, so the notes are embedded at render time. Run
+`open` again after the next maintenance pass. It never writes inside the
+notebook and never starts a model.
 
 Place group options before the command, for example
 `co wiki --root /path/to/wiki --json status`. Read commands never initialize a
@@ -146,9 +157,11 @@ operational Skill instructions only after they have been exercised.
 
 ## Deferred
 
-The local HTML/CSS reader will use one bundled template. Host/OIP/remote access,
-Notion/cloud sync, sharing, human editing, review/approve/reject, generated-Skill
-installation, and template management are not part of this first slice.
+Host/OIP/remote access, Notion/cloud sync, sharing, human editing,
+review/approve/reject, generated-Skill installation, and template management are
+not part of this first slice. The bundled reader template is a client of one
+embedded data object; serving that object over HTTP later is how it would become
+a site, without a second renderer.
 
 The agreed file layout and implementation reasoning are in
 [DD-065](../design-decisions/065-ai-owned-wiki.md).

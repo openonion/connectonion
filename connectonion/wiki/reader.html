@@ -1,0 +1,333 @@
+<!doctype html>
+<!--
+  co wiki reader. One self-contained file, no network, opened from file://.
+  Python embeds a snapshot of the notebook where the placeholder below sits;
+  everything after that is a client of the WIKI object and nothing else, so the
+  same client can be served by a local server or a site later without changes.
+  Note text is data: it reaches the DOM only through esc() or textContent.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiki</title>
+<style>
+  :root { --green: #1f7a4d; --green-soft: #e8f3ec; --ink: #1c1c1c; --muted: #6b6b6b; --line: #e6e6e6; --bg: #ffffff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  a { color: var(--green); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .app { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  aside { border-right: 1px solid var(--line); padding: 20px 16px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+  main { padding: 28px 40px 60px; max-width: 860px; }
+  .brand { font-weight: 700; color: var(--green); font-size: 17px; margin: 0 0 14px; display: block; }
+  .search { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; margin-bottom: 16px; }
+  .search:focus { outline: 2px solid var(--green-soft); border-color: var(--green); }
+  nav a { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; color: var(--ink); }
+  nav a:hover { background: var(--green-soft); text-decoration: none; }
+  nav a.active { background: var(--green); color: #fff; }
+  nav .count { color: var(--muted); font-size: 12px; }
+  nav a.active .count { color: #d8ecdf; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 20px; line-height: 1.6; }
+  .meta code { font-size: 11px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 28px 0 8px; }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  .crumb { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .list { list-style: none; padding: 0; margin: 0; }
+  .list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .list .path { color: var(--muted); font-size: 12px; }
+  .note { line-height: 1.65; }
+  .note pre { background: #f6f8f7; border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; }
+  .note code { background: #f1f4f2; padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .note pre code { background: none; padding: 0; }
+  .note blockquote { margin: 0; padding: 2px 14px; border-left: 3px solid var(--green); color: #444; }
+  .note table { border-collapse: collapse; margin: 10px 0; }
+  .note th, .note td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; }
+  .note th { background: var(--green-soft); }
+  .note hr { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 28px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card .k { color: var(--muted); font-size: 12px; }
+  .card .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .runs td, .runs th { font-size: 13px; padding: 5px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+  .runs { border-collapse: collapse; width: 100%; }
+  .hit { margin: 4px 0 0 0; color: #444; font-size: 13px; white-space: pre-wrap; }
+  .empty { color: var(--muted); padding: 30px 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; background: var(--green-soft); color: var(--green); font-size: 12px; }
+  @media (max-width: 760px) { .app { grid-template-columns: 1fr; } aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); } main { padding: 20px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <a class="brand" href="#">Wiki</a>
+    <input class="search" id="q" type="search" placeholder="Search notes…" autocomplete="off">
+    <nav id="nav"></nav>
+    <div class="meta" id="meta"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<script>
+"use strict";
+const WIKI = /*__WIKI_DATA__*/null;
+
+// ---------- helpers ----------
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "text") node.textContent = v;
+    else if (k === "html") node.innerHTML = v;
+    else node.setAttribute(k, v);
+  }
+  for (const child of children || []) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  return node;
+}
+function byPath(path) { return WIKI.records.find(r => r.path === path); }
+function inCategory(category) { return WIKI.records.filter(r => r.category === category); }
+function fmtTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString();
+}
+function resolve(from, href) {
+  // Relative links between notes: decisions/x.md + ../people/a.md → people/a.md
+  const base = from.split("/").slice(0, -1);
+  for (const part of href.split("/")) {
+    if (part === "..") base.pop();
+    else if (part !== "." && part !== "") base.push(part);
+  }
+  return base.join("/");
+}
+function safeHref(from, raw) {
+  const href = raw.trim();
+  if (/^(https?:|file:|mailto:)/i.test(href)) return { href, external: true };
+  if (href.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(href.slice(1)), external: false };
+  if (/\.md(#.*)?$/i.test(href) && !/^[a-z]+:/i.test(href)) {
+    const target = resolve(from, href.split("#")[0]);
+    if (byPath(target)) return { href: "#r=" + encodeURIComponent(target), external: false };
+  }
+  return null;  // javascript:, data:, unknown schemes, dangling note links → plain text
+}
+
+// ---------- markdown (small, escape-first) ----------
+function inline(text, from) {
+  let s = esc(text);
+  const codes = [];
+  s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
+  s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, label, url) => {
+    const link = safeHref(from, url.replace(/&amp;/g, "&"));
+    if (!link) return label;
+    const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
+    return '<a href="' + esc(link.href) + '"' + attrs + ">" + label + "</a>";
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
+  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
+  return s;
+}
+function markdown(text, from) {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  let i = 0;
+  const para = [];
+  const flush = () => { if (para.length) { out.push("<p>" + inline(para.join(" "), from) + "</p>"); para.length = 0; } };
+  while (i < lines.length) {
+    const line = lines[i];
+    let m;
+    if (/^```/.test(line)) {
+      flush();
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++;
+      out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+      continue;
+    }
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+      flush();
+      const level = Math.min(m[1].length + 1, 6);  // page title is the h1 above the note
+      out.push("<h" + level + ">" + inline(m[2], from) + "</h" + level + ">");
+      i++; continue;
+    }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push("<hr>"); i++; continue; }
+    if (/^>\s?/.test(line)) {
+      flush();
+      const quote = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ""));
+      out.push("<blockquote>" + markdown(quote.join("\n"), from) + "</blockquote>");
+      continue;
+    }
+    if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
+      flush();
+      const ordered = /^\s*\d+[.)]\s+/.test(line);
+      const items = [];
+      const re = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
+      while (i < lines.length && (re.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+        if (re.test(lines[i])) items.push(lines[i].replace(re, ""));
+        else items[items.length - 1] += " " + lines[i].trim();
+        i++;
+      }
+      out.push((ordered ? "<ol>" : "<ul>") + items.map(t => "<li>" + inline(t, from) + "</li>").join("") + (ordered ? "</ol>" : "</ul>"));
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      flush();
+      const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => inline(c.trim(), from));
+      const head = cells(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push("<table><thead><tr>" + head.map(c => "<th>" + c + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table>");
+      continue;
+    }
+    if (line.trim() === "") { flush(); i++; continue; }
+    para.push(line.trim());
+    i++;
+  }
+  flush();
+  return out.join("\n");
+}
+
+// ---------- views ----------
+function route() {
+  const hash = location.hash.replace(/^#/, "");
+  const params = new URLSearchParams(hash);
+  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h") };
+}
+function renderNav(active) {
+  const nav = document.getElementById("nav");
+  nav.textContent = "";
+  nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, ["Overview"]));
+  for (const c of WIKI.categories) {
+    const n = inCategory(c).length;
+    nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
+      [el("span", { text: c }), el("span", { class: "count", text: String(n) })]));
+  }
+}
+function renderMeta() {
+  const s = WIKI.status || {};
+  const meta = document.getElementById("meta");
+  meta.textContent = "";
+  meta.appendChild(el("div", { text: "As of " + fmtTime(WIKI.as_of) }));
+  meta.appendChild(el("div", {}, [el("code", { text: WIKI.root })]));
+  meta.appendChild(el("div", { text: s.state || "" }));
+  meta.appendChild(el("div", { text: "Re-render with: co wiki open" }));
+}
+function overview() {
+  const s = WIKI.status || {};
+  const usage = s.usage_today || {};
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("h1", { text: "Overview" }));
+  main.appendChild(el("div", { class: "crumb", text: WIKI.records.length + (WIKI.records.length === 1 ? " page · " : " pages · ") + (s.timezone || "") }));
+  const cards = el("div", { class: "cards" });
+  const card = (k, v) => cards.appendChild(el("div", { class: "card" }, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
+  card("Batches today", String(s.batches_today ?? "—"));
+  card("Runner attempts", String(s.runner_attempts_today ?? "—"));
+  card("Input tokens", usage.input_tokens == null ? "unknown" : String(usage.input_tokens));
+  card("Output tokens", usage.output_tokens == null ? "unknown" : String(usage.output_tokens));
+  main.appendChild(cards);
+
+  main.appendChild(el("h2", { text: "Categories" }));
+  const ul = el("ul", { class: "list" });
+  for (const c of WIKI.categories) {
+    const items = inCategory(c);
+    ul.appendChild(el("li", {}, [
+      el("a", { href: "#c=" + c, text: c }), " ",
+      el("span", { class: "pill", text: items.length + (items.length === 1 ? " page" : " pages") })]));
+  }
+  main.appendChild(ul);
+
+  main.appendChild(el("h2", { text: "Sources" }));
+  const subs = el("ul", { class: "list" });
+  for (const [name, sub] of Object.entries(WIKI.subscriptions || {})) {
+    const state = !sub.enabled ? "disabled" : sub.adapter === "deferred" ? "not implemented yet" : sub.consented ? "authorized" : "waiting for start";
+    subs.appendChild(el("li", {}, [el("strong", { text: name }), " · " + state + (sub.project ? " · " + sub.project : "")]));
+  }
+  main.appendChild(subs);
+
+  main.appendChild(el("h2", { text: "Recent runs" }));
+  if (!(WIKI.logs || []).length) main.appendChild(el("div", { class: "empty", text: "No runs recorded." }));
+  else {
+    const table = el("table", { class: "runs" });
+    table.appendChild(el("tr", {}, ["Started", "Outcome", "Items", "Changed", "Refused", "Input", "Output"].map(h => el("th", { text: h }))));
+    for (const run of WIKI.logs) {
+      const u = run.usage || {};
+      table.appendChild(el("tr", {}, [fmtTime(run.started_at), run.outcome, String(run.items ?? ""), String((run.changed || []).length),
+        String(run.refused ?? 0), u.input_tokens == null ? "unknown" : String(u.input_tokens), u.output_tokens == null ? "unknown" : String(u.output_tokens)]
+        .map(t => el("td", { text: t }))));
+    }
+    main.appendChild(table);
+  }
+}
+function category(c) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("h1", { text: c }));
+  const items = inCategory(c);
+  if (!items.length) { main.appendChild(el("div", { class: "empty", text: "Nothing here yet. Empty categories are not errors." })); return; }
+  const ul = el("ul", { class: "list" });
+  for (const r of items) ul.appendChild(el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }), el("div", { class: "path", text: r.path })]));
+  main.appendChild(ul);
+}
+function record(path, heading) {
+  const r = byPath(path);
+  const main = document.getElementById("main");
+  main.textContent = "";
+  if (!r) { main.appendChild(el("div", { class: "empty", text: "No such page in this snapshot: " + path })); return; }
+  main.appendChild(el("div", { class: "crumb" }, [el("a", { href: "#c=" + r.category, text: r.category }), " / " + r.path]));
+  main.appendChild(el("h1", { text: r.title }));
+  const body = r.text.replace(/^#[^\n]*\n?/, "");  // the title line is shown above
+  main.appendChild(el("div", { class: "note", html: markdown(body, r.path) }));
+  if (heading) {
+    const target = [...main.querySelectorAll("h2,h3,h4,h5,h6")].find(h => h.textContent.trim().toLowerCase().replace(/\s+/g, "-") === heading.toLowerCase());
+    if (target) target.scrollIntoView();
+  }
+}
+function search(q) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("h1", { text: "Search" }));
+  const needle = q.toLowerCase();
+  const hits = [];
+  for (const r of WIKI.records) {
+    const lines = r.text.split("\n").filter(l => l.toLowerCase().includes(needle)).slice(0, 4);
+    if (lines.length) hits.push({ r, lines });
+  }
+  main.appendChild(el("div", { class: "crumb", text: hits.length + (hits.length === 1 ? " page matches “" : " pages match “") + q + "” (literal, case-insensitive)" }));
+  if (!hits.length) { main.appendChild(el("div", { class: "empty", text: "No matches. Try a related term." })); return; }
+  const ul = el("ul", { class: "list" });
+  for (const { r, lines } of hits) {
+    const li = el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }), el("div", { class: "path", text: r.path })]);
+    for (const l of lines) li.appendChild(el("div", { class: "hit", text: l.trim() }));
+    ul.appendChild(li);
+  }
+  main.appendChild(ul);
+}
+function render() {
+  if (!WIKI) return;
+  const { record: r, category: c, query, heading } = route();
+  renderNav(c || (r ? r.split("/")[0] : null));
+  renderMeta();
+  const box = document.getElementById("q");
+  if (query != null && box.value !== query) box.value = query;
+  if (query) search(query);
+  else if (r) record(r, heading);
+  else if (c) category(c);
+  else overview();
+  window.scrollTo(0, 0);
+}
+document.getElementById("q").addEventListener("input", e => {
+  const q = e.target.value.trim();
+  location.hash = q ? "q=" + encodeURIComponent(q) : "";
+});
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>

@@ -116,6 +116,19 @@ def make_wiki_app(factory):
             return records, next_args
         _handle(ctx, operation, ["logs"])
 
+    @wiki.command("open")
+    def open_page(ctx: typer.Context,
+                  launch: bool = typer.Option(True, "--launch/--no-launch",
+                                              help="Open the rendered page in the default browser")):
+        """Render the notebook to a disposable local HTML page; no edits, no model."""
+        from ...wiki.reader import open_reader
+
+        def operation(root):
+            page = open_reader(root, launch=launch)
+            return {"page": str(page), "launched": launch,
+                    "note": "a snapshot; run this command again after the next maintenance pass"}, ["status"]
+        _handle(ctx, operation, ["doctor"])
+
     @wiki.command("doctor")
     def doctor(ctx: typer.Context):
         """Inspect local prerequisites; no native process, login, or repair."""

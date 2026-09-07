@@ -1,6 +1,7 @@
 """Synthetic native rollouts: never inspect the operator's session store."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -89,7 +90,43 @@ def test_disabled_and_unconsented_sources_cannot_be_collected(tmp_path):
             collect(subscription(tmp_path, **overrides), {}, 20, 10000)
 
 
-def test_huge_message_is_not_silently_consumed(tmp_path):
-    rollout(tmp_path / "rollout-a.jsonl", [("user", "x" * 2000)])
-    with pytest.raises(WikiError, match="limit"):
-        collect(subscription(tmp_path), {}, 20, 500)
+
+def test_huge_rollout_is_streamed_not_refused(tmp_path, monkeypatch):
+    """A 426 MB session exists on a real machine. Refusing it would block every source forever."""
+    monkeypatch.setattr("connectonion.wiki.source.SCAN_BYTES_PER_PASS", 2000)
+    file = tmp_path / "2026/09/07/rollout-huge.jsonl"
+    file.parent.mkdir(parents=True)
+    meta = json.dumps({"type": "session_meta", "payload": {"id": "s", "cwd": "/work/demo"}}) + "\n"
+    blob = json.dumps({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item",
+                       "payload": {"type": "function_call_output", "output": "x" * 5000}}) + "\n"
+    late = json.dumps({"timestamp": "2026-09-07T06:00:00Z", "type": "response_item",
+                       "payload": {"type": "message", "role": "user",
+                                   "content": [{"type": "input_text", "text": "Keep Markdown"}]}}) + "\n"
+    file.write_text(meta + blob + late)
+    progress, texts = {}, []
+    for _ in range(6):  # several bounded passes walk past the blob and reach the message
+        batch = collect(subscription(tmp_path), progress, 10, 10000)
+        texts += [item["text"] for item in batch.items]
+        progress = batch.progress
+    assert texts == ["Keep Markdown"]
+    assert progress["2026/09/07/rollout-huge.jsonl"]["offset"] == len(meta + blob + late)
+
+
+def test_files_older_than_the_lookback_are_not_opened(tmp_path, monkeypatch):
+    file = tmp_path / "2026/08/01/rollout-old.jsonl"
+    rollout(file, [("user", "ancient")])
+    os.utime(file, (1_600_000_000, 1_600_000_000))  # 2020: nothing inside can postdate `since`
+    monkeypatch.setattr("connectonion.wiki.source._read_rollout",
+                        lambda *a, **k: pytest.fail("opened a file that cannot contain new messages"))
+    batch = collect(subscription(tmp_path), {}, 10, 10000)
+    assert batch.items == []
+
+
+def test_oversized_single_message_is_truncated_and_progress_advances(tmp_path):
+    file = tmp_path / "2026/09/07/rollout-big-message.jsonl"
+    rollout(file, [("user", "y" * 5000), ("user", "after")])
+    batch = collect(subscription(tmp_path), {}, 10, 1200)
+    assert [item["text"][:5] for item in batch.items][0] == "yyyyy"
+    assert "truncated" in batch.items[0]["text"]
+    assert len(json.dumps(batch.items[0], ensure_ascii=False)) <= 1200
+    assert batch.progress["2026/09/07/rollout-big-message.jsonl"]["offset"] > 0

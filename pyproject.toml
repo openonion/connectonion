@@ -148,6 +148,7 @@ include = [
 [tool.hatch.build]
 include = [
     "connectonion/**/*.md",
+    "connectonion/**/*.html",
     "connectonion/**/*.txt",
     "connectonion/**/*.yaml",
     "connectonion/**/*.proto",

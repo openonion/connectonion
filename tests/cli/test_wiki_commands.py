@@ -121,3 +121,31 @@ def test_real_process_piped_output_keeps_next_command(tmp_path, json_mode):
     assert str(root) in next_command
     assert next_command.endswith(" logs")
     assert not root.exists()
+
+
+def test_open_renders_a_local_page_without_touching_the_notebook(tmp_path, monkeypatch):
+    opened = []
+    monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: opened.append(url) or True)
+    prepare(tmp_path)
+    Notebook(tmp_path).write("people/alice.md", "# Alice\n")
+    result = invoke(tmp_path, "open", "--no-launch")
+    assert result.exit_code == 0, result.output
+    assert opened == []
+    assert ".html" in result.output and "Next:" in result.output
+    assert Notebook(tmp_path).list() == ["people/alice.md"]
+    launched = invoke(tmp_path, "open")
+    assert launched.exit_code == 0, launched.output
+    assert len(opened) == 1 and opened[0].startswith("file://")
+
+
+def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: True)
+    root = tmp_path / "wiki"
+    result = invoke(root, "open")
+    assert result.exit_code == 0, result.output
+    assert not root.exists()
+
+
+def test_help_lists_open(tmp_path):
+    result = invoke(tmp_path, "--help")
+    assert "open" in result.output.split("Commands")[1]

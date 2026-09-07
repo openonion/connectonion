@@ -52,11 +52,11 @@ def test_thread_is_ephemeral_and_has_no_execution_environment(tmp_path):
     assert params["model"] == "gpt-5.3-codex-spark"
     assert params["baseInstructions"] == maintenance_instructions()
     assert {t["name"] for t in params["dynamicTools"]} == {
-        "wiki_list", "wiki_read", "wiki_write", "wiki_delete"}
+        "wiki_list", "wiki_search", "wiki_read", "wiki_write", "wiki_delete"}
 
 
 def test_usage_notifications_replace_cumulative_counts_not_sum(tmp_path):
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000))
+    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000), {})
     usage = {"inputTokens": 20, "outputTokens": 5, "cachedInputTokens": 10}
     for _ in range(2):
         server._handle_notification("thread/tokenUsage/updated", {
@@ -66,13 +66,13 @@ def test_usage_notifications_replace_cumulative_counts_not_sum(tmp_path):
 
 def test_unsupported_server_request_does_not_execute(tmp_path, monkeypatch):
     prepare(tmp_path)
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000))
+    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000), {})
     sent = []
     monkeypatch.setattr(server, "_send", sent.append)
     server._handle_server_request(1, "item/tool/call", {
         "tool": "wiki_write", "arguments": {"path": "../escape.md", "content": "bad"}})
     assert sent[0]["result"]["success"] is False
-    assert server.file_operation_failed is True
+    assert server.file_operation_failed is False and server.refused == 1
     server._handle_server_request(2, "item/commandExecution/requestApproval", {})
     assert sent[-1]["result"]["decision"] in ("decline", "cancel")
 
@@ -80,12 +80,12 @@ def test_unsupported_server_request_does_not_execute(tmp_path, monkeypatch):
 def test_context_limit_does_not_report_success_after_failed_read(tmp_path, monkeypatch):
     prepare(tmp_path)
     Notebook(tmp_path).write("notes/long.md", "x" * 300)
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 100))
+    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 100), {})
     sent = []
     monkeypatch.setattr(server, "_send", sent.append)
     server._handle_server_request(1, "item/tool/call", {
         "tool": "wiki_read", "arguments": {"path": "notes/long.md"}})
-    assert server.file_operation_failed is True
+    assert server.file_operation_failed is False and server.refused == 1
     assert sent[0]["result"]["success"] is False
 
 
@@ -99,3 +99,39 @@ def test_native_config_rejects_unknown_or_active_feature_surfaces():
     for config in ({}, {"features": {"shell_tool": True}, "mcp_servers": {}}):
         with pytest.raises(WikiError):
             verify_native_config(config)
+
+
+def test_refused_file_operation_is_reported_but_does_not_fail_the_run(tmp_path, monkeypatch):
+    """A refusal is the boundary working; the model is told and continues. Failing the
+    whole run here would re-feed the same hostile message every pass, forever."""
+    prepare(tmp_path)
+    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000), {})
+    sent = []
+    monkeypatch.setattr(server, "_send", sent.append)
+    server._handle_server_request(1, "item/tool/call", {
+        "tool": "wiki_write", "arguments": {"path": ".state/progress.json", "content": "{}"}})
+    assert sent[0]["result"]["success"] is False
+    assert server.file_operation_failed is False
+    assert server.refused == 1
+    assert server.refusals == ["wiki_write: Hidden paths and traversal are not notebook content"]
+
+
+def test_disk_failure_still_fails_the_run(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    tools = FileTools(Notebook(tmp_path), 1000)
+    monkeypatch.setattr(tools.notebook, "write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk")))
+    server = WikiServer(["fake"], str(tmp_path), tools, {})
+    monkeypatch.setattr(server, "_send", lambda m: None)
+    server._handle_server_request(1, "item/tool/call", {
+        "tool": "wiki_write", "arguments": {"path": "notes/a.md", "content": "x"}})
+    assert server.file_operation_failed is True
+
+
+def test_search_tool_finds_existing_pages_without_reading_them_all(tmp_path):
+    prepare(tmp_path)
+    Notebook(tmp_path).write("people/alice-chen.md", "# Alice Chen\nPrefers email.")
+    Notebook(tmp_path).write("people/bob.md", "# Bob\n")
+    tools = FileTools(Notebook(tmp_path), 10000)
+    found = tools.call("wiki_search", {"query": "alice"})
+    assert [hit["record"] for hit in found] == ["people/alice-chen.md"]
+    assert {t["name"] for t in thread_parameters(str(tmp_path), default_config())["dynamicTools"]} >= {"wiki_search"}

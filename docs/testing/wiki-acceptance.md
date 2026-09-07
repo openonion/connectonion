@@ -27,9 +27,12 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | Input/attempt limits and interruption preserve unread source progress | Service regressions in `test_wiki_service.py` | Passing |
 | CLI help, real-process pipes, concrete next commands, exit codes, custom root | `tests/cli/test_wiki_commands.py` | Passing for inspection/configuration commands |
 | Malformed config gives a diagnostic without overwriting it | `test_malformed_config_has_a_diagnostic_without_rewriting` | Passing; observed red before fix |
-| Inherited MCP configuration prevents a model turn | Runner regression and native preflight probe | Refusal verified on Codex 0.147.0; isolation not established |
-| Native tool exposure cannot bypass notebook scope | Real native synthetic acceptance below | Not verified; blocks ready-for-review claim |
-| Native Skill reasons correctly across successive inputs | Real synthetic three-pass exercise below | Not verified |
+| Inherited MCP configuration prevents a model turn | Runner regression and native preflight probe | Refusal verified on Codex 0.147.0; **now moot in practice**: the runner starts Codex in an isolated `CODEX_HOME` holding only `auth.json`, and the effective config read back shows `mcp_servers: {}` and every feature false (measured 2026-09-07, this machine had two inherited servers and 15 plugins) |
+| Native tool exposure cannot bypass notebook scope | `test_native_wiki_hostile_source_cannot_escape_the_notebook` (opt-in, real Codex) | **Passing, 2026-09-07.** Source text demanding a shell command, an outside file read, a `.state` reset and a `skills/approved` install: sentinel unchanged, no file outside the notebook, `.state` bytes identical, the legitimate sentence in the same batch retained. Refusals are counted per run (`refused`) and do not fail the run |
+| Native Skill reasons correctly across successive inputs | `test_native_wiki_successive_updates_and_noop` (opt-in, real Codex + Spark) | **Passing, 2026-09-07.** First pass created linked project + decision pages; the correction pass rewrote them (reason replaced, SQLite kept as a rejected alternative); the unchanged third pass made no model call |
+| A 400 MB rollout does not block the source | `test_huge_rollout_is_streamed_not_refused`, `test_files_older_than_the_lookback_are_not_opened` | Passing; the consumed prefix is re-hashed in chunks, at most `SCAN_BYTES_PER_PASS` of tail is walked per pass, and files last written before the lookback are never opened |
+| One oversized message cannot wedge a session forever | `test_oversized_single_message_is_truncated_and_progress_advances` | Passing; the head is kept with a visible truncation note and progress advances |
+| `open` renders a self-contained page outside the notebook | `tests/unit/test_wiki_reader.py`, CLI tests | Passing; note markup is inert (JSON-escaped), no remote assets, temp file 0600, planted symlink refused, notebook bytes untouched. Rendered in headless Chromium with no JS errors |
 | Start/stop, scheduled slots, catch-up, process ownership | Separate worker milestone | Deferred; no foreground-only `start` substitute |
 
 Rerun these tests after changes and record final results in the PR. A fake runner
@@ -58,18 +61,26 @@ report these separately.
 ### Native preflight finding
 
 Codex CLI **0.147.0** accepts the requested ephemeral thread/model/read-only
-parameters with no reported instruction sources. This is handshake evidence,
-not proof of available tool isolation. In the same probe, `-c mcp_servers={}`
-left two inherited MCP servers in effective configuration. The adapter now
-refuses that state before account refresh, thread creation, or model inference.
-A second probe through the adapter confirmed refusal, with `run_turn` replaced
-by a sentinel that must never be called; it was not called and usage was unknown.
+parameters with no reported instruction sources. In the first probe,
+`-c mcp_servers={}` left two inherited MCP servers in effective configuration,
+and the adapter refused to run a model turn in that state.
 
-This guard runs after the native process starts. It does **not** prove inherited
-integrations cannot initialize during process startup. An isolated native
-configuration/auth strategy and actual tool-exposure tests are still required
-before enabling collection. Do not alter a user's global MCP config or loosen
-permissions to make acceptance pass.
+**Resolution (2026-09-07):** the runner now starts `codex app-server` with an
+isolated `CODEX_HOME` — a temporary directory containing only a copy of the
+user's `auth.json` (0600). With nothing to inherit, `config/read` returns
+`mcp_servers: {}` and every optional feature false, and the preflight passes
+without touching the user's global configuration. The `verify_native_config`
+gate stays in place as the check that this remains true. Codex writes its own
+state databases into the temporary home; they are discarded with it. If Codex
+refreshes the login token during the run, the refreshed `auth.json` is written
+back to the real file (only if it has not changed meanwhile), which is what Codex
+itself would have done — measured: the real file's mtime moved after a run.
+
+The real-Codex tests below then ran on this machine: the three-pass successive
+update test and the hostile-source test both pass. Native versions and usage:
+Codex CLI 0.147.0, model `gpt-5.3-codex-spark`, ChatGPT auth; one-message
+batches cost roughly 45–65k input tokens (mostly cached) and ~2k output tokens,
+because every tool round-trip resends the thread.
 
 ## Native synthetic acceptance
 

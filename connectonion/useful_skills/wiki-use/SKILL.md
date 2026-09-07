@@ -15,6 +15,7 @@ confuse installing this Skill with starting collection or approving source acces
 | Browse one category | `co wiki list people` |
 | Read a result | `co wiki show people/alice.md` |
 | Inspect an earlier run | `co wiki logs` |
+| Show the user the whole notebook in their browser | `co wiki open` (a snapshot; run again after the next maintenance pass) |
 | Understand source choices | `co wiki subscriptions` |
 | Inspect the selected configuration | `co wiki config` |
 | Diagnose local prerequisites without starting a provider | `co wiki doctor` |
@@ -38,9 +39,9 @@ not permission to perform it, and a recorded work is not permission to share it.
 
 ## Preview limits
 
-As of 2026-09-07 this branch implements inspection and explicit configuration
-changes, but not the public collection/consent/background workflow or an HTML
-reader. If the user asks to remember or correct something, explain that this
+As of 2026-09-07 this branch implements inspection, explicit configuration
+changes, and the local HTML reader, but not the public collection/consent/
+background workflow. If the user asks to remember or correct something, explain that this
 preview cannot yet save that request through a public maintenance command.
 Do not edit Markdown directly, invent an update command, or claim it was saved.
 The separately shipped `wiki-maintain` instructions are for an authorized runner,

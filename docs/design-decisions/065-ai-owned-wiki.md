@@ -62,10 +62,12 @@ then checks effective configuration before a model turn. User credentials stay
 with the native client. These requests are not proof of isolation.
 
 The 0.147.0 probe found that an empty MCP map override retains inherited servers.
-The adapter now refuses that configuration before inference, but a safe native
-startup/auth configuration and actual tool-exposure verification remain open.
-The refusal happens after process startup; it does not prove integrations could
-not initialize earlier. See the [recorded evidence](../testing/wiki-acceptance.md).
+The chosen answer is not to override but to remove the source: the runner gives
+Codex a temporary `CODEX_HOME` containing only the login file, so there is no
+config.toml, plugin, hook or AGENTS.md to inherit. The effective-config check
+stays as the gate that this remains true. See the
+[recorded evidence](../testing/wiki-acceptance.md); the hostile-source and
+successive-update tests passed against real Codex on 2026-09-07.
 
 Before enabling real user ingestion, a synthetic native acceptance test must
 demonstrate that shell execution, arbitrary reads, outside writes, external

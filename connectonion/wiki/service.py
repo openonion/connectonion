@@ -165,7 +165,7 @@ def _sync_locked(root, selected, progress, config, runner):
         updated[name] = batch.progress
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "model": config["model"], "sources": list(selected), "items": len(items),
-              "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": []}
+              "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0}
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
         write_json(state_path(root, "progress.json"), updated)
@@ -177,7 +177,8 @@ def _sync_locked(root, selected, progress, config, runner):
     write_json(path, record)  # Reserve the attempt before starting a native process.
     try:
         result = (runner or run_codex)(Notebook(root), items, config)
-        record.update(outcome="completed", usage=result.get("usage"), changed=result.get("changed", []))
+        record.update(outcome="completed", usage=result.get("usage"), changed=result.get("changed", []),
+                      refused=result.get("refused", 0), refusals=result.get("refusals", []))
         write_json(state_path(root, "progress.json"), updated)
     except BaseException as error:
         record.update(outcome="interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else "failed",
