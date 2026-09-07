@@ -46,7 +46,7 @@ def test_gmail_read_routes_id():
         result = runner.invoke(app, ["gmail", "read", "3"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", mark_read=False)
+    handler.assert_called_once_with("3", mark_read=False, listing=None)
 
 
 def test_gmail_read_routes_explicit_mark_read():
@@ -54,7 +54,7 @@ def test_gmail_read_routes_explicit_mark_read():
         result = runner.invoke(app, ["gmail", "read", "3", "--mark-read"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", mark_read=True)
+    handler.assert_called_once_with("3", mark_read=True, listing=None)
 
 
 def test_gmail_send_routes_arguments():
@@ -97,7 +97,7 @@ def test_gmail_reply_routes_id_and_message():
         result = runner.invoke(app, ["gmail", "reply", "2", "Sounds good"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", "Sounds good")
+    handler.assert_called_once_with("2", "Sounds good", listing=None)
 
 
 def test_gmail_reply_routes_stdin_marker():
@@ -105,7 +105,7 @@ def test_gmail_reply_routes_stdin_marker():
         result = runner.invoke(app, ["gmail", "reply", "2", "-"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", "-")
+    handler.assert_called_once_with("2", "-", listing=None)
 
 
 def test_gmail_send_routes_bcc():
@@ -188,7 +188,7 @@ def test_gmail_draft_attach_routes_drive_link():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", "3", drive=True, link=True)
+    handler.assert_called_once_with("2", "3", drive=True, link=True, listing=None)
 
 
 def test_gmail_draft_remove_routes_attachment_number():
@@ -196,7 +196,7 @@ def test_gmail_draft_remove_routes_attachment_number():
         result = runner.invoke(app, ["gmail", "draft", "remove", "2", "1"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", 1)
+    handler.assert_called_once_with("2", 1, listing=None)
 
 
 def test_gmail_draft_replace_routes_drive_source():
@@ -206,7 +206,7 @@ def test_gmail_draft_replace_routes_drive_source():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", 1, "drive-file", drive=True)
+    handler.assert_called_once_with("2", 1, "drive-file", drive=True, listing=None)
 
 
 def test_gmail_draft_preview_routes_id():
@@ -214,7 +214,7 @@ def test_gmail_draft_preview_routes_id():
         result = runner.invoke(app, ["gmail", "draft", "preview", "2"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2")
+    handler.assert_called_once_with("2", listing=None)
 
 
 def test_gmail_draft_send_routes_id_without_a_bypass_flag():
@@ -222,7 +222,7 @@ def test_gmail_draft_send_routes_id_without_a_bypass_flag():
         result = runner.invoke(app, ["gmail", "draft", "send", "2"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2")
+    handler.assert_called_once_with("2", listing=None)
 
     help_result = runner.invoke(app, ["gmail", "draft", "send", "--help"])
     assert "--yes" not in help_result.output
