@@ -73,7 +73,11 @@ jobs:
 
             const stablePatchTarget = /\bnext patch\b/i.test(target || '') ||
               /\b\d+\.\d+\.[1-9]\d*\b/.test(target || '');
-            if (stablePatchTarget) {
+            // A maintenance line needs a ledger for its higher active lines.
+            // Mainline and feature stacks already deliver toward the newest line.
+            const maintenanceBranch = /^release\/\d+\.\d+(?:\.x)?$/.test(item.base?.ref || '');
+            const mainline = item.base?.ref === context.payload.repository.default_branch;
+            if (stablePatchTarget && maintenanceBranch && !mainline) {
               const issueMatch = (forwardTracker || '').match(/(?:#|\/issues\/)(\d+)\b/);
               if (!issueMatch) {
                 core.setFailed(
