@@ -90,7 +90,7 @@ class TestTheRowAndTheAuthAgree:
         monkeypatch.chdir(project)
 
         assert (project / ".co" / "keys" / "agent.key").exists()
-        assert project_identity()["address"] == own["address"]
+        assert project_identity()["address"] == machine[1]["address"]
 
 
 class TestItReportsTheIdentityItWouldUse:

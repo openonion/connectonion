@@ -164,7 +164,7 @@ agent.tools = {
 ---
 name: browser
 description: Web scraping and browser automation
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 20
 tools:
   - browser_navigate
@@ -224,7 +224,7 @@ Instead of listing individual tools, use **tool groups**:
 ---
 name: scraper
 description: Web scraping agent
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 20
 tool_groups:
   - file_read      # FileTools(permission="read")
@@ -329,7 +329,7 @@ def _resolve_tools(tool_names: List[str]) -> List:
 ---
 name: scraper
 description: Web scraping with browser automation and file storage
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 25
 tools:
   - browser        # BrowserAutomation (navigate, click, screenshot)

@@ -28,7 +28,7 @@ INFO: Loaded global keys: /Users/you/.co/keys.env
 
 [agent] ─────────────────────────────────────
         translator
-        co/gemini-3.7-flash • 12 tools
+        co/gemini-3.8-flash • 12 tools
 
 [host]  ─────────────────────────────────────
         http://localhost:8000
@@ -446,7 +446,7 @@ curl http://localhost:8000/info
   "name": "translator",
   "address": "0x3d4017c3...",
   "tools": ["translate", "detect_language"],
-  "model": "co/gemini-3.7-flash",
+  "model": "co/gemini-3.8-flash",
   "trust": "careful",
   "version": "0.4.1",
   "accepted_inputs": {

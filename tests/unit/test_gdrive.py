@@ -73,7 +73,7 @@ class TestGDriveInit:
             from connectonion.useful_tools.gdrive import GDrive
             with pytest.raises(ValueError) as exc:
                 GDrive()._get_service()
-            assert "credentials not found" in str(exc.value)
+            assert "Google account not connected" in str(exc.value)
 
     @pytest.mark.real_refresh
     @patch("connectonion.useful_tools.gdrive.build")
@@ -86,7 +86,7 @@ class TestGDriveInit:
         with patch.dict(os.environ, ENV, clear=False):
             GDrive()._get_service()
 
-        assert calls == ["test-refresh"]
+        assert calls == [None]
         assert mock_build.call_args.kwargs["credentials"].token == "fresh"
 
     @pytest.mark.real_refresh
@@ -94,13 +94,15 @@ class TestGDriveInit:
         from connectonion.useful_tools.gdrive import GDrive
 
         monkeypatch.setenv("OPENONION_API_KEY", "opaque-api-key")
+        monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "local-refresh-secret")
         response = MagicMock(status_code=502, text="provider-refresh-secret")
 
         with patch("httpx.post", return_value=response):
             with pytest.raises(ValueError) as error:
                 GDrive.__new__(GDrive)._refresh_via_backend("local-refresh-secret")
 
-        assert str(error.value) == "Failed to refresh Google authorization via backend"
+        assert "HTTP 502" in str(error.value)
+        assert error.value.code == "provider_unavailable"
         assert "provider-refresh-secret" not in str(error.value)
         assert "local-refresh-secret" not in str(error.value)
 
@@ -228,7 +230,7 @@ class TestDownload:
 
     def _stub_download(self, monkeypatch, payload=b"filebytes"):
         """Make MediaIoBaseDownload write payload into the buffer in one chunk."""
-        def fake_downloader(buffer, request):
+        def fake_downloader(buffer, request, chunksize=None):
             downloader = MagicMock()
 
             def next_chunk():
@@ -325,6 +327,91 @@ class TestDownload:
             drive_with_service(service).download("file-1", dest=str(target))
 
         assert target.read_bytes() == b"filebytes"
+
+
+class TestReadFileForAttachment:
+    """Drive-to-Gmail reads stay in memory and obey Gmail's byte budget."""
+
+    @staticmethod
+    def _stub_download(monkeypatch, payload=b"filebytes"):
+        def fake_downloader(buffer, request, chunksize=None):
+            downloader = MagicMock()
+
+            def next_chunk():
+                buffer.write(payload)
+                return (None, True)
+
+            downloader.next_chunk.side_effect = next_chunk
+            return downloader
+
+        monkeypatch.setattr("connectonion.useful_tools.gdrive.MediaIoBaseDownload", fake_downloader)
+
+    def test_binary_file_returns_name_type_link_and_bytes(self, monkeypatch):
+        self._stub_download(monkeypatch, b"%PDF")
+        service = MagicMock()
+        service.files.return_value.get.return_value.execute.return_value = file_resource(size="4")
+
+        with patch.dict(os.environ, ENV, clear=False):
+            item = drive_with_service(service)._read_file("file-1", max_bytes=10)
+
+        assert item == {
+            "id": "file-1",
+            "name": "Report.pdf",
+            "type": "application/pdf",
+            "size": 4,
+            "link": "https://drive.google.com/file/d/file-1/view",
+            "data": b"%PDF",
+        }
+        service.files.return_value.get_media.assert_called_once()
+
+    def test_native_doc_is_exported_for_attachment(self, monkeypatch):
+        self._stub_download(monkeypatch, b"# Notes")
+        service = MagicMock()
+        service.files.return_value.get.return_value.execute.return_value = file_resource(
+            name="Notes", mimeType="application/vnd.google-apps.document", size=None,
+        )
+
+        with patch.dict(os.environ, ENV, clear=False):
+            item = drive_with_service(service)._read_file("file-1")
+
+        assert item["name"] == "Notes.md"
+        assert item["type"] == "text/markdown"
+        assert item["data"] == b"# Notes"
+        service.files.return_value.export_media.assert_called_once_with(
+            fileId="file-1", mimeType="text/markdown"
+        )
+
+    def test_known_oversize_is_rejected_before_downloading(self):
+        service = MagicMock()
+        service.files.return_value.get.return_value.execute.return_value = file_resource(size="11")
+
+        with patch.dict(os.environ, ENV, clear=False):
+            with pytest.raises(ValueError, match="attachment limit"):
+                drive_with_service(service)._read_file("file-1", max_bytes=10)
+
+        service.files.return_value.get_media.assert_not_called()
+
+    def test_export_growth_is_rejected_during_download(self, monkeypatch):
+        self._stub_download(monkeypatch, b"123456")
+        service = MagicMock()
+        service.files.return_value.get.return_value.execute.return_value = file_resource(
+            name="Notes", mimeType="application/vnd.google-apps.document", size=None,
+        )
+
+        with patch.dict(os.environ, ENV, clear=False):
+            with pytest.raises(ValueError, match="attachment limit"):
+                drive_with_service(service)._read_file("file-1", max_bytes=5)
+
+    def test_get_file_returns_only_metadata(self):
+        service = MagicMock()
+        service.files.return_value.get.return_value.execute.return_value = file_resource()
+
+        with patch.dict(os.environ, ENV, clear=False):
+            item = drive_with_service(service)._get_file("file-1")
+
+        assert item["link"].startswith("https://drive.google.com/")
+        assert "data" not in item
+        service.files.return_value.get_media.assert_not_called()
 
 
 class TestUploadAndDelete:

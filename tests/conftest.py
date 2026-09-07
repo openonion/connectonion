@@ -45,6 +45,23 @@ load_dotenv()
 
 
 @pytest.fixture(autouse=True)
+def _isolate_selected_environment(request, monkeypatch):
+    """Auth/refresh and CLI selection cannot leak process state to another test."""
+    if request.node.get_closest_marker("real_api"):
+        yield
+        return
+    from unittest.mock import patch
+    from connectonion import environment
+    monkeypatch.setattr(environment, "_loaded", dict(environment._loaded))
+    monkeypatch.setattr(environment, "_selected", None)
+    with patch.dict(os.environ):
+        for provider in environment.PROVIDER_PREFIXES:
+            for key in environment.provider_keys(provider):
+                os.environ.pop(key, None)
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     """No test may read or write the operator's real ~/.co.
 
@@ -73,7 +90,9 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))       # Windows
-    monkeypatch.setenv("AGENT_CONFIG_PATH", str(home / ".co"))
+    # Clear inherited routing; the isolated HOME is the default. Tests that
+    # exercise a custom global directory select it explicitly.
+    monkeypatch.delenv("AGENT_CONFIG_PATH", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
 
 

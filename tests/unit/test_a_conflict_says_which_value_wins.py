@@ -37,13 +37,14 @@ def _row(rows, name):
 @pytest.fixture
 def project(tmp_path):
     (tmp_path / ".co").mkdir()
+    (tmp_path / "home" / ".co").mkdir(parents=True)
     return tmp_path
 
 
 class TestAConflictNamesTheWinner:
 
     def test_the_environment_is_marked_when_it_wins(self, project):
-        (project / ".env").write_text("GEMINI_API_KEY=from-dot-env\n", encoding="utf-8")
+        (project / "home" / ".co" / "keys.env").write_text("GEMINI_API_KEY=from-dot-env\n", encoding="utf-8")
 
         rows = _credential_rows(project_dir=project, home=project / "home",
                                 environ={"GEMINI_API_KEY": "from-environment"})
@@ -54,26 +55,26 @@ class TestAConflictNamesTheWinner:
 
     def test_the_other_places_are_still_listed(self, project):
         """Where else it is defined is the other half of the question."""
-        (project / ".env").write_text("GEMINI_API_KEY=from-dot-env\n", encoding="utf-8")
+        (project / "home" / ".co" / "keys.env").write_text("GEMINI_API_KEY=from-dot-env\n", encoding="utf-8")
 
         rows = _credential_rows(project_dir=project, home=project / "home",
                                 environ={"GEMINI_API_KEY": "from-environment"})
 
-        assert "<project>/.env" in _row(rows, "GEMINI_API_KEY")["source"]
+        assert "~/.co/keys.env" in _row(rows, "GEMINI_API_KEY")["source"]
 
     def test_the_file_is_marked_when_it_is_the_only_one_loaded(self, project):
         """No environment value: the highest-precedence source present wins."""
-        (project / ".env").write_text("GEMINI_API_KEY=from-dot-env\n", encoding="utf-8")
+        (project / "home" / ".co" / "keys.env").write_text("GEMINI_API_KEY=from-dot-env\n", encoding="utf-8")
         home = project / "home"
-        (home / ".co").mkdir(parents=True)
+        (home / ".co").mkdir(parents=True, exist_ok=True)
         (home / ".co" / "keys.env").write_text("GEMINI_API_KEY=from-home\n",
                                                encoding="utf-8")
 
         row = _row(_credential_rows(project_dir=project, home=home, environ={}),
                    "GEMINI_API_KEY")
 
-        assert row["status"] == "conflict"
-        assert "<project>/.env (used)" in row["source"], row["source"]
+        assert row["status"] == "discovered · not loaded"
+        assert "~/.co/keys.env" in row["source"], row["source"]
 
 
 class TestNothingElseChanges:
@@ -90,7 +91,7 @@ class TestNothingElseChanges:
     def test_the_same_value_twice_is_not_a_conflict(self, project):
         """Defined in two places with one value: still not a conflict, and
         still nothing to choose between."""
-        (project / ".env").write_text("GEMINI_API_KEY=same\n", encoding="utf-8")
+        (project / "home" / ".co" / "keys.env").write_text("GEMINI_API_KEY=same\n", encoding="utf-8")
 
         row = _row(_credential_rows(project_dir=project, home=project / "home",
                                     environ={"GEMINI_API_KEY": "same"}),

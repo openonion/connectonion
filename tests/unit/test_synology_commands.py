@@ -1,115 +1,69 @@
-"""Stable, pipe-safe CLI contracts for ``co syno``."""
-
+"""Pipe-safe CLI envelopes and canonical recovery commands."""
 import json
-from unittest.mock import Mock, patch
-
+from unittest.mock import Mock
 import pytest
-import typer
 from typer.testing import CliRunner
-
-from connectonion.cli.commands import synology_commands
 from connectonion.cli.main import app
+from connectonion.cli.commands import synology_commands as commands
+from connectonion.useful_tools.synology_transport import SynologyError
 
-runner = CliRunner()
-
-
-def test_syno_help_lists_every_documented_command():
-    result = runner.invoke(app, ["syno", "--help"])
-
-    assert result.exit_code == 0
-    for command in ("login", "status", "ls", "search", "get", "put", "share", "shares"):
-        assert command in result.output
+runner=CliRunner()
 
 
-def test_syno_status_routes_json_mode():
-    with patch("connectonion.cli.commands.synology_commands.handle_syno_status") as handler:
-        result = runner.invoke(app, ["syno", "status", "--json"])
-
-    assert result.exit_code == 0
-    handler.assert_called_once_with(json_output=True)
+def fake_nas(monkeypatch):
+    fake=Mock(); fake.profile={'name':'home'}; fake.account='one'
+    monkeypatch.setattr(commands,'_syno',lambda *a,**k:fake)
+    return fake
 
 
-def test_syno_shares_routes_limit_and_json_mode():
-    with patch("connectonion.cli.commands.synology_commands.handle_syno_shares") as handler:
-        result = runner.invoke(app, ["syno", "shares", "-n", "7", "--json"])
-
-    assert result.exit_code == 0
-    handler.assert_called_once_with(last=7, json_output=True)
-
-
-def test_status_json_is_one_stable_document(capsys):
-    nas = Mock()
-    nas.status.return_value = {
-        "connected": True,
-        "url": "https://nas.local:5001",
-        "account": "aaron",
-        "session_cached": True,
-        "tls_verification": False,
-    }
-    with patch.object(synology_commands, "_syno", return_value=nas):
-        synology_commands.handle_syno_status(json_output=True)
-
-    output = capsys.readouterr().out
-    document = json.loads(output)
-    assert output.count("\n") == 1
-    assert document == {
-        "schema_version": 1,
-        "ok": True,
-        "command": "co syno status",
-        "data": nas.status.return_value,
-        "next_command": "co syno ls --json",
-    }
+def test_status_json_is_one_stable_document(monkeypatch):
+    fake=fake_nas(monkeypatch); fake.status.return_value={'completeness':'complete','checks':{}}
+    result=runner.invoke(app,['syno','status','--json'])
+    data=json.loads(result.stdout)
+    assert result.exit_code==0 and data['ok'] and data['schema_version']==1
+    assert not result.stderr and '\x1b' not in result.stdout
 
 
-def test_status_json_failure_has_stable_code_and_exit(capsys):
-    from connectonion.useful_tools.synology import SynologyError
-
-    with patch.object(
-        synology_commands,
-        "_syno",
-        side_effect=SynologyError("Synology NAS not configured", code="not_configured"),
-    ):
-        with pytest.raises(typer.Exit) as failure:
-            synology_commands.handle_syno_status(json_output=True)
-
-    assert failure.value.exit_code == 1
-    document = json.loads(capsys.readouterr().out)
-    assert document["ok"] is False
-    assert document["error"] == {
-        "code": "not_configured",
-        "message": "Synology NAS not configured",
-    }
-    assert document["next_command"] == "co syno login"
+def test_status_json_failure_has_stable_code_and_exit(monkeypatch):
+    fake=fake_nas(monkeypatch); fake.status.side_effect=SynologyError('Cannot authenticate','auth_required')
+    result=runner.invoke(app,['syno','status','--json'])
+    data=json.loads(result.stdout)
+    assert result.exit_code==1 and data['error']['code']=='auth_required'
 
 
-def test_piped_synology_listing_ends_with_one_literal_next_command(tmp_path, capsys):
-    files = [{
-        "path": "/home/report.pdf",
-        "name": "report.pdf",
-        "type": "file",
-        "size": 10,
-        "modified": 0,
-    }]
-    with patch.object(synology_commands, "LIST_CACHE", tmp_path / "list.json"):
-        synology_commands._print_listing(files, "NAS")
-
-    output = capsys.readouterr().out
-    assert output.rstrip().endswith("Download the first result with: co syno get 1")
-    assert output.count("co syno get 1") == 1
+def test_piped_listing_has_canonical_quoted_next_command_on_stderr(monkeypatch):
+    fake=fake_nas(monkeypatch)
+    fake.list_page.return_value={'items':[{'path':'/home/a b.pdf','type':'file','size':0}]}
+    result=runner.invoke(app,['syno','ls','/home'])
+    assert result.exit_code==0,result.output
+    assert "Next: co syno info '/home/a b.pdf'" in result.stderr
+    assert 'Next:' not in result.stdout
+    assert json.loads(result.stdout)['items'][0]['size']==0
 
 
-def test_shares_json_does_not_drop_private_fields_or_add_styling(capsys):
-    nas = Mock()
-    nas.list_sharing_links.return_value = [{
-        "id": "share-1",
-        "path": "/home/report.pdf",
-        "url": "https://nas.local/sharing/abc123",
-        "expires": "2026-09-30",
-        "status": "valid",
-    }]
-    with patch.object(synology_commands, "_syno", return_value=nas):
-        synology_commands.handle_syno_shares(last=20, json_output=True)
+def test_partial_inspection_does_not_exit_success(monkeypatch):
+    fake=fake_nas(monkeypatch); fake.status.return_value={'completeness':'partial','checks':{}}
+    result=runner.invoke(app,['syno','status','--json'])
+    assert result.exit_code==1 and json.loads(result.stdout)['complete'] is False
 
-    document = json.loads(capsys.readouterr().out)
-    assert document["data"][0]["id"] == "share-1"
-    assert document["next_command"] == "co syno --help"
+
+def test_shares_alias_routes_to_masked_inventory(monkeypatch):
+    fake=fake_nas(monkeypatch); fake.share_list.return_value={'items':[]}
+    result=runner.invoke(app,['syno','shares','-n','7','--json'])
+    assert result.exit_code==0,result.output
+    fake.share_list.assert_called_once_with(limit=7,cursor=None,show_url=False)
+
+
+def test_numeric_legacy_alias_passes_explicit_listing(monkeypatch):
+    fake=fake_nas(monkeypatch)
+    fake.state.resolve.return_value='/home/a'; fake.download.return_value={'status':'complete'}
+    result=runner.invoke(app,['syno','get','1','--listing','frozen','--to','./Downloads','--json'])
+    assert result.exit_code==0,result.output
+    fake.state.resolve.assert_called_once_with('1','frozen')
+    assert fake.download.call_args.args==('/home/a','./Downloads')
+
+
+def test_interruption_keeps_json_shape_and_exit_130(monkeypatch):
+    fake=fake_nas(monkeypatch); fake.list_page.side_effect=KeyboardInterrupt()
+    result=runner.invoke(app,['syno','ls','--json'])
+    assert result.exit_code==130 and json.loads(result.stdout)['error']['code']=='interrupted'

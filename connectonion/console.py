@@ -524,7 +524,7 @@ class Console:
     def print_llm_request(self, model: str, session: Dict[str, Any], max_iterations: int) -> None:
         """Print LLM request with violet empty circle (AI thinking).
 
-        [co] ○ gemini-3.7-flash                              1/10
+        [co] ○ gemini-3.8-flash                              1/10
 
         Args:
             model: Model name
@@ -546,7 +546,7 @@ class Console:
     def log_llm_response(self, model: str, duration_ms: float, tool_count: int, usage, context_percent: int = None) -> None:
         """Log LLM response with violet filled circle (AI done thinking).
 
-        [co] ● gemini-3.7-flash · 1 tools · 66 tok (42 cached) · $0.00 · 45% ctx   ✓ 1.8s
+        [co] ● gemini-3.8-flash · 1 tools · 66 tok (42 cached) · $0.00 · 45% ctx   ✓ 1.8s
 
         Args:
             model: Model name

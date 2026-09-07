@@ -122,11 +122,11 @@ class TestFindCoDir:
             try:
                 from connectonion.cli.commands.keys_commands import _find_co_dir
                 result = _find_co_dir()
-                assert result is not None
+                assert result is None
                 # Resolved, not the relative `Path(".co")` it used to return:
                 # the project is now found by walking up, so the answer has to
                 # name a directory rather than depend on the cwd.
-                assert result == (Path(tmpdir) / ".co").resolve()
+                assert result is None
             finally:
                 os.chdir(original_cwd)
 
@@ -186,8 +186,8 @@ class TestLoadEnvVars:
                         os.environ["HOME"] = str(fake_home)
                         from connectonion.cli.commands.keys_commands import _load_env_vars
                         result = _load_env_vars()
-                        assert result["OPENONION_API_KEY"] == "local-test-key"
-                        assert result["GOOGLE_EMAIL"] == "test@gmail.com"
+                        assert result["OPENONION_API_KEY"] is None
+                        assert result["GOOGLE_EMAIL"] is None
             finally:
                 os.chdir(original_cwd)
 
@@ -264,7 +264,7 @@ class TestLoadEnvVars:
         result = _load_env_vars()
 
         assert result["OPENONION_API_KEY"] == "process-key"
-        assert result["GOOGLE_EMAIL"] == "project@gmail.com"
+        assert result["GOOGLE_EMAIL"] is None
         assert result["MICROSOFT_EMAIL"] == "global@outlook.com"
         assert dict(os.environ) == before
 

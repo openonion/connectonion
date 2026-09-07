@@ -47,10 +47,11 @@ glob, grep, bash, plan mode, a todo list, background tasks, subagents, skills, a
 `ask_user`. Browsing is via bash calling `co browser`. Email is **not** a wired tool
 on this agent — it is a separate CLI path (§3).
 
-**Default model** for `co ai` is `co/gemini-3.7-flash` (`cli/main.py:224`; note
-`ai_commands.py:13` carries `co/claude-opus-4-5` as a Python-level default that the
-CLI always overrides — do not quote that one). `Agent()` and the `co create`
-template also default to `co/gemini-3.7-flash` (`core/agent.py:41`).
+**Default model** for `co ai` is `co/gemini-3.8-flash`, sourced from the shared
+`core.usage.DEFAULT_MODEL` constant used by the CLI, `Agent()`, `llm_do()`,
+transcription, and project templates. Gemini 3.7 stays selectable as an explicit
+rollback; OpenAI and Anthropic remain selectable and are never chosen as a silent
+fallback.
 
 ---
 

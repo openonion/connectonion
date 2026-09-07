@@ -1,201 +1,257 @@
 # Synology CLI (co syno)
 
-Verify, browse, search, download, upload, and audit sharing links for Synology NAS files from the
-terminal — the same File Station access your agents get from the
-[Synology tool](../useful_tools/synology.md), as a command.
-
-## Quick Start
-
-```bash
-# Connect your NAS (one-time)
-co syno login
-
-# Verify read-only access and surface the TLS posture
-co syno status
-
-# See your shared folders
-co syno ls
-
-# Look inside one
-co syno ls /home/photos
-
-# Download file #3 from the listing
-co syno get 3
-```
-
-Use `--json` on read-only commands when another program or agent consumes the
-result. Everything below is detail.
-
-## Setup
+The 1.8.4 candidate provides twenty everyday NAS commands: connection profiles,
+read-only inspections, ordinary files and sharing links. It has synthetic
+regression coverage; real NAS/model acceptance is still pending. See the
+[acceptance record](../acceptance/1.8.4-synology.md).
 
 ```bash
-co syno login
-```
-
-You'll be asked for your **QuickConnect ID** — the name in
-`quickconnect.to/<ID>`, found in DSM under *Control Panel → External Access →
-QuickConnect* — then your DSM username and password.
-
-If you'd rather skip QuickConnect, or it stops working, connect directly:
-
-```bash
-co syno login --url https://nas.local:5001
-co syno login --url https://mynas.synology.me:5001
-```
-
-Credentials are saved to `~/.co/keys.env` and never leave your machine — a NAS
-has no OAuth to broker, so there is no `co auth synology`.
-
-DSM accounts that require a one-time 2FA code are not supported yet. Use a
-suitable least-privilege account or stop rather than bypassing the account's
-policy.
-
-### How the connection is chosen
-
-QuickConnect isn't one address, it's several, and they are not equally fast:
-
-| Route | Speed | Works |
-|---|---|---|
-| LAN (`192.168.x.x`) | full gigabit | at home only |
-| DDNS / forwarded port | full WAN speed | if you've forwarded ports |
-| Synology relay | **throttled** | anywhere |
-
-`co syno login` probes them in that order and remembers which one answered, so
-you get the fast path at home without giving up access from a café. If the
-saved address stops responding — you moved networks — run `co syno login`
-again.
-
-## Commands
-
-### `co syno status` — Read-only connection check
-
-```bash
-co syno status
+co syno login --name home --url https://nas.example:5001 --username alice
 co syno status --json
+co syno ls /home/docs --json
+co syno search invoice --in /home/docs --type file --json
+co syno download /home/docs/invoice.pdf --to ./Downloads/
 ```
 
-This makes a read-only File Station request to prove the saved session or
-credentials work. It also reports whether TLS certificate verification is
-enabled; in 1.8.5 it is not.
+The destination directory in this example must already exist. Paths are NAS
+shared-folder paths such as `/home/docs`, never an implicit remote working
+directory. `/` lists accessible shares, not DSM's system root.
 
-### `co syno` — Shared folders
+## Connection and monitoring
 
-```bash
-co syno                  # your shared folders
-co syno ls /home         # inside one
-co syno ls /home -n 50
-co syno ls /home --json  # stable machine-readable envelope
-```
+Install the optional adapters with `pip install 'connectonion[synology]'`.
+HTTPS File Station works with the main package. Login verifies authenticated
+File Station access before publishing a profile. A failed replacement leaves
+the last saved profile selected. The first profile becomes default; adding
+another does not switch it.
 
-Entries are numbered. **Numbers mean your last listing** — `co syno get 3`
-downloads the third row of the table you just saw. Running `co syno` again
-renumbers.
+TLS verification is always enabled. For a private CA, supply `--ca-cert FILE`.
+`--quickconnect ID` discovers and probes HTTPS candidates within a bounded
+budget; a certificate mismatch does not enable an insecure fallback. A verified
+LAN endpoint may stop working after changing networks; explicitly log in using
+a reachable verified URL.
 
-Paths always start with a shared folder, e.g. `/home/photos`, not
-`/volume1/home/photos`.
+Passwords are prompted only in a real terminal. `--password-stdin` reads one
+password line; it never doubles as OTP input. Required OTP is prompted only in
+an interactive login and is never saved. JSON and non-interactive commands
+cannot perform initial OTP login.
 
-### `co syno search` — Find by name
+Profiles live under the selected global configuration directory's `synology/`
+subdirectory (normally `~/.co/synology`). They contain settings and opaque
+credential references. Secrets use the OS keyring by default. The explicit
+`--credential-store file` fallback uses private files on POSIX and is unsupported
+on Windows. Logout retains settings, clears local authentication and reports
+whether remote session invalidation was confirmed.
 
-```bash
-co syno search invoice
-co syno search '*.raw' --in /home/photos
-co syno search invoice --json
-```
+`SYNOLOGY_*` values in an old `keys.env` are not silently imported. Re-run
+verified login to migrate. No session or password is written back to that file.
+The existing file is not deleted or rewritten by migration.
 
-Matching is case-insensitive. Without glob characters (`*`, `?`) the pattern is
-treated as a substring. Search walks subfolders, so scoping it with `--in` is
-much faster than searching everything.
-
-### `co syno get` — Download
-
-```bash
-co syno get 3
-co syno get 3 --to ~/Downloads
-co syno get /home/photos/cat.jpg
-```
-
-Takes a listing number or a full NAS path.
-
-### `co syno put` — Upload
-
-```bash
-co syno put report.pdf /home/docs
-co syno put report.pdf /home/docs --overwrite
-```
-
-Without `--overwrite`, an existing file of the same name is left alone.
-
-### `co syno share` — Sharing link
-
-```bash
-co syno share 3
-```
-
-Creates a public File Station sharing link with no password or expiry and prints
-the URL. This changes NAS state.
-
-### `co syno shares` — Audit existing links
-
-```bash
-co syno shares
-co syno shares -n 100 --json
-```
-
-Lists existing public sharing links without creating or changing them. The JSON
-form preserves each link's id, path, URL, expiry, and status in a stable envelope.
-
-### JSON contract
-
-`status`, `ls`, `search`, and `shares` accept `--json`. Success and guarded
-failure both produce exactly one JSON document with schema version `1`:
+Optional monitoring is configured during login, without enabling services on
+the NAS. `--monitoring FILE` accepts a JSON file containing only non-secret
+`snmp` and/or `ssh` settings:
 
 ```json
-{"schema_version":1,"ok":true,"command":"co syno status","data":{},"next_command":"co syno ls --json"}
+{
+  "snmp": {
+    "host": "nas.example", "port": 161, "username": "nas-reader",
+    "auth_protocol": "SHA256", "priv_protocol": "AES128", "context": ""
+  },
+  "ssh": {
+    "host": "nas.example", "port": 22, "username": "nas-reader",
+    "key_file": "~/.ssh/nas-reader", "known_hosts": "~/.ssh/known_hosts"
+  }
+}
 ```
 
-Guarded failures exit `1` and replace `data` with an `error` object containing a
-stable `code` and human-readable `message`. Syntax errors exit `2`.
+SNMP authentication and privacy keys are prompted, or read from an explicitly
+selected private JSON file using `--snmp-secrets-file FILE`. That file contains
+only the nonempty fields `snmp_auth` and `snmp_priv`. It is separate from the
+non-secret monitoring configuration. Secrets never go on argv. Replacing a
+profile supplies its monitoring configuration again; it does not borrow the
+previous NAS/account's adapter credentials.
 
-## Piping
+SSH uses the named key and known-host file, rejects unknown host keys, and runs
+only the two documented `synoservice --list` commands. It does not enroll host
+keys, enable SSH/SNMP, use a password fallback or invoke service controls.
 
-In a terminal you get a numbered table. Piped, you get tab-separated rows with
-full paths, followed by one literal next-command tip. Filter data rows before
-using tools such as `cut`:
+| Inspection | Field source and limits |
+| --- | --- |
+| `status` | Verified File Station identity/access plus each configured monitor. Missing sources remain unavailable; partial coverage exits 1. |
+| `network status` | HTTPS endpoint/TLS/timing describes the client. SNMPv3 IF-MIB describes NAS interfaces; IP-MIB adds available IPv4 addresses. IPv6 is explicitly unavailable in this adapter. |
+| `storage status` | SNMPv3 RAID rows, status and capacity counters. Units remain provider units; usage percentage uses matching counters. Rows are not summed or labeled as inferred volume/pool topology. |
+| `storage disks` | SNMPv3 disk identity, deployment, temperature and available health indicators. Deployment normal does not imply missing health is normal. Full health OID coverage requires DSM 7.1 or later. |
+| `service list` | Actual SSH service enumeration, with a separate running set. An unavailable command/grant is an error, not a list of API names. |
+
+Results include `checked_at`. All current inspections are fresh, so `--refresh`
+performs the same live work. No NAS model or DSM version has passed this task's
+live acceptance yet. File Station APIs negotiate required versions; the
+implementation targets documented DSM 6.0+ File Station behavior, with DSM 7.1+
+needed for the additional disk-health OID. See the
+[source/onboarding decision](../design-decisions/070-synology-inspections-and-durable-operations.md).
+
+## Command inventory
+
+Every leaf has parser-generated `--help`, an example, and the common options
+`--nas NAME`, `--json`, `--non-interactive`, and `--timeout SECONDS`. Common
+options work before a group or after a leaf. Repeated conflicting values are
+usage errors. The default network waiting budget is 60 seconds, with a maximum
+of 3600. Interactive typing time is separate from provider waiting.
+
+| Command after `co syno` | Arguments and options |
+| --- | --- |
+| `login` | `--name`, `--url` or `--quickconnect`, `--username`, `--password-stdin`, `--ca-cert`, `--credential-store`, `--monitoring`, `--snmp-secrets-file` |
+| `logout` | Retain connection settings; clear authentication |
+| `nas list` | List saved profiles and the default |
+| `nas use NAME` | Select the saved default |
+| `status` | `--refresh`, or `--operation ID` with optional `--wait` |
+| `network status` | `--refresh` |
+| `storage status` | `--refresh` |
+| `storage disks` | `--refresh` |
+| `service list` | `--running`, `--refresh` |
+| `ls [PATH]` | `--limit`, `--cursor`, `--sort name\|modified\|size`, `--order asc\|desc` |
+| `info PATH` | Complete NAS path |
+| `search QUERY --in PATH` | `--glob`, `--type file\|directory\|all`, `--limit`, `--cursor` |
+| `download PATH` | `--to`, `--recursive`, `--overwrite` or `--skip-existing`, `--dry-run`, migration `--listing` |
+| `upload LOCAL REMOTE_DIR` | `--recursive`, `--overwrite` or `--skip-existing`, `--dry-run` |
+| `mkdir PATH` | `--parents`, `--dry-run` |
+| `copy SOURCE DEST` | `--recursive`, `--overwrite`, `--dry-run` |
+| `move SOURCE DEST` | `--overwrite`, `--dry-run` |
+| `share create PATH` | `--expires YYYY-MM-DD` or `--no-expiry`, `--password` or `--password-stdin`, `--yes`, `--dry-run`, migration `--listing` |
+| `share list` | `--limit`, `--cursor`, `--show-url` |
+| `share revoke ID` | `--yes`, `--dry-run` |
+
+`--last` and `-n` alias `--limit`, whose default is 20 and range is 1–1000.
+`get`, `put`, `shares`, and `share PATH` remain migration aliases with the
+canonical options. New help examples and recovery commands use canonical names.
+
+## Listings and search
+
+`ls` now sorts by name ascending, replacing the historical modified-time order.
+Directories have `size: null`; an empty file has `size: 0`. Machine output keeps
+complete paths. Live directory/link pages can change between requests; they
+are not immutable snapshots.
+
+Cursors bind the profile identity and original path/query/type/sort/order/limit.
+Repeat the same parameters with `--cursor TOKEN`, or use the emitted next command.
+A cursor from another profile, changed query, corrupt record, or an expired
+15-minute context is rejected. Replacing a profile invalidates its old contexts.
+
+Search requires `--in` and searches names recursively, not file contents.
+Patterns require explicit `--glob`; ordinary queries become substring matches.
+The client waits for completion, retrieves up to 10,000 results, and requests
+server-task cleanup before publishing a local snapshot. Cleanup is also
+attempted on timeout, failure and interruption. A disconnected NAS can prevent
+confirmation; this is not reported as successful empty output.
+
+Legacy numeric rows always require the exact `--listing ID` printed in the
+corresponding listing. The old mutable last-list cache is ignored. This also
+applies in interactive mode, which is deliberately stricter than an implicit
+last-row confirmation. Prefer complete paths:
 
 ```bash
-co syno ls /home/photos | grep $'\t' | cut -f4
+co syno get 3 --listing LISTING_ID --to ./Downloads/
+co syno download /home/docs/report.pdf --to ./Downloads/
 ```
 
-## There is no `co syno rm`
+## Transfers and ordinary directories
 
-Deliberate. `SYNO.FileStation.Delete` deletes **permanently** — DSM's recycle
-bin is a share-level filesystem convention the web UI implements, not something
-the API exposes. Unlike `co gdrive rm`, a `co syno rm` could not be made
-recoverable, so it isn't offered. Delete from DSM, where the recycle bin
-applies.
+No overwrite is the default. Choose `--overwrite` or `--skip-existing` explicitly;
+they cannot be combined. Type conflicts always fail. Existing directory targets
+require an explicit merge choice. Recursive uploads/downloads preserve the
+source base directory and empty directories; a directory is never reconstructed
+from a DSM ZIP response.
 
-## Use it from an agent
+An existing local directory receives the source name. A non-directory local
+path is an exact filename, whose parent must exist. A missing trailing-slash
+directory is an error. Upload requires an existing NAS destination directory.
+`mkdir --parents` creates ordinary directories inside an existing share, never
+new DSM shared roots.
 
-```python
-from connectonion import Agent, Synology
+Preflight rejects local symlinks and remote resolved-path or virtual-mount
+escapes. POSIX downloads pin parent directories with no-follow descriptors.
+Windows validates the existing path chain but does not provide the same POSIX
+ancestor-descriptor race protection. File Station has no compare-and-swap
+transfer primitive; a concurrent remote filesystem edit remains a race.
 
-agent = Agent("nas-assistant", tools=[Synology()])
-agent.input("Find the invoices from last month and download them")
+Downloads write a private temporary file, validate available byte-length
+evidence and atomically place the result. Output SHA-256 describes downloaded
+bytes, not an invented server hash. Failures preserve an existing local file.
+Uploads report DSM acknowledgement and local size evidence. Their ambiguous
+responses are never automatically retried; inspect remote state first.
+
+Recursive output records completed, skipped, failed and unstarted items.
+Partial transfers are not atomic. `--dry-run` performs bounded preflight using
+an existing saved session and can read the credential store to load that
+session. It does not refresh authentication, prompt, save state, create caches,
+write files or submit mutations. A dry-run is not a reservation or permission
+guarantee. Password-protected share previews defer secret validation.
+
+## Copy, move and pending operations
+
+An existing destination directory receives the source name; otherwise the
+specified path is the exact destination. There is no existing-directory-tree
+merge. Copying a directory requires `--recursive`; moves include directory
+contents. Self-descendant operations and type conflicts are rejected.
+
+Same-name destinations use DSM's CopyMove task. Exact new names may require an
+owned staging directory and rename/placement steps. This can temporarily move a
+source into the reported staging path; it is not an atomic rename across
+folders. Only the operation's empty staging directory is cleaned up.
+
+Each mutation step is recorded before submission. Known task IDs survive CLI
+restarts; unknown submissions are not replayed. A timeout with a task ID reports
+`operation_pending` and an `operation_id`:
+
+```bash
+co syno status --operation OPERATION_ID --wait --json
 ```
 
-## Troubleshooting
+Status only observes the current task. If a staged workflow needs another write
+step, it reports `continuation_required` and the exact original copy/move command
+to resume. Repeating that command resumes the recorded workflow rather than
+resubmitting the earlier task. If no task ID was received, `submission_unknown`
+requires remote inspection. Task history may disappear after a NAS restart;
+that does not prove the operation failed. Receipts are not automatically expired.
 
-**"Synology NAS not connected"** — run `co syno login`.
+`--wait` requires `--operation`; `--operation` and `--refresh` cannot be combined.
 
-**"Could not reach your NAS on any known address"** — the saved address is
-stale (you changed networks) or the NAS is off. Re-run `co syno login`, or use
-`--url` with a reachable address.
+## Sharing
 
-**"2-step verification code required"** — this CLI does not implement the DSM
-OTP exchange yet. Use a suitable least-privilege account or manage the files in
-DSM; do not disable an account policy just to make the command pass.
+```bash
+co syno share create /home/docs/report.pdf --expires 2026-09-30 --yes
+co syno share list --json
+co syno share list --show-url --json
+co syno share revoke LINK_ID --yes
+```
 
-**Certificate warnings** — DSM often ships with a self-signed certificate, and
-1.8.5 does not verify the NAS certificate. Traffic is encrypted, but the CLI
-does not cryptographically verify the server identity. Prefer a trusted direct
-URL and treat certificate verification as an open hardening item.
+Interactive create asks for a date or explicit no-expiry, then confirmation.
+Unattended create requires an expiry choice and `--yes`. Dates are NAS-local
+calendar dates; the result does not invent an unknown NAS timezone. Passwords
+are prompted with `--password` or read from one line with `--password-stdin`.
+The negotiated v3 contract accepts at most 16 characters; no truncation or
+silent weakening occurs.
+
+Creation returns its usable URL. Inventory hides bearer URLs unless `--show-url`
+is given, and includes ID/path/expiry/protection/provider status. Revocation
+requires confirmation or `--yes` and never deletes the source. There is no
+public file-delete or service-control command in this core.
+
+## Output and exits
+
+Every leaf supports one schema-1 JSON envelope with `provider`, `nas`, `command`,
+`ok`, `status`, `complete`, `data`, `error`, and a quoted `next_command`.
+`--json` never prompts or prints ANSI. Human results are readable JSON on stdout;
+the one recovery hint goes to stderr. Human output is not a scripting API.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Completed operation or an empty successful list |
+| 1 | Operational failure, partial coverage/transfer, pending/unknown work, or declined confirmation |
+| 2 | Usage/input error or an interaction-only option in unattended mode |
+| 130 | Interrupted; inspect remote state before repeating a write |
+
+Read the result as well as the exit code. Missing authentication, unsupported
+sources, stale cursors, conflicts, incomplete searches and uncertain writes
+have distinct error codes. Empty results never suggest downloading a nonexistent
+first row.

@@ -653,7 +653,9 @@ class BrowserDaemon:
         binary = engine.get("executable")
         if not binary:
             try:
-                binary = installed_browser_path()
+                # The fallback starts Patchright's synchronous driver. Running it
+                # on this event loop raises and falsely reports Chromium missing.
+                binary = await asyncio.to_thread(installed_browser_path)
             except Exception:
                 binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
