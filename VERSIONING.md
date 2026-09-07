@@ -268,6 +268,14 @@ as a separate reviewed workflow change, not an ad hoc second registry writer.
 
 ### Stable patches move forward
 
+A forward-port tracker is required for patch PRs targeting a maintenance branch
+such as `release/1.7` or `release/1.8`. A patch number alone does not create that
+obligation: PRs targeting the repository's default branch, or feature branches
+stacked toward it, already deliver to the newest line. Those PRs use `N/A —
+mainline work` in the template's tracking field. All PRs still name a proposed
+target version and estimated release window. A change targeting a maintenance
+branch keeps its tracker open until the applicable higher lines have evidence.
+
 A stable patch fixes the oldest supported line first; it must not make the
 newest testable line older in behaviour. Once `X.Y.Z` with `Z > 0` is public,
 each applicable product, test, documentation, migration, and operational fix
