@@ -93,6 +93,8 @@ class TestAValueIsNeverShellSyntax:
     @staticmethod
     def _ssh_script(project, env_text):
         (project / ".env").write_text(env_text)
+        from connectonion.environment import select_env_file
+        select_env_file(project / ".env")
         with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
             dts._sync_env("user@host", "myagent", project)
         return ssh.call_args.args[1] if ssh.call_args else ""
@@ -122,6 +124,8 @@ def test_a_multiline_value_is_skipped_not_silently_mangled(tmp_path):
     import re
 
     (tmp_path / ".env").write_text('PEM="line1\nline2"\nOK=fine\n')
+    from connectonion.environment import select_env_file
+    select_env_file(tmp_path / ".env")
     with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
         dts._sync_env("user@host", "myagent", tmp_path)
 

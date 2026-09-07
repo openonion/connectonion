@@ -725,8 +725,18 @@ class RemoteAgent:
                 self._forget_direct_endpoint()
                 continue
             if not is_direct:
-                return ws, False
-            sealed = await self._seal_direct(ws, ws_url)
+                if not self._keys:
+                    return ws, False       # nothing signed will go onto it
+                sealed = await self._offer_seal(ws)
+                if sealed is not None:
+                    return sealed, False
+                # A 1.8.0 host answers SEAL with "unknown message type" and
+                # has already consumed that socket's first frame. The relay
+                # link is TLS to the relay, which is every client's old
+                # footing; keep it, on a fresh socket.
+                await ws.close()
+                return await websockets.connect(ws_url), False
+            sealed = await self._offer_seal(ws)
             if sealed is not None:
                 return sealed, True
             if endpoint_is_safe(ws_url) or not self._keys:
@@ -739,14 +749,15 @@ class RemoteAgent:
             self._forget_direct_endpoint()
         raise OSError("no way to reach the agent")
 
-    async def _seal_direct(self, ws, ws_url: str):
-        """Seal a direct socket end to end; None if the host does not seal.
+    async def _offer_seal(self, ws):
+        """Seal a socket end to end; None if the host does not seal.
 
-        Every direct socket is offered a SEAL first. A host that understands
-        it answers SEALED_OK and every later frame is encrypted with one-time
-        keys signed by both identities; a plaintext public endpoint is then
-        as private as TLS. An older host answers something else or nothing,
-        and the caller decides whether the bare link is acceptable.
+        Every socket, direct or relayed, is offered a SEAL first. A host that
+        understands it answers SEALED_OK and every later frame is encrypted
+        with one-time keys signed by both identities; a plaintext public
+        endpoint is then as private as TLS, and a relayed session is opaque
+        to the relay. An older host answers something else or nothing, and
+        the caller decides whether the bare link is acceptable.
         """
         from . import sealed
 

@@ -12,7 +12,7 @@ Key components:
 
 Architecture:
 - Dual-trigger system: Intent detection on user input + reminder injection after tools
-- Uses llm_do with gemini-3.7-flash for fast intent analysis (structured output)
+- Uses llm_do with the product default for fast intent analysis (structured output)
 - Stores detected intent in agent.current_session['intent'] as {ack, is_build}
 - Reminder files in prompts/system-reminders/ directory with YAML frontmatter
 - Only injects reminders when intent matches (build tasks) or tool usage matches
@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from connectonion.core.events import after_each_tool, after_user_input
+from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -196,7 +197,7 @@ def detect_intent(agent: 'Agent') -> None:
     try:
         analysis = llm_do(
             INTENT_PROMPT.format(user_prompt=user_prompt),
-            model=getattr(agent, "model", None) or "co/gemini-3.7-flash",
+            model=getattr(agent, "model", None) or DEFAULT_MODEL,
             output=IntentAnalysis,
             temperature=0,
         )

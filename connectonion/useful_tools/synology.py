@@ -454,9 +454,10 @@ def save_credentials(**values):
     """Persist SYNOLOGY_* values to ~/.co/keys.env and the current environment."""
     from ..cli.commands.project_cmd_lib import upsert_env
 
-    env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
+    from ..environment import selected_env_file, publish_values
+    env_file = selected_env_file()
     env_file.parent.mkdir(parents=True, exist_ok=True)
 
     updates = {f"SYNOLOGY_{key.upper()}": str(value) for key, value in values.items()}
-    os.environ.update(updates)
+    publish_values(updates)
     upsert_env(env_file, updates)

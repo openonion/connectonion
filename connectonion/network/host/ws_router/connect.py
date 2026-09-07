@@ -33,9 +33,53 @@ def _record_oip_compatibility(data, conn):
     )
 
 
-def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist):
+def replay_check_for(conn, route_handlers):
+    """The one-use signature guard this connection's frames are held to.
+
+    Inside a seal nobody but the sealed peer can put a frame on the socket
+    and the CONNECT is bound to that peer below, so the ledger is not
+    consulted; that is what lets a sealed host keep no shared state. A bare
+    socket keeps the host's injected ledger.
+    """
+    from ..auth import sealed_channel_replay_check, signature_already_used
+
+    if conn.get("sealed_by"):
+        return sealed_channel_replay_check
+    return route_handlers.get("replay", signature_already_used)
+
+
+def _is_the_standard_verifier(verifier):
+    """Whether the host wired auth.authenticate_connect with a bound ledger.
+
+    server.py binds the ledger with functools.partial; a deployment's own
+    verifier keeps whatever replay semantics it has and is never overridden.
+    """
+    import functools
+
+    from ..auth import authenticate_connect
+
+    return isinstance(verifier, functools.partial) and verifier.func is authenticate_connect
+
+
+def _not_the_sealed_peer(data, conn):
+    """A CONNECT inside a seal must be signed by the identity that sealed it.
+
+    Without this a stranger could open its own seal and feed a CONNECT
+    captured from someone else into it: the replay the ledger existed to
+    stop, now inside a channel the stranger controls.
+    """
+    sealed_by = (conn or {}).get("sealed_by")
+    return bool(sealed_by) and data.get("from") != sealed_by
+
+
+def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist, conn=None):
     """Authenticate one CONNECT with the Host's configured verifier."""
-    from ..auth import authenticate_connect, signature_already_used
+    from ..auth import authenticate_connect
+
+    conn = conn or {}
+    if _not_the_sealed_peer(data, conn):
+        return None, data.get("from"), False, "unauthorized: CONNECT is not signed by the sealed peer"
+    replay_check = replay_check_for(conn, route_handlers)
 
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist, "whitelist": whitelist}
@@ -43,17 +87,20 @@ def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist
         auth_kwargs["recipient_address"] = metadata["address"]
     connect_auth = route_handlers.get("connect_auth")
     if connect_auth is None:
-        return authenticate_connect(
-            data, trust,
-            replay_check=route_handlers.get("replay", signature_already_used),
-            **auth_kwargs,
-        )
+        return authenticate_connect(data, trust, replay_check=replay_check, **auth_kwargs)
+    if conn.get("sealed_by") and _is_the_standard_verifier(connect_auth):
+        return connect_auth(data, trust, replay_check=replay_check, **auth_kwargs)
     return connect_auth(data, trust, **auth_kwargs)
 
 
-def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelist):
+def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelist, conn=None):
     """Re-authenticate an equivalent live connection without repeating policy."""
-    from ..auth import authenticate_connect_identity, signature_already_used
+    from ..auth import authenticate_connect_identity
+
+    conn = conn or {}
+    if _not_the_sealed_peer(data, conn):
+        return None, data.get("from"), False, "unauthorized: CONNECT is not signed by the sealed peer"
+    replay_check = replay_check_for(conn, route_handlers)
 
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist}
@@ -68,19 +115,17 @@ def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelis
         return reattach_auth(data, trust, whitelist=whitelist, **auth_kwargs)
     connect_auth = route_handlers.get("connect_auth")
     if connect_auth is not None:
+        if conn.get("sealed_by") and _is_the_standard_verifier(connect_auth):
+            return connect_auth(data, trust, whitelist=whitelist, replay_check=replay_check, **auth_kwargs)
         return connect_auth(data, trust, whitelist=whitelist, **auth_kwargs)
 
-    return authenticate_connect_identity(
-        data,
-        replay_check=route_handlers.get("replay", signature_already_used),
-        **auth_kwargs,
-    )
+    return authenticate_connect_identity(data, replay_check=replay_check, **auth_kwargs)
 
 
 async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
     """Handle CONNECT message: auth + merge + optional running reattach."""
     _, agent_address, _, err = authenticate_connect_frame(
-        data, route_handlers, trust, blacklist, whitelist
+        data, route_handlers, trust, blacklist, whitelist, conn=conn
     )
 
     if err and "forbidden" in err.lower():
@@ -138,7 +183,7 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
         return
 
     _, agent_address, _, err = authenticate_reattach_frame(
-        data, route_handlers, trust, blacklist, whitelist
+        data, route_handlers, trust, blacklist, whitelist, conn=conn
     )
 
     if err:

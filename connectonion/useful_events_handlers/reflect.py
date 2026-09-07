@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
 from ..core.events import after_tools
+from ..core.usage import DEFAULT_MODEL
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -112,7 +113,7 @@ Error: {error}"""
 
     reasoning = llm_do(
         prompt,
-        model="co/gemini-3.7-flash",
+        model=DEFAULT_MODEL,
         temperature=0.2,
         system_prompt=REFLECT_PROMPT
     )

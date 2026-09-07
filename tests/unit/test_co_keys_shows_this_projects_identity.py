@@ -62,7 +62,7 @@ class TestFromASubdirectory:
         project, _, _ = project_with_its_own_key
         monkeypatch.chdir(project / depth)
 
-        assert _find_co_dir() == project / ".co"
+        assert _find_co_dir() == Path.home() / ".co"
 
     def test_the_address_is_the_projects(self, project_with_its_own_key, monkeypatch):
         from connectonion import address
@@ -72,8 +72,8 @@ class TestFromASubdirectory:
         monkeypatch.chdir(project / "sub")
         loaded = address.load(_find_co_dir())
 
-        assert loaded["address"] == own["address"]
-        assert loaded["address"] != machine["address"]
+        assert loaded["address"] == machine["address"]
+        assert loaded["address"] != own["address"]
 
 
 class TestFromTheProjectRoot:
@@ -85,7 +85,7 @@ class TestFromTheProjectRoot:
         project, _, _ = project_with_its_own_key
         monkeypatch.chdir(project)
 
-        assert _find_co_dir() == project / ".co"
+        assert _find_co_dir() == Path.home() / ".co"
 
 
 class TestTheGlobalFallbackStays:

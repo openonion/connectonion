@@ -189,13 +189,13 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-4o")
 response = llm_do("Hello", model="co/claude-sonnet-4-5")
-response = llm_do("Hello", model="co/gemini-3.7-flash")
+response = llm_do("Hello", model="co/gemini-3.8-flash")
 ```
 
 **Available models:**
 - OpenAI: `co/gpt-4o`, `co/gpt-4o-mini`, `co/o4-mini`
 - Anthropic: `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- Google: `co/gemini-3.7-flash` (default), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Google: `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 - And more...
 
 **Benefits:**
@@ -317,6 +317,15 @@ The CLI wraps the same `Gmail` tool your agents use. See
 - `co gdrive rm <#>` - move to trash (recoverable)
 
 See [gdrive.md](gdrive.md) for details.
+
+#### Google Calendar and YouTube
+
+The Google-only 1.8.3 candidate adds `co gcalendar` and `co youtube` alongside
+Gmail and Drive. Default `co auth google` requests all four supported services;
+tokens and granted scopes remain local. See [Google auth](../integrations/google.md).
+
+- [co gcalendar](gcalendar.md): list/read events, find free slots, preview and confirm Calendar writes and Meet creation.
+- [co youtube](youtube.md): read channels/videos and preview or confirm uploads and metadata updates.
 
 ---
 

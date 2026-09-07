@@ -24,6 +24,13 @@ from connectonion.cli.commands.gmail_commands import (
     _gmail,
     _resolve_email_id,
     _when,
+    handle_gmail_draft_attach,
+    handle_gmail_draft_create,
+    handle_gmail_draft_list,
+    handle_gmail_draft_preview,
+    handle_gmail_draft_remove,
+    handle_gmail_draft_replace,
+    handle_gmail_draft_send,
     handle_gmail_inbox,
     handle_gmail_read,
     handle_gmail_reply,
@@ -62,6 +69,7 @@ def plain(text):
 def _isolate_cache(tmp_path, monkeypatch):
     """Never touch the real ~/.co/gmail_last_inbox.json."""
     monkeypatch.setattr(gmail_commands, "INBOX_CACHE", tmp_path / ".co" / "gmail_last_inbox.json")
+    monkeypatch.setattr(gmail_commands, "DRAFT_CACHE", tmp_path / ".co" / "gmail_last_drafts.json")
 
 
 class TestGmailGuard:
@@ -85,17 +93,16 @@ class TestGmailGuard:
         assert "Gmail permission missing" in output
         assert "co auth google" in output
 
-    def test_readonly_without_send_exits_with_hint(self, capsys):
-        """Gmail() needs gmail.send too — the guard must catch it, not traceback."""
+    def test_readonly_without_send_can_read(self, capsys):
+        """A deliberately restricted read grant must remain usable."""
         with patch.dict(
             os.environ,
             {"GOOGLE_ACCESS_TOKEN": "test-token", "GOOGLE_SCOPES": "gmail.readonly"},
             clear=False,
         ):
-            with pytest.raises(typer.Exit):
-                _gmail()
+            assert _gmail() is not None
 
-        assert "Gmail permission missing" in capsys.readouterr().out
+        assert "Gmail permission missing" not in capsys.readouterr().out
 
     def test_send_without_readonly_exits_with_hint(self, capsys):
         with patch.dict(
@@ -122,6 +129,15 @@ class TestGmailGuard:
         with patch.dict(os.environ, {**CONNECTED_ENV, "GOOGLE_SCOPES": urls}, clear=False):
             from connectonion.useful_tools.gmail import Gmail
             assert isinstance(_gmail(), Gmail)
+
+    def test_draft_write_without_compose_or_modify_exits_with_fix(self, capsys):
+        with patch.dict(os.environ, READONLY_ENV, clear=False):
+            with pytest.raises(typer.Exit):
+                _gmail(require_draft_write=True)
+
+        output = plain(capsys.readouterr().out)
+        assert "draft permission missing" in output
+        assert "co auth google" in output
 
 
 class TestWhen:
@@ -159,15 +175,15 @@ class TestHandleGmailInbox:
 
         assert "no emails" in capsys.readouterr().out
 
-    def test_empty_inbox_writes_no_cache(self, capsys):
-        """An empty listing must not clobber the numbering from the last one."""
+    def test_empty_inbox_clears_numbers(self, capsys):
+        """An empty listing must not retain older rows."""
         gmail = MagicMock()
         gmail.list_inbox.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_inbox(last=10, unread=True)
 
-        assert not gmail_commands.INBOX_CACHE.exists()
+        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {}
         assert "no unread emails" in capsys.readouterr().out
 
     def test_table_and_cache(self, monkeypatch, capsys):
@@ -461,14 +477,14 @@ class TestHandleGmailSendAndSearch:
         gmail.list_search.assert_called_once_with("invoice", max_results=5)
         assert "no emails matching" in capsys.readouterr().out
 
-    def test_search_empty_result_writes_no_cache(self):
+    def test_search_empty_result_clears_numbers(self):
         gmail = MagicMock()
         gmail.list_search.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_search("invoice", last=5)
 
-        assert not gmail_commands.INBOX_CACHE.exists()
+        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {}
 
     def test_search_results_share_the_inbox_numbering_contract(self, monkeypatch, capsys):
         """`co gmail read <#>` after a search must open the search hit."""
@@ -548,3 +564,234 @@ class TestGmailSendAttachmentChecks:
 
         assert "25MB" in capsys.readouterr().out
         gmail.send.assert_not_called()
+
+
+def sample_draft(**overrides):
+    draft = {
+        "id": "draft-1",
+        "to": "recipient@example.com",
+        "cc": "",
+        "bcc": "",
+        "subject": "Quarterly report",
+        "body": "Exact body\n",
+        "attachments": [{
+            "name": "report.pdf", "type": "application/pdf", "size": 4,
+        }],
+        "attachment_size": 4,
+    }
+    draft.update(overrides)
+    return draft
+
+
+class TestGmailDraftCommands:
+    """The CLI is a staged workflow and every result prints one next command."""
+
+    def test_list_piped_caches_numbers_and_keeps_preview_tip(self, monkeypatch, capsys):
+        monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=False, width=120))
+        gmail = MagicMock()
+        gmail.list_drafts.return_value = [{
+            "id": "draft-1", "to": "r@example.com", "subject": "Report", "attachments": 1,
+        }]
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_list(last=5)
+
+        output = plain(capsys.readouterr().out)
+        assert "1.\tr@example.com" in output
+        assert "draft-1" in output
+        assert "co gmail draft preview <# from this listing>" in output
+        assert json.loads(gmail_commands.DRAFT_CACHE.read_text()) == {"1": "draft-1"}
+
+    def test_empty_list_points_to_create(self, capsys):
+        gmail = MagicMock()
+        gmail.list_drafts.return_value = []
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_list()
+
+        assert "co gmail draft create" in plain(capsys.readouterr().out)
+
+    def test_empty_list_invalidates_previous_numbers(self):
+        gmail_commands.DRAFT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        gmail_commands.DRAFT_CACHE.write_text(json.dumps({"1": "old-draft"}))
+        gmail = MagicMock()
+        gmail.list_drafts.return_value = []
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_list()
+        assert gmail_commands._resolve_draft_id("1") == ""
+
+    @pytest.mark.parametrize("interruption", [typer.Abort, KeyboardInterrupt, EOFError])
+    def test_interrupted_confirmation_keeps_draft_and_prints_tip(self, interruption, capsys):
+        gmail = MagicMock()
+        gmail.get_draft.return_value = sample_draft()
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with patch.object(typer, "confirm", side_effect=interruption):
+                with pytest.raises(typer.Exit) as exc:
+                    gmail_commands.handle_gmail_draft_send("draft-1")
+        assert exc.value.exit_code == 1
+        gmail._send_draft.assert_not_called()
+        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+
+    def test_create_stays_unsent_and_points_to_attach(self, capsys):
+        gmail = MagicMock()
+        gmail.create_draft.return_value = sample_draft()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_create("r@example.com", "S", "B")
+
+        gmail.create_draft.assert_called_once_with("r@example.com", "S", "B", cc=None, bcc=None)
+        gmail._send_draft.assert_not_called()
+        assert "co gmail draft attach draft-1 <path>" in plain(capsys.readouterr().out)
+
+    def test_create_reads_body_from_stdin(self, monkeypatch):
+        monkeypatch.setattr(sys, "stdin", io.StringIO("Piped body"))
+        gmail = MagicMock()
+        gmail.create_draft.return_value = sample_draft()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_create("r@example.com", "S", "-")
+
+        assert gmail.create_draft.call_args.args[2] == "Piped body"
+
+    def test_attach_local_stages_and_points_to_preview(self, capsys):
+        gmail = MagicMock()
+        gmail.add_draft_attachment.return_value = sample_draft()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_attach("draft-1", "report.pdf")
+
+        gmail.add_draft_attachment.assert_called_once_with("draft-1", "report.pdf")
+        gmail._send_draft.assert_not_called()
+        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+
+    def test_attach_drive_file_reads_bytes_without_writing_local_file(self, capsys):
+        gmail = MagicMock()
+        gmail._add_draft_attachment.return_value = sample_draft()
+        drive = MagicMock()
+        drive._read_file.return_value = {
+            "name": "Budget.csv", "type": "text/csv", "data": b"a,b",
+        }
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with patch("connectonion.cli.commands.gdrive_commands._gdrive", return_value=drive):
+                handle_gmail_draft_attach("draft-1", "drive-file", drive=True)
+
+        drive._read_file.assert_called_once()
+        gmail._add_draft_attachment.assert_called_once_with(
+            "draft-1", "Budget.csv", "text/csv", b"a,b"
+        )
+        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+
+    def test_attach_drive_link_does_not_download_or_change_sharing(self, capsys):
+        gmail = MagicMock()
+        gmail.add_draft_link.return_value = sample_draft(attachments=[], attachment_size=0)
+        drive = MagicMock()
+        drive._get_file.return_value = {
+            "name": "Budget", "link": "https://drive.google.com/file/d/1/view",
+        }
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with patch("connectonion.cli.commands.gdrive_commands._gdrive", return_value=drive):
+                handle_gmail_draft_attach("draft-1", "drive-file", drive=True, link=True)
+
+        drive._read_file.assert_not_called()
+        gmail.add_draft_link.assert_called_once_with(
+            "draft-1", "Budget", "https://drive.google.com/file/d/1/view"
+        )
+        assert "Drive link added" in plain(capsys.readouterr().out)
+
+    def test_link_without_drive_is_a_fix_it_error(self, capsys):
+        with pytest.raises(typer.Exit):
+            handle_gmail_draft_attach("draft-1", "report.pdf", link=True)
+
+        output = plain(capsys.readouterr().out)
+        assert "--link requires --drive" in output
+        assert "co gmail draft attach draft-1" in output
+
+    def test_remove_points_back_to_preview(self, capsys):
+        gmail = MagicMock()
+        gmail.remove_draft_attachment.return_value = sample_draft(attachments=[], attachment_size=0)
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_remove("draft-1", 1)
+
+        gmail.remove_draft_attachment.assert_called_once_with("draft-1", 1)
+        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+
+    def test_replace_with_local_file_points_back_to_preview(self, capsys):
+        gmail = MagicMock()
+        gmail.replace_draft_attachment.return_value = sample_draft()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_replace("draft-1", 1, "new.pdf")
+
+        gmail.replace_draft_attachment.assert_called_once_with("draft-1", 1, "new.pdf")
+        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+
+    def test_preview_prints_exact_body_manifest_and_send_tip(self, capsys):
+        gmail = MagicMock()
+        gmail.get_draft.return_value = sample_draft()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_draft_preview("draft-1")
+
+        output = plain(capsys.readouterr().out)
+        assert "Exact body" in output
+        assert "report.pdf (application/pdf, 4 bytes)" in output
+        assert "co gmail draft send draft-1" in output
+
+    def test_send_decline_keeps_draft_and_exits_nonzero(self, capsys):
+        gmail = MagicMock()
+        gmail.get_draft.return_value = sample_draft()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with patch.object(typer, "confirm", return_value=False):
+                with pytest.raises(typer.Exit) as exited:
+                    handle_gmail_draft_send("draft-1")
+
+        assert exited.value.exit_code == 1
+        gmail._send_draft.assert_not_called()
+        output = plain(capsys.readouterr().out)
+        assert "Not sent" in output
+        assert "co gmail draft preview draft-1" in output
+
+    def test_send_confirms_after_preview_and_points_to_sent(self, capsys):
+        gmail = MagicMock()
+        gmail.get_draft.return_value = sample_draft()
+        gmail._send_draft.return_value = {"id": "message-1"}
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with patch.object(typer, "confirm", return_value=True):
+                handle_gmail_draft_send("draft-1")
+
+        output = plain(capsys.readouterr().out)
+        assert "Exact body" in output
+        gmail._send_draft.assert_called_once_with("draft-1")
+        assert "co gmail sent" in output
+
+    def test_unknown_cached_number_points_to_list(self, capsys):
+        gmail_commands.DRAFT_CACHE.parent.mkdir(parents=True)
+        gmail_commands.DRAFT_CACHE.write_text(json.dumps({"1": "draft-1"}))
+
+        with patch.object(gmail_commands, "_gmail", return_value=MagicMock()):
+            with pytest.raises(typer.Exit):
+                handle_gmail_draft_preview("9")
+
+        assert "co gmail draft list" in plain(capsys.readouterr().out)
+
+    def test_provider_permission_error_is_sanitized(self, capsys):
+        from googleapiclient.errors import HttpError
+
+        response = MagicMock(status=403, reason="Forbidden")
+        gmail = MagicMock()
+        gmail.list_drafts.side_effect = HttpError(
+            response, b'{"access_token":"must-not-appear"}'
+        )
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with pytest.raises(typer.Exit):
+                handle_gmail_draft_list()
+
+        output = plain(capsys.readouterr().out)
+        assert "must-not-appear" not in output
+        assert "co auth google" in output

@@ -3,7 +3,7 @@
 Purpose: Build the ConnectOnion browser Agent; `co browser do` supplies a daemon-backed proxy so model waits stay in the CLI process.
 LLM-Note:
   Dependencies: imports from [pathlib, connectonion.Agent, connectonion.useful_plugins (image_result_formatter, ui_stream), connectonion.useful_tools.browser_tools.BrowserAutomation, cli.commands.project_cmd_lib.load_api_key (lazy)] | imported by [cli/browser_agent/__init__.py (re-exported), cli/commands/browser_commands.py (lazy import), cli/browser_agent/daemon.py] | tested by [tests/unit/test_the_browser_agent_bills_this_account.py]
-  Data flow: browser_commands.handle_browser() → client._run_do() resolves OPENONION_API_KEY through load_api_key(), which verifies the token belongs to this machine's account → builds Agent("browser_cli", model="co/gemini-3.7-flash", tools=[DaemonBrowserProxy]) → model thinking stays local and each tool call is one short daemon request
+  Data flow: browser_commands.handle_browser() → client._run_do() resolves OPENONION_API_KEY through load_api_key(), which verifies the token belongs to this machine's account → builds Agent("browser_cli", model="co/gemini-3.8-flash", tools=[DaemonBrowserProxy]) → model thinking stays local and each tool call is one short daemon request
   State/Effects: resolves OPENONION_API_KEY in the caller environment (env, ./.env, ~/.co/keys.env; re-authenticates if the token names another account) | may create screenshots/files through daemon-backed tool calls | streams UI events via ui_stream plugin
   Integration: exposes execute_browser_command(command, headless=False) -> str | PROMPT_PATH points to ./prompts/agent.md (sibling to this file)
   Performance: synchronous in the caller, blocks that CLI for up to 200 iterations | does not block the daemon between tool calls | reuses the daemon's persistent browser/profile
@@ -13,6 +13,7 @@ LLM-Note:
 from pathlib import Path
 
 from connectonion import Agent
+from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import image_result_formatter, ui_stream
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 
@@ -41,7 +42,7 @@ def build_browser_agent(browser, api_key: str) -> Agent:
     """Build the natural-language browser Agent driving an existing BrowserAutomation."""
     return Agent(
         name="browser_cli",
-        model="co/gemini-3.7-flash",
+        model=DEFAULT_MODEL,
         api_key=api_key,
         system_prompt=PROMPT_PATH,
         tools=[browser],

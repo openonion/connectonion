@@ -175,6 +175,9 @@ class TestATokenThatNamesAnotherAccount:
         )
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: True)
 
+        from connectonion.environment import select_env_file
+        (project / ".env").write_text("")
+        select_env_file(project / ".env")
         assert lib._token_for_this_account(self._token(self.THEIRS)) == fresh
         assert calls == [project_co.resolve()]
 

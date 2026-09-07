@@ -20,7 +20,8 @@ def _run(tmp_path, env_extra=None, tty=False):
     vacuously anywhere the developer happens to lack a local .env — which is
     exactly how they first failed in CI while passing on my machine.
     """
-    (tmp_path / ".env").write_text("EXAMPLE_KEY=value\n", encoding="utf-8")
+    (tmp_path / ".co").mkdir()
+    (tmp_path / ".co" / "keys.env").write_text("EXAMPLE_KEY=value\n", encoding="utf-8")
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": str(tmp_path),

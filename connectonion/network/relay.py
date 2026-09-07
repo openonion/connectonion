@@ -140,9 +140,16 @@ async def send_response(
     await websocket.send(message_json)
 
 
-async def _run_session(session_id, first_msg, sessions, relay_ws, session_handler):
-    """Create relay transport adapters and run protocol handler for one session."""
+async def _run_session(session_id, first_msg, sessions, relay_ws, session_handler, *, identity=None):
+    """Create relay transport adapters and run protocol handler for one session.
+
+    ``identity`` is the host's keys. With it, a session whose first frame is
+    SEAL is sealed end to end exactly like a direct socket; the relay keeps
+    adding ``session_id`` to the outer frame and forwarding, and reads
+    nothing else. Without it (older callers, tests) the session runs bare.
+    """
     from .asgi.http import pydantic_json_encoder
+    from .sealed import host_seal_or_pass
 
     q = sessions[session_id]
     await q.put(first_msg)
@@ -169,7 +176,17 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
     # exception / asyncio cancel). Without finally the dict leaks per-session
     # queue entries on any non-normal exit.
     try:
-        await session_handler(send_msg, recv_msg)
+        sealed_by = None
+        if identity is not None:
+            send_msg, recv_msg, sealed_by = await host_seal_or_pass(
+                send_msg, recv_msg, identity, default=pydantic_json_encoder,
+            )
+            if send_msg is None:
+                return
+        if sealed_by is None:
+            await session_handler(send_msg, recv_msg)
+        else:
+            await session_handler(send_msg, recv_msg, sealed_by=sealed_by)
     finally:
         del sessions[session_id]
 
@@ -297,7 +314,10 @@ async def serve_loop(
                 await sessions[session_id].put(msg)
             else:
                 sessions[session_id] = asyncio.Queue()
-                asyncio.create_task(_run_session(session_id, msg, sessions, websocket, session_handler))
+                asyncio.create_task(_run_session(
+                    session_id, msg, sessions, websocket, session_handler,
+                    identity=addr_data,
+                ))
 
         except asyncio.TimeoutError:
             # heartbeat_interval (60s) elapsed with no incoming frame.

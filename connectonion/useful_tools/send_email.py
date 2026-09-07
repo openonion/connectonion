@@ -16,7 +16,6 @@ from typing import Dict, Optional
 
 import requests
 import yaml
-from dotenv import load_dotenv
 
 from ..backend import backend_url
 from ..credentials import AmbientCredentialError, require_ambient_api_key
@@ -54,16 +53,8 @@ def send_email(
             - retryable (bool): Whether retrying this key is currently safe
     """
     send_key = idempotency_key or str(uuid.uuid4())
-    # Environment values (container, CI, systemd, or an importing application)
-    # keep precedence. Canonical project/global files only fill missing values;
-    # the arbitrary five-parent crawl used here before disagreed with every
-    # other project boundary in the framework.
-    for env_file in (
-        project_root() / ".env",
-        Path.home() / ".co" / "keys.env",
-    ):
-        if env_file.is_file():
-            load_dotenv(env_file)
+    from ..environment import load_environment
+    load_environment()
 
     try:
         token = require_ambient_api_key()

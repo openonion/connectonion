@@ -50,3 +50,38 @@ def test_task_builds_explore_agent_from_live_definition(monkeypatch):
         "grep",
         "read_file",
     ]
+
+
+def test_project_override_is_discovered_once_and_used_by_task(tmp_path, monkeypatch):
+    subagents = importlib.import_module("connectonion.useful_plugins.subagents")
+    project = tmp_path / "project"
+    definition = project / ".co/agents/explore/AGENT.md"
+    definition.parent.mkdir(parents=True)
+    definition.write_text("---\nname: explore\ndescription: Project exploration\n"
+                          "model: co/project-model\nmax_iterations: 3\n"
+                          "tools: [read_file]\n---\nProject-only instructions.\n")
+    nested = project / "src/nested"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "isolated-home")
+
+    discovered = [item for item in subagents._discover_all_agents() if item["name"] == "explore"]
+    assert discovered == [{"name": "explore", "description": "Project exploration", "location": "project"}]
+    assert Path(subagents._load_agent("explore")["path"]) == definition
+    created = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+
+        def input(self, prompt):
+            created["prompt"] = prompt
+            return "project result"
+
+    monkeypatch.setattr("connectonion.core.agent.Agent", FakeAgent)
+    assert subagents.task(None, "inspect this project", "explore") == "project result"
+    assert created["model"] == "co/project-model"
+    assert created["max_iterations"] == 3
+    assert created["system_prompt"] == "Project-only instructions."
+    assert [tool.__name__.rsplit(".", 1)[-1] for tool in created["tools"]] == ["read_file"]
+    assert created["prompt"] == "inspect this project"

@@ -8,7 +8,7 @@ looked-up one.
 Two things that makes wrong today:
 
     gemini-3.6-flash      {'input': 1.5, 'output': 7.5, 'cached': 0.15}
-    co/gemini-3.7-flash   {'input': 1.0, 'output': 3.0, 'cached': 0.5}   ← default
+    co/gemini-3.8-flash   {'input': 1.0, 'output': 3.0, 'cached': 0.5}   ← default
 
 `co/` is the managed route — the default path, the one with the free credits —
 and **not one of the 26 priced models carries that prefix**. Every agent on the
@@ -33,7 +33,7 @@ from connectonion.core.usage import (
 class TestTheManagedRouteFindsItsModel:
 
     @pytest.mark.parametrize("model", [
-        "co/gemini-3.7-flash", "co/o4-mini", "co/claude-sonnet-4-5",
+        "co/gemini-3.8-flash", "co/o4-mini", "co/claude-sonnet-4-5",
     ])
     def test_a_co_model_is_priced_like_the_model_it_is(self, model):
         bare = model[len("co/"):]
@@ -44,14 +44,14 @@ class TestTheManagedRouteFindsItsModel:
         assert get_pricing(model) == get_pricing(bare)
 
     def test_the_default_model_is_not_costed_by_guesswork(self):
-        assert not is_estimated_price("co/gemini-3.7-flash"), (
+        assert not is_estimated_price("co/gemini-3.8-flash"), (
             "the default path prices its tokens from a generic fallback"
         )
 
     def test_the_output_price_actually_changes(self):
         """3.00 vs 7.50 is not a rounding difference."""
         guessed = 1_000_000 / 1_000_000 * DEFAULT_PRICING["output"]
-        real = calculate_cost("co/gemini-3.7-flash", 0, 1_000_000)
+        real = calculate_cost("co/gemini-3.8-flash", 0, 1_000_000)
 
         assert real != pytest.approx(guessed)
 

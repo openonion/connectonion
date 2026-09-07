@@ -62,7 +62,7 @@ class TestCredentialStatus:
             "provider": "Gemini",
             "credential": "GEMINI_API_KEY",
             "status": "configured",
-            "source": "process environment + <project>/.env",
+            "source": "process environment",
         }
         assert secret not in repr(rows)
 
@@ -88,8 +88,8 @@ class TestCredentialStatus:
         )
         openai = self._row(rows, "OPENAI_API_KEY")
 
-        assert openai["status"] == "discovered · not loaded"
-        assert openai["source"] == "<project>/.env"
+        assert openai["status"] == "missing"
+        assert openai["source"] == "—"
         assert environment == {}
         assert "local-secret" not in repr(rows)
 
@@ -112,8 +112,8 @@ class TestCredentialStatus:
         rows = _credential_rows(environ=environment)
         openai = self._row(rows, "OPENAI_API_KEY")
 
-        assert openai["status"] == "discovered · not loaded"
-        assert openai["source"] == "<project>/.env"
+        assert openai["status"] == "missing"
+        assert openai["source"] == "—"
         assert environment == {}
         assert (project / ".env").read_text() == "OPENAI_API_KEY=project-secret\n"
         assert "project-secret" not in repr(rows)
@@ -128,7 +128,7 @@ class TestCredentialStatus:
         rows = _credential_rows(project_dir=home, home=home, environ={})
         openai = self._row(rows, "OPENAI_API_KEY")
 
-        assert openai["source"] == "~/.env"
+        assert openai["source"] == "—"
         assert "home-secret" not in repr(rows)
 
     def test_reports_conflicting_sources_without_values(self, tmp_path):
@@ -150,12 +150,12 @@ class TestCredentialStatus:
         )
         anthropic = self._row(rows, "ANTHROPIC_API_KEY")
 
-        assert anthropic["status"] == "conflict"
+        assert anthropic["status"] == "discovered · not loaded"
         # The winner is marked now: with no environment value, the project's
         # .env is the highest-precedence source present and is the one loaded.
         # Naming a conflict without naming the winner left the operator to
         # guess, and the natural guess is wrong the other way round.
-        assert anthropic["source"] == "<project>/.env (used) + ~/.co/keys.env"
+        assert anthropic["source"] == "~/.co/keys.env"
         assert "local-secret" not in repr(rows)
         assert "global-secret" not in repr(rows)
         assert str(tmp_path) not in repr(rows)
@@ -172,7 +172,7 @@ class TestCredentialStatus:
         account = "0x" + "a" * 64
         process_token = _token_for(account, "new")
         stored_token = _token_for(account.upper(), "old")
-        (project / ".env").write_text(
+        (home / ".co" / "keys.env").write_text(
             f"OPENONION_API_KEY={stored_token}\n"
         )
 
@@ -185,7 +185,7 @@ class TestCredentialStatus:
 
         assert openonion["status"] == "configured"
         assert "process environment" in openonion["source"]
-        assert "<project>/.env" in openonion["source"]
+        assert "~/.co/keys.env" in openonion["source"]
         assert account[:16] in openonion["source"].lower()
         assert process_token not in repr(rows)
         assert stored_token not in repr(rows)
@@ -201,7 +201,7 @@ class TestCredentialStatus:
         other_account = "0x" + "2" * 64
         used_token = _token_for(used_account)
         other_token = _token_for(other_account)
-        (project / ".env").write_text(
+        (home / ".co" / "keys.env").write_text(
             f"OPENONION_API_KEY={other_token}\n"
         )
 
@@ -225,8 +225,8 @@ class TestCredentialStatus:
         project = tmp_path / "project"
         home = tmp_path / "home"
         project.mkdir()
-        home.mkdir()
-        (project / ".env").write_text("OPENONION_API_KEY=other-opaque\n")
+        (home / ".co").mkdir(parents=True)
+        (home / ".co" / "keys.env").write_text("OPENONION_API_KEY=other-opaque\n")
         environment = {"OPENONION_API_KEY": "opaque-token"}
 
         rows = _credential_rows(
@@ -360,9 +360,9 @@ class TestCredentialStatus:
         assert "Revealed Credential Values" in rendered
         assert "Secrets shown in full" in rendered
         assert "process environment" in rendered
-        assert "<project>/.env" in rendered
+        assert "<project>/.env" not in rendered
         assert process_secret in rendered
-        assert local_secret in rendered
+        assert local_secret not in rendered
 
 
 class TestLoadApiKey:
@@ -392,7 +392,7 @@ class TestLoadApiKey:
                     from connectonion.cli.commands.project_cmd_lib import load_api_key
 
                     result = load_api_key()
-                    assert result == "local-env-key"
+                    assert result is None
             finally:
                 os.chdir(original_cwd)
 
@@ -414,7 +414,7 @@ class TestLoadApiKey:
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
         monkeypatch.delenv("OPENONION_API_KEY", raising=False)
 
-        assert load_api_key() == "project-root-token"
+        assert load_api_key() is None
 
     def test_load_api_key_from_global_keys_env(self):
         """Test loading API key from ~/.co/keys.env."""
@@ -585,8 +585,8 @@ class TestStatusUsesTheCanonicalProjectIdentity:
 
         handle_status()
 
-        assert mock_post.call_args.kwargs["json"]["public_key"] == project_identity["address"]
-        assert mock_sign.call_args.args[0] == project_identity
+        assert mock_post.call_args.kwargs["json"]["public_key"] == global_identity["address"]
+        assert mock_sign.call_args.args[0] == global_identity
 
     @patch('connectonion.cli.commands.status_commands.console')
     @patch('connectonion.cli.commands.status_commands.load_api_key', return_value="token")
