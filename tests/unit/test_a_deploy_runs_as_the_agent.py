@@ -58,6 +58,9 @@ def _env_written_over_ssh(tmp_path, agent_account):
     (project / ".env").write_text(
         "".join(f"{k}={v}\n" for k, v in PROJECT_ENV.items()))
 
+    from connectonion.environment import select_env_file
+    if (project / ".env").exists():
+        select_env_file(project / ".env")
     sent = {}
 
     def fake_ssh(target, script, **kwargs):
@@ -103,8 +106,8 @@ def test_the_applications_own_secrets_still_travel(tmp_path):
 
     assert written["GEMINI_API_KEY"] == "AIza-app-secret"
     assert written["DATABASE_URL"] == "postgres://app"
-    assert written["AGENT_CONFIG_PATH"] == "/srv/myagent/.co", \
-        "still corrected for the machine it is going to"
+    assert "AGENT_CONFIG_PATH" not in written
+    assert "Environment=AGENT_CONFIG_PATH=/srv/myagent/.co" in dts._unit_text("myagent", "agent.py")
 
 
 def test_without_an_account_the_operators_identity_is_still_dropped(tmp_path):
@@ -124,6 +127,9 @@ def test_without_an_account_the_operators_identity_is_still_dropped(tmp_path):
 def test_a_project_with_no_env_still_gets_its_account(tmp_path):
     project = tmp_path / "proj"
     project.mkdir()
+    from connectonion.environment import select_env_file
+    if (project / ".env").exists():
+        select_env_file(project / ".env")
     sent = {}
 
     def fake_ssh(target, script, **kwargs):

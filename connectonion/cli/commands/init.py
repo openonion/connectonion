@@ -48,7 +48,8 @@ console = Console()
 def handle_global_init(key: Optional[str] = None) -> None:
     """Set up this machine without writing into the current project."""
     ensure_global_config()
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     # Startup may already have loaded a project's .env into os.environ. Only
     # an explicit --key may promote a provider credential into global storage.
     if key:
@@ -189,7 +190,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         files_created.append("agent.py")
 
     # AUTHENTICATE FIRST - so we have OPENONION_API_KEY to add to .env
-    global_co_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_co_dir = global_config_dir()
 
     # Authenticate to get OPENONION_API_KEY (always, for everyone)
     auth_success = authenticate(global_co_dir, save_to_project=False)
@@ -198,7 +200,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
     # Handle .env file - append API keys from global config
     env_path = Path(current_dir) / ".env"
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     global_keys_env = global_dir / "keys.env"
 
     # Identity keys: always overwrite from global (co reset must propagate).

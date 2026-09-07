@@ -35,8 +35,9 @@ co auth google
 ```
 
 This opens the Google OAuth flow and saves `GOOGLE_*` credentials (access
-token, refresh token, scopes, email) to your project `.env` and
-`~/.co/keys.env`. Tokens auto-refresh — the access token is renewed at the
+token, refresh token, scopes, email) to the selected env file: global
+`~/.co/keys.env` by default. Use `co --env-file /absolute/project/.env auth google`
+to select another file explicitly. Tokens auto-refresh — the access token is renewed at the
 start of every command, so you authorize once. Draft creation and editing need
 the `gmail.modify` scope; reconnect if an older token does not have it.
 
@@ -231,9 +232,9 @@ was lost after delivery: inspect sent mail before repeating the send or reply.
   Drive yourself, or attach the file bytes with `--drive` instead of `--link`.
 - **`No email #N in your last listing`** → the number is out of range or the
   listing changed; run `co gmail` to refresh the numbering.
-- **Credentials found in one project but not another** → fixed in 1.3.1;
-  older versions read either the project `.env` or `~/.co/keys.env`, never
-  both, so a project with its own `.env` hid the Google tokens.
+- **An intentional project account is no longer selected** → use
+  `co --env-file /absolute/project/.env gmail inbox`. The 1.8.4 implementation
+  defaults to global settings; see [environment migration](environment.md).
 
 ## See also
 

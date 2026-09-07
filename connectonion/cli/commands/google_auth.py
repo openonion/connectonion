@@ -54,20 +54,9 @@ def handle_google_auth(scopes: str | None = None):
         if "ciphertext" not in result:
             raise ValueError("Google authorization cancelled or timed out")
         credentials = _decrypt_microsoft_handoff(private_key, result["ciphertext"], provider="google")
-        path = Path(os.getenv("AGENT_CONFIG_PATH", str(Path.home() / ".co"))) / "keys.env"
-        path.parent.mkdir(parents=True, exist_ok=True)
+        from ...environment import selected_env_file
+        path = selected_env_file()
         _save_google_to_env(path, credentials)
-        path.chmod(0o600)
-        # Existing project overrides must not keep the old account active.
-        if Path(".env").exists():
-            _save_google_to_env(Path(".env"), credentials)
-            Path(".env").chmod(0o600)
-        for key, value in credentials.items():
-            variable = {"access_token": "GOOGLE_ACCESS_TOKEN", "refresh_token": "GOOGLE_REFRESH_TOKEN",
-                        "expires_at": "GOOGLE_TOKEN_EXPIRES_AT", "scopes": "GOOGLE_SCOPES",
-                        "google_email": "GOOGLE_EMAIL"}.get(key)
-            if variable:
-                os.environ[variable] = value
         print("Google connected. Actual granted scopes saved locally. Next: co status")
     except (requests.RequestException, ValueError, KeyError, TypeError):
         print("Google authorization did not complete; existing credentials were kept. Next: co auth google")

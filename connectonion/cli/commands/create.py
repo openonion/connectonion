@@ -122,7 +122,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         detected_keys[provider] = key
 
     # Authenticate only if OPENONION_API_KEY not already in global keys.env
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     global_keys_env = global_dir / "keys.env"
     already_authed = global_keys_env.exists() and "OPENONION_API_KEY=" in global_keys_env.read_text(encoding="utf-8")
 

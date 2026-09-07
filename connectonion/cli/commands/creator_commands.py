@@ -95,8 +95,12 @@ def run(provider: str, action: Callable[[], tuple[dict, str, str]], json_output:
         code = error.code if isinstance(error, CreatorError) else "local_io"
         message = str(error) if isinstance(error, CreatorError) else "Cannot access local evidence, cache, or operation receipt."
         command = recovery or f"co {provider} --help"
-        if code == "auth_required":
+        if code in {"auth_required", "not_configured", "reauth_required", "incomplete_record"}:
             command = "co auth google"
+        elif code == "broker_auth_failed":
+            command = "co auth"
+        elif code in {"record_changed", "invalid_response", "network_error", "provider_unavailable"}:
+            command = "co status"
         elif code in {"invalid_metadata", "invalid_file", "invalid_target"}:
             command = f"co {provider} --help"
         elif code == "stale_number":
@@ -107,7 +111,9 @@ def run(provider: str, action: Callable[[], tuple[dict, str, str]], json_output:
         # exception text. Do not expose it or reinterpret it as an empty result.
         command = recovery or f"co {provider} --help"
         result, tip = {"ok": False, "code": "unexpected_response", "message": "Unexpected response; details withheld. No automatic retry was made."}, f"Next: {command}"
-    result = {"ok": True, **result, "next_command": command, "next_tip": tip}
+    from ...environment import selected_command
+    from .command_tips import selected_tip
+    result = {"ok": True, **result, "next_command": selected_command(command), "next_tip": selected_tip(tip)}
     render(result, json_output)
     if not result["ok"]:
         raise typer.Exit(1)

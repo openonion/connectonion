@@ -76,7 +76,7 @@ class TestSaveMicrosoftToEnv:
             credentials = {
                 'access_token': 'eyJ0eXAi.test123',
                 'refresh_token': '0.ATcA.test456',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'Mail.Read,Mail.Send,Calendars.Read',
                 'microsoft_email': 'test@outlook.com'
             }
@@ -88,7 +88,7 @@ class TestSaveMicrosoftToEnv:
             content = env_file.read_text()
             assert 'MICROSOFT_ACCESS_TOKEN=eyJ0eXAi.test123' in content
             assert 'MICROSOFT_REFRESH_TOKEN=0.ATcA.test456' in content
-            assert 'MICROSOFT_TOKEN_EXPIRES_AT=2025-12-31T23:59:59' in content
+            assert 'MICROSOFT_TOKEN_EXPIRES_AT=2099-12-31T23:59:59' in content
             assert 'MICROSOFT_SCOPES=Mail.Read,Mail.Send,Calendars.Read' in content
             assert 'MICROSOFT_EMAIL=test@outlook.com' in content
 
@@ -109,7 +109,7 @@ OTHER_VAR=keep-this
             credentials = {
                 'access_token': 'new-token',
                 'refresh_token': 'new-refresh',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'Mail.Read',
                 'microsoft_email': 'new@outlook.com'
             }
@@ -142,7 +142,7 @@ OTHER_VAR=keep-this
             credentials = {
                 'access_token': 'test',
                 'refresh_token': 'test',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'Mail.Read',
                 'microsoft_email': 'test@outlook.com'
             }
@@ -212,7 +212,7 @@ class TestAuthMicrosoftFlow:
             credentials = {
                 'access_token': 'eyJ0eXAi.test',
                 'refresh_token': '0.ATcA.test',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'Mail.ReadWrite,Mail.Send,Contacts.ReadWrite,Calendars.Read,Calendars.ReadWrite',
                 'microsoft_email': 'test@outlook.com'
             }
@@ -256,7 +256,7 @@ class TestAuthMicrosoftFlow:
                 return_value=callback,
             ):
                 from connectonion.cli.main import cli
-                self.runner.invoke(cli, ['auth', 'microsoft'])
+                self.runner.invoke(cli, ['--env-file', str(Path('.env').resolve()), 'auth', 'microsoft'])
 
             mock_requests.delete.assert_not_called()
             mock_webbrowser.open.assert_called_once()
@@ -284,7 +284,7 @@ class TestAuthMicrosoftFlow:
                 return_value=callback,
             ):
                 from connectonion.cli.main import cli
-                result = self.runner.invoke(cli, ['auth', 'microsoft'])
+                result = self.runner.invoke(cli, ['--env-file', str(Path('.env').resolve()), 'auth', 'microsoft'])
 
             assert 'Failed to initialize OAuth' in result.output or result.exit_code != 0
 
@@ -314,6 +314,6 @@ class TestAuthMicrosoftFlow:
                 ),
             ):
                 from connectonion.cli.main import cli
-                result = self.runner.invoke(cli, ['auth', 'microsoft'])
+                result = self.runner.invoke(cli, ['--env-file', str(Path('.env').resolve()), 'auth', 'microsoft'])
 
             assert 'timed out' in result.output.lower() or result.exit_code != 0

@@ -3,7 +3,7 @@ Purpose: Gmail integration tool for reading, sending, and managing emails via Go
 LLM-Note:
   Dependencies: imports from [os, base64, google.oauth2.credentials, googleapiclient.discovery, googleapiclient.errors] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gmail.py]
   Data flow: Agent calls Gmail methods → refreshes the locally held Google token through oo-api's stateless exchange → builds Gmail API service → direct calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
-  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
+  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens only to the selected record (process overrides remain in memory) | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
   Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), draft CRUD/attachment methods, send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately (lazy loading)
   Errors: raises ValueError if OAuth not configured | HttpError from Google API propagates | returns error strings for display to user
@@ -62,6 +62,7 @@ from googleapiclient.discovery import build
 
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 from ..project import project_root
 from ._attachment_files import path_of_open_file
 
@@ -70,6 +71,16 @@ GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
 class Gmail:
     """Gmail tool for reading and managing emails."""
+
+    @property
+    def _credentials(self):
+        if not hasattr(self, "_credential_record"):
+            self._credential_record = resolve_provider_credentials("google")
+        return self._credential_record
+
+    @_credentials.setter
+    def _credentials(self, value):
+        self._credential_record = value
 
     def __init__(self, emails_csv: str = "data/emails.csv", contacts_csv: str = "data/contacts.csv",
                  allow_external_attachments: bool = False):
@@ -86,8 +97,11 @@ class Gmail:
         Raises ValueError if scope is missing.
         """
         from .google_scopes import granted_scopes
-        scopes = granted_scopes()
-        if not scopes.intersection({"gmail.readonly", "gmail.modify", "https://mail.google.com/"}):
+        self._credentials = resolve_provider_credentials("google")
+        scopes = self._credentials.scopes
+        if not scopes:
+            self._credentials.require_configured()
+        if scopes and not scopes.intersection({"gmail.readonly", "gmail.modify", "https://mail.google.com/"}):
             raise ValueError(
                 "Missing 'gmail.readonly' scope.\n"
                 f"Current scopes: {scopes}\n"
@@ -116,7 +130,11 @@ class Gmail:
         if self._service:
             return self._service
 
-        access_token = self._refresh_via_backend(None)
+        self._credentials.require_configured()
+        access_token = self._credentials.get("ACCESS_TOKEN")
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        if self._credentials.get("REFRESH_TOKEN") or not access_token or (expiry and expiry <= datetime.now(timezone.utc) + timedelta(minutes=5)):
+            access_token = self._refresh_via_backend(None)
         expiry = self._token_expiry()
 
         # Backend owns client_id/client_secret. google-auth invokes our broker
@@ -124,9 +142,7 @@ class Gmail:
         creds = Credentials(
             token=access_token,
             refresh_token=None,
-            scopes=["https://www.googleapis.com/auth/gmail.readonly",
-                   "https://www.googleapis.com/auth/gmail.modify",
-                   "https://www.googleapis.com/auth/gmail.send"],
+            scopes=self._credentials.scopes or None,
             expiry=expiry,
             refresh_handler=self._refresh_handler,
         )
@@ -134,85 +150,22 @@ class Gmail:
         self._service = build('gmail', 'v1', credentials=creds)
         return self._service
 
-    def _token_expiry(self) -> datetime:
-        """Return google-auth's naive UTC expiry value."""
-        value = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
-        if not value:
-            return datetime.utcnow() + timedelta(minutes=55)
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if parsed.tzinfo:
-            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-        return parsed
+    def _token_expiry(self) -> datetime | None:
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        return expiry.replace(tzinfo=None) if expiry else None
 
     def _refresh_handler(self, request, scopes=None):
         """Let google-auth recover a long-running Gmail client after a 401."""
         return self._refresh_via_backend(None), self._token_expiry()
 
     def _refresh_via_backend(self, refresh_token: str | None) -> str:
-        """Ask the stateless broker to refresh the locally held Google token.
-
-        Args:
-            refresh_token: Optional explicit local token; otherwise read local configuration.
-
-        Returns:
-            New access token
-        """
-        import httpx
-
-        # Get backend URL and auth
-        selected_backend = backend_url()
+        # The argument is retained for callers; it must belong to this record.
+        from ..provider_credentials import ProviderCredentialError
         api_key = require_ambient_api_key()
-        refresh_token = refresh_token or os.getenv("GOOGLE_REFRESH_TOKEN")
-        if not refresh_token:
-            raise ValueError("Local Google refresh token missing. Run: co auth google")
-
-        # Call backend refresh endpoint
-        response = httpx.post(
-            f"{selected_backend}/api/v1/oauth/google/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"refresh_token": refresh_token},
-            timeout=15.0,
-        )
-
-        if response.status_code != 200:
-            try:
-                detail = response.json().get("detail")
-            except (TypeError, ValueError):
-                detail = None
-            if response.status_code == 401 and isinstance(detail, dict) \
-                    and detail.get("error") == "reauth_required":
-                raise ValueError("Google authorization expired. Run: co auth google")
-            raise ValueError("Failed to refresh Google authorization via backend")
-
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-        new_refresh_token = data.get("refresh_token")
-
-        # Update environment variables for this session
-        os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
-        os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
-        if new_refresh_token:
-            os.environ["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
-
-        # Persist to global keys.env so the refreshed token survives this
-        # process. Persist a rotated refresh token if Google issued one.
-        from ..cli.commands.project_cmd_lib import upsert_env
-        env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        values = {
-            "GOOGLE_ACCESS_TOKEN": new_access_token,
-            "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
-        }
-        if new_refresh_token:
-            values["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
-        if "scopes" in data:
-            values["GOOGLE_SCOPES"] = data["scopes"]
-        os.environ.update(values)
-        upsert_env(env_file, values)
-        env_file.chmod(0o600)
-
-        return new_access_token
+        if refresh_token and refresh_token != self._credentials.get("REFRESH_TOKEN"):
+            raise ProviderCredentialError("record_changed", "Refresh token differs from the selected account.", "co status")
+        return refresh_credentials(self._credentials, backend=backend_url(),
+                                   api_key=api_key)
 
     def _email_dicts(self, messages, max_results=10):
         """Fetch metadata for message stubs and return plain email dicts."""
@@ -502,8 +455,8 @@ class Gmail:
 
     def _require_draft_write_scope(self) -> None:
         """Require one of the scopes accepted by Gmail's draft write APIs."""
-        scopes = self._scopes
-        if not any(scope in scopes for scope in ("gmail.modify", "gmail.compose", "https://mail.google.com/")):
+        scopes = self._credentials.scopes
+        if scopes and not any(scope in scopes for scope in ("gmail.modify", "gmail.compose", "https://mail.google.com/")):
             raise ValueError(
                 "Gmail draft permission missing.\n"
                 "Reconnect Google to grant draft access:\n"

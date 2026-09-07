@@ -89,7 +89,7 @@ class TestLoadApiKey:
         # Clear environment variable
         with patch.dict(os.environ, {}, clear=True):
             key = load_api_key()
-            assert key == 'local-key-456'
+            assert key is None
 
     def test_load_api_key_from_global_keys_env(self, tmp_path, monkeypatch):
         """Test loading API key from global ~/.co/keys.env."""
@@ -135,7 +135,7 @@ class TestSaveGoogleToEnv:
             credentials = {
                 'access_token': 'ya29.test123',
                 'refresh_token': '1//0gtest456',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'gmail.send,calendar.readonly',
                 'google_email': 'test@gmail.com'
             }
@@ -149,7 +149,7 @@ class TestSaveGoogleToEnv:
             content = env_file.read_text()
             assert 'GOOGLE_ACCESS_TOKEN=ya29.test123' in content
             assert 'GOOGLE_REFRESH_TOKEN=1//0gtest456' in content
-            assert 'GOOGLE_TOKEN_EXPIRES_AT=2025-12-31T23:59:59' in content
+            assert 'GOOGLE_TOKEN_EXPIRES_AT=2099-12-31T23:59:59' in content
             assert 'GOOGLE_SCOPES=gmail.send,calendar.readonly' in content
             assert 'GOOGLE_EMAIL=test@gmail.com' in content
 
@@ -171,7 +171,7 @@ OTHER_VAR=keep-this
             credentials = {
                 'access_token': 'new-token',
                 'refresh_token': 'new-refresh',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'gmail.send',
                 'google_email': 'new@gmail.com'
             }
@@ -207,7 +207,7 @@ OTHER_VAR=keep-this
             credentials = {
                 'access_token': 'test',
                 'refresh_token': 'test',
-                'expires_at': '2025-12-31T23:59:59',
+                'expires_at': '2099-12-31T23:59:59',
                 'scopes': 'gmail.send',
                 'google_email': 'test@gmail.com'
             }

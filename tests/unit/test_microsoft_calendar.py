@@ -24,7 +24,7 @@ class TestMicrosoftCalendarInit:
             from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
             with pytest.raises(ValueError) as exc_info:
                 MicrosoftCalendar()
-            assert "Missing Microsoft Calendar scopes" in str(exc_info.value)
+            assert "Microsoft account not connected" in str(exc_info.value)
             assert "co auth microsoft" in str(exc_info.value)
 
     def test_calendar_init_with_valid_scopes(self):
@@ -49,7 +49,7 @@ class TestMicrosoftCalendarTokenManagement:
             calendar = MicrosoftCalendar()
             with pytest.raises(ValueError) as exc_info:
                 calendar._get_access_token()
-            assert "credentials not found" in str(exc_info.value)
+            assert "account not connected" in str(exc_info.value)
 
     def test_get_access_token_returns_valid_token(self):
         """Test that valid token is returned."""
@@ -65,7 +65,7 @@ class TestMicrosoftCalendarTokenManagement:
             assert token == "test-token"
 
     @patch('connectonion.useful_tools.microsoft_calendar.httpx')
-    def test_refresh_persists_rotated_token_locally(
+    def test_process_refresh_does_not_write_global_or_project_files(
         self, mock_httpx, tmp_path, monkeypatch
     ):
         monkeypatch.chdir(tmp_path)
@@ -95,12 +95,10 @@ class TestMicrosoftCalendarTokenManagement:
             from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
             assert MicrosoftCalendar()._get_access_token() == "new-access"
 
-        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in (
-            config_dir / "keys.env"
-        ).read_text()
-        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in (
-            tmp_path / ".env"
-        ).read_text()
+        assert not (config_dir / "keys.env").exists()
+        assert (tmp_path / ".env").read_text() == (
+            "MICROSOFT_ACCESS_TOKEN=old-access\nMICROSOFT_REFRESH_TOKEN=old-refresh\n"
+        )
 
 
 class TestMicrosoftCalendarDateTimeParsing:

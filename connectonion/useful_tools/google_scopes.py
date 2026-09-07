@@ -1,8 +1,6 @@
-"""Normalize Google's URL scopes and the local comma-separated representation."""
-import os
-import re
+"""Read normalized scopes from the selected Google account record."""
+from ..provider_credentials import resolve_provider_credentials
 
 
 def granted_scopes() -> set[str]:
-    return {scope.removeprefix("https://www.googleapis.com/auth/")
-            for scope in re.split(r"[,\s]+", os.getenv("GOOGLE_SCOPES", "")) if scope}
+    return resolve_provider_credentials("google").scopes
