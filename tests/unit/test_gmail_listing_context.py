@@ -112,13 +112,20 @@ def test_account_binding_uses_provider_profile_instead_of_saved_metadata(monkeyp
 @pytest.mark.parametrize('args', [['read', '1'], ['reply', '1', 'Hello'],
     ['draft', 'preview', '1'], ['draft', 'attach', '1', 'report.pdf'],
     ['draft', 'remove', '1', '1'], ['draft', 'replace', '1', '1', 'report.pdf'], ['draft', 'send', '1']])
-def test_numeric_command_help_exposes_listing_selector(args):
+@pytest.mark.parametrize("color", [False, True])
+def test_numeric_command_help_exposes_listing_selector(args, color, monkeypatch):
+    from click import unstyle
+    from typer import rich_utils
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", color)
     from typer.testing import CliRunner
     from connectonion.cli.main import app
     commands = args[:2] if args[0] == 'draft' else args[:1]
-    result = CliRunner().invoke(app, ['gmail', *commands, '--help'])
+    result = CliRunner().invoke(app, ['gmail', *commands, '--help'], color=color)
     assert result.exit_code == 0
-    assert '--listing' in result.output
+    if color:
+        assert '\x1b[' in result.output
+    assert '--listing' in unstyle(result.output)
 
 
 def test_wrong_account_command_cannot_read_or_mutate(tmp_path, monkeypatch):
