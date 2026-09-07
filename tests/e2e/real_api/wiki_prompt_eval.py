@@ -56,13 +56,20 @@ def all_text(notebook):
     return "\n".join(pages(notebook).values()).lower()
 
 
-def structure_failures(notebook):
+def structure_failures(notebook, language="en"):
+    """Title, Sources line, and the language of the user's messages (Luna once wrote
+    Chinese pages for an English session after being told Chinese users get Chinese)."""
     failures = []
     for record, text in pages(notebook).items():
         if not text.lstrip().startswith("#"):
             failures.append(f"{record}: no title line")
         if "sources" not in text.lower():
             failures.append(f"{record}: no Sources line")
+        chinese = sum(1 for ch in text if "一" <= ch <= "鿿")
+        if language == "en" and chinese > 5:
+            failures.append(f"{record}: written in Chinese for an English source")
+        if language == "zh" and chinese < 20:
+            failures.append(f"{record}: written in English for a Chinese source")
     return failures
 
 
@@ -111,7 +118,7 @@ def check_question_is_not_maintenance(nb):
 
 
 def check_chinese(nb):
-    f = structure_failures(nb)
+    f = structure_failures(nb, language="zh")
     text = "\n".join(pages(nb).values())
     if "Emma" not in text and "emma" not in text.lower():
         f.append("Emma not recorded")
@@ -121,10 +128,6 @@ def check_chinese(nb):
         f.append("the rule that Emma prices herself now is missing")
     if "清洁" not in text and "cleaning" not in text.lower():
         f.append("the 'net of cleaning fee' qualification was dropped")
-    # The user wrote Chinese; the notebook must answer in Chinese, names untranslated.
-    chinese = sum(1 for ch in text if "一" <= ch <= "鿿")
-    if chinese < 20:
-        f.append("the page was written in English for a Chinese source")
     return f
 
 

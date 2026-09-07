@@ -54,10 +54,11 @@ Start every page with a `#` title that names the subject, and end it with a shor
 `Sources` line: the few source identifiers that matter most, with dates — not
 every message that touched the page. Nothing else about the layout is fixed.
 
-Write in the language the user writes in. If the sources mix languages, use the
-one the user uses most; never translate people's names, product names or quoted
-terms. A Chinese user's notebook is in Chinese even when the assistant answered
-in English.
+Write each page in the language the user's own messages in this batch are
+written in — English messages, an English page; 中文消息，中文页面. The
+assistant's replies, these instructions and the notebook's existing pages do not
+decide the language; the user's messages do. If they mix, use the one the user
+uses most. Never translate people's names, product names or quoted terms.
 
 Two short examples of the shape that works. They are examples, not templates to
 fill in; omit what the evidence does not support.

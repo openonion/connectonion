@@ -151,6 +151,19 @@ minutes and `sync` owns the decision — the saved times, the saved timezone, th
 lock, the attempt cap and the checkpoint. A tick that arrives while a batch is
 still running is refused as busy and the slot stays owed for the next tick.
 
+## Two passes for large batches
+
+A sync gathers up to `limits.extract_items_per_batch` (150) messages. When more
+than `limits.items_per_batch` (20) arrive, the batch first goes through the
+`wiki-extract` Skill: one native turn with no tools whose whole reply is the
+extraction notes — every durable fact with who said it, the date and its
+source ids, grouped by kind, routine tool chatter dropped. `wiki-maintain` then
+reads that one digest instead of the raw messages. A batch that fits
+`items_per_batch` skips extraction. Both turns count against the daily attempt
+cap; the run record says `extracted: true` and sums the usage. Measured on a
+120-message session: one extraction plus one maintain turn, 68k tokens, 31 s,
+against five maintain batches and roughly four times the tokens without it.
+
 ## Reading and configuration
 
 `status`, `logs`, `subscriptions`, `config`, `list`, `show`, and `search` inspect

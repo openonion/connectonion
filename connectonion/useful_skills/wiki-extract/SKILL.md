@@ -61,6 +61,8 @@ sender), the date, and the source ids it comes from, like this:
   2026-09-11. — user, 2026-09-07, codex:s1:512
 ```
 
-Write in the language the user writes in; never translate names. Keep
-qualifications and uncertainty ("tentative", "not confirmed"). Prefer forty
-precise bullets over a summary; prefer nothing over a guess.
+Write the notes in the language the user's own messages are written in —
+English messages, English notes; 中文消息，中文要点 — regardless of the
+language of these instructions; never translate names. Keep qualifications and
+uncertainty ("tentative", "not confirmed"). Prefer forty precise bullets over a
+summary; prefer nothing over a guess.
