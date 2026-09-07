@@ -153,12 +153,29 @@ def test_the_tool_bridge_for_non_codex_models_is_the_one_feature_left_on():
     if not shutil.which("codex"):
         pytest.skip("needs the codex binary to list features")
     command = " ".join(native_command({"PATH": __import__("os").environ["PATH"]}))
-    assert "code_mode_host=false" not in command and "shell_tool=false" in command
+    assert "code_mode_host=false" not in command and "hooks=false" in command and "plugins=false" in command
     verify_native_config({"mcp_servers": {}, "features": {
         "shell_tool": False, "unified_exec": False, "hooks": False, "plugins": False, "apps": False,
         "multi_agent": False, "view_image": False, "code_mode_host": True}})
-    assert KEPT_FEATURES == {"code_mode_host"}
+    assert "code_mode_host" in KEPT_FEATURES
     with pytest.raises(WikiError):
         verify_native_config({"mcp_servers": {}, "features": {
             "shell_tool": True, "unified_exec": False, "hooks": False, "plugins": False, "apps": False,
+            "multi_agent": False, "view_image": False, "code_mode_host": True}})
+
+
+def test_shell_is_on_but_the_sandbox_is_read_only_and_writes_still_go_through_wiki_tools():
+    """The user chose shell for retrieval. What keeps it safe is the sandbox (read-only, no
+    network), the notebook tools as the only write path, and the secret guard on pages."""
+    from connectonion.wiki.runner import KEPT_FEATURES
+    assert {"shell_tool", "unified_exec", "code_mode_host"} <= KEPT_FEATURES
+    assert "hooks" not in KEPT_FEATURES and "plugins" not in KEPT_FEATURES and "apps" not in KEPT_FEATURES
+    params = thread_parameters("/tmp/x", default_config())
+    assert params["sandbox"] == "read-only" and params["approvalPolicy"] == "never"
+    verify_native_config({"mcp_servers": {}, "features": {
+        "shell_tool": True, "unified_exec": True, "hooks": False, "plugins": False, "apps": False,
+        "multi_agent": False, "view_image": False, "code_mode_host": True}})
+    with pytest.raises(WikiError):
+        verify_native_config({"mcp_servers": {}, "features": {
+            "shell_tool": True, "unified_exec": True, "hooks": True, "plugins": False, "apps": False,
             "multi_agent": False, "view_image": False, "code_mode_host": True}})

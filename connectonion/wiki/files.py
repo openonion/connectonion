@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -9,6 +10,12 @@ from pathlib import Path, PurePosixPath
 CATEGORIES = ("people", "projects", "skills", "knowledge", "opportunities",
               "decisions", "principles", "works", "agenda", "notes")
 MAX_NOTE_BYTES = 1_000_000
+# The maintainer has a read-only shell and this is its only write path; a key it
+# was tricked into cat-ing must not become a page. Shapes, not words: prose about
+# "the API key" is fine, the key itself is not.
+SECRET_SHAPES = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bsk-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|"
+    r"\bxox[abpr]-[A-Za-z0-9-]{8,}|\bAIza[0-9A-Za-z_-]{30,}|\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.")
 
 
 class WikiError(Exception):
@@ -135,6 +142,8 @@ class Notebook:
         path = self.path(record, writing=True)
         if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_NOTE_BYTES:
             raise WikiError("Markdown exceeds the one-megabyte writing limit")
+        if SECRET_SHAPES.search(content):
+            raise WikiError("Refusing to write secret-shaped content (a key or token) into a notebook page")
         if path.exists() and self.read(record) == content:
             return False
         atomic_write(path, content)

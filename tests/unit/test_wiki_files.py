@@ -95,3 +95,16 @@ def test_notebook_rejects_hardlinked_content(tmp_path):
     (root / "people/linked.md").hardlink_to(outside)
     with pytest.raises(WikiError):
         Notebook(root).read("people/linked.md")
+
+
+def test_pages_refuse_secret_shaped_content(tmp_path):
+    """With shell access the maintainer can read the whole disk; the notebook is its only
+    write path, so a key pasted into a page is the exfiltration to stop."""
+    from connectonion.wiki.config import prepare
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    for secret in ("-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA", "token sk-abcdefghijklmnopqrstuvwxyz0123",
+                   "AKIAIOSFODNN7EXAMPLE", "ghp_abcdefghijklmnopqrstuvwxyz0123456789", "xoxb-1234-abcdefgh"):
+        with pytest.raises(WikiError, match="secret"):
+            notebook.write("notes/a.md", f"# A\n{secret}\n")
+    assert notebook.write("notes/a.md", "# A\nThe API key lives in keys.env, not here.\n")
