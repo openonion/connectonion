@@ -47,6 +47,15 @@ AGENT_ACCOUNT = {
 }
 
 
+@pytest.fixture(autouse=True)
+def isolate_application_environment(monkeypatch):
+    # CI injects provider keys. File-source cases must explicitly remove process
+    # overrides; inherited settings deliberately take precedence in production.
+    for key in PROJECT_ENV:
+        if key != "AGENT_CONFIG_PATH":
+            monkeypatch.delenv(key, raising=False)
+
+
 def _ok():
     return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
@@ -108,6 +117,12 @@ def test_the_applications_own_secrets_still_travel(tmp_path):
     assert written["DATABASE_URL"] == "postgres://app"
     assert "AGENT_CONFIG_PATH" not in written
     assert "Environment=AGENT_CONFIG_PATH=/srv/myagent/.co" in dts._unit_text("myagent", "agent.py")
+
+
+def test_explicit_process_application_setting_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-process-override")
+    written = _env_written_over_ssh(tmp_path, AGENT_ACCOUNT)
+    assert written["GEMINI_API_KEY"] == "synthetic-process-override"
 
 
 def test_without_an_account_the_operators_identity_is_still_dropped(tmp_path):
