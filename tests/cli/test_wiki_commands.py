@@ -242,3 +242,21 @@ def test_sync_all_is_the_backfill(lifecycle):
     result = invoke(root, "--json", "sync", "--all")
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["data"]["outcome"] == "caught_up"
+
+
+def test_usage_command_shows_where_tokens_went(tmp_path):
+    from connectonion.wiki.files import state_path, write_json
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_a.json", {"id": "run_a", "started_at": "2026-09-08T01:00:00+00:00", "outcome": "completed",
+                                     "model": "gpt-5.6-luna", "items": 10, "chars_in": 5000, "seconds": 20.0,
+                                     "usage": {"input_tokens": 1000, "output_tokens": 100},
+                                     "usage_by_stage": {"maintain": {"input_tokens": 1000, "output_tokens": 100}},
+                                     "items_by_source": {"outlook": 10}})
+    result = invoke(tmp_path, "usage")
+    assert result.exit_code == 0, result.output
+    assert "outlook" in result.output and "maintain" in result.output and "gpt-5.6-luna" in result.output
+    assert "Next:" in result.output
+    empty = invoke(tmp_path / "nothing", "usage")
+    assert empty.exit_code == 0 and "0" in empty.output

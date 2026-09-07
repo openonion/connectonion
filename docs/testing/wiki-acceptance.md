@@ -71,7 +71,8 @@ Nine synthetic scenarios, deterministic checks, real maintainer. Each row is one
 | `gpt-5.6-luna`, first prompt | 1/8 | wrote nothing: `code_mode_host=false` hid the tools |
 | `gpt-5.6-luna`, current prompt | **9/9** | 6–42 s and 11k–94k input tokens per scenario; the 120-message session went through extraction (2 turns, 68k tokens) |
 | `gpt-5.6-luna`, after the 60-day Outlook run's lessons were sedimented into both Skills and coding sources became user-only | **9/9** | 5–31 s, 12k–111k input tokens; the question-only scenario dropped from 34k to 12k tokens because the assistant's wrong guess is no longer read at all |
-| `gpt-5.3-codex-spark`, current prompt | not rerun | the day's Spark allowance was exhausted before the prompt fixes landed |
+| `gpt-5.6-terra`, same Skills | **9/9** | 6–101 s (dedupe across sessions was the slow one), 14k–124k input tokens |
+| `gpt-5.3-codex-spark`, current prompt | not rerun | the week's Spark allowance (96%) was exhausted before the prompt fixes landed |
 
 ### Models a ChatGPT-account Codex can run as the maintainer (2026-09-07)
 

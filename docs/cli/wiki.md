@@ -27,10 +27,19 @@ co wiki list people
 co wiki show people/alice.md
 co wiki search "Alice" --type people
 co wiki logs
+co wiki usage
+co wiki usage --days 7
 co wiki open
 co wiki open --no-launch
 co wiki doctor
 ```
+
+Every run record keeps the raw accounting — tokens per stage (`extract`,
+`maintain`), items per source, input characters, wall seconds — and `usage`
+computes from those records where the tokens went: totals, by stage, by model,
+by source (a mixed batch's tokens are split across its sources in proportion
+to the items each contributed), with tokens per item and per 1k input
+characters so a change can be checked for making something cheaper.
 
 `start` prints the consent summary (exact session directory, lookback, model and
 where messages go, timezone and the six slots, limits, what the background job

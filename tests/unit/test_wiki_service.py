@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from connectonion.wiki.config import prepare, set_config
-from connectonion.wiki.files import Notebook, WikiError, read_json, state_path
+from connectonion.wiki.files import Notebook, WikiError, read_json, state_path, write_json
 from connectonion.wiki.service import approve_sources, run_sync, status, subscriptions, toggle_source
 from tests.unit.test_wiki_source import rollout
 
@@ -435,3 +435,46 @@ def test_older_config_without_extraction_limits_still_loads(tmp_path):
         config["limits"].pop(key)
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(config))
     assert read_config(tmp_path)["limits"]["extract_items_per_batch"] == 150
+
+
+def test_run_record_breaks_usage_down_by_stage_source_and_size(tmp_path, monkeypatch):
+    """Where did the tokens go? A run must say per stage (extract / maintain), per source
+    (how many items each contributed), and how many input characters it carried, so the
+    cost of a source or a stage can be computed later from the raw records."""
+    root = _extract_world(tmp_path, monkeypatch, 40)
+    record = run_sync(root, runner=lambda nb, items, cfg: {"usage": {"input_tokens": 20, "output_tokens": 5}, "changed": []},
+                      extractor=lambda items, cfg: {"notes": "## Decisions\n- fact 1 — user, codex:s:0",
+                                                    "usage": {"input_tokens": 100, "output_tokens": 10}})
+    assert record["usage_by_stage"] == {"extract": {"input_tokens": 100, "output_tokens": 10},
+                                        "maintain": {"input_tokens": 20, "output_tokens": 5}}
+    assert record["items_by_source"] == {"codex": 40}
+    assert record["chars_in"] > 40 * 6 and record["seconds"] >= 0
+
+
+def test_usage_report_aggregates_raw_records_by_stage_source_and_model(tmp_path):
+    from connectonion.wiki.service import usage_report
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_a.json", {"id": "run_a", "started_at": "2026-09-08T01:00:00+00:00", "outcome": "completed",
+                                     "model": "gpt-5.6-luna", "items": 60, "chars_in": 120000, "seconds": 130.0,
+                                     "usage": {"input_tokens": 250000, "output_tokens": 6000},
+                                     "usage_by_stage": {"extract": {"input_tokens": 200000, "output_tokens": 4000},
+                                                        "maintain": {"input_tokens": 50000, "output_tokens": 2000}},
+                                     "items_by_source": {"outlook": 60}})
+    write_json(runs / "run_b.json", {"id": "run_b", "started_at": "2026-09-08T02:00:00+00:00", "outcome": "completed",
+                                     "model": "gpt-5.3-codex-spark", "items": 150, "chars_in": 500000, "seconds": 90.0,
+                                     "usage": {"input_tokens": 900000, "output_tokens": 30000},
+                                     "usage_by_stage": {"extract": {"input_tokens": 850000, "output_tokens": 25000},
+                                                        "maintain": {"input_tokens": 50000, "output_tokens": 5000}},
+                                     "items_by_source": {"codex": 100, "claude-code": 50}})
+    report = usage_report(tmp_path)
+    assert report["total"]["input_tokens"] == 1_150_000 and report["runs"] == 2
+    assert report["by_stage"]["extract"]["input_tokens"] == 1_050_000
+    assert report["by_model"]["gpt-5.3-codex-spark"]["input_tokens"] == 900_000
+    # A run's tokens are attributed to its sources in proportion to the items each contributed.
+    assert report["by_source"]["codex"]["input_tokens"] == 600_000
+    assert report["by_source"]["claude-code"]["input_tokens"] == 300_000
+    assert report["by_source"]["outlook"]["items"] == 60
+    assert round(report["by_source"]["outlook"]["input_tokens_per_item"]) == round(250000 / 60)
+    assert report["by_model"]["gpt-5.6-luna"]["input_tokens_per_1k_chars"] == round(250000 / 120, 1)

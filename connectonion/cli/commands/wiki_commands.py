@@ -199,6 +199,12 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: ({"subscription": toggle_source(root, name, False), "enabled": False},
                                    ["subscriptions"]), ["subscriptions"])
 
+    @wiki.command("usage")
+    def usage(ctx: typer.Context, days: int = typer.Option(0, "--days", help="Only runs from the last N days")):
+        """Where the tokens went: totals, by stage, by model, by source, from the raw run records."""
+        from ...wiki.service import usage_report
+        _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
+
     @wiki.command("open")
     def open_page(ctx: typer.Context,
                   launch: bool = typer.Option(True, "--launch/--no-launch",

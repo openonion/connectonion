@@ -390,7 +390,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_codex, tool_specs
 
-    items, updated, seen = [], dict(progress), set()
+    items, updated, seen, counts = [], dict(progress), set(), {}
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
     # tool-less extraction pass reads it once. A batch that fits items_per_batch
@@ -412,12 +412,17 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             if item["source"] not in seen:
                 items.append(item)
                 seen.add(item["source"])
+                counts[name] = counts.get(name, 0) + 1
                 remaining -= len(json.dumps(item, ensure_ascii=False))
         updated[name] = batch.progress
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "model": config["model"], "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
-              "extracted": len(items) > limits["items_per_batch"]}
+              "extracted": len(items) > limits["items_per_batch"],
+              # Where the tokens went, kept raw so the cost of a stage, a source or a
+              # model can be computed later from the records rather than remembered.
+              "usage_by_stage": {}, "items_by_source": counts,
+              "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None}
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
         write_json(state_path(root, "progress.json"), updated)
@@ -437,10 +442,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         if record["extracted"]:
             digest = (extractor or run_extract)(items, config)
             usage = dict(digest.get("usage") or {})
+            record["usage_by_stage"]["extract"] = digest.get("usage")
             notes = digest["notes"].strip()
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
             result = runner(Notebook(root), items, config)
+            record["usage_by_stage"]["maintain"] = result.get("usage")
             for key, value in (result.get("usage") or {}).items():
                 usage[key] = usage.get(key, 0) + value
         else:
@@ -457,5 +464,51 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             raise
     finally:
         record["finished_at"] = now().isoformat()
+        record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
+                                   - datetime.fromisoformat(record["started_at"])).total_seconds(), 1)
         write_json(path, record)
     return record
+
+
+def usage_report(root: Path, days: int | None = None) -> dict:
+    """Where the tokens went, computed from the raw run records.
+
+    Totals, then by stage (extract / maintain), by model, and by source -- a
+    run's tokens are attributed to its sources in proportion to the items each
+    contributed, which is the honest split when one batch mixes sources. The
+    derived rates (tokens per item, per 1k input characters) are what say which
+    part is expensive and whether a change made it cheaper.
+    """
+    root = root.resolve()
+    since = now() - timedelta(days=days) if days else None
+    runs = [r for r in run_logs(root) if r.get("usage")
+            and (since is None or datetime.fromisoformat(r["started_at"]) >= since)]
+    keys = ("input_tokens", "output_tokens", "cached_input_tokens")
+
+    def add(target, usage, factor=1.0):
+        for key in keys:
+            if isinstance((usage or {}).get(key), (int, float)):
+                target[key] = round(target.get(key, 0) + usage[key] * factor)
+
+    total, by_stage, by_model, by_source = {}, {}, {}, {}
+    chars_by_model, items_by_source = {}, {}
+    for run in runs:
+        add(total, run["usage"])
+        for stage, usage in (run.get("usage_by_stage") or {}).items():
+            add(by_stage.setdefault(stage, {}), usage)
+        model = run.get("model", "?")
+        add(by_model.setdefault(model, {}), run["usage"])
+        chars_by_model[model] = chars_by_model.get(model, 0) + (run.get("chars_in") or 0)
+        shares = run.get("items_by_source") or {}
+        total_items = sum(shares.values()) or 1
+        for source, count in shares.items():
+            add(by_source.setdefault(source, {}), run["usage"], count / total_items)
+            items_by_source[source] = items_by_source.get(source, 0) + count
+    for source, table in by_source.items():
+        table["items"] = items_by_source[source]
+        table["input_tokens_per_item"] = round(table.get("input_tokens", 0) / max(items_by_source[source], 1), 1)
+    for model, table in by_model.items():
+        table["chars_in"] = chars_by_model[model]
+        table["input_tokens_per_1k_chars"] = round(table.get("input_tokens", 0) / max(chars_by_model[model] / 1000, 0.001), 1)
+    return {"runs": len(runs), "days": days, "total": total, "by_stage": by_stage,
+            "by_model": by_model, "by_source": by_source}
