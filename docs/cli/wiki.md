@@ -125,7 +125,11 @@ not permission to collect data or launch a background job.
 
 Default-subscribe to Codex and Claude Code — both are read on this branch, from
 `~/.codex/sessions` and `~/.claude/projects` respectively, oldest session first
-so the notebook grows the way the user's understanding did. Enable Gmail/Outlook
+so the notebook grows the way the user's understanding did. Only the user's
+own messages are read from a coding session: they are the user's will (what was
+asked, decided, corrected); the assistant's replies are execution — code, test
+counts, confirmations — and are skipped, which halves the volume. Mail keeps
+both sides, because the other side is a person. Enable Gmail/Outlook
 only when the corresponding adapter exists and existing co authentication has
 read access. No login flow or newly discovered account is silently added. The
 default lookback is 60 days; a custom scope may ask for at most 180 days of

@@ -117,6 +117,24 @@ routine work — tests run and their counts, lint, formatting, files edited,
 commands executed, a version bump in passing — no; that is activity, not
 knowledge, and a page of it teaches the next assistant nothing.
 
+Four things that produced pages in a real 60-day run and should not have:
+
+- **A person from one line.** `people/fuzz.md` = "Expressed definite interest
+  in Aaron's property opportunity." — no role, no company, no relationship.
+  That is a line on the outreach page it came from, not a page. A person gets
+  a page when you can say who they are or what was agreed with them.
+- **Someone else's article as knowledge.** A newsletter's takeaways, an
+  investor's essay, a vendor's product update are their thinking. `knowledge/`
+  holds what the *user* learned, decided or explained; keep an article only if
+  the user acted on it, and then on the page of the thing they acted on.
+- **A receipt as a work.** "An agent address was issued: 0x8ad3…" is a fact
+  about an account; put it on the project it belongs to. `works/` is for
+  things the user made that can be reused or shown.
+- **One page per transaction.** Twenty `agenda/airbnb-<guest>.md` pages, each
+  a single inquiry, are dead a week later. Keep transactional streams on one
+  rolling page (`agenda/airbnb-guest-inquiries.md`): one dated line per
+  inquiry with status, and drop the line once its dates have passed.
+
 Two boundaries that are easy to get wrong:
 
 - **Decision vs principle.** A decision picks one option for one case

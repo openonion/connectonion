@@ -30,7 +30,7 @@ def test_second_pass_is_noop_and_appends_only_new_messages(tmp_path):
     file = tmp_path / "2026/09/07/rollout-one.jsonl"
     rollout(file, [("user", "Use SQL"), ("assistant", "Possible option")])
     batch = collect(subscription(tmp_path), {}, max_items=20, max_chars=10000)
-    assert [i["role"] for i in batch.items] == ["user", "assistant"]
+    assert [i["role"] for i in batch.items] == ["user"]  # the assistant's reply is execution, not read
     assert not collect(subscription(tmp_path), batch.progress, 20, 10000).items
     rollout(file, [("user", "Use SQL"), ("assistant", "Possible option"),
                    ("user", "Correction: choose Markdown")])
@@ -154,7 +154,7 @@ def test_codex_injected_blocks_are_not_user_messages(tmp_path):
                    ("user", "Note for the record: Aurora uses Markdown."),
                    ("assistant", "noted")])
     batch = collect(subscription(tmp_path), {}, 10, 10000)
-    assert [item["text"] for item in batch.items] == ["Note for the record: Aurora uses Markdown.", "noted"]
+    assert [item["text"] for item in batch.items] == ["Note for the record: Aurora uses Markdown."]
 
 
 def claude_transcript(path, rows):
@@ -184,8 +184,7 @@ def test_claude_code_transcript_yields_only_what_the_two_of_them_said(tmp_path):
     ])
     sub = {**subscription(tmp_path), "kind": "claude-code"}
     batch = collect(sub, {}, 10, 10000)
-    assert [(i["role"], i["text"]) for i in batch.items] == [
-        ("user", "Alice prefers email over calls."), ("assistant", "Noted: Alice prefers email.")]
+    assert [(i["role"], i["text"]) for i in batch.items] == [("user", "Alice prefers email over calls.")]
     assert batch.items[0]["project"] == "/work/demo"
     assert batch.items[0]["source"].startswith("claude-code:sess-1:")
 
@@ -197,10 +196,10 @@ def test_hyphenated_injected_tags_are_scaffolding_too(tmp_path):
     assert [i["text"] for i in collect(subscription(tmp_path), {}, 10, 10000).items] == ["real words"]
 
 
-def test_pasted_blobs_are_capped_and_commentary_is_skipped(tmp_path):
+def test_pasted_blobs_are_capped_and_assistant_rows_are_not_read(tmp_path):
     """60 days of one machine held 134M characters of 'user' text: files and tool output
-    relayed as input, not typing. Codex also marks the assistant's progress narration as
-    phase=commentary; only final_answer is what it told the user."""
+    relayed as input, not typing. Assistant rows -- commentary or final answer -- are
+    execution, not the user's will, and are not read at all."""
     from connectonion.wiki.source import MAX_MESSAGE_CHARS
     file = tmp_path / "2026/09/07/rollout-a.jsonl"
     file.parent.mkdir(parents=True)
@@ -216,5 +215,20 @@ def test_pasted_blobs_are_capped_and_commentary_is_skipped(tmp_path):
     file.write_text("".join(json.dumps(r) + "\n" for r in rows))
     batch = collect(subscription(tmp_path), {}, 10, 10_000_000)
     texts = [i["text"] for i in batch.items]
-    assert len(texts) == 3 and "Working on it" not in "".join(texts)
+    assert len(texts) == 1 and "Working on it" not in "".join(texts) and "Markdown chosen" not in "".join(texts)
     assert len(texts[0]) < MAX_MESSAGE_CHARS + 100 and "truncated" in texts[0]
+
+
+def test_coding_sessions_yield_only_what_the_user_said(tmp_path):
+    """The user's messages are their will; the assistant's replies are execution — code,
+    counts, confirmations. Reading only the user halves a coding session and loses
+    nothing the notebook is for. (Mail keeps `other` senders: those are people.)"""
+    file = tmp_path / "2026/09/07/rollout-a.jsonl"
+    rollout(file, [("user", "For Aurora we chose Markdown."), ("assistant", "Noted. I wrote 40 files and ran tests."),
+                   ("user", "Correction: inspectability is the reason.")])
+    assert [i["role"] for i in collect(subscription(tmp_path), {}, 10, 10000).items] == ["user", "user"]
+    claude = tmp_path / "claude" / "abc.jsonl"
+    claude_transcript(claude, [("user", "Alice prefers email.", {}),
+                               ("assistant", [{"type": "text", "text": "Noted: Alice prefers email."}], {})])
+    sub = {**subscription(tmp_path / "claude"), "kind": "claude-code"}
+    assert [i["role"] for i in collect(sub, {}, 10, 10000).items] == ["user"]

@@ -27,6 +27,13 @@ INJECTED_BLOCK = re.compile(r"\s*<[a-z_-]+>")
 # tool result relayed as input (134M characters of it in one machine's 60 days);
 # the head is kept so the maintainer knows what was pasted, the bulk is not.
 MAX_MESSAGE_CHARS = 4000
+# In a coding session only the user's messages are read. They are the user's
+# will -- what was decided, asked for, corrected; the assistant's replies are
+# execution: code, test counts, confirmations of what the user just said. Reading
+# only the user halves a session (13.8k user rows against 28.8k assistant rows in
+# one machine's 60 days) and loses nothing a notebook is for. Mail is different:
+# there the other party is a person, and stays.
+CODING_SPEAKERS = ("user",)
 
 
 @dataclass
@@ -60,11 +67,7 @@ def _codex_message(row: dict, since: datetime) -> dict | None:
     payload = row.get("payload", {})
     if row.get("type") != "response_item" or payload.get("type") != "message":
         return None
-    if payload.get("role") not in ("user", "assistant"):
-        return None
-    # Codex labels the assistant's progress narration ("Working on it...") as
-    # commentary; only final_answer is what it actually told the user.
-    if payload.get("role") == "assistant" and payload.get("phase", "final_answer") != "final_answer":
+    if payload.get("role") not in CODING_SPEAKERS:
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
@@ -85,7 +88,7 @@ def _claude_meta(first: dict) -> dict:
 
 def _claude_message(row: dict, since: datetime) -> dict | None:
     role = row.get("type")
-    if role not in ("user", "assistant") or row.get("isMeta"):
+    if role not in CODING_SPEAKERS or row.get("isMeta"):
         return None
     message = row.get("message")
     if not isinstance(message, dict):
