@@ -15,7 +15,13 @@ import uuid
 from rich.console import Console
 
 from ...trust.ws_admin import get_onboard_requirements
-from ..protocol import oip_compatibility_record, oip_descriptor, supports_oip
+from ..protocol import (
+    oip_compatibility_record,
+    oip_descriptor,
+    requests_session_sync,
+    requests_session_sync_only,
+    supports_oip,
+)
 from .agent_io import resume_forwarding
 
 console = Console()
@@ -33,9 +39,53 @@ def _record_oip_compatibility(data, conn):
     )
 
 
-def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist):
+def replay_check_for(conn, route_handlers):
+    """The one-use signature guard this connection's frames are held to.
+
+    Inside a seal nobody but the sealed peer can put a frame on the socket
+    and the CONNECT is bound to that peer below, so the ledger is not
+    consulted; that is what lets a sealed host keep no shared state. A bare
+    socket keeps the host's injected ledger.
+    """
+    from ..auth import sealed_channel_replay_check, signature_already_used
+
+    if conn.get("sealed_by"):
+        return sealed_channel_replay_check
+    return route_handlers.get("replay", signature_already_used)
+
+
+def _is_the_standard_verifier(verifier):
+    """Whether the host wired auth.authenticate_connect with a bound ledger.
+
+    server.py binds the ledger with functools.partial; a deployment's own
+    verifier keeps whatever replay semantics it has and is never overridden.
+    """
+    import functools
+
+    from ..auth import authenticate_connect
+
+    return isinstance(verifier, functools.partial) and verifier.func is authenticate_connect
+
+
+def _not_the_sealed_peer(data, conn):
+    """A CONNECT inside a seal must be signed by the identity that sealed it.
+
+    Without this a stranger could open its own seal and feed a CONNECT
+    captured from someone else into it: the replay the ledger existed to
+    stop, now inside a channel the stranger controls.
+    """
+    sealed_by = (conn or {}).get("sealed_by")
+    return bool(sealed_by) and data.get("from") != sealed_by
+
+
+def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist, conn=None):
     """Authenticate one CONNECT with the Host's configured verifier."""
-    from ..auth import authenticate_connect, signature_already_used
+    from ..auth import authenticate_connect
+
+    conn = conn or {}
+    if _not_the_sealed_peer(data, conn):
+        return None, data.get("from"), False, "unauthorized: CONNECT is not signed by the sealed peer"
+    replay_check = replay_check_for(conn, route_handlers)
 
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist, "whitelist": whitelist}
@@ -43,17 +93,20 @@ def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist
         auth_kwargs["recipient_address"] = metadata["address"]
     connect_auth = route_handlers.get("connect_auth")
     if connect_auth is None:
-        return authenticate_connect(
-            data, trust,
-            replay_check=route_handlers.get("replay", signature_already_used),
-            **auth_kwargs,
-        )
+        return authenticate_connect(data, trust, replay_check=replay_check, **auth_kwargs)
+    if conn.get("sealed_by") and _is_the_standard_verifier(connect_auth):
+        return connect_auth(data, trust, replay_check=replay_check, **auth_kwargs)
     return connect_auth(data, trust, **auth_kwargs)
 
 
-def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelist):
+def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelist, conn=None):
     """Re-authenticate an equivalent live connection without repeating policy."""
-    from ..auth import authenticate_connect_identity, signature_already_used
+    from ..auth import authenticate_connect_identity
+
+    conn = conn or {}
+    if _not_the_sealed_peer(data, conn):
+        return None, data.get("from"), False, "unauthorized: CONNECT is not signed by the sealed peer"
+    replay_check = replay_check_for(conn, route_handlers)
 
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist}
@@ -68,19 +121,17 @@ def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelis
         return reattach_auth(data, trust, whitelist=whitelist, **auth_kwargs)
     connect_auth = route_handlers.get("connect_auth")
     if connect_auth is not None:
+        if conn.get("sealed_by") and _is_the_standard_verifier(connect_auth):
+            return connect_auth(data, trust, whitelist=whitelist, replay_check=replay_check, **auth_kwargs)
         return connect_auth(data, trust, whitelist=whitelist, **auth_kwargs)
 
-    return authenticate_connect_identity(
-        data,
-        replay_check=route_handlers.get("replay", signature_already_used),
-        **auth_kwargs,
-    )
+    return authenticate_connect_identity(data, replay_check=replay_check, **auth_kwargs)
 
 
 async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
     """Handle CONNECT message: auth + merge + optional running reattach."""
     _, agent_address, _, err = authenticate_connect_frame(
-        data, route_handlers, trust, blacklist, whitelist
+        data, route_handlers, trust, blacklist, whitelist, conn=conn
     )
 
     if err and "forbidden" in err.lower():
@@ -127,6 +178,8 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
     equivalent = (
         data.get("session_id") == conn.get("session_id")
         and (payload.get("signed_commands") == 1) == bool(conn.get("signed_commands"))
+        and requests_session_sync(data) == bool(conn.get("session_sync"))
+        and requests_session_sync_only(data) == bool(conn.get("session_sync_only"))
         and payload.get("to") == conn.get("recipient_address")
         and supports_oip(data.get("protocol"))
     )
@@ -138,7 +191,7 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
         return
 
     _, agent_address, _, err = authenticate_reattach_frame(
-        data, route_handlers, trust, blacklist, whitelist
+        data, route_handlers, trust, blacklist, whitelist, conn=conn
     )
 
     if err:
@@ -159,6 +212,13 @@ async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
 async def republish_authenticated_connection(data, send_msg, conn, storage,
                                              registry, route_handlers):
     """Republish an unchanged live connection without reopening its policy gate."""
+    if conn.get("session_sync_only"):
+        await send_msg({
+            "type": "CONNECTED",
+            "status": "index",
+            "protocol": oip_descriptor(session_sync=True),
+        })
+        return
     session_id = conn["session_id"]
     status = _connection_status(registry, session_id)
     server_newer = _merge_reattach_session(data, conn, storage)
@@ -205,7 +265,7 @@ def _reattach_connected_frame(conn, status, route_handlers, server_newer):
         "type": "CONNECTED",
         "session_id": conn["session_id"],
         "status": status,
-        "protocol": oip_descriptor(),
+        "protocol": oip_descriptor(session_sync=bool(conn.get("session_sync"))),
     }
     mode_policy = route_handlers.get("session_modes")
     if mode_policy is not None and conn.get("session") is not None:
@@ -223,6 +283,10 @@ def _reattach_connected_frame(conn, status, route_handlers, server_newer):
 
 
 async def _send_agent_profile(send_msg, route_handlers, session_id):
+    controller = route_handlers.get('control_center')
+    if controller is not None:
+        from .control_center import send_control_center
+        await send_control_center(send_msg, session_id, controller)
     metadata = route_handlers.get("agent_metadata")
     if not metadata:
         return
@@ -256,6 +320,8 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     for key in (
         "agent_address", "signed_commands", "recipient_address", "session_id",
         "session", "mode_is_admin",
+        "session_sync",
+        "session_sync_only",
     ):
         conn.pop(key, None)
 
@@ -272,7 +338,55 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     signed_commands = (
         data.get("payload", {}).get("signed_commands") == 1
     )
+    # Session Sync frames are individually signed even for compatibility
+    # clients that have not enabled signed commands for every legacy frame.
+    # This lets an upgraded browser adopt the extension without changing the
+    # delivery timing of INPUT, INTERRUPT, and approval messages in one release.
+    session_sync = requests_session_sync(data)
+    session_sync_only = requests_session_sync_only(data)
     recipient_address = data.get("payload", {}).get("to")
+
+    # A Recent Chat index must not create a blank conversation merely by
+    # looking for existing ones. This authenticated capability socket skips
+    # registry, mode initialization, dashboard, and durable session creation;
+    # it accepts only the individually signed Session Sync extension frames.
+    if session_sync_only:
+        # The public relay adds a top-level session_id to route every socket.
+        # On an index-only relay connection that value is transport metadata,
+        # not a request to resume a durable chat. Direct clients do not have
+        # that ambiguity and must continue to reject an attached chat id.
+        resumes_chat = (
+            data.get("session") is not None
+            or (
+                data.get("session_id") is not None
+                and conn.get("transport") != "relay"
+            )
+        )
+        if resumes_chat:
+            await send_msg({
+                "type": "ERROR",
+                "code": "invalid_request",
+                "message": "session_sync_only cannot resume a chat session",
+                "retryable": False,
+            })
+            return None
+        conn.update({
+            "authenticated": True,
+            "agent_address": agent_address,
+            "signed_commands": signed_commands,
+            "recipient_address": recipient_address,
+            "session_id": None,
+            "session": None,
+            "session_sync": True,
+            "session_sync_only": True,
+        })
+        await send_msg({
+            "type": "CONNECTED",
+            "status": "index",
+            "protocol": oip_descriptor(session_sync=True),
+        })
+        return None
+
     session_id = data.get("session_id") or str(uuid.uuid4())
     client_session = data.get("session")
     server_newer = False
@@ -385,6 +499,8 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "recipient_address": recipient_address,
         "session_id": session_id,
         "session": client_session,
+        "session_sync": session_sync,
+        "session_sync_only": False,
     })
     if mode_is_admin is not None:
         conn["mode_is_admin"] = mode_is_admin
@@ -395,7 +511,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "type": "CONNECTED",
         "session_id": session_id,
         "status": status,
-        "protocol": oip_descriptor(),
+        "protocol": oip_descriptor(session_sync=session_sync),
     }
     if mode_state is not None:
         connected_msg["session_modes"] = mode_state

@@ -28,7 +28,7 @@ INFO: Loaded global keys: /Users/you/.co/keys.env
 
 [agent] ─────────────────────────────────────
         translator
-        co/gemini-3.7-flash • 12 tools
+        co/gemini-3.8-flash • 12 tools
 
 [host]  ─────────────────────────────────────
         http://localhost:8000
@@ -446,7 +446,7 @@ curl http://localhost:8000/info
   "name": "translator",
   "address": "0x3d4017c3...",
   "tools": ["translate", "detect_language"],
-  "model": "co/gemini-3.7-flash",
+  "model": "co/gemini-3.8-flash",
   "trust": "careful",
   "version": "0.4.1",
   "accepted_inputs": {
@@ -1261,13 +1261,22 @@ uvicorn myagent:app --workers 4
 gunicorn myagent:app -w 4 -k uvicorn.workers.UvicornWorker
 ```
 
-All workers for one project share `.co/replay.sqlite3`, so a captured CONNECT,
-v2 command, admin request, or protected HTTP request cannot be accepted once by
-each process. The ledger contains only short-lived signature digests.
-Digests are retained until the signed timestamp leaves the freshness window;
-an unavailable or locked ledger fails closed rather than accepting a replay.
-For CONNECT, the claim happens after Ed25519 verification but before trust
-policy evaluation, so replay rejection cannot repeat policy work or mutations.
+All workers of a `create_app()` deployment share `.co/replay.sqlite3`, so a
+captured CONNECT, v2 command, admin request, or protected HTTP request cannot
+be accepted once by each process. The ledger contains only short-lived
+signature digests, retained until the signed timestamp leaves the freshness
+window. A locked or unwritable ledger fails closed rather than accepting a
+replay; a ledger whose file was removed under a running host recreates its
+schema on the next claim instead (#1403). For CONNECT, the claim happens after
+Ed25519 verification but before trust policy evaluation, so replay rejection
+cannot repeat policy work or mutations.
+
+`host()` does not write this file. It runs exactly one worker (uvicorn cannot
+fork an app object), so its ledger for unsealed clients is in memory. A sealed
+socket — every 1.8.1 client, direct or relayed — is not held to any ledger:
+its CONNECT must be signed by the identity that sealed it, and nobody else can
+put a frame on it. See the sealed-channel section of
+[websocket-protocol.md](websocket-protocol.md#sealed-direct-channel).
 
 ### Docker
 

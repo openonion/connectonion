@@ -46,8 +46,10 @@ print("done=", response.done)
 ```
 
 `connect()` uses the current project's identity, then `~/.co`. If neither
-identity exists, tell the user to run `co init` for a project identity or Setup
-below for a global publishable identity. Never generate an identity silently.
+identity exists, tell the user to run `co init` for global credentials or Setup
+below for a global publishable profile. `co init ./` explicitly initializes a
+project using that global identity; it does not mint a separate project keypair.
+Never generate an identity silently.
 
 When `response.done` is false, return the remote question to the user. Keep the
 same `remote` object for the answer when the execution environment supports a

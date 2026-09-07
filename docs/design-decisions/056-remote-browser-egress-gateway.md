@@ -1,6 +1,6 @@
 # DD-056: Remote Browser navigation needs an egress gateway, not a URL check
 
-**Status:** Proposed for 1.8; navigation remains disabled
+**Status:** Accepted for 1.8; shared Laptop egress wired, navigation remains disabled
 
 **Date:** 2026-08-26
 
@@ -140,6 +140,48 @@ profile and behavior.
 Future shared-proxy grants may require different browser contexts because
 Chromium proxy selection is context-scoped. #1036 must choose and test that
 context/process model; this decision does not claim per-tab proxy isolation.
+
+## First shared-Proxy decision (2026-09-01)
+
+The first preview uses the two-machine product selected in #1036: a Laptop runs
+`co proxy share to <B>`, and the remote WTF Browser B pins that Laptop for the
+runtime. It does not require the later three-party unattended D/P/B model.
+
+The authority split is:
+
+- `RemoteBrowserService` chooses and persists `direct` or `shared` once;
+- the private WTF runtime enforces one fixed loopback Proxy with no Direct
+  fallback;
+- Laptop `co proxy` owns target DNS resolution and the public socket;
+- BrowserDaemon controls pages/tabs but cannot choose or change the Proxy.
+
+In shared mode B does not call system DNS for target names. It sends an
+authenticated bounded resolution request to the Laptop, independently checks
+the complete returned answer set, and asks the Laptop to connect one selected
+numeric address. The Laptop applies the same frozen policy both while resolving
+and while dialing. This preserves the exact-socket invariant while ensuring DNS
+and public egress both belong to the Laptop.
+
+## Transport: the Laptop dials out (2026-09-02)
+
+The first preview had the Laptop *listen* and B connect in. That is the wrong
+direction for the machine that is actually a laptop: it sits behind NAT, and
+"open a port forward" is not a step a user of `co proxy share` will take.
+
+The transport is now reversed. `co proxy share` opens the same direct, signed
+WebSocket every other `co` command uses, attaches with a `PROXY_ATTACH` frame
+carrying a grant the Laptop signs, and B sends its resolve/connect/data work
+back down that socket as `PROXY_STREAM` frames. B keeps an address-keyed
+registry of attached channels and, for each one, an `EgressGateway` on
+`127.0.0.1` whose resolver and dialer are the channel. The private WTF runtime
+still sees exactly one fixed loopback Proxy with no Direct fallback — nothing
+below this line changed — and `start --proxy shared` simply looks the caller's
+address up in that registry (`REMOTE_SESSION_PROXY_NOT_ATTACHED` when absent).
+
+Only the direct socket may carry a share: the relay carries control frames, not
+page bytes, and B verifies the grant's holder, expiry and grantor against the
+identity on the socket. B → Laptop frames are unsigned; they travel inside the
+TLS session the Laptop opened to an endpoint whose identity it verified.
 
 ## Gateway connection contract
 

@@ -20,11 +20,14 @@ from connectonion.network.host.private_browser_runtime import (
     REMOTE_BROWSER_CHROME_ARGS,
     PrivateBrowserTarget,
     canonical_proxy_auth,
+    load_shared_proxy_file,
     proxy_auth_path_for_profile,
     remote_browser_launch_policy,
     write_proxy_auth_file,
+    write_shared_proxy_file,
 )
 from connectonion.network.host.remote_browser import RemoteBrowserService
+from connectonion.network.proxy_egress import ShareEndpoint
 from connectonion.useful_tools.browser_tools import _async_browser as async_browser
 from connectonion.useful_tools.browser_tools.launch_policy import (
     BrowserLaunchPolicy,
@@ -197,6 +200,19 @@ def test_proxy_auth_file_matches_native_contract_and_is_private(tmp_path):
         assert stat.S_IMODE(auth_file.stat().st_mode) == 0o600
 
 
+def test_shared_proxy_file_is_private_bounded_and_round_trips(tmp_path):
+    endpoint = ShareEndpoint("192.0.2.10", 43123, "laptop", "secret")
+    path = tmp_path / "shared-proxy.json"
+
+    assert write_shared_proxy_file(path, endpoint) == path
+    assert load_shared_proxy_file(path) == endpoint
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        path.chmod(0o644)
+        with pytest.raises(ValueError, match="must be private"):
+            load_shared_proxy_file(path)
+
+
 @pytest.mark.parametrize(
     "endpoint",
     (
@@ -278,6 +294,39 @@ async def test_daemon_starts_gateway_before_browser_and_stops_it_after_browser(
         "gateway.stop",
     ]
     assert not auth_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_daemon_uses_the_runtime_selected_shared_gateway(
+    tmp_path, monkeypatch
+):
+    events = []
+    selected = []
+    share = ShareEndpoint("192.0.2.10", 43123, "laptop", "secret")
+    share_path = tmp_path / "shared-proxy.json"
+    write_shared_proxy_file(share_path, share)
+    gateway = RecordingGateway(events)
+
+    def shared_gateway(endpoint):
+        selected.append(endpoint)
+        return gateway
+
+    monkeypatch.setattr(
+        "connectonion.network.proxy_egress.shared_egress_gateway", shared_gateway
+    )
+    daemon = BrowserDaemon(
+        str(tmp_path / "private.sock"),
+        engine_mode="onion",
+        profile_dir=tmp_path / "profile",
+        remote_egress=True,
+        shared_proxy_path=share_path,
+        browser_factory=LifecycleBrowser,
+    )
+
+    await daemon._prepare_runtime()
+    assert selected == [share]
+    assert daemon.browser.egress_gateway is gateway
+    await daemon._shutdown_async()
 
 
 @pytest.mark.asyncio
@@ -653,6 +702,12 @@ async def test_private_spawn_argv_and_log_never_contain_gateway_secret(
         profile_dir=tmp_path / "profile",
         log_path=tmp_path / "private.log",
         authkey_path=tmp_path / "authkey",
+        shared_proxy_path=tmp_path / "shared-proxy.json",
+    )
+    share_secret = "laptop-proxy-secret"
+    write_shared_proxy_file(
+        target.shared_proxy_path,
+        ShareEndpoint("192.0.2.10", 43123, "laptop", share_secret),
     )
     spawned = []
     connection = object()
@@ -678,6 +733,9 @@ async def test_private_spawn_argv_and_log_never_contain_gateway_secret(
     assert "--remote-egress" in command
     assert command[command.index("--profile-dir") + 1] == str(target.profile_dir)
     assert command[command.index("--authkey-file") + 1] == str(target.authkey_path)
+    assert command[command.index("--shared-proxy-file") + 1] == str(
+        target.shared_proxy_path
+    )
     # Assert the credential the gateway actually minted is absent, not a
     # literal chosen by this test: the previous form passed on any argv,
     # including one carrying a real password, because this code path never
@@ -685,6 +743,7 @@ async def test_private_spawn_argv_and_log_never_contain_gateway_secret(
     assert secret
     assert secret not in repr(command)
     assert secret not in " ".join(command)
+    assert share_secret not in " ".join(command)
     assert secret not in target.log_path.read_text(encoding="utf-8")
     assert target.log_path.read_text(encoding="utf-8") == ""
 

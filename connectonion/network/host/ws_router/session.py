@@ -2,8 +2,8 @@
 Purpose: Run one client session — read loop, per-type dispatch, lifecycle of forward + ping tasks
 LLM-Note:
   Dependencies: imports from [.connect, .agent_io, .exec, .mode, .ping, ...trust.ws_admin, asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
-  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime frames → bounded response → cancel spawned tasks on close
-  State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
+  Data flow: recv → verify every v2 application command → first CONNECT auth or equivalent authenticated relay reattach → dispatch INPUT/EXEC/mode_change/INTERRUPT/admin/runtime/PROXY_ATTACH/PROXY_STREAM frames → bounded response → cancel spawned tasks on close
+  State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task, proxy_channel | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally | an attached laptop share is registered on PROXY_ATTACH and detached in finally
   Integration: OIP mode_change uses .mode durable authority; interrupt requires registered active IO; signed-command clients execute only verified payload copies
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
   Errors: recv_msg returning None → exit loop normally | other exceptions propagate out (transport-level errors, programmer bugs)
@@ -16,10 +16,11 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
-from .connect import establish_connection, handle_authenticated_reconnect, handle_connect
+from .connect import establish_connection, handle_authenticated_reconnect, handle_connect, replay_check_for
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
+from .proxy import attach_proxy, detach_proxy
 from .remote_browser import run_remote_browser
 
 console = Console()
@@ -109,20 +110,34 @@ async def _send_provider_permission_ack(
     await send_msg(frame)
 
 
-async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown"):
+async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True, transport="unknown", sealed_by=None):
     """Run one client session from connect to disconnect.
 
     Reads frames, dispatches by type, cleans up on close. Used by both the
     direct ASGI WebSocket path and the relay-routed path, each providing its
     own send_msg/recv_msg adapters.
+
+    ``sealed_by`` is the address that opened the seal this session runs
+    inside, or None on a bare socket. Inside a seal the CONNECT must be signed
+    by that same address and the replay ledger is not consulted: nobody else
+    can put a frame on this socket, so there is nothing for it to catch.
     """
     conn = {"authenticated": False, "agent_address": None, "session_id": None,
             "session": None, "signed_commands": False, "recipient_address": None,
-            "transport": transport}
+            "transport": transport, "sealed_by": sealed_by}
     active_io = None
     forward_task = None
+    session_watch_task = None
     exec_tasks = set()
+    # The laptop share attached on this socket, if any. It lives exactly as
+    # long as the socket: registered on PROXY_ATTACH, detached in finally.
+    proxy_channel = None
     ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
+    control_task = None
+    if route_handlers.get('control_center') is not None:
+        from .control_center import watch_control_center
+        control_task = asyncio.create_task(watch_control_center(
+            send_msg, conn, route_handlers['control_center']))
 
     try:
         while True:
@@ -157,7 +172,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 signed_frame = data
                 verified, command_error = authenticated_command_payload(
                     data, conn["agent_address"], conn.get("recipient_address"),
-                    route_handlers.get("replay"),
+                    replay_check_for(conn, route_handlers),
                 )
                 if command_error:
                     await send_msg({"type": "ERROR", "message": command_error})
@@ -211,7 +226,82 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 status = active.status if active and owner == requester else "not_found"
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
+            elif msg_type in {
+                "SESSION_SYNC", "SESSION_GET", "SESSION_WATCH", "SESSION_UPDATE"
+            }:
+                if not conn.get("authenticated") or not conn.get("session_sync"):
+                    await send_msg({
+                        "type": "ERROR",
+                        "code": "unsupported_extension",
+                        "message": "session-sync/0.1 was not negotiated",
+                        "request_id": data.get("request_id"),
+                        "retryable": False,
+                    })
+                    continue
+
+                # Compatibility clients may negotiate only session-sync/0.1
+                # while leaving legacy application frames unsigned. Session
+                # Sync still carries owner-visible history, so authenticate
+                # every extension command independently before dispatch.
+                if not conn.get("signed_commands"):
+                    from ..auth import authenticated_command_payload
+
+                    data, command_error = authenticated_command_payload(
+                        data, conn["agent_address"], conn.get("recipient_address"),
+                        route_handlers.get("replay"),
+                    )
+                    if command_error:
+                        await send_msg({
+                            "type": "ERROR",
+                            "code": "unauthorized",
+                            "message": command_error,
+                            "request_id": (
+                                data.get("request_id")
+                                if isinstance(data, dict)
+                                else None
+                            ),
+                            "retryable": False,
+                        })
+                        continue
+                    msg_type = data.get("type")
+                from .session_sync import (
+                    handle_session_get,
+                    handle_session_sync,
+                    handle_session_update,
+                    start_session_watch,
+                )
+
+                if msg_type == "SESSION_SYNC":
+                    await handle_session_sync(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+                elif msg_type == "SESSION_GET":
+                    await handle_session_get(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+                elif msg_type == "SESSION_UPDATE":
+                    await handle_session_update(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+                else:
+                    if session_watch_task and not session_watch_task.done():
+                        session_watch_task.cancel()
+                        try:
+                            await session_watch_task
+                        except asyncio.CancelledError:
+                            pass
+                    session_watch_task = await start_session_watch(
+                        data, send_msg, storage, conn["agent_address"]
+                    )
+
             elif msg_type == "ONBOARD_SUBMIT":
+                if conn.get("sealed_by") and data.get("from") != conn["sealed_by"]:
+                    # Inside a seal the ledger is not consulted, so a captured
+                    # ONBOARD_SUBMIT from another identity must be refused on
+                    # the peer's name alone: a successful onboard would finish
+                    # the stashed CONNECT as that other identity.
+                    await send_msg({"type": "ERROR", "message": "unauthorized: ONBOARD_SUBMIT is not signed by the sealed peer"})
+                    continue
                 agent_address = await handle_onboard_submit(data, send_msg, route_handlers)
                 # Pop the stashed CONNECT only on a successful onboard: a failed one
                 # (e.g. wrong invite code) keeps it so a retry on the same socket can
@@ -241,6 +331,10 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                                 active_io, forward_task = result
             elif msg_type and msg_type.startswith("ADMIN_"):
                 await handle_admin_message(data, send_msg, route_handlers)
+
+            elif msg_type == 'CONTROL_CENTER_COMMAND':
+                from .control_center import handle_control_center
+                await handle_control_center(data, send_msg, conn, route_handlers)
 
             elif msg_type == "CONNECT":
                 # First message: auth + session merge + maybe reattach to a running agent.
@@ -292,6 +386,24 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         run_exec(data, send_msg, route_handlers, conn["agent_address"]))
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
+
+            elif msg_type == "PROXY_ATTACH":
+                if proxy_channel is not None:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "a share is already attached on this connection",
+                    })
+                else:
+                    proxy_channel = await attach_proxy(data, send_msg, conn, route_handlers)
+
+            elif msg_type == "PROXY_STREAM":
+                if proxy_channel is None:
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": "no share attached (send PROXY_ATTACH first)",
+                    })
+                else:
+                    await proxy_channel.receive(data)
 
             elif msg_type == "REMOTE_BROWSER":
                 if not conn["authenticated"]:
@@ -593,10 +705,12 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     "message": f"unknown message type: {msg_type!r}",
                 })
     finally:
+        if proxy_channel is not None:
+            await detach_proxy(proxy_channel, route_handlers)
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
         # that await is the expected exit signal — not a bug, swallow it.
-        for task in (forward_task, ping_task, *exec_tasks):
+        for task in (forward_task, session_watch_task, ping_task, control_task, *exec_tasks):
             if task and not task.done():
                 task.cancel()
                 try:

@@ -190,8 +190,11 @@ class TestWhichEndpointIsChosen:
             return asyncio.run(connect_mod.resolve_endpoint(agent_address,
                                                             "wss://relay.example"))
 
-    def test_a_lan_plaintext_endpoint_is_not_used(self):
-        assert self._resolve(["http://10.5.27.133:8797"]) is None
+    def test_a_lan_plaintext_endpoint_is_a_candidate_now(self):
+        """It is resolved, not trusted: _open_best_connection seals the socket
+        end to end before any signed frame goes onto it, and drops it if the
+        host cannot seal. See test_a_direct_socket_is_sealed.py."""
+        assert self._resolve(["http://10.5.27.133:8797"]) == "ws://10.5.27.133:8797/ws"
 
     def test_localhost_still_wins(self):
         assert self._resolve(["http://10.5.27.133:8797",
@@ -200,6 +203,9 @@ class TestWhichEndpointIsChosen:
     def test_tls_is_used_over_the_relay(self):
         assert self._resolve(["https://agent.example.com"]) == "wss://agent.example.com/ws"
 
-    def test_tls_is_preferred_over_lan_plaintext(self):
+    def test_the_closer_endpoint_wins_now_that_plaintext_is_sealed(self):
+        """Closeness dominates the sort; TLS only breaks ties. With the socket
+        sealed, a LAN plaintext endpoint is as private as the public TLS one
+        and one hop shorter."""
         assert self._resolve(["http://10.5.27.133:8797",
-                              "https://agent.example.com"]) == "wss://agent.example.com/ws"
+                              "https://agent.example.com"]) == "ws://10.5.27.133:8797/ws"

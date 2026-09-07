@@ -16,6 +16,23 @@ co remote-browser 0xHOST stop    rb_0123456789abcdef0123456789abcdef
 That is the whole surface today. `start` is safe to retry: the same owner and
 request ID gets the same session back rather than a second one.
 
+The session opens a visible window by default, exactly like `co browser` on
+your own machine; a host with no display runs headless by itself. Pass
+`--headless` to ask for that explicitly.
+
+The address is 42 characters and never changes between calls, so remember it
+once and leave it out afterwards:
+
+```bash
+co remote-browser config 0xHOST --proxy shared   # once
+co remote-browser start                           # from now on
+co remote-browser sessions
+```
+
+An explicit address still wins when you give one. With nothing remembered and
+no address on the command line, the command stops and tells you to run
+`config` — it never guesses a host.
+
 ## Reaching the internet through your own connection
 
 A browser on a server reaches the internet from a data-centre address. Lend it
@@ -27,21 +44,36 @@ browser on the host  ──▶  your computer  ──▶  the internet (your add
 ```
 
 ```bash
-co proxy share to 0xHOST                        # on your computer
-co remote-browser 0xHOST start --proxy shared   # then start the session
+co remote-browser config 0xHOST --proxy shared  # once
+co proxy share                                  # on your computer; keeps running
+co remote-browser start                         # then start the session
 ```
 
-Measured on a Google Cloud server egressing through a laptop in Sydney: the
-server's own address is `34.21.243.229`, and the site saw `129.94.43.159`.
+Your computer dials the host and stays attached; the host never has to reach
+you, so this works from behind any home or office NAT. The share is keyed by
+your identity on the host — `start --proxy shared` from the same identity
+finds it by itself, and nothing about it travels in the start request.
+
+Measured 2026-09-02 on a Google Cloud server (`35.229.135.74`) with the paid
+Onion engine, egressing through a laptop behind a home NAT in Sydney:
+`https://api.ipify.org` and `https://ifconfig.me/ip` both saw `129.94.43.159`.
+After `co proxy stop` the same tab got `ERR_TUNNEL_CONNECTION_FAILED` — no
+fallback to the server's address. The session cost one interval, $0.025.
 
 `--proxy direct` (the default) keeps the host on its own connection. Asking for
-`shared` without a share endpoint answers `REMOTE_SESSION_SHARE_MISSING` rather
-than quietly falling back — a silent fallback would send traffic from the data
+`shared` while your computer is not attached answers
+`REMOTE_SESSION_PROXY_NOT_ATTACHED` (next action: `co proxy share`) rather than
+quietly falling back — a silent fallback would send traffic from the data
 centre while you believed it left from home. Any other mode answers
 `REMOTE_SESSION_PROXY_LOCKED`.
 
 Both machines apply the destination policy, so sharing a connection does not
 share the network behind it. See [co proxy](../cli/proxy.md).
+
+The selection is pinned when the WTF Browser runtime is created. One running
+runtime cannot mix `direct` and `shared`, or two different Laptop exits. A
+change requires a new runtime; losing the Laptop Proxy never falls back to the
+server's datacentre address.
 
 ## Scripting it
 
@@ -84,8 +116,9 @@ connections that the first check never saw.
 Navigation will be authorized at the socket, not at the URL. The host runs a
 loopback egress gateway and starts the browser with no way around it: every
 HTTP, HTTPS, WebSocket, worker, subresource, redirect and download connection
-goes through the gateway, which resolves the name itself, checks every address
-the lookup returned, and dials only an approved numeric address.
+goes through the gateway. In `direct` mode the host gateway resolves and dials.
+In `shared` mode the Laptop resolves the name and opens the final socket; both
+machines classify the complete answer set before one numeric address is used.
 
 ```text
 remote command ──▶ Remote Browser service ──▶ host-private browser
@@ -93,7 +126,7 @@ remote command ──▶ Remote Browser service ──▶ host-private browser
                                                      │ no direct fallback
                                                      ▼
                                        egress gateway 127.0.0.1:<port>
-                                       resolve · classify · dial approved IP
+                                       classify · direct/shared transport
                                                      ▼
                                              the public internet
 ```

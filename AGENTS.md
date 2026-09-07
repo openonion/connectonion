@@ -108,9 +108,10 @@ co create my-agent --template custom --description "..."   # AI writes agent.py
 # One template on purpose: it is the same agent `co ai` runs, and you
 # specialise it with skills in .co/skills/ rather than a different skeleton.
 
-# Initialize in existing directory
-co init                               # Add .co folder only
-co init --template co-ai             # Add full template
+# Initialize global credentials, or explicitly select a project
+co init                               # Global ~/.co/keys.env only
+co init ./                            # Project config, .env, and docs
+co init ./ --template co-ai            # Add full template
 
 # Authentication (for managed keys)
 co auth login                         # Interactive login

@@ -14,7 +14,7 @@ agent = Agent("assistant", plugins=[auto_compact])
 ## What it does
 
 When the context window hits 90% full:
-1. Summarizes old messages into a single compact message using `co/gemini-3.7-flash`
+1. Summarizes old messages into a single compact message using the current product default (`co/gemini-3.8-flash`)
 2. Replaces old messages with the summary (keeps system prompt + summary + last 5 messages)
 3. Continues the session without interruption
 
@@ -32,7 +32,7 @@ A long research session that would normally hit token limits:
 from connectonion import Agent
 from connectonion.useful_plugins import auto_compact
 
-agent = Agent("researcher", plugins=[auto_compact], model="co/gemini-3.7-flash")
+agent = Agent("researcher", plugins=[auto_compact], model="co/gemini-3.8-flash")
 
 # Works even on very long sessions
 for topic in topics:

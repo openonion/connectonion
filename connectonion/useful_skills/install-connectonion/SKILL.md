@@ -1,6 +1,6 @@
 ---
 name: install-connectonion
-description: Install and fully set up ConnectOnion on Windows, macOS, or Linux so EVERY `co` command works — find Python, pip install, `co init` (scaffolds the project AND authenticates, writing keys.env), confirm the account with `co status`, install a browser for `co browser`, then hand the user a plain-language summary. Use when the user says "install connectonion", "set up connectonion", "get me started with co", or a co command fails because nothing is configured yet.
+description: Install and set up ConnectOnion on Windows, macOS, or Linux, initialize global credentials, and verify the requested CLI capabilities. Use for "install connectonion", "set up connectonion", "get me started with co", or missing installation/configuration. Project scaffolding requires an explicit project path.
 ---
 
 # Install ConnectOnion Skill
@@ -78,23 +78,26 @@ co --version                          # confirm the CLI is on PATH
 >   or reinstall via `pipx install connectonion`.
 > - "externally-managed-environment" / permission error → go back to Step 1's venv, retry.
 
-## Step 3: Initialize the project — this also sets up keys.env
+## Step 3: Initialize global credentials; create a project only when requested
 
-This is the core step. **`co init` does two things at once**: it scaffolds the project
-(`agent.py`, `.env`, `.co/`) **and authenticates**, writing the account credentials to the
-global `~/.co/keys.env` and copying them into the project `.env`. **Always pass `--yes`** so
-it doesn't stop on a prompt:
+Plain **`co init` initializes global `~/.co/keys.env` and the machine identity**,
+then attempts authentication. It does not create or modify `.env`, `.co/`, or
+`agent.py` in the current directory, even when run inside a project. Use `--yes`
+for unattended setup:
 
 ```bash
-co init --yes                     # existing folder: config + auth
-# or start a fresh project folder (also authenticates):
-co create my-agent --yes          # then: cd my-agent
+co init --yes                     # global credentials only
+# Only if the user wants a project:
+co init ./ --yes                  # existing folder: config, .env, and docs
+co init ./ --template co-ai --yes  # also add the hosted agent template
+co create my-agent --yes          # new folder with the co-ai template
 ```
 
-Templates for `co create`: `minimal` (default), `coder`, `browser`, `web-research`,
-`hosted-browser`, `co-ai`. Use `--template <name>`.
+The `co-ai` and `custom` templates are supported. `co create` defaults to
+`co-ai`; `co init ./` defaults to configuration only. An explicit directory is
+required with `co init --template`, `--description`, or `--force`.
 
-After this succeeds, `~/.co/keys.env` (and the project `.env`) contain:
+After authentication succeeds, `~/.co/keys.env` contains:
 
 ```
 OPENONION_API_KEY=<token>              # unlocks co/* models, co status, co email
@@ -108,12 +111,13 @@ or print it.)
 
 > **Recovery — this is where `co auth` comes in**
 > - `co init` printed an auth/network error, or the token didn't land (Step 4's `co status`
->   says "No API key found") → the scaffold worked but authentication didn't. Complete it:
+>   says "No API key found") → local setup worked but authentication didn't. Complete it:
 >   ```bash
 >   co auth        # re-runs just the authentication, writes OPENONION_API_KEY + AGENT_EMAIL
 >   ```
 >   `co auth` is safe to re-run any time; it refreshes the token in place.
-> - "Directory not empty" → add `--force` only after the person confirms it's safe here.
+> - Project directory not empty → use `co init ./ --yes` to add configuration while
+>   preserving source files. Use `--force` only with approval to overwrite template files.
 > - Command hangs → you forgot `--yes`; re-run with it.
 
 ## Step 4: Confirm the account is wired up
@@ -127,9 +131,12 @@ co doctor        # cross-platform health check; "API Key" line should be ✓
 ```
 
 **Optional — own provider keys instead of managed:** if the person would rather use their
-own OpenAI/Anthropic/Google account, add the key to the project `.env` with the
+own OpenAI/Anthropic/Google account, add the key to global `~/.co/keys.env` by default,
+or to an explicitly selected project's `.env`, with the
 `write`/`edit` tool (never echo it back): `OPENAI_API_KEY=…` (`gpt-*`),
-`ANTHROPIC_API_KEY=…` (`claude-*`), `GEMINI_API_KEY=…` (`gemini-*`). Managed `co/*` still
+`ANTHROPIC_API_KEY=…` (`claude-*`), `GEMINI_API_KEY=…` (`gemini-*`). Plain init does not
+copy implicitly loaded project or process keys into global storage; `--key` is
+an explicit request to save a provider key. Managed `co/*` still
 needs `OPENONION_API_KEY` from Step 3.
 
 > **Recovery**
@@ -230,7 +237,7 @@ The payoff. Run `co status`, then translate it — **don't paste the raw panel**
   🤖  Model access:                        managed (co/* models) — nothing else needed
   🌐  Browser (co browser):                ready   (or "not set up — tell me if you want it")
   📦  Installed:                           connectonion vX.Y.Z  (Python 3.12 on Windows)
-  📁  Your project:                        ./my-agent  (minimal template)
+  📁  Your project:                        ./my-agent  (only if requested)
 
   What you can do now:
     • co status                      — check your balance any time

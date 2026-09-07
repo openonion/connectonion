@@ -38,7 +38,7 @@ division between plugin skills and project documentation.
 
 The same project context works without the plugin:
 
-1. Run `co create my-agent` or `co init` in an existing project.
+1. Run `co create my-agent` or `co init ./` in an existing project.
 2. Add `.co/docs/README.md` and the relevant linked pages to the assistant's
    context.
 3. Describe one behavior change and ask for tests with it.

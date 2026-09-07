@@ -173,9 +173,10 @@ co deploy --skills ~/skills/linkedin-post-submit
 #   co browser do "log in and download my invoices"
 # See co-browser.md for the full command reference and multi-agent tabs.
 
-# Initialize in existing directory
-co init                    # Adds .co folder only
-co init --template co-ai   # Adds the full project
+# Initialize globally, or explicitly select an existing directory
+co init                       # Global ~/.co/keys.env; no project files
+co init ./                    # Project config, .env, and docs
+co init ./ --template co-ai    # Adds the full project
 ```
 
 ## Your Own Mail and Files

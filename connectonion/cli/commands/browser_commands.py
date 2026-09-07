@@ -19,7 +19,7 @@ USAGE = (
     "co browser — drive one persistent browser from the shell\n"
     "\n"
     "  co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)\n"
-    "  co browser --engine auto|system|onion <function> [args]\n"
+    "  co browser --engine onion <function> [args]   pay for the WTF Browser (default: system Chrome)\n"
     '  co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar\n'
     '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"

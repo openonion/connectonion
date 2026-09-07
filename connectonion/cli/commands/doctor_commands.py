@@ -369,8 +369,10 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         config_table.add_row("Disk", f"[yellow]○[/yellow] {disk}")
 
     # Check for keys
-    local_keys = project_co_dir() / "keys" / "agent.key"
-    global_keys = Path.home() / ".co" / "keys" / "agent.key"
+    from ...project import selected_identity_dir
+    from ...environment import global_config_dir
+    local_keys = selected_identity_dir() / "keys" / "agent.key"
+    global_keys = global_config_dir() / "keys" / "agent.key"
 
     if local_keys.exists():
         config_table.add_row("Keys", f"[green]✓[/green] {_shown(local_keys)}")
@@ -393,14 +395,14 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     credential_actions = {
         "OPENONION_API_KEY": "co auth",
-        "OPENAI_API_KEY": "set OPENAI_API_KEY in <project>/.env",
-        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in <project>/.env",
-        "GEMINI_API_KEY": "set GEMINI_API_KEY in <project>/.env",
-        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in <project>/.env",
-        "GROQ_API_KEY": "set GROQ_API_KEY in <project>/.env",
-        "XAI_API_KEY": "set XAI_API_KEY in <project>/.env",
-        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
-        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
+        "OPENAI_API_KEY": "set OPENAI_API_KEY in global keys.env",
+        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in global keys.env",
+        "GEMINI_API_KEY": "set GEMINI_API_KEY in global keys.env",
+        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in global keys.env",
+        "GROQ_API_KEY": "set GROQ_API_KEY in global keys.env",
+        "XAI_API_KEY": "set XAI_API_KEY in global keys.env",
+        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in global keys.env",
+        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in global keys.env",
         "TELEGRAM_BOT_TOKEN": "set TELEGRAM_BOT_TOKEN in ~/.co/keys.env",
     }
     project_dir = project_co_dir().parent

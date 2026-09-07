@@ -23,11 +23,8 @@ LIST_CACHE = Path.home() / ".co" / "syno_last_list.json"
 
 def _syno():
     """Load SYNOLOGY_* credentials from .env files and return a Synology instance. Exits 1 with a hint if not connected."""
-    from dotenv import load_dotenv
-
-    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
-        if env_path.exists():
-            load_dotenv(env_path)
+    from ...environment import load_environment
+    load_environment()
 
     if not os.getenv("SYNOLOGY_URL"):
         console.print("\n❌ [bold red]Synology NAS not connected[/bold red]")

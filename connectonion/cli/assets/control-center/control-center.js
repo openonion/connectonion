@@ -1,8 +1,5 @@
-const BRIDGE_VERSION = 1
-let port = null
-let revision = null
-let sequence = 0
-const pending = new Map()
+import {connectControlCenter} from './sdk.js'
+let client = null
 
 const connection = document.querySelector('#connection')
 const connectionLabel = document.querySelector('#connection-label')
@@ -27,22 +24,19 @@ function setStatus(message, state = 'idle') {
   status.textContent = message
 }
 
-function request(action, payload) {
-  if (!port || !revision) {
-    setStatus('Open this app through O Chat before using Agent actions.', 'error')
-    return Promise.reject(new Error('Control Center is not connected'))
+async function request(action, payload) {
+  if (!client) throw new Error('Open this app through O Chat before using Agent actions.')
+  setStatus(action === 'run_skill' ? 'Running skill in Chat…' : 'Waiting for the Agent…', 'pending')
+  try {
+    const result = action === 'run_skill'
+      ? await client.runSkill(payload.skill, payload.args)
+      : await client.sendMessage(payload.message)
+    setStatus('The reply appears in Chat.', 'success')
+    return result
+  } catch (error) {
+    setStatus(error.message, 'error')
+    throw error
   }
-  const id = `default-control-center:${Date.now()}:${++sequence}`
-  port.postMessage({
-    type: 'connectonion.control-center/request',
-    version: BRIDGE_VERSION,
-    revision,
-    id,
-    action,
-    payload,
-  })
-  setStatus(action === 'run_skill' ? 'Starting skill in Chat…' : 'Sending to Chat…', 'pending')
-  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }))
 }
 
 function firstSentence(value = '') {
@@ -121,49 +115,37 @@ function filterSkills() {
   searchEmpty.hidden = visible !== 0
 }
 
-function receive(message = {}) {
-  if (message.version !== BRIDGE_VERSION || message.revision !== revision) return
-  if (message.type === 'connectonion.control-center/context') {
-    const name = message.agent?.name || 'Connect AI'
-    document.querySelector('#agent-name').textContent = name
-    document.querySelector('#agent-initial').textContent = name.trim()[0] || 'C'
-    document.title = `${name} · Control Center`
-    renderSkills(message.skills)
-    const hasChat = Boolean(message.conversation?.sessionId)
-    agentAddress.textContent = message.agent?.address || 'Unavailable'
-    diagnosticConversation.textContent = hasChat ? 'Current Chat' : 'Created by the first action'
-    appRevision.textContent = message.revision
-    connectionLabel.textContent = hasChat ? 'Current Chat' : 'First action creates a Chat'
-    connection.classList.add('connected')
-    submit.disabled = false
-    setStatus(hasChat ? 'Actions continue in Chat.' : 'Ready for the first action.', 'success')
-    return
-  }
-  if (message.type !== 'connectonion.control-center/response') return
-  const waiter = pending.get(message.id)
-  if (!waiter) return
-  pending.delete(message.id)
-  if (message.ok) {
-    setStatus('Sent. The reply appears in Chat.', 'success')
-    waiter.resolve(message.result)
-  } else {
-    const error = new Error(message.error?.message || 'The Agent action was rejected.')
-    setStatus(error.message, 'error')
-    waiter.reject(error)
-  }
+let previousSkills = ''
+function renderSnapshot(snapshot) {
+  const serialized = JSON.stringify(snapshot.skills)
+  if (previousSkills !== serialized) { renderSkills(snapshot.skills); previousSkills = serialized }
+  const ready = snapshot.connectionState === 'connected'
+  agentAddress.textContent = snapshot.agentAddress
+  diagnosticConversation.textContent = snapshot.sessionId || 'Created by the first action'
+  connectionLabel.textContent = ready ? (snapshot.status === 'idle' ? 'Connected' : 'Agent ' + snapshot.status) : snapshot.connectionState
+  connection.classList.toggle('connected', ready)
+  submit.disabled = !ready || snapshot.status !== 'idle'
+  const transcript = document.querySelector('#recent-chat')
+  const items = snapshot.chatItems.slice(-12).map(item => {
+    const row = document.createElement('p')
+    const who = item.type === 'user' ? 'You' : item.type === 'tool_call' ? item.name : 'Agent'
+    const content = item.content || item.text || item.summary || item.status || item.type
+    row.textContent = who + ': ' + String(content).slice(0,2000)
+    return row
+  })
+  transcript.replaceChildren(...items)
+  document.querySelector('#history-note').textContent = snapshot.truncated ? 'Recent conversation; older items were omitted.' : 'Live conversation from O Chat.'
 }
 
-addEventListener('message', event => {
-  const message = event.data || {}
-  if (message.type !== 'connectonion.control-center/connect') return
-  if (message.version !== BRIDGE_VERSION || !event.ports[0]) return
-  port?.close()
-  revision = message.revision
-  port = event.ports[0]
-  port.onmessage = event => receive(event.data)
-  port.onmessageerror = () => setStatus('O Chat could not read the Agent response.', 'error')
-  port.start()
-})
+const parameters = new URLSearchParams(location.hash.slice(1))
+appRevision.textContent = parameters.get('co-revision') || 'Local preview'
+if (parameters.get('co-parent') && parameters.get('co-revision')) {
+  connectControlCenter({parentOrigin:parameters.get('co-parent'), revision:parameters.get('co-revision')})
+    .then(connection => { client=connection; client.subscribe(renderSnapshot); setStatus('Connected to Chat.','success') })
+    .catch(error => setStatus(error.message,'error'))
+} else {
+  setStatus('Preview only. Open this app through an approved O Chat session for Agent actions.')
+}
 
 form.addEventListener('submit', event => {
   event.preventDefault()

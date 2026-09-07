@@ -297,7 +297,7 @@ from connectonion import Agent
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 
 browser = BrowserAutomation(headless=False)  # Visible for debugging
-agent = Agent("scraper", tools=[browser], model="co/gemini-3.7-flash")
+agent = Agent("scraper", tools=[browser], model="co/gemini-3.8-flash")
 
 agent.input("Go to news.ycombinator.com, get the top 5 story titles")
 agent.input("Navigate to github.com/trending and screenshot the page")

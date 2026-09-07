@@ -52,9 +52,18 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 
 `EXEC` is the direct-execution fast path: it runs one named tool with no LLM, no session, and no history, replying with a single `EXEC_RESULT`. It requires the same CONNECT auth as INPUT, and the tool is gated by the host's `.co/host.yaml` permission whitelist. See [remote-call.md](remote-call.md).
 
+On any socket — direct or through the relay — the very first frame may be
+`SEAL` instead: the client offers a one-time key, the host answers `SEALED_OK`
+with its own, and every frame after that — CONNECT included — travels inside
+`SEALED`. See [Sealed channel](#sealed-direct-channel).
+
 A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not part of the
 normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
 See [Trust Gate](#trust-gate-onboarding).
+
+The optional `session-sync/0.1` extension adds discovery, snapshot, watch, and
+metadata-update messages for retained conversations. These messages do not
+change the core OIP 0.1 lifecycle unless both peers negotiate the extension.
 
 ### Scoped native-provider stop
 
@@ -337,7 +346,9 @@ Authenticate, restore session, and sync conversation. **Always the first message
   "payload": {
     "to": "0x3d4017c3e843...",
     "timestamp": 1702234567,
-    "signed_commands": 1
+    "nonce": "36d78b9c-...",
+    "signed_commands": 1,
+    "extensions": {"session-sync": ["0.1"]}
   },
   "from": "0xClientPublicKey",
   "signature": "0x..."
@@ -357,6 +368,27 @@ Authenticate, restore session, and sync conversation. **Always the first message
 v2 command gate described below. A new server continues accepting a v1 CONNECT
 without it, so an older client is not stranded; it does not receive v2's
 per-command injection/replay protection.
+
+Clients should sign a fresh, unpredictable `payload.nonce` into every CONNECT.
+The timestamp has one-second resolution, so it cannot distinguish two pages
+opened by the same identity at the same instant; the nonce keeps their
+deterministic Ed25519 signatures distinct without weakening replay protection.
+
+`payload.extensions` is also signed. If Host selects Session Sync, CONNECTED
+advertises `"extensions": {"session-sync": "0.1"}` inside its protocol
+descriptor. A client must not send extension frames when that selection is
+absent. During the rolling compatibility window a browser may leave legacy
+application frames on the connection-authenticated path, but every Session
+Sync frame is still independently signed using the v2 command envelope.
+
+A client that needs only the Recent Chat index may include
+`payload.session_sync_only: 1` with that extension request and omit `session_id`
+and `session`. Host answers CONNECTED with `status: "index"` and creates no
+registry entry, mode record, dashboard subscription, or blank conversation.
+Only signed Session Sync frames are valid on that capability socket.
+When the public relay adds a top-level socket routing `session_id`, Host ignores
+that transport-owned value only on this relay index connection; a direct client
+still cannot attach chat state to an index-only capability socket.
 
 Server response based on state:
 
@@ -507,6 +539,78 @@ failures return `ERROR`.
 constructing protocol frames. Plan is not a mode; Todo List progress carries
 no authority.
 
+#### Session Sync extension
+
+Session Sync makes Host-retained history the remote authority for Recent Chat
+while allowing a browser to keep a local cache, draft, and outbox. It is scoped
+to the Ed25519 address that authenticated CONNECT: knowing another session ID
+never reveals its title, existence, or records. All four client frames use the
+signed command envelope and a unique `request_id`.
+
+`SESSION_SYNC` discovers summaries. Omit `cursor` for a full snapshot; preserve
+the returned opaque cursor for incremental calls. Pagination must be drained
+before replacing the cursor:
+
+```json
+{"type":"SESSION_SYNC","request_id":"sync-1","cursor":"opaque","limit":50,"include_archived":false}
+```
+
+```json
+{
+  "type":"SESSION_SYNC_RESULT",
+  "request_id":"sync-1",
+  "sessions":[{
+    "session_id":"550e8400-...",
+    "revision":7,
+    "title":"Translate the report",
+    "activity":"idle",
+    "created_at":"2026-09-01T08:00:00Z",
+    "updated_at":"2026-09-01T08:03:12Z",
+    "last_sequence":12,
+    "preview":"The translated report is ready"
+  }],
+  "removed_session_ids":[],
+  "cursor":"opaque"
+}
+```
+
+When another page archives or expiry removes a conversation, its ID appears in
+`removed_session_ids`. `next_page_token` replaces `cursor` on non-final pages;
+send it back unchanged with the same archive selection until a final page
+returns the new cursor. Tokens are integrity-protected and owner-, query-, and
+storage-generation-bound.
+Compaction can return `cursor_expired`; the client then performs one full sync.
+
+`SESSION_GET` retrieves a revision-consistent ordered record snapshot. Send
+`if_revision` to receive `SESSION_NOT_MODIFIED`; otherwise Host answers
+`SESSION_SNAPSHOT` with `summary`, `snapshot_revision`, `records`, and an
+optional `next_page_token`. Every record has a strictly increasing `sequence`,
+stable `record_id`, `kind`, `occurred_at`, and typed ChatItem-compatible `data`.
+
+```json
+{"type":"SESSION_GET","request_id":"get-1","session_id":"550e8400-...","if_revision":6,"limit":100}
+```
+
+`SESSION_WATCH` starts one lightweight watch on the connection from an already
+issued sync cursor. Host acknowledges with `SESSION_WATCHED` and emits
+`SESSION_CHANGED` only when summaries or removals exist. A later watch replaces
+the earlier one; socket close cancels it. Clients still re-sync on reconnect,
+focus, and visibility changes because watch delivery is not durable.
+
+`SESSION_UPDATE` applies only remote metadata and is optimistic-concurrency
+checked. The 0.1 patch supports `title` and `archived`; a stale `if_revision`
+returns `revision_conflict` plus the current safe summary.
+
+```json
+{"type":"SESSION_UPDATE","request_id":"update-1","session_id":"550e8400-...","if_revision":7,"patch":{"archived":true}}
+```
+
+Stable extension error codes are `invalid_request`, `not_found`,
+`revision_conflict`, `cursor_expired`, `rate_limited`,
+`temporarily_unavailable`, `unauthorized`, and `unsupported_extension`.
+Retention and archive are separate: archive hides a retained chat from the
+default index; retention determines whether Host can still return it at all.
+
 #### ONBOARD_SUBMIT
 
 Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
@@ -533,6 +637,129 @@ Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
 
 Sent on the same socket as the CONNECT it answers. A wrong code comes back as `ERROR` and
 the stashed CONNECT is **kept**, so the reader can simply try again — no reconnect needed.
+
+#### SEAL / SEALED_OK / SEALED {#sealed-direct-channel}
+
+End-to-end encryption for a socket, direct or relayed. A host may announce
+plain `ws://IP:port` and needs no domain, certificate or TLS front, and a
+session through the relay is opaque to the relay. Before this a signed CONNECT
+captured on a plaintext link could be replayed inside its five-minute window
+(#649), direct connections were therefore limited to TLS or loopback, and the
+relay — which terminates TLS — read every frame it forwarded.
+
+Handshake, first two frames on the socket:
+
+```json
+{"type": "SEAL", "to": "0xHOST", "from": "0xCLIENT",
+ "ephemeral": "<hex X25519 public key, one-time>", "timestamp": 1756800000,
+ "signature": "<Ed25519 over the canonical JSON of the other five fields, by 0xCLIENT>"}
+
+{"type": "SEALED_OK", "to": "0xCLIENT", "from": "0xHOST",
+ "ephemeral": "<hex X25519 public key, one-time>", "client_ephemeral": "<the SEAL's key>",
+ "signature": "<Ed25519 over the canonical JSON of the other five fields, by 0xHOST>"}
+```
+
+Both sides derive one NaCl `Box` from the two one-time keys. The address *is*
+the Ed25519 public key, so each side verifies the other's signature with
+nothing but the address it already had; no directory, and the relay is not
+involved. A `SEAL` older than the CONNECT freshness window, addressed to
+another host, or signed by someone other than `from` is answered with
+`ERROR seal refused: …` and the socket is closed (code 4003) — no plaintext
+second try.
+
+Through the relay the frames are the same. The relay proxy reads `to` from the
+first frame to pick the agent and forwards every frame after it verbatim,
+adding only `session_id`; `SEAL` carries `to`, so nothing on the relay changes.
+The relay's own frames to the client — its 30s `PING` and an `ERROR` such as
+`Agent not connected` — arrive in the clear and are passed up as-is; they hold
+no key and carry nothing a peer said. Everything else on a sealed socket must
+open.
+
+Every later frame in either direction:
+
+```json
+{"type": "SEALED", "n": 7, "c": "<base64 ciphertext>"}
+```
+
+`n` is a per-direction counter starting at 1; the nonce is the direction tag
+plus `n`, so a captured frame replayed or reordered fails to open and ends the
+session. Inside `c` is the ordinary frame (CONNECT, INPUT, EXEC, PING/PONG,
+PROXY_STREAM…), and the router never sees the difference. Signed CONNECT and
+v2 command signatures are still required inside the seal: the seal makes the
+link private, the signatures still say who is speaking.
+
+Inside a seal the `CONNECT` (and an `ONBOARD_SUBMIT`) must be signed by the
+identity that signed the `SEAL`; a frame from anyone else is refused as
+`unauthorized: … not signed by the sealed peer`. That binding is what makes
+the host's one-use signature ledger unnecessary on a sealed socket: nobody
+but the sealed peer can put a frame on it, so a captured signature cannot be
+presented there by anyone else, and the ledger is not consulted. A bare
+socket — an older client — is still held to the ledger. A `co host` process
+runs one worker and keeps that ledger in memory; only `create_app()` served
+with several uvicorn workers keeps it in `.co/replay.sqlite3`, and that file
+now heals if it is removed under a running host (#1403).
+
+Client rule (`_open_best_connection`): every socket, direct or relayed, is
+offered a `SEAL` when the client has keys. A direct host that does not answer
+`SEALED_OK` is used bare only if the link is already private — TLS or
+loopback; otherwise the socket is closed and the client moves on to the relay.
+A relay host that does not answer (a 1.8.0 host) has already consumed that
+socket's first frame, so the client closes it and opens a fresh bare relay
+socket — TLS to the relay, every client's footing before 1.8.1. `PROXY_ATTACH`
+still requires a direct socket; a sealed plaintext one qualifies.
+
+#### PROXY_ATTACH
+
+Lend this computer's internet connection to the host (`co proxy share`). Sent
+once per socket after a signed CONNECT, on a **direct** connection only — the
+relay never carries page bytes. Signed like every other command.
+
+```json
+{
+  "type": "PROXY_ATTACH",
+  "payload": {
+    "grant": {
+      "type": "proxy_grant", "grant_id": "pxg_...",
+      "grantor": "0xLaptop", "holder": "0xHost", "scope": "public_internet",
+      "expires_at": "2026-09-03T10:00:00Z", "max_bytes": null,
+      "signature": "..."
+    },
+    "to": "0xHost", "timestamp": 1702234567, "nonce": "..."
+  },
+  "from": "0xLaptop",
+  "signature": "0x..."
+}
+```
+
+The host verifies the grant (it must name this host as holder, be unexpired,
+and be signed by the identity on this socket), requires contact-or-better
+trust, and answers `PROXY_ATTACHED` or `ERROR`. A later attach from the same
+identity replaces the earlier one; the attachment ends when the socket closes.
+
+#### PROXY_STREAM
+
+One multiplexed stream operation, in either direction, while a share is
+attached. The host opens streams; the laptop answers them.
+
+```json
+{"type": "PROXY_STREAM", "payload": {"id": 7, "op": "connect", "address": "93.184.216.34", "port": 443}}
+```
+
+| `op` | Direction | Fields | Meaning |
+|------|-----------|--------|---------|
+| `resolve` | host → laptop | `host`, `port` | resolve this name with the laptop's DNS and policy |
+| `resolve` | laptop → host | `addresses` | the complete answer set |
+| `connect` | host → laptop | `address`, `port` | open a socket to this numeric address, re-classified on the laptop |
+| `connect` | laptop → host | — | the socket is open |
+| `data` | both | `data` (base64, ≤ 32 KiB) | bytes on the stream |
+| `eof` | both | — | half-close: no more bytes this way |
+| `close` | both | — | the stream is finished; forget it |
+| `error` | both | `code` | the request failed (`EGRESS_*` / `DESTINATION_*` codes) |
+
+Laptop → host frames are signed like every command. Host → laptop frames carry
+no signature: they travel inside the TLS session the laptop opened to an
+endpoint whose identity it already verified. At most 64 streams per share; the
+grant's `expires_at` and `max_bytes` are enforced by the host.
 
 ### Server → Client
 
@@ -655,7 +882,7 @@ managed-key agents. Sent once, right after `CONNECTED`.
   "session_id": "550e8400-...",
   "name": "my-agent",
   "address": "0x3d4017c3...",
-  "model": "co/gemini-3.7-flash",
+  "model": "co/gemini-3.8-flash",
   "tools": ["search", "shell"],
   "skills": [
     {"name": "co-browser", "description": "drive a browser", "location": "project"},
@@ -814,6 +1041,19 @@ Also how a **refused onboard** comes back — `{"type": "ERROR", "message": "Inv
 code"}`. There is no dedicated failure frame, and no repeat of `ONBOARD_REQUIRED`: a client
 waiting for one of those to detect the refusal will wait forever.
 
+#### PROXY_ATTACHED
+
+The share offered by `PROXY_ATTACH` is accepted and registered under the
+sender's address. A refused attach is an `ERROR` whose message starts with
+`proxy attach refused:`.
+
+```json
+{ "type": "PROXY_ATTACHED", "expires_at": "2026-09-03T10:00:00Z", "max_bytes": null }
+```
+
+From here the host sends `PROXY_STREAM` frames (unsigned, see above) down this
+socket until it closes.
+
 ---
 
 ## Architecture Diagram
@@ -845,10 +1085,10 @@ waiting for one of those to detect the refusal will wait forever.
 
   Data Ownership:
   ┌────────────────────────────────────────────────────────────────┐
-  │ Client owns: conversation history (localStorage)              │
-  │ Server owns: execution state (registry), results (storage)    │
-  │ CONNECT syncs: client → server (session), server → client     │
-  │                (if server_newer)                               │
+  │ Host owns: committed retained history and revisions           │
+  │ Client owns: cache, drafts, and unsent outbox                  │
+  │ CONNECT resumes one chat; Session Sync discovers all owned    │
+  │ retained chats and merges newer Host revisions into cache     │
   └────────────────────────────────────────────────────────────────┘
 
 ════════════════════════════════════════════════════════════════════
@@ -863,11 +1103,11 @@ waiting for one of those to detect the refusal will wait forever.
 │   Connection    │  │  Conversation   │  │   Execution     │
 │                 │  │                 │  │                 │
 │ WebSocket + auth│  │ Message history │  │ One INPUT→OUTPUT│
-│ PING/PONG       │  │ Owned by client │  │ Agent thread    │
-│ Persistent      │  │ Sent via CONNECT│  │ Temporary       │
+│ PING/PONG       │  │ Host retained   │  │ Agent thread    │
+│ Persistent      │  │ Client cached   │  │ Temporary       │
 │                 │  │ Merged on server│  │                 │
 │ Dies: WS close  │  │ Dies: never     │  │ Dies: OUTPUT    │
-│ + 10min grace   │  │ (localStorage)  │  │                 │
+│ + 10min grace   │  │ until retention │  │                 │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
@@ -875,22 +1115,23 @@ waiting for one of those to detect the refusal will wait forever.
 
 ## Authentication
 
-Authentication happens once, on CONNECT.
+Identity is established on CONNECT. Current v2 commands, and every negotiated
+Session Sync command even on a compatibility socket, carry their own signature.
 
 ```
-CONNECT (signed)          INPUT (not signed)
+CONNECT (signed)          INPUT / SESSION_SYNC (signed)
   │                          │
   ▼                          ▼
-Server verifies            Server trusts
-signature → OK             (same WS, already authenticated)
+Server verifies            Server verifies owner, recipient,
+signature → OK             type, nonce, freshness, and replay
 ```
 
 Trust levels:
 
 | Trust Level | CONNECT Behavior |
 |-------------|-----------------|
-| `open` | Accept without signature |
-| `careful` | Accept unsigned, recommend signature |
+| `open` | Valid signature required; trust policy allows the signer |
+| `careful` | Valid signature required; policy may ask before allowing |
 | `strict` | Require valid signature |
 
 ---

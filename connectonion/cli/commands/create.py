@@ -18,6 +18,7 @@ from rich.console import Console
 from rich.prompt import IntPrompt, Prompt
 from rich.syntax import Syntax
 
+from ...core.usage import DEFAULT_MODEL
 from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
@@ -122,7 +123,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         detected_keys[provider] = key
 
     # Authenticate only if OPENONION_API_KEY not already in global keys.env
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     global_keys_env = global_dir / "keys.env"
     already_authed = global_keys_env.exists() and "OPENONION_API_KEY=" in global_keys_env.read_text(encoding="utf-8")
 
@@ -375,7 +377,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # describes the machine it is on rather than the one that made the file.
         lines_to_add = []
         if "# Default model:" not in env_content:
-            lines_to_add.append("# Default model: co/gemini-3.7-flash (managed keys with free credits)\n")
+            lines_to_add.append(
+                f"# Default model: {DEFAULT_MODEL} (managed keys with free credits)\n"
+            )
 
         if lines_to_add:
             # Add blank line after comments if we're adding any
@@ -384,7 +388,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         # Fallback - create minimal .env with detected keys
         env_lines = [
-            "# Default model: co/gemini-3.7-flash (managed keys with free credits)",
+            f"# Default model: {DEFAULT_MODEL} (managed keys with free credits)",
             "",
         ]
 

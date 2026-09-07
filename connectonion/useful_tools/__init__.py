@@ -26,6 +26,7 @@ from .file_tools import (
     write,
 )
 from .gdrive import GDrive
+from .youtube import YouTube
 from .get_emails import get_emails, mark_read, mark_unread
 from .gmail import Gmail
 from .google_calendar import GoogleCalendar
@@ -52,6 +53,7 @@ from .telegram import send_telegram
 from .terminal import autocomplete, yes_no
 from .todo_list import TodoList
 from .web_fetch import WebFetch
+from .youcom_search import youcom_contents, youcom_research, youcom_search
 
 __all__ = [
     # Email tools
@@ -73,11 +75,15 @@ __all__ = [
     "Memory",
     "Gmail",
     "GDrive",
+    "YouTube",
     "Synology",
     "GoogleCalendar",
     "Outlook",
     "MicrosoftCalendar",
     "WebFetch",
+    "youcom_search",
+    "youcom_contents",
+    "youcom_research",
     "Shell",
     "bash",
     "codex",

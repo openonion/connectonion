@@ -3,8 +3,8 @@ Purpose: Google Drive integration tool for listing, searching, downloading, and 
 LLM-Note:
   Dependencies: imports from [io, mimetypes, os, pathlib, googleapiclient.discovery, googleapiclient.http, google.oauth2.credentials] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gdrive.py]
   Data flow: Agent calls GDrive methods → _get_service() validates the ambient OpenOnion account and refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() picks get_media() for binary files and export_media() for Google-native docs | upload() sends a MediaFileUpload
-  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates/overwrites local files on download and remote files on upload | token refresh rewrites ~/.co/keys.env
-  Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | list_files()/search_files() return dicts for the CLI (cli/commands/gdrive_commands.py) | used as agent tool via Agent(tools=[GDrive()])
+  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates/overwrites local files on download and remote files on upload | token refresh atomically saves the selected credential record
+  Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | private metadata/byte helpers let the Gmail CLI stage a Drive file without writing it locally | used as agent tool via Agent(tools=[GDrive()])
   Performance: network I/O per API call | listings page at 100/request | downloads stream in chunks
   Errors: raises ValueError if OAuth not configured, if the Drive scope is missing, on unknown file ids, and on Google-native types with no export format | HttpError from the Drive API propagates
 
@@ -38,6 +38,7 @@ Example:
 import io
 import mimetypes
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
@@ -46,6 +47,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
 # Everything under this prefix is a Google-native doc: it has no bytes of its
 # own, so it must be exported to a real format rather than downloaded.
@@ -68,14 +70,28 @@ LIST_FIELDS = f"nextPageToken, files({FILE_FIELDS})"
 class GDrive:
     """Google Drive tool for listing, searching, downloading, and uploading files."""
 
+    @property
+    def _credentials(self):
+        if not hasattr(self, "_credential_record"):
+            self._credential_record = resolve_provider_credentials("google")
+        return self._credential_record
+
+    @_credentials.setter
+    def _credentials(self, value):
+        self._credential_record = value
+
     def __init__(self):
         """Initialize the Drive tool.
 
         Validates that Google OAuth is configured with the Drive scope.
         Raises ValueError if it is missing.
         """
-        scopes = os.getenv("GOOGLE_SCOPES", "")
-        if "drive" not in scopes:
+        from .google_scopes import granted_scopes
+        self._credentials = resolve_provider_credentials("google")
+        scopes = self._credentials.scopes
+        if not scopes:
+            self._credentials.require_configured()
+        if scopes and not scopes.intersection({"drive", "drive.readonly"}):
             raise ValueError(
                 "Missing 'drive' scope.\n"
                 f"Current scopes: {scopes}\n"
@@ -95,67 +111,40 @@ class GDrive:
         if self._service:
             return self._service
 
-        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-
-        if not os.getenv("GOOGLE_ACCESS_TOKEN") or not refresh_token:
-            raise ValueError(
-                "Google OAuth credentials not found.\n"
-                "Run: co auth google"
-            )
-
-        access_token = self._refresh_via_backend(refresh_token)
+        self._credentials.require_configured()
+        access_token = self._credentials.get("ACCESS_TOKEN")
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        if self._credentials.get("REFRESH_TOKEN") or not access_token or (expiry and expiry <= datetime.now(timezone.utc) + timedelta(minutes=5)):
+            access_token = self._refresh_via_backend(None)
 
         creds = Credentials(
             token=access_token,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=None,
-            client_secret=None,
-            scopes=["https://www.googleapis.com/auth/drive"]
+            expiry=self._token_expiry(),
+            refresh_handler=self._refresh_handler,
+            scopes=self._credentials.scopes or None
         )
 
         self._service = build('drive', 'v3', credentials=creds)
         return self._service
 
-    def _refresh_via_backend(self, refresh_token: str) -> str:
-        """Refresh the access token via the backend and persist it.
+    def _token_expiry(self) -> datetime | None:
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        return expiry.replace(tzinfo=None) if expiry else None
 
-        Args:
-            refresh_token: The refresh token
+    def _refresh_handler(self, request, scopes=None):
+        token = self._credentials.get("REFRESH_TOKEN")
+        if not token:
+            raise ValueError("Local Google refresh token missing. Run: co auth google")
+        return self._refresh_via_backend(token), self._token_expiry()
 
-        Returns:
-            New access token
-        """
-        import httpx
-
-        selected_backend = backend_url()
+    def _refresh_via_backend(self, refresh_token: str | None) -> str:
+        # The argument is retained for callers; it must belong to this record.
+        from ..provider_credentials import ProviderCredentialError
         api_key = require_ambient_api_key()
-
-        response = httpx.post(
-            f"{selected_backend}/api/v1/oauth/google/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"refresh_token": refresh_token}
-        )
-
-        if response.status_code != 200:
-            raise ValueError("Failed to refresh Google authorization via backend")
-
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-
-        os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
-        os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
-
-        from ..cli.commands.project_cmd_lib import upsert_env
-        env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        upsert_env(env_file, {
-            "GOOGLE_ACCESS_TOKEN": new_access_token,
-            "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
-        })
-
-        return new_access_token
+        if refresh_token and refresh_token != self._credentials.get("REFRESH_TOKEN"):
+            raise ProviderCredentialError("record_changed", "Refresh token differs from the selected account.", "co status")
+        return refresh_credentials(self._credentials, backend=backend_url(),
+                                   api_key=api_key)
 
     @staticmethod
     def _file_dict(item: dict) -> dict:
@@ -272,6 +261,56 @@ class GDrive:
             return self._get_meta(shortcut["targetId"])
         return item
 
+    def _get_file(self, file_id: str) -> dict:
+        """Get one Drive file's normalized metadata without downloading it."""
+        return self._file_dict(self._get_meta(file_id))
+
+    def _read_file(self, file_id: str, max_bytes: int | None = None) -> dict:
+        """Read a Drive file for another provider, exporting native docs.
+
+        This is the in-memory counterpart of download(). It never writes a
+        local file and can fail before or during download when `max_bytes` is
+        exceeded.
+        """
+        item = self._get_meta(file_id)
+        name, mime = item["name"], item["mimeType"]
+        if max_bytes is not None and item.get("size") and int(item["size"]) > max_bytes:
+            raise ValueError(f"Drive file exceeds the {max_bytes}-byte attachment limit.")
+
+        service = self._get_service()
+        if mime.startswith(NATIVE_PREFIX):
+            if mime not in EXPORT_FORMATS:
+                raise ValueError(
+                    f"'{name}' is a {mime.replace(NATIVE_PREFIX, '')} — Drive has "
+                    "no export format for it, so it cannot be downloaded or attached."
+                )
+            mime, suffix = EXPORT_FORMATS[mime]
+            request = service.files().export_media(fileId=item["id"], mimeType=mime)
+            name = f"{name}{suffix}"
+        else:
+            request = service.files().get_media(fileId=item["id"], supportsAllDrives=True)
+
+        buffer = io.BytesIO()
+        # The library default is a 100 MB chunk, which would defeat the
+        # attachment limit for sizeless Google-native exports. Keep memory
+        # bounded to at most roughly one small chunk beyond max_bytes.
+        chunk_size = min(1024 * 1024, max_bytes + 1) if max_bytes is not None else 1024 * 1024
+        downloader = MediaIoBaseDownload(buffer, request, chunksize=chunk_size)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+            if max_bytes is not None and buffer.tell() > max_bytes:
+                raise ValueError(f"Drive file exceeds the {max_bytes}-byte attachment limit.")
+
+        return {
+            "id": item["id"],
+            "name": name,
+            "type": mime,
+            "size": len(buffer.getvalue()),
+            "link": item.get("webViewLink", ""),
+            "data": buffer.getvalue(),
+        }
+
     def download(self, file_id: str, dest: str = ".") -> str:
         """Download a Drive file, exporting Google-native docs to a real format.
 
@@ -282,33 +321,14 @@ class GDrive:
         Returns:
             Confirmation with the path written
         """
-        item = self._get_meta(file_id)
-        name, mime = item["name"], item["mimeType"]
-        service = self._get_service()
-
-        if mime.startswith(NATIVE_PREFIX):
-            if mime not in EXPORT_FORMATS:
-                raise ValueError(
-                    f"'{name}' is a {mime.replace(NATIVE_PREFIX, '')} — Drive has "
-                    "no export format for it, so it cannot be downloaded."
-                )
-            export_mime, suffix = EXPORT_FORMATS[mime]
-            request = service.files().export_media(fileId=item["id"], mimeType=export_mime)
-            name = f"{name}{suffix}"
-        else:
-            request = service.files().get_media(fileId=item["id"], supportsAllDrives=True)
+        item = self._read_file(file_id)
+        name = item["name"]
 
         path = Path(dest).expanduser()
         if path.is_dir():
             path = path / name
 
-        buffer = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-
-        path.write_bytes(buffer.getvalue())
+        path.write_bytes(item["data"])
         return f"Downloaded to {path}"
 
     def upload(self, path: str, name: str = None) -> dict:

@@ -30,8 +30,12 @@ from ... import address
 # the other model facts, and PaidModelRequiredError offers the same tuple when a
 # free account picks a paid model. It used to be written out twice in this file,
 # and both copies had gone stale.
-from ...core.usage import FREE_MANAGED_MODELS as MANAGED_MODELS
-from ...core.usage import PAID_MANAGED_MODELS as PAID_MODELS
+from ...core.usage import (
+    DEFAULT_DIRECT_GEMINI_MODEL,
+    DEFAULT_MODEL,
+    FREE_MANAGED_MODELS as MANAGED_MODELS,
+    PAID_MANAGED_MODELS as PAID_MODELS,
+)
 from ...credentials import account_in_token
 
 console = Console()
@@ -70,7 +74,8 @@ def record_creator_as_admin(project_dir: Path) -> None:
     """
     from ... import address
 
-    data = address.load(Path.home() / ".co")
+    from ...environment import global_config_dir
+    data = address.load(global_config_dir())
     if not data or not data.get("address"):
         return
 
@@ -627,7 +632,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'google': {
             'var': 'GEMINI_API_KEY',
-            'model': 'gemini-3.7-flash'
+            'model': DEFAULT_DIRECT_GEMINI_MODEL,
         },
         'groq': {
             'var': 'GROQ_API_KEY',
@@ -643,7 +648,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gemini-3.7-flash'  # Prefixed models for managed keys
+            'model': DEFAULT_MODEL,
         }
     }
 
@@ -652,14 +657,14 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     # Special handling for ConnectOnion managed keys
     if provider == 'connectonion':
         if api_key == 'managed':
-            return """# ConnectOnion Managed Keys Configuration
+            return f"""# ConnectOnion Managed Keys Configuration
 # Authenticate with: co auth
 # Purchase credits at: https://o.openonion.ai
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.7-flash
-# Available models: co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
+MODEL={DEFAULT_MODEL}
+# Available models: {DEFAULT_MODEL}, co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
 # With purchased credits: co/gpt-5, co/o4-mini, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
@@ -669,13 +674,13 @@ MODEL=co/gemini-3.7-flash
 # TEMPERATURE=0.7
 """
         elif api_key == 'star':
-            return """# ConnectOnion Free Credits (100k tokens)
+            return f"""# ConnectOnion Free Credits (100k tokens)
 # 1. Star us: https://github.com/openonion/connectonion
 # 2. Authenticate with: co auth
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.7-flash
+MODEL={DEFAULT_MODEL}
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -702,7 +707,7 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
     Args:
         description: What the agent should do
         api_key: API key or token for LLM
-        model: Optional model to use (e.g., "co/gemini-3.7-flash")
+        model: Optional model to use (e.g., "co/gemini-3.8-flash")
         loading_animation: Optional LoadingAnimation instance to update
 
     Returns:
@@ -718,8 +723,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...core.llm import create_llm
 
-            # Use the model specified or default to co/gemini-3.7-flash
-            llm_model = model if model else "co/gemini-3.7-flash"
+            # Use the model specified or the product default.
+            llm_model = model if model else DEFAULT_MODEL
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -804,7 +809,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{model if model and model.startswith('co/') else 'co/gemini-3.7-flash'}",
+    model="{model if model and model.startswith('co/') else DEFAULT_MODEL}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",
@@ -1055,39 +1060,11 @@ def print_resources():
 
 
 def load_api_key() -> Optional[str]:
-    """Load OPENONION_API_KEY from environment.
-
-    Checks in order:
-    1. Environment variable
-    2. Project-root .env file
-    3. Global ~/.co/keys.env file
-
-    Every source goes through `_token_for_this_account()`. The environment used
-    to skip it, which made the check dead code in practice: `connectonion/
-    __init__.py` calls `load_dotenv(Path.cwd() / ".env")` at import time, so by
-    the time any command runs the variable is already set and the early return
-    always fired. A `.env` in whatever directory you happened to be standing in
-    could then bill and read another agent's account in silence.
-
-    Returns:
-        API key if found, None otherwise
-    """
-    from dotenv import load_dotenv
-
-    from ...project import project_root
-
-    if api_key := os.getenv("OPENONION_API_KEY"):
-        return _token_for_this_account(api_key)
-
-    for env_path in [
-        project_root() / ".env",
-        Path.home() / ".co" / "keys.env",
-    ]:
-        if env_path.exists():
-            load_dotenv(env_path)
-            if api_key := os.getenv("OPENONION_API_KEY"):
-                return _token_for_this_account(api_key)
-    return None
+    """Resolve the selected env and inherited process key; never discover project files."""
+    from ...environment import load_environment
+    load_environment()
+    token = os.getenv("OPENONION_API_KEY")
+    return _token_for_this_account(token) if token else None
 
 
 def _token_for_this_account(token: str) -> Optional[str]:
@@ -1103,18 +1080,16 @@ def _token_for_this_account(token: str) -> Optional[str]:
     waiting for a balance to look wrong. Cheap: a local decode, and a network
     call only when the two disagree.
     """
-    from ...project import project_co_dir, project_identity
+    from ...project import selected_identity_dir, project_identity
     from .auth_commands import authenticate
 
-    project_dir = project_co_dir()
-    global_dir = Path.home() / ".co"
     identity = project_identity()
     if not identity:
         return token
 
     # authenticate() needs the directory that owns the selected signing key.
     # This mirrors project_identity(): local project key, else machine key.
-    co_dir = project_dir if address.load(project_dir) else global_dir
+    co_dir = selected_identity_dir()
 
     claimed = account_in_token(token)
     if not claimed or claimed.casefold() == identity["address"].casefold():
@@ -1124,14 +1099,8 @@ def _token_for_this_account(token: str) -> Optional[str]:
                   f"current identity is {identity['address'][:16]}…. "
                   f"Authenticating again.[/dim]")
     if authenticate(co_dir, save_to_project=False, quiet=True):
-        from dotenv import load_dotenv
-
-        token_file = (
-            co_dir / "keys.env"
-            if co_dir.resolve() == global_dir.resolve()
-            else co_dir.parent / ".env"
-        )
-        load_dotenv(token_file, override=True)
+        from ...environment import selected_env_file, read_env_file, publish_values
+        publish_values(read_env_file(selected_env_file()))
         refreshed = os.getenv("OPENONION_API_KEY")
         refreshed_account = account_in_token(refreshed) if refreshed else None
         if (
@@ -1153,45 +1122,8 @@ def _token_for_this_account(token: str) -> Optional[str]:
 
 
 def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> None:
-    """Read .env, replace/append key=value pairs, write back with 0600.
-
-    Args:
-        env_path: Path to .env file
-        updates: {KEY: value} to upsert. None values are skipped.
-        strip_prefix: Remove ALL lines starting with this prefix first
-                      (for GOOGLE_*, MICROSOFT_* OAuth credential replacement)
-    """
-    # Filter out None values
-    updates = {k: v for k, v in updates.items() if v is not None}
-
-    lines = []
-    found = set()
-
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines(keepends=True):
-            stripped = line.strip()
-            if strip_prefix and stripped.startswith(strip_prefix):
-                continue
-            if '=' in stripped and not stripped.startswith('#'):
-                key = stripped.split('=')[0].strip()
-                if key in updates:
-                    lines.append(f"{key}={updates[key]}\n")
-                    found.add(key)
-                    continue
-            lines.append(line)
-
-    # A file whose last line has no newline would otherwise get the first
-    # appended key glued onto it (FOO=barBAZ=qux).
-    if lines and not lines[-1].endswith("\n"):
-        lines[-1] += "\n"
-
-    for key, value in updates.items():
-        if key not in found:
-            lines.append(f"{key}={value}\n")
-
-    env_path.write_text(''.join(lines), encoding="utf-8")
-    if sys.platform != 'win32':
-        env_path.chmod(0o600)
+    from ...env_file import upsert_env as atomic_upsert
+    atomic_upsert(env_path, updates, strip_prefix=strip_prefix)
 
 
 def _state_the_address_the_key_has(global_dir: Path) -> None:
@@ -1213,27 +1145,18 @@ def _state_the_address_the_key_has(global_dir: Path) -> None:
     applies to authorized_keys and admins.txt. A no-op when they already agree.
     """
     keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        return
-
     data = address.load(global_dir)
     if not data or not data.get("address"):
         return
 
-    lines = keys_env.read_text(encoding="utf-8").splitlines(keepends=True)
-    wanted = f"AGENT_ADDRESS={data['address']}\n"
-    out, found = [], False
-    for line in lines:
-        if line.startswith("AGENT_ADDRESS="):
-            found = True
-            out.append(wanted)
-        else:
-            out.append(line)
-    if not found:
-        out.append(wanted)
+    if not keys_env.exists():
+        # Losing the environment file must not require rotating a valid keypair,
+        # and offline init still needs to leave usable global configuration.
+        upsert_env(keys_env, {"AGENT_ADDRESS": data["address"],
+                              "AGENT_CONFIG_PATH": str(global_dir)})
+        return
 
-    if out != lines:
-        keys_env.write_text("".join(out), encoding="utf-8")
+    upsert_env(keys_env, {"AGENT_ADDRESS": data["address"]})
 
 
 def ensure_global_config() -> None:
@@ -1241,9 +1164,10 @@ def ensure_global_config() -> None:
 
     Creates the global config directory, generates an Ed25519 keypair,
     and writes keys.env with AGENT_CONFIG_PATH and AGENT_ADDRESS.
-    No-op if ~/.co/keys/agent.key already exists.
+    Reuses an existing keypair, reconciling its address or restoring keys.env.
     """
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     key_file = global_dir / "keys" / "agent.key"
 
     # If keys exist, already initialized — except for one line, which is a copy
@@ -1270,39 +1194,15 @@ def ensure_global_config() -> None:
     console.print("  ✓ Generated master keypair")
     console.print(f"  ✓ Your address: {addr_data['short_address']}")
 
-    # Create keys.env with config path and agent address
-    keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        with open(keys_env, 'w', encoding='utf-8') as f:
-            f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
-            f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
-            f.write("# Your agent address (Ed25519 public key) is used for:\n")
-            f.write("#   - Secure agent communication (encrypt/decrypt with private key)\n")
-            f.write("#   - Authentication with OpenOnion managed LLM provider\n")
-            f.write(f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n")
-        if sys.platform != 'win32':
-            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
-    else:
-        # keys.env exists but agent.key was missing — update address to match new keypair
-        lines = []
-        config_path_found = False
-        address_updated = False
-        for line in keys_env.read_text(encoding="utf-8").splitlines(keepends=True):
-            if line.strip().startswith('AGENT_ADDRESS='):
-                lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
-                address_updated = True
-            elif line.strip().startswith('AGENT_CONFIG_PATH='):
-                config_path_found = True
-                lines.append(line)
-            else:
-                lines.append(line)
-        if not config_path_found:
-            lines.insert(0, f"AGENT_CONFIG_PATH={global_dir}\n")
-        if not address_updated:
-            lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
-        keys_env.write_text(''.join(lines), encoding="utf-8")
-        if sys.platform != 'win32':
-            os.chmod(keys_env, 0o600)
+    from ...env_file import upsert_env as atomic_upsert
+    atomic_upsert(global_dir / "keys.env", {
+        "AGENT_CONFIG_PATH": str(global_dir), "AGENT_ADDRESS": addr_data["address"],
+    }, initial_comments=(
+        "# Your agent address (Ed25519 public key) is used for:\n"
+        "#   - Secure agent communication (encrypt/decrypt with private key)\n"
+        "#   - Authentication with OpenOnion managed LLM provider\n"
+        f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n"
+    ))
     console.print("  ✓ Created ~/.co/keys.env")
 
 

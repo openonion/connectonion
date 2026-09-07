@@ -2,10 +2,10 @@
 Purpose: Main package entry point exposing public API for ConnectOnion framework
 LLM-Note:
   Dependencies: imports from [core/, logger.py, llm_do.py, transcribe.py, prompts.py, debug/, useful_tools/, network/, address.py] | imported by [user code, tests/, examples/] | no direct tests (integration tests import from here)
-  Data flow: loads cwd .env then ~/.co/keys.env via load_dotenv() (first file to define a key wins) → exports all public API symbols → user imports `from connectonion import Agent, llm_do, ...`
-  State/Effects: auto-loads both the cwd .env (NOT module directory) and the global ~/.co/keys.env at import time
+  Data flow: loads the designated global keys.env (inherited process values win as whole provider records) → exports all public API symbols → user imports `from connectonion import Agent, llm_do, ...`
+  State/Effects: loads global env at import time; CLI --env-file explicitly replaces the selected source before commands run
   Integration: exposes complete public API: Agent, LLM, Logger, create_tool_from_function, llm_do, transcribe, xray, event decorators, built-in tools, networking functions | __all__ defines explicit public exports
-  Performance: .env loading happens once at first import (dotenv caches)
+  Performance: .env loading happens at first package import
   Errors: none (import errors bubble from submodules)
 ConnectOnion - A simple agent framework with behavior tracking.
 """
@@ -17,27 +17,17 @@ import sys as _sys
 from pathlib import Path as _Path
 from types import ModuleType as _ModuleType
 
-from dotenv import load_dotenv
-
 from ._version import __version__
+from .environment import load_environment as _load_environment
 
-# Load BOTH the project .env and the global ~/.co/keys.env, in that order.
-# load_dotenv never overrides an already-set variable, so the first file to
-# define a key wins: the project .env overrides, keys.env fills in the rest.
-# Loading only one of them silently hid every credential that lives solely in
-# keys.env (OAuth tokens land there) from any project that had its own .env.
-# The [env] diagnostic answers "which file won?" for a human at a terminal.
-# It is written to stderr only when stderr IS a terminal: agents drive `co`
-# through bash, which appends any stderr to the tool result as "STDERR:" no
-# matter what the exit code was, so an unconditional print made every
-# successful command look like it had failed. CO_DEBUG_ENV=1 forces it on for
-# piped or redirected debugging.
-_show_env = _sys.stderr.isatty() or _os.getenv("CO_DEBUG_ENV") == "1"
-for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
-    if _env_file.exists():
-        load_dotenv(_env_file)
-        if _show_env:
-            print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
+# Console-script and `python -m` startup let Typer select the file first. This
+# avoids reading a broken global file before a valid --env-file can be parsed.
+# Ordinary SDK imports keep the documented eager global initialization.
+_cli_startup = (_Path(_sys.argv[0]).stem in {"co", "co-script"} or
+                (_sys.argv[0] == "-m" and
+                 "connectonion.cli.main" in getattr(_sys, "orig_argv", ())))
+if not _cli_startup:
+    _load_environment()
 
 # The public names are resolved on first use, not on import (PEP 562).
 #
@@ -84,8 +74,9 @@ _FROM = {
         "create_sms_pairing", "get_sms_pairing", "pairing_confirmation_code", "confirm_sms_pairing",
         "get_sms", "wait_for_sms", "acknowledge_sms", "delete_sms",
         "list_sms_devices", "revoke_sms_device",
-        "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
+        "Memory", "Gmail", "GDrive", "YouTube", "Synology", "GoogleCalendar", "Outlook",
         "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
+        "youcom_search", "youcom_contents", "youcom_research",
         "claude_code",
         "DiffWriter",
         "MODE_NORMAL", "MODE_AUTO", "MODE_PLAN",
@@ -184,6 +175,7 @@ __all__ = [
     "Memory",
     "Gmail",
     "GDrive",
+    "YouTube",
     "Synology",
     "GoogleCalendar",
     "Outlook",

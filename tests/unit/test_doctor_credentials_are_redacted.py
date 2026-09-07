@@ -102,9 +102,8 @@ def test_oauth_reports_which_source_shadows_another_without_values(tmp_path):
     )
     row = _oauth(rows, "Google OAuth")
 
-    assert row["status"] == "conflict"
-    assert "process environment (used)" in row["source"]
-    assert "<project>/.env" in row["source"]
+    assert row["status"] == "connected"
+    assert row["source"] == "process environment"
     rendered = repr(rows)
     for secret in ("process-secret", "process-refresh", "project-secret", "project-refresh"):
         assert secret not in rendered
@@ -228,6 +227,9 @@ def test_doctor_compares_discovered_token_with_canonical_identity(
         lambda: ("missing", None, "patchright not installed"),
     )
 
+    if identity_source == "project":
+        from connectonion.environment import select_env_file
+        select_env_file(credential_file)
     before_env = dict(os.environ)
     before_file = credential_file.read_bytes()
     code = doctor_commands.handle_doctor()

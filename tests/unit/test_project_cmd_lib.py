@@ -23,7 +23,7 @@ class TestControlCenterTemplate:
 
         app = co_dir / "control-center"
         assert {path.name for path in app.iterdir()} == {
-            "index.html", "control-center.js", "CONTROL_CENTER.md",
+            "index.html", "control-center.js", "CONTROL_CENTER.md", "sdk.js", "sdk-version.json", "SDK_LICENSE.txt",
         }
         html = (app / "index.html").read_text(encoding="utf-8")
         bridge = (app / "control-center.js").read_text(encoding="utf-8")
@@ -49,11 +49,11 @@ class TestControlCenterTemplate:
             declarations = rf"{re.escape(token)}:\s*([^;]+);"
             assert re.findall(declarations, html) == re.findall(declarations, starter)
         assert "send_message" in bridge and "run_skill" in bridge
-        assert "message.skills" in bridge
-        assert "message.agent?.address" in bridge
+        assert "snapshot.skills" in bridge
+        assert "snapshot.agentAddress" in bridge
         assert "current Agent Chat" in contract
         assert "exact immutable bundle" in contract
-        assert "<agent-address>/<sha256-revision>/index.html" in contract
+        assert "<account-app-revision-hash>.<isolated-serving-domain>/index.html" in contract
 
     def test_never_overwrites_an_authored_app(self, tmp_path):
         app = tmp_path / ".co" / "control-center"
@@ -230,6 +230,9 @@ class TestATokenThatNamesAnotherAccount:
         )
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: True)
 
+        from connectonion.environment import select_env_file
+        (project / ".env").write_text("")
+        select_env_file(project / ".env")
         assert lib._token_for_this_account(self._token(self.THEIRS)) == fresh
         assert calls == [project_co.resolve()]
 

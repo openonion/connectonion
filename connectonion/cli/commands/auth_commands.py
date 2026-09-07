@@ -2,8 +2,8 @@
 Purpose: Authenticate with OpenOnion backend using Ed25519 signature-based authentication to obtain JWT for managed keys
 LLM-Note:
   Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls the configured backend /api/v1/auth | tested by [no direct test file]
-  Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves to ~/.co/keys.env as OPENONION_API_KEY → optionally saves to project .env if save_to_project=True → displays balance and email status → returns success bool
-  State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST requests to the configured backend | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
+  Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves OPENONION_API_KEY to the selected env file (global default) → displays balance and email status → returns success bool
+  State/Effects: atomically modifies the selected env file (OPENONION_API_KEY and AGENT_EMAIL) | makes network POST requests to the configured backend | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
   Integration: exposes handle_auth() for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
   Performance: network call to backend (2-5s) | signature generation is fast (<10ms) | file I/O for .env and keys.env | retries on network errors (up to 3 attempts with exponential backoff)
   Errors: fails if ~/.co/keys/ missing (no keypair) | fails if backend unreachable (network error) | fails if signature invalid (backend 401) | fails if timestamp expired (5min window) | prints error messages to console and returns False | backend 500 errors bubble up with error details
@@ -19,6 +19,7 @@ from time import monotonic
 from urllib.parse import parse_qs, urlparse
 
 import requests
+import typer
 from nacl.public import PrivateKey, SealedBox
 from rich.console import Console
 
@@ -30,12 +31,12 @@ console = Console()
 OAUTH_REQUEST_TIMEOUT_SECONDS = 15
 
 
-def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False) -> bool:
+def authenticate(co_dir: Path, save_to_project: bool = False, quiet: bool = False) -> bool:
     """Authenticate with OpenOnion API directly.
 
     Args:
         co_dir: Path to .co directory with keys
-        save_to_project: Whether to also save token to current directory's .env
+        save_to_project: Legacy compatibility argument; explicit co_dir/--env-file determines the sole destination
         quiet: If True, suppress verbose output (only show errors and minimal success)
 
     Returns:
@@ -84,68 +85,18 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
         else:
             agent_email = f"{public_key[:10]}@mail.openonion.ai"
 
-        # Save token to appropriate .env file(s)
-        is_global = co_dir.resolve() == (Path.home() / ".co").resolve()
-
-        if is_global:
-            # Save to global keys.env
-            # Note: AGENT_ADDRESS and AGENT_CONFIG_PATH are NOT overwritten here —
-            # they are set by ensure_global_config() / co reset only.
-            # upsert_env will add them if missing but won't touch existing values.
-            global_keys_env = co_dir / "keys.env"
-            upsert_env(global_keys_env, {
-                "OPENONION_API_KEY": token,
-                "AGENT_EMAIL": agent_email,
-                "IS_EMAIL_ACTIVE": "true",
-            })
-            # Ensure AGENT_ADDRESS exists (append-only, don't overwrite).
-            #
-            # AGENT_CONFIG_PATH is not written. It used to be, and `co create`
-            # copies this whole file into every new project's .env — so an
-            # absolute home directory travelled with the project and named a
-            # path that does not exist on any other machine (#438). Every tool
-            # that reads it already defaults to ~/.co on the machine it is
-            # running on, so the line only ever did harm.
-            if global_keys_env.exists():
-                existing = global_keys_env.read_text(encoding="utf-8")
-                append_lines = []
-                if 'AGENT_ADDRESS=' not in existing:
-                    append_lines.append(f"AGENT_ADDRESS={public_key}\n")
-                if append_lines:
-                    with open(global_keys_env, 'a', encoding='utf-8') as f:
-                        f.writelines(append_lines)
-
-            console.print(f"✓ Saved to {global_keys_env}", style="green")
-
-            # Also save to the project's .env, when there is a project.
-            #
-            # This re-guessed the destination with another bare Path(".co"),
-            # ignoring the co_dir it was handed: from a subdirectory it resolved
-            # to ~/.co and wrote the token to ~/.env — not the project's .env,
-            # and not ~/.co/keys.env, which is the documented secret location and
-            # the one `co status` and `co doctor` report on.
-            #
-            # It also printed Path.cwd()/.env regardless of where it wrote, so
-            # the success line could name a file that did not exist.
-            if save_to_project:
-                from ...project import project_root
-
-                root = project_root()
-                if (root / ".co").is_dir():
-                    local_env_file = root / ".env"
-                    upsert_env(local_env_file, {
-                        "OPENONION_API_KEY": token,
-                        "AGENT_EMAIL": agent_email,
-                        "AGENT_ADDRESS": public_key,
-                    })
-                    console.print(f"✓ Saved to {local_env_file}", style="green")
-        else:
-            # Save to local project .env
-            upsert_env(co_dir.parent / ".env", {
-                "OPENONION_API_KEY": token,
-                "AGENT_EMAIL": agent_email,
-                "AGENT_ADDRESS": public_key,
-            })
+        from ...environment import (global_config_dir, explicit_env_file,
+                                    selected_env_file, publish_values)
+        # Direct SDK calls with a project co_dir remain explicit. The CLI picks
+        # selected_identity_dir(), which defaults to the global identity.
+        destination = selected_env_file()
+        if explicit_env_file() is None and co_dir.resolve() != global_config_dir():
+            destination = co_dir.parent / ".env"
+        values = {"OPENONION_API_KEY": token, "AGENT_EMAIL": agent_email,
+                  "IS_EMAIL_ACTIVE": "true", "AGENT_ADDRESS": public_key}
+        upsert_env(destination, values)
+        publish_values({key: str(value) for key, value in values.items() if value is not None})
+        console.print(f"✓ Saved to {destination}", style="green")
 
         # Simple success message with balance
         balance = user.get('balance_usd', 0.0) if user else 0.0
@@ -174,63 +125,24 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
 
 
 def handle_auth():
-    """Authenticate with OpenOnion for managed keys (co/ models).
-
-    This command will:
-    1. Load your agent's keys from .co/keys/ (or ~/.co/keys/ as fallback)
-    2. Sign an authentication message
-    3. Authenticate with the backend API
-    4. Display comprehensive account information
-    5. Save the token for future use
-    """
-    # Check if we have local keys first
-    #
-    # The project's, found by walking up — the rule since #660. As a bare
-    # Path(".co") this was invisible one directory down, so `co auth` there
-    # authenticated as the machine and, worse, wrote the token to ~/.env
-    # instead of the project's .env. Last live member of #665.
-    from ...project import project_co_dir
-
-    co_dir = project_co_dir()
-    use_global = False
-
-    # Check if local .co/keys/agent.key exists
-    if co_dir.exists() and (co_dir / "keys" / "agent.key").exists():
-        # Use local keys
-        console.print("📂 Using local project keys (.co)", style="cyan")
-    else:
-        # No local keys, try global
-        co_dir = Path.home() / ".co"
-        use_global = True
-
-        if not co_dir.exists() or not (co_dir / "keys" / "agent.key").exists():
-            # Auto-create global config with keypair
-            console.print("\n[cyan]No agent keys found. Setting up global configuration...[/cyan]")
-            from .project_cmd_lib import ensure_global_config
-            ensure_global_config()
-            co_dir = Path.home() / ".co"
-        else:
-            console.print("📂 Using global ConnectOnion keys (~/.co)", style="cyan")
-
-    # Use the unified authenticate function
-    success = authenticate(co_dir)
-
-    if not success:
-        console.print("\n[yellow]Need help?[/yellow]")
-        console.print("   • Check your internet connection")
-        console.print("   • Try 'co init' to reinitialize your keys")
-        console.print("   • Visit https://discord.gg/4xfD9k8AUF for support")
+    """Authenticate the global identity, or the explicitly selected env's identity."""
+    from ...project import selected_identity_dir
+    from ...environment import global_config_dir
+    co_dir = selected_identity_dir()
+    if not address.load(co_dir):
+        from .project_cmd_lib import ensure_global_config
+        ensure_global_config()
+        co_dir = global_config_dir()
+    console.print(f"Using identity in {co_dir}", markup=False)
+    if not authenticate(co_dir):
+        console.print("Authentication did not complete. Next: co auth")
+        raise typer.Exit(1)
+    console.print("Next: co status")
 
 
 def _save_google_to_env(env_file: Path, credentials: dict) -> None:
-    """Save Google OAuth credentials to .env file."""
-    upsert_env(env_file, {
-        "GOOGLE_ACCESS_TOKEN": credentials['access_token'],
-        "GOOGLE_REFRESH_TOKEN": credentials['refresh_token'],
-        "GOOGLE_TOKEN_EXPIRES_AT": credentials['expires_at'],
-        "GOOGLE_SCOPES": credentials['scopes'],
-        "GOOGLE_EMAIL": credentials['google_email'],
-    }, strip_prefix="GOOGLE_")
+    from ...provider_credentials import save_authorization
+    save_authorization("google", env_file, credentials)
 
 
 def _print_oauth_url(auth_url: str) -> None:
@@ -240,126 +152,17 @@ def _print_oauth_url(auth_url: str) -> None:
     console.print()
 
 
-def handle_google_auth():
-    """Authenticate with Google OAuth for Gmail/Calendar access."""
-
-    # Check if user is authenticated with OpenOnion first
-    api_key = load_api_key()
-    if not api_key:
-        console.print("\n❌ [bold red]Not authenticated with OpenOnion[/bold red]")
-        console.print("\n[cyan]Authenticate first:[/cyan]")
-        console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
-        return
-
-    api_url = f"{backend_url()}/api/v1/oauth"
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    # Keep the existing refresh token alive while re-authenticating. Deleting it
-    # here breaks deployed agents immediately. Remember the old expiry instead,
-    # then wait until the callback writes a newer credential row.
-    previous_expiry = None
-    previously_connected = False
-    previous_status = requests.get(
-        f"{api_url}/google/status",
-        headers=headers,
-        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-    )
-    if previous_status.status_code == 200:
-        previous = previous_status.json()
-        previously_connected = bool(previous.get("connected"))
-        previous_expiry = previous.get("expires_at")
-
-    # Get OAuth URL
-    console.print("🔑 Initializing Google OAuth...", style="cyan")
-
-    response = requests.get(
-        f"{api_url}/google/init",
-        headers=headers,
-        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-    )
-    if response.status_code != 200:
-        console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
-        return
-
-    auth_url = response.json()['auth_url']
-
-    # Open browser
-    console.print("\n🌐 Opening browser for Google authentication...")
-    _print_oauth_url(auth_url)
-
-    webbrowser.open(auth_url)
-
-    # Poll for completion
-    console.print("⏳ Waiting for authorization...", style="yellow")
-    console.print("   (Complete the authorization in your browser)\n", style="dim")
-
-    max_attempts = 60  # 5 minutes (5 second intervals)
-    for attempt in range(max_attempts):
-        time.sleep(5)
-
-        status_response = requests.get(
-            f"{api_url}/google/status",
-            headers=headers,
-            timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-        )
-        if status_response.status_code == 200:
-            status = status_response.json()
-            if status.get('connected') and (
-                not previously_connected or status.get('expires_at') != previous_expiry
-            ):
-                console.print("✓ Authorization successful!", style="green")
-                break
-    else:
-        console.print("\n❌ Authorization timed out", style="red")
-        console.print("Please try again with: [bold]co auth google[/bold]\n")
-        return
-
-    # Get credentials
-    creds_response = requests.get(
-        f"{api_url}/google/credentials",
-        headers=headers,
-        timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
-    )
-    if creds_response.status_code != 200:
-        console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
-        return
-
-    credentials = creds_response.json()
-
-    # Save credentials
-    console.print("\n💾 Saving credentials...", style="cyan")
-
-    # Save to global ~/.co/keys.env (always, so every project can use the tokens)
-    global_keys_env = Path.home() / ".co" / "keys.env"
-    global_keys_env.parent.mkdir(parents=True, exist_ok=True)
-    _save_google_to_env(global_keys_env, credentials)
-    console.print(f"   ✓ Saved to {global_keys_env}", style="green")
-
-    # Save to local .env
-    local_env = Path(".env")
-    _save_google_to_env(local_env, credentials)
-    console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
-
-    # Success message
-    console.print("\n✅ [bold green]Google account connected![/bold green]")
-    console.print(f"   Email: {credentials['google_email']}", style="green")
-    console.print("\n📧 You can now use Google tools in your agents:")
-    console.print("   [dim]from connectonion.tools import gmail_send[/dim]")
-    console.print("   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
+def handle_google_auth(scopes: str | None = None):
+    from .google_auth import handle_google_auth as local_auth
+    return local_auth(scopes=scopes)
 
 
 def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
-    """Save Microsoft OAuth credentials to .env file."""
-    upsert_env(env_file, {
-        "MICROSOFT_ACCESS_TOKEN": credentials['access_token'],
-        "MICROSOFT_REFRESH_TOKEN": credentials['refresh_token'],
-        "MICROSOFT_TOKEN_EXPIRES_AT": credentials['expires_at'],
-        "MICROSOFT_SCOPES": credentials['scopes'],
-        "MICROSOFT_EMAIL": credentials['microsoft_email'],
-    }, strip_prefix="MICROSOFT_")
+    from ...provider_credentials import save_authorization
+    save_authorization("microsoft", env_file, credentials)
 
 
-def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict:
+def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str, provider: str = "microsoft") -> dict:
     """Open the one-time callback result that was sealed to this CLI."""
     try:
         plaintext = SealedBox(private_key).decrypt(
@@ -371,7 +174,7 @@ def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict
 
     required = {
         "access_token", "refresh_token", "expires_at",
-        "scopes", "microsoft_email",
+        "scopes", f"{provider}_email",
     }
     if not required.issubset(credentials) or not all(
         isinstance(credentials[name], str) and credentials[name]
@@ -381,7 +184,7 @@ def _decrypt_microsoft_handoff(private_key: PrivateKey, ciphertext: str) -> dict
     return credentials
 
 
-def _microsoft_callback_server():
+def _microsoft_callback_server(provider: str = "Microsoft"):
     """Bind a one-command loopback receiver; nothing is written by the backend."""
     result = {}
     expected_state = {"value": None}
@@ -401,11 +204,11 @@ def _microsoft_callback_server():
             if error:
                 result["error"] = error
                 status = 400
-                message = b"Microsoft authorization was cancelled. You may close this tab."
+                message = f"{provider} authorization was cancelled. You may close this tab.".encode()
             elif ciphertext:
                 result["ciphertext"] = ciphertext
                 status = 200
-                message = b"Microsoft authorization complete. You may close this tab."
+                message = f"{provider} authorization complete. You may close this tab.".encode()
             else:
                 self.send_response(400)
                 self.end_headers()
@@ -436,7 +239,7 @@ def handle_microsoft_auth():
         console.print("\n❌ [bold red]Not authenticated with OpenOnion[/bold red]")
         console.print("\n[cyan]Authenticate first:[/cyan]")
         console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
-        return
+        raise typer.Exit(1)
 
     api_url = f"{backend_url()}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -459,14 +262,14 @@ def handle_microsoft_auth():
             timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
         )
         if response.status_code != 200:
-            console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
-            return
+            console.print(f"\n❌ Failed to initialize OAuth (HTTP {response.status_code}). Next: co auth microsoft", style="red")
+            raise typer.Exit(1)
 
         auth_url = response.json()['auth_url']
         state = parse_qs(urlparse(auth_url).query).get("state", [None])[0]
         if not state:
             console.print("\n❌ OAuth response did not contain a state", style="red")
-            return
+            raise typer.Exit(1)
         expected_state["value"] = state
 
         # Open browser
@@ -484,11 +287,11 @@ def handle_microsoft_auth():
             callback_server.handle_request()
         if callback_result.get("error"):
             console.print("\n❌ Microsoft authorization was cancelled", style="red")
-            return
+            raise typer.Exit(1)
         if "ciphertext" not in callback_result:
             console.print("\n❌ Authorization timed out", style="red")
             console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
-            return
+            raise typer.Exit(1)
         try:
             credentials = _decrypt_microsoft_handoff(
                 handoff_private_key,
@@ -496,24 +299,21 @@ def handle_microsoft_auth():
             )
         except ValueError:
             console.print("\n❌ Microsoft OAuth handoff was invalid", style="red")
-            return
+            raise typer.Exit(1)
         console.print("✓ Authorization successful!", style="green")
+    except requests.RequestException:
+        console.print("Microsoft authorization service is unavailable. Next: co status")
+        raise typer.Exit(1) from None
     finally:
         callback_server.server_close()
 
     # Save credentials
     console.print("\n💾 Saving credentials...", style="cyan")
 
-    # Save to global ~/.co/keys.env (always, so every project can use the tokens)
-    global_keys_env = Path.home() / ".co" / "keys.env"
-    global_keys_env.parent.mkdir(parents=True, exist_ok=True)
-    _save_microsoft_to_env(global_keys_env, credentials)
-    console.print(f"   ✓ Saved to {global_keys_env}", style="green")
-
-    # Save to local .env
-    local_env = Path(".env")
-    _save_microsoft_to_env(local_env, credentials)
-    console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
+    from ...environment import selected_env_file
+    env_file = selected_env_file()
+    _save_microsoft_to_env(env_file, credentials)
+    console.print(f"   ✓ Saved to {env_file}", style="green")
 
     # Success message
     console.print("\n✅ [bold green]Microsoft account connected![/bold green]")
@@ -521,3 +321,6 @@ def handle_microsoft_auth():
     console.print("\n📧 You can now use Microsoft tools in your agents:")
     console.print("   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
     console.print("   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
+
+    from ...environment import selected_command
+    console.print(f"Next: {selected_command('co outlook inbox')}", markup=False)

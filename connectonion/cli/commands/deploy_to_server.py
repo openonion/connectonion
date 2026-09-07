@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from dotenv import dotenv_values
 from rich.console import Console
 
 from .env_inheritance import is_operator_identity
@@ -101,7 +100,7 @@ def _read_project(project_dir: Optional[Path] = None) -> Optional[dict]:
     project_dir = Path(project_dir) if project_dir else project_root()
     host_yaml = project_dir / ".co" / "host.yaml"
     if not host_yaml.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return None
 
     config = yaml.safe_load(host_yaml.read_text(encoding="utf-8")) or {}
@@ -255,6 +254,7 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
     """
     environment = f"Environment=PATH={SRV}/{agent}/.venv/bin:/usr/local/sbin:" \
                   f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+    environment += f"Environment=AGENT_CONFIG_PATH={SRV}/{agent}/.co\n"
     if hostname:
         environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
     if port:
@@ -803,9 +803,9 @@ def _sync_env(target: str, agent: str, project_dir: Path,
     service user — cannot read it back out, and `--delete` cannot overwrite a
     key that was rotated on the server.
     """
-    env_path = project_dir / ".env"
+    from ...environment import deployment_environment
     env_vars = _env_for_server(
-        dotenv_values(env_path) if env_path.exists() else {},
+        deployment_environment(),
         agent, agent_account)
 
     # A newline inside a value would end the KEY=VALUE line and turn the rest

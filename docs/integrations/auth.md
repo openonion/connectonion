@@ -139,7 +139,7 @@ llm_do("Hello", model="co/claude-haiku-4-5")
 
 ### Google Models
 ```python
-llm_do("Hello", model="co/gemini-3.7-flash")
+llm_do("Hello", model="co/gemini-3.8-flash")
 ```
 
 ## Real-World Examples
@@ -187,7 +187,7 @@ response = agent.input("Help me write a Python function")
 
 ```python
 # Compare responses from different models
-models = ["co/gpt-4o", "co/claude-sonnet-4-5", "co/gemini-3.7-flash"]
+models = ["co/gpt-4o", "co/claude-sonnet-4-5", "co/gemini-3.8-flash"]
 
 for model in models:
     response = llm_do("What's the meaning of life?", model=model)
@@ -240,7 +240,7 @@ def test_all_models(prompt):
     models = {
         "OpenAI": "co/gpt-4o",
         "Anthropic": "co/claude-sonnet-4-5",
-        "Google": "co/gemini-3.7-flash"
+        "Google": "co/gemini-3.8-flash"
     }
     
     results = {}
@@ -364,11 +364,10 @@ except Exception as e:
 **No agent keys found:**
 ```bash
 # Create global identity and authenticate
-co auth
-
-# Or initialize a project first, then authenticate with project keys
 co init
-co auth
+
+# Or initialize an explicit project using the global identity
+co init ./
 ```
 
 **Token not loading:**

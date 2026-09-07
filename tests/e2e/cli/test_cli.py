@@ -41,7 +41,7 @@ class TestCliInit:
             from connectonion.cli.main import cli
 
             # Run init with template to create agent.py
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check core files exist
@@ -71,7 +71,7 @@ class TestCliInit:
             from connectonion.cli.main import cli
 
             # Test with a template
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             with open('agent.py') as f:
@@ -90,14 +90,14 @@ class TestCliInit:
             Path('existing.txt').write_text('existing content')
 
             # Should ask for confirmation and abort when user says no
-            result = self.runner.invoke(cli, ['init'], input='n\n')
+            result = self.runner.invoke(cli, ['init', './'], input='n\n')
             # Check that agent.py was NOT created
             if result.exit_code == 0:
                 # If exit code is 0, user declined, so no agent.py
                 assert not os.path.exists('agent.py') or result.exit_code != 0
 
             # Should proceed when user confirms
-            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'], input='y\n')
+            result = self.runner.invoke(cli, ['init', './', '--template', 'co-ai'], input='y\n')
             assert result.exit_code == 0
             assert os.path.exists('agent.py')
             assert os.path.exists('existing.txt')  # Preserves existing files
@@ -111,7 +111,7 @@ class TestCliInit:
             Path('agent.py').write_text('# My custom agent')
 
             # Run init
-            result = self.runner.invoke(cli, ['init'], input='y\n')
+            result = self.runner.invoke(cli, ['init', './'], input='y\n')
 
             # Should not overwrite
             with open('agent.py') as f:
@@ -127,7 +127,7 @@ class TestCliInit:
             os.makedirs('.git')
 
             # Run init (will need confirmation since .git makes it non-empty)
-            result = self.runner.invoke(cli, ['init'], input='y\n')
+            result = self.runner.invoke(cli, ['init', './'], input='y\n')
             assert result.exit_code == 0
 
             # Should create .gitignore

@@ -20,6 +20,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from connectonion import llm_do
+from connectonion.core.usage import DEFAULT_MODEL
 
 from . import humanize
 
@@ -110,7 +111,7 @@ def _ai_scroll(page, times: int, description: str):
     strategy = llm_do(
         _PROMPT.format(description=description, scrollable_elements=scrollable, simplified_html=html),
         output=ScrollStrategy,
-        model="co/gemini-3.7-flash",
+        model=DEFAULT_MODEL,
         temperature=0.1
     )
     print(f"    AI: {strategy.explanation}")

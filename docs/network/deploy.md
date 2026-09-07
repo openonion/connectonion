@@ -60,7 +60,7 @@ Re-deploying the same project updates the same URL (like Heroku).
 
 ### Requirements
 
-- `.co/host.yaml` (created by `co create` or `co init`)
+- `.co/host.yaml` (created by `co create` or `co init ./`)
 - Authenticated (`co auth`)
 - Entrypoint must call `host()` (exports the ASGI app for the container)
 
@@ -114,7 +114,7 @@ examples:
 
 **Naming rule.** `name` becomes a hostname and a Docker image tag, so it must be
 1–39 characters of lowercase letters, digits, and hyphens, starting with a
-letter or digit. `co create` and `co init` write a conforming name for you — a
+letter or digit. `co create` and `co init ./` write a conforming name for you — a
 project created in a folder called `My_Project` gets `name: my-project`, and the
 adjustment is printed — so this only matters if you edit `host.yaml` by hand.
 `co deploy` checks it before uploading and suggests the corrected form.
@@ -142,7 +142,7 @@ BROWSER_PROXY=http://user:pass@host:port  # Optional browser proxy
 
 ## The agent you deploy (skills + browser)
 
-`co create` and `co init --template co-ai` scaffold the same agent the `co ai`
+`co create` and `co init ./ --template co-ai` scaffold the same agent the `co ai`
 command runs, wrapped in `host()`, plus a `Dockerfile` that ships a real
 Chrome + Xvfb browser runtime so browser tools work out of the box.
 
@@ -166,7 +166,7 @@ reports, and handles actions it cannot take back — is shared, and improves whe
 the SDK does.
 
 ```bash
-co init --template co-ai
+co init ./ --template co-ai
 co deploy
 ```
 
@@ -327,7 +327,7 @@ first deploy.
 
 ### The agent runs as itself, not as you
 
-Your project `.env` names *you*. `co init` puts `AGENT_ADDRESS`, `AGENT_EMAIL`,
+Your project `.env` names *you*. `co init ./` puts `AGENT_ADDRESS`, `AGENT_EMAIL`,
 `IS_EMAIL_ACTIVE` and `OPENONION_API_KEY` there on purpose, so the project runs on
 your account while you are developing it.
 

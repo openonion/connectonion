@@ -148,6 +148,11 @@ def _spawn_daemon(
         cmd.extend(["--authkey-file", str(target.authkey_path)])
         if target.remote_egress:
             cmd.append("--remote-egress")
+        if (
+            target.shared_proxy_path is not None
+            and Path(target.shared_proxy_path).is_file()
+        ):
+            cmd.extend(["--shared-proxy-file", str(target.shared_proxy_path)])
     cmd.append(f"--engine={engine_mode}")
     with open(log_path, "a", encoding="utf-8") as log:  # the child dups the handle; ours closes right away
         transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS

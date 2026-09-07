@@ -23,6 +23,7 @@ from connectonion.network.host.egress_gateway import EgressGateway
 from connectonion.network.host.private_browser_runtime import (
     REMOTE_BROWSER_CHROME_ARGS,
 )
+from connectonion.network.proxy_egress import ShareEndpoint, shared_egress_gateway
 from connectonion.useful_tools.browser_tools.native_egress import (
     NativeEgressPreflightError,
     run_native_egress_preflight,
@@ -110,3 +111,89 @@ def test_a_real_loopback_leak_still_fails_the_preflight():
     passed, _ = asyncio.run(_run_preflight(leaking))
 
     assert not passed, "a genuine loopback leak passed the preflight"
+
+
+@pytest.mark.slow
+def test_real_chromium_resolves_and_egresses_through_the_laptop_proxy():
+    if _chrome() is None:
+        pytest.skip("no Chrome/Chromium on this machine")
+    pytest.importorskip("patchright")
+
+    body, resolved, handled = asyncio.run(_exercise_shared_proxy())
+
+    assert body == "through laptop"
+    assert ("example.com", 80) in resolved
+    assert handled >= 2  # authenticated DNS plus the numeric tunnel
+
+
+async def _exercise_shared_proxy():
+    from patchright.async_api import async_playwright
+
+    resolved = []
+
+    async def origin(reader, writer):
+        try:
+            await reader.readuntil(b"\r\n\r\n")
+        except asyncio.IncompleteReadError:
+            writer.close()
+            return
+        payload = b"through laptop"
+        writer.write(
+            b"HTTP/1.1 200 OK\r\nConnection: close\r\n"
+            + f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii")
+            + payload
+        )
+        await writer.drain()
+        writer.close()
+
+    origin_server = await asyncio.start_server(origin, "127.0.0.1", 0)
+    origin_port = origin_server.sockets[0].getsockname()[1]
+
+    async def laptop_dns(host, port):
+        resolved.append((host, port))
+        return ("8.8.8.8",)
+
+    async def laptop_dial(_endpoint, _timeout):
+        return await asyncio.open_connection("127.0.0.1", origin_port)
+
+    # Stands in for the laptop end of an attached share: a gateway on this
+    # machine that resolves and dials with the laptop's own policy.
+    share = EgressGateway(
+        bind_host="127.0.0.1",
+        allow_remote_resolution=True,
+        username="connectonion-proxy",
+        resolver=laptop_dns,
+        dialer=laptop_dial,
+    )
+    share_endpoint = await share.start()
+    gateway = shared_egress_gateway(
+        ShareEndpoint(
+            share_endpoint.host,
+            share_endpoint.port,
+            share_endpoint.username,
+            share_endpoint.password,
+        )
+    )
+    endpoint = await gateway.start()
+    try:
+        async with async_playwright() as driver:
+            browser = await driver.chromium.launch(
+                headless=True,
+                executable_path=_chrome(),
+                args=list(REMOTE_BROWSER_CHROME_ARGS),
+                proxy={
+                    "server": f"http://127.0.0.1:{endpoint.port}",
+                    "username": endpoint.username,
+                    "password": endpoint.password,
+                },
+            )
+            page = await browser.new_page()
+            await page.goto("http://example.com/")
+            content = await page.text_content("body")
+            await browser.close()
+    finally:
+        await gateway.stop()
+        await share.stop()
+        origin_server.close()
+        await origin_server.wait_closed()
+    return content, resolved, share.handled_requests

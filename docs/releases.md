@@ -10,6 +10,23 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
+Version **1.8.3** brings Gmail, Drive, Calendar and YouTube together through
+local Google authorization, with supported scopes by default and an optional
+`--scopes` restriction. It adds Gmail draft attachments and Calendar/YouTube
+commands with explicit confirmation for their writes. YouTube previews print
+the complete command for the approved plan. See [Google integration](integrations/google.md)
+for commands, permissions and the upgrade path.
+
+The release candidate passed real-account read-only checks for all four services
+on 2026-09-07 using an existing local grant. Uploads and other mutations have
+isolated regression coverage; no production write is claimed as release evidence.
+PyPI and the GitHub Release are produced by the immutable-tag release workflow.
+TikTok and new messaging adapters are deferred until after 1.8.5.
+The sections below describe historical 1.7 preview work, not current
+installation recommendations.
+
+## Historical 1.7 preview work
+
 - Stable release: `1.6.10`
 - Preview target: `1.7.0a13`
 - Browser client: `@connectonion/react@0.4.2-alpha.11`

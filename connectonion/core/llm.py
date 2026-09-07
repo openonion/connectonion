@@ -196,7 +196,7 @@ from .exceptions import (
     PaidModelRequiredError,
     ProviderServiceError,
 )
-from .usage import DEFAULT_MODEL, TokenUsage, calculate_cost
+from .usage import DEFAULT_DIRECT_GEMINI_MODEL, DEFAULT_MODEL, TokenUsage, calculate_cost
 
 
 def _is_paid_account_required(error) -> bool:
@@ -643,12 +643,53 @@ class AnthropicLLM(LLM):
         return anthropic_tools
 
 
+_GEMINI_38_SAMPLING_PARAMETERS = ("temperature", "top_p", "top_k", "candidate_count")
+_GEMINI_38_REASONING_LEVELS = frozenset({"low", "medium", "high"})
+
+
+def _normalize_gemini_chat_kwargs(model: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep Gemini 3.8 calls within Google's OpenAI-compatibility contract."""
+    normalized = dict(kwargs)
+    # This abstraction returns one complete LLMResponse. Keep an accidental
+    # OpenAI stream flag from changing the SDK return type underneath it;
+    # managed calls enforce the same complete-response boundary in oo-api.
+    normalized.pop("stream", None)
+    normalized.pop("stream_options", None)
+    if model != "gemini-3.8-flash":
+        return normalized
+
+    ignored = [
+        parameter
+        for parameter in _GEMINI_38_SAMPLING_PARAMETERS
+        if parameter in normalized
+    ]
+    for parameter in ignored:
+        normalized.pop(parameter)
+    if ignored:
+        logger.warning(
+            "Gemini 3.8 Flash ignores deprecated sampling parameters: %s",
+            ", ".join(ignored),
+        )
+
+    if "thinking_budget" in normalized:
+        raise ValueError(
+            "gemini-3.8-flash does not accept thinking_budget; use "
+            "reasoning_effort='low', 'medium', or 'high'"
+        )
+    effort = normalized.get("reasoning_effort")
+    if effort is not None and effort not in _GEMINI_38_REASONING_LEVELS:
+        raise ValueError(
+            "gemini-3.8-flash reasoning_effort must be 'low', 'medium', or 'high'"
+        )
+    return normalized
+
+
 class GeminiLLM(LLM):
     """Google Gemini LLM implementation using OpenAI-compatible endpoint."""
 
     # gemini-2.0-flash-exp was the default and Google has retired it: a bare
     # GeminiLLM(api_key=...) answered 404 for every call.
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.7-flash", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = DEFAULT_DIRECT_GEMINI_MODEL, **kwargs):
         import openai
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
@@ -664,6 +705,7 @@ class GeminiLLM(LLM):
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation using Gemini's OpenAI-compatible endpoint."""
+        kwargs = _normalize_gemini_chat_kwargs(self.model, kwargs)
         api_kwargs = {
             "model": self.model,
             "messages": messages,
@@ -716,6 +758,7 @@ class GeminiLLM(LLM):
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
         """Get structured Pydantic output using Gemini's OpenAI-compatible endpoint with beta.chat.completions.parse."""
+        kwargs = _normalize_gemini_chat_kwargs(self.model, kwargs)
         completion = self._call_provider(lambda: self.client.beta.chat.completions.parse(
             model=self.model,
             messages=messages,
@@ -1066,6 +1109,7 @@ MODEL_REGISTRY = {
     "claude-3-7-sonnet-20250219": "anthropic",
 
     # Google Gemini models
+    "gemini-3.8-flash": "google",
     "gemini-3.7-flash": "google",
     "gemini-3.6-flash": "google",
     "gemini-3.5-flash": "google",
@@ -1353,7 +1397,7 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     """Factory function to create the appropriate LLM based on model name.
     
     Args:
-        model: The model name (e.g., "o4-mini", "claude-sonnet-4-20250514", "gemini-3.7-flash")
+        model: The model name (e.g., "o4-mini", "claude-sonnet-4-20250514", "gemini-3.8-flash")
         api_key: Optional API key to override environment variable
         **kwargs: Additional arguments to pass to the LLM constructor
     
