@@ -14,13 +14,13 @@ co auth google
 co gmail
 
 # Read message #3 from the inbox list
-co gmail read 3
+co gmail read 3 --listing <listing-id>
 
 # Create, review, and then explicitly send a draft
 co gmail draft create alice@example.com "Hello" "Thanks for the meeting today!"
 co gmail draft list               # choose the new draft's row from this listing
-co gmail draft preview 1
-co gmail draft send 1
+co gmail draft preview <draft-id>
+co gmail draft send <draft-id>
 ```
 
 Use the row that matches your draft; `create` prints its full ID but does not
@@ -55,31 +55,35 @@ co gmail inbox -n 25     # last 25
 co gmail inbox -u        # unread only
 ```
 
-Emails are numbered. **Numbers mean your last listing** — `co gmail read 3`
-opens the third row of the table you just saw. Running `co gmail` again
-renumbers.
-An empty inbox or search result clears older message numbers, so a later
-`read 1` cannot silently use a row from the previous listing.
+Every listing prints a `Listing:` token. A number requires that token, for
+example `co gmail read 3 --listing <listing-id>`. Full IDs need no token.
+Listings are frozen for 15 minutes and bound to the provider-confirmed account.
+Opening another inbox, search, sent, or empty listing cannot change an earlier
+row. Up to 128 listings are retained; expired, evicted, corrupt, or mismatched
+listings fail with exit 1. Relist or use a full ID. Legacy last-listing caches
+are ignored; bare numbers now fail instead of choosing an ambiguous message.
 
 A green ● marks unread.
 
 ### `co gmail read <#>` — Read one email
 
 ```bash
-co gmail read 3                    # by listing number
+co gmail read 3 --listing <listing-id>                    # by listing number
 co gmail read 18f2c9d0a1b2c3d4     # by full message id
-co gmail read 3 --mark-read         # explicitly consume it
+co gmail read 3 --listing <listing-id> --mark-read         # explicitly consume it
 ```
 
 Prints headers in a panel and the body below it. Unread state is preserved by
 default; `--mark-read` opts into changing it
-(only when your token carries `gmail.modify` — a read-only token skips it).
+with `gmail.modify` or the full-mail grant. A known read-only grant exits 1;
+missing local scope metadata lets the provider decide. The command never
+reports success when the requested mark-read action failed.
 
 ### `co gmail reply <#> <message>` — Reply
 
 ```bash
-co gmail reply 3 "Sounds good, see you then."
-cat reply.txt | co gmail reply 3 -
+co gmail reply 18f2c9d0a1b2c3d4 "Sounds good, see you then."
+cat reply.txt | co gmail reply 18f2c9d0a1b2c3d4 -
 ```
 
 Threaded — the reply goes back on the original conversation. A message of `-`
@@ -96,16 +100,18 @@ asks for interactive confirmation. There is no confirmation-bypass flag.
 co gmail draft list
 co gmail draft create alice@example.com "Report" "Please review."
 co gmail draft list               # select the matching row before using a number
-co gmail draft attach 1 report.pdf
-co gmail draft preview 1
-co gmail draft send 1
+co gmail draft attach <draft-id> report.pdf
+co gmail draft preview <draft-id>
+co gmail draft send <draft-id>
 ```
 
-Drafts are numbered independently from inbox messages. A draft number means a
-row from the most recent `co gmail draft list`; the mapping is cached in
-`~/.co/gmail_last_drafts.json`. Attachment numbers come from `draft preview`.
-A full Gmail draft ID works anywhere a draft number does.
-Creating a draft does not change this numbering. An empty draft list clears it.
+Draft numbers use `--listing <listing-id>` from `co gmail draft list` and
+the same account/expiry rules as messages. Message tokens cannot resolve drafts.
+A full Gmail draft ID works without a listing. Attachment numbers come from
+`draft preview` and still refer to that draft's current attachment manifest.
+Creating a draft prints its ID and does not change any frozen listing.
+The ID-only cache lives in the global config directory's `gmail-listings/`;
+it stores an account digest, not the account address or message contents.
 Answering no, ending input, or interrupting the confirmation prompt keeps the
 draft, exits 1, and prints its preview command again.
 
@@ -113,11 +119,11 @@ Use local or Drive files without first copying Drive content to disk:
 
 ```bash
 co gdrive list -n 20
-co gmail draft attach 1 3 --drive          # attach Drive row 3 as bytes
-co gmail draft attach 1 3 --drive --link   # append its Drive URL instead
-co gmail draft remove 1 2
-co gmail draft replace 1 1 corrected.pdf
-co gmail draft replace 1 1 3 --drive
+co gmail draft attach <draft-id> 3 --drive          # attach Drive row 3 as bytes
+co gmail draft attach <draft-id> 3 --drive --link   # append its Drive URL instead
+co gmail draft remove <draft-id> 2
+co gmail draft replace <draft-id> 1 corrected.pdf
+co gmail draft replace <draft-id> 1 3 --drive
 ```
 
 Google Docs, Sheets, Slides, and Drawings are exported with the same formats as
@@ -151,9 +157,9 @@ co gmail sent
 co gmail sent -n 25
 ```
 
-Read-only listing; it does **not** touch the read/reply numbering.
-To read a sent message, run `co gmail search in:sent`, then choose a number from
-that search result.
+Read-only listing with full message IDs and its own frozen listing token.
+Read a sent message directly by ID, or use its row with that token. Older inbox
+and search listings retain their original rows.
 
 ### `co gmail search <query>` — Search
 
@@ -165,8 +171,7 @@ co gmail search "from:alice@example.com is:unread"
 co gmail search "subject:meeting after:2026/07/01" -n 25
 ```
 
-Matches are numbered exactly like the inbox, so `co gmail read <#>` works on
-search results too.
+Search results use the same full-ID and `--listing` rules as the inbox.
 
 ## Piping
 
@@ -177,7 +182,7 @@ and agents never receive a truncated value:
 ```bash
 co gmail inbox -n 50 | grep "ID:"
 co gmail draft list | cat
-co gmail draft preview 1 | cat
+co gmail draft preview <draft-id> | cat
 ```
 
 The plain piped forms keep the literal next-command tip, including after
@@ -211,7 +216,7 @@ gmail.get_draft(draft["id"])
 
 | Exit / result | Recovery command |
 |---|---|
-| 0, inbox or search result | `co gmail read <# from this listing>` |
+| 0, inbox or search result | `co gmail read <full-message-id>` |
 | 1, missing permission | `co auth google` |
 | 1, unknown message number or unreadable numbering cache | `co gmail inbox` |
 | 1, send/reply connection failure | `co gmail sent` |
@@ -224,14 +229,14 @@ was lost after delivery: inspect sent mail before repeating the send or reply.
 
 - **"Google account not connected"** → run `co auth google`.
 - **Missing Gmail scopes** → run `co auth google` again to re-consent.
-- **`No draft #N in your last draft listing`** → run
-  `co gmail draft list` and use a current number.
+- **Unavailable draft listing** → run
+  `co gmail draft list` and use its full ID or its number with `--listing`.
 - **`Draft has no attachment #N`** → run `co gmail draft preview <draft>` and
   use the current manifest number.
 - **A Drive link opens as access denied for the recipient** → change sharing in
   Drive yourself, or attach the file bytes with `--drive` instead of `--link`.
-- **`No email #N in your last listing`** → the number is out of range or the
-  listing changed; run `co gmail` to refresh the numbering.
+- **Unavailable message listing** → relist with `co gmail inbox`, then use a
+  full ID or the new token. An account mismatch cannot fall back to another list.
 - **An intentional project account is no longer selected** → use
   `co --env-file /absolute/project/.env gmail inbox`. The 1.8.4 implementation
   defaults to global settings; see [environment migration](environment.md).

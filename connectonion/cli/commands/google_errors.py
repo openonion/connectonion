@@ -23,6 +23,7 @@ def google_errors(next_command: str):
 
             from ...provider_credentials import ProviderCredentialError
             from ...credentials import AmbientCredentialError
+            from .gmail_listings import ListingError
 
             recovery = next_command
             try:
@@ -33,6 +34,8 @@ def google_errors(next_command: str):
             except AmbientCredentialError as exc:
                 cause = str(exc)
                 recovery = "co auth"
+            except ListingError as exc:
+                cause = str(exc)
             except json.JSONDecodeError:
                 cause = "Saved listing numbers are unreadable; refresh the listing."
             except HttpError as exc:

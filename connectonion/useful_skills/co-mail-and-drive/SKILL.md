@@ -37,7 +37,7 @@ rather than guessing. Sending from the wrong identity is not undoable.
 ```bash
 co gmail                     # bare command = inbox, 10 most recent
 co gmail inbox -n 25 -u      # last 25, unread only
-co gmail read 3              # open #3 from the last listing
+co gmail read 3 --listing <listing-id>              # token from the displayed listing
 co gmail search "from:alice@example.com is:unread"   # -n to widen
 co gmail sent -n 20
 ```
@@ -55,9 +55,10 @@ co outlook sent -n 20
 Gmail search takes full Gmail query syntax (`from:`, `subject:`, `after:2026/07/01`,
 `is:unread`). Outlook search is plain text over subject and body.
 
-`co gmail read` preserves unread state by default. `co gmail read 3 --mark-read`
-marks it read only when the token carries `gmail.modify`; otherwise it prints
-a reauthorization hint. Repeat what the output says, don't assume.
+`co gmail read` preserves unread state by default. `co gmail read 3 --listing <listing-id> --mark-read`
+requires `gmail.modify` or the full-mail grant. A known read-only grant exits
+1; unknown local scope metadata lets the provider decide. Read the output and
+do not describe a failed mark-read action as completed.
 
 ## Send and reply
 
@@ -81,14 +82,14 @@ always previews and asks for interactive confirmation:
 co gmail draft list
 co gmail draft create bob@example.com "Subject" "Body text"
 co gmail draft list           # create prints an ID; it does not assign row 1
-co gmail draft attach 1 report.pdf
+co gmail draft attach <draft-id> report.pdf
 co gdrive list
-co gmail draft attach 1 3 --drive
-co gmail draft attach 1 3 --drive --link
-co gmail draft remove 1 2
-co gmail draft replace 1 1 corrected.pdf
-co gmail draft preview 1
-co gmail draft send 1
+co gmail draft attach <draft-id> 3 --drive
+co gmail draft attach <draft-id> 3 --drive --link
+co gmail draft remove <draft-id> 2
+co gmail draft replace <draft-id> 1 corrected.pdf
+co gmail draft preview <draft-id>
+co gmail draft send <draft-id>
 ```
 
 `draft create`, `attach`, `remove`, `replace`, and `preview` never send. `draft
@@ -96,13 +97,13 @@ send` has no `--yes` or other confirmation bypass. A declined confirmation
 leaves the draft intact and exits `1`. EOF or interruption at the confirmation
 prompt does the same and prints the preview command again.
 
-A Gmail draft number comes from the immediately preceding `co gmail draft
-list`, cached separately at `~/.co/gmail_last_drafts.json`. Attachment numbers
-come from the current `draft preview`. Drive file numbers still come from the
-immediately preceding `co gdrive` listing. Re-list before acting rather than
-carrying numbers across listings.
-An empty draft listing clears its old numbers. After creating a draft, use the
-ID printed by `create`, or list again before choosing a row number.
+Gmail message and draft row numbers require `--listing <listing-id>` from
+the corresponding listing. Tokens bind to the provider-confirmed account and
+expire after 15 minutes; only the newest 128 are retained. Full IDs work without
+tokens. Other listings never retarget an older row. Bare numbers and legacy
+last-listing caches are rejected. Attachment numbers come from the current
+`draft preview`; Drive file numbers still come from the last `co gdrive` listing.
+After creating a draft, prefer its printed full ID.
 
 `--drive` attaches bytes without making a local copy. Native Docs, Sheets,
 Slides, and Drawings are exported using the same formats as `co gdrive get`.
@@ -114,7 +115,7 @@ when output is piped; it is part of the CLI contract.
 
 ```bash
 co gmail send bob@example.com "Subject" "Body text"
-co gmail reply 3 "Sounds good, see you then."
+co gmail reply 18f2c9d0a1b2c3d4 "Sounds good, see you then."
 co gmail send bob@example.com "Report" - < body.md      # '-' body reads stdin
 co gmail send bob@example.com "Invoice" "Attached." --cc a@x.com --attach invoice.pdf
 ```
@@ -160,18 +161,12 @@ co gdrive rm 3                     # move to trash (recoverable)
 
 ## The two gotchas that make you report something false
 
-**1. Numbers mean your last listing.** `read 3` / `get 3` / `draft preview 3`
-resolve against the
-numbering of the listing you just printed, cached in `~/.co/gmail_last_inbox.json`,
-`~/.co/gmail_last_drafts.json`, `~/.co/outlook_last_inbox.json`, and
-`~/.co/gdrive_last_list.json`. List again and the numbers move. Two consequences:
-
-- Never carry a number across two listings — re-list, then act.
-- Gmail `inbox`/`search`, Gmail `draft list`, and Drive `list`/`search` each
-  refresh their own numbering, including clearing it on an empty result. `sent` does
-  **not**: after `co gmail sent`, `read 1` still opens row 1 of the older inbox listing.
-- A number that isn't in the cache gets `No email #N in your last listing` and exit
-  `1` rather than a silently wrong email. Re-list and retry.
+**1. Gmail numbers require a frozen listing token.** Use full IDs where
+possible. Inbox, search, sent, and draft lists each print a token; pass it as
+`--listing <listing-id>` when using a row. Wrong accounts, expired/evicted or
+corrupt listings fail with exit 1 and require relisting. Do not retry a bare
+number or silently select a different row. Outlook and Drive retain their
+existing last-listing numbering: re-list before using their numbers.
 
 **2. Piping changes the output — and you are always piping.** In a terminal these
 commands print a Rich table with truncated columns and a next-step tip. Piped, they
@@ -184,8 +179,7 @@ co outlook contact list | cut -f2   # name<TAB>email<TAB>id
 ```
 
 Never parse a truncated table column; take IDs from the piped output. The piped
-form keeps the "Read one with: co gmail read <#>" tip (#1011) — the row numbers
-are still what `read` wants.
+form keeps the next-command tip and uses the full first Gmail ID.
 
 Two more, for Drive specifically:
 
@@ -250,7 +244,7 @@ For Gmail and Drive, these are the concrete recovery routes:
 
 | Result | Next command |
 |---|---|
-| Gmail listing succeeded | `co gmail read <# from this listing>` |
+| Gmail listing succeeded | `co gmail read <full-message-id>` |
 | Drive listing succeeded | `co gdrive get <# from column 5 when piped>` |
 | Empty Gmail inbox | `co gmail search <query>` |
 | Empty Gmail search | `co gmail inbox` |
@@ -293,7 +287,7 @@ it themselves**, do not try to drive that flow.
 - [ ] Right mailbox chosen (asked, if both were connected)
 - [ ] Exact text shown to the user before any send
 - [ ] Final Gmail attachment manifest shown before any draft send
-- [ ] Numbers used from the listing printed immediately before the action
+- [ ] Gmail numbers paired with their listing token; Outlook/Drive numbers from the latest listing
 - [ ] IDs taken from piped output, never from a truncated table column
 - [ ] `--from` address taken from `co email addresses`, never guessed
 - [ ] Empty search reported as "no match", not as "does not exist"

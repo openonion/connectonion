@@ -1036,22 +1036,24 @@ def gmail_inbox(
 
 @gmail_app.command("read")
 def gmail_read(
-    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Show one email's full body without changing its unread state."""
     from .commands.gmail_commands import handle_gmail_read
-    handle_gmail_read(email_id, mark_read=mark_read)
+    handle_gmail_read(email_id, mark_read=mark_read, listing=listing)
 
 
 @gmail_app.command("reply")
 def gmail_reply(
-    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Reply to an email from the last listing."""
     from .commands.gmail_commands import handle_gmail_reply
-    handle_gmail_reply(email_id, message)
+    handle_gmail_reply(email_id, message, listing=listing)
 
 
 @gmail_app.command("send", epilog="Examples:  co gmail send a@b.com \"Hi\" \"Quick note\"  |  "
@@ -1120,54 +1122,59 @@ def gmail_draft_create(
 
 @gmail_draft_app.command("attach")
 def gmail_draft_attach(
-    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
     drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
     link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Stage a local/Drive file, or append a Drive link, without sending."""
     from .commands.gmail_commands import handle_gmail_draft_attach
-    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link)
+    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link, listing=listing)
 
 
 @gmail_draft_app.command("remove")
 def gmail_draft_remove(
-    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Remove one staged attachment; the draft remains unsent."""
     from .commands.gmail_commands import handle_gmail_draft_remove
-    handle_gmail_draft_remove(draft_id, attachment)
+    handle_gmail_draft_remove(draft_id, attachment, listing=listing)
 
 
 @gmail_draft_app.command("replace")
 def gmail_draft_replace(
-    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
     source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
     drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Atomically replace one staged attachment without sending."""
     from .commands.gmail_commands import handle_gmail_draft_replace
-    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive)
+    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive, listing=listing)
 
 
 @gmail_draft_app.command("preview")
 def gmail_draft_preview(
-    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Print recipients, body, and the final attachment manifest."""
     from .commands.gmail_commands import handle_gmail_draft_preview
-    handle_gmail_draft_preview(draft_id)
+    handle_gmail_draft_preview(draft_id, listing=listing)
 
 
 @gmail_draft_app.command("send")
 def gmail_draft_send(
-    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Preview a draft and send it only after interactive confirmation."""
     from .commands.gmail_commands import handle_gmail_draft_send
-    handle_gmail_draft_send(draft_id)
+    handle_gmail_draft_send(draft_id, listing=listing)
 
 
 # Google Drive command group. `co gdrive` (no args) lists recent files.
