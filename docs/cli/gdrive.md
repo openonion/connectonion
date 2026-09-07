@@ -4,6 +4,9 @@ List, search, download, and upload Drive files from the terminal — the same
 Drive access your agents get from the [GDrive tool](../useful_tools/gdrive.md),
 as a command.
 
+The 1.8.4 implementation uses global settings by default. Select a project with
+`co --env-file /absolute/project/.env gdrive list`; see [environment selection](environment.md).
+
 ## Quick Start
 
 ```bash

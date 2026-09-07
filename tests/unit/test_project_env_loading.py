@@ -1,4 +1,4 @@
-"""Startup and CLI loaders must use the same project boundary as identity."""
+"""Startup and command reloads ignore unselected project and nested env files."""
 
 import json
 import os
@@ -49,9 +49,9 @@ def _probe(home, cwd, entry, extra=None):
 
 
 @pytest.mark.parametrize("entry", ["connectonion", "connectonion.cli.main"])
-def test_nested_startup_uses_project_env_not_nested_env(env_project, entry):
+def test_nested_startup_uses_global_env(env_project, entry):
     home, project, nested = env_project
-    expected = {"CO_TEST_KEY": "project", "CO_TEST_GLOBAL": "fallback", "CO_TEST_NESTED": None}
+    expected = {"CO_TEST_KEY": "global", "CO_TEST_GLOBAL": "fallback", "CO_TEST_NESTED": None}
     assert _probe(home, project, entry) == expected
     assert _probe(home, nested, entry) == expected
 
@@ -80,10 +80,10 @@ def test_home_dotenv_is_not_a_parent_project(env_project):
     assert _probe(home, unrelated, "connectonion.cli.main")["CO_TEST_KEY"] == "global"
 
 
-def test_nearest_nested_project_owns_its_environment(env_project):
+def test_nearest_nested_project_does_not_select_environment(env_project):
     home, _, nested = env_project
     (nested / ".co").mkdir()
-    assert _probe(home, nested, "connectonion.cli.main")["CO_TEST_KEY"] == "nested"
+    assert _probe(home, nested, "connectonion.cli.main")["CO_TEST_KEY"] == "global"
 
 
 @pytest.mark.parametrize("marker", ["directory", "worktree-file"])
@@ -94,7 +94,7 @@ def test_dotenv_does_not_cross_another_repository(env_project, marker):
     else:
         (nested / ".git").write_text("gitdir: unused\n", encoding="utf-8")
     assert _probe(home, nested, "connectonion") == {
-        "CO_TEST_KEY": "nested", "CO_TEST_GLOBAL": "fallback", "CO_TEST_NESTED": "unexpected",
+        "CO_TEST_KEY": "global", "CO_TEST_GLOBAL": "fallback", "CO_TEST_NESTED": None,
     }
 
 
@@ -104,25 +104,20 @@ def test_dotenv_does_not_cross_another_repository(env_project, marker):
     ("gdrive_commands", "_gdrive"),
     ("synology_commands", "_syno"),
 ])
-def test_integration_reload_uses_project_root(env_project, monkeypatch, module, loader):
+def test_integration_reload_uses_selected_env(env_project, monkeypatch, module, loader):
     from importlib import import_module
-    import dotenv
-
+    from connectonion import environment
     home, project, nested = env_project
-    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(home / ".co"))
     monkeypatch.chdir(nested)
     command = import_module(f"connectonion.cli.commands.{module}")
     loaded = []
-
     class StopAfterEnv(Exception):
         pass
-
-    def record(path, *args, **kwargs):
-        loaded.append(Path(path).resolve())
-        if len(loaded) == 2:
-            raise StopAfterEnv
-
-    monkeypatch.setattr(dotenv, "load_dotenv", record)
+    def record():
+        loaded.append(environment.selected_env_file())
+        raise StopAfterEnv
+    monkeypatch.setattr(environment, "load_environment", record)
     with pytest.raises(StopAfterEnv):
         getattr(command, loader)()
-    assert loaded == [project / ".env", home / ".co" / "keys.env"]
+    assert loaded == [home / ".co" / "keys.env"]

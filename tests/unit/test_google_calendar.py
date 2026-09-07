@@ -108,11 +108,12 @@ class TestGetService:
 
         with pytest.raises(ValueError) as exc_info:
             calendar._get_service()
-        assert "OPENONION_API_KEY not found" in str(exc_info.value)
+        assert "Google account not connected" in str(exc_info.value)
 
     @patch.dict(os.environ, {
         "GOOGLE_SCOPES": "calendar",
         "OPENONION_API_KEY": "api-key",
+        "GOOGLE_REFRESH_TOKEN": "test-local-refresh",
         "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
     }, clear=True)
     @patch('connectonion.useful_tools.google_calendar.build')
@@ -139,11 +140,17 @@ class TestGetService:
 
         monkeypatch.setenv("OPENONION_API_KEY", "api-key")
         monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
+        from connectonion import environment
+        for key in environment.provider_keys("google"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(environment, "_loaded", {})
+        (tmp_path / "keys.env").write_text("GOOGLE_REFRESH_TOKEN=stale-local-token\n")
+        environment.load_environment()
         response = Mock(status_code=200)
         response.json.return_value = {
             "access_token": "fresh-access",
             "refresh_token": "rotated-refresh",
-            "expires_at": "2026-08-08T12:00:00+00:00",
+            "expires_at": "2099-08-08T12:00:00+00:00",
         }
 
         with patch("httpx.post", return_value=response) as post:
@@ -162,6 +169,7 @@ class TestGetService:
         from connectonion.useful_tools.google_calendar import GoogleCalendar
 
         monkeypatch.setenv("OPENONION_API_KEY", "api-key")
+        monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "test-local-refresh")
         response = Mock(status_code=502, text="provider-secret-debug-page")
         response.json.side_effect = ValueError("not json")
 
@@ -170,7 +178,8 @@ class TestGetService:
                 GoogleCalendar.__new__(GoogleCalendar)._refresh_via_backend(None)
 
         assert "provider-secret" not in str(error.value)
-        assert str(error.value) == "Failed to refresh Google authorization via backend"
+        assert "HTTP 502" in str(error.value)
+        assert error.value.code == "provider_unavailable"
 
 
 class TestListEvents:

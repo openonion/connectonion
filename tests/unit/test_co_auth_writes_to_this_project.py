@@ -62,7 +62,7 @@ class TestWhichIdentityItAuthenticatesAs:
     def test_from_a_subdirectory_it_is_the_projects(self, project, monkeypatch):
         from connectonion.cli.commands import auth_commands
 
-        proj, _, own = project
+        proj, home, own = project
         monkeypatch.chdir(proj / "sub")
         seen = {}
 
@@ -70,12 +70,12 @@ class TestWhichIdentityItAuthenticatesAs:
                           side_effect=lambda co_dir, **kw: seen.update(co_dir=co_dir) or True):
             auth_commands.handle_auth()
 
-        assert seen.get("co_dir") == proj / ".co"
+        assert seen.get("co_dir") == home / ".co"
 
     def test_from_the_project_root_it_is_still_the_projects(self, project, monkeypatch):
         from connectonion.cli.commands import auth_commands
 
-        proj, _, _ = project
+        proj, home, _ = project
         monkeypatch.chdir(proj)
         seen = {}
 
@@ -83,7 +83,7 @@ class TestWhichIdentityItAuthenticatesAs:
                           side_effect=lambda co_dir, **kw: seen.update(co_dir=co_dir) or True):
             auth_commands.handle_auth()
 
-        assert seen.get("co_dir") == proj / ".co"
+        assert seen.get("co_dir") == home / ".co"
 
     def test_a_keyless_project_still_falls_back_to_the_machine(self, tmp_path, monkeypatch):
         from connectonion import address
@@ -129,12 +129,13 @@ class TestWhereTheTokenIsWritten:
             auth_commands.handle_auth()
 
     def test_from_a_subdirectory_it_lands_in_the_project(self, project, monkeypatch):
-        proj, _, _ = project
+        proj, home, _ = project
         monkeypatch.chdir(proj / "sub")
 
         self._run_auth()
 
-        assert (proj / ".env").exists(), "the project's .env was not written"
+        assert (home / ".co" / "keys.env").exists()
+        assert not (proj / ".env").exists()
 
     def test_it_does_not_write_to_the_home_root(self, project, monkeypatch):
         """`~/.env` is not the secret location; `~/.co/keys.env` is."""
@@ -147,7 +148,7 @@ class TestWhereTheTokenIsWritten:
 
     def test_the_message_names_the_file_it_wrote(self, project, monkeypatch, capsys):
         """The success line printed Path.cwd()/.env while writing somewhere else."""
-        proj, _, _ = project
+        proj, home, _ = project
         monkeypatch.chdir(proj / "sub")
 
         self._run_auth()

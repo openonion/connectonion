@@ -156,7 +156,7 @@ class TestItIsTheWheelBeingTested:
         assert "False" in result.stdout, "the source tree shadowed the installed package"
 
 
-def test_installed_cli_and_sdk_share_the_project_env(installed, tmp_path):
+def test_installed_cli_and_sdk_default_to_global_env(installed, tmp_path):
     """The public entry point must not fall back to a subdirectory's secrets."""
     python, bin_dir, _, _ = installed
     home = tmp_path / "home"
@@ -175,14 +175,20 @@ def test_installed_cli_and_sdk_share_the_project_env(installed, tmp_path):
         cwd=nested, env=env, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "project"
+    assert result.stdout.strip() == "global"
     co = bin_dir / ("co.exe" if os.name == "nt" else "co")
     result = subprocess.run(
-        [str(co), "--version"], cwd=nested, env=env,
+        [str(co), "keys"], cwd=nested, env=env,
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert f"[env] {(project / '.env').resolve()}" in result.stderr
+    assert f"[env] {(home / '.co' / 'keys.env').resolve()}" in result.stderr
+    explicit = subprocess.run(
+        [str(co), "--env-file", str(project / ".env"), "keys"],
+        cwd=nested, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert explicit.returncode == 0, explicit.stderr
+    assert f"[env] {(project / '.env').resolve()}" in explicit.stderr
     assert f"[env] {(nested / '.env').resolve()}" not in result.stderr
 
 

@@ -54,15 +54,15 @@ def test_keys_env_still_loads_when_project_env_exists(tmp_path):
     assert value == "from-keys-env"
 
 
-def test_project_env_wins_over_keys_env(tmp_path):
-    """Project-specific values still override the global fallback."""
+def test_global_env_wins_over_unselected_project_env(tmp_path):
+    """Unselected project values cannot override the global default."""
     value = _run_import(
         tmp_path,
         project_env="OPENAI_API_KEY=sk-project\n",
         keys_env="OPENAI_API_KEY=sk-global\n",
         probe="OPENAI_API_KEY",
     )
-    assert value == "sk-project"
+    assert value == "sk-global"
 
 
 def test_keys_env_loads_when_no_project_env(tmp_path):

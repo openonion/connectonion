@@ -24,17 +24,16 @@ import webbrowser
 from contextlib import contextmanager
 from pathlib import Path
 
-from dotenv import dotenv_values
+from connectonion.environment import (global_config_dir, explicit_env_file,
+                                      read_env_file, publish_values)
 
 from connectonion import address, host
 
 logging.basicConfig(level=logging.WARNING, format="[%(levelname)s] %(name)s: %(message)s")
 
 
-# Note: .env files already loaded by __init__.py with fallback chain:
-# 1. Current directory .env
-# 2. Global ~/.co/keys.env
-# No need to load again here (load_dotenv doesn't override existing env vars)
+# Package startup loads the selected global env; the CLI applies --env-file
+# before entering this module. Working directory does not select credentials.
 
 
 @contextmanager
@@ -70,8 +69,7 @@ def _owner_invite_lock(co_dir: Path):
 def _ensure_owner_invite(co_dir: Path) -> bool:
     """Load or mint the private invite used by the careful onboarding policy.
 
-    The process environment wins because it may have come from the current
-    project's ``.env``. Otherwise the global value is loaded into this process
+    The inherited process environment wins. Otherwise the selected value is loaded into this process
     (dotenv loading happened before ``co ai`` reached this module), or one is
     minted once and written with owner-only permissions.
     """
@@ -80,16 +78,16 @@ def _ensure_owner_invite(co_dir: Path) -> bool:
 
     from ..commands.project_cmd_lib import mint_invite_code, upsert_env
 
-    with _owner_invite_lock(co_dir):
-        keys_env = co_dir / "keys.env"
-        existing = dotenv_values(keys_env, interpolate=False).get("CO_INVITE_CODE")
+    keys_env = explicit_env_file() or co_dir / "keys.env"
+    with _owner_invite_lock(keys_env.parent):
+        existing = read_env_file(keys_env).get("CO_INVITE_CODE")
         if existing:
-            os.environ["CO_INVITE_CODE"] = existing
+            publish_values({"CO_INVITE_CODE": existing})
             return False
 
         invite = mint_invite_code()
         upsert_env(keys_env, {"CO_INVITE_CODE": invite})
-        os.environ["CO_INVITE_CODE"] = invite
+        publish_values({"CO_INVITE_CODE": invite})
         return True
 
 
@@ -133,7 +131,8 @@ def start_server(
     from ...network.host.config import load_host_config
 
     # Use global ~/.co/ for consistent identity across all co ai sessions.
-    co_dir = Path.home() / ".co"
+    from connectonion.project import selected_identity_dir
+    co_dir = selected_identity_dir()
     if invite_code is None and _prepare_owner_onboarding(co_dir):
         from ..commands.project_cmd_lib import console
 

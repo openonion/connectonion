@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 
 from .google_errors import google_errors
+from .command_tips import print_tip
 
 gcalendar_app = typer.Typer(help="Google Calendar events and Meet links. Bare co gcalendar lists events.", no_args_is_help=False)
 
@@ -16,27 +17,28 @@ def _client():
     from ...useful_tools.google_calendar import GoogleCalendar
     try:
         return GoogleCalendar()
-    except ValueError:
-        print("Google Calendar permission missing. Next: co auth google")
+    except ValueError as error:
+        from ...provider_credentials import ProviderCredentialError
+        if isinstance(error, ProviderCredentialError):
+            raise
+        print_tip("Saved Google grant lacks Calendar access. Next: co auth google")
         raise typer.Exit(1) from None
 
 
 @google_errors("co gcalendar list")
 def _run(method: str, *args, **kwargs):
-    from dotenv import load_dotenv
-    from ...project import project_root
-    load_dotenv(project_root() / ".env")
-    load_dotenv(Path(os.getenv("AGENT_CONFIG_PATH", str(Path.home() / ".co"))) / "keys.env")
+    from ...environment import load_environment
+    load_environment()
     result = getattr(_client(), method)(*args, **kwargs)
     Console().print(result, markup=False, highlight=False)
     first = re.search(r"\bID: ([a-zA-Z0-9_-]+)", result) if method == "list_events" else None
-    print(f"Next: co gcalendar read {first[1]}" if first else "Next: co gcalendar list")
+    print_tip(f"Next: co gcalendar read {first[1]}" if first else "Next: co gcalendar list")
 
 
 def _confirm(yes: bool, operation: str, details: dict):
     if not yes:
         Console().print({"mode": "preview", "operation": operation, **details}, markup=False)
-        print(f"No changes made. Next: co gcalendar {operation} --help")
+        print_tip(f"No changes made. Next: co gcalendar {operation} --help")
     return yes
 
 
@@ -105,7 +107,7 @@ def update(event_id: str, title: Optional[str] = None, start: Optional[str] = No
     """Update supplied nonempty fields; other fields are preserved."""
     values = dict(title=title, start_time=start, end_time=end, description=description, attendees=attendees, location=location)
     if not any(values.values()):
-        print("No changes supplied. Next: co gcalendar update --help")
+        print_tip("No changes supplied. Next: co gcalendar update --help")
         raise typer.Exit(2)
     if _confirm(yes, "update", dict(event_id=event_id, **values)):
         _run("update_event", event_id, **values)

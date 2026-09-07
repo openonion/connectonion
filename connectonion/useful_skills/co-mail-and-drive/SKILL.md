@@ -3,6 +3,15 @@ name: co-mail-and-drive
 description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, or a file in Drive.
 ---
 
+## Environment selection in the 1.8.4 implementation
+
+Global `keys.env` is the default for every setting and account. To use a project
+file, put `--env-file` before the command: `co --env-file /absolute/path/.env gmail
+inbox`. Auth and refresh use that selected file. No project env loads implicitly;
+process overrides remain explicit and provider fields are kept as whole records.
+See `docs/cli/environment.md` for migration and error recovery.
+
+
 # co gmail / co outlook / co email / co gdrive
 
 The user's own mail and files, from the shell. One authorization, then plain commands.

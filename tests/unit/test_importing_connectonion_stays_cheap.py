@@ -207,9 +207,10 @@ class TestANameThatIsAlsoAModule:
 class TestWhatMustStayEager:
 
     def test_the_env_files_are_still_loaded_at_import(self, tmp_path):
-        """A documented side effect: importing the package loads .env and
-        ~/.co/keys.env. Deferring that would change when credentials appear."""
-        env = tmp_path / ".env"
+        """A documented side effect: importing the package loads global keys.env. Deferring that would change when credentials appear."""
+        from connectonion.environment import selected_env_file
+        env = selected_env_file()
+        env.parent.mkdir(parents=True, exist_ok=True)
         env.write_text("CO_TEST_EAGER_ENV=loaded\n")
 
         out = subprocess.run(

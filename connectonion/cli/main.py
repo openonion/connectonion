@@ -34,9 +34,7 @@ from rich.console import Console
 from .._version import __version__
 from ..core.usage import DEFAULT_MODEL
 
-# Package startup already loads project-root .env, then global keys.env,
-# without overriding the process environment. Do not reload cwd/.env here:
-# inside a subdirectory it belongs to neither the selected project nor identity.
+# Package startup loads only global settings. --env-file replaces them explicitly.
 
 console = Console()
 
@@ -116,10 +114,22 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
+def env_file_callback(ctx: typer.Context, value: Optional[Path]):
+    from ..environment import EnvironmentError, select_env_file
+    try:
+        select_env_file(value)
+    except EnvironmentError as error:
+        console.print(str(error), markup=False)
+        raise typer.Exit(2) from None
+    return value
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
+    env_file: Optional[Path] = typer.Option(None, "--env-file", callback=env_file_callback,
+        is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
     if ctx.invoked_subcommand is None:
@@ -186,6 +196,10 @@ def init(
     """Initialize global ~/.co/keys.env, or use co init ./ for a project."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
+        from ..environment import explicit_env_file
+        if explicit_env_file() is not None:
+            console.print("Global initialization does not accept --env-file. Next: co init")
+            raise typer.Exit(2)
         if template is not None or description is not None or force:
             console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
             raise typer.Exit(2)
@@ -1565,7 +1579,14 @@ def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to un
 
 def cli():
     """Entry point."""
-    app()
+    from ..environment import EnvironmentError
+    from ..credentials import AmbientCredentialError
+    from ..provider_credentials import ProviderCredentialError
+    try:
+        app()
+    except (EnvironmentError, AmbientCredentialError, ProviderCredentialError) as error:
+        console.print(str(error), markup=False)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

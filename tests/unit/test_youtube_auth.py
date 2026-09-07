@@ -25,14 +25,15 @@ def payload(**changes):
             "scopes": "gmail.readonly,youtube", **changes}
 
 
-def test_refresh_uses_existing_broker_and_persists_rotated_credentials(login, monkeypatch, tmp_path):
+def test_process_refresh_uses_broker_and_keeps_rotation_in_memory(login, monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
     post = MagicMock(return_value=httpx.Response(200, json=payload()))
     monkeypatch.setattr(auth.httpx, "post", post)
     credentials = login.credentials()
     assert credentials.token == "synthetic-new-token"
     assert credentials.refresh_token is None
-    assert "synthetic-rotation" in (tmp_path / "keys.env").read_text()
+    assert not (tmp_path / "keys.env").exists()
+    assert auth.os.environ["GOOGLE_REFRESH_TOKEN"] == "synthetic-rotation"
     args, kwargs = post.call_args
     assert args[0].endswith("/api/v1/oauth/google/refresh")
     assert kwargs == {"headers": {"Authorization": "Bearer synthetic-broker-key"}, "timeout": 15.0,
@@ -43,9 +44,10 @@ def test_refresh_uses_existing_broker_and_persists_rotated_credentials(login, mo
     assert post.call_count == 2
 
 
-@pytest.mark.parametrize("scopes", ["gmail.readonly,gmail.send", "youtube.upload", "not-youtube", "youtube.readonly.evil", ""])
+@pytest.mark.parametrize("scopes", ["gmail.readonly,gmail.send", "youtube.upload", "not-youtube", "youtube.readonly.evil"])
 def test_read_requires_exact_youtube_scope_before_network(login, monkeypatch, scopes):
     monkeypatch.setenv("GOOGLE_SCOPES", scopes)
+    login = auth.YouTubeGoogleAuth()
     monkeypatch.setattr(auth.httpx, "post", lambda *a, **k: pytest.fail("Missing scope reached network"))
     with pytest.raises(CreatorError, match="co auth google"):
         login.credentials()
@@ -53,6 +55,7 @@ def test_read_requires_exact_youtube_scope_before_network(login, monkeypatch, sc
 
 def test_readonly_grant_cannot_upload_or_update(login, monkeypatch):
     monkeypatch.setenv("GOOGLE_SCOPES", "https://www.googleapis.com/auth/youtube.readonly")
+    login = auth.YouTubeGoogleAuth()
     login.require_scope("read")
     for operation in ["upload", "update"]:
         with pytest.raises(CreatorError):

@@ -16,6 +16,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from .google_errors import google_errors
+from .command_tips import print_tip
+
+from ...provider_credentials import resolve_provider_credentials
 
 console = Console()
 
@@ -24,26 +27,26 @@ LIST_CACHE = Path.home() / ".co" / "gdrive_last_list.json"
 
 def _gdrive():
     """Load GOOGLE_* credentials from .env files and return a GDrive instance. Exits 1 with a hint if not connected."""
-    from dotenv import load_dotenv
-    from ...project import project_root
+    from ...environment import load_environment
+    load_environment()
+    from ...provider_credentials import resolve_provider_credentials
+    record = resolve_provider_credentials("google")
+    auth_tip = record.auth_command
 
-    for env_path in [project_root() / ".env", Path.home() / ".co" / "keys.env"]:
-        if env_path.is_file():
-            load_dotenv(env_path)
-
-    if not os.getenv("GOOGLE_ACCESS_TOKEN"):
+    if not (record.get("ACCESS_TOKEN") or record.get("REFRESH_TOKEN")):
         console.print("\n❌ [bold red]Google account not connected[/bold red]")
         console.print("\n[cyan]Connect Google Drive first:[/cyan]")
-        console.print("  [bold]co auth google[/bold]     Authorize Drive access\n")
+        print(f"Next: {auth_tip}")
         raise typer.Exit(1)
 
     from ...useful_tools.google_scopes import granted_scopes
-    if not granted_scopes().intersection({"drive", "drive.readonly"}):
+    scopes = granted_scopes()
+    if scopes and not scopes.intersection({"drive", "drive.readonly"}):
         # Drive was added to the OAuth scopes after Gmail and Calendar — a token
         # from before that grants everything else but not this.
         console.print("\n❌ [bold red]Google Drive permission missing[/bold red]")
         console.print("\n[cyan]Reconnect Google to grant it:[/cyan]")
-        console.print("  [bold]co auth google[/bold]     Re-authorize with Drive access\n")
+        print(f"Next: {auth_tip}")
         raise typer.Exit(1)
 
     from ...useful_tools.gdrive import GDrive
@@ -97,7 +100,7 @@ def _print_listing(files: list, title: str):
             print(f"{item['name']}\t{item['type']}\t{item['size']}\t{item['id']}\t{i}")
         # Same next-step tip as the terminal table: piped callers are exactly
         # the AI audience the tip exists for.
-        print("Download one with: co gdrive get <# from column 5>")
+        print_tip("Download one with: co gdrive get <# from column 5>")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -112,7 +115,7 @@ def _print_listing(files: list, title: str):
 
     console.print()
     console.print(table)
-    console.print("\n[dim]Download one with:[/dim] [bold]co gdrive get <#>[/bold]\n")
+    print_tip("\n[dim]Download one with:[/dim] [bold]co gdrive get <#>[/bold]\n")
 
 
 @google_errors("co gdrive list")
@@ -124,9 +127,9 @@ def handle_gdrive_list(last: int = 20):
         LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
         LIST_CACHE.write_text("{}", encoding="utf-8")
         console.print("\n[cyan]Google Drive:[/cyan] no files\n")
-        print("Search by name: co gdrive search <name prefix>")
+        print_tip("Search by name: co gdrive search <name prefix>")
         return
-    _print_listing(files, f"📁 Drive — {os.getenv('GOOGLE_EMAIL', '')}")
+    _print_listing(files, f"📁 Drive — {resolve_provider_credentials('google').get('EMAIL') or ''}")
 
 
 @google_errors("co gdrive list")
@@ -139,7 +142,7 @@ def handle_gdrive_search(query: str, last: int = 20):
         LIST_CACHE.write_text("{}", encoding="utf-8")
         console.print(f"\n[cyan]Drive search:[/cyan] no files matching [bold]{query}[/bold]")
         console.print("[dim]Drive matches word prefixes, not any substring.[/dim]\n")
-        print("Show recent files: co gdrive list")
+        print_tip("Show recent files: co gdrive list")
         return
     _print_listing(files, f"🔎 Drive — {query}")
 
@@ -164,11 +167,11 @@ def handle_gdrive_get(file_id: str, dest: str = "."):
     resolved = _resolve_file_id(file_id)
     if not resolved:
         console.print(f"\nNo file #{file_id} in your last listing.", markup=False)
-        print("Refresh the listing: co gdrive list")
+        print_tip("Refresh the listing: co gdrive list")
         raise typer.Exit(1)
 
     console.print(drive.download(resolved, dest=dest).replace("Downloaded to", "\n[green]✓ Downloaded[/green]"))
-    print("Show more files: co gdrive list")
+    print_tip("Show more files: co gdrive list")
 
 
 @google_errors("co gdrive list")
@@ -176,7 +179,7 @@ def handle_gdrive_put(path: str, name: str = None):
     """Upload a local file to Drive."""
     if not Path(path).expanduser().is_file():
         console.print(f"\n❌ [bold red]File not found:[/bold red] {path}\n")
-        print("Retry with: co gdrive put <path to an existing file>")
+        print_tip("Retry with: co gdrive put <path to an existing file>")
         raise typer.Exit(1)
 
     drive = _gdrive()
@@ -184,7 +187,7 @@ def handle_gdrive_put(path: str, name: str = None):
     console.print(f"\n[green]✓ Uploaded[/green] [bold]{uploaded['name']}[/bold]")
     if uploaded["link"]:
         console.print(f"  {uploaded['link']}")
-    print("Check uploaded files: co gdrive list")
+    print_tip("Check uploaded files: co gdrive list")
 
 
 @google_errors("co gdrive list")
@@ -194,9 +197,9 @@ def handle_gdrive_rm(file_id: str):
     resolved = _resolve_file_id(file_id)
     if not resolved:
         console.print(f"\nNo file #{file_id} in your last listing.", markup=False)
-        print("Refresh the listing: co gdrive list")
+        print_tip("Refresh the listing: co gdrive list")
         raise typer.Exit(1)
 
     drive.delete(resolved)
     console.print("\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")
-    print("Show remaining files: co gdrive list")
+    print_tip("Show remaining files: co gdrive list")

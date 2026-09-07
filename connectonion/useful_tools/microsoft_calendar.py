@@ -50,6 +50,7 @@ import httpx
 
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
 
 class MicrosoftCalendar:
@@ -57,14 +58,27 @@ class MicrosoftCalendar:
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
+    @property
+    def _credentials(self):
+        if not hasattr(self, "_credential_record"):
+            self._credential_record = resolve_provider_credentials("microsoft")
+        return self._credential_record
+
+    @_credentials.setter
+    def _credentials(self, value):
+        self._credential_record = value
+
     def __init__(self):
         """Initialize Microsoft Calendar tool.
 
         Validates that Microsoft OAuth is configured with Calendar scopes.
         Raises ValueError if credentials are missing.
         """
-        scopes = os.getenv("MICROSOFT_SCOPES", "")
-        if not scopes or "Calendars" not in scopes:
+        self._credentials = resolve_provider_credentials("microsoft")
+        scopes = self._credentials.get("SCOPES") or ""
+        if not scopes:
+            self._credentials.require_configured()
+        if scopes and "Calendars" not in scopes:
             raise ValueError(
                 "Missing Microsoft Calendar scopes.\n"
                 f"Current scopes: {scopes}\n"
@@ -74,79 +88,20 @@ class MicrosoftCalendar:
 
         self._access_token = None
 
+    _parse_token_expiry = staticmethod(token_expiry)
+
     def _get_access_token(self) -> str:
-        """Get Microsoft access token (with auto-refresh)."""
-        access_token = os.getenv("MICROSOFT_ACCESS_TOKEN")
-        refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
-        expires_at_str = os.getenv("MICROSOFT_TOKEN_EXPIRES_AT")
-
-        if not access_token or not refresh_token:
-            raise ValueError(
-                "Microsoft OAuth credentials not found.\n"
-                "Run: co auth microsoft"
-            )
-
-        # Check if token is expired or about to expire (within 5 minutes)
-        if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
-
-            if now >= expires_at - timedelta(minutes=5):
-                access_token = self._refresh_via_backend(refresh_token)
-                self._access_token = None
-
-        if self._access_token:
-            return self._access_token
-
-        self._access_token = access_token
-        return self._access_token
+        # Mail and Calendar must classify expiry and partial records identically.
+        from .outlook import Outlook
+        return Outlook._get_access_token(self)
 
     def _refresh_via_backend(self, refresh_token: str) -> str:
-        """Refresh access token via backend API."""
-        selected_backend = backend_url()
+        from ..provider_credentials import ProviderCredentialError
         api_key = require_ambient_api_key()
-
-        response = httpx.post(
-            f"{selected_backend}/api/v1/oauth/microsoft/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"refresh_token": refresh_token}
-        )
-
-        if response.status_code != 200:
-            raise ValueError(
-                f"Microsoft session expired and refresh failed ({response.status_code}).\n"
-                "Reconnect with: co auth microsoft"
-            )
-
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-        new_refresh_token = data.get("refresh_token") or refresh_token
-
-        os.environ["MICROSOFT_ACCESS_TOKEN"] = new_access_token
-        os.environ["MICROSOFT_TOKEN_EXPIRES_AT"] = expires_at
-        os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
-
-        from ..cli.commands.project_cmd_lib import upsert_env
-        rotated = {
-            "MICROSOFT_ACCESS_TOKEN": new_access_token,
-            "MICROSOFT_TOKEN_EXPIRES_AT": expires_at,
-            "MICROSOFT_REFRESH_TOKEN": new_refresh_token,
-        }
-        keys_env = Path(
-            os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))
-        ) / "keys.env"
-        keys_env.parent.mkdir(parents=True, exist_ok=True)
-        upsert_env(keys_env, rotated)
-
-        local_env = Path(".env")
-        if (
-            local_env.exists()
-            and "MICROSOFT_ACCESS_TOKEN=" in local_env.read_text(encoding="utf-8")
-        ):
-            upsert_env(local_env, rotated)
-
-        return new_access_token
+        if refresh_token and refresh_token != self._credentials.get("REFRESH_TOKEN"):
+            raise ProviderCredentialError("record_changed", "Refresh token differs from the selected account.", "co status")
+        return refresh_credentials(self._credentials, backend=backend_url(),
+                                   api_key=api_key, post=httpx.post)
 
     def _request(self, method: str, endpoint: str, **kwargs) -> dict:
         """Make authenticated request to Microsoft Graph API."""
@@ -160,13 +115,18 @@ class MicrosoftCalendar:
         response = httpx.request(method, url, headers=headers, **kwargs)
 
         if response.status_code == 401:
-            refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
+            refresh_token = self._credentials.get("REFRESH_TOKEN")
             if refresh_token:
                 self._access_token = None
                 token = self._refresh_via_backend(refresh_token)
                 headers["Authorization"] = f"Bearer {token}"
                 response = httpx.request(method, url, headers=headers, **kwargs)
 
+        if response.status_code in (401, 403):
+            from ..provider_credentials import ProviderCredentialError
+            raise ProviderCredentialError("permission_denied" if response.status_code == 403 else "reauth_required",
+                "Microsoft permission denied." if response.status_code == 403 else "Microsoft authorization expired.",
+                self._credentials.auth_command)
         if response.status_code not in [200, 201, 202, 204]:
             raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
 

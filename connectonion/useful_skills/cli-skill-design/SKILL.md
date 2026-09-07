@@ -184,3 +184,12 @@ with a failed run.
 - [ ] "Read the output, not just the exit code" stated if any failure exits 0
 - [ ] Gotchas that change a reported result are written down
 - [ ] Nothing documented that was not run
+
+## Shared env contract (1.8.4 implementation)
+
+New command groups must use the shared selected env, never discover cwd `.env`.
+`co --env-file PATH <group> ...` is the explicit project selector; default reads
+and writes use global `keys.env`. Keep process credentials separate from loaded
+file values and resolve provider fields as whole account records. Test fresh
+processes from root, nested and unrelated directories, including a project-only
+non-OAuth variable that must stay absent by default.

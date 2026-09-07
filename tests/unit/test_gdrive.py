@@ -73,7 +73,7 @@ class TestGDriveInit:
             from connectonion.useful_tools.gdrive import GDrive
             with pytest.raises(ValueError) as exc:
                 GDrive()._get_service()
-            assert "credentials not found" in str(exc.value)
+            assert "Google account not connected" in str(exc.value)
 
     @pytest.mark.real_refresh
     @patch("connectonion.useful_tools.gdrive.build")
@@ -86,7 +86,7 @@ class TestGDriveInit:
         with patch.dict(os.environ, ENV, clear=False):
             GDrive()._get_service()
 
-        assert calls == ["test-refresh"]
+        assert calls == [None]
         assert mock_build.call_args.kwargs["credentials"].token == "fresh"
 
     @pytest.mark.real_refresh
@@ -94,13 +94,15 @@ class TestGDriveInit:
         from connectonion.useful_tools.gdrive import GDrive
 
         monkeypatch.setenv("OPENONION_API_KEY", "opaque-api-key")
+        monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "local-refresh-secret")
         response = MagicMock(status_code=502, text="provider-refresh-secret")
 
         with patch("httpx.post", return_value=response):
             with pytest.raises(ValueError) as error:
                 GDrive.__new__(GDrive)._refresh_via_backend("local-refresh-secret")
 
-        assert str(error.value) == "Failed to refresh Google authorization via backend"
+        assert "HTTP 502" in str(error.value)
+        assert error.value.code == "provider_unavailable"
         assert "provider-refresh-secret" not in str(error.value)
         assert "local-refresh-secret" not in str(error.value)
 

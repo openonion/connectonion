@@ -95,7 +95,7 @@ def test_send_email_not_activated(mock_post):
 # re-inject real credentials into the cleared environment (keeps this hermetic).
 # patch.object on the module object avoids the send_email module-vs-function name
 # collision that string-target patching resolves inconsistently across Python versions.
-@patch.object(send_email_module, 'load_dotenv', lambda *a, **k: None)
+@patch('connectonion.environment.load_environment', lambda: None)
 @patch.dict('os.environ', {}, clear=True)
 def test_send_email_no_project():
     """Test email sending when missing OPENONION_API_KEY."""
@@ -140,7 +140,7 @@ def test_send_email_rejects_a_foreign_account_before_post(monkeypatch):
 
 @patch.dict('os.environ', {}, clear=True)
 @patch('requests.post')
-def test_send_email_finds_the_project_env_from_a_deep_subdirectory(
+def test_send_email_uses_explicit_env_from_a_deep_subdirectory(
     mock_post, tmp_path, monkeypatch
 ):
     project = tmp_path / "project"
@@ -160,6 +160,8 @@ def test_send_email_finds_the_project_env_from_a_deep_subdirectory(
         json=lambda: {"message_id": "project-message"},
     )
 
+    from connectonion.environment import select_env_file
+    select_env_file(project / ".env")
     result = send_email("test@example.com", "Subject", "Message")
 
     assert result["success"] is True
@@ -211,6 +213,8 @@ def test_send_email_keeps_process_environment_precedence(
         json=lambda: {"message_id": "process-message"},
     )
 
+    from connectonion.environment import select_env_file
+    select_env_file(project / ".env")
     result = send_email("test@example.com", "Subject", "Message")
 
     assert result["success"] is True
