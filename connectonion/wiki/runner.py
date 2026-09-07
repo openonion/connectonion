@@ -144,11 +144,19 @@ def read_rate_limits() -> dict:
     for name, pool in pools.items():
         if not isinstance(pool, dict):
             continue
-        weekly = max((w for w in (pool.get("primary"), pool.get("secondary")) if isinstance(w, dict)),
-                     key=lambda w: w.get("windowDurationMins", 0), default=None)
-        if weekly:
-            meters[name] = {"used_percent": weekly.get("usedPercent"), "window_minutes": weekly.get("windowDurationMins"),
-                            "resets_at": weekly.get("resetsAt"), "label": pool.get("limitName") or name}
+        windows = [w for w in (pool.get("primary"), pool.get("secondary")) if isinstance(w, dict)]
+        if not windows:
+            continue
+        # Report every window, not just the longest. A pool can have a short
+        # window that refreshes in hours and a weekly one that is the real wall;
+        # a gate that watched only one would misjudge how much is left. The
+        # binding percentage is the highest used across a pool's windows.
+        by_window = {w.get("windowDurationMins"): {"used_percent": w.get("usedPercent"),
+                                                   "resets_at": w.get("resetsAt")} for w in windows}
+        binding = max(windows, key=lambda w: w.get("usedPercent") or 0)
+        meters[name] = {"used_percent": binding.get("usedPercent"), "window_minutes": binding.get("windowDurationMins"),
+                        "resets_at": binding.get("resetsAt"), "label": pool.get("limitName") or name,
+                        "windows": by_window}
     return meters
 
 
