@@ -59,6 +59,18 @@ sync), that sync completed with exit 0 (2 new messages, 3 pages changed) and
 `last exit code = 0`; `co wiki stop` then removed the job and the file, and
 `launchctl print` no longer knows the label. Nothing remains installed.
 
+### Prompt scorecard (`tests/e2e/real_api/wiki_prompt_eval.py`, 2026-09-07/08)
+
+Nine synthetic scenarios, deterministic checks, real maintainer. Each row is one
+(model, scenario) run; a scenario passes only if every check passes.
+
+| model | result | notes |
+|---|---|---|
+| `gpt-5.3-codex-spark`, first prompt | 4/8 | two "failures" were refusals for a bad category name (fixed by an enum in the tool schema); a standing rule went to `decisions/`; tool chatter was written down |
+| `gpt-5.6-luna`, first prompt | 1/8 | wrote nothing: `code_mode_host=false` hid the tools |
+| `gpt-5.6-luna`, current prompt | **9/9** | 6–42 s and 11k–94k input tokens per scenario; the 120-message session went through extraction (2 turns, 68k tokens) |
+| `gpt-5.3-codex-spark`, current prompt | not rerun | the day's Spark allowance was exhausted before the prompt fixes landed |
+
 ### Models a ChatGPT-account Codex can run as the maintainer (2026-09-07)
 
 Through `codex app-server` with `allowProviderModelFallback: false`: Spark
