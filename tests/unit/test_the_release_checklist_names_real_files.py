@@ -71,6 +71,8 @@ def _paths_named() -> list:
                 continue
             if token.startswith(("docs-site/", "lib/")):  # the sibling repo
                 continue
+            if re.fullmatch(r"release/\d+\.\d+(?:\.x)?", token):
+                continue  # maintenance Git branch names in the release policy
             if "/" in token or token.endswith((".py", ".md", ".toml", ".json", ".tsx")):
                 found.append(token)
     return found
