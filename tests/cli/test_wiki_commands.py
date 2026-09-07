@@ -234,3 +234,11 @@ def test_scheduled_sync_is_quiet_when_no_slot_is_due(lifecycle):
     result = invoke(root, "--json", "sync", "--scheduled")
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["data"]["due"] is False
+
+
+def test_sync_all_is_the_backfill(lifecycle):
+    root, sessions, calls = lifecycle
+    assert invoke(root, "start", "--yes").exit_code == 0
+    result = invoke(root, "--json", "sync", "--all")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["outcome"] == "caught_up"

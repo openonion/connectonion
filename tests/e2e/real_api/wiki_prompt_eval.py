@@ -238,6 +238,8 @@ def run_scenario(scenario: Scenario, model: str, workdir: Path) -> dict:
                 failures.append(f"run {record['outcome']}: {record.get('error')}")
             for refusal in record.get("refusals", []):
                 failures.append(f"refused: {refusal}")
+            if failures and record.get("report"):
+                failures.append(f"model said: {record['report'][:300]!r}")
         usage = {k: sum((r.get("usage") or {}).get(k, 0) for r in records)
                  for k in ("input_tokens", "output_tokens")}
         return {"model": model, "scenario": scenario.name, "passed": not failures, "failures": failures,

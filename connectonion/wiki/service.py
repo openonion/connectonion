@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from .config import prepare, read_config, validate
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
-from .source import collect, pending_metadata
+from .source import KINDS, collect, pending_metadata
 
 
 def now() -> datetime:
@@ -25,17 +25,34 @@ def codex_sessions_root() -> Path:
     return Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser().resolve() / "sessions"
 
 
+def claude_projects_root() -> Path:
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))).expanduser().resolve() / "projects"
+
+
+# How far back a first start reads, and the most a custom scope may ask for.
+# Two months is enough history for the notebook to have a shape on day one;
+# coding sessions older than half a year describe work that has moved on, while
+# mail keeps its value for years (people, commitments, what was agreed).
+DEFAULT_LOOKBACK_DAYS = 60
+MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730}
+
+
 def subscriptions(root: Path) -> dict:
     saved = read_json(state_path(root, "subscriptions.json"), {})
     if not isinstance(saved, dict):
         raise WikiError("Invalid subscriptions file; preserve it for diagnosis")
+    since = (now() - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
     defaults = {
         "codex": {"id": "codex", "kind": "codex", "root": str(codex_sessions_root()),
-                  "project": None, "since": (now() - timedelta(days=7)).isoformat(),
+                  "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["codex"],
                   "enabled": True, "consented": False, "adapter": "available"},
-        "claude-code": {"id": "claude-code", "enabled": True, "consented": False, "adapter": "deferred"},
-        "gmail": {"id": "gmail", "enabled": False, "consented": False, "adapter": "deferred"},
-        "outlook": {"id": "outlook", "enabled": False, "consented": False, "adapter": "deferred"},
+        "claude-code": {"id": "claude-code", "kind": "claude-code", "root": str(claude_projects_root()),
+                        "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["claude-code"],
+                        "enabled": True, "consented": False, "adapter": "available"},
+        "gmail": {"id": "gmail", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["gmail"],
+                  "enabled": False, "consented": False, "adapter": "deferred"},
+        "outlook": {"id": "outlook", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["outlook"],
+                    "enabled": False, "consented": False, "adapter": "deferred"},
     }
     defaults.update(saved)
     return defaults
@@ -48,7 +65,7 @@ def approve_sources(root: Path) -> None:
         validate(read_config(root))
         sources = subscriptions(root)
         for source in sources.values():
-            if source.get("kind") == "codex" and source.get("enabled"):
+            if source.get("kind") in KINDS and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat()})
@@ -60,13 +77,16 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", si
         sources = subscriptions(root)
         if project:
             if name != "codex" or not re.fullmatch(r"[1-9]\d*d", since):
-                raise WikiError("Custom scopes require codex and a lookback such as 7d")
+                raise WikiError("Custom scopes require codex and a lookback such as 60d")
+            days, cap = int(since[:-1]), MAX_LOOKBACK_DAYS["codex"]
+            if days > cap:
+                raise WikiError(f"Lookback for codex sessions is capped at {cap} days; use --since {cap}d or less")
             project = str(Path(project).expanduser().resolve())
             name = "codex-" + hashlib.sha256(project.encode()).hexdigest()[:12]
             if name not in sources:
                 sources[name] = {**sources["codex"], "id": name, "project": project,
                                  "consented": False,
-                                 "since": (now() - timedelta(days=int(since[:-1]))).isoformat()}
+                                 "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
             raise WikiError("Subscription not found; inspect subscriptions for exact names")
         sources[name]["enabled"] = enabled
@@ -178,7 +198,7 @@ def consent_summary(root: Path) -> dict:
             state = "not implemented yet"
         elif not source.get("enabled"):
             state = "unsubscribed"
-        elif source.get("kind") == "codex":
+        elif source.get("kind") in KINDS:
             state = "will be read" if Path(source["root"]).is_dir() else "directory missing"
         else:
             state = "waiting"
@@ -250,18 +270,38 @@ def _selected_sources(root: Path, selector: str) -> dict:
         if sources[selector].get("adapter") == "deferred":
             raise WikiError("This source adapter is deferred to a later milestone")
     return {name: source for name, source in sources.items()
-            if source.get("enabled") and source.get("kind") == "codex"}
+            if source.get("enabled") and source.get("kind") in KINDS}
 
 
 def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: bool = False,
-             runner=None) -> dict | None:
+             all_pending: bool = False, runner=None, _uncapped: bool = False) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
     come due since the last scheduled batch, otherwise return None at once, with
     no lock taken and nothing read. Stopped notebooks tick to nothing.
+
+    `all_pending` is the backfill: batch after batch, oldest material first,
+    until nothing is pending. It is user-initiated and explicit, so the daily
+    attempt cap -- a guard against unattended runaway -- does not apply; a
+    failed batch stops it, as does a refusal to start.
     """
     root = root.resolve()
+    if all_pending:
+        records = []
+        while True:
+            record = run_sync(root, source=source, runner=runner, _uncapped=True)
+            if record["outcome"] == "no_change":
+                break
+            records.append(record)
+            if record["outcome"] != "completed":
+                break
+        outcome = "caught_up" if not records or records[-1]["outcome"] == "completed" else records[-1]["outcome"]
+        return {"outcome": outcome, "batches": len(records), "items": sum(r["items"] for r in records),
+                "changed": sorted({path for r in records for path in r.get("changed", [])}),
+                "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
+                          for key in ("input_tokens", "output_tokens", "cached_input_tokens")},
+                "runs": [r["id"] for r in records]}
     if scheduled:
         worker = worker_state(root)
         if not worker.get("enabled"):
@@ -288,7 +328,7 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise WikiError("Invalid source progress; preserve it for diagnosis")
-        return _sync_locked(root, selected, progress, config, runner)
+        return _sync_locked(root, selected, progress, config, runner, uncapped=_uncapped)
 
 
 @contextmanager
@@ -315,7 +355,7 @@ def _terminate_as_interrupt():
         signal.signal(signal.SIGTERM, previous)
 
 
-def _sync_locked(root, selected, progress, config, runner):
+def _sync_locked(root, selected, progress, config, runner, *, uncapped=False):
     from .runner import maintenance_instructions, run_codex, tool_specs
 
     items, updated, seen = [], dict(progress), set()
@@ -342,7 +382,7 @@ def _sync_locked(root, selected, progress, config, runner):
         write_json(state_path(root, "progress.json"), updated)
         write_json(path, record)
         return record
-    if status(root)["runner_attempts_today"] >= limits["runner_calls_per_day"]:
+    if not uncapped and status(root)["runner_attempts_today"] >= limits["runner_calls_per_day"]:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
     runner = runner or run_codex
     # A runner may carry a preflight (the native one checks login, binary and
@@ -354,7 +394,8 @@ def _sync_locked(root, selected, progress, config, runner):
     try:
         result = runner(Notebook(root), items, config)
         record.update(outcome="completed", usage=result.get("usage"), changed=result.get("changed", []),
-                      refused=result.get("refused", 0), refusals=result.get("refusals", []))
+                      refused=result.get("refused", 0), refusals=result.get("refusals", []),
+                      report=result.get("report", ""))
         write_json(state_path(root, "progress.json"), updated)
     except BaseException as error:
         record.update(outcome="interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else "failed",

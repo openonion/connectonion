@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
 from ..useful_tools.codex import CodexAppServer
-from .files import Notebook, WikiError
+from .files import CATEGORIES, Notebook, WikiError
 
 
 class RunFailed(WikiError):
@@ -26,11 +26,15 @@ def maintenance_instructions() -> str:
 
 
 def tool_specs() -> list[dict]:
+    # The category is an enum, not free text: Spark passed "skills/candidates" and
+    # "people/" as categories and was refused, which cost a round-trip each time.
+    category = {"type": "string", "enum": list(CATEGORIES),
+                "description": "One of the notebook's top-level categories; omit to cover all of them."}
     definitions = [
-        ("wiki_list", "List current Markdown record paths; optional category.", {"category": {"type": "string"}}, []),
-        ("wiki_search", "Find records whose lines contain this text (case-insensitive); optional category. "
-         "Use it to find an existing page for a person, project or topic before creating one.",
-         {"query": {"type": "string"}, "category": {"type": "string"}}, ["query"]),
+        ("wiki_list", "List current Markdown record paths, optionally within one category.", {"category": category}, []),
+        ("wiki_search", "Find records whose lines contain this text (case-insensitive), optionally within one "
+         "category. Use it to find an existing page for a person, project or topic before creating one.",
+         {"query": {"type": "string"}, "category": category}, ["query"]),
         ("wiki_read", "Read an existing Markdown record.", {"path": {"type": "string"}}, ["path"]),
         ("wiki_write", "Create or replace a Markdown record immediately.",
          {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
@@ -158,6 +162,7 @@ class WikiServer(CodexAppServer):
         self.file_operation_failed = False
         self.refused = 0
         self.refusals = []  # safe WikiError texts, kept so the prompt can be tuned from real runs
+        self.report = ""    # the model's own closing message, capped; how a silent run explains itself
 
     def initialize(self, timeout=30):
         self.request("initialize", {"clientInfo": {"name": "co_wiki", "version": "1"},
@@ -196,6 +201,11 @@ class WikiServer(CodexAppServer):
                      if type(total.get(key)) is int and total[key] >= 0}
             self.usage = known or None  # Fresh ephemeral thread: total is this run, not a delta.
         else:
+            item = params.get("item", {}) if method == "item/completed" else {}
+            if item.get("type") == "agentMessage":
+                text = item.get("text") or item.get("content") or ""
+                if isinstance(text, str):
+                    self.report = text[:1000]
             super()._handle_notification(method, params)
 
 
@@ -266,11 +276,15 @@ def run_codex(notebook: Notebook, items: list[dict], config: dict) -> dict:
             turn = server.run_turn(response["thread"]["id"], prompt, cwd=directory,
                                    timeout=config["limits"]["timeout_seconds"])
             if turn.get("status") != "completed":
-                raise WikiError("Native Codex maintenance did not complete")
+                # The provider's own reason (a 400 for an unsupported model, a rate limit)
+                # is what makes a failed run diagnosable; it names no source content.
+                detail = turn.get("error")
+                detail = detail.get("message", "") if isinstance(detail, dict) else str(detail or "")
+                raise WikiError(f"Native Codex maintenance did not complete ({turn.get('status')}): {detail[:300]}")
             if server.file_operation_failed:
                 raise WikiError("A notebook operation failed; source progress was preserved")
             return {"usage": server.usage, "changed": sorted(file_tools.changed),
-                    "refused": server.refused, "refusals": server.refusals}
+                    "refused": server.refused, "refusals": server.refusals, "report": server.report}
         except KeyboardInterrupt as error:
             error.usage = server.usage
             error.changed = sorted(file_tools.changed)

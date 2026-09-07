@@ -4,12 +4,13 @@
 import pytest
 
 from connectonion.wiki.config import default_config, prepare
-from connectonion.wiki.files import Notebook, WikiError
+from connectonion.wiki.files import CATEGORIES, Notebook, WikiError
 from connectonion.wiki.runner import (
     FileTools,
     WikiServer,
     maintenance_instructions,
     thread_parameters,
+    tool_specs,
     verify_native_config,
 )
 
@@ -135,3 +136,10 @@ def test_search_tool_finds_existing_pages_without_reading_them_all(tmp_path):
     found = tools.call("wiki_search", {"query": "alice"})
     assert [hit["record"] for hit in found] == ["people/alice-chen.md"]
     assert {t["name"] for t in thread_parameters(str(tmp_path), default_config())["dynamicTools"]} >= {"wiki_search"}
+
+
+def test_category_arguments_are_an_enum_the_model_cannot_get_wrong():
+    """Spark passed 'skills/candidates' and 'people/' as categories and was refused each time."""
+    specs = {spec["name"]: spec for spec in tool_specs()}
+    for name in ("wiki_list", "wiki_search"):
+        assert specs[name]["inputSchema"]["properties"]["category"]["enum"] == list(CATEGORIES)

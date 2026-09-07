@@ -111,7 +111,8 @@ class Notebook:
 
     def list(self, category: str = "") -> list[str]:
         if category and category not in CATEGORIES:
-            raise WikiError(f"Unknown category; choose from {', '.join(CATEGORIES)}")
+            # Category names are ours, never private, so the offending value can be shown.
+            raise WikiError(f"Unknown category {category!r}; choose from {', '.join(CATEGORIES)}")
         result = []
         for name in (category,) if category else CATEGORIES:
             directory = safe_path(self.root, name)

@@ -159,15 +159,22 @@ def make_wiki_app(factory):
                   dry_run: bool = typer.Option(False, "--dry-run", help="Pending file metadata only; no body reads"),
                   scheduled: bool = typer.Option(False, "--scheduled",
                                                  help="Only if a saved time has come due since the last scheduled "
-                                                      "batch (what the background job passes); otherwise exit at once")):
+                                                      "batch (what the background job passes); otherwise exit at once"),
+                  all_pending: bool = typer.Option(False, "--all",
+                                                   help="Backfill: batch after batch, oldest first, until nothing is "
+                                                        "pending; not limited by the daily attempt cap")):
         """Run one bounded incremental batch now (does not enable the background schedule)."""
         from ...wiki.files import WikiError
         from ...wiki.service import run_sync
 
         def operation(root):
-            record = run_sync(root, source=source, dry_run=dry_run, scheduled=scheduled)
+            record = run_sync(root, source=source, dry_run=dry_run, scheduled=scheduled, all_pending=all_pending)
             if scheduled and record is None:
                 return {"due": False, "ran": False}, ["status"]
+            if all_pending:
+                if record["outcome"] not in ("caught_up",):
+                    raise WikiError(f"Backfill stopped after {record['batches']} batches: {record['outcome']}")
+                return record, ["status"]
             if dry_run:
                 return record, ["sync"]
             if record["outcome"] == "failed":

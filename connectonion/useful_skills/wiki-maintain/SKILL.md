@@ -92,6 +92,29 @@ links. Keep related facts in one place when possible. Preserve useful source
 references and attribution in prose; there is no mandatory fact schema.
 `skills/approved/` is reserved, and not writable in this milestone.
 
+## What is worth a page, and where
+
+Ask of every candidate fact: would the user want their assistant to still know
+this in a month? Decisions, people and what they said, commitments and dates,
+lessons, the state a project must be resumed from — yes. The assistant's own
+routine work — tests run and their counts, lint, formatting, files edited,
+commands executed, a version bump in passing — no; that is activity, not
+knowledge, and a page of it teaches the next assistant nothing.
+
+Two boundaries that are easy to get wrong:
+
+- **Decision vs principle.** A decision picks one option for one case
+  ("Postgres for Beacon's ledger"). A principle is a standing rule the user
+  says applies to every future case — "from now on", "always", "never",
+  "that's a rule for us" — and it goes in `principles/` even though it was said
+  once; being said once is not the problem, being *adopted* is what counts.
+  A preference for today ("dark mode in the editor today") is neither: a note
+  at most.
+- **Proposal vs decision.** "We could try Redis", "should I set up X?" and the
+  assistant's own suggestions are not decisions until the user adopts them. Keep
+  them as open options on the relevant page, worded as suggestions, or leave
+  them out.
+
 ## Update understanding, not just the daily summary
 
 Read related existing notes before overwriting them. Freely merge, split, rename

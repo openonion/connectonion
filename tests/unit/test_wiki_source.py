@@ -132,15 +132,17 @@ def test_oversized_single_message_is_truncated_and_progress_advances(tmp_path):
     assert batch.progress["2026/09/07/rollout-big-message.jsonl"]["offset"] > 0
 
 
-def test_newest_sessions_are_consumed_first(tmp_path):
-    """On first start the backlog is a week deep; the notebook should be useful today, not in June."""
-    old, new = tmp_path / "2026/09/01/rollout-a.jsonl", tmp_path / "2026/09/07/rollout-b.jsonl"
+def test_oldest_sessions_are_consumed_first(tmp_path):
+    """The notebook grows the way the user's understanding did: a backfill walks the
+    lookback from its start forward, so later sessions revise earlier pages rather
+    than earlier sessions overwriting later ones."""
+    old, new = tmp_path / "2026/09/07/rollout-b.jsonl", tmp_path / "2026/09/01/rollout-a.jsonl"
     rollout(old, [("user", "old news")])
     rollout(new, [("user", "fresh news")])
-    os.utime(old, (1_790_000_000, 1_790_000_000))
+    os.utime(old, (1_790_000_000, 1_790_000_000))   # path order says otherwise; mtime decides
     os.utime(new, (1_790_500_000, 1_790_500_000))
     batch = collect(subscription(tmp_path), {}, 1, 10000)
-    assert [item["text"] for item in batch.items] == ["fresh news"]
+    assert [item["text"] for item in batch.items] == ["old news"]
 
 
 def test_codex_injected_blocks_are_not_user_messages(tmp_path):
@@ -153,3 +155,43 @@ def test_codex_injected_blocks_are_not_user_messages(tmp_path):
                    ("assistant", "noted")])
     batch = collect(subscription(tmp_path), {}, 10, 10000)
     assert [item["text"] for item in batch.items] == ["Note for the record: Aurora uses Markdown.", "noted"]
+
+
+def claude_transcript(path, rows):
+    """Rows as Claude Code writes them: one JSON object per line, message.content str or blocks."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for index, (kind, content, extra) in enumerate(rows):
+        row = {"type": kind, "timestamp": f"2026-09-07T05:{index:02d}:00.000Z", "cwd": "/work/demo",
+               "sessionId": "sess-1", "uuid": f"u{index}", "userType": "external",
+               "message": {"role": kind, "content": content}, **extra}
+        lines.append(json.dumps(row, ensure_ascii=False))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_claude_code_transcript_yields_only_what_the_two_of_them_said(tmp_path):
+    file = tmp_path / "-Users-me-projects" / "abc.jsonl"
+    claude_transcript(file, [
+        ("file-history-snapshot", "", {"message": None}),
+        ("user", "<command-message>loop</command-message>\n<command-name>/loop</command-name>", {}),
+        ("user", "Alice prefers email over calls.", {}),
+        ("user", [{"type": "tool_result", "tool_use_id": "t1", "content": "42 passed"}], {}),
+        ("user", [{"type": "text", "text": "Base directory for this skill: /x"}], {"isMeta": True}),
+        ("assistant", [{"type": "thinking", "thinking": "hmm"}], {}),
+        ("assistant", [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}], {}),
+        ("assistant", [{"type": "text", "text": "Noted: Alice prefers email."}], {}),
+        ("user", "[Image: original 1080x2348]", {"isMeta": True}),
+    ])
+    sub = {**subscription(tmp_path), "kind": "claude-code"}
+    batch = collect(sub, {}, 10, 10000)
+    assert [(i["role"], i["text"]) for i in batch.items] == [
+        ("user", "Alice prefers email over calls."), ("assistant", "Noted: Alice prefers email.")]
+    assert batch.items[0]["project"] == "/work/demo"
+    assert batch.items[0]["source"].startswith("claude-code:sess-1:")
+
+
+def test_hyphenated_injected_tags_are_scaffolding_too(tmp_path):
+    file = tmp_path / "2026/09/07/rollout-a.jsonl"
+    rollout(file, [("user", "<permissions_instructions>\nyou may...</permissions_instructions>"),
+                   ("user", "<command-name>/loop</command-name>"), ("user", "real words")])
+    assert [i["text"] for i in collect(subscription(tmp_path), {}, 10, 10000).items] == ["real words"]

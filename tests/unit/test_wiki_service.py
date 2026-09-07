@@ -302,3 +302,49 @@ def test_scheduled_sync_runs_once_per_slot_and_coalesces_missed_ones(tmp_path, m
     assert run_sync(root, scheduled=True, runner=_runner_recording(calls))["outcome"] == "completed"
     assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None  # one catch-up, not two
     assert len(calls) == 2
+
+
+def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from connectonion.wiki.service import subscriptions, toggle_source
+    fixed = datetime(2026, 9, 7, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: fixed)
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: tmp_path / "sessions")
+    root = tmp_path / "wiki"
+    prepare(root)
+    since = datetime.fromisoformat(subscriptions(root)["codex"]["since"])
+    assert since == fixed - timedelta(days=60)
+    assert subscriptions(root)["gmail"]["max_lookback_days"] == 730
+    assert subscriptions(root)["codex"]["max_lookback_days"] == 180
+    toggle_source(root, "codex", True, project=str(tmp_path), since="180d")  # at the cap: fine
+    with pytest.raises(WikiError, match="180"):
+        toggle_source(root, "codex", True, project=str(tmp_path / "other"), since="400d")
+
+
+def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(wiki):
+    root, sessions = wiki
+    set_config(root, ["limits.items_per_batch", "2", "limits.runner_calls_per_day", "1"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    calls = []
+
+    def runner(notebook, items, config):
+        calls.append(len(items))
+        return {"usage": None, "changed": []}
+    summary = run_sync(root, all_pending=True, runner=runner)
+    assert calls == [2, 2, 2, 1]
+    assert summary["batches"] == 4 and summary["items"] == 7 and summary["outcome"] == "caught_up"
+    assert run_sync(root, all_pending=True, runner=runner)["batches"] == 0
+
+
+def test_claude_code_is_a_real_default_source(tmp_path, monkeypatch):
+    from connectonion.wiki.service import subscriptions
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: tmp_path / "codex")
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "claude")
+    root = tmp_path / "wiki"
+    prepare(root)
+    claude = subscriptions(root)["claude-code"]
+    assert claude["adapter"] == "available" and claude["kind"] == "claude-code"
+    assert claude["root"] == str(tmp_path / "claude")
+    approve_sources(root)
+    assert subscriptions(root)["claude-code"]["consented"] is True
