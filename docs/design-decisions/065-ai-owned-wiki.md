@@ -112,10 +112,14 @@ access once, and start background organization. **Do not ship a command called
 worker/login wrapper and HTML reader are subsequent work; any command depending
 on them remains explicitly unshipped until it works.
 
-The first PR may contain tested internal orchestration and read-only CLI
-inspection before the full start path is ready. Document that as an incomplete
-milestone rather than inventing a public `init`, temporary setup verb, or a
-second consent mechanism to make the command count look complete.
+The background lifecycle is the OS scheduler, not a worker of ours. `start`
+writes one per-user launchd job that runs `co wiki sync` at the six times and
+once at login; `sync` carries the lock, the attempt cap and the checkpoint, so
+there is one implementation of the logic and one declarative file per OS. A
+process of our own would still need a per-OS login launcher and would sit on
+top of it. Other platforms get consent and manual `sync` until their job file
+exists. The consent summary is shown before any body is read, and a
+noninteractive first start refuses rather than consenting silently.
 
 Default Claude Code and authenticated email subscriptions remain the product
 policy. Implementing only the Codex adapter first must not display the others

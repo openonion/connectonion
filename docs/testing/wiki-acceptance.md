@@ -33,7 +33,38 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | A 400 MB rollout does not block the source | `test_huge_rollout_is_streamed_not_refused`, `test_files_older_than_the_lookback_are_not_opened` | Passing; the consumed prefix is re-hashed in chunks, at most `SCAN_BYTES_PER_PASS` of tail is walked per pass, and files last written before the lookback are never opened |
 | One oversized message cannot wedge a session forever | `test_oversized_single_message_is_truncated_and_progress_advances` | Passing; the head is kept with a visible truncation note and progress advances |
 | `open` renders a self-contained page outside the notebook | `tests/unit/test_wiki_reader.py`, CLI tests | Passing; note markup is inert (JSON-escaped), no remote assets, temp file 0600, planted symlink refused, notebook bytes untouched. Rendered in headless Chromium with no JS errors |
-| Start/stop, scheduled slots, catch-up, process ownership | Separate worker milestone | Deferred; no foreground-only `start` substitute |
+| Declined start reads nothing and installs nothing | `test_declined_start_reads_nothing_and_installs_nothing`, `test_noninteractive_start_cannot_consent_silently` | Passing; the summary names the exact directory before any body is read |
+| First start consents once, installs the clock, runs one batch; repeat start asks nothing and reruns nothing | `test_first_start_consents_installs_and_runs_one_batch_then_repeat_start_does_not_rerun`, `test_start_yes_then_stop` | Passing with an injected scheduler and runner |
+| Stop removes the job; manual sync still works; consent stays | `test_stop_disables_background_but_manual_sync_still_works` | Passing |
+| The launchd job file: six slots, sync as the program, PATH that finds codex, private mode, idempotent reload | `tests/unit/test_wiki_schedule.py` | Passing with an injected `launchctl`; live `bootstrap`/`print`/`bootout` exercised by hand on 2026-09-07 (see below) |
+| Stop works while the job's own batch holds the lock | `test_stop_does_not_wait_for_a_running_batch` | Passing; found live — the first `stop` after a live install failed with "Wiki is busy" because loading the job fires its run-at-load batch at once |
+| First batch runs before the clock is installed | `test_first_batch_runs_before_the_clock_is_installed` | Passing; same finding — otherwise the foreground batch and the run-at-load batch race |
+| SIGTERM (bootout / stop) closes the run as interrupted | `test_sigterm_during_a_batch_is_recorded_as_interrupted` | Passing; checkpoint not advanced |
+| Sleep catch-up, skipped-when-busy | launchd semantics, not our code | Relied on, documented in `schedule.py`; not tested here |
+
+### Live launchd round-trip (2026-09-07, this machine)
+
+`co wiki --root <scratch> start --yes` on a notebook that already had consent:
+plist written 0600 under `~/Library/LaunchAgents/ai.openonion.co-wiki.<hash>.plist`,
+`launchctl print` reported `state = active` within seconds (run-at-load fired a
+sync), that sync completed with exit 0 (2 new messages, 3 pages changed) and
+`last exit code = 0`; `co wiki stop` then removed the job and the file, and
+`launchctl print` no longer knows the label. Nothing remains installed.
+
+### Dogfood on the author's own sessions (2026-09-07)
+
+Two runs of six batches over `~/.codex/sessions` (7-day lookback, real Codex +
+Spark, scratch root, nothing written under `~/.co`):
+
+- Run 1 (first prompt, oldest file first): 119 messages → 6 pages, 2.5M input
+  tokens (90% cached), 87k output, 40–60 s per batch. All six batches came from
+  one session; the model named the project after the session's directory,
+  four pages restated the same status, and `Sources` lines carried 15–19 ids.
+- Run 2 (revised prompt, newest first, `wiki_search`): 118 messages → 9 pages,
+  2.6M input tokens (88% cached), 87k output. Pages from that day's sessions,
+  projects named by content, `Sources` lines 4–8 ids. Six refusals, five of
+  them "context limit reached" while reading existing pages — the reason the
+  default `input_chars_per_batch` moved from 60k to 200k.
 
 Rerun these tests after changes and record final results in the PR. A fake runner
 that writes the expected sentence tests orchestration, not model reasoning;
@@ -53,8 +84,18 @@ report these separately.
 - Ruff on new Wiki modules/tests: passed. Wheel build with existing local build
   dependencies: passed; all six Wiki modules, the command module, and both Skills
   are included; no bytecode is packaged. Nothing was published or installed.
-- Both Skills pass static `quick_validate.py`. The fresh-model text-only CLI tip
-  test below was **not run**.
+- Both Skills pass static `quick_validate.py`.
+- Fresh-model tip test (2026-09-07, `co/gemini-3.7-flash`, the model saw only
+  the captured output; replies were graded, never executed):
+
+  | captured output | goal given | model replied | pass |
+  |---|---|---|---|
+  | `sync` before consent (exit 1, tip names `start`) | get the notebook to start collecting your sessions | `co wiki --root … start` | yes |
+  | `show people/alice.md` on a missing page (exit 1) | read a page about a person named Alice | `co wiki --root … list people` | yes |
+  | `status` before start | see the recent maintenance runs | `co wiki --root … logs` | yes |
+
+  `--help` and the `wiki-use` Skill were diffed both ways: every command in one
+  is in the other.
 - No personal session bodies were read, no Wiki model inference was invoked,
   and no background worker was installed during verification.
 

@@ -30,8 +30,11 @@ def default_config() -> dict:
     return {"version": 1, "runner": "codex", "model": "gpt-5.3-codex-spark",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone()},
+            # input_chars_per_batch bounds the source messages plus every notebook page
+            # the runner reads back. At 60k the reads ran out five times in six real
+            # batches (2026-09-07); 200k is ~50k tokens, small for the runner models.
             "limits": {"runner_calls_per_day": 6, "items_per_batch": 20,
-                       "input_chars_per_batch": 60000, "timeout_seconds": 600}}
+                       "input_chars_per_batch": 200000, "timeout_seconds": 600}}
 
 
 def validate(config: dict) -> dict:

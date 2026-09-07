@@ -4,7 +4,10 @@ import hashlib
 import json
 import os
 import re
+import signal
+import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -88,11 +91,43 @@ def run_logs(root: Path, run_id: str = "") -> list[dict]:
     return sorted(records, key=lambda record: record["started_at"], reverse=True)
 
 
+def worker_state(root: Path) -> dict:
+    saved = read_json(state_path(root, "worker.json"), {})
+    return saved if isinstance(saved, dict) else {}
+
+
+def next_slot(config: dict, zone) -> str | None:
+    """The next configured time after now, in the saved zone; None without a timezone."""
+    times = config.get("schedule", {}).get("times", [])
+    if not times or zone is timezone.utc and not config.get("schedule", {}).get("timezone"):
+        return None
+    current = now().astimezone(zone)
+    candidates = []
+    for day in (0, 1):
+        for value in times:
+            hour, minute = (int(part) for part in value.split(":"))
+            slot = (current + timedelta(days=day)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if slot > current:
+                candidates.append(slot)
+    return min(candidates).isoformat(timespec="minutes") if candidates else None
+
+
+def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
+    if not state_path(root, "consent.json").is_file():
+        return "Not started — run `co wiki start` to authorize sources and begin", None
+    worker = worker_state(root)
+    if worker.get("enabled"):
+        slot = next_slot(config, zone)
+        return f"Running in background ({worker.get('scheduler', 'scheduler')}); next slot {slot or 'unknown'}", slot
+    return "Stopped — background maintenance is off; `co wiki sync` works by hand, `co wiki start` resumes", None
+
+
 def status(root: Path) -> dict:
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = ZoneInfo(saved_zone) if saved_zone else timezone.utc
     today = now().astimezone(zone).date()
+    state, slot = _state_line(root, config, zone)
     logs = run_logs(root)
     recent = [record for record in logs
               if datetime.fromisoformat(record["started_at"]).astimezone(zone).date() == today]
@@ -104,13 +139,82 @@ def status(root: Path) -> dict:
         known = [value for value in values if type(value) is int and value >= 0]
         usage[key] = sum(known) if known else None
         coverage[key] = {"known_attempts": len(known), "total_attempts": len(attempted)}
-    return {"state": "Not started — background worker not implemented in this milestone",
+    return {"state": state,
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
-            "schedule_times": config.get("schedule", {}).get("times", []), "next_run": None,
+            "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
+            "worker": worker_state(root),
             "batches_today": len(recent), "runner_attempts_today": len(attempted),
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": logs[0] if logs else None}
+
+
+def consent_summary(root: Path) -> dict:
+    """Everything `start` must show before a single source body is read."""
+    config = read_config(root)
+    sources = {}
+    for name, source in subscriptions(root).items():
+        if source.get("adapter") == "deferred":
+            state = "not implemented yet"
+        elif not source.get("enabled"):
+            state = "unsubscribed"
+        elif source.get("kind") == "codex":
+            state = "will be read" if Path(source["root"]).is_dir() else "directory missing"
+        else:
+            state = "waiting"
+        sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
+                         "since": source.get("since")}
+    return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
+            "model_receives": "the new session messages plus the notebook pages it reads, "
+                              "through your own Codex login (no API key, no OpenOnion server)",
+            "schedule": config["schedule"], "limits": config["limits"],
+            "background": "a launchd job under your user at the times above, and one bounded batch at login"}
+
+
+def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
+    """Prepare what is missing, confirm access once, install the clock, run the first batch.
+
+    `confirm` receives the summary and returns True to proceed. Declining leaves
+    every source body unread and installs nothing. A repeated start re-applies
+    the schedule but does not ask again and does not repeat the initial batch.
+    """
+    root = root.resolve()
+    with maintenance_lock(root):
+        prepare(root)
+        validate(read_config(root))
+    first = not state_path(root, "consent.json").is_file()
+    if first:
+        if not confirm(consent_summary(root)):
+            return {"started": False, "consented": False, "first_batch": None}
+        approve_sources(root)
+    # The first batch runs before the clock is installed: loading a launchd job
+    # fires its run-at-load batch immediately, and two batches would race for the
+    # notebook lock, with the one the user is watching likely to lose.
+    first_batch = run_sync(root, runner=runner) if first else None
+    try:
+        installed = scheduler.install(root, read_config(root))
+    except WikiError:
+        # Consent stands -- the user gave it -- and manual sync works; only the clock is missing.
+        write_json(state_path(root, "worker.json"), {"enabled": False, "scheduler": "none",
+                                                     "installed_at": None, "stopped_at": None})
+        raise
+    write_json(state_path(root, "worker.json"), {"enabled": True, **installed,
+                                                 "installed_at": now().isoformat(), "stopped_at": None})
+    return {"started": True, "consented": True, "first_batch": first_batch, **installed}
+
+
+def stop(root: Path, *, scheduler) -> dict:
+    """Turn the clock off and remember that; content, consent and manual sync stay.
+
+    No notebook lock here: the batch the job itself started may be holding it,
+    and stopping that batch is the point. Removing the job terminates it, and
+    the worker file is a single atomic write.
+    """
+    root = root.resolve()
+    scheduler.uninstall(root)
+    state = {**worker_state(root), "enabled": False, "stopped_at": now().isoformat()}
+    write_json(state_path(root, "worker.json"), state)
+    return state
 
 
 def _selected_sources(root: Path, selector: str) -> dict:
@@ -134,14 +238,38 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, runner=None
             name: pending_metadata(sub, progress.get(name, {}))
             for name, sub in _selected_sources(root, source).items()}}
     if not state_path(root, "consent.json").is_file():
-        raise WikiError("Source access is not authorized; the start/consent workflow is not shipped yet")
-    with maintenance_lock(root):
+        raise WikiError("Source access is not authorized yet; run `co wiki start` to review and confirm it")
+    with maintenance_lock(root), _terminate_as_interrupt():
         config = validate(read_config(root))
         selected = _selected_sources(root, source)
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise WikiError("Invalid source progress; preserve it for diagnosis")
         return _sync_locked(root, selected, progress, config, runner)
+
+
+@contextmanager
+def _terminate_as_interrupt():
+    """`launchctl bootout` (and `co wiki stop`) end a running batch with SIGTERM.
+
+    Left to the default action the process dies mid-write and the run record
+    stays "running" forever. Raising KeyboardInterrupt instead routes SIGTERM
+    through the same path as Ctrl-C: the record is closed as interrupted, the
+    checkpoint is not advanced. Only the main thread may own signal handlers.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def _sync_locked(root, selected, progress, config, runner):

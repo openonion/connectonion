@@ -6,11 +6,18 @@ not installation instructions for a released feature.
 
 ## Implemented on the draft branch
 
-This first PR exposes inspection, explicit configuration, and the local reader.
-It cannot yet collect sessions, remember a correction, or start background work
-through the CLI.
+The branch now covers the whole milestone-1 loop on macOS: confirm sources once,
+maintain in the background through launchd, inspect, open, stop.
 
 ```bash
+co wiki start
+co wiki start --yes
+co wiki stop
+co wiki sync
+co wiki sync --source codex
+co wiki sync --dry-run
+co wiki subscribe codex --project /path/to/project --since 30d
+co wiki unsubscribe codex
 co wiki
 co wiki status
 co wiki subscriptions
@@ -24,6 +31,18 @@ co wiki open
 co wiki open --no-launch
 co wiki doctor
 ```
+
+`start` prints the consent summary (exact session directory, lookback, model and
+where messages go, timezone and the six slots, limits, what the background job
+is) and asks once. In a pipe it refuses and asks for `--yes` after the summary
+has been read; it never consents silently. On the first confirmed start it
+installs a per-user launchd job that runs `co wiki sync` at the six times (and
+once at login, as the catch-up after a power-off), then runs the first bounded
+batch in the foreground so there is something to look at immediately. Repeating
+`start` re-applies the schedule without asking again or repeating that batch.
+`stop` removes the job and records it; consent, notes and manual `sync` remain.
+Background scheduling is macOS-only in this milestone; elsewhere `start` records
+consent and tells you to run `sync` yourself.
 
 `open` renders the whole notebook into one self-contained HTML file under the
 system temporary directory (mode 0600, named after the notebook root) and opens
@@ -117,9 +136,10 @@ Sleeping/off computers do not run; missed slots coalesce into at most one
 catch-up batch. A run is not promised at every slot when access/budget is missing
 or another batch is already active.
 
-The first implementation proves the foreground maintenance core before wiring
-this background lifecycle. It must not redefine `start` as a foreground-only
-alias just because the worker is not implemented yet.
+There is no worker process of ours: the OS clock (launchd) runs `sync`, which
+already carries the lock, the attempt cap and the checkpoint. A job still
+running when its next slot arrives is skipped by launchd, which is the
+one-batch-at-a-time rule for free.
 
 ## Reading and configuration
 

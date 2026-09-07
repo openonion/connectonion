@@ -39,7 +39,7 @@ def _handle(ctx, operation, recovery):
 
 
 def make_wiki_app(factory):
-    wiki = factory(help="Experimental local Wiki inspection; collection/start is not shipped yet.",
+    wiki = factory(help="A notebook your AI maintains from your Codex sessions: start, inspect, open, stop.",
                    no_args_is_help=False)
 
     @wiki.callback(invoke_without_command=True)
@@ -115,6 +115,73 @@ def make_wiki_app(factory):
             next_args = ["logs", "--run", records[0]["id"]] if records and not run_id else ["status"]
             return records, next_args
         _handle(ctx, operation, ["logs"])
+
+    @wiki.command("start")
+    def start_wiki(ctx: typer.Context,
+                   yes: bool = typer.Option(False, "--yes", help="Consent without a prompt (after reading the summary)")):
+        """Confirm source access once, install the background schedule, run the first batch."""
+        import sys
+
+        from ...wiki import schedule as wiki_schedule
+        from ...wiki.files import WikiError
+        from ...wiki.service import start
+
+        def confirm(summary):
+            text = json.dumps(summary, ensure_ascii=False, indent=2)
+            if yes:
+                return True
+            if not sys.stdin.isatty():
+                typer.echo(text, err=True)
+                typer.echo("Noninteractive first start cannot consent silently; read the summary above "
+                           "and run with --yes, or run `co wiki start` in a terminal.", err=True)
+                return False
+            typer.echo(text)
+            return typer.confirm("Read these sources with this model and schedule?", default=False)
+
+        def operation(root):
+            result = start(root, confirm=confirm, scheduler=wiki_schedule.default_scheduler())
+            if not result["started"]:
+                raise WikiError("Start was not confirmed; nothing was read or installed")
+            return result, ["status"]
+
+        _handle(ctx, operation, ["start", "--yes"] if not yes else ["doctor"])
+
+    @wiki.command("stop")
+    def stop_wiki(ctx: typer.Context):
+        """Turn background maintenance off; notes, consent and manual sync remain."""
+        from ...wiki import schedule as wiki_schedule
+        from ...wiki.service import stop
+        _handle(ctx, lambda root: (stop(root, scheduler=wiki_schedule.default_scheduler()), ["start"]), ["status"])
+
+    @wiki.command("sync")
+    def sync_wiki(ctx: typer.Context,
+                  source: str = typer.Option("", "--source", help="Only this subscription"),
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Pending file metadata only; no body reads")):
+        """Run one bounded incremental batch now (does not enable the background schedule)."""
+        from ...wiki.service import run_sync
+
+        def operation(root):
+            record = run_sync(root, source=source, dry_run=dry_run)
+            if dry_run:
+                return record, ["sync"]
+            return record, ["logs", "--run", record["id"]]
+        _handle(ctx, operation, ["start"])
+
+    @wiki.command("subscribe")
+    def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook"),
+                  project: str = typer.Option("", "--project", help="Codex only: scope to sessions run in this directory"),
+                  since: str = typer.Option("7d", "--since", help="Initial lookback for a new project scope, e.g. 30d")):
+        """Enable or restore a source; bodies are read only after `start` has been confirmed."""
+        from ...wiki.service import toggle_source
+        _handle(ctx, lambda root: ({"subscription": toggle_source(root, name, True, project=project, since=since),
+                                    "enabled": True}, ["subscriptions"]), ["subscriptions"])
+
+    @wiki.command("unsubscribe")
+    def unsubscribe(ctx: typer.Context, name: str = typer.Argument(..., help="Name from `co wiki subscriptions`")):
+        """Stop future reads from this source for good; existing notes stay."""
+        from ...wiki.service import toggle_source
+        _handle(ctx, lambda root: ({"subscription": toggle_source(root, name, False), "enabled": False},
+                                   ["subscriptions"]), ["subscriptions"])
 
     @wiki.command("open")
     def open_page(ctx: typer.Context,

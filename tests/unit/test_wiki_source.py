@@ -130,3 +130,14 @@ def test_oversized_single_message_is_truncated_and_progress_advances(tmp_path):
     assert "truncated" in batch.items[0]["text"]
     assert len(json.dumps(batch.items[0], ensure_ascii=False)) <= 1200
     assert batch.progress["2026/09/07/rollout-big-message.jsonl"]["offset"] > 0
+
+
+def test_newest_sessions_are_consumed_first(tmp_path):
+    """On first start the backlog is a week deep; the notebook should be useful today, not in June."""
+    old, new = tmp_path / "2026/09/01/rollout-a.jsonl", tmp_path / "2026/09/07/rollout-b.jsonl"
+    rollout(old, [("user", "old news")])
+    rollout(new, [("user", "fresh news")])
+    os.utime(old, (1_790_000_000, 1_790_000_000))
+    os.utime(new, (1_790_500_000, 1_790_500_000))
+    batch = collect(subscription(tmp_path), {}, 1, 10000)
+    assert [item["text"] for item in batch.items] == ["fresh news"]

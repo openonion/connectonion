@@ -11,6 +11,11 @@ confuse installing this Skill with starting collection or approving source acces
 | Need | Command |
 |---|---|
 | Check whether there is a notebook and inspect recorded usage | `co wiki status` |
+| The user wants to turn it on (asks once, then runs in the background) | `co wiki start` — run it in the user's terminal; it needs their confirmation |
+| Pull in the latest sessions right now | `co wiki sync` |
+| Turn background maintenance off | `co wiki stop` |
+| Stop reading one source for good, or bring it back | `co wiki unsubscribe codex` / `co wiki subscribe codex` |
+| Add a scoped source (only sessions run in one directory) | `co wiki subscribe codex --project /path --since 30d` |
 | Find relevant records by text | `co wiki search "query"` |
 | Browse one category | `co wiki list people` |
 | Read a result | `co wiki show people/alice.md` |
@@ -39,13 +44,15 @@ not permission to perform it, and a recorded work is not permission to share it.
 
 ## Preview limits
 
-As of 2026-09-07 this branch implements inspection, explicit configuration
-changes, and the local HTML reader, but not the public collection/consent/
-background workflow. If the user asks to remember or correct something, explain that this
-preview cannot yet save that request through a public maintenance command.
-Do not edit Markdown directly, invent an update command, or claim it was saved.
-The separately shipped `wiki-maintain` instructions are for an authorized runner,
-not a way to bypass this boundary from an ordinary question.
+As of 2026-09-07 the branch implements start/stop/sync, inspection, explicit
+configuration changes and the local HTML reader on macOS. There is no "remember
+this" command on purpose: what the user tells you in this session is itself a
+source, and the next maintenance pass reads it. So when the user corrects or
+adds something, acknowledge it plainly and, if they want it in the notebook
+now, run `co wiki sync`. Do not edit Markdown directly, invent an update
+command, or say it was saved before a sync has recorded it (`co wiki logs`).
+The separately shipped `wiki-maintain` instructions are for the authorized
+runner, not a way to bypass this boundary from an ordinary question.
 
 Configuration writes require an explicit user request. They do not start a
 model. Use `co wiki config --help` to discover that separate operation.

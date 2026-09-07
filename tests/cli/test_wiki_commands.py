@@ -149,3 +149,80 @@ def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
 def test_help_lists_open(tmp_path):
     result = invoke(tmp_path, "--help")
     assert "open" in result.output.split("Commands")[1]
+
+
+class _CliScheduler:
+    installed, uninstalled = [], []
+
+    def install(self, root, config):
+        self.installed.append(root)
+        return {"scheduler": "fake", "label": "fake", "plist": "/dev/null"}
+
+    def uninstall(self, root):
+        self.uninstalled.append(root)
+        return True
+
+    def describe(self, root):
+        return {"installed": True}
+
+
+@pytest.fixture
+def lifecycle(tmp_path, monkeypatch):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    monkeypatch.setattr("connectonion.wiki.schedule.default_scheduler", lambda: _CliScheduler())
+    calls = []
+
+    def fake_codex(notebook, items, config):
+        calls.append(items)
+        return {"usage": None, "changed": []}
+    monkeypatch.setattr("connectonion.wiki.runner.run_codex", fake_codex)
+    return tmp_path / "wiki", sessions, calls
+
+
+def test_help_lists_the_lifecycle_commands(tmp_path):
+    result = invoke(tmp_path, "--help")
+    commands = result.output.split("Commands")[1]
+    for name in ("start", "stop", "sync", "subscribe", "unsubscribe"):
+        assert name in commands
+
+
+def test_sync_before_start_is_refused_and_names_start(lifecycle):
+    root, sessions, calls = lifecycle
+    result = invoke(root, "sync")
+    assert result.exit_code == 1
+    assert "start" in result.output and calls == []
+
+
+def test_noninteractive_start_cannot_consent_silently(lifecycle, monkeypatch):
+    root, sessions, calls = lifecycle
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    result = invoke(root, "start")
+    assert result.exit_code == 1
+    assert "--yes" in result.output and str(sessions) in result.output
+    assert not (root / ".state" / "consent.json").exists()
+
+
+def test_start_yes_then_stop(lifecycle):
+    root, sessions, calls = lifecycle
+    result = invoke(root, "start", "--yes")
+    assert result.exit_code == 0, result.output
+    assert (root / ".state" / "consent.json").is_file()
+    assert _CliScheduler.installed and "status" in result.output.split("Next:")[1]
+    stopped = invoke(root, "stop")
+    assert stopped.exit_code == 0, stopped.output
+    assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
+
+
+def test_subscribe_and_unsubscribe_round_trip(lifecycle):
+    root, sessions, calls = lifecycle
+    result = invoke(root, "subscribe", "codex", "--project", str(sessions.parent), "--since", "30d")
+    assert result.exit_code == 0, result.output
+    listing = invoke(root, "--json", "subscriptions")
+    data = json.loads(listing.stdout)["data"]
+    custom = [name for name in data if name.startswith("codex-")]
+    assert custom and data[custom[0]]["project"] == str(sessions.parent.resolve())
+    off = invoke(root, "unsubscribe", "codex")
+    assert off.exit_code == 0
+    assert json.loads(invoke(root, "--json", "subscriptions").stdout)["data"]["codex"]["enabled"] is False

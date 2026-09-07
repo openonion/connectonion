@@ -121,7 +121,10 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
         raise WikiError("Source is disabled or not yet authorized; run start to confirm access")
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
-    for path in source_files(subscription):
+    # Newest session first. A first start faces a week of backlog and a daily attempt
+    # cap; walking it oldest-first would leave the notebook describing last Monday
+    # until the cap ran out. Progress is per file, so the order changes nothing else.
+    for path in sorted(source_files(subscription), key=lambda p: p.stat().st_mtime_ns, reverse=True):
         name = path.relative_to(root).as_posix()
         old, stat = progress.get(name, {}), path.stat()
         if stat.st_size == old.get("offset") and stat.st_mtime_ns == old.get("mtime_ns"):
