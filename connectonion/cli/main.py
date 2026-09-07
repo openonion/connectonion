@@ -1012,35 +1012,52 @@ def telegram_send(
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
+from .commands.gmail_mailbox_registration import MailboxCommand, register_mailbox_commands
+
 gmail_app = _typer_app(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
 app.add_typer(gmail_app, name="gmail")
 
 
 @gmail_app.callback(invoke_without_command=True)
-def gmail_callback(ctx: typer.Context):
+def gmail_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
     """With no subcommand, show the Gmail inbox."""
     if ctx.invoked_subcommand is None:
+        if json_output:
+            from .commands.gmail_mailbox_commands import handle_mailbox
+            return handle_mailbox("inbox", json_output=True, last=10, unread=False, cursor=None)
         from .commands.gmail_commands import handle_gmail_inbox
         handle_gmail_inbox()
+    elif json_output:
+        from .commands.gmail_mailbox_registration import usage_error
+        usage_error("Put --json after the leaf command, or use it with bare co gmail.", "", True)
 
 
-@gmail_app.command("inbox")
+@gmail_app.command("inbox", cls=MailboxCommand)
 def gmail_inbox(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List recent inbox emails, numbered for read/reply."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_inbox
     handle_gmail_inbox(last=last, unread=unread)
 
 
-@gmail_app.command("read")
+@gmail_app.command("read", cls=MailboxCommand)
 def gmail_read(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
 ):
     """Show one email's full body without changing its unread state."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("read", json_output=json_output, email_id=email_id, mark_read=mark_read, listing=listing)
     from .commands.gmail_commands import handle_gmail_read
     handle_gmail_read(email_id, mark_read=mark_read, listing=listing)
 
@@ -1072,21 +1089,31 @@ def gmail_send(
     handle_gmail_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach)
 
 
-@gmail_app.command("sent")
+@gmail_app.command("sent", cls=MailboxCommand)
 def gmail_sent(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many emails to show"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List recently sent emails."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("sent", json_output=json_output, last=last, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_sent
     handle_gmail_sent(last=last)
 
 
-@gmail_app.command("search")
+@gmail_app.command("search", cls=MailboxCommand)
 def gmail_search(
     query: str = typer.Argument(..., help="Gmail search query, e.g. 'from:alice@example.com'"),
-    last: int = typer.Option(10, "--last", "-n", help="How many matches to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many matches to show"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """Search your mail with Gmail query syntax."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("search", json_output=json_output, query=query, last=last, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_search
     handle_gmail_search(query, last=last)
 
@@ -1098,11 +1125,16 @@ gmail_draft_app = _typer_app(help="Create, inspect, and edit Gmail drafts; sendi
 gmail_app.add_typer(gmail_draft_app, name="draft")
 
 
-@gmail_draft_app.command("list")
+@gmail_draft_app.command("list", cls=MailboxCommand)
 def gmail_draft_list(
     last: int = typer.Option(20, "--last", "-n", min=1, max=500, help="How many drafts to show"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List Gmail drafts, numbered for later draft commands."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.list", json_output=json_output, last=last, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_draft_list
     handle_gmail_draft_list(last=last)
 
@@ -1157,12 +1189,16 @@ def gmail_draft_replace(
     handle_gmail_draft_replace(draft_id, attachment, source, drive=drive, listing=listing)
 
 
-@gmail_draft_app.command("preview")
+@gmail_draft_app.command("preview", cls=MailboxCommand)
 def gmail_draft_preview(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
 ):
     """Print recipients, body, and the final attachment manifest."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.preview", json_output=json_output, draft_id=draft_id, listing=listing)
     from .commands.gmail_commands import handle_gmail_draft_preview
     handle_gmail_draft_preview(draft_id, listing=listing)
 
@@ -1175,6 +1211,9 @@ def gmail_draft_send(
     """Preview a draft and send it only after interactive confirmation."""
     from .commands.gmail_commands import handle_gmail_draft_send
     handle_gmail_draft_send(draft_id, listing=listing)
+
+
+register_mailbox_commands(gmail_app, _OneSuggestion)
 
 
 # Google Drive command group. `co gdrive` (no args) lists recent files.

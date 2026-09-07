@@ -134,7 +134,52 @@ co outlook cancel 1           # pull one back before it goes
 ```
 
 Outlook can also save an email's attachments: `co outlook download 3 --to ~/Downloads`.
-Gmail has no download command — there is no way to save a Gmail attachment from this CLI.
+
+## Gmail mailbox actions and incoming attachments (1.8.4 candidate)
+
+```bash
+co gmail mark <message-id> --read
+co gmail mark <message-id> --unread
+co gmail archive <message-id>
+co gmail star <message-id>
+co gmail star <message-id> --remove
+co gmail label list --json
+co gmail label add <message-id> <label-name-or-id>
+co gmail label remove <message-id> <label-name-or-id>
+co gmail attachments <message-id> --json
+co gmail download <message-id> --all --to ~/Downloads --json
+co gmail download <message-id> --attachment <attachment-id> --to ~/Downloads --json
+co gmail unanswered --within-days 30 --last 20 --json
+```
+
+Message numbers also work with their explicit `--listing` token. Mark requires
+exactly one of `--read`/`--unread`; download requires exactly one of `--all` or
+`--attachment ID`. Modify operations need `gmail.modify` or the full-mail grant;
+reads/downloads need Gmail read access. Missing local scopes let the API decide.
+Unanswered scans one page of up to `--last` threads whose latest non-draft
+message is incoming; user-started threads are included. `--exclude-automated`
+opts into header-based filtering. Support/billing/invoice senders are included
+by default. The result is a page, never an exact total of replies owed.
+
+Inbox, sent, search, read, draft list/preview and every new mailbox leaf accept
+`--json`. Bare `co gmail --json` is inbox JSON. Put the flag after a subcommand
+when using one. Schema 1 includes `provider`, `account`, `operation`, `status`,
+`complete`, `data`, `error`, and a literal `next_command`; stdout is one JSON
+document. Exit 0 is success, 1 is operational/partial failure, 2 is usage error.
+Normal new-command hints go to stderr. Check per-file results on partial exit.
+
+List JSON includes `data.next_cursor`, `truncated`, and labeled estimates.
+Continue with `--cursor` while repeating the same query/filter/limit. Cursors
+bind account and arguments for 15 minutes; changed/expired cursors require a
+fresh listing. Messages/drafts allow 1–500 items; unanswered scans 1–100 threads
+and can return fewer matches. A changing live mailbox is not a frozen snapshot.
+
+Incoming attachment IDs cover nested named files and explicit inline parts.
+Use the exact ID, including a `part:` prefix when printed. Downloads require an
+existing directory, preserve existing files, and suffix duplicate names. Limits
+are 25 MB per file, 100 MB per invocation and 100 parts. Successful files remain
+on partial failure; inspect each path/hash/error before retrying. These commands
+do not send mail or change Drive sharing.
 
 **Never send on the user's behalf without showing them the exact text and final
 attachment manifest first.** Prefer `co gmail draft`; print its preview and wait

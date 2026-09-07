@@ -85,10 +85,18 @@ def _when(date: str) -> str:
     return parsed.astimezone().strftime("%b %d %H:%M")
 
 
+def _print_page_status(gmail, attribute: str, count: int) -> None:
+    page = getattr(gmail, attribute, None)
+    if isinstance(page, dict):
+        more = 'yes' if page.get('nextPageToken') else 'no'
+        print(f'Page: {count} items; more available: {more}. Use --json for continuation context.')
+
+
 def _print_listing(gmail, emails: list, title: str):
     """Render emails as a numbered table (or plain ID-bearing text when piped) and freeze an account-bound listing for read/reply."""
     token = save_listing(INBOX_CACHE.parent / "gmail-listings", gmail.get_account_email(),
                          "messages", [email["id"] for email in emails])
+    _print_page_status(gmail, "_last_message_page", len(emails))
     print(f"Listing: {token} (expires in 15 minutes; use --listing {token} with a row number)")
     if not emails:
         return
@@ -296,6 +304,7 @@ def _draft_call(action, retry_command: str):
 
 
 def _print_draft_list(gmail, drafts: list) -> None:
+    _print_page_status(gmail, "_last_draft_page", len(drafts))
     token = save_listing(DRAFT_CACHE.parent / "gmail-listings", gmail.get_account_email(),
                          "drafts", [draft["id"] for draft in drafts])
     print(f"Listing: {token} (expires in 15 minutes; use --listing {token} with a row number)")

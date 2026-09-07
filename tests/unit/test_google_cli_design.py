@@ -47,14 +47,14 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize('path', [('gmail',), ('gmail', 'draft'), ('gdrive',)])
+@pytest.mark.parametrize('path', [('gmail',), ('gmail', 'draft'), ('gmail', 'label'), ('gdrive',)])
 def test_help_and_skill_parity(path):
     command = get_command(app)
     for name in path:
         command = command.commands[name]
     visible = {name for name, child in command.commands.items() if not child.hidden}
     skill = (Path(__file__).resolve().parents[2] / 'connectonion/useful_skills/co-mail-and-drive/SKILL.md').read_text()
-    documented = set(re.findall(r'co ' + ' '.join(path) + r' ([a-z-]+)', skill))
+    documented = set(re.findall(r'co ' + ' '.join(path) + r' ([a-z][a-z-]*)', skill))
     result = CliRunner().invoke(app, [*path, '--help'])
     assert result.exit_code == 0
     assert visible == documented
