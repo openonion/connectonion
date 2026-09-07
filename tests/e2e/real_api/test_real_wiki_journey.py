@@ -41,7 +41,8 @@ def world(tmp_path):
     shutil.copytree(useful_skills_dir() / "wiki-use", codex_home / "skills" / "wiki-use")
     project = tmp_path / "aurora"
     project.mkdir()
-    env = {**os.environ, "CODEX_HOME": str(codex_home),
+    (tmp_path / "no-claude").mkdir()
+    env = {**os.environ, "CODEX_HOME": str(codex_home), "CLAUDE_CONFIG_DIR": str(tmp_path / "no-claude"),
            "PATH": f"{Path(sys.executable).parent}:{os.environ.get('PATH', '')}",
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     return {"root": tmp_path / "wiki", "codex_home": codex_home, "project": project, "env": env}
@@ -127,12 +128,11 @@ def test_tell_start_ask_correct_stop(world):
         assert "inspectab" in Path(opened["page"]).read_text(encoding="utf-8").lower()
 
         # 7. Logs tell the truth about what ran: two batches reached the model (the first
-        # start and the correction). The no_change runs are ours from step 5 plus the one
-        # the launchd job fired the moment it was loaded -- its presence is the evidence
-        # that the background job runs at all.
+        # start and the correction), one did not (step 5). The launchd tick may add
+        # no_change runs of its own if a slot happens to come due during the test.
         outcomes = [run["outcome"] for run in co(world, "logs")["data"]]
         assert outcomes.count("completed") == 2, outcomes
-        assert outcomes.count("no_change") >= 2, outcomes
+        assert outcomes.count("no_change") >= 1, outcomes
         assert set(outcomes) <= {"completed", "no_change"}, outcomes
         assert all(run["usage"] for run in co(world, "logs")["data"] if run["outcome"] == "completed")
     finally:

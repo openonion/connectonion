@@ -123,10 +123,15 @@ silently consent. Repeating start must preserve notes, settings, unsubscribes,
 and progress, without repeating the initial backfill. Installing the package is
 not permission to collect data or launch a background job.
 
-Default-subscribe to Codex and Claude Code; enable Gmail/Outlook only when the
-corresponding adapter exists and existing co authentication has read access.
-No login flow or newly discovered account is silently added. In milestone 1,
-Claude Code and email adapters are explicitly deferred, not simulated.
+Default-subscribe to Codex and Claude Code — both are read on this branch, from
+`~/.codex/sessions` and `~/.claude/projects` respectively, oldest session first
+so the notebook grows the way the user's understanding did. Enable Gmail/Outlook
+only when the corresponding adapter exists and existing co authentication has
+read access. No login flow or newly discovered account is silently added. The
+default lookback is 60 days; a custom scope may ask for at most 180 days of
+coding sessions and 730 days of mail. `sync --all` is the backfill: batch after
+batch until nothing is pending, not subject to the daily attempt cap because the
+user asked for it.
 
 ## Running and stopping
 

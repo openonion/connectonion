@@ -16,6 +16,7 @@ def wiki(tmp_path, monkeypatch):
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "no-claude")
     monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
     prepare(root)
     approve_sources(root)
@@ -348,3 +349,29 @@ def test_claude_code_is_a_real_default_source(tmp_path, monkeypatch):
     assert claude["root"] == str(tmp_path / "claude")
     approve_sources(root)
     assert subscriptions(root)["claude-code"]["consented"] is True
+
+
+def test_outlook_source_flows_through_sync_with_its_own_cursor(tmp_path, monkeypatch):
+    from connectonion.wiki.service import subscriptions, toggle_source
+    from tests.unit.test_wiki_mail import FakeMail, mail
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: tmp_path / "codex")
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "claude")
+    monkeypatch.setattr("connectonion.wiki.service.mail_available", lambda kind: kind == "outlook")
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", body="Alice: let's use Markdown for Aurora.")])
+    monkeypatch.setattr("connectonion.wiki.service.mail_client", lambda kind: client)
+    root = tmp_path / "wiki"
+    prepare(root)
+    assert subscriptions(root)["outlook"]["adapter"] == "available"
+    assert subscriptions(root)["gmail"]["adapter"].startswith("waiting")
+    toggle_source(root, "outlook", True)
+    approve_sources(root)
+    seen = []
+
+    def runner(notebook, items, config):
+        seen.extend(items)
+        return {"usage": None, "changed": []}
+    assert run_sync(root, runner=runner)["outcome"] == "completed"
+    assert [i["source"] for i in seen] == ["outlook:m1"] and seen[0]["role"] == "other"
+    assert read_json(state_path(root, "progress.json"), {})["outlook"]["cursor"] == "2026-09-02T09:00:00+00:00"
+    assert run_sync(root, runner=runner)["outcome"] == "no_change"

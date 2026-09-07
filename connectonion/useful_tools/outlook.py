@@ -965,6 +965,26 @@ class Outlook:
 
         return f"You have {count} unread email(s) in your inbox."
 
+    def list_between(self, start: str, end: str, max_results: int = 200) -> list:
+        """Messages received in [start, end), oldest first; the shape list_inbox returns.
+
+        The wiki importer walks a mailbox forward from a cursor, so it needs an
+        ascending, date-bounded listing rather than a newest-first search.
+        """
+        params = {
+            "$filter": f"receivedDateTime ge {start} and receivedDateTime lt {end}",
+            "$orderby": "receivedDateTime asc",
+            "$top": max_results,
+            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead",
+        }
+        result = self._request("GET", "/me/messages", params=params)
+        return self._email_dicts(result.get('value', []))
+
+    def my_addresses(self) -> set:
+        """The addresses that count as the user's own, lower-cased."""
+        line = self.get_my_email()
+        return {line.split(":", 1)[-1].strip().lower()} if "@" in line else set()
+
     def get_my_email(self) -> str:
         """Get the user's email address.
 

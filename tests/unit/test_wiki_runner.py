@@ -143,3 +143,22 @@ def test_category_arguments_are_an_enum_the_model_cannot_get_wrong():
     specs = {spec["name"]: spec for spec in tool_specs()}
     for name in ("wiki_list", "wiki_search"):
         assert specs[name]["inputSchema"]["properties"]["category"]["enum"] == list(CATEGORIES)
+
+
+def test_the_tool_bridge_for_non_codex_models_is_the_one_feature_left_on():
+    """With code_mode_host off Luna sees no dynamic tools at all; everything else must stay off."""
+    import shutil
+
+    from connectonion.wiki.runner import KEPT_FEATURES, native_command
+    if not shutil.which("codex"):
+        pytest.skip("needs the codex binary to list features")
+    command = " ".join(native_command({"PATH": __import__("os").environ["PATH"]}))
+    assert "code_mode_host=false" not in command and "shell_tool=false" in command
+    verify_native_config({"mcp_servers": {}, "features": {
+        "shell_tool": False, "unified_exec": False, "hooks": False, "plugins": False, "apps": False,
+        "multi_agent": False, "view_image": False, "code_mode_host": True}})
+    assert KEPT_FEATURES == {"code_mode_host"}
+    with pytest.raises(WikiError):
+        verify_native_config({"mcp_servers": {}, "features": {
+            "shell_tool": True, "unified_exec": False, "hooks": False, "plugins": False, "apps": False,
+            "multi_agent": False, "view_image": False, "code_mode_host": True}})

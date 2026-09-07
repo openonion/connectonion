@@ -219,8 +219,9 @@ def run_scenario(scenario: Scenario, model: str, workdir: Path) -> dict:
     root, sessions = workdir / "wiki", workdir / "sessions"
     prepare(root)
     set_config(root, ["model", model])
-    original = service.codex_sessions_root
+    original = service.codex_sessions_root, service.claude_projects_root
     service.codex_sessions_root = lambda: sessions
+    service.claude_projects_root = lambda: workdir / "no-claude"  # never the operator's own transcripts
     try:
         service.approve_sources(root)
         notebook = Notebook(root)
@@ -245,7 +246,7 @@ def run_scenario(scenario: Scenario, model: str, workdir: Path) -> dict:
         return {"model": model, "scenario": scenario.name, "passed": not failures, "failures": failures,
                 "pages": notebook.list(), "seconds": seconds, "usage": usage, "root": str(root)}
     finally:
-        service.codex_sessions_root = original
+        service.codex_sessions_root, service.claude_projects_root = original
 
 
 def main(argv=None) -> int:

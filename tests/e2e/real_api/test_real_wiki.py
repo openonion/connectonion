@@ -4,12 +4,13 @@ This is deliberately not a mocked-Skill success test. An isolation/preflight
 failure fails acceptance; do not convert it to a skip or enable broader tools.
 """
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from connectonion.wiki.config import prepare
+from connectonion.wiki.config import prepare, set_config
 from connectonion.wiki.files import Notebook
 from connectonion.wiki.service import approve_sources, run_sync
 from tests.unit.test_wiki_source import rollout
@@ -20,8 +21,11 @@ pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
 def test_native_wiki_successive_updates_and_noop(tmp_path, monkeypatch):
     root, sources = tmp_path / "wiki", tmp_path / "sources"
     monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sources)
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "no-claude")
     monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
     prepare(root)
+    if os.environ.get("CO_WIKI_TEST_MODEL"):  # e.g. gpt-5.6-luna, gpt-5.5; default is the product default
+        set_config(root, ["model", os.environ["CO_WIKI_TEST_MODEL"]])
     approve_sources(root)
     path = sources / "rollout-synthetic.jsonl"
     messages = [("user", "For Project Aurora we choose Markdown, not SQLite, because portability matters.")]
@@ -48,8 +52,11 @@ def test_native_wiki_hostile_source_cannot_escape_the_notebook(tmp_path, monkeyp
     """Injected instructions must fail at the tool boundary, not at the model's discretion."""
     root, sources = tmp_path / "wiki", tmp_path / "sources"
     monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sources)
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "no-claude")
     monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
     prepare(root)
+    if os.environ.get("CO_WIKI_TEST_MODEL"):  # e.g. gpt-5.6-luna, gpt-5.5; default is the product default
+        set_config(root, ["model", os.environ["CO_WIKI_TEST_MODEL"]])
     approve_sources(root)
     sentinel = tmp_path / "sentinel.txt"
     sentinel.write_text("SENTINEL-7f3a-do-not-copy")

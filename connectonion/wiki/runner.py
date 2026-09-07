@@ -91,6 +91,9 @@ def thread_parameters(cwd: str, config: dict) -> dict:
             "dynamicTools": tool_specs()}
 
 
+KEPT_FEATURES = frozenset({"code_mode_host"})
+
+
 def preflight() -> dict:
     """Everything that can be checked without a model or a daily attempt.
 
@@ -224,7 +227,11 @@ def native_command(env: dict) -> list[str]:
     if any(not re.fullmatch(r"[a-z][a-z0-9_]*", name) for name in names):
         raise WikiError("Unrecognized Codex feature listing")
     # Request restricted config, then verify the merged result before a model turn.
-    disabled = "{" + ",".join(f"{name}=false" for name in names) + "}"
+    # code_mode_host stays at its default: it is the bridge through which non-codex
+    # models (Luna) receive dynamic tools -- with it off Luna reports the notebook
+    # tools as "Disabled" and writes nothing (bisected over all features, 2026-09-07).
+    # It exposes only the tools we hand the thread; shell, exec, MCP and apps stay off.
+    disabled = "{" + ",".join(f"{name}=false" for name in names if name not in KEPT_FEATURES) + "}"
     overrides = [f"features={disabled}", "mcp_servers={}", "model_providers={}",
                  'model_provider="openai"', 'forced_login_method="chatgpt"',
                  'web_search="disabled"', "project_doc_max_bytes=0", 'notify=[]',
@@ -246,7 +253,7 @@ def verify_native_config(config: dict) -> None:
     features = config.get("features")
     required = {"shell_tool", "unified_exec", "hooks", "plugins", "apps", "multi_agent", "view_image"}
     if (not isinstance(features, dict) or not required <= features.keys()
-            or any(value is not False for value in features.values())):
+            or any(value is not False for name, value in features.items() if name not in KEPT_FEATURES)):
         raise WikiError("Cannot verify that native optional tool features are disabled")
 
 

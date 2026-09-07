@@ -14,7 +14,31 @@ from zoneinfo import ZoneInfo
 
 from .config import prepare, read_config, validate
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
+from .mail import collect_mail
 from .source import KINDS, collect, pending_metadata
+
+MAIL_KINDS = ("gmail", "outlook")
+
+
+def mail_client(kind: str):
+    """The live client for a mail kind; tests replace this with a fake."""
+    if kind == "outlook":
+        from ..useful_tools.outlook import Outlook
+        return Outlook()
+    from ..useful_tools.gmail import Gmail
+    return Gmail()
+
+
+def mail_available(kind: str) -> bool:
+    """Whether existing co authentication can read this mailbox; never starts a login."""
+    if kind == "outlook":
+        scopes = os.getenv("MICROSOFT_SCOPES", "")
+        return any(scope.startswith("Mail.") for scope in scopes.replace(",", " ").split())
+    try:
+        from ..useful_tools.google_scopes import granted_scopes
+        return bool(granted_scopes() & {"gmail.readonly", "gmail.modify", "https://mail.google.com/"})
+    except Exception:  # noqa: BLE001 - absent or unreadable credentials mean "not available", not a crash
+        return False
 
 
 def now() -> datetime:
@@ -49,10 +73,12 @@ def subscriptions(root: Path) -> dict:
         "claude-code": {"id": "claude-code", "kind": "claude-code", "root": str(claude_projects_root()),
                         "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["claude-code"],
                         "enabled": True, "consented": False, "adapter": "available"},
-        "gmail": {"id": "gmail", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["gmail"],
-                  "enabled": False, "consented": False, "adapter": "deferred"},
-        "outlook": {"id": "outlook", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["outlook"],
-                    "enabled": False, "consented": False, "adapter": "deferred"},
+        "gmail": {"id": "gmail", "kind": "gmail", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["gmail"],
+                  "exclude_automated": True, "enabled": False, "consented": False,
+                  "adapter": "available" if mail_available("gmail") else "waiting for co auth google"},
+        "outlook": {"id": "outlook", "kind": "outlook", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["outlook"],
+                    "exclude_automated": True, "enabled": False, "consented": False,
+                    "adapter": "available" if mail_available("outlook") else "waiting for co auth microsoft"},
     }
     defaults.update(saved)
     return defaults
@@ -65,7 +91,7 @@ def approve_sources(root: Path) -> None:
         validate(read_config(root))
         sources = subscriptions(root)
         for source in sources.values():
-            if source.get("kind") in KINDS and source.get("enabled"):
+            if (source.get("kind") in KINDS or source.get("kind") in MAIL_KINDS) and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat()})
@@ -200,6 +226,8 @@ def consent_summary(root: Path) -> dict:
             state = "unsubscribed"
         elif source.get("kind") in KINDS:
             state = "will be read" if Path(source["root"]).is_dir() else "directory missing"
+        elif source.get("kind") in MAIL_KINDS:
+            state = "will be read (automated senders skipped)" if source.get("adapter") == "available" else source["adapter"]
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
@@ -270,7 +298,7 @@ def _selected_sources(root: Path, selector: str) -> dict:
         if sources[selector].get("adapter") == "deferred":
             raise WikiError("This source adapter is deferred to a later milestone")
     return {name: source for name, source in sources.items()
-            if source.get("enabled") and source.get("kind") in KINDS}
+            if source.get("enabled") and (source.get("kind") in KINDS or source.get("kind") in MAIL_KINDS)}
 
 
 def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: bool = False,
@@ -318,7 +346,10 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
     if dry_run:
         progress = read_json(state_path(root, "progress.json"), {})
         return {"dry_run": True, "sources": {
-            name: pending_metadata(sub, progress.get(name, {}))
+            name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
+                   else {"candidate_files": None, "message_count": None, "body_reads": False,
+                         "source_available": mail_available(sub["kind"]),
+                         "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
             for name, sub in _selected_sources(root, source).items()}}
     if not state_path(root, "consent.json").is_file():
         raise WikiError("Source access is not authorized yet; run `co wiki start` to review and confirm it")
@@ -367,7 +398,11 @@ def _sync_locked(root, selected, progress, config, runner, *, uncapped=False):
     for name, subscription in selected.items():
         if len(items) >= limits["items_per_batch"] or remaining <= 0:
             break
-        batch = collect(subscription, progress.get(name, {}), limits["items_per_batch"] - len(items), remaining)
+        if subscription.get("kind") in MAIL_KINDS:
+            batch = collect_mail(subscription, progress.get(name, {}), limits["items_per_batch"] - len(items),
+                                 remaining, mail_client(subscription["kind"]))
+        else:
+            batch = collect(subscription, progress.get(name, {}), limits["items_per_batch"] - len(items), remaining)
         for item in batch.items:
             if item["source"] not in seen:
                 items.append(item)

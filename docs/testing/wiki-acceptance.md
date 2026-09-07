@@ -45,6 +45,10 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | **The whole loop as a user lives it**: tell Codex → `start --yes` (real CLI process, real maintainer, real launchd) → a Codex with `wiki-use` answers through `co wiki` → correction → `sync` rewrites the page → `sync` again makes no model call → `open` carries it → `stop` leaves nothing | `tests/e2e/real_api/test_real_wiki_journey.py::test_tell_start_ask_correct_stop` (opt-in) | **Passing, 2026-09-07, 87 s.** The assistant ran `co wiki search`/`show` (visible in its rollout) and answered with the record path. First run found that Codex injects a `<recommended_plugins>` block as a `role: user` message and the maintainer had turned it into an `opportunities` page; user messages opening with such a tag are now excluded (`test_codex_injected_blocks_are_not_user_messages`, red before the fix) |
 | The clock serves a saved time, not only run-at-load | `test_launchd_tick_serves_a_slot` (opt-in, ~10 min, no model call) | See "launchd calendar triggers" below |
 | Wrong environment says what to do: no login, no codex binary, a second sync while one runs | `tests/e2e/cli/test_wiki_failures.py` (real CLI process, no model, CI-safe) | Passing |
+| Luna (`gpt-5.6-luna`) drives the notebook tools | `CO_WIKI_TEST_MODEL=gpt-5.6-luna pytest tests/e2e/real_api/test_real_wiki.py` | **Passing, 2026-09-07, 62 s.** Luna wrote nothing at first and reported the tools as "Disabled"; bisecting the hardening overrides over all Codex features found `code_mode_host=false` alone hides dynamic tools from non-codex models. That one feature now stays on (`KEPT_FEATURES`); shell, exec, hooks, plugins, MCC, apps stay off, and the hostile-source test passes on Luna with it on |
+| Claude Code transcripts are a source; only what the two of them said is read | `test_claude_code_transcript_yields_only_what_the_two_of_them_said` | Passing against the nine row shapes seen in a real transcript |
+| Mail is a source: oldest first, one cursor, bodies fetched only for the batch, automated senders skipped, the user's own mail speaks as `user` | `tests/unit/test_wiki_mail.py`, `test_outlook_source_flows_through_sync_with_its_own_cursor` | Passing with a fake client; live Outlook not yet exercised |
+| Every real test isolates *both* transcript roots | fixtures in `test_real_wiki.py`, `test_real_wiki_journey.py` (`CLAUDE_CONFIG_DIR`), `wiki_prompt_eval.py` | Fixed 2026-09-07: after the Claude Code source landed, the synthetic tests read the operator's own `~/.claude/projects` into their temp notebooks (20 real messages showed up in a "no_change" pass). Nothing left the machine; the fixtures now point that root at an empty directory |
 
 ### Live launchd round-trip (2026-09-07, this machine)
 
@@ -54,6 +58,18 @@ plist written 0600 under `~/Library/LaunchAgents/ai.openonion.co-wiki.<hash>.pli
 sync), that sync completed with exit 0 (2 new messages, 3 pages changed) and
 `last exit code = 0`; `co wiki stop` then removed the job and the file, and
 `launchctl print` no longer knows the label. Nothing remains installed.
+
+### Models a ChatGPT-account Codex can run as the maintainer (2026-09-07)
+
+Through `codex app-server` with `allowProviderModelFallback: false`: Spark
+(`gpt-5.3-codex-spark`) and `gpt-5.5` drive the dynamic tools; Luna
+(`gpt-5.6-luna`) does once `code_mode_host` is left on; `gpt-5.3-codex`,
+`gpt-5.4`, `gpt-5.5-codex` and every `*-mini` return 400 "not supported when
+using Codex with a ChatGPT account" (`codex exec` answers with them only by
+falling back). Two dogfood runs plus three eval rounds exhausted the day's Spark
+allowance ("usage limit … try again at 2:28 AM"); a failed eval must be read
+from the run record's error before it is read as a prompt failure, and evals
+must not run while anything else is using the same account.
 
 ### launchd calendar triggers do not fire here (2026-09-07)
 
