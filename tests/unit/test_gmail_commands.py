@@ -71,6 +71,7 @@ from connectonion.cli.commands.gmail_listings import save_listing, ListingError
 def mail_mock():
     client = MagicMock()
     client.get_account_email.return_value = 'one@example.test'
+    client._draft_attachment_budget.return_value = 25_000_000
     return client
 
 
@@ -570,6 +571,21 @@ def sample_draft(**overrides):
     return draft
 
 
+@pytest.fixture
+def reviewed_cli(monkeypatch):
+    from types import SimpleNamespace
+    from connectonion.cli.commands import gmail_draft_review as review_module
+    manifest = sample_draft(account='one@example.test', **{'from':'one@example.test'},
+        body_sha256='digest', mime_size=100, mime_limit=35_000_000, encoded_size=136,
+        attachment_limit=25_000_000, warnings=[])
+    review = SimpleNamespace(manifest=manifest, token='a'*64, raw='frozen', thread_id=None)
+    monkeypatch.setattr(review_module, 'prepare_review', lambda *args:review)
+    monkeypatch.setattr(review_module, 'send_reviewed', lambda client,id,token:client._send_draft(id, raw='frozen', thread_id=None))
+    monkeypatch.setattr(gmail_commands, 'console', Console(force_terminal=True, width=120))
+    monkeypatch.setattr(sys, 'stdin', MagicMock(isatty=lambda:True))
+    return review
+
+
 class TestGmailDraftCommands:
     """The CLI is a staged workflow and every result prints one next command."""
 
@@ -609,7 +625,7 @@ class TestGmailDraftCommands:
             gmail_commands._resolve_draft_id(gmail, "1")
 
     @pytest.mark.parametrize("interruption", [typer.Abort, KeyboardInterrupt, EOFError])
-    def test_interrupted_confirmation_keeps_draft_and_prints_tip(self, interruption, capsys):
+    def test_interrupted_confirmation_keeps_draft_and_prints_tip(self, interruption, capsys, reviewed_cli):
         gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -618,7 +634,7 @@ class TestGmailDraftCommands:
                     gmail_commands.handle_gmail_draft_send("draft-1")
         assert exc.value.exit_code == 1
         gmail._send_draft.assert_not_called()
-        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+        assert "co gmail draft review draft-1" in plain(capsys.readouterr().out)
 
     def test_create_stays_unsent_and_points_to_attach(self, capsys):
         gmail = mail_mock()
@@ -656,8 +672,9 @@ class TestGmailDraftCommands:
         gmail = mail_mock()
         gmail._add_draft_attachment.return_value = sample_draft()
         drive = MagicMock()
+        drive.get_account_email.return_value = 'one@example.test'
         drive._read_file.return_value = {
-            "name": "Budget.csv", "type": "text/csv", "data": b"a,b",
+            "id":"drive-file", "name": "Budget.csv", "type": "text/csv", "data": b"a,b",
         }
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -666,15 +683,16 @@ class TestGmailDraftCommands:
 
         drive._read_file.assert_called_once()
         gmail._add_draft_attachment.assert_called_once_with(
-            "draft-1", "Budget.csv", "text/csv", b"a,b"
+            "draft-1", "Budget.csv", "text/csv", b"a,b", source={"source":"drive_attachment", "drive_file_id":"drive-file"}
         )
         assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
 
     def test_attach_drive_link_does_not_download_or_change_sharing(self, capsys):
         gmail = mail_mock()
-        gmail.add_draft_link.return_value = sample_draft(attachments=[], attachment_size=0)
+        gmail._add_managed_draft_link.return_value = sample_draft(attachments=[], attachment_size=0)
         drive = MagicMock()
-        drive._get_file.return_value = {
+        drive.get_account_email.return_value = 'one@example.test'
+        drive.get_info.return_value = {
             "name": "Budget", "link": "https://drive.google.com/file/d/1/view",
         }
 
@@ -683,9 +701,7 @@ class TestGmailDraftCommands:
                 handle_gmail_draft_attach("draft-1", "drive-file", drive=True, link=True)
 
         drive._read_file.assert_not_called()
-        gmail.add_draft_link.assert_called_once_with(
-            "draft-1", "Budget", "https://drive.google.com/file/d/1/view"
-        )
+        gmail._add_managed_draft_link.assert_called_once_with("draft-1", drive.get_info.return_value)
         assert "Drive link added" in plain(capsys.readouterr().out)
 
     def test_link_without_drive_is_a_fix_it_error(self, capsys):
@@ -726,9 +742,9 @@ class TestGmailDraftCommands:
         output = plain(capsys.readouterr().out)
         assert "Exact body" in output
         assert "report.pdf (application/pdf, 4 bytes)" in output
-        assert "co gmail draft send draft-1" in output
+        assert "co gmail draft review draft-1" in output
 
-    def test_send_decline_keeps_draft_and_exits_nonzero(self, capsys):
+    def test_send_decline_keeps_draft_and_exits_nonzero(self, capsys, reviewed_cli):
         gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
 
@@ -741,9 +757,9 @@ class TestGmailDraftCommands:
         gmail._send_draft.assert_not_called()
         output = plain(capsys.readouterr().out)
         assert "Not sent" in output
-        assert "co gmail draft preview draft-1" in output
+        assert "co gmail draft review draft-1" in output
 
-    def test_send_confirms_after_preview_and_points_to_sent(self, capsys):
+    def test_send_confirms_after_preview_and_points_to_sent(self, capsys, reviewed_cli):
         gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
         gmail._send_draft.return_value = {"id": "message-1"}
@@ -754,7 +770,7 @@ class TestGmailDraftCommands:
 
         output = plain(capsys.readouterr().out)
         assert "Exact body" in output
-        gmail._send_draft.assert_called_once_with("draft-1")
+        gmail._send_draft.assert_called_once_with("draft-1", raw='frozen', thread_id=None)
         assert "co gmail sent" in output
 
     def test_unknown_cached_number_points_to_list(self, capsys):

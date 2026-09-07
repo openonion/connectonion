@@ -295,7 +295,7 @@ saved as `GOOGLE_*` in `.env` / `~/.co/keys.env`).
 ```bash
 co gdrive                             # 20 most recently modified files
 co gdrive search report                # find by name (word prefixes)
-co gdrive get 3 --to ~/Downloads       # download #3 from the listing
+co gdrive get 3 --listing <listing-id> --to ~/Downloads       # download #3 from the listing
 co gdrive put report.pdf               # upload
 ```
 
@@ -312,6 +312,7 @@ The CLI wraps the same `Gmail` tool your agents use. See
 [gmail.md](gmail.md) for details.
 - `co gdrive` / `co gdrive list` - recent files (`--last/-n`)
 - `co gdrive search <query>` - find by file name
+- `co gdrive info <full-file-id> --json` - read-only metadata and export format
 - `co gdrive get <#>` - download (`--to`); Docs/Sheets/Slides are exported to md/csv/pdf
 - `co gdrive put <path>` - upload (`--name`)
 - `co gdrive rm <#>` - move to trash (recoverable)
@@ -1202,3 +1203,7 @@ See [server.md](server.md).
 - [Interactive Debugging](../debug/auto_debug.md) - `@xray` debugger
 - [Trust System](../features/trust.md) - Multi-agent trust
 - [Getting Started](../quickstart.md) - Full tutorial
+
+The 1.8.4 Gmail candidate adds `co gmail draft review <draft-id> --json` and
+`co gmail draft send <draft-id> --confirm <review-token> --json`. See
+[gmail.md](gmail.md) for the MIME-bound send and uncertain-outcome contract.

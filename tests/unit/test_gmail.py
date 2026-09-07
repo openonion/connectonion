@@ -1755,8 +1755,8 @@ class TestGmailDraftAttachments:
         service = MagicMock()
         service.users().drafts().send().execute.return_value = {"id": "message-1"}
 
-        result = self._gmail(service)._send_draft("draft-1")
+        result = self._gmail(service)._send_draft("draft-1", raw='reviewed-raw')
 
         assert result == {"id": "message-1"}
-        assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1"}
+        assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1", "message": {"raw": "reviewed-raw"}}
         service.users().messages().send.assert_not_called()

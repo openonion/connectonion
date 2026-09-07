@@ -1,12 +1,4 @@
-"""
-Purpose: CLI surface for the user's Google Drive — list, search, download, upload, and trash files from the terminal
-LLM-Note:
-  Dependencies: imports from [json, os, pathlib, typer, dotenv, rich.console, rich.table, ...useful_tools.gdrive.GDrive] | imported by [cli/main.py via handle_gdrive_*()] | hits the Drive API through the GDrive tool
-  Data flow: _gdrive() loads GOOGLE_* from .env / ~/.co/keys.env and checks the drive scope → GDrive() instance | list/search: list_files()/search_files() → numbered Rich table (tab-separated with full ids when piped) → saves {#: file_id} to ~/.co/gdrive_last_list.json | get/rm: resolve short numbers via that cache → download()/delete()
-  State/Effects: writes ~/.co/gdrive_last_list.json (last listing's # → file id map; "numbers mean your last listing") | downloads write local files | put uploads to Drive | rm trashes (recoverable) rather than deleting
-  Integration: exposes handle_gdrive_list(), handle_gdrive_search(), handle_gdrive_get(), handle_gdrive_put(), handle_gdrive_rm() for cli/main.py | presentation mirrors gmail_commands.py / outlook_commands.py | Drive logic lives in useful_tools/gdrive.py | requires prior 'co auth google'
-  Errors: guarded failures print a next command and exit 1 (typer.Exit); google_errors sanitizes provider/transport failures | empty list/search clears old numbers; piped rows append their row number as column five
-"""
+"""Drive CLI with frozen account-bound listings and read-only inspection."""
 
 import json
 import os
@@ -22,7 +14,10 @@ from ...provider_credentials import resolve_provider_credentials
 
 console = Console()
 
-LIST_CACHE = Path.home() / ".co" / "gdrive_last_list.json"
+from ...environment import global_config_dir
+from .gmail_listings import save_listing, resolve_reference
+
+LIST_CACHE = global_config_dir() / "gdrive_last_list.json"  # legacy location; only its parent is used
 
 
 def _gdrive():
@@ -87,11 +82,10 @@ def _when(timestamp: str) -> str:
     return datetime.fromisoformat(cleaned).astimezone().strftime("%b %d %H:%M")
 
 
-def _print_listing(files: list, title: str):
+def _print_listing(drive, files: list, title: str):
     """Render files as a numbered table (or tab-separated rows with full ids when piped) and cache the numbering."""
-    LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    LIST_CACHE.write_text(json.dumps({str(i): f["id"] for i, f in enumerate(files, 1)}), encoding="utf-8")
-
+    token = save_listing(LIST_CACHE.parent / "gdrive-listings", drive.get_account_email(),
+                         "files", [item["id"] for item in files], provider="gdrive")
     if not console.is_terminal:
         # Scripts and agents get full file ids, never a truncated column.
         # Plain print, not console.print: Rich expands \t into spaces, which
@@ -100,7 +94,9 @@ def _print_listing(files: list, title: str):
             print(f"{item['name']}\t{item['type']}\t{item['size']}\t{item['id']}\t{i}")
         # Same next-step tip as the terminal table: piped callers are exactly
         # the AI audience the tip exists for.
-        print_tip("Download one with: co gdrive get <# from column 5>")
+        print(f"Listing: {token} (15 minutes; use --listing {token} with a row)")
+        if files:
+            print_tip(f"Download one with: co gdrive get {files[0]['id']}")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -115,7 +111,9 @@ def _print_listing(files: list, title: str):
 
     console.print()
     console.print(table)
-    print_tip("\n[dim]Download one with:[/dim] [bold]co gdrive get <#>[/bold]\n")
+    print(f"Listing: {token} (15 minutes; use --listing {token} with a row)")
+    if files:
+        print_tip(f"Download one with: co gdrive get {files[0]['id']}")
 
 
 @google_errors("co gdrive list")
@@ -124,12 +122,11 @@ def handle_gdrive_list(last: int = 20):
     drive = _gdrive()
     files = drive.list_files(last=last)
     if not files:
-        LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        LIST_CACHE.write_text("{}", encoding="utf-8")
+        _print_listing(drive, [], "Drive")
         console.print("\n[cyan]Google Drive:[/cyan] no files\n")
         print_tip("Search by name: co gdrive search <name prefix>")
         return
-    _print_listing(files, f"📁 Drive — {resolve_provider_credentials('google').get('EMAIL') or ''}")
+    _print_listing(drive, files, f"📁 Drive — {resolve_provider_credentials('google').get('EMAIL') or ''}")
 
 
 @google_errors("co gdrive list")
@@ -138,33 +135,29 @@ def handle_gdrive_search(query: str, last: int = 20):
     drive = _gdrive()
     files = drive.search_files(query, last=last)
     if not files:
-        LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        LIST_CACHE.write_text("{}", encoding="utf-8")
+        _print_listing(drive, [], "Drive")
         console.print(f"\n[cyan]Drive search:[/cyan] no files matching [bold]{query}[/bold]")
         console.print("[dim]Drive matches word prefixes, not any substring.[/dim]\n")
         print_tip("Show recent files: co gdrive list")
         return
-    _print_listing(files, f"🔎 Drive — {query}")
+    _print_listing(drive, files, f"🔎 Drive — {query}")
 
 
-def _resolve_file_id(file_id: str) -> str:
-    """Turn a listing number into a Drive file id; full ids pass through."""
-    cached = json.loads(LIST_CACHE.read_text(encoding="utf-8")) if LIST_CACHE.exists() else {}
-    if file_id in cached:
-        return cached[file_id]
-
-    if file_id.isascii() and file_id.isdigit() and len(file_id) < 5:
-        # A short number means "row N of what you just showed me" — refetching a
-        # differently ordered listing would silently act on the wrong file.
-        return ""
-    return file_id
+def _resolve_file_id(file_id: str, drive=None, listing: str | None = None) -> str:
+    """Resolve a number only within its frozen provider-confirmed listing."""
+    number = file_id.removeprefix('#')
+    if not (number.isascii() and number.isdigit() and len(number) < 5):
+        return file_id
+    account = drive.get_account_email() if drive is not None else ''
+    return resolve_reference(LIST_CACHE.parent / "gdrive-listings", file_id, account,
+                             "files", listing, provider="gdrive")
 
 
 @google_errors("co gdrive list")
-def handle_gdrive_get(file_id: str, dest: str = "."):
+def handle_gdrive_get(file_id: str, dest: str = ".", *, listing: str | None = None):
     """Download a Drive file. Accepts the listing # or a full file id."""
     drive = _gdrive()
-    resolved = _resolve_file_id(file_id)
+    resolved = _resolve_file_id(file_id, drive, listing)
     if not resolved:
         console.print(f"\nNo file #{file_id} in your last listing.", markup=False)
         print_tip("Refresh the listing: co gdrive list")
@@ -191,10 +184,10 @@ def handle_gdrive_put(path: str, name: str = None):
 
 
 @google_errors("co gdrive list")
-def handle_gdrive_rm(file_id: str):
+def handle_gdrive_rm(file_id: str, *, listing: str | None = None):
     """Move a Drive file to the trash. Accepts the listing # or a full file id."""
     drive = _gdrive()
-    resolved = _resolve_file_id(file_id)
+    resolved = _resolve_file_id(file_id, drive, listing)
     if not resolved:
         console.print(f"\nNo file #{file_id} in your last listing.", markup=False)
         print_tip("Refresh the listing: co gdrive list")
@@ -203,3 +196,38 @@ def handle_gdrive_rm(file_id: str):
     drive.delete(resolved)
     console.print("\n[green]✓ Moved to trash[/green] — restore it from drive.google.com if that was wrong\n")
     print_tip("Show remaining files: co gdrive list")
+
+
+@google_errors("co gdrive list")
+def _inspect_file(file_id: str, listing: str | None = None) -> tuple[str, dict]:
+    drive = _gdrive()
+    return drive.get_account_email(), drive.get_info(_resolve_file_id(file_id, drive, listing))
+
+
+def handle_gdrive_info(file_id: str, *, listing: str | None = None, json_output: bool = False) -> None:
+    """Inspect a full Drive file ID with a single machine-readable result."""
+    from contextlib import redirect_stdout, redirect_stderr
+    import io
+    import shlex
+    from ...environment import selected_command
+    result = {"schema_version":1, "provider":"gdrive", "operation":"info", "account":None,
+              "status":"error", "complete":False, "data":None, "error":None}
+    output = io.StringIO()
+    next_command = 'co gdrive list'
+    try:
+        with redirect_stdout(output), redirect_stderr(output):
+            account, data = _inspect_file(file_id, listing)
+        result.update(account=account, data=data, status="success", complete=True)
+        next_command = f'co gdrive get {shlex.quote(data["id"])}'
+    except typer.Exit:
+        result['error'] = {"code":"inspection_failed", "message":output.getvalue().strip()}
+        if 'co auth google' in output.getvalue():
+            next_command = 'co auth google'
+    result['next_command'] = selected_command(next_command)
+    if json_output:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(json.dumps(result['data'] or result['error'], ensure_ascii=False, indent=2))
+        print_tip(f'Next: {result["next_command"]}')
+    if not result['complete']:
+        raise typer.Exit(1)

@@ -40,7 +40,17 @@ def _perform(client, operation: str, args: dict) -> tuple[dict, str]:
     reference = args.pop('email_id', None)
     if operation == 'draft.preview':
         id = gm._resolve_draft_id(client, args.pop('draft_id'), args.pop('listing', None))
-        return {**client.get_draft(id), 'complete':True}, f'co gmail draft send {shlex.quote(id)}'
+        return {**client.get_draft(id), 'complete':True}, f'co gmail draft review {shlex.quote(id)} --json'
+    if operation in {'draft.review', 'draft.send'}:
+        from .gmail_draft_review import prepare_review, send_reviewed, DraftReviewError
+        id = gm._resolve_draft_id(client, args.pop('draft_id'), args.pop('listing', None))
+        if operation == 'draft.review':
+            review = prepare_review(client, id)
+            return {**review.manifest, 'complete':True}, f'co gmail draft send {shlex.quote(id)} --confirm {review.token}'
+        token = args.pop('confirm', None)
+        if not token:
+            raise DraftReviewError('confirmation_required', 'JSON send requires --confirm from a current review.', f'co gmail draft review {shlex.quote(id)} --json')
+        return {**send_reviewed(client, id, token), 'complete':True}, 'co gmail sent --json'
     id = gm._resolve_email_id(client, reference, args.pop('listing', None))
     tip = f'co gmail read {shlex.quote(id)} --json'
     mutation = operation in {'mark.read','mark.unread','archive','star','unstar','label.add','label.remove'}
@@ -71,6 +81,8 @@ def handle_mailbox(operation: str, *, json_output: bool = False, **args) -> None
     from httplib2 import HttpLib2Error
     from requests import RequestException
     from .gmail_commands import _gmail
+    from .gmail_draft_review import DraftReviewError
+    from ...useful_tools.gmail_draft_mime import DraftFormatError
     result = {'schema_version':1, 'provider':'gmail', 'operation':operation,
               'account':None, 'status':'error', 'complete':False, 'data':None, 'error':None}
     next_command = 'co gmail inbox'
@@ -94,6 +106,12 @@ def handle_mailbox(operation: str, *, json_output: bool = False, **args) -> None
             next_command = 'co auth google'
     except ListingError as error:
         result['error'] = {'code':'invalid_listing', 'message':str(error)}
+    except DraftReviewError as error:
+        result['error'] = {'code':error.code, 'message':str(error)}
+        next_command = error.next_command or 'co gmail draft list'
+    except DraftFormatError as error:
+        result['error'] = {'code':'invalid_draft', 'message':str(error)}
+        next_command = 'co gmail draft list'
     except (HttpError, GoogleAuthError) as error:
         status = getattr(getattr(error, 'resp', None), 'status', None)
         code = {401:'auth_required', 403:'permission_denied', 404:'not_found'}.get(status, 'provider_error')

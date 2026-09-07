@@ -20,7 +20,8 @@ co gmail read 3 --listing <listing-id>
 co gmail draft create alice@example.com "Hello" "Thanks for the meeting today!"
 co gmail draft list               # choose the new draft's row from this listing
 co gmail draft preview <draft-id>
-co gmail draft send <draft-id>
+co gmail draft review <draft-id> --json
+co gmail draft send <draft-id> --confirm <review-token> --json
 ```
 
 Use the row that matches your draft; `create` prints its full ID but does not
@@ -93,8 +94,9 @@ reads the body from stdin.
 
 The draft workflow is the safe path when attachments or Drive files are
 involved. Creating, attaching, removing, replacing, and previewing do not send
-mail. Only `draft send` can send, and it always prints the final preview and
-asks for interactive confirmation. There is no confirmation-bypass flag.
+mail. `draft review` is the canonical final review; `preview` remains an
+inspection command for existing callers. Send requires a token from that exact
+review, or a real terminal's default-No confirmation. Piped `yes` cannot approve.
 
 ```bash
 co gmail draft list
@@ -102,7 +104,8 @@ co gmail draft create alice@example.com "Report" "Please review."
 co gmail draft list               # select the matching row before using a number
 co gmail draft attach <draft-id> report.pdf
 co gmail draft preview <draft-id>
-co gmail draft send <draft-id>
+co gmail draft review <draft-id> --json
+co gmail draft send <draft-id> --confirm <review-token> --json
 ```
 
 Draft numbers use `--listing <listing-id>` from `co gmail draft list` and
@@ -113,23 +116,53 @@ Creating a draft prints its ID and does not change any frozen listing.
 The ID-only cache lives in the global config directory's `gmail-listings/`;
 it stores an account digest, not the account address or message contents.
 Answering no, ending input, or interrupting the confirmation prompt keeps the
-draft, exits 1, and prints its preview command again.
+draft, exits 1, and prints its review command again.
 
 Use local or Drive files without first copying Drive content to disk:
 
 ```bash
 co gdrive list -n 20
-co gmail draft attach <draft-id> 3 --drive          # attach Drive row 3 as bytes
-co gmail draft attach <draft-id> 3 --drive --link   # append its Drive URL instead
+co gmail draft attach <draft-id> 3 --drive --drive-listing <Drive-listing-id>          # attach Drive row 3 as bytes
+co gmail draft attach <draft-id> 3 --drive --drive-listing <Drive-listing-id> --link   # append its Drive URL instead
 co gmail draft remove <draft-id> 2
 co gmail draft replace <draft-id> 1 corrected.pdf
-co gmail draft replace <draft-id> 1 3 --drive
+co gmail draft replace <draft-id> 1 3 --drive --drive-listing <Drive-listing-id>
+co gmail draft replace <draft-id> 1 <Drive-file-id> --drive --link
 ```
 
 Google Docs, Sheets, Slides, and Drawings are exported with the same formats as
 `co gdrive get`. A Drive link does not change the file's sharing permissions;
 the recipient still needs access. The combined decoded attachment size must be
-at most 25 MB.
+at most 25,000,000 bytes; final MIME must fit 35,000,000 bytes. These are decimal
+MB, preserving the existing SDK constant. `review --json` includes the account,
+From, To/Cc/Bcc, body and digest, draft/thread IDs, source manifest, per-file and
+aggregate sizes, final MIME and base64 sizes, limits, warnings and review token.
+The `items` field combines files first and managed links second. Legacy
+`attachments` retains its file-only shape. Unknown link sizes are `null`.
+
+Managed Drive records round-trip inside provider MIME; arbitrary body URLs never
+become managed items. Links retain unchanged sharing and unverified recipient
+access. Editing a managed link's text independently requires removing/replacing
+that item. Ordinary edits change the review token. Source metadata is removed
+from the outgoing message after it is included in the review hash.
+
+Send re-fetches and rejects any changed token, then supplies the exact reviewed
+MIME with the draft ID in one Gmail `drafts.send` request. A late provider edit
+cannot substitute outgoing bytes, though consuming the draft can discard that
+edit. Gmail provides no draft edit compare-and-swap; avoid concurrent edits.
+Create/update preflight rejects invalid sources or oversized MIME before the
+provider write. A lost provider update response may still mean the update
+completed; inspect the draft before retrying.
+
+A private account/draft-scoped send marker is persisted under the global
+`gmail-send-attempts/` directory before submission. It stores hashes and receipt
+IDs, never message content. On an ambiguous response, another send command
+checks a deterministic Message-ID in sent mail and returns the single matching
+receipt or stays uncertain; it does not resend. Do not remove that record to
+force a retry. A confirmed receipt can be returned even after Gmail has removed
+the draft. Explicit HTTP rejections allow a later deliberate attempt. This is a
+local retry guard, not a Gmail exactly-once guarantee across other clients or
+machines. Existing one-shot send/reply behavior remains separate.
 
 ### `co gmail send <to> <subject> <message>` — Send immediately
 
@@ -198,7 +231,7 @@ co gmail unanswered --within-days 30 --last 20 --json
 ```
 
 Every new mailbox command supports `--json`, as do inbox, sent, search, read,
-draft list and draft preview. `co gmail --json` is the default inbox. JSON uses
+draft list, preview, review and send. `co gmail --json` is the default inbox. JSON uses
 one schema-1 envelope: `provider`, `account`, `operation`, `status`, `complete`,
 `data`, `error`, `next_command`. It prints no prompts or extra stdout text.
 New commands put human hints on stderr. Operational/partial failures exit 1;
@@ -284,7 +317,8 @@ gmail.get_draft(draft["id"])
 | 1, missing permission | `co auth google` |
 | 1, unknown message number or unreadable numbering cache | `co gmail inbox` |
 | 1, send/reply connection failure | `co gmail sent` |
-| 1, declined draft confirmation | `co gmail draft preview <draft ID>` |
+| 1, declined or stale draft confirmation | `co gmail draft review <draft-id> --json` |
+| 1, uncertain draft send | `co gmail sent --json` |
 | 2, missing read argument | `co gmail read --help` |
 
 Read the printed cause and next command even when piping output. Provider error

@@ -36,11 +36,13 @@ CASES = [
     (['gmail', 'draft', 'attach', 'draft-a', 'report.pdf'], 'Preview the staged draft', 'co gmail draft preview draft-a'),
     (['gmail', 'draft', 'remove', 'draft-a', '1'], 'Preview the updated draft', 'co gmail draft preview draft-a'),
     (['gmail', 'draft', 'replace', 'draft-a', '1', 'report.pdf'], 'Preview the updated draft', 'co gmail draft preview draft-a'),
-    (['gmail', 'draft', 'preview', 'draft-a'], 'Proceed to the confirmation gate', 'co gmail draft send draft-a'),
-    (['gmail', 'draft', 'send', 'draft-a'], 'Inspect the kept draft', 'co gmail draft preview draft-a'),
-    (['gdrive'], 'Download the first listed file', 'co gdrive get 1'),
-    (['gdrive', 'list'], 'Download the first listed file', 'co gdrive get 1'),
-    (['gdrive', 'search', 'Report'], 'Download the first matching file', 'co gdrive get 1'),
+    (['gmail', 'draft', 'preview', 'draft-a'], 'Obtain a content-bound review', 'co gmail draft review draft-a'),
+    (['gmail', 'draft', 'send', 'draft-a'], 'Review the kept draft', 'co gmail draft review draft-a'),
+    (['gmail', 'draft', 'review', 'draft-a'], 'Send this exact reviewed content', 'co gmail draft send draft-a --confirm ' + 'a' * 64),
+    (['gdrive', 'info', 'file-a'], 'Download the inspected file', 'co gdrive get file-a'),
+    (['gdrive'], 'Download the first listed file', 'co gdrive get file-a'),
+    (['gdrive', 'list'], 'Download the first listed file', 'co gdrive get file-a'),
+    (['gdrive', 'search', 'Report'], 'Download the first matching file', 'co gdrive get file-a'),
     (['gdrive', 'get', 'file-a'], 'Show more files', 'co gdrive list'),
     (['gdrive', 'put', 'report.pdf'], 'Check uploaded files', 'co gdrive list'),
     (['gdrive', 'rm', 'file-a'], 'Show remaining files', 'co gdrive list'),
@@ -79,12 +81,20 @@ def capture(args, root, failure=None):
         getattr(gmail, name).return_value = draft
     drive.list_files.return_value = drive.search_files.return_value = [
         dict(id='file-a', name='Report.pdf', type='application/pdf', size=5, modified='')]
+    drive.get_account_email.return_value = 'sender@example.invalid'
+    drive.get_info.return_value = dict(id='file-a', name='Report.pdf', type='application/pdf', raw_size=5)
     drive.download.return_value = 'Downloaded to report.pdf'
     drive.upload.return_value = dict(name='Report.pdf', link='')
     if failure is not None:
         gmail.list_inbox.side_effect = drive.list_files.side_effect = failure
         gmail.send.side_effect = gmail.reply.side_effect = drive.upload.side_effect = failure
+    from connectonion.cli.commands import gmail_draft_review as review_module
+    from types import SimpleNamespace
+    reviewed = SimpleNamespace(token='a'*64, manifest={**draft, 'account':'sender@example.invalid',
+        'from':'sender@example.invalid', 'body_sha256':'b'*64, 'mime_size':100, 'encoded_size':136,
+        'attachment_limit':25_000_000, 'mime_limit':35_000_000, 'warnings':[], 'review_token':'a'*64})
     with ExitStack() as stack:
+        stack.enter_context(patch.object(review_module, 'prepare_review', return_value=reviewed))
         stack.enter_context(patch.dict(os.environ, {'GOOGLE_EMAIL': 'sender@example.invalid'}))
         for module, name, value in ((gm, '_gmail', lambda **kw: gmail),
                                     (gd, '_gdrive', lambda: drive),
@@ -155,7 +165,9 @@ def test_empty_listing_cannot_reuse_old_row(module, cache, handler, args, method
             with pytest.raises(ListingError):
                 gm._resolve_email_id(client, '1')
         else:
-            assert gd._resolve_file_id('1') == ''
+            from connectonion.cli.commands.gmail_listings import ListingError
+            with pytest.raises(ListingError):
+                gd._resolve_file_id('1', client)
 
 
 @pytest.mark.parametrize('surface,subcommand', [('gmail', 'read'), ('gdrive', 'get')])

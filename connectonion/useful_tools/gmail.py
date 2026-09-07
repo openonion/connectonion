@@ -534,7 +534,11 @@ class Gmail(GmailMailbox):
         return draft, self._decode_message(draft["message"]["raw"])
 
     def _draft_dict(self, draft_id: str, message) -> dict:
-        attachments = [self._attachment_dict(part) for _, part in self._attachment_parts(message)]
+        from .gmail_draft_sources import file_source, read_links
+        parts = self._attachment_parts(message)
+        attachments = [self._attachment_dict(part) for _, part in parts]
+        items = [{**item, **file_source(part)} for item, (_, part) in zip(attachments, parts)]
+        items.extend({key:value for key,value in row.items() if key != "text"} for row in read_links(message))
         return {
             "id": draft_id,
             "to": str(message.get("To", "")),
@@ -543,6 +547,7 @@ class Gmail(GmailMailbox):
             "subject": str(message.get("Subject", "")),
             "body": self._message_body(message),
             "attachments": attachments,
+            "items": items,
             "attachment_size": sum(item["size"] for item in attachments),
         }
 
@@ -595,6 +600,8 @@ class Gmail(GmailMailbox):
             message["Cc"] = cc
         if bcc:
             message["Bcc"] = bcc
+        from .gmail_draft_mime import validate_message
+        validate_message(self, message)
         created = self._get_service().users().drafts().create(
             userId="me", body={"message": {"raw": self._encode_message(message)}}
         ).execute()
@@ -606,16 +613,29 @@ class Gmail(GmailMailbox):
         return self._draft_dict(draft_id, message)
 
     def _update_draft(self, draft_id: str, message) -> dict:
+        from .gmail_draft_mime import validate_message
         self._require_draft_write_scope()
+        result = self._draft_dict(draft_id, message)
+        validate_message(self, message)
         self._get_service().users().drafts().update(
             userId="me",
             id=draft_id,
             body={"message": {"raw": self._encode_message(message)}},
         ).execute()
-        return self._draft_dict(draft_id, message)
+        return result
+
+    def _draft_attachment_budget(self, draft_id: str, replacing: int | None = None) -> int:
+        """Bound an incoming Drive stream against the current remaining file budget."""
+        _, message = self._draft_message(draft_id)
+        if replacing is not None:
+            self._remove_draft_item(message, replacing)
+        used = sum(self._attachment_dict(part)["size"] for _, part in self._attachment_parts(message))
+        if used > GMAIL_ATTACHMENT_LIMIT:
+            raise ValueError("Existing attachments exceed the 25MB limit; remove an item first.")
+        return GMAIL_ATTACHMENT_LIMIT - used
 
     def _add_draft_attachment(self, draft_id: str, name: str, mime_type: str,
-                              data: bytes) -> dict:
+                              data: bytes, *, source: dict | None = None) -> dict:
         _, message = self._draft_message(draft_id)
         existing = sum(
             item["size"]
@@ -625,6 +645,8 @@ class Gmail(GmailMailbox):
             raise ValueError("Attachments exceed Gmail's 25MB send limit.")
         main, _, sub = (mime_type or "application/octet-stream").partition("/")
         message.add_attachment(data, maintype=main, subtype=sub or "octet-stream", filename=name)
+        from .gmail_draft_sources import tag_file
+        tag_file(list(message.iter_parts())[-1], data, source)
         return self._update_draft(draft_id, message)
 
     def add_draft_attachment(self, draft_id: str, path: str) -> dict:
@@ -636,7 +658,7 @@ class Gmail(GmailMailbox):
             name, handle = self._open_attachments([path], stack)[0]
             data = handle.read(GMAIL_ATTACHMENT_LIMIT + 1)
         mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        return self._add_draft_attachment(draft_id, name, mime_type, data)
+        return self._add_draft_attachment(draft_id, name, mime_type, data, source={"source":"local"})
 
     def add_draft_link(self, draft_id: str, name: str, url: str) -> dict:
         """Append a Drive link to a plain-text draft without changing sharing."""
@@ -649,39 +671,66 @@ class Gmail(GmailMailbox):
         part.set_content(f"{body}{separator}{name}: {url}\n")
         return self._update_draft(draft_id, message)
 
-    def remove_draft_attachment(self, draft_id: str, attachment: int) -> dict:
-        """Remove one attachment by its one-based preview number."""
+    def _add_managed_draft_link(self, draft_id: str, item: dict) -> dict:
+        from .gmail_draft_sources import add_link
         _, message = self._draft_message(draft_id)
+        add_link(message, item)
+        return self._update_draft(draft_id, message)
+
+    def _remove_draft_item(self, message, attachment: int) -> None:
+        from .gmail_draft_sources import remove_link
         parts = self._attachment_parts(message)
-        if attachment < 1 or attachment > len(parts):
+        if attachment < 1:
             raise ValueError(f"Draft has no attachment #{attachment}.")
+        if attachment > len(parts):
+            try:
+                remove_link(message, attachment - len(parts) - 1)
+            except ValueError as error:
+                raise ValueError(f"Cannot remove attachment #{attachment}: {error}") from None
+            return
         parent, selected = parts[attachment - 1]
         parent.set_payload([part for part in parent.iter_parts() if part is not selected])
+
+    def remove_draft_attachment(self, draft_id: str, attachment: int) -> dict:
+        """Remove one file or managed link by its current review number."""
+        _, message = self._draft_message(draft_id)
+        self._remove_draft_item(message, attachment)
         return self._update_draft(draft_id, message)
 
     def _replace_draft_attachment(self, draft_id: str, attachment: int, name: str,
-                                  mime_type: str, data: bytes) -> dict:
+                                  mime_type: str, data: bytes, *, source: dict | None = None) -> dict:
+        from email.message import EmailMessage
+        from .gmail_draft_sources import tag_file
         _, message = self._draft_message(draft_id)
         parts = self._attachment_parts(message)
-        if attachment < 1 or attachment > len(parts):
-            raise ValueError(f"Draft has no attachment #{attachment}.")
-        total_without_selected = sum(
-            self._attachment_dict(part)["size"]
-            for index, (_, part) in enumerate(parts, 1)
-            if index != attachment
-        )
-        if total_without_selected + len(data) > GMAIL_ATTACHMENT_LIMIT:
+        selected = parts[attachment - 1] if 1 <= attachment <= len(parts) else None
+        if selected:
+            parent, old = selected
+            position = list(parent.iter_parts()).index(old)
+        self._remove_draft_item(message, attachment)
+        total = sum(self._attachment_dict(part)["size"] for _, part in self._attachment_parts(message))
+        if total + len(data) > GMAIL_ATTACHMENT_LIMIT:
             raise ValueError("Attachments exceed Gmail's 25MB send limit.")
-        parent, selected = parts[attachment - 1]
-        payload = list(parent.iter_parts())
-        position = payload.index(selected)
-        from email.message import EmailMessage
         replacement = EmailMessage()
         main, _, sub = (mime_type or "application/octet-stream").partition("/")
         replacement.set_content(data, maintype=main, subtype=sub or "octet-stream")
         replacement.add_header("Content-Disposition", "attachment", filename=name)
-        payload[position] = replacement
-        parent.set_payload(payload)
+        tag_file(replacement, data, source)
+        if selected:
+            payload = list(parent.iter_parts())
+            payload.insert(position, replacement)
+            parent.set_payload(payload)
+        else:
+            if message.get_content_subtype() != "mixed":
+                message.make_mixed()
+            message.attach(replacement)
+        return self._update_draft(draft_id, message)
+
+    def _replace_draft_link(self, draft_id: str, attachment: int, item: dict) -> dict:
+        from .gmail_draft_sources import add_link
+        _, message = self._draft_message(draft_id)
+        self._remove_draft_item(message, attachment)
+        add_link(message, item)
         return self._update_draft(draft_id, message)
 
     def replace_draft_attachment(self, draft_id: str, attachment: int, path: str) -> dict:
@@ -693,13 +742,18 @@ class Gmail(GmailMailbox):
             name, handle = self._open_attachments([path], stack)[0]
             data = handle.read(GMAIL_ATTACHMENT_LIMIT + 1)
         mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        return self._replace_draft_attachment(draft_id, attachment, name, mime_type, data)
+        return self._replace_draft_attachment(draft_id, attachment, name, mime_type, data, source={"source":"local"})
 
-    def _send_draft(self, draft_id: str) -> dict:
-        """Send an existing draft after the CLI has obtained confirmation."""
+    def _send_draft(self, draft_id: str, *, raw: str | None = None, thread_id: str | None = None) -> dict:
+        """Send the CLI-reviewed payload in the same operation that consumes the draft."""
+        if not raw:
+            raise ValueError("A reviewed raw payload is required; use co gmail draft review.")
         self._require_draft_write_scope()
+        message = {"raw": raw}
+        if thread_id:
+            message["threadId"] = thread_id
         return self._get_service().users().drafts().send(
-            userId="me", body={"id": draft_id}
+            userId="me", body={"id": draft_id, "message": message}
         ).execute()
 
     def _open_attachments(self, attachments: list, stack) -> list[tuple[str, object]]:

@@ -247,19 +247,44 @@ class GDrive:
 
     # === Transfer ===
 
-    def _get_meta(self, file_id: str) -> dict:
-        """Fetch one file's metadata, resolving shortcuts to their target."""
-        service = self._get_service()
-        item = service.files().get(
-            fileId=file_id,
-            fields=f"{FILE_FIELDS}, shortcutDetails",
-            supportsAllDrives=True,
-        ).execute()
+    def get_account_email(self) -> str:
+        """Return the account confirmed by the selected Drive credentials."""
+        cached = getattr(self, "_account_email", None)
+        if cached:
+            return cached
+        result = self._get_service().about().get(fields="user(emailAddress)").execute()
+        address = result.get("user", {}).get("emailAddress")
+        if not isinstance(address, str) or not address.strip():
+            raise ValueError("Drive did not confirm the authenticated account; run co auth google.")
+        self._account_email = address.strip().casefold()
+        return self._account_email
 
-        shortcut = item.get("shortcutDetails")
-        if shortcut:
-            return self._get_meta(shortcut["targetId"])
-        return item
+    def _get_meta(self, file_id: str) -> dict:
+        """Resolve at most 20 shortcuts, rejecting cycles and trashed targets."""
+        seen = set()
+        service = self._get_service()
+        for _ in range(20):
+            if file_id in seen:
+                raise ValueError("Drive shortcut cycle; select the target file directly.")
+            seen.add(file_id)
+            item = service.files().get(fileId=file_id, fields=f"{FILE_FIELDS}, shortcutDetails, trashed",
+                                       supportsAllDrives=True).execute()
+            if item.get("trashed"):
+                raise ValueError("Drive file or shortcut is in the trash; restore it before attaching.")
+            if "shortcutDetails" not in item:
+                return item
+            file_id = item["shortcutDetails"].get("targetId")
+            if not isinstance(file_id, str) or not file_id:
+                raise ValueError("Drive shortcut target is missing or inaccessible.")
+        raise ValueError("Drive shortcut chain exceeds 20 entries; select the target directly.")
+
+    def get_info(self, file_id: str) -> dict:
+        """Inspect a resolved file without downloading it or changing sharing."""
+        item = self._get_meta(file_id)
+        export = EXPORT_FORMATS.get(item.get("mimeType"))
+        return {**self._file_dict(item), "raw_size":int(item["size"]) if item.get("size") is not None else None,
+                "export_type":export[0] if export else None, "export_suffix":export[1] if export else None,
+                "export_size":None, "sharing":"unchanged; recipient access unverified"}
 
     def _get_file(self, file_id: str) -> dict:
         """Get one Drive file's normalized metadata without downloading it."""
@@ -309,6 +334,8 @@ class GDrive:
             "size": len(buffer.getvalue()),
             "link": item.get("webViewLink", ""),
             "data": buffer.getvalue(),
+            "original_type": item["mimeType"],
+            "export_type": mime if item["mimeType"].startswith(NATIVE_PREFIX) else None,
         }
 
     def download(self, file_id: str, dest: str = ".") -> str:

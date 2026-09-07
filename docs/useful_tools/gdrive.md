@@ -130,7 +130,7 @@ The same tool backs [`co gdrive`](../cli/gdrive.md):
 ```bash
 co gdrive                          # 20 most recently modified
 co gdrive search report
-co gdrive get 3 --to ~/Downloads
+co gdrive get 3 --listing <listing-id> --to ~/Downloads
 co gdrive put report.pdf
 ```
 
@@ -139,3 +139,11 @@ co gdrive put report.pdf
 - [`co gdrive`](../cli/gdrive.md) — the CLI wrapper
 - [Gmail](gmail.md) — the same shape for mail
 - [Google Integration](../integrations/google.md) — OAuth scopes requested
+
+### Read-only metadata in the 1.8.4 candidate
+
+`get_info(file_id)` resolves shortcuts and returns metadata, `raw_size` (None
+when absent), `export_type`, `export_suffix` and unknown `export_size` without
+reading file bytes. `get_account_email()` asks Drive for the authenticated
+account. Shortcut cycles, chains beyond 20 entries and trashed targets fail.
+The CLI exposes this through `co gdrive info <full-file-id> --json`.

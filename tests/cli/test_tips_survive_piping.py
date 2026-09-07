@@ -66,8 +66,10 @@ def test_outlook_piped_scheduled_still_names_the_next_step(tmp_path, capsys):
 def test_gdrive_piped_listing_still_names_the_next_step(tmp_path, capsys):
     files = [{"id": "f1", "name": "report.pdf", "type": "application/pdf", "size": "10", "modified": ""}]
     with patch.object(gdrive_commands, "LIST_CACHE", tmp_path / "gdrive.json"):
-        gdrive_commands._print_listing(files, "drive")
-    assert "Download one with: co gdrive get <# from column 5>" in capsys.readouterr().out
+        drive = Mock()
+        drive.get_account_email.return_value = 'owner@example.test'
+        gdrive_commands._print_listing(drive, files, "drive")
+    assert "Download one with: co gdrive get f1" in capsys.readouterr().out
 
 
 def test_retry_hint_restates_the_full_command(capsys):
