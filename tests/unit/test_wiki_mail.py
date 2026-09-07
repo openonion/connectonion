@@ -87,3 +87,17 @@ def test_unconsented_mail_is_never_listed():
     with pytest.raises(WikiError):
         collect_mail(subscription(consented=False), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
     assert client.bodies_read == []
+
+
+def test_quoted_reply_chains_are_cut_off():
+    """A reply carries the whole thread below it; the maintainer already saw those mails."""
+    from connectonion.wiki.mail import strip_quoted
+    body = ("Thanks Alice, Friday works.\n\nBest,\nAaron\n\n"
+            "On Tue, 2 Sep 2026 at 09:00, Alice Chen <alice@example.com> wrote:\n> Can we do Friday?\n> ...")
+    assert strip_quoted(body).strip() == "Thanks Alice, Friday works.\n\nBest,\nAaron"
+    outlook = "Agreed.\n\n________________________________\nFrom: Alice <alice@example.com>\nSent: Tuesday\nSubject: Re: Aurora\n\nCan we?"
+    assert strip_quoted(outlook).strip() == "Agreed."
+    assert strip_quoted("No quote here.") == "No quote here."
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", body=body)])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
+    assert "Can we do Friday" not in batch.items[0]["text"] and "Friday works" in batch.items[0]["text"]

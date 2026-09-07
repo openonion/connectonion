@@ -25,7 +25,19 @@ AUTOMATED_SENDER = re.compile(r"(no-?reply|do-?not-?reply|notification|notificat
                               re.IGNORECASE)
 LISTING_WINDOW = timedelta(days=7)   # one listing call covers this much of the timeline
 LISTING_LIMIT = 200                  # per window; a busier week continues on the next pass
-MAX_BODY_CHARS = 20_000              # a mail body beyond this is a pasted log or a marketing template
+MAX_BODY_CHARS = 8_000               # a mail body beyond this is a pasted log or a marketing template
+# Where the quoted thread below a reply begins. Those mails were already read on
+# their own day; carrying them again turned a 17-mail batch into 370k tokens.
+QUOTED_REPLY = re.compile(
+    r"^(?:On .{0,120}? wrote:\s*$|-{3,}\s*Original Message\s*-{3,}|_{10,}\s*$|From: .{0,200}\nSent: |"
+    r"在.{0,80}写道[：:]\s*$|> .*$)",
+    re.MULTILINE)
+
+
+def strip_quoted(body: str) -> str:
+    """The reply itself, without the thread it quotes."""
+    match = QUOTED_REPLY.search(body)
+    return body[:match.start()] if match else body
 
 
 def _address(value: str) -> str:
@@ -67,6 +79,8 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
             if len(items) >= max_items:
                 return Batch(items, updated)
             body = client.get_email_body(row["id"])
+            head, _, rest = body.partition("--- Email Body ---")
+            body = head + "--- Email Body ---" + strip_quoted(rest) if rest else strip_quoted(body)
             text = _fit_text(body[:MAX_BODY_CHARS * 2], MAX_BODY_CHARS)
             # Provider ids run to 150 characters; a Sources line of them is unreadable. The
             # short form names the mail, the reference is what `co outlook read` needs.

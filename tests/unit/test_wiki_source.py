@@ -195,3 +195,26 @@ def test_hyphenated_injected_tags_are_scaffolding_too(tmp_path):
     rollout(file, [("user", "<permissions_instructions>\nyou may...</permissions_instructions>"),
                    ("user", "<command-name>/loop</command-name>"), ("user", "real words")])
     assert [i["text"] for i in collect(subscription(tmp_path), {}, 10, 10000).items] == ["real words"]
+
+
+def test_pasted_blobs_are_capped_and_commentary_is_skipped(tmp_path):
+    """60 days of one machine held 134M characters of 'user' text: files and tool output
+    relayed as input, not typing. Codex also marks the assistant's progress narration as
+    phase=commentary; only final_answer is what it told the user."""
+    from connectonion.wiki.source import MAX_MESSAGE_CHARS
+    file = tmp_path / "2026/09/07/rollout-a.jsonl"
+    file.parent.mkdir(parents=True)
+    rows = [{"type": "session_meta", "payload": {"id": "s", "cwd": "/work/demo"}}]
+    def msg(role, text, **extra):
+        return {"timestamp": "2026-09-07T05:00:00Z", "type": "response_item",
+                "payload": {"type": "message", "role": role, **extra,
+                            "content": [{"type": "input_text" if role == "user" else "output_text", "text": text}]}}
+    rows += [msg("user", "x" * (MAX_MESSAGE_CHARS * 3)),
+             msg("assistant", "Working on it...", phase="commentary"),
+             msg("assistant", "Done: Markdown chosen.", phase="final_answer"),
+             msg("assistant", "Older Codex, no phase field.")]
+    file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    batch = collect(subscription(tmp_path), {}, 10, 10_000_000)
+    texts = [i["text"] for i in batch.items]
+    assert len(texts) == 3 and "Working on it" not in "".join(texts)
+    assert len(texts[0]) < MAX_MESSAGE_CHARS + 100 and "truncated" in texts[0]

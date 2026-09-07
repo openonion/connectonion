@@ -23,6 +23,10 @@ TRUNCATION_NOTE = "\n[truncated by co wiki: {dropped} more characters in the sou
 # that opens with such a tag; nobody types that. The first real end-to-end run
 # turned a 4.7k-char plugin list into an "opportunities" page before this existed.
 INJECTED_BLOCK = re.compile(r"\s*<[a-z_-]+>")
+# Nobody types more than this in one message. What exceeds it is a file, a log or a
+# tool result relayed as input (134M characters of it in one machine's 60 days);
+# the head is kept so the maintainer knows what was pasted, the bulk is not.
+MAX_MESSAGE_CHARS = 4000
 
 
 @dataclass
@@ -57,6 +61,10 @@ def _codex_message(row: dict, since: datetime) -> dict | None:
     if row.get("type") != "response_item" or payload.get("type") != "message":
         return None
     if payload.get("role") not in ("user", "assistant"):
+        return None
+    # Codex labels the assistant's progress narration ("Working on it...") as
+    # commentary; only final_answer is what it actually told the user.
+    if payload.get("role") == "assistant" and payload.get("phase", "final_answer") != "final_answer":
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
@@ -106,6 +114,8 @@ def _spoken(role: str, text: str, when: str) -> dict | None:
         return None
     if role == "user" and INJECTED_BLOCK.match(text):
         return None
+    if len(text) > MAX_MESSAGE_CHARS:
+        text = text[:MAX_MESSAGE_CHARS] + TRUNCATION_NOTE.format(dropped=len(text) - MAX_MESSAGE_CHARS)
     return {"role": role, "text": text, "timestamp": when}
 
 
