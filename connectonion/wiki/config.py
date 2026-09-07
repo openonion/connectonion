@@ -91,7 +91,9 @@ def set_config(root: Path, pairs: list[str]) -> dict:
             parts = key.split(".")
             target = config
             if len(parts) == 2 and parts[0] in ("schedule", "limits"):
-                target = config[parts[0]]
+                target = config.get(parts[0])
+                if not isinstance(target, dict):
+                    raise WikiError("Invalid nested configuration; preserve config.yaml for diagnosis")
             elif len(parts) != 1 or key not in ("model", "runner"):
                 raise WikiError("Unknown or immutable configuration key")
             if parts[-1] not in target:

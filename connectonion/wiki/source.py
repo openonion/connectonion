@@ -3,7 +3,6 @@
 import copy
 import hashlib
 import json
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,6 +100,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
             continue
         if subscription.get("project") and meta.get("cwd") != subscription["project"]:
             continue
+        digest = hashlib.sha256(data[:offset])
         for line in data[offset:].splitlines(keepends=True):
             if not line.endswith(b"\n"):
                 break  # A running session may still be writing this last line.
@@ -120,6 +120,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                 result.append(item)
                 used += size
             offset += len(line)
-            updated[name] = {"offset": offset, "digest": hashlib.sha256(data[:offset]).hexdigest(),
+            digest.update(line)
+            updated[name] = {"offset": offset, "digest": digest.hexdigest(),
                              "mtime_ns": stat.st_mtime_ns}
     return Batch(result, updated)

@@ -57,8 +57,15 @@ The initial adapter targets the locally inspected Codex CLI 0.147.x protocol.
 Schema generation proves parameter shape, not enforcement. The candidate uses
 an ephemeral thread, no attached execution environments, read-only native
 sandbox, denied approvals, explicit model/provider, and scoped dynamic tools.
-It disables inherited optional features/MCP/Hooks and does not load project
-instructions. User credentials stay with the native client.
+It requests disabled optional features/MCP/Hooks and no project instructions,
+then checks effective configuration before a model turn. User credentials stay
+with the native client. These requests are not proof of isolation.
+
+The 0.147.0 probe found that an empty MCP map override retains inherited servers.
+The adapter now refuses that configuration before inference, but a safe native
+startup/auth configuration and actual tool-exposure verification remain open.
+The refusal happens after process startup; it does not prove integrations could
+not initialize earlier. See the [recorded evidence](../testing/wiki-acceptance.md).
 
 Before enabling real user ingestion, a synthetic native acceptance test must
 demonstrate that shell execution, arbitrary reads, outside writes, external
@@ -74,6 +81,13 @@ The importer reads bounded, authorized Codex rollout messages. It preserves
 speaker, timestamp, source link, and project context. System/developer
 instructions, tool payloads and duplicate event-message mirrors are not treated
 as user-authored notes. The organizer's own sessions are excluded.
+
+The current adapter's date/project filters select messages sent to maintenance;
+they are not a guarantee that older or other-project bytes are never opened
+locally. It reads each changed rollout (up to 16 MB) within the explicitly
+authorized session directory to inspect metadata and verify the consumed prefix.
+First-start consent must describe that scope honestly; narrower file-level
+access requires additional importer work before being promised.
 
 Small operational files remember source choices, consumed input, and attempts.
 Complete input is acknowledged only after a successful maintenance pass. An

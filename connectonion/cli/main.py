@@ -587,6 +587,12 @@ def server_destroy(
         raise typer.Exit(1)
 
 
+# Experimental Wiki inspection (no background collection entry yet).
+from .commands.wiki_commands import make_wiki_app
+
+app.add_typer(make_wiki_app(_typer_app), name="wiki")
+
+
 # Skills command group
 skills_app = _typer_app(help="Discover, copy, and list SKILL.md files from agent tool directories")
 app.add_typer(skills_app, name="skills")

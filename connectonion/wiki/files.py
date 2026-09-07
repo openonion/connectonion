@@ -18,7 +18,8 @@ class WikiError(Exception):
 def safe_path(root: Path, relative: str) -> Path:
     """Reject traversal and links instead of following them into another store."""
     parts = PurePosixPath(relative).parts
-    if not parts or relative.startswith("/") or "\\" in relative:
+    if (not parts or relative.startswith("/") or "\\" in relative
+            or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative)):
         raise WikiError("Expected a relative notebook path")
     if any(part in (".", "..") or part.startswith(".") for part in parts):
         raise WikiError("Hidden paths and traversal are not notebook content")
@@ -104,6 +105,8 @@ class Notebook:
             raise WikiError("Runtime instructions and approved Skills are not writable notebook targets")
         if parts[0] == "skills" and (len(parts) < 3 or parts[1] not in ("candidates", "approved")):
             raise WikiError("Skill notes belong in skills/candidates")
+        if path.is_file() and path.stat().st_nlink != 1:
+            raise WikiError("Hardlinked files are not supported notebook content")
         return path
 
     def list(self, category: str = "") -> list[str]:

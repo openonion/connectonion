@@ -4,6 +4,33 @@
 `co wiki` group. The examples below define the acceptance contract; they are
 not installation instructions for a released feature.
 
+## Implemented on the draft branch
+
+This first PR exposes inspection and explicit configuration only. It cannot yet
+collect sessions, remember a correction, or start background work through the CLI.
+
+```bash
+co wiki
+co wiki status
+co wiki subscriptions
+co wiki config
+co wiki config set model gpt-5.6-luna
+co wiki list people
+co wiki show people/alice.md
+co wiki search "Alice" --type people
+co wiki logs
+co wiki doctor
+```
+
+Place group options before the command, for example
+`co wiki --root /path/to/wiki --json status`. Read commands never initialize a
+notebook; `config set` writes settings only, not content or a background job.
+Malformed configuration must produce a nonzero diagnostic without rewriting the
+file. `config` can still display the original mapping for diagnosis.
+
+The commands below are the **target contract**, including unfinished commands;
+the branch's `co wiki --help` lists only the implemented subset above.
+
 Wiki is a notebook maintained by your AI from authorized sessions. Ask your
 existing assistant to retrieve it, remember something, or correct a note.
 You do not need to edit Markdown or audit a queue of proposed changes.

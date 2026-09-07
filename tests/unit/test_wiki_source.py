@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from connectonion.wiki.source import collect, pending_metadata
 from connectonion.wiki.files import WikiError
+from connectonion.wiki.source import collect, pending_metadata
 
 
 def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs"):

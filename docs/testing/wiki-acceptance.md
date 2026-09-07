@@ -1,6 +1,6 @@
 # Wiki milestone 1: acceptance before implementation
 
-Status: contract and test plan, 2026-09-07. Run only against synthetic fixtures
+Status: incomplete milestone / draft PR, 2026-09-07. Run only against synthetic fixtures
 and an isolated notebook. No personal source ingestion is needed to validate
 the first PR. Real model tests, when explicitly run, receive synthetic text only.
 
@@ -18,21 +18,58 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | Scope/speaker distinction and own-output exclusion | Source tests in `test_wiki_source.py` | Passing for fixtures |
 | Incomplete tail / rewritten prefix / oversized input cannot be silently consumed | Source tests in `test_wiki_source.py` | Passing for fixtures |
 | Dry-run never opens source bodies | `test_dry_run_does_not_open_bodies` | Passing |
-| File tools support immediate rewrite/merge/delete without semantic proposals | `test_dynamic_file_tools_write_read_and_reorganize` | Written; implementation verification pending |
-| Cumulative usage events are counted once | `test_usage_notifications_replace_cumulative_counts_not_sum` | Written; implementation verification pending |
-| Successive correction replaces current understanding | `test_successive_correction_and_no_input_does_not_invoke_runner` | Written; orchestration not implemented |
-| Failed runner leaves checkpoint intact and usage unknown, not zero | `test_failure_preserves_progress_and_counts_attempt` | Written; orchestration not implemented |
-| Unsubscribe survives later setup; notes stay intact | `test_unsubscribe_survives_approval_and_does_not_erase` | Written; orchestration not implemented |
-| First consent gates body access; dry-run does not mutate state | Service tests in `test_wiki_service.py` | Written; orchestration not implemented |
-| CLI help, pipes, concrete next commands, exit codes, custom root | CLI tests to be written before CLI code | Not implemented |
+| File tools support immediate rewrite/merge/delete without semantic proposals | `test_dynamic_file_tools_write_read_and_reorganize` | Passing |
+| Cumulative usage events are counted once | `test_usage_notifications_replace_cumulative_counts_not_sum` | Passing |
+| Successive correction replaces current understanding | `test_successive_correction_and_no_input_does_not_invoke_runner` | Passing with fake writer; not model reasoning evidence |
+| Failed runner leaves checkpoint intact and usage unknown, not zero | `test_failure_preserves_progress_and_counts_attempt` | Passing |
+| Unsubscribe survives later setup; notes stay intact | `test_unsubscribe_survives_approval_and_does_not_erase` | Passing internal API; public workflow deferred |
+| First consent gates body access; dry-run does not mutate state | Service tests in `test_wiki_service.py` | Passing internal API; first-start UI deferred |
+| Input/attempt limits and interruption preserve unread source progress | Service regressions in `test_wiki_service.py` | Passing |
+| CLI help, real-process pipes, concrete next commands, exit codes, custom root | `tests/cli/test_wiki_commands.py` | Passing for inspection/configuration commands |
+| Malformed config gives a diagnostic without overwriting it | `test_malformed_config_has_a_diagnostic_without_rewriting` | Passing; observed red before fix |
+| Inherited MCP configuration prevents a model turn | Runner regression and native preflight probe | Refusal verified on Codex 0.147.0; isolation not established |
 | Native tool exposure cannot bypass notebook scope | Real native synthetic acceptance below | Not verified; blocks ready-for-review claim |
 | Native Skill reasons correctly across successive inputs | Real synthetic three-pass exercise below | Not verified |
 | Start/stop, scheduled slots, catch-up, process ownership | Separate worker milestone | Deferred; no foreground-only `start` substitute |
 
-"Passing" above records the first fixture run, not a claim about every future
-revision. Rerun the relevant tests after changes and record final results in the
-PR. A fake runner that writes the expected sentence tests orchestration, not
-model reasoning; report these separately.
+Rerun these tests after changes and record final results in the PR. A fake runner
+that writes the expected sentence tests orchestration, not model reasoning;
+report these separately.
+
+## Recorded verification
+
+- Focused Wiki, existing Codex transport, and CLI-help regressions: **153 passed,
+  1 deselected**. The deselected test is opt-in native inference, not a passed
+  model-behavior check.
+- Full offline suite at the earlier implementation checkpoint: **7,648 passed,
+  551 failed, 19 errors, 22 skipped, 184 deselected**. Clean base `21cdf590` in a
+  separate worktree, same Python 3.14.7 environment: **7,580 passed, 551 failed,
+  19 errors, 22 skipped, 184 deselected**. The complete 570 failure/error node-ID
+  sets match exactly. Later Wiki regressions were verified with the focused run;
+  do not describe this environment's full suite as green.
+- Ruff on new Wiki modules/tests: passed. Wheel build with existing local build
+  dependencies: passed; all six Wiki modules, the command module, and both Skills
+  are included; no bytecode is packaged. Nothing was published or installed.
+- Both Skills pass static `quick_validate.py`. The fresh-model text-only CLI tip
+  test below was **not run**.
+- No personal session bodies were read, no Wiki model inference was invoked,
+  and no background worker was installed during verification.
+
+### Native preflight finding
+
+Codex CLI **0.147.0** accepts the requested ephemeral thread/model/read-only
+parameters with no reported instruction sources. This is handshake evidence,
+not proof of available tool isolation. In the same probe, `-c mcp_servers={}`
+left two inherited MCP servers in effective configuration. The adapter now
+refuses that state before account refresh, thread creation, or model inference.
+A second probe through the adapter confirmed refusal, with `run_turn` replaced
+by a sentinel that must never be called; it was not called and usage was unknown.
+
+This guard runs after the native process starts. It does **not** prove inherited
+integrations cannot initialize during process startup. An isolated native
+configuration/auth strategy and actual tool-exposure tests are still required
+before enabling collection. Do not alter a user's global MCP config or loosen
+permissions to make acceptance pass.
 
 ## Native synthetic acceptance
 
@@ -74,12 +111,11 @@ not run, label it not run rather than substituting a string assertion as evidenc
 ## Verification commands
 
 ```bash
-python -m pytest tests/unit/test_wiki_files.py tests/unit/test_wiki_source.py -q
-python -m pytest tests/unit/test_wiki_runner.py tests/unit/test_wiki_service.py -q
-python -m pytest tests/unit/test_codex_tool.py -q
+python -m pytest tests/cli/test_wiki_commands.py tests/e2e/cli/test_cli_help.py tests/unit/test_wiki_files.py tests/unit/test_wiki_source.py tests/unit/test_wiki_runner.py tests/unit/test_wiki_service.py tests/unit/test_codex_tool.py tests/e2e/real_api/test_real_wiki.py -q
+python -m pytest -q
+python -m build --no-isolation --wheel --outdir /path/to/temporary-build-output
 ```
 
-The second command is intentionally red until orchestration is implemented.
 Run focused tests while iterating, then relevant CLI/integration regressions and
 the default offline suite. Do not change the global test configuration to hide
 unrelated failures; record them separately.

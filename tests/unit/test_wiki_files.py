@@ -1,11 +1,9 @@
 """The notebook is plain files; its permission boundary is not a prompt."""
 
-import json
-from pathlib import Path
 
 import pytest
 
-from connectonion.wiki.config import default_config, prepare, read_config, set_config
+from connectonion.wiki.config import prepare, read_config, set_config
 from connectonion.wiki.files import Notebook, WikiError, maintenance_lock
 
 
@@ -87,3 +85,13 @@ def test_unchanged_write_preserves_mtime(tmp_path):
     before = (tmp_path / "decisions/files.md").stat().st_mtime_ns
     assert notebook.write("decisions/files.md", "Use Markdown") is False
     assert (tmp_path / "decisions/files.md").stat().st_mtime_ns == before
+
+
+def test_notebook_rejects_hardlinked_content(tmp_path):
+    root = tmp_path / "wiki"
+    prepare(root)
+    outside = tmp_path / "outside.md"
+    outside.write_text("outside secret")
+    (root / "people/linked.md").hardlink_to(outside)
+    with pytest.raises(WikiError):
+        Notebook(root).read("people/linked.md")
