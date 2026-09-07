@@ -301,10 +301,15 @@ def _sync_locked(root, selected, progress, config, runner):
         return record
     if status(root)["runner_attempts_today"] >= limits["runner_calls_per_day"]:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
+    runner = runner or run_codex
+    # A runner may carry a preflight (the native one checks login, binary and
+    # version). It raises before an attempt is reserved: a configuration error is
+    # not a failed batch and must not spend one of the day's attempts.
+    getattr(runner, "preflight", lambda: None)()
     record.update(outcome="running", runner_attempts=1)
     write_json(path, record)  # Reserve the attempt before starting a native process.
     try:
-        result = (runner or run_codex)(Notebook(root), items, config)
+        result = runner(Notebook(root), items, config)
         record.update(outcome="completed", usage=result.get("usage"), changed=result.get("changed", []),
                       refused=result.get("refused", 0), refusals=result.get("refusals", []))
         write_json(state_path(root, "progress.json"), updated)

@@ -141,3 +141,15 @@ def test_newest_sessions_are_consumed_first(tmp_path):
     os.utime(new, (1_790_500_000, 1_790_500_000))
     batch = collect(subscription(tmp_path), {}, 1, 10000)
     assert [item["text"] for item in batch.items] == ["fresh news"]
+
+
+def test_codex_injected_blocks_are_not_user_messages(tmp_path):
+    """Every codex exec session starts with a `role: user` <recommended_plugins> block the
+    user never typed; the first real journey turned it into an 'opportunities' page."""
+    file = tmp_path / "2026/09/07/rollout-a.jsonl"
+    rollout(file, [("user", "<recommended_plugins>\nHere is a list of plugins that are available but not installed.\n\n- Airtable"),
+                   ("user", "<environment_context>\n  <cwd>/work/demo</cwd>\n</environment_context>"),
+                   ("user", "Note for the record: Aurora uses Markdown."),
+                   ("assistant", "noted")])
+    batch = collect(subscription(tmp_path), {}, 10, 10000)
+    assert [item["text"] for item in batch.items] == ["Note for the record: Aurora uses Markdown.", "noted"]

@@ -41,6 +41,9 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | First batch runs before the clock is installed | `test_first_batch_runs_before_the_clock_is_installed` | Passing; same finding — otherwise the foreground batch and the run-at-load batch race |
 | SIGTERM (bootout / stop) closes the run as interrupted | `test_sigterm_during_a_batch_is_recorded_as_interrupted` | Passing; checkpoint not advanced |
 | Sleep catch-up, skipped-when-busy | launchd semantics, not our code | Relied on, documented in `schedule.py`; not tested here |
+| **The whole loop as a user lives it**: tell Codex → `start --yes` (real CLI process, real maintainer, real launchd) → a Codex with `wiki-use` answers through `co wiki` → correction → `sync` rewrites the page → `sync` again makes no model call → `open` carries it → `stop` leaves nothing | `tests/e2e/real_api/test_real_wiki_journey.py::test_tell_start_ask_correct_stop` (opt-in) | **Passing, 2026-09-07, 87 s.** The assistant ran `co wiki search`/`show` (visible in its rollout) and answered with the record path. First run found that Codex injects a `<recommended_plugins>` block as a `role: user` message and the maintainer had turned it into an `opportunities` page; user messages opening with such a tag are now excluded (`test_codex_injected_blocks_are_not_user_messages`, red before the fix) |
+| The clock fires at a calendar slot, not only at load | `test_launchd_fires_at_a_calendar_slot` (opt-in, ~3 min, no model call) | See below |
+| Wrong environment says what to do: no login, no codex binary, a second sync while one runs | `tests/e2e/cli/test_wiki_failures.py` (real CLI process, no model, CI-safe) | Passing |
 
 ### Live launchd round-trip (2026-09-07, this machine)
 

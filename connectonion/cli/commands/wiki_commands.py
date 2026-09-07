@@ -158,14 +158,18 @@ def make_wiki_app(factory):
                   source: str = typer.Option("", "--source", help="Only this subscription"),
                   dry_run: bool = typer.Option(False, "--dry-run", help="Pending file metadata only; no body reads")):
         """Run one bounded incremental batch now (does not enable the background schedule)."""
+        from ...wiki.files import WikiError
         from ...wiki.service import run_sync
 
         def operation(root):
             record = run_sync(root, source=source, dry_run=dry_run)
             if dry_run:
                 return record, ["sync"]
+            if record["outcome"] == "failed":
+                # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
+                raise WikiError(f"Batch {record['id']} failed: {record.get('error')}")
             return record, ["logs", "--run", record["id"]]
-        _handle(ctx, operation, ["start"])
+        _handle(ctx, operation, ["logs"])
 
     @wiki.command("subscribe")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook"),

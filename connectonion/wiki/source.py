@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from .files import WikiError, safe_path
 # left waits for the next pass, exactly like an unread batch.
 SCAN_BYTES_PER_PASS = 64_000_000
 TRUNCATION_NOTE = "\n[truncated by co wiki: {dropped} more characters in the source]"
+INJECTED_BLOCK = re.compile(r"\s*<[a-z_]+>")
 
 
 @dataclass
@@ -99,6 +101,13 @@ def _message(row: dict, since: datetime) -> dict | None:
                      and part.get("type") in ("input_text", "output_text")
                      and isinstance(part.get("text"), str))
     if not text.strip():
+        return None
+    # Codex injects its own scaffolding into the transcript under role "user":
+    # <recommended_plugins>, <environment_context>, <user_instructions> (AGENTS.md),
+    # <permissions_instructions>... always as a message that opens with such a
+    # tag. Nobody types that; the first real end-to-end run turned a 4.7k-char
+    # plugin list into an "opportunities" page before this check existed.
+    if payload["role"] == "user" and INJECTED_BLOCK.match(text):
         return None
     return {"role": payload["role"], "text": text, "timestamp": row["timestamp"]}
 

@@ -87,6 +87,25 @@ def thread_parameters(cwd: str, config: dict) -> dict:
             "dynamicTools": tool_specs()}
 
 
+def preflight() -> dict:
+    """Everything that can be checked without a model or a daily attempt.
+
+    A missing login or binary is a configuration error, not a failed batch: it
+    must exit nonzero with the fix, and it must not burn one of the day's
+    attempts -- six such failures would lock the real fix out until tomorrow.
+    """
+    real = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
+    if not (real / "auth.json").is_file():
+        raise WikiError("Codex login not found; run `codex login` before Wiki maintenance")
+    executable = shutil.which("codex")
+    if not executable:
+        raise WikiError("Codex CLI is missing; install Codex and authenticate before running Wiki")
+    result = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=10)
+    if result.returncode or not re.fullmatch(r"codex-cli 0\.147\.\d+\s*", result.stdout):
+        raise WikiError("This experimental Wiki adapter requires Codex CLI 0.147.x")
+    return {"codex": executable, "version": result.stdout.strip()}
+
+
 def native_env(codex_home: Path) -> dict:
     allowed = ("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL", "SYSTEMROOT")
     env = {name: os.environ[name] for name in allowed if name in os.environ}
@@ -261,3 +280,6 @@ def run_codex(notebook: Notebook, items: list[dict], config: dict) -> dict:
             raise RunFailed(message, server.usage, file_tools.changed) from error
         finally:
             server.close()
+
+
+run_codex.preflight = preflight  # service.py calls it before reserving an attempt
