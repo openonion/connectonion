@@ -2,36 +2,49 @@
 
 Draft for 1.8.4; publish after release acceptance.
 
-The download regression starts with a file already on disk. It is named
-`report.txt`, and its contents are `old`. The simulated Gmail message contains
-two more files with that name. One even arrives as `../../report.txt`.
-The test asks the CLI to download all attachments into the chosen directory.
+While adding incoming Gmail attachments, I reached a result that the usual success
+message could not describe. The first attachment was on disk. The second could not
+be decoded. The command had done useful work and had failed, both at once.
 
-A successful HTTP response cannot answer whether that operation was safe.
-Opening the first destination for writing would replace the existing file.
-Stripping the incoming path solves the directory escape but makes the two
-attachment names collide again. We need all three sets of bytes at the end,
-inside the selected directory, with the original file untouched.
+This happened in a deliberately broken development fixture, not a customer's
+mailbox. That distinction matters. We had no permission to use a real mailbox as a
+destructive experiment. But the operator's next decision was real enough: should
+they run the command again? An answer that concealed the first file could lead them
+to create another copy. An answer that celebrated the download could make them
+stop looking for the missing second file.
 
-That is why filename selection happens at publication. Each decoded attachment
-is written to a private temporary file first. After the size check and fsync,
-the client tries to place it under an unused name. If another file already owns
-that name, it tries a numbered suffix. The collision check and placement must
-be one operation; checking that a path does not exist and then opening it
-would leave the same race in a smaller gap.
+Before that complication, even choosing a destination had seemed straightforward.
+The selected directory already contained `report.txt`. The message supplied two
+more attachments with the same name, one disguised as `../../report.txt`. Opening
+the destination directly would replace an existing document. Removing the path
+components would stop the escape and leave us with the original collision.
 
-The next fixture makes the second attachment's base64 invalid. Now the first
-file is safely saved, but the overall request has failed. Rolling the first
-file back would conceal useful completed work. Printing only an error would
-leave the operator unsure whether a retry would create another copy.
+The tempting repair was to check whether a name existed and pick a suffix. That
+made the example look safe, but another process could claim the name between the
+check and the write. The protection had to hold when the bytes became visible,
+not just when we chose what to call them.
 
-The result therefore retains both parts: the first has a destination and hash,
-and the second has an error. The command exits 1. The test checks both the exit
-behavior and the directory, including that no partial second file was published.
-A separate symlink fixture checks that a colliding link cannot redirect the
-write to its target.
+So each attachment gets a private temporary file first. Only after decoding,
+checking its size and flushing the bytes do we publish it under an unused name.
+Placement itself refuses a collision; a competing file makes us try the next
+suffix. Existing documents stay where they are. A filename supplied by a message
+does not get to choose a directory outside the one the operator selected.
 
-These cases changed what counts as completion. The request was to save a set
-of attachments, so the answer has to account for that set. A single success
-sentence cannot describe the moment when one file is complete and the next
-one never made it to disk.
+Then the second attachment failed, and a different temptation appeared: remove
+the first file so the whole command could be called a failure. That would simplify
+the status at the cost of throwing away a completed download. It would also make
+the filesystem tell a less useful story merely to preserve a tidy return value.
+
+We kept the file. The result lists its destination and hash alongside the second
+attachment's error, and the command exits with status 1. The operator can see which
+part needs attention. The failed attachment never acquires a final filename.
+
+The regression now checks the directory as well as the result: the old document
+survives, successful bytes have their own names, and no partial second file looks
+complete. Those checks establish the local behavior. An authorized disposable
+mailbox journey is still owed before release acceptance.
+
+The useful change was in what we meant by completion. We were saving a set of
+attachments, not receiving one HTTP response. Once part of that set had reached
+disk, a single success sentence—or a single unexplained error—could no longer
+tell the operator what had happened.
