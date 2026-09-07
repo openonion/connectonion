@@ -220,6 +220,16 @@ class Gmail:
 
     # === Reading ===
 
+    def get_account_email(self) -> str:
+        """Return the provider-confirmed account for this client, not saved metadata."""
+        if not getattr(self, "_account_email", None):
+            profile = self._get_service().users().getProfile(userId='me').execute()
+            value = profile.get('emailAddress')
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("Gmail did not return an account identity")
+            self._account_email = value.strip().casefold()
+        return self._account_email
+
     def list_inbox(self, last: int = 10, unread: bool = False) -> list:
         """Fetch inbox emails as dicts (id, from, subject, date, snippet, unread).
 

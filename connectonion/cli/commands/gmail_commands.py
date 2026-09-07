@@ -2,7 +2,7 @@
 Purpose: CLI surface for the user's Gmail mailbox — send, list (inbox/sent), read, reply, and search from the terminal
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.gmail.Gmail] | imported by [cli/main.py via handle_gmail_*()] | hits the Gmail API through the Gmail tool
-  Data flow: _gmail() loads GOOGLE_* from the global default or explicit --env-file → Gmail() instance | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/gmail_last_inbox.json | draft list → ~/.co/gmail_last_drafts.json | draft edits parse and replace Gmail's raw MIME message | Drive attachment reads reuse GDrive without writing local files
+  Data flow: _gmail() loads GOOGLE_* from the global default or explicit --env-file → Gmail() instance | inbox/search/sent and drafts → numbered Rich table (full IDs when piped) → immutable account-bound IDs under global gmail-listings/; rows require --listing | draft edits parse and replace Gmail's raw MIME message | Drive attachment reads reuse GDrive without writing local files
   State/Effects: writes Gmail inbox/draft numbering caches under ~/.co | draft commands create/update Gmail drafts, but only draft send can deliver and it always asks for confirmation | read changes mailbox state only with --mark-read | Gmail refreshes expired tokens via oo-api and saves the selected credential record
   Integration: exposes inbox/read/reply/send/sent/search plus draft list/create/attach/remove/replace/preview/send handlers for cli/main.py | presentation mirrors outlook_commands.py | Gmail/Drive API logic lives in useful_tools | requires prior 'co auth google'
   Errors: guarded failures exit 1 with a next command; provider and transport errors are sanitized by google_errors | send/reply connection failures point to sent-mail inspection because delivery may have completed
@@ -19,17 +19,20 @@ from rich.panel import Panel
 from rich.table import Table
 from .google_errors import google_errors
 from .command_tips import print_tip
+from .gmail_listings import save_listing, resolve_reference, ListingError
 
 from ...provider_credentials import resolve_provider_credentials
 
 console = Console()
 
-INBOX_CACHE = Path.home() / ".co" / "gmail_last_inbox.json"
-DRAFT_CACHE = Path.home() / ".co" / "gmail_last_drafts.json"
+from ...environment import global_config_dir
+
+INBOX_CACHE = global_config_dir() / "gmail_last_inbox.json"
+DRAFT_CACHE = global_config_dir() / "gmail_last_drafts.json"
 
 
 def _gmail(require_draft_write: bool = False):
-    """Load GOOGLE_* credentials from .env files and return a Gmail instance. Exits 1 with a hint if not connected."""
+    """Load the selected global or explicit GOOGLE_* record and return a Gmail instance. Exits 1 with a hint if not connected."""
     from ...environment import load_environment
     load_environment()
     from ...provider_credentials import resolve_provider_credentials
@@ -83,16 +86,20 @@ def _when(date: str) -> str:
 
 
 def _print_listing(gmail, emails: list, title: str):
-    """Render emails as a numbered table (or plain ID-bearing text when piped) and cache the numbering for read/reply."""
-    INBOX_CACHE.parent.mkdir(exist_ok=True)
-    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}), encoding="utf-8")
+    """Render emails as a numbered table (or plain ID-bearing text when piped) and freeze an account-bound listing for read/reply."""
+    token = save_listing(INBOX_CACHE.parent / "gmail-listings", gmail.get_account_email(),
+                         "messages", [email["id"] for email in emails])
+    print(f"Listing: {token} (expires in 15 minutes; use --listing {token} with a row number)")
+    if not emails:
+        return
+    next_id = emails[0]["id"]
 
     if not console.is_terminal:
         # Scripts and agents get the untruncated format with full message ids —
         # and the same next-step tip: piped callers are exactly the AI audience
         # the tip exists for.
-        console.print(gmail._format_dicts(emails), markup=False, highlight=False)
-        print_tip("Read one with: co gmail read <#>")
+        console.print(gmail._format_dicts(emails), markup=False, highlight=False, soft_wrap=True)
+        print_tip(f"Read one with: co gmail read {next_id}")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -107,7 +114,7 @@ def _print_listing(gmail, emails: list, title: str):
 
     console.print()
     console.print(table)
-    print_tip("\n[dim]Read one with:[/dim] [bold]co gmail read <#>[/bold]\n")
+    print_tip(f"Read one with: co gmail read {next_id}")
 
 
 @google_errors("co gmail inbox")
@@ -116,8 +123,7 @@ def handle_gmail_inbox(last: int = 10, unread: bool = False):
     gmail = _gmail()
     emails = gmail.list_inbox(last=last, unread=unread)
     if not emails:
-        INBOX_CACHE.parent.mkdir(exist_ok=True)
-        INBOX_CACHE.write_text("{}", encoding="utf-8")
+        _print_listing(gmail, [], "Gmail")
         scope = "unread " if unread else ""
         console.print(f"\n[cyan]Gmail inbox:[/cyan] no {scope}emails\n")
         print_tip("Search mail: co gmail search <query>")
@@ -125,32 +131,19 @@ def handle_gmail_inbox(last: int = 10, unread: bool = False):
     _print_listing(gmail, emails, f"📬 Gmail — {resolve_provider_credentials('google').get('EMAIL') or ''}")
 
 
-def _resolve_email_id(gmail, email_id: str) -> str:
-    """Turn a listing number into a Gmail message id; full ids pass through. Numbers mean the last listing shown."""
-    cached = json.loads(INBOX_CACHE.read_text(encoding="utf-8")) if INBOX_CACHE.exists() else {}
-    if email_id in cached:
-        return cached[email_id]
-
-    if not (email_id.isascii() and email_id.isdigit() and len(email_id) < 5):
-        return email_id  # full Gmail message id
-
-    if INBOX_CACHE.exists() or int(email_id) < 1:
-        # The user is pointing at their last listing and that number wasn't in
-        # it — fetching a fresh (differently numbered) list would silently open
-        # the wrong email.
-        return ""
-
-    emails = gmail.list_inbox(last=int(email_id))
-    if len(emails) < int(email_id):
-        return ""
-    return emails[int(email_id) - 1]["id"]
+def _resolve_email_id(gmail, email_id: str, listing: str | None = None) -> str:
+    number = email_id.removeprefix('#')
+    if not (number.isascii() and number.isdigit() and len(number) < 5):
+        return email_id
+    return resolve_reference(INBOX_CACHE.parent / "gmail-listings", email_id,
+                             gmail.get_account_email(), "messages", listing)
 
 
 @google_errors("co gmail inbox")
-def handle_gmail_read(email_id: str, mark_read: bool = False):
+def handle_gmail_read(email_id: str, mark_read: bool = False, *, listing: str | None = None):
     """Show one Gmail message; mark it read only with explicit opt-in."""
     gmail = _gmail()
-    resolved = _resolve_email_id(gmail, email_id)
+    resolved = _resolve_email_id(gmail, email_id, listing)
     if not resolved:
         console.print(f"\nNo email #{email_id} in your last listing.", markup=False)
         print_tip("Refresh the listing: co gmail inbox")
@@ -168,25 +161,24 @@ def handle_gmail_read(email_id: str, mark_read: bool = False):
     console.print(content.strip() or "[dim](empty body)[/dim]", markup=False, highlight=False)
 
     marked = "Unread state unchanged. "
-    if mark_read and "gmail.modify" in os.getenv("GOOGLE_SCOPES", ""):
-        # Marking read is a mailbox write — the API rejects it on tokens that
-        # only carry gmail.readonly + gmail.send.
+    if mark_read:
+        scopes = resolve_provider_credentials("google").scopes
+        if scopes and not scopes.intersection({"gmail.modify", "https://mail.google.com/"}):
+            print_tip("Not marked read: gmail.modify permission missing.\nNext: co auth google")
+            raise typer.Exit(1)
         gmail.mark_read(resolved)
         marked = "Marked read. "
-    elif mark_read:
-        print_tip("Not marked read: gmail.modify permission missing.\nNext: co auth google")
-        return
     print_tip(f"\n{marked}Reply with: co gmail reply {resolved} <message>")
 
 
 @google_errors("co gmail sent")
-def handle_gmail_reply(email_id: str, message: str):
+def handle_gmail_reply(email_id: str, message: str, *, listing: str | None = None):
     """Reply to an email from the last listing (threaded). A message of '-' reads stdin."""
     if message == "-":
         message = sys.stdin.read()
 
     gmail = _gmail()
-    resolved = _resolve_email_id(gmail, email_id)
+    resolved = _resolve_email_id(gmail, email_id, listing)
     if not resolved:
         console.print(f"\nNo email #{email_id} in your last listing.", markup=False)
         print_tip("Refresh the listing: co gmail inbox")
@@ -242,9 +234,10 @@ def handle_gmail_send(to: str, subject: str, message: str, cc: str = None,
 def handle_gmail_sent(last: int = 10):
     """List recently sent Gmail emails."""
     gmail = _gmail()
-    console.print(f"\n📤 [bold cyan]Gmail sent[/bold cyan] [dim]({resolve_provider_credentials('google').get('EMAIL') or ''})[/dim]\n")
-    console.print(gmail.get_sent_emails(max_results=last), markup=False, highlight=False)
-    print_tip("Find sent messages to read: co gmail search in:sent")
+    emails = gmail.list_search("in:sent", max_results=last)
+    _print_listing(gmail, emails, "Gmail sent")
+    if not emails:
+        print_tip("No sent mail returned. Next: co gmail inbox")
 
 
 @google_errors("co gmail inbox")
@@ -253,8 +246,7 @@ def handle_gmail_search(query: str, last: int = 10):
     gmail = _gmail()
     emails = gmail.list_search(query, max_results=last)
     if not emails:
-        INBOX_CACHE.parent.mkdir(exist_ok=True)
-        INBOX_CACHE.write_text("{}", encoding="utf-8")
+        _print_listing(gmail, [], "Gmail")
         console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]\n")
         print_tip("Show recent mail: co gmail inbox")
         return
@@ -263,14 +255,12 @@ def handle_gmail_search(query: str, last: int = 10):
 
 # === Draft attachment workflow ===
 
-def _resolve_draft_id(draft_id: str) -> str:
-    """Turn a draft-list number into an immutable Gmail draft id."""
-    cached = json.loads(DRAFT_CACHE.read_text(encoding="utf-8")) if DRAFT_CACHE.exists() else {}
-    if draft_id in cached:
-        return cached[draft_id]
-    if draft_id.isascii() and draft_id.isdigit() and len(draft_id) < 5:
-        return ""
-    return draft_id
+def _resolve_draft_id(gmail, draft_id: str, listing: str | None = None) -> str:
+    number = draft_id.removeprefix('#')
+    if not (number.isascii() and number.isdigit() and len(number) < 5):
+        return draft_id
+    return resolve_reference(DRAFT_CACHE.parent / "gmail-listings", draft_id,
+                             gmail.get_account_email(), "drafts", listing)
 
 
 def _draft_call(action, retry_command: str):
@@ -305,19 +295,20 @@ def _draft_call(action, retry_command: str):
         raise typer.Exit(1) from None
 
 
-def _print_draft_list(drafts: list) -> None:
-    DRAFT_CACHE.parent.mkdir(exist_ok=True)
-    DRAFT_CACHE.write_text(
-        json.dumps({str(i): draft["id"] for i, draft in enumerate(drafts, 1)}),
-        encoding="utf-8",
-    )
+def _print_draft_list(gmail, drafts: list) -> None:
+    token = save_listing(DRAFT_CACHE.parent / "gmail-listings", gmail.get_account_email(),
+                         "drafts", [draft["id"] for draft in drafts])
+    print(f"Listing: {token} (expires in 15 minutes; use --listing {token} with a row number)")
+    if not drafts:
+        return
+    next_id = drafts[0]["id"]
     if not console.is_terminal:
         for i, draft in enumerate(drafts, 1):
             print(
                 f"{i}.\t{draft['to']}\t{draft['subject']}\t"
                 f"{draft['attachments']}\t{draft['id']}"
             )
-        print_tip("Preview one with: co gmail draft preview <# from this listing>")
+        print_tip(f"Preview one with: co gmail draft preview {next_id}")
         return
 
     table = Table(title=f"📝 Gmail drafts — {resolve_provider_credentials('google').get('EMAIL') or ''}")
@@ -330,7 +321,7 @@ def _print_draft_list(drafts: list) -> None:
                       str(draft["attachments"]))
     console.print()
     console.print(table)
-    print_tip("\nPreview one with: [bold]co gmail draft preview <# from this listing>[/bold]\n")
+    print_tip(f"Preview one with: co gmail draft preview {next_id}")
 
 
 def _print_draft_preview(draft: dict, tip: bool = True) -> None:
@@ -359,8 +350,8 @@ def _print_draft_preview(draft: dict, tip: bool = True) -> None:
         print_tip(f"\nSend with confirmation: [bold]co gmail draft send {draft['id']}[/bold]\n")
 
 
-def _draft_id_or_exit(draft_id: str) -> str:
-    resolved = _resolve_draft_id(draft_id)
+def _draft_id_or_exit(gmail, draft_id: str, listing: str | None = None) -> str:
+    resolved = _resolve_draft_id(gmail, draft_id, listing)
     if not resolved:
         console.print(f"\n❌ [bold red]No draft #{draft_id} in your last listing.[/bold red]")
         print_tip("List drafts: [bold]co gmail draft list[/bold]\n")
@@ -373,12 +364,11 @@ def handle_gmail_draft_list(last: int = 20):
     gmail = _gmail()
     drafts = _draft_call(lambda: gmail.list_drafts(last=last), "co gmail draft list")
     if not drafts:
-        DRAFT_CACHE.parent.mkdir(exist_ok=True)
-        DRAFT_CACHE.write_text("{}", encoding="utf-8")
+        _print_draft_list(gmail, [])
         console.print("\nGmail drafts: none")
         print_tip("Create one with: [bold]co gmail draft create <to> <subject> <message>[/bold]\n")
         return
-    _print_draft_list(drafts)
+    _print_draft_list(gmail, drafts)
 
 
 @google_errors("co gmail draft list")
@@ -397,14 +387,14 @@ def handle_gmail_draft_create(to: str, subject: str, message: str, cc: str = Non
 
 @google_errors("co gmail draft list")
 def handle_gmail_draft_attach(draft_id: str, source: str, drive: bool = False,
-                              link: bool = False):
+                              link: bool = False, *, listing: str | None = None):
     if link and not drive:
         console.print("\n❌ [bold red]--link requires --drive.[/bold red]")
         print_tip(f"Retry with: [bold]co gmail draft attach {draft_id} <Drive file # or id> --drive --link[/bold]\n")
         raise typer.Exit(1)
 
     gmail = _gmail(require_draft_write=True)
-    resolved = _draft_id_or_exit(draft_id)
+    resolved = _draft_id_or_exit(gmail, draft_id, listing)
     if drive:
         from .gdrive_commands import _gdrive, _resolve_file_id
         from ...useful_tools.gmail import GMAIL_ATTACHMENT_LIMIT
@@ -448,9 +438,9 @@ def handle_gmail_draft_attach(draft_id: str, source: str, drive: bool = False,
 
 
 @google_errors("co gmail draft list")
-def handle_gmail_draft_remove(draft_id: str, attachment: int):
+def handle_gmail_draft_remove(draft_id: str, attachment: int, *, listing: str | None = None):
     gmail = _gmail(require_draft_write=True)
-    resolved = _draft_id_or_exit(draft_id)
+    resolved = _draft_id_or_exit(gmail, draft_id, listing)
     updated = _draft_call(
         lambda: gmail.remove_draft_attachment(resolved, attachment),
         f"co gmail draft preview {resolved}",
@@ -461,9 +451,9 @@ def handle_gmail_draft_remove(draft_id: str, attachment: int):
 
 @google_errors("co gmail draft list")
 def handle_gmail_draft_replace(draft_id: str, attachment: int, source: str,
-                               drive: bool = False):
+                               drive: bool = False, *, listing: str | None = None):
     gmail = _gmail(require_draft_write=True)
-    resolved = _draft_id_or_exit(draft_id)
+    resolved = _draft_id_or_exit(gmail, draft_id, listing)
     if drive:
         from .gdrive_commands import _gdrive, _resolve_file_id
         from ...useful_tools.gmail import GMAIL_ATTACHMENT_LIMIT
@@ -493,17 +483,17 @@ def handle_gmail_draft_replace(draft_id: str, attachment: int, source: str,
 
 
 @google_errors("co gmail draft list")
-def handle_gmail_draft_preview(draft_id: str):
+def handle_gmail_draft_preview(draft_id: str, *, listing: str | None = None):
     gmail = _gmail()
-    resolved = _draft_id_or_exit(draft_id)
+    resolved = _draft_id_or_exit(gmail, draft_id, listing)
     draft = _draft_call(lambda: gmail.get_draft(resolved), "co gmail draft list")
     _print_draft_preview(draft)
 
 
 @google_errors("co gmail sent")
-def handle_gmail_draft_send(draft_id: str):
+def handle_gmail_draft_send(draft_id: str, *, listing: str | None = None):
     gmail = _gmail(require_draft_write=True)
-    resolved = _draft_id_or_exit(draft_id)
+    resolved = _draft_id_or_exit(gmail, draft_id, listing)
     draft = _draft_call(lambda: gmail.get_draft(resolved), "co gmail draft list")
     _print_draft_preview(draft, tip=False)
     try:

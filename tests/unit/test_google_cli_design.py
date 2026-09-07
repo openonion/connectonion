@@ -24,14 +24,14 @@ from connectonion.cli.commands import gmail_commands as gm, gdrive_commands as g
 
 
 CASES = [
-    (['gmail'], 'Read the first listed email', 'co gmail read 1'),
-    (['gmail', 'inbox'], 'Read the first listed email', 'co gmail read 1'),
-    (['gmail', 'search', 'test'], 'Read the first matching email', 'co gmail read 1'),
+    (['gmail'], 'Read the first listed email', 'co gmail read msg-a'),
+    (['gmail', 'inbox'], 'Read the first listed email', 'co gmail read msg-a'),
+    (['gmail', 'search', 'test'], 'Read the first matching email', 'co gmail read msg-a'),
     (['gmail', 'read', 'msg-a'], 'Reply with body Thanks', 'co gmail reply msg-a Thanks'),
     (['gmail', 'reply', 'msg-a', 'Thanks'], 'Check sent mail', 'co gmail sent'),
     (['gmail', 'send', 'a@example.invalid', 'Test', 'Hello'], 'Check sent mail', 'co gmail sent'),
-    (['gmail', 'sent'], 'Find sent messages to read', 'co gmail search in:sent'),
-    (['gmail', 'draft', 'list'], 'Preview the first listed draft', 'co gmail draft preview 1'),
+    (['gmail', 'sent'], 'Read the first listed sent email', 'co gmail read msg-a'),
+    (['gmail', 'draft', 'list'], 'Preview the first listed draft', 'co gmail draft preview draft-a'),
     (['gmail', 'draft', 'create', 'a@example.invalid', 'Test', 'Hello'], 'Attach report.pdf', 'co gmail draft attach draft-a report.pdf'),
     (['gmail', 'draft', 'attach', 'draft-a', 'report.pdf'], 'Preview the staged draft', 'co gmail draft preview draft-a'),
     (['gmail', 'draft', 'remove', 'draft-a', '1'], 'Preview the updated draft', 'co gmail draft preview draft-a'),
@@ -63,6 +63,7 @@ def test_help_and_skill_parity(path):
 
 def capture(args, root, failure=None):
     gmail, drive = MagicMock(), MagicMock()
+    gmail.get_account_email.return_value = 'sender@example.invalid'
     email = dict(id='msg-a', **{'from': 'a@example.invalid'}, subject='Test',
                  date='Sat, 05 Sep 2026 10:00:00 +0000', unread=False, snippet='Hello')
     gmail.list_inbox.return_value = gmail.list_search.return_value = [email]
@@ -145,11 +146,16 @@ def test_empty_listing_cannot_reuse_old_row(module, cache, handler, args, method
     path = tmp_path / 'cache.json'
     path.write_text(json.dumps({'1': 'old-id'}))
     client = MagicMock()
+    client.get_account_email.return_value = "sender@example.invalid"
     getattr(client, method).return_value = []
     with patch.object(module, cache, path), patch.object(module, '_gmail' if module is gm else '_gdrive', return_value=client):
         handler(*args)
-        resolved = gm._resolve_email_id(client, '1') if module is gm else gd._resolve_file_id('1')
-        assert resolved == ''
+        if module is gm:
+            from connectonion.cli.commands.gmail_listings import ListingError
+            with pytest.raises(ListingError):
+                gm._resolve_email_id(client, '1')
+        else:
+            assert gd._resolve_file_id('1') == ''
 
 
 @pytest.mark.parametrize('surface,subcommand', [('gmail', 'read'), ('gdrive', 'get')])
