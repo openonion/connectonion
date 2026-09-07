@@ -1,241 +1,128 @@
-# Agent identity — where it comes from, and what can disagree with it
+# Agent identity and the account that pays
 
-An agent has one identity and two things that look like it. Most confusion about
-"which address is this agent" is really about which of the three you are reading.
+The signing key determines an agent's address. The managed-model token determines
+the account billed for a call. An `AGENT_ADDRESS` env value records an address; it
+does not replace the signing key. Read these sources separately when diagnosing
+a mismatch.
 
-```
-.co/keys/agent.key   ──▶  the identity        signs, is addressed, is trusted
-OPENONION_API_KEY    ──▶  the payer           whose credits the tokens come out of
-.env AGENT_ADDRESS   ──▶  a written note      describes the first one. Not consulted.
-```
+## Global configuration in the 1.8.4 candidate
 
-Nothing keeps the three in agreement. They are set at different moments by
-different commands, and when they drift apart nothing fails loudly — which is why
-this page exists.
+`co init` initializes the designated global directory, normally `~/.co/`.
+`AGENT_CONFIG_PATH`, explicitly inherited from the process, selects another global
+directory. Its `keys/agent.key` holds the global signing identity and `keys.env`
+holds settings. Changing working directory does not select a different identity
+or load a project's `.env`.
 
----
+Use `co --env-file /path/to/app.env …` to select another env file explicitly.
+Inherited process values take precedence; Google/Microsoft credentials resolve as
+whole records, so missing fields never borrow another account's tokens. With explicit env selection, CLI identity readers use an existing key in the
+selected file's adjacent `.co/` directory, falling back to the designated global
+identity if no key exists there. A deployed service sets its own
+`AGENT_CONFIG_PATH` and therefore uses the key on that server.
 
-## The identity: derived from a phrase and a name
+Explicit project creation remains available with `co create` or `co init ./`.
+It does not make project `.env` loading automatic. Old instructions that said
+`co create` copied all personal credentials and every deploy forwarded them
+wholesale describe the previous behavior.
 
-`co deploy --to` does not let the server invent an identity. It derives one from
-the operator's recovery phrase and the agent's **name**
-(`server_commands.derived_agent_identity`, called at `deploy_to_server.py:1015`):
+## Read the live address
 
-```
-recovery phrase ──BIP-39──▶ seed ──SLIP-0010──▶ tree
-                                                 │
-                    agent://<name> ──SLIP-0013──▶ m/13'/A'/B'/C'/D' ──▶ agent.key
-```
-
-The path is a hash of the identity URI, so **the name is the path**. Two
-consequences follow, and both are the point rather than side effects:
-
-- **An address can be printed before the agent exists**, and recomputed after its
-  disk is gone. Letting a server mint a key on first boot gives an address nobody
-  can predict and nobody can recover — the failure mode moves from "changes every
-  deploy" up to "changes every machine", which is rarer and therefore worse.
-- **The same name always gives the same identity.** Deploy `naturewill-mapping` to
-  two machines and both are the same agent, holding the same private key. That is
-  not a leak; it is derivation working. See [Two machines, one identity](#two-machines-one-identity).
-
-Names are trimmed and lowercased before hashing, so `LinkedIn` and `linkedin` are
-one identity. A mistyped name is a *different* key rather than an error.
-
-The full derivation — why hardened-only, why no watch-only, how SSH keys come off
-the same tree — is in [key-derivation.md](key-derivation.md).
-
-### When the author must not hold the key
-
-`co deploy --to --own-identity` skips derivation and mints the key on the machine.
-Use it for an agent handed to a customer: otherwise the author can re-derive the
-customer's private key from their own phrase, whatever they intend. The trade is
-stated plainly at `deploy_to_server.py:1011` — only that machine can ever be that
-agent, so losing the disk loses the identity.
-
-### A deploy never overwrites an identity
-
-The remote half is guarded (`deploy_to_server.py:352`):
+Query the actual configured Host endpoint:
 
 ```bash
-if [ ! -f "$keys_dir/agent.key" ]; then
-  # write the derived key
-fi
+curl --fail --silent --show-error http://localhost:8000/info \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["address"])'
 ```
 
-> overwriting an identity is not a thing a deploy may do
+Use the real port on a remote service. Hostnames, `servers.yaml`, and env address
+notes can be stale. `address.load(co_dir)` requires an explicit directory and
+computes the address from its key. `AGENT_EMAIL` and `IS_EMAIL_ACTIVE` affect email
+metadata; they do not choose that key.
 
-So an agent that already has a key keeps it, including one that was minted locally
-by `co init` long before it was ever deployed. This is why an agent's live address
-can legitimately differ from what its name derives to:
+## Inspect the token's account
 
-```
-derived  agent://naturewill  →  0x8f7c1216…      ← what the name would give
-running  naturewill.service  →  0xfae4e0d62c…    ← what it actually is
-```
-
-Both numbers are correct. The agent predates the derivation scheme, the deploy
-preserved it, and nothing is broken. Do not "fix" this by deleting the key.
-
-`.co/keys/` is also excluded from the deploy rsync, so the identity is never sent
-in the tarball and never deleted by `--delete`.
-
----
-
-## `AGENT_ADDRESS` does not set the address
-
-This is the single most expensive misreading in this system.
-
-`address.load()` computes the address from the signing key on disk. From the
-environment it takes **only** `AGENT_EMAIL` and `IS_EMAIL_ACTIVE`
-(`address.py:305`):
+Run this in the same environment as the process being diagnosed. It only prints
+account identifiers and balance, never the JWT or recovery material. The decoded
+claim is diagnostic, not signature verification; the authenticated GET verifies
+the account at the configured backend.
 
 ```python
-email = os.getenv("AGENT_EMAIL", f"{address[:10]}@mail.openonion.ai")
-email_active = os.getenv("IS_EMAIL_ACTIVE", "").lower() == "true"
-```
-
-There is no reader of `AGENT_ADDRESS` anywhere that determines an address.
-`project_cmd_lib.py:67` says so outright: *"The address is read from the keypair,
-not from keys.env's AGENT_ADDRESS."*
-
-An `AGENT_ADDRESS` line is a **written note about** the key. It can be stale, it
-can name a different account entirely, and the agent will keep answering as its
-real self the whole time. Observed on one machine at one moment:
-
-```
-/etc/connectonion/naturewill-mapping.env :  AGENT_ADDRESS=0x10e68f6dff…
-curl localhost:8000/info                 :  0xcf1619cb4c…
-```
-
-Both true simultaneously. The env line was a leftover; the agent had never once
-used it.
-
-**So: read an agent's address from the agent.** Config files, `servers.yaml`, and
-the server hostname (`nw-map-10e68f6d`, fixed the day the VM was created) are all
-records, not facts.
-
-```bash
-curl -s localhost:8000/info | python3 -c 'import json,sys; print(json.load(sys.stdin)["address"])'
-```
-
-`AGENT_EMAIL` is different — it **is** consulted, and it does override the derived
-mailbox. A wrong value there really does change who the agent sends mail as.
-
----
-
-## Billing is a separate axis
-
-Who pays is decided by the JWT in `OPENONION_API_KEY`, not by `agent.key`. Every
-model call bills the `public_key` inside that token (`llm/billing.py:236`):
-
-```
-usage_logs(public_key, model, tokens, cost_usd)  +  users.total_cost_usd += cost
-```
-
-`usage_logs` has no column naming the machine or the agent. Two processes sharing
-one API key produce rows that are **indistinguishable after the fact** — there is
-no way to split the bill later. Attribution has to be right at call time or it is
-gone.
-
-Two more properties worth knowing before you debug a balance:
-
-- **`/api/v1/auth` creates an account for any key that authenticates.** A wrong or
-  rotated key does not error; it silently becomes a fresh, empty, working account.
-  `_token_for_this_account` (`project_cmd_lib.py:1083`) exists because one $180
-  server was bought against an account nobody meant to use.
-- **Balance = `credits_usd − total_cost_usd`.** There is no balance endpoint;
-  `/api/v1/balance` is 404.
-
-Server rental is charged on the same `total_cost_usd`, but every charge also lands
-in `payments` as `server:<machine_type>` (`servers/service.py:234`), so server fees
-*can* be separated from token spend after the fact. Token spend between two agents
-sharing a key cannot.
-
----
-
-## How the three drift apart
-
-The default path does it for you:
-
-```
-co create
-  └─ create.py:348 — "Always copy from global keys.env
-                      (includes AGENT_ADDRESS, AGENT_EMAIL, and API keys)"
-        the operator's own identity lands in the new project's .env
-                              ↓
-co deploy --to
-  └─ _sync_env (deploy_to_server.py:659)
-        writes the project .env wholesale to /etc/connectonion/<agent>.env,
-        rewriting only AGENT_CONFIG_PATH
-                              ↓
-the agent starts
-  ├─ address  ← .co/keys/agent.key         its own, correct
-  ├─ email    ← AGENT_EMAIL                the operator's
-  └─ billing  ← OPENONION_API_KEY          the operator's
-```
-
-The agent is cryptographically itself and financially you. Nothing reports an
-error, `co status` looks fine, and the spend accumulates on a personal account.
-
-Because `_sync_env` rewrites the file from the project `.env` on **every** deploy,
-correcting the server copy alone is undone by the next deploy. Fix the project
-`.env` too, or the fix is one you have to remember to reapply.
-
----
-
-## Two machines, one identity
-
-Deploying the same name twice gives two machines the same key. Cryptographically
-this is fine — it is one agent with two bodies. Operationally it usually is not:
-
-- Each body keeps its **own** business state (a `sent.json`, a cursor, a dedupe
-  ledger). Neither knows about the other's.
-- So both will do the same work on the same subject, and **both will report
-  success**. Downstream, someone gets two of whatever the agent produces.
-
-When two hosts answer with one address, the question is not "was the key stolen"
-but "did we deploy this name twice". Decide which host is the real one before
-touching either — stopping the wrong one takes the live agent offline.
-
----
-
-## Checking an agent, in order
-
-```bash
-# who it actually is — from the agent, not from a file
-curl -s localhost:8000/info | python3 -c 'import json,sys; print(json.load(sys.stdin)["address"])'
-
-# who pays — decode the JWT, do not trust AGENT_ADDRESS beside it
-grep '^OPENONION_API_KEY=' .env | cut -d= -f2- | cut -d. -f2 | python3 -c \
-  'import sys,base64,json; p=sys.stdin.read().strip(); p+="="*(-len(p)%4); \
-   print(json.loads(base64.urlsafe_b64decode(p))["public_key"])'
-
-# what the name would derive to — to tell "minted its own" from "wrong key"
-python3 -c '
+import base64
+import json
+import os
 from pathlib import Path
-from mnemonic import Mnemonic
-from nacl.signing import SigningKey
-from connectonion import address
-from connectonion.derive import derive_path, identity_uri, slip13_path
-d = address.load(Path.home()/".co")
-seed = Mnemonic("english").to_seed(d["seed_phrase"])
-sk = SigningKey(derive_path(seed, slip13_path(identity_uri("AGENT-NAME"))))
-print("0x"+bytes(sk.verify_key).hex())'
+import requests
+from connectonion.backend import backend_url
+from connectonion.environment import load_environment, select_env_file
+
+# Optional explicit selection, equivalent to co --env-file /path/to/app.env:
+# select_env_file(Path("/path/to/app.env"))
+load_environment()
+token = os.environ.get("OPENONION_API_KEY")
+if not token:
+    raise SystemExit("No managed-model token in the selected environment")
+try:
+    payload = token.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    print("Token account (unverified claim):", claims["public_key"])
+except (IndexError, KeyError, ValueError, UnicodeError):
+    raise SystemExit("Token is not a decodable account JWT; do not print it") from None
+
+# Resolve the same backend as auth/models. Never put a token in shell arguments.
+response = requests.get(
+    f"{backend_url()}/api/v1/auth/me",
+    headers={"Authorization": f"Bearer {token}"},
+    timeout=15,
+    allow_redirects=False,
+)
+if response.status_code != 200:
+    raise SystemExit(f"Account lookup failed (HTTP {response.status_code})")
+account = response.json()
+print("Verified account:", account.get("public_key"))
+print("Balance:", account.get("balance_usd"))
 ```
 
-Three outcomes when `/info` and the derived address disagree:
+`co status` authenticates the selected signing identity and shows that
+identity's account. It is not proof that a separately supplied model token bills
+the same account. `POST /api/v1/auth` can create an account, so use the read-only
+GET above when checking an existing token. Do not hardcode a production backend
+when diagnosing a development or self-hosted installation.
 
-| | meaning |
-|---|---|
-| `/info` == derived | normal — deploy derived it |
-| `/info` != derived, agent works | it minted its own identity earlier and the deploy preserved it. Correct, leave it |
-| `/info` != the address you gave someone | you copied the address from a config file. Re-read from `/info` |
+## Deployment and recovery
 
----
+`co deploy --to` derives a candidate key from the operator's recovery phrase and
+normalized agent name using SLIP-0013 `agent://<name>`. An existing server key is
+preserved. `--own-identity` creates the key on the server when no key exists; it
+does not rotate an existing identity.
+
+After setup, deploy authenticates **the key actually held by the server**, including
+legacy or independently created keys. That account supplies the managed-model
+token and email metadata. The key never returns to the workstation. When remote
+authentication fails, deploy removes operator identity metadata and explains that
+managed models still need authentication; it does not fall back to billing the
+operator.
+
+Default deployment reads selected global app configuration and filters personal
+provider credentials and operator identity. An explicit `--env-file` opts into
+deploying that file's provider credentials. Operator identity fields are still
+replaced by the server account. Keep intentional credentials in the selected
+source; editing only the generated server EnvironmentFile is undone on redeploy.
+
+The same normalized name and recovery phrase derive the same candidate key.
+Two live hosts can therefore share an address while keeping separate delivery
+ledgers and business state. Verify both endpoints and their deployment history;
+the shared address alone neither proves a compromise nor proves the hosts should
+both run. Establish which service should remain active with the owner before
+stopping either one.
+
+A live address differing from a newly derived candidate may simply mean deploy
+preserved an older key. Do not delete a working key to make the addresses agree.
+Back up recovery material securely; an independently generated or legacy key may
+not be recoverable from the current derivation scheme. Never print a recovery
+phrase, private key, or token into a diagnostic report.
 
 ## See also
 
-- [key-derivation.md](key-derivation.md) — the tree itself: BIP-39, SLIP-0010,
-  SLIP-0013 paths, per-server SSH keys, and the retired HKDF scheme
-- [network/deploy.md](network/deploy.md) — what a deploy syncs, keeps and excludes
-- `.claude/skills/co-部署与排障` (platform repo) — the operational checklist
+- [Key derivation](key-derivation.md)
+- [Deployment](network/deploy.md)
+- [Agent identity skill](useful_skills/agent-identity.md)
