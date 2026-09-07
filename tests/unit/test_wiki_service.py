@@ -325,7 +325,8 @@ def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path,
 
 def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(wiki):
     root, sessions = wiki
-    set_config(root, ["limits.items_per_batch", "2", "limits.runner_calls_per_day", "1"])
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2",
+                      "limits.runner_calls_per_day", "1"])
     rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
     calls = []
 
@@ -375,3 +376,62 @@ def test_outlook_source_flows_through_sync_with_its_own_cursor(tmp_path, monkeyp
     assert [i["reference"] for i in seen] == ["outlook:m1"] and seen[0]["role"] == "other"
     assert read_json(state_path(root, "progress.json"), {})["outlook"]["cursor"] == "2026-09-02T09:00:00+00:00"
     assert run_sync(root, runner=runner)["outcome"] == "no_change"
+
+
+def _extract_world(tmp_path, monkeypatch, n_messages):
+    root, sessions = tmp_path / "wiki", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "no-claude")
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    prepare(root)
+    approve_sources(root)
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {i}") for i in range(n_messages)])
+    return root
+
+
+def test_a_large_batch_is_extracted_first_and_the_maintainer_reads_only_the_digest(tmp_path, monkeypatch):
+    root = _extract_world(tmp_path, monkeypatch, 40)
+    seen_by_extractor, seen_by_runner = [], []
+
+    def extractor(items, config):
+        seen_by_extractor.append(len(items))
+        return {"notes": "## Decisions\n- fact 3 — user, codex:s:0", "usage": {"input_tokens": 100, "output_tokens": 10}}
+
+    def runner(notebook, items, config):
+        seen_by_runner.extend(items)
+        return {"usage": {"input_tokens": 20, "output_tokens": 5}, "changed": []}
+    record = run_sync(root, runner=runner, extractor=extractor)
+    assert record["outcome"] == "completed" and record["extracted"] is True
+    assert seen_by_extractor == [40]  # the whole batch, well above items_per_batch=20
+    assert len(seen_by_runner) == 1 and seen_by_runner[0]["role"] == "extract"
+    assert "fact 3" in seen_by_runner[0]["text"] and seen_by_runner[0]["messages"] == 40
+    assert record["runner_attempts"] == 2 and record["usage"]["input_tokens"] == 120
+    assert run_sync(root, runner=runner, extractor=extractor)["outcome"] == "no_change"
+
+
+def test_a_small_batch_goes_straight_to_the_maintainer(tmp_path, monkeypatch):
+    root = _extract_world(tmp_path, monkeypatch, 3)
+    runner_items = []
+    record = run_sync(root, runner=lambda nb, items, cfg: runner_items.extend(items) or {"usage": None, "changed": []},
+                      extractor=lambda items, cfg: pytest.fail("extraction called for a small batch"))
+    assert record["extracted"] is False and len(runner_items) == 3
+
+
+def test_nothing_worth_keeping_skips_the_maintainer(tmp_path, monkeypatch):
+    root = _extract_world(tmp_path, monkeypatch, 30)
+    record = run_sync(root, runner=lambda *a: pytest.fail("maintainer called with an empty digest"),
+                      extractor=lambda items, cfg: {"notes": "Nothing worth keeping.", "usage": None})
+    assert record["outcome"] == "completed" and record["items"] == 30 and record["changed"] == []
+    assert read_json(state_path(root, "progress.json"), {})  # the batch is consumed all the same
+
+
+def test_older_config_without_extraction_limits_still_loads(tmp_path):
+    import yaml
+
+    from connectonion.wiki.config import read_config
+    prepare(tmp_path)
+    config = yaml.safe_load((tmp_path / "config.yaml").read_text())
+    for key in ("extract_items_per_batch", "extract_chars_per_batch"):
+        config["limits"].pop(key)
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(config))
+    assert read_config(tmp_path)["limits"]["extract_items_per_batch"] == 150

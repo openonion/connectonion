@@ -166,6 +166,7 @@ class WikiServer(CodexAppServer):
         self.refused = 0
         self.refusals = []  # safe WikiError texts, kept so the prompt can be tuned from real runs
         self.report = ""    # the model's own closing message, capped; how a silent run explains itself
+        self.final_text = ""  # the same message uncapped: for extraction it is the whole output
 
     def initialize(self, timeout=30):
         self.request("initialize", {"clientInfo": {"name": "co_wiki", "version": "1"},
@@ -175,6 +176,10 @@ class WikiServer(CodexAppServer):
     def _handle_server_request(self, req_id, method, params):
         if method != "item/tool/call":
             return super()._handle_server_request(req_id, method, params)
+        if self.file_tools is None:  # an extraction turn has no tools; a call is a protocol surprise
+            self._send({"id": req_id, "result": {"success": False, "contentItems": [
+                {"type": "inputText", "text": "No tools are available in this turn."}]}})
+            return
         try:
             result = self.file_tools.call(params.get("tool"), params.get("arguments"))
             response = {"success": True, "contentItems": [
@@ -208,6 +213,7 @@ class WikiServer(CodexAppServer):
             if item.get("type") == "agentMessage":
                 text = item.get("text") or item.get("content") or ""
                 if isinstance(text, str):
+                    self.final_text = text
                     self.report = text[:1000]
             super()._handle_notification(method, params)
 

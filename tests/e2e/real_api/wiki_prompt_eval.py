@@ -172,7 +172,40 @@ def check_correction(nb):
     return f
 
 
+def check_long_session(nb):
+    """Three facts buried in 120 messages of a working session; the digest must carry them."""
+    f = structure_failures(nb)
+    text = all_text(nb)
+    for needle, what in (("markdown", "the Aurora storage decision"), ("alice", "Alice Chen"),
+                         ("2026-09-11", "the Friday deadline")):
+        if needle not in text:
+            f.append(f"{what} did not survive extraction")
+    if "42 passed" in text or "reformatted" in text:
+        f.append("tool chatter survived extraction")
+    if len(pages(nb)) > 5:
+        f.append(f"{len(pages(nb))} pages from three facts")
+    return f
+
+
+def long_session():
+    turns = []
+    for i in range(40):
+        turns.append(("user", f"run the tests for module {i} and fix what fails"))
+        turns.append(("assistant", f"Ran tests for module {i}: {40 + i} passed. Reformatted two files. Nothing else to report."))
+        if i == 7:
+            turns.append(("user", "For Aurora we're storing notes as Markdown, not SQLite — inspectability matters most."))
+            turns.append(("assistant", "Noted."))
+        if i == 21:
+            turns.append(("user", "Met Alice Chen from Example Co today; she prefers email over calls."))
+            turns.append(("assistant", "Noted."))
+        if i == 33:
+            turns.append(("user", "I promised Alice the Aurora storage proposal by Friday 2026-09-11."))
+            turns.append(("assistant", "Noted."))
+    return turns
+
+
 SCENARIOS = [
+    Scenario("long_session", [[("s1", long_session())]], check_long_session),
     Scenario("people_and_agenda", [[("s1", [
         ("user", "Met Alice Chen today, product lead at Example Co. She told me she prefers email over calls. "
                  "I promised to send her the Aurora storage proposal by Friday 2026-09-11."),

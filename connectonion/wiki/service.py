@@ -302,7 +302,7 @@ def _selected_sources(root: Path, selector: str) -> dict:
 
 
 def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: bool = False,
-             all_pending: bool = False, runner=None, _uncapped: bool = False) -> dict | None:
+             all_pending: bool = False, runner=None, extractor=None, _uncapped: bool = False) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -318,7 +318,7 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
     if all_pending:
         records = []
         while True:
-            record = run_sync(root, source=source, runner=runner, _uncapped=True)
+            record = run_sync(root, source=source, runner=runner, extractor=extractor, _uncapped=True)
             if record["outcome"] == "no_change":
                 break
             records.append(record)
@@ -338,7 +338,7 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
         served = worker.get("last_scheduled_slot")
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None
-        record = run_sync(root, source=source, runner=runner)
+        record = run_sync(root, source=source, runner=runner, extractor=extractor)
         # Any recorded outcome serves the slot; a refusal to start (busy) raised
         # above this line and leaves it owed for the next tick.
         write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})
@@ -359,7 +359,7 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise WikiError("Invalid source progress; preserve it for diagnosis")
-        return _sync_locked(root, selected, progress, config, runner, uncapped=_uncapped)
+        return _sync_locked(root, selected, progress, config, runner, extractor, uncapped=_uncapped)
 
 
 @contextmanager
@@ -386,23 +386,28 @@ def _terminate_as_interrupt():
         signal.signal(signal.SIGTERM, previous)
 
 
-def _sync_locked(root, selected, progress, config, runner, *, uncapped=False):
+def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False):
+    from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_codex, tool_specs
 
     items, updated, seen = [], dict(progress), set()
     limits = config["limits"]
-    remaining = limits["input_chars_per_batch"] - len(maintenance_instructions()) - len(json.dumps(tool_specs())) - 1000
-    if remaining <= 0:
+    # A batch is gathered against the extraction budget: large, because the
+    # tool-less extraction pass reads it once. A batch that fits items_per_batch
+    # is small enough for the maintainer to read directly and skips extraction.
+    maintain_room = limits["input_chars_per_batch"] - len(maintenance_instructions()) - len(json.dumps(tool_specs())) - 1000
+    if maintain_room <= 0:
         raise WikiError("Configured input limit is too small for the maintenance Skill")
-    remaining = remaining * 2 // 3  # Leave room for reading existing notebook context.
+    remaining = max(limits["extract_chars_per_batch"] - len(extraction_instructions()) - 1000, maintain_room * 2 // 3)
+    max_items = limits["extract_items_per_batch"]
     for name, subscription in selected.items():
-        if len(items) >= limits["items_per_batch"] or remaining <= 0:
+        if len(items) >= max_items or remaining <= 0:
             break
         if subscription.get("kind") in MAIL_KINDS:
-            batch = collect_mail(subscription, progress.get(name, {}), limits["items_per_batch"] - len(items),
+            batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
                                  remaining, mail_client(subscription["kind"]))
         else:
-            batch = collect(subscription, progress.get(name, {}), limits["items_per_batch"] - len(items), remaining)
+            batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         for item in batch.items:
             if item["source"] not in seen:
                 items.append(item)
@@ -411,7 +416,8 @@ def _sync_locked(root, selected, progress, config, runner, *, uncapped=False):
         updated[name] = batch.progress
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "model": config["model"], "sources": list(selected), "items": len(items),
-              "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0}
+              "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
+              "extracted": len(items) > limits["items_per_batch"]}
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
         write_json(state_path(root, "progress.json"), updated)
@@ -424,11 +430,22 @@ def _sync_locked(root, selected, progress, config, runner, *, uncapped=False):
     # version). It raises before an attempt is reserved: a configuration error is
     # not a failed batch and must not spend one of the day's attempts.
     getattr(runner, "preflight", lambda: None)()
-    record.update(outcome="running", runner_attempts=1)
-    write_json(path, record)  # Reserve the attempt before starting a native process.
+    record.update(outcome="running", runner_attempts=2 if record["extracted"] else 1)
+    write_json(path, record)  # Reserve the attempts before starting a native process.
     try:
-        result = runner(Notebook(root), items, config)
-        record.update(outcome="completed", usage=result.get("usage"), changed=result.get("changed", []),
+        usage = {}
+        if record["extracted"]:
+            digest = (extractor or run_extract)(items, config)
+            usage = dict(digest.get("usage") or {})
+            notes = digest["notes"].strip()
+            items = [] if notes == NOTHING else [extraction_item(notes, items)]
+        if items:
+            result = runner(Notebook(root), items, config)
+            for key, value in (result.get("usage") or {}).items():
+                usage[key] = usage.get(key, 0) + value
+        else:
+            result = {"changed": [], "report": NOTHING}
+        record.update(outcome="completed", usage=usage or None, changed=result.get("changed", []),
                       refused=result.get("refused", 0), refusals=result.get("refusals", []),
                       report=result.get("report", ""))
         write_json(state_path(root, "progress.json"), updated)

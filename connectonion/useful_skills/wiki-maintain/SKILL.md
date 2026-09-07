@@ -12,6 +12,11 @@ tools act on the authorized notebook only. They do not need semantic approval or
 a review queue. Do not call `co wiki start` or `co wiki sync` recursively.
 
 New messages carry their speaker, time, project, source identifier, and reference.
+A large batch reaches you already digested: one item with role `extract` whose
+text is the extraction notes another pass wrote from the raw messages — facts
+grouped by kind, each with who said it, the date and source ids. Treat every
+bullet as a sourced claim to organize, not as a page to copy; the source ids in
+it are the ones to keep on your pages.
 Mail arrives the same way: the user's own mail speaks as `user`; everyone else's
 as `other` with the sender as `speaker`, plus the subject. What someone asks of
 the user in a mail is their request, not the user's commitment, until the user

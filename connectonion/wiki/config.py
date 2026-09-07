@@ -33,8 +33,12 @@ def default_config() -> dict:
             # input_chars_per_batch bounds the source messages plus every notebook page
             # the runner reads back. At 60k the reads ran out five times in six real
             # batches (2026-09-07); 200k is ~50k tokens, small for the runner models.
+            # items_per_batch is the most the maintainer reads raw. A sync gathers up
+            # to extract_items_per_batch; a batch larger than items_per_batch is first
+            # digested by the tool-less wiki-extract pass and the maintainer reads that.
             "limits": {"runner_calls_per_day": 6, "items_per_batch": 20,
-                       "input_chars_per_batch": 200000, "timeout_seconds": 600}}
+                       "input_chars_per_batch": 200000, "timeout_seconds": 600,
+                       "extract_items_per_batch": 150, "extract_chars_per_batch": 300000}}
 
 
 def validate(config: dict) -> dict:
@@ -71,6 +75,10 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
         raise WikiError("Invalid config.yaml; preserve it for diagnosis") from error
     if not isinstance(config, dict):
         raise WikiError("config.yaml must contain a mapping")
+    # A limit added after this file was written takes its default; the file is
+    # not rewritten until the user changes something.
+    if isinstance(config.get("limits"), dict):
+        config["limits"] = {**default_config()["limits"], **config["limits"]}
     return validate(config) if validated else config
 
 
