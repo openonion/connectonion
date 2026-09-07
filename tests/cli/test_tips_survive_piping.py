@@ -37,10 +37,11 @@ def piped_consoles(monkeypatch):
 
 def test_gmail_piped_listing_still_names_the_next_step(tmp_path, capsys):
     gmail = Mock()
+    gmail.get_account_email.return_value = "sender@example.invalid"
     gmail._format_dicts.return_value = "1. a@x.com  hi  ID: 18f2a"
     with patch.object(gmail_commands, "INBOX_CACHE", tmp_path / "gmail.json"):
         gmail_commands._print_listing(gmail, EMAILS, "inbox")
-    assert "Read one with: co gmail read <#>" in capsys.readouterr().out
+    assert "Read one with: co gmail read 18f2a" in capsys.readouterr().out
 
 
 def test_outlook_piped_listing_still_names_the_next_step(tmp_path, capsys):

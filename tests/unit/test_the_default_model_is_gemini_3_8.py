@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from connectonion import Agent, llm_do, transcribe
-from connectonion.cli.co_ai.agents.registry import SUBAGENTS
+from connectonion.useful_plugins.subagents import _parse_agent_content
 from connectonion.cli.co_ai.agent import create_agent
 from connectonion.cli.commands.project_cmd_lib import configure_env_for_provider
 from connectonion.core.llm import GeminiLLM
@@ -69,7 +69,9 @@ class TestOmittedModelSelectsGemini38:
         assert f"MODEL={MANAGED_DEFAULT}" in generated
 
     def test_built_in_auto_clients_use_the_default(self):
-        assert {config["model"] for config in SUBAGENTS.values()} == {MANAGED_DEFAULT}
+        definitions = (ROOT / "connectonion/useful_plugins/builtin_agents").glob("*/AGENT.md")
+        models = {_parse_agent_content(path.read_text())[0]["model"] for path in definitions}
+        assert models == {MANAGED_DEFAULT}
 
 
 class TestExplicitModelsStayExplicit:
