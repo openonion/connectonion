@@ -111,26 +111,51 @@ grep -r "X.Y.Z" --include="*.py" --include="*.toml" --include="*.cfg" -l
 
 Common locations: `__init__.py`, `pyproject.toml`, `setup.py`, `setup.cfg`
 
-### 5c. Commit, tag, push
+### 5c. Validate and prepare the release commit
 
-Stage only what changed — do NOT blindly stage all files:
+Remove old build output, build the candidate once locally, and validate only the
+two exact versioned artifacts. This is validation, not publication.
+
+```bash
+rm -rf dist/
+python -m build
+python -m twine check dist/<package>-X.Y.Z.tar.gz dist/<package>-X.Y.Z-py3-none-any.whl
+```
+
+Then stage only what changed — do NOT blindly stage all files:
 ```bash
 git add -p   # or stage specific files that were actually modified
 git status   # confirm what's staged before committing
 git commit -m "Release vX.Y.Z: <feature description>"
-git tag vX.Y.Z
-git push
+git push -u origin <release-branch>
+gh pr create --title "Release vX.Y.Z: <feature description>"
+```
+
+Do not tag an unreviewed branch. After the release PR is reviewed and merged,
+fetch the target branch, resolve the exact merge commit, and create one annotated,
+immutable `vX.Y.Z` tag that points to that commit.
+
+```bash
+git fetch origin
+git tag -a vX.Y.Z <reviewed-merge-commit> -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-### 5d. Build and publish to PyPI
+### 5d. Let the reviewed tag workflow publish
+
+Pushing the tag starts `.github/workflows/release.yml`. Wait for that exact run
+to rerun the matrix, build once, publish through PyPI Trusted Publishing, verify
+the public artifacts, and create the GitHub Release. A manual dispatch may retry
+the existing tag; it must never select an arbitrary branch. Never publish package
+bytes from the workstation or race the workflow with a second registry writer.
 
 ```bash
-python -m build
-twine upload dist/*X.Y.Z*
+gh run list --workflow release.yml --limit 1
+gh run watch <run-id> --exit-status
 ```
 
-Confirm upload succeeded by checking the output for "View at: https://pypi.org/project/<package>/X.Y.Z/"
+Confirm that the exact PyPI version and GitHub Release are public and that a
+preview is marked Prerelease rather than Latest before publishing documentation.
 
 ### 5e. Publish documentation and the Design Journal
 
@@ -149,9 +174,10 @@ silently skipping it.
 - [ ] Version bumped in every file that held it, and they agree
       (in connectonion: `connectonion/_version.py` and `pyproject.toml`;
        `__init__.py` only re-exports it and there is no `setup.py`)
-- [ ] Committed and tagged
-- [ ] Pushed to remote
-- [ ] Published to PyPI
+- [ ] Release PR reviewed and merged
+- [ ] Immutable tag points to the reviewed merge commit
+- [ ] Exact-tag `release.yml` run passed
+- [ ] Exact PyPI package and GitHub Release verified public
 - [ ] Docs-site version state and Design Journal published after public artifacts were verified
 
 ## Notes
@@ -161,3 +187,4 @@ silently skipping it.
 - If the user says "skip release", stop after docs-site
 - If the user specifies a version explicitly, use that instead of auto-calculating
 - Never force-push or amend published commits
+- Never publish package artifacts directly from a workstation

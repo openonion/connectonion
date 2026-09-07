@@ -38,12 +38,12 @@ def _usage(input_tokens, output_tokens, cost):
 
 TRACE = [
     {"type": "user_input", "content": "What is 17 plus 25?"},
-    {"type": "llm_call", "model": "co/gemini-3.6-flash", "status": "pending"},
+    {"type": "llm_call", "model": "co/gemini-3.7-flash", "status": "pending"},
     {"type": "llm_result", "usage": _usage(80, 18, 0.00102)},
     {"type": "tool_call", "name": "add", "args": {"a": 17, "b": 25}},
     {"type": "tool_result", "name": "add", "args": {"a": 17, "b": 25},
      "result": "42", "status": "success"},
-    {"type": "llm_call", "model": "co/gemini-3.6-flash", "status": "pending"},
+    {"type": "llm_call", "model": "co/gemini-3.7-flash", "status": "pending"},
     {"type": "llm_result", "usage": _usage(213, 11, 0.00053)},
 ]
 

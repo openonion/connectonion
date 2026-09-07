@@ -13,6 +13,7 @@ import asyncio
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any, Dict
 
 from .base import IO
@@ -20,6 +21,35 @@ from .base import IO
 
 class _PersistedTraceEvent(dict):
     """Cooperative Host-local provenance; never an extra wire field or sandbox."""
+
+
+@dataclass(frozen=True)
+class ProviderInterruptResult:
+    """Host decision for one correlated provider Stop request.
+
+    The boolean behavior intentionally preserves the old duck-typed internal
+    API while exposing the revision an acknowledged browser must retain across
+    reconnect/replay.
+    """
+
+    accepted: bool
+    state_revision: int | None
+    reason: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.accepted
+
+
+@dataclass(frozen=True)
+class ProviderInputResult:
+    """Host decision for one direct native-provider message."""
+
+    accepted: bool
+    state_revision: int | None
+    reason: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.accepted
 
 
 class WebSocketIO(IO):
@@ -34,6 +64,17 @@ class WebSocketIO(IO):
         # ── Agent messages (agent→client) ──
         self._msgs_from_agent: list[Dict[str, Any]] = []
         self._agent_condition = threading.Condition()
+        # Provider invocation IDs are public correlation values, not authority.
+        # The Host still owns the live lease, but it can reject a stale Stop
+        # immediately instead of leaving the browser with a permanently pending
+        # local button state.
+        self._live_provider_invocations: dict[str, int | None] = {}
+        self._live_provider_names: dict[str, str] = {}
+        # Retain the latest semantic revision even after a terminal event. A
+        # tool's durable trace can replay earlier lifecycle entries after its
+        # live lane has already published the terminal state.
+        self._latest_provider_revisions: dict[str, int] = {}
+        self._provider_condition = threading.Condition()
         self._finished = False
         self._cursor = 0
 
@@ -79,9 +120,43 @@ class WebSocketIO(IO):
                 message['id'] = str(uuid.uuid4())
             if 'ts' not in message:
                 message['ts'] = time.time()
+            self._track_provider_invocation(message)
             with self._agent_condition:
                 self._msgs_from_agent.append(message)
                 self._agent_condition.notify_all()
+
+    def _track_provider_invocation(self, message: Dict[str, Any]) -> None:
+        """Keep the transport-side index aligned with typed provider lifecycle frames."""
+        if message.get("type") != "provider_invocation":
+            return
+        invocation_id = message.get("invocationId")
+        if not isinstance(invocation_id, str) or not invocation_id:
+            return
+        state_revision = message.get("stateRevision")
+        if (
+            isinstance(state_revision, bool)
+            or not isinstance(state_revision, int)
+            or state_revision < 1
+        ):
+            state_revision = None
+        with self._provider_condition:
+            known_revision = self._latest_provider_revisions.get(invocation_id)
+            if known_revision is not None:
+                # A versioned state must never regress. Once this Host has seen
+                # a version, an unversioned compatibility replay is also too
+                # weak to reactivate the invocation.
+                if state_revision is None or state_revision <= known_revision:
+                    return
+            if state_revision is not None:
+                self._latest_provider_revisions[invocation_id] = state_revision
+            if message.get("status") in {"completed", "failed", "cancelled"}:
+                self._live_provider_invocations.pop(invocation_id, None)
+                self._live_provider_names.pop(invocation_id, None)
+            else:
+                self._live_provider_invocations[invocation_id] = state_revision
+                provider = message.get("provider")
+                if provider in {"codex", "claude_code"}:
+                    self._live_provider_names[invocation_id] = provider
 
     def receive(self) -> Dict[str, Any]:
         """Block until client message arrives."""
@@ -137,6 +212,109 @@ class WebSocketIO(IO):
                     return True
             return False
 
+    def take_provider_interrupt(self, invocation_id: str) -> bool:
+        """Consume one Stop addressed to the exact live provider invocation."""
+        if not isinstance(invocation_id, str) or not invocation_id:
+            return False
+        with self._client_condition:
+            for index, message in enumerate(self._msgs_from_client):
+                if (
+                    message.get("type") == "PROVIDER_INTERRUPT"
+                    and message.get("invocationId") == invocation_id
+                ):
+                    self._msgs_from_client.pop(index)
+                    self._client_condition.notify_all()
+                    return True
+            return False
+
+    def request_provider_interrupt(
+        self,
+        invocation_id: str,
+        state_revision: int | None = None,
+    ) -> ProviderInterruptResult:
+        """Accept a Stop only for the exact live provider state the Host owns."""
+        if not isinstance(invocation_id, str) or not invocation_id:
+            return ProviderInterruptResult(False, None, "not_active")
+        if (
+            state_revision is not None
+            and (
+                isinstance(state_revision, bool)
+                or not isinstance(state_revision, int)
+                or state_revision < 1
+            )
+        ):
+            return ProviderInterruptResult(False, None, "invalid_revision")
+        with self._provider_condition:
+            if invocation_id not in self._live_provider_invocations:
+                return ProviderInterruptResult(False, None, "not_active")
+            current_revision = self._live_provider_invocations[invocation_id]
+            if state_revision is not None:
+                if current_revision is None:
+                    return ProviderInterruptResult(
+                        False, None, "state_unconfirmed"
+                    )
+                if current_revision != state_revision:
+                    return ProviderInterruptResult(
+                        False, current_revision, "state_changed"
+                    )
+        frame = {"type": "PROVIDER_INTERRUPT", "invocationId": invocation_id}
+        if state_revision is not None:
+            frame["stateRevision"] = state_revision
+        self.send_to_agent(frame)
+        return ProviderInterruptResult(True, current_revision)
+
+    def request_provider_input(
+        self,
+        invocation_id: str,
+        state_revision: int | None,
+        text: str,
+        request_id: str,
+    ) -> ProviderInputResult:
+        """Queue an exact direct message only for a live steerable Codex run.
+
+        A true result means the Host mailbox accepted the request, not that
+        Codex accepted it.  The native adapter sends ``PROVIDER_INPUT_ACK``
+        only after its matching ``turn/steer`` succeeds.
+        """
+        if (
+            not isinstance(invocation_id, str)
+            or not invocation_id
+            or not isinstance(request_id, str)
+            or not request_id
+            or not isinstance(text, str)
+            or not text.strip()
+            or len(text) > 12_000
+        ):
+            return ProviderInputResult(False, None, "invalid_request")
+        if (
+            state_revision is not None
+            and (
+                isinstance(state_revision, bool)
+                or not isinstance(state_revision, int)
+                or state_revision < 1
+            )
+        ):
+            return ProviderInputResult(False, None, "invalid_revision")
+        with self._provider_condition:
+            if invocation_id not in self._live_provider_invocations:
+                return ProviderInputResult(False, None, "not_active")
+            if self._live_provider_names.get(invocation_id) != "codex":
+                return ProviderInputResult(False, None, "unsupported_provider")
+            current_revision = self._live_provider_invocations[invocation_id]
+            if state_revision is not None:
+                if current_revision is None:
+                    return ProviderInputResult(False, None, "state_unconfirmed")
+                if current_revision != state_revision:
+                    return ProviderInputResult(False, current_revision, "state_changed")
+        self.send_to_agent({
+            "type": "PROVIDER_INPUT",
+            "invocationId": invocation_id,
+            "stateRevision": state_revision,
+            "text": text.strip(),
+            "requestId": request_id,
+        })
+        return ProviderInputResult(True, current_revision)
+
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
         """Take matching client messages, leave others (non-blocking)."""
         with self._client_condition:
@@ -156,6 +334,10 @@ class WebSocketIO(IO):
 
     def mark_agent_done(self):
         """Signal that agent is done producing messages."""
+        with self._provider_condition:
+            self._live_provider_invocations.clear()
+            self._live_provider_names.clear()
+            self._latest_provider_revisions.clear()
         with self._agent_condition:
             self._finished = True
             self._agent_condition.notify_all()
@@ -163,6 +345,10 @@ class WebSocketIO(IO):
     def close(self):
         """Mark IO as closed (prevents further sends)."""
         self._closed = True
+        with self._provider_condition:
+            self._live_provider_invocations.clear()
+            self._live_provider_names.clear()
+            self._latest_provider_revisions.clear()
 
     # ═══════════════════════════════════════════════════════
     # Transport side (async)
@@ -189,7 +375,6 @@ class WebSocketIO(IO):
         self,
         event: Dict[str, Any],
         session_id: str,
-        acp_frame: Dict[str, Any] | None,
     ) -> bool:
         """Bind one replayable approval event to this session's live mailbox."""
 
@@ -200,49 +385,12 @@ class WebSocketIO(IO):
             "request_id": request_id,
             "session_id": session_id,
             "tool_call_id": event.get("tool_call_id"),
-            "acp": acp_frame is not None,
         }
         with self._client_condition:
             if self._pending_permission is None:
                 self._pending_permission = pending
                 return True
             return self._pending_permission == pending
-
-    def resolve_acp_permission(
-        self, frame: Dict[str, Any], session_id: str
-    ) -> bool:
-        """Consume one matching ACP response and enqueue a fail-closed decision."""
-
-        message = frame.get("message")
-        response_id = message.get("id") if isinstance(message, dict) else None
-        with self._client_condition:
-            pending = self._pending_permission
-            if (
-                pending is None
-                or not pending["acp"]
-                or pending["session_id"] != session_id
-                or frame.get("sessionId") != session_id
-                or response_id != pending["request_id"]
-            ):
-                return False
-            self._pending_permission = None
-
-        from ...core.acp_wire import legacy_approval_response_from_acp
-
-        try:
-            response = legacy_approval_response_from_acp(
-                frame,
-                expected_session_id=session_id,
-                expected_request_id=pending["request_id"],
-            )
-        except (TypeError, ValueError):
-            response = {
-                "approved": False,
-                "scope": "once",
-                "mode": "reject_hard",
-            }
-        self.send_to_agent(response)
-        return True
 
     def resolve_legacy_permission(self, response: Dict[str, Any]) -> bool:
         """Bind a rolling-upgrade legacy answer to the one pending request."""

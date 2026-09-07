@@ -11,10 +11,10 @@ Providers for CommandPalette and Input autocomplete.
 """
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable, Union
+from typing import Protocol, Union, runtime_checkable
 
-from .fuzzy import fuzzy_match
 from .dropdown import DropdownItem
+from .fuzzy import fuzzy_match
 
 
 @runtime_checkable

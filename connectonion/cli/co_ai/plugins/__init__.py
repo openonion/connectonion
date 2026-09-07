@@ -13,6 +13,7 @@ Architecture:
 - Plugins export from this module for easy import: from co_ai.plugins import system_reminder
 """
 
+from .native_coding_agent_routing import native_coding_agent_routing
 from .system_reminder import system_reminder
 
-__all__ = ['system_reminder']
+__all__ = ['system_reminder', 'native_coding_agent_routing']

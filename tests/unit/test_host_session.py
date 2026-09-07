@@ -772,6 +772,176 @@ class TestSessionToChatItems:
         ids = [item['id'] for item in items]
         assert len(ids) == len(set(ids))  # All unique
 
+    def test_replays_a_verified_provider_artifact_only_for_its_current_state(self):
+        thumbnail = (
+            'data:image/png;base64,'
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlRjyoAAAAASUVORK5CYII='
+        )
+        session = {
+            'trace': [
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'status': 'running',
+                    'stateRevision': 3,
+                },
+                {
+                    'type': 'provider_artifact',
+                    'provider': 'codex',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'artifactId': 'screen-3',
+                    'kind': 'screenshot',
+                    'stateRevision': 3,
+                    'thumbnailDataUrl': thumbnail,
+                    'alt': 'Latest provider workspace view',
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items == [{
+            'type': 'provider_invocation',
+            'invocationId': 'codex:call-7',
+            'parentToolCallId': 'call-7',
+            'provider': 'codex',
+            'providerDisplayName': 'Codex',
+            'status': 'running',
+            'stateRevision': 3,
+            'id': 'codex:call-7',
+            'activities': [],
+            'artifact': {
+                'id': 'screen-3',
+                'kind': 'screenshot',
+                'stateRevision': 3,
+                'thumbnailDataUrl': thumbnail,
+                'alt': 'Latest provider workspace view',
+            },
+        }]
+
+    def test_replays_bounded_direct_codex_messages_inside_explicit_workroom_lineage(self):
+        session = {
+            'trace': [
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:root',
+                    'parentToolCallId': 'root',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'workroomId': 'codex:root',
+                    'status': 'completed',
+                    'stateRevision': 3,
+                },
+                {
+                    'type': 'provider_message',
+                    'provider': 'codex',
+                    'invocationId': 'codex:root',
+                    'parentToolCallId': 'root',
+                    'messageId': 'assistant:1',
+                    'role': 'assistant',
+                    'text': 'The initial tests are passing.',
+                    'workroomId': 'codex:root',
+                },
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:continued',
+                    'parentToolCallId': 'continued',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'workroomId': 'codex:root',
+                    'continuationOf': 'codex:root',
+                    'status': 'running',
+                    'stateRevision': 1,
+                },
+                {
+                    'type': 'provider_message',
+                    'provider': 'codex',
+                    'invocationId': 'codex:continued',
+                    'parentToolCallId': 'continued',
+                    'messageId': 'user:2',
+                    'role': 'user',
+                    'text': 'Please add a reverse-order fixture.',
+                    'workroomId': 'codex:root',
+                    'continuationOf': 'codex:root',
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items == [
+            {
+                'type': 'provider_invocation',
+                'invocationId': 'codex:root',
+                'parentToolCallId': 'root',
+                'provider': 'codex',
+                'providerDisplayName': 'Codex',
+                'workroomId': 'codex:root',
+                'status': 'completed',
+                'stateRevision': 3,
+                'id': 'codex:root',
+                'activities': [],
+                'messages': [{
+                    'id': 'assistant:1',
+                    'role': 'assistant',
+                    'text': 'The initial tests are passing.',
+                }],
+            },
+            {
+                'type': 'provider_invocation',
+                'invocationId': 'codex:continued',
+                'parentToolCallId': 'continued',
+                'provider': 'codex',
+                'providerDisplayName': 'Codex',
+                'workroomId': 'codex:root',
+                'continuationOf': 'codex:root',
+                'status': 'running',
+                'stateRevision': 1,
+                'id': 'codex:continued',
+                'activities': [],
+                'messages': [{
+                    'id': 'user:2',
+                    'role': 'user',
+                    'text': 'Please add a reverse-order fixture.',
+                }],
+            },
+        ]
+
+    def test_drops_a_persisted_artifact_that_only_claims_to_be_a_png(self):
+        session = {
+            'trace': [
+                {
+                    'type': 'provider_invocation',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'provider': 'codex',
+                    'providerDisplayName': 'Codex',
+                    'status': 'running',
+                    'stateRevision': 3,
+                },
+                {
+                    'type': 'provider_artifact',
+                    'provider': 'codex',
+                    'invocationId': 'codex:call-7',
+                    'parentToolCallId': 'call-7',
+                    'artifactId': 'not-an-image',
+                    'kind': 'screenshot',
+                    'stateRevision': 3,
+                    'thumbnailDataUrl': 'data:image/png;base64,bm90IGEgcG5n',
+                    'alt': 'Latest provider workspace view',
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items[0]['type'] == 'provider_invocation'
+        assert 'artifact' not in items[0]
+
 
 class TestReconnectionScenarios:
     """End-to-end reconnection scenario tests."""

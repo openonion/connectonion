@@ -10,7 +10,7 @@ A successful tool result may add a detached JSON-native `raw_output` value to
 its streamed `tool_result` event. The canonical trace entry, session snapshot,
 LLM tool message, logger, and console keep the existing string `result` only.
 Protocol adapters may map the internal snake-case field to their wire schema,
-including ACP `rawOutput`.
+including OIP tool-result payloads.
 
 Tool execution builds the structured value because it alone still owns the
 original Python return value. `Agent._record_trace` accepts optional wire-only

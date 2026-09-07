@@ -57,7 +57,7 @@ oo "fix the bug in auth.py"
 oo
 
 # With options
-oo -m co/gemini-3.6-flash "task"   # Use different model
+oo -m co/gemini-3.8-flash "task"   # Use the managed Gemini default
 oo -y "task"                      # Auto-approve file changes
 ```
 
@@ -72,7 +72,7 @@ oo -y "task"                      # Auto-approve file changes
 **Interaction:** `ask_user`, `confirm`
 **Skills:** `skill` (auto-invoked when relevant)
 **Background:** `run_background`, `task_output`, `kill_task`
-**Delegation:** `codex` (preferred native route), `acp_agent` (generic ACP child)
+**Delegation:** `codex` and `claude_code` use their native adapters
 
 ## Skills
 

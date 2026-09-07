@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [host/, io/, connect.py, relay.py, announce.py, trust/] | imported by [__init__.py main package, user code] | tested via submodule tests
   Data flow: pure re-export module aggregating networking functionality
   State/Effects: no state
-  Integration: exposes host(agent, port, trust), create_app(), IO/WebSocketIO, SessionStorage/Session, connect(url), RemoteAgent, Response, ACPModeError, relay server (relay_connect, serve_loop), announce (create_announce_message), trust (TrustAgent) | unified networking API surface
+  Integration: exposes host(agent, port, trust), create_app(), IO/WebSocketIO, SessionStorage/Session, connect(url), RemoteAgent, Response, PermissionModeError, relay server (relay_connect, serve_loop), announce (create_announce_message), trust (TrustAgent) | unified networking API surface
   Performance: trivial
   Errors: none
 Network layer for hosting and connecting agents.
@@ -19,16 +19,23 @@ This module contains:
 - trust: Trust verification system (TrustAgent is the single interface)
 """
 
+from . import announce, relay
+from .announce import create_announce_message
+from .connect import ExecResult, PermissionModeError, RemoteAgent, Response, connect
 from .host import (
-    host, create_app, SessionStorage, Session,
-    HTTPRequest, HTTPResponse, HTTPRoute, HTTPRouter,
+    HTTPRequest,
+    HTTPResponse,
+    HTTPRoute,
+    HTTPRouter,
+    Session,
+    SessionStorage,
+    create_app,
+    host,
 )
 from .io import IO, WebSocketIO
-from .connect import ACPModeError, connect, RemoteAgent, Response, ExecResult
-from .relay import connect as relay_connect, serve_loop
-from .announce import create_announce_message
-from .trust import TrustAgent, Decision, TRUST_LEVELS, parse_policy
-from . import relay, announce
+from .relay import connect as relay_connect
+from .relay import serve_loop
+from .trust import TRUST_LEVELS, Decision, TrustAgent, parse_policy
 
 __all__ = [
     "host",
@@ -41,7 +48,7 @@ __all__ = [
     "RemoteAgent",
     "Response",
     "ExecResult",
-    "ACPModeError",
+    "PermissionModeError",
     "HTTPRequest",
     "HTTPResponse",
     "HTTPRoute",

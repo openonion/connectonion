@@ -20,9 +20,9 @@ OLD_SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 @pytest.mark.parametrize(
     ("mode", "permission_mode"),
     [
-        (":read-only", "default"),
-        (":workspace", "acceptEdits"),
-        (":danger-full-access", "auto"),
+        ("read-only", "default"),
+        ("auto", "acceptEdits"),
+        ("full-access", "auto"),
     ],
 )
 def test_co_ai_mode_owns_claude_permission_mode(
@@ -36,12 +36,8 @@ def test_co_ai_mode_owns_claude_permission_mode(
 
     monkeypatch.setattr(claude_wrapper, "_run_claude_code", fake_claude_code)
     session = {"mode": mode}
-    if mode == ":danger-full-access":
-        session.update({
-            "skip_tool_approval": True,
-            "full_access_turns": 10,
-            "full_access_turns_used": 0,
-        })
+    if mode == "full-access":
+        session["turns_left"] = 10
     agent = SimpleNamespace(current_session=session, _delegation_workspace=tmp_path)
 
     result = claude_code(
@@ -66,7 +62,7 @@ def test_co_ai_mode_owns_claude_permission_mode(
     }
 
 
-def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
+def test_unknown_or_missing_mode_uses_auto(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(
         claude_wrapper,
@@ -83,7 +79,7 @@ def test_unknown_or_missing_mode_uses_provider_default(monkeypatch, tmp_path):
         )
         == "result"
     )
-    assert all(call["permission_mode"] == "default" for call in calls)
+    assert all(call["permission_mode"] == "acceptEdits" for call in calls)
 
 
 def test_full_access_label_without_bounded_grant_uses_provider_default(
@@ -99,20 +95,28 @@ def test_full_access_label_without_bounded_grant_uses_provider_default(
     assert claude_code(
         "inspect",
         cwd=str(tmp_path),
-        agent=SimpleNamespace(current_session={"mode": ":danger-full-access"}),
+        agent=SimpleNamespace(current_session={"mode": "full-access"}),
     ) == "result"
-    assert seen["permission_mode"] == "default"
+    assert seen["permission_mode"] == "acceptEdits"
 
 
-@pytest.mark.parametrize("mode", [":read-only", ":workspace", ":danger-full-access"])
-def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
-    backend = pytest.fail
-    monkeypatch.setattr(claude_wrapper, "_run_claude_code", backend)
+@pytest.mark.parametrize("mode", ["read-only", "auto", "full-access"])
+def test_hosted_contact_uses_the_same_claude_contract(monkeypatch, tmp_path, mode):
+    seen = {}
+    monkeypatch.setattr(
+        claude_wrapper,
+        "_run_claude_code",
+        lambda **kwargs: seen.update(kwargs) or '{"provider":"claude_code","exit_code":0}',
+    )
+    session = {
+        "mode": mode,
+        "requester": {"address": "0xcontact", "level": "contact"},
+    }
+    if mode == "full-access":
+        session["turns_left"] = 2
     agent = SimpleNamespace(
-        current_session={
-            "mode": mode,
-            "requester": {"address": "0xcontact", "level": "contact"},
-        }
+        current_session=session,
+        _delegation_workspace=tmp_path,
     )
 
     result = json.loads(
@@ -124,20 +128,12 @@ def test_hosted_contact_cannot_start_claude_code(monkeypatch, tmp_path, mode):
         )
     )
 
-    assert result == {
-        "provider": "claude_code",
-        "session_id": "existing-session",
-        "resumed": True,
-        "status": "error",
-        "result": "",
-        "error": (
-            "Claude Code delegation is available only to the operator in a "
-            "hosted session."
-        ),
-        "exit_code": -1,
-        "usage": {},
-        "total_cost_usd": None,
-    }
+    assert result["exit_code"] == 0
+    assert seen["permission_mode"] == {
+        "read-only": "default",
+        "auto": "acceptEdits",
+        "full-access": "auto",
+    }[mode]
 
 
 def test_model_cannot_select_claude_permission_mode():
@@ -180,7 +176,7 @@ def test_resume_reapplies_mode_through_the_library_adapter(monkeypatch, tmp_path
             cwd=str(tmp_path),
             session_id=OLD_SESSION,
             agent=SimpleNamespace(
-                current_session={"mode": ":workspace"},
+                current_session={"mode": "auto"},
                 _delegation_workspace=tmp_path,
             ),
         )
@@ -208,7 +204,7 @@ def test_outer_approval_does_not_duplicate_claude_permissions():
     io = SimpleNamespace(send=lambda *_: pytest.fail("outer approval must not prompt"))
     agent = SimpleNamespace(
         current_session={
-            "mode": ":read-only",
+            "mode": "read-only",
             "permissions": {
                 "claude_code": {
                     "allowed": True,

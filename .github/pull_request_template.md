@@ -4,6 +4,17 @@ Brief description of what this PR does.
 ## Related Issue
 Fixes #(issue number)
 
+## Labels and target release (required)
+
+- **Suggested labels:** [bug, feature, documentation, tests, design, browser, platform]
+- **Proposed target version:** [e.g. next patch, 1.8.0, 2.x, or TBD]
+- **Estimated release window:** [e.g. next alpha, next stable, future roadmap, or unknown]
+- **Milestone:** [maintainer assigns the confirmed release milestone]
+- **Why this release:** Explain urgency, dependencies, compatibility, and rollback risk.
+- **Forward-port tracking issue (stable patches only):** [link an open `forward-port-required` issue, for example #123; use N/A for non-patch work]
+
+> The author's target is an estimate. Maintainers confirm the release by applying labels and assigning a milestone.
+
 ## How this was written
 
 - [ ] I wrote this myself
@@ -32,16 +43,22 @@ A PR that says *"I didn't test the Windows path and I'm unsure the retry logic i
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Documentation update
 
-## Design Journal Impact
+## Dev Blog (required)
 
-- [ ] Release notes only — maintenance change with no reusable design lesson
-- [ ] Update an existing Design Journal post
-- [ ] Add a new Design Journal post for a feature train, phase promotion, stable release, or material design decision
-- [ ] Not applicable
+**Every PR ships a dev-blog post in the same diff** — a file added or updated under `docs/blog/`. This is enforced by CI (`blog-gate`).
 
-Link the draft or explain the choice:
+The posts sync to the docs site, so writing it here is what keeps the site current without anyone asking.
 
->
+What the post is: a short Design Journal piece telling the **story** of this change — the problem as someone actually hit it, a turn or complication, what the fix teaches, what was measured. Written for a reader who could stop reading at any point.
+What it is not: a changelog entry, a list of commits, or marketing copy.
+
+The gate reviews the writing, not just the file: a post without a narrative arc — a changelog wearing prose — fails the check, with the model's one concrete fix in the error. A merged PR means its story was worth reading.
+
+Blog file in this PR:
+
+> docs/blog/YYYY-MM-DD-<slug>.md
+
+Genuinely trivial change (typo, lockfile, CI plumbing)? A maintainer can apply the `no-blog` label to waive the gate — that is the maintainer's call, not the author's.
 
 ## Changes Made
 - List the main changes
@@ -54,7 +71,6 @@ Paste the actual command and its real output. The output is the evidence — a t
 
 ```
 $ pytest tests/ -m "not real_api and not network"
-
 ```
 
 - [ ] I have added tests for new functionality
@@ -69,20 +85,26 @@ Keep a PR to one concern. A change that spans several subsystems at once is hard
 
 ## Example Usage
 ```python
-# Show how to use any new features or fixes
 from connectonion import Agent
 
-# Example code
+# Show how to use any new features or fixes
 ```
 
 ## Checklist
+- [ ] I proposed at least one label and a target version above
 - [ ] My code follows the project's code style
 - [ ] I have read every line of this diff and can defend each change
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
-- [ ] I have handled the Design Journal impact described above
+- [ ] This PR ships its dev-blog post under docs/blog/ (or a maintainer applied `no-blog`)
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged and published
+- [ ] If this targets a stable patch, its separate `forward-port-required`
+      tracker names every active higher line, at minimum the current preview,
+      and will remain open until all applicable forward-port PRs merge and pass CI
+- [ ] Every piece of evidence the linked issue's **AI implementation contract**
+      requires is attached or linked here (tests, journeys, screenshots,
+      exact commands) — see docs/ai-implementation-contract.md
 
 ## Screenshots (if applicable)
 Add screenshots to help explain your changes.

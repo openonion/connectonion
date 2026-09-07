@@ -494,7 +494,7 @@ def reflect(agent):
 
     reflection = llm_do(
         f"What did we learn from: {last_tools}? One sentence.",
-        model="co/gemini-2.5-flash"
+        model="co/gemini-3.7-flash"
     )
 
     agent.current_session['messages'].append({

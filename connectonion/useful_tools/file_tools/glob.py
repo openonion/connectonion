@@ -16,6 +16,8 @@ Usage:
 from pathlib import Path
 from typing import Optional
 
+from ...core.tool_result import ToolFailure
+
 IGNORE_DIRS = {
     ".git",
     "node_modules",
@@ -54,10 +56,10 @@ def glob(pattern: str, path: Optional[str] = None) -> str:
     base = Path(path) if path else Path.cwd()
 
     if not base.exists():
-        return f"Error: Path '{base}' does not exist"
+        return ToolFailure(f"Error: Path '{base}' does not exist")
 
     if not base.is_dir():
-        return f"Error: Path '{base}' is not a directory"
+        return ToolFailure(f"Error: Path '{base}' is not a directory")
 
     matches = []
     for p in base.glob(pattern):

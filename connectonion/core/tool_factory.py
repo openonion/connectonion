@@ -10,11 +10,12 @@ LLM-Note:
   Type Support: handles Optional[X], List[X], Dict[K,V] via get_json_schema_type() | extracts inner types from Union/Optional | generates proper JSON Schema with "items" for arrays
 """
 
-import inspect
-import functools
 import enum
+import functools
+import inspect
 import warnings
-from typing import Callable, Dict, Any, Literal, get_type_hints, List, get_origin, get_args, Union
+from typing import Callable, List, Literal, Union, get_args, get_origin, get_type_hints
+
 
 class UnannotatedParameterWarning(UserWarning):
     """A tool parameter has no type hint, so its schema type was guessed."""
@@ -145,7 +146,7 @@ def create_tool_from_function(func: Callable) -> Callable:
     # Build the parameters schema from the function signature
     sig = inspect.signature(func)
     type_hints = get_type_hints(func)
-    
+
     owner = _unbound_method_owner(func)
     if owner:
         # Refused here rather than at call time. Stripping `self` made the schema
@@ -206,13 +207,28 @@ def create_tool_from_function(func: Callable) -> Callable:
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
 
+    # The calling model supplies a short, user-facing description of the action.
+    # This is presentation metadata, not an argument to ordinary tool functions.
+    # If a tool already owns ``summary`` as a real parameter, it keeps receiving it.
+    properties["summary"] = {
+        "type": "string",
+        "description": (
+            "A short action phrase describing what this call is doing, written "
+            "for the person watching. Do not explain why."
+        ),
+        "minLength": 1,
+        "maxLength": 240,
+    }
+    if "summary" not in required:
+        required.append("summary")
+
     parameters_schema = {
         "type": "object",
         "properties": properties,
     }
     if required:
         parameters_schema["required"] = required
-    
+
     # For bound methods, create a wrapper function that preserves the method
     if inspect.ismethod(func):
         base_func = getattr(func, "__func__", func)
@@ -237,10 +253,11 @@ def create_tool_from_function(func: Callable) -> Callable:
         tool_func = wrapper
     else:
         tool_func = func
-    
+
     # Cache whether this tool needs agent injection (checked by tool_executor)
     # Convention: if the original function has 'agent' in its signature, the executor provides it.
     tool_func._needs_agent = 'agent' in sig.parameters
+    tool_func._summary_is_function_argument = 'summary' in sig.parameters
 
     # Preserve the exact owner of a bound method. The executor must not infer
     # ownership by scanning registered instances for a matching method name:
@@ -259,7 +276,7 @@ def create_tool_from_function(func: Callable) -> Callable:
         "parameters": parameters_schema,
     }
     tool_func.run = tool_func  # The agent calls .run() - this should be the decorated function
-    
+
     return tool_func
 
 
@@ -274,43 +291,43 @@ def extract_methods_from_instance(instance) -> List[Callable]:
         List of method functions that have proper type annotations
     """
     methods = []
-    
+
     for name in dir(instance):
         # Skip private methods (starting with _)
         if name.startswith('_'):
             continue
-            
+
         attr = getattr(instance, name)
-        
+
         # Check if it's a callable method (not a property or static value)
         if not callable(attr):
             continue
-            
+
         # Skip built-in methods like __class__, etc.
         if isinstance(attr, type):
             continue
-            
+
         # Check if it's actually a bound method (has __self__)
         if not hasattr(attr, '__self__'):
             continue
-            
+
         # Check if method has proper type annotations
         try:
             sig = inspect.signature(attr)
             type_hints = get_type_hints(attr)
-            
+
             # Must have return type annotation to be a valid tool
             if 'return' not in type_hints:
                 continue
-                
+
             # Process method as tool, preserving self reference
             tool = create_tool_from_function(attr)
             methods.append(tool)
-            
+
         except (ValueError, TypeError):
             # Skip methods that can't be inspected
             continue
-    
+
     return methods
 
 
@@ -327,23 +344,23 @@ def is_class_instance(obj) -> bool:
     # Must be an object with a class
     if not hasattr(obj, '__class__'):
         return False
-        
+
     # Should not be a function, method, or class itself
     if inspect.isfunction(obj) or inspect.ismethod(obj) or inspect.isclass(obj):
         return False
-        
+
     # Should not be a module
     if inspect.ismodule(obj):
         return False
-        
+
     # Should not be built-in types
     if isinstance(obj, (list, dict, tuple, set, str, int, float, bool, type(None))):
         return False
-        
+
     # Should have some callable attributes (methods)
     has_methods = any(
         callable(getattr(obj, name, None)) and not name.startswith('_')
         for name in dir(obj)
     )
-    
+
     return has_methods

@@ -35,7 +35,7 @@ def _status_error(code: int) -> openai.APIStatusError:
 @pytest.fixture
 def llm(monkeypatch):
     monkeypatch.setenv("OPENONION_API_KEY", "test-key")
-    return OpenOnionLLM(model="co/gemini-3.6-flash", api_key="test-key")
+    return OpenOnionLLM(model="co/gemini-3.7-flash", api_key="test-key")
 
 
 def _make_parse_raise(llm, exc):

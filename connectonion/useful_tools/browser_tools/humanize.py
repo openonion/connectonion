@@ -10,8 +10,8 @@ LLM-Note:
   Errors: none — event emission plus a best-effort clipboard round-trip; if the page is closed the underlying Playwright/CDP call raises and bubbles (fail fast)
 """
 
-import math
 import base64
+import math
 import platform
 import random
 import shutil
@@ -285,6 +285,14 @@ def _clipboard_get() -> str:
     out = subprocess.run(argv, capture_output=True).stdout
     # Get-Clipboard appends a newline that was never on the clipboard.
     return out.decode("utf-8", errors="replace").rstrip("\r\n")
+
+
+def _active_text_len(page) -> int:
+    """Return the current focused editor length for paste acceptance checks."""
+    return page.evaluate(
+        "() => { const e = document.activeElement;"
+        " return e ? ((e.value != null ? e.value : e.textContent) || '').length : 0; }"
+    )
 
 
 def _paste(page, text):

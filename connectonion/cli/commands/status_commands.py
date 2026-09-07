@@ -2,7 +2,7 @@
 Purpose: Display redacted credential diagnostics, canonical account status, and deployments
 LLM-Note:
   Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, credentials.account_in_token, project_identity, project_root, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
-  Data flow: receives reveal=False by default → inspects supported provider variable names in process env/project-root .env/global ~/.co/keys.env without loading values → compares OpenOnion sources by public account claim while keeping token values redacted → if reveal=True, displays full values in a separate warning-marked table → load_api_key() performs guarded resolution/recovery → project_identity() selects the project key or global fallback → creates and signs a fresh auth message → POST to /api/v1/auth → displays account and deployments
+  Data flow: receives reveal=False by default → inspects supported provider variable names in process env and the selected env file (global by default) without loading values → compares OpenOnion sources by public account claim while keeping token values redacted → if reveal=True, displays full values in a separate warning-marked table → load_api_key() performs guarded resolution/recovery → project_identity() selects global identity or an explicitly selected project → creates and signs a fresh auth message → POST to /api/v1/auth → displays account and deployments
   State/Effects: discovery is non-mutating and makes no network call | account resolution may re-authenticate and repair a stored token only when the guarded CLI policy finds a different account | then makes account/deployment requests | default output contains no secret material; explicit --reveal writes full values to the terminal
   Integration: exposes handle_status(reveal=False) for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
   Performance: network call to backend (1-2s) | signature generation is fast (<10ms) | file I/O for .env files
@@ -20,10 +20,10 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
 from ...backend import backend_url
 from ...credentials import account_in_token
 from ...project import project_identity, project_root
-
 from .project_cmd_lib import load_api_key
 
 console = Console()
@@ -81,7 +81,10 @@ def _is_configured(value: object) -> bool:
     )
 
 
-def _read_credential_file(path: Path) -> dict[str, str]:
+def _read_credential_file(
+    path: Path,
+    supported_names: set[str] | None = None,
+) -> dict[str, str]:
     """Read supported key entries without mutating ``os.environ``."""
     if not path.is_file():
         return {}
@@ -89,7 +92,11 @@ def _read_credential_file(path: Path) -> dict[str, str]:
         values = dotenv_values(path, interpolate=False)
     except (OSError, UnicodeError):
         return {}
-    supported = {name for name, _provider in CREDENTIAL_ENV_VARS} | _OAUTH_ENV_VARS
+    supported = (
+        {name for name, _provider in CREDENTIAL_ENV_VARS} | _OAUTH_ENV_VARS
+        if supported_names is None
+        else supported_names
+    )
     return {
         name: str(value)
         for name, value in values.items()
@@ -102,22 +109,19 @@ def _credential_sources(
     project_dir: Path | None = None,
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
+    supported_names: set[str] | None = None,
 ) -> tuple[tuple[str, Mapping[str, str]], ...]:
     """Return supported credential values grouped by privacy-safe source."""
-    project_dir = (
-        Path(project_dir).resolve()
-        if project_dir is not None
-        else project_root().resolve()
-    )
-    home = (home or Path.home()).resolve()
-    environ = os.environ if environ is None else environ
-    project_source = "~/.env" if project_dir == home else "<project>/.env"
+    from ...environment import (process_environment, selected_env_file,
+                                explicit_env_file, global_config_dir)
+    path = selected_env_file()
+    if home is not None and explicit_env_file() is None:
+        path = home / ".co" / "keys.env"
+    label = "selected env file" if explicit_env_file() else "~/.co/keys.env"
+    inherited = process_environment() if environ is None else environ
+    return (("process environment", inherited),
+            (label, _read_credential_file(path, supported_names)))
 
-    return (
-        ("process environment", environ),
-        (project_source, _read_credential_file(project_dir / ".env")),
-        ("~/.co/keys.env", _read_credential_file(home / ".co" / "keys.env")),
-    )
 
 
 def _selected_credential_values(
@@ -132,18 +136,20 @@ def _selected_credential_values(
         project_dir=project_dir,
         home=home,
         environ=environ,
+        supported_names=set(names),
     )
-    return {
-        name: next(
-            (
-                str(values[name])
-                for _source, values in sources
-                if _is_configured(values.get(name))
-            ),
-            None,
-        )
-        for name in names
-    }
+    from ...environment import provider_keys
+    selected = {}
+    for prefix in ("GOOGLE", "MICROSOFT"):
+        record_keys = provider_keys(prefix)
+        record = next((values for _source, values in sources if any(key in values for key in record_keys)), {})
+        selected.update({name: record.get(name) for name in names if name in record_keys})
+    for name in names:
+        if name not in selected:
+            selected[name] = next((str(values[name]) for _source, values in sources
+                                   if _is_configured(values.get(name))), None)
+    return selected
+
 
 
 def _short_account(account: str) -> str:
@@ -240,6 +246,8 @@ def _credential_rows(
             status = "discovered · not loaded"
             source = " + ".join(source_names)
 
+        if environ is None and found and status == "discovered · not loaded" and os.getenv(name) == found[0][1]:
+            status = "configured"
         rows.append(
             {
                 "provider": provider,
@@ -298,7 +306,7 @@ def _oauth_rows(
         for source, values in sources:
             access = values.get(f"{prefix}_ACCESS_TOKEN")
             refresh = values.get(f"{prefix}_REFRESH_TOKEN")
-            if _is_configured(access) or _is_configured(refresh):
+            if any(f"{prefix}_{suffix}" in values for suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")):
                 state = tuple(
                     str(values.get(f"{prefix}_{suffix}") or "")
                     for suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")
@@ -307,17 +315,6 @@ def _oauth_rows(
 
         if not found:
             rows.append({"provider": provider, "status": "missing", "source": "—", "action": action})
-            continue
-
-        unique_states = {state for _source, state, _values in found}
-        source_names = [source for source, *_rest in found]
-        if len(unique_states) > 1:
-            source = " + ".join(
-                f"{name} (used)" if index == 0 else name
-                for index, name in enumerate(source_names)
-            )
-            rows.append({"provider": provider, "status": "conflict", "source": source,
-                         "action": f"remove or update the shadowed value; then {action}"})
             continue
 
         source, state, values = found[0]
@@ -335,7 +332,9 @@ def _oauth_rows(
                 except ValueError:
                     invalid_expiry = True
 
-        if not _is_configured(scopes):
+        if not (_is_configured(_access) or _is_configured(refresh)):
+            status = "incomplete (tokens missing)"
+        elif not _is_configured(scopes):
             status = "incomplete (scopes missing)"
         elif invalid_expiry:
             status = "invalid expiry"
@@ -345,6 +344,7 @@ def _oauth_rows(
             status = "refresh available"
         else:
             status = "connected"
+        action = "co status" if status in ("connected", "incomplete (scopes missing)", "invalid expiry", "refresh available") else action
         rows.append({"provider": provider, "status": status, "source": source, "action": action})
     return rows
 

@@ -24,7 +24,7 @@ import pytest
 
 from connectonion.useful_tools import codex
 
-pytestmark = pytest.mark.real_api
+pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
 
 HAS_CODEX = bool(os.environ.get("CODEX_CMD") or shutil.which("codex"))
 REAL_CODEX_HOME = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
@@ -59,6 +59,49 @@ class _RecordingIO:
 class _Agent:
     def __init__(self):
         self.io = _RecordingIO()
+
+
+@requires_codex
+def test_real_codex_open_without_prompt_creates_thread_without_model_turn():
+    """Open-only reaches the real app-server but never needs a model turn."""
+    result = json.loads(
+        codex(prompt="", cwd=".", approval="deny", timeout=30)
+    )
+
+    assert result["provider"] == "codex"
+    assert result["session_id"]
+    assert result["opened"] is True
+    assert result["resumed"] is False
+    assert result["last_message"] == ""
+    assert result["usage"] == {}
+    assert result["exit_code"] == 0
+    assert "error" not in result
+
+
+@pytest.mark.skipif(
+    not HAS_AUTH, reason="needs Codex credentials for an open-only follow-up"
+)
+@requires_codex
+def test_real_codex_open_only_thread_accepts_its_first_follow_up():
+    """The exact thread id shown by open-only must accept the first real turn."""
+    opened = json.loads(
+        codex(prompt="", cwd=".", approval="deny", timeout=30)
+    )
+
+    follow_up = json.loads(
+        codex(
+            "Reply with exactly: opened-thread-ok",
+            session_id=opened["session_id"],
+            cwd=".",
+            approval="deny",
+            timeout=120,
+        )
+    )
+
+    assert follow_up["session_id"] == opened["session_id"]
+    assert follow_up["resumed"] is True
+    assert "error" not in follow_up
+    assert "opened-thread-ok" in follow_up["last_message"].lower()
 
 
 @requires_codex

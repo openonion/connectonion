@@ -29,10 +29,12 @@ class TestTheRealHomeIsOutOfReach:
 
     def test_agent_config_path_points_inside_it(self):
         """The other way a command finds the global directory."""
-        assert os.environ["AGENT_CONFIG_PATH"].startswith(str(Path.home()))
+        from connectonion.environment import global_config_dir
+        assert global_config_dir().is_relative_to(Path.home())
 
     def test_writing_the_global_keys_file_lands_in_the_sandbox(self):
-        keys = Path(os.environ["AGENT_CONFIG_PATH"]) / "keys.env"
+        from connectonion.environment import selected_env_file
+        keys = selected_env_file()
         keys.parent.mkdir(parents=True, exist_ok=True)
         keys.write_text("MICROSOFT_ACCESS_TOKEN=would-have-clobbered-a-real-one\n")
 

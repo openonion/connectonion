@@ -2,7 +2,7 @@
 Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
   Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls the configured backend /api/v1/deploy
-  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against DEPLOY_NAME_PATTERN (same rule the backend enforces) and _exports_asgi_app() on the entrypoint → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against DEPLOY_NAME_PATTERN (same rule the backend enforces) and _exports_asgi_app() on the entrypoint → load_api_key() loads OPENONION_API_KEY → deployment_environment() exports the selected application env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
   Integration: exposes handle_deploy(template, skills, name) for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | --name only valid with --template (otherwise the name comes from host.yaml) | uses Bearer token auth | returns bool success
   Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s for up to 20 min, covering the backend's own build budget (rsync 120s + docker build 900s + run 60s)
@@ -10,25 +10,25 @@ LLM-Note:
 """
 
 import fnmatch
+import io
 import json
 import re
 import shutil
 import subprocess
-import io
 import tarfile
 import tempfile
 import time
-import yaml
+from pathlib import Path
+
 import requests
 import typer
-from pathlib import Path
+import yaml
 from rich.console import Console
-from dotenv import dotenv_values
-from ...backend import backend_url
 
+from ...backend import backend_url
 from .project_cmd_lib import (
-    GITIGNORE_CONTENT,
     DEPLOY_NAME_PATTERN,
+    GITIGNORE_CONTENT,
     load_api_key,
     normalize_deploy_name,
 )
@@ -328,6 +328,7 @@ def _print_deploy_skill_problems(
 ) -> None:
     """Show a real repair path; only payload problems look like deploy failures."""
     from rich.markup import escape
+
     from ...useful_plugins.skills import find_skill_problem_details
 
     entries = payload_entries or set()
@@ -475,7 +476,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     host_yaml_path = project_dir / ".co" / "host.yaml"
 
     if not host_yaml_path.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return False
 
     # `--skills PATH` means "copy this folder into remote .co/skills".
@@ -553,14 +554,13 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         return False
 
     # Load env vars from .env as runtime secrets; .env itself stays out of the tarball.
-    env_path = project_dir / env_file
-    env_vars = dotenv_values(env_path) if env_path.exists() else {}
+    from ...environment import selected_env_file, deployment_environment
+    env_path = selected_env_file()
+    env_vars = deployment_environment()
 
-    # AGENT_CONFIG_PATH in .env points at the deployer's local ~/.co (an absolute
-    # host path). Inside the container the bundled .co lands at /app/.co, so rewrite
-    # it — never ship a local host path as a runtime secret.
-    if env_vars.get("AGENT_CONFIG_PATH"):
-        env_vars["AGENT_CONFIG_PATH"] = "/app/.co"
+    # The bundled identity belongs to the container, independent of the caller's
+    # selected env file and home directory.
+    env_vars["AGENT_CONFIG_PATH"] = "/app/.co"
 
     # Package source. Git projects upload tracked files with current working-tree
     # contents; non-git projects upload the initialized folder. Either way .env is

@@ -2,7 +2,7 @@
 Purpose: Deploy an agent onto a server you own — converge the setup, sync the code, restart the unit
 LLM-Note:
   Dependencies: imports from [hashlib, json, shlex, subprocess, pathlib, yaml, rich, server_commands, project_cmd_lib] | imported by [cli/main.py via handle_deploy_to] | tested by [tests/unit/test_deploy_to_server.py]
-  Data flow: handle_deploy_to(server, project_dir) → load_server() resolves the ssh target → _read_provision() reads /srv/<agent>/.co/provision.json → _ensure_setup() runs only the missing steps → _sync_code() rsyncs excluding .co/ → _install_deps() only when requirements.txt changed → _write_unit() on change → systemctl restart
+  Data flow: handle_deploy_to(server, project_dir) → load_server() resolves the ssh target → _read_provision() reads /srv/<agent>/.co/provision.json → _ensure_setup() runs only the missing steps → _sync_code() rsyncs excluding .co/ → _install_deps() only when requirements.txt changed → _remote_agent_account() authenticates the key that actually lives on the server → _write_unit() on change → systemctl restart
   State/Effects: on the server creates /srv/<agent>/{,.venv,.co} and /etc/systemd/system/<agent>.service | rsyncs code | NEVER writes inside /srv/<agent>/.co except provision.json | locally reads .co/host.yaml and the project files
   Integration: exposes handle_deploy_to(server, project_dir) | requires a server registered by `co server add` (#311) reachable with the key from `co keys --ssh` (#310)
   Performance: one ssh round trip to read provision.json, one rsync, one restart | setup steps are skipped entirely once the schema matches
@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from dotenv import dotenv_values
 from rich.console import Console
 
+from .env_inheritance import is_operator_identity
 from .server_commands import SSH_TIMEOUT_SECONDS, derived_agent_identity, load_server
 
 console = Console()
@@ -100,7 +100,7 @@ def _read_project(project_dir: Optional[Path] = None) -> Optional[dict]:
     project_dir = Path(project_dir) if project_dir else project_root()
     host_yaml = project_dir / ".co" / "host.yaml"
     if not host_yaml.exists():
-        console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
+        console.print("[red]Not a ConnectOnion project. Run 'co init ./' first.[/red]")
         return None
 
     config = yaml.safe_load(host_yaml.read_text(encoding="utf-8")) or {}
@@ -254,6 +254,7 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
     """
     environment = f"Environment=PATH={SRV}/{agent}/.venv/bin:/usr/local/sbin:" \
                   f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+    environment += f"Environment=AGENT_CONFIG_PATH={SRV}/{agent}/.co\n"
     if hostname:
         environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
     if port:
@@ -261,6 +262,13 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
         # is how a second agent on this machine avoids 8000 without its author
         # knowing anything about what else runs here.
         environment += f"Environment=AGENT_PORT={port}\n"
+    # Host startup diagnostics must name the file systemd actually loaded.
+    # Without this marker the generic host layer sends an operator to the
+    # project's .env even though deploy keeps secrets outside the rsync root.
+    environment += (
+        "Environment=CONNECTONION_ENV_FILE="
+        f"{ENV_FILE_TEMPLATE.format(agent=agent)}\n"
+    )
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target
@@ -640,7 +648,128 @@ RSYNC_FILTERS = [
 ]
 
 
-def _env_for_server(env_vars: dict, agent: str) -> dict:
+def _rsync_filters(project_dir: Path) -> list[str]:
+    """Framework safety rules plus the project's own deploy boundary.
+
+    A path in the root ``.gitignore`` is neither transferred nor deleted on
+    the server. That gives authors one familiar place to name generated caches
+    and runtime state, and matches the cloud deploy path. Framework-owned
+    secrets and state remain protected first, regardless of project rules.
+    """
+    filters = list(RSYNC_FILTERS)
+    gitignore = project_dir / ".gitignore"
+    if gitignore.is_file():
+        filters.extend(["--exclude-from", str(gitignore)])
+    return filters
+
+
+def _agent_account(agent_identity: dict) -> Optional[dict]:
+    """Authenticate as the agent, so the server bills the agent.
+
+    `/api/v1/auth` creates an account for any key that authenticates, so this
+    both mints a token and, on a first deploy, opens the agent's account. The
+    email comes from the response rather than being computed here: the backend
+    is authoritative about the mailbox it actually routes, and the local
+    fallback format has not always agreed with it.
+    """
+    import time
+
+    import requests
+    from nacl.signing import SigningKey
+
+    from ...backend import backend_url
+
+    public_key = agent_identity["address"]
+    timestamp = int(time.time())
+    message = f"ConnectOnion-Auth-{public_key}-{timestamp}"
+    signature = SigningKey(agent_identity["key_bytes"]).sign(
+        message.encode()).signature.hex()
+
+    try:
+        response = requests.post(
+            f"{backend_url()}/api/v1/auth",
+            json={"public_key": public_key, "signature": signature,
+                  "message": message},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException:
+        return None
+    if response.status_code != 200:
+        return None
+
+    data = response.json()
+    token = data.get("token")
+    if not token:
+        return None
+    email = ((data.get("user") or {}).get("email") or {}).get("address")
+    return {
+        "OPENONION_API_KEY": token,
+        "AGENT_ADDRESS": public_key,
+        "AGENT_EMAIL": email or f"{public_key[:10]}@mail.openonion.ai",
+        "IS_EMAIL_ACTIVE": "true",
+    }
+
+
+REMOTE_ACCOUNT_MARKER = "CONNECTONION_REMOTE_ACCOUNT="
+
+
+def _remote_agent_account(target: str, agent: str) -> Optional[dict]:
+    """Authenticate the identity held by the server, without exporting its key.
+
+    The server may already have a legacy, rotated, or ``--own-identity`` key.
+    Running the signing step in its venv makes that key authoritative. Only its
+    public address and newly issued account metadata cross the SSH boundary.
+
+    Returns ``None`` when the key cannot be loaded or authenticated. Callers
+    must then omit all identity/account environment variables rather than pair
+    one identity's private key with another identity's account.
+    """
+    co_dir = f"{SRV}/{agent}/.co"
+    script = f"""
+import json
+from pathlib import Path
+
+from connectonion import address
+from connectonion.cli.commands.deploy_to_server import _agent_account
+
+identity = address.load(Path({co_dir!r}))
+result = None
+if identity:
+    account = _agent_account({{
+        'address': identity['address'],
+        'key_bytes': bytes(identity['signing_key']),
+    }})
+    result = {{'address': identity['address'], 'account': account}}
+print({REMOTE_ACCOUNT_MARKER!r} + json.dumps(result))
+"""
+    encoded = base64.b64encode(script.encode()).decode()
+    python = f"{SRV}/{agent}/.venv/bin/python"
+    runner = f"import base64; exec(base64.b64decode({encoded!r}))"
+    command = f"{python} -c {shlex.quote(runner)}"
+    response = _ssh(target, command, timeout=60)
+    if response.returncode != 0:
+        return None
+
+    for line in reversed(response.stdout.splitlines()):
+        if line.startswith(REMOTE_ACCOUNT_MARKER):
+            try:
+                result = json.loads(line[len(REMOTE_ACCOUNT_MARKER):])
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(result, dict):
+                return None
+            address = result.get("address")
+            account = result.get("account")
+            if account is not None and not isinstance(account, dict):
+                return None
+            if account and account.get("AGENT_ADDRESS") != address:
+                return None
+            return result
+    return None
+
+
+def _env_for_server(env_vars: dict, agent: str,
+                    agent_account: Optional[dict] = None) -> dict:
     """The project's `.env`, corrected for the machine it is going to.
 
     `AGENT_CONFIG_PATH` is written by `co init` as an absolute path to the
@@ -649,14 +778,24 @@ def _env_for_server(env_vars: dict, agent: str) -> dict:
     and `google_calendar.py` all build their `keys.env` path from it — so those
     tools fail there rather than falling back. The Cloud path already rewrites
     it to `/app/.co`; this is the same correction for `/srv/<agent>/.co`.
+
+    The identity lines are dropped for a different reason: they are true of the
+    developer, and `co init` puts them there on purpose so the project runs as
+    its author locally. The server has its own key, so shipping them makes the
+    deployed agent send mail as its author and bill its author's account, with
+    nothing failing. `agent_account` is the replacement, derived from the key
+    the server will actually hold.
     """
-    out = dict(env_vars)
+    out = {k: v for k, v in env_vars.items() if not is_operator_identity(k)}
     if out.get("AGENT_CONFIG_PATH"):
         out["AGENT_CONFIG_PATH"] = f"{SRV}/{agent}/.co"
+    if agent_account:
+        out.update(agent_account)
     return out
 
 
-def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
+def _sync_env(target: str, agent: str, project_dir: Path,
+              agent_account: Optional[dict] = None) -> bool:
     """Write the project's secrets where systemd can read them and nobody else.
 
     Sent over ssh rather than rsync, to a path outside the rsync root: the file
@@ -664,11 +803,10 @@ def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
     service user — cannot read it back out, and `--delete` cannot overwrite a
     key that was rotated on the server.
     """
-    env_path = project_dir / ".env"
-    if not env_path.exists():
-        return True
-
-    env_vars = _env_for_server(dotenv_values(env_path), agent)
+    from ...environment import deployment_environment
+    env_vars = _env_for_server(
+        deployment_environment(),
+        agent, agent_account)
 
     # A newline inside a value would end the KEY=VALUE line and turn the rest
     # into junk entries. Say so rather than write a file that looks fine.
@@ -678,8 +816,6 @@ def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
                       f"supported in an EnvironmentFile[/yellow]")
     env_vars = {k: v for k, v in env_vars.items()
                 if v is not None and k not in multiline}
-    if not env_vars:
-        return True
 
     body = "".join(f"{k}={v}\n" for k, v in env_vars.items())
     dest = ENV_FILE_TEMPLATE.format(agent=agent)
@@ -689,7 +825,8 @@ def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
     # remainder of the file would then run as commands — under sudo.
     payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
 
-    console.print(f"[dim]  writing secrets … ({len(env_vars)} keys)[/dim]")
+    action = "writing secrets" if env_vars else "clearing stale account metadata"
+    console.print(f"[dim]  {action} … ({len(env_vars)} keys)[/dim]")
     result = _ssh(target, f"""
 sudo mkdir -p {shlex.quote(str(Path(dest).parent))}
 printf %s {shlex.quote(payload)} | base64 -d | sudo tee {shlex.quote(dest)} >/dev/null
@@ -719,7 +856,11 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     template defaults behind a proxy pointed at the wrong port, and reports
     success either way.
 
-    See RSYNC_FILTERS for the two rules and why the default is now "carry".
+    The project's root `.gitignore` is also authoritative: ignored paths are
+    neither copied from the laptop nor deleted on the server. Put generated
+    runtime state there when it lives inside the project root.
+
+    See RSYNC_FILTERS for the framework rules and why the default is "carry".
     """
     from .server_commands import _identity as _ssh_identity
 
@@ -727,7 +868,7 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     result = subprocess.run(
         [
             "rsync", "-az", "--delete",
-            *RSYNC_FILTERS,
+            *_rsync_filters(project_dir),
             "-e", " ".join(["ssh", "-o", "BatchMode=yes",
                             "-o", "StrictHostKeyChecking=accept-new",
                             *_ssh_identity(target)]),
@@ -1023,9 +1164,31 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
         return False
     if not _sync_code(target, agent, project_dir):
         return False
-    if not _sync_env(target, agent, project_dir):
-        return False
+
     if not _install_deps_if_changed(target, agent, project_dir, skill_requirements):
+        return False
+
+    # Authenticate on the machine that holds the live private key. The key may
+    # be the one just derived above, or a legacy/rotated/--own-identity key that
+    # _ensure_setup deliberately preserved. In every case the remote key wins.
+    remote_identity = _remote_agent_account(target, agent)
+    agent_account = remote_identity.get("account") if remote_identity else None
+    if agent_account:
+        remote_address = remote_identity["address"]
+        if agent_identity and remote_address != agent_identity["address"]:
+            console.print(f"  [dim]identity {remote_address[:16]}… "
+                          "(existing server identity)[/dim]")
+        console.print(f"  [dim]account {agent_account['AGENT_EMAIL']} — "
+                      f"the agent's own[/dim]")
+    else:
+        known = remote_identity.get("address") if remote_identity else None
+        suffix = f" {known[:16]}…" if known else ""
+        console.print(f"[yellow]  could not authenticate the server identity{suffix} — "
+                      "deploying without account metadata[/yellow]")
+    if not agent_account:
+        console.print(f"[dim]  ssh to the server and run [cyan]cd {SRV}/{agent} && "
+                      "co auth[/cyan]; co/* models need an authenticated account[/dim]")
+    if not _sync_env(target, agent, project_dir, agent_account):
         return False
     # Decided on the server, where the answer lives, and recorded so a redeploy
     # keeps it — the Caddyfile points at this number.

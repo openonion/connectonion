@@ -18,7 +18,7 @@ AGENT.md Format:
 ---
 name: explore
 description: Fast codebase exploration agent
-model: co/gemini-3.6-flash
+model: co/gemini-3.8-flash
 max_iterations: 15
 tools:
   - glob
@@ -32,9 +32,10 @@ You are an explore agent specialized in quickly understanding codebases.
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Dict, Any, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..core.events import on_agent_ready
+from ..core.usage import DEFAULT_MODEL
 from ..project import project_co_dir
 
 if TYPE_CHECKING:
@@ -163,7 +164,7 @@ def task(agent, prompt: str, agent_type: str) -> str:
     # Extract configuration
     frontmatter = config['frontmatter']
     system_prompt = config['system_prompt']
-    model = frontmatter.get('model', 'co/gemini-3.6-flash')
+    model = frontmatter.get('model', DEFAULT_MODEL)
     max_iterations = frontmatter.get('max_iterations', 10)
     tool_names = frontmatter.get('tools', [])
 
@@ -188,7 +189,7 @@ def task(agent, prompt: str, agent_type: str) -> str:
 
 def _resolve_tools(tool_names: List[str], agent_name: str) -> List:
     """Resolve tool names to actual tool functions/classes."""
-    from ..useful_tools import glob, grep, read_file, edit, multi_edit, write, bash, WebFetch, Memory
+    from ..useful_tools import Memory, WebFetch, bash, edit, glob, grep, multi_edit, read_file, write
     from ..useful_tools.browser_tools import BrowserAutomation
 
     tool_map = {

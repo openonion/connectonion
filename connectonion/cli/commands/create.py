@@ -9,34 +9,35 @@ LLM-Note:
   Errors: fails if project name invalid (spaces, special chars) | fails if directory already exists | fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | catches KeyboardInterrupt during interactive menus (cleans up partial state)
 """
 
-import os
 import shutil
 from pathlib import Path
 from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import IntPrompt, Prompt
 from rich.syntax import Syntax
 
+from ...core.usage import DEFAULT_MODEL
 from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
     PROVIDER_TO_ENV,
-    mint_invite_code,
-    ensure_global_config,
+    LoadingAnimation,
+    check_environment_for_api_keys,
     copy_docs,
     create_host_yaml,
-    record_creator_as_admin,
-    setup_gitignore,
-    print_resources,
-    LoadingAnimation,
-    validate_project_name,
-    check_environment_for_api_keys,
     detect_api_provider,
+    ensure_global_config,
     generate_custom_template_with_name,
     get_template_suggested_name,
+    mint_invite_code,
+    print_resources,
+    record_creator_as_admin,
+    setup_gitignore,
     unknown_template_message,
+    validate_project_name,
 )
 
 console = Console()
@@ -121,7 +122,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         detected_keys[provider] = key
 
     # Authenticate only if OPENONION_API_KEY not already in global keys.env
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     global_keys_env = global_dir / "keys.env"
     already_authed = global_keys_env.exists() and "OPENONION_API_KEY=" in global_keys_env.read_text(encoding="utf-8")
 
@@ -371,7 +373,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # describes the machine it is on rather than the one that made the file.
         lines_to_add = []
         if "# Default model:" not in env_content:
-            lines_to_add.append("# Default model: co/gemini-3.6-flash (managed keys with free credits)\n")
+            lines_to_add.append(
+                f"# Default model: {DEFAULT_MODEL} (managed keys with free credits)\n"
+            )
 
         if lines_to_add:
             # Add blank line after comments if we're adding any
@@ -380,7 +384,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         # Fallback - create minimal .env with detected keys
         env_lines = [
-            "# Default model: co/gemini-3.6-flash (managed keys with free credits)",
+            f"# Default model: {DEFAULT_MODEL} (managed keys with free credits)",
             "",
         ]
 
@@ -442,7 +446,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
     # Vibe Coding hint - clean formatting with proper spacing
     console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-    console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
+    console.print("   [cyan].co/docs/[/cyan] for full documentation")
     console.print()
 
     # Resources

@@ -1,17 +1,17 @@
 """
 Purpose: Run Codex via its native app-server protocol, stream steps and permission requests to the frontend, and resume sessions
 LLM-Note:
-  Dependencies: imports from [json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
-  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to ACP-status-aligned FRONTEND events (tool_call / tool_result) via agent.io.log → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
-  State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
-  Integration: exposes codex(...) and CodexAppServer | this IS the adapter — ConnectOnion's own Python client drives the codex CLI's native app-server (no external codex-acp Node binary) | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
-  Performance: long-lived process per call | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
+  Dependencies: imports from [atexit, json, os, shutil, subprocess, threading, time] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py, tests/e2e/real_api/test_real_codex.py]
+  Data flow: codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) → spawns `codex app-server` → CodexAppServer speaks newline-delimited JSON-RPC 2.0 → initialize/initialized → thread/start or thread/resume with the requested policy reapplied → turn/start → item/started+item/completed notifications converted to OIP-aligned frontend events via agent.io.log; a completed native imageView becomes a bounded PNG/JPEG provider_artifact only when it stays inside cwd → method-specific approval responses are answered by the approval gate → waits for turn/completed → returns JSON envelope: str
+  State/Effects: spawns `codex app-server` subprocess | reader thread parses stdout | open-only threads remain in a process-local registry for at most 15 minutes (maximum 8) until their first turn persists the rollout | streams live events to agent.io using the tool_call/tool_result/approval_needed events that @connectonion/react already renders (NO frontend changes) | Codex persists threads under ~/.codex; file writes depend on sandbox + granted approvals
+  Integration: exposes codex(...) and CodexAppServer | this is the native adapter: ConnectOnion's Python client drives Codex app-server directly | lifecycle revisions/cache are owned by plugins/coding_agents.py and core/provider_events.py | agent injected by tool_executor (hidden from LLM) | codex binary overridable via $CODEX_CMD | session_id resumes via thread/resume; envelope's resumed flag reports it
+  Performance: one process per active call; open-only keeps its initialized process until first follow-up/expiry | streams incrementally | requests + turn wait have timeouts so a hung server can't block forever
   Errors: returns envelope with error on missing binary, JSON-RPC failure/timeout, or exception | never raises to the agent loop
 
 Codex tool. ConnectOnion drives the codex CLI's built-in `app-server` (OpenAI's
 native JSON-RPC 2.0 protocol) directly from Python — our own client is the
 adapter, so the only dependency is the `codex` binary itself (no external
-codex-acp Node adapter).
+third-party protocol bridge).
 
 Why app-server: session + resume (thread/start, thread/resume), live streaming
 of Codex's inner steps (item/* events), and interactive permission callbacks
@@ -33,13 +33,29 @@ Requires the `codex` CLI (npm install -g @openai/codex) and Codex auth. Set
 $CODEX_CMD to override the binary path/command.
 """
 
+import atexit
+import base64
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
 import threading
 import time
+from pathlib import Path
+
+from ..core.provider_events import (
+    command_phase,
+    next_provider_state_revision,
+    provider_activity_event,
+    provider_artifact_event,
+    provider_artifact_for_state,
+    provider_message_event,
+    provider_status_summary,
+    remember_provider_activity,
+    remember_provider_artifact,
+)
 
 SANDBOX_LEVELS = ("read-only", "workspace-write", "danger-full-access")
 APPROVAL_MODES = ("manual", "auto", "deny")
@@ -55,14 +71,27 @@ _APPROVAL_METHODS = (
 # Thread items that represent a discrete step worth showing as a tool card.
 _TOOL_ITEM_TYPES = ("commandExecution", "fileChange", "mcpToolCall", "webSearch")
 
+# A newly started Codex thread is not written to ~/.codex until its first turn.
+# Keep an open-only app-server alive so the Work Room's first message can use
+# the exact provider thread id that was shown to the user.  Once that first
+# turn completes, Codex has persisted the rollout and ordinary thread/resume
+# works across later tool calls and Host restarts.
+_OPEN_THREAD_TTL_SECONDS = 15 * 60
+_MAX_OPEN_THREADS = 8
+_MAX_WORKROOM_IMAGE_BYTES = 180 * 1024
+_MAX_WORKROOM_INPUT_LENGTH = 12_000
+_open_threads = {}
+_open_threads_lock = threading.Lock()
 
-def codex(prompt: str, session_id: str = "", cwd: str = "",
+
+def codex(prompt: str = "", session_id: str = "", cwd: str = "",
           sandbox: str = "workspace-write", model: str = "", timeout: int = 600,
           approval: str = "manual", agent=None) -> str:
     """Run Codex (via `codex app-server`) and optionally resume a session.
 
     Args:
-        prompt: Task for Codex (e.g., "fix the failing tests")
+        prompt: Task for Codex (e.g., "fix the failing tests"). Omit it to
+            create or resume a provider thread without submitting a turn.
         session_id: Thread id returned by a previous call, to resume it
         cwd: Directory Codex works in (default: current directory)
         sandbox: "read-only", "workspace-write" (default), or "danger-full-access"
@@ -100,59 +129,126 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
     def on_event(event):
         if event.get("kind") == "agent_message":
             chunks.append(event.get("text", ""))
-        _forward_ui(agent, event)
+        _forward_ui(agent, event, workspace=working_directory)
 
     def on_approval(method, params):
-        return _approval_allowed(method, params, approval, agent)
+        return _approval_allowed(
+            method,
+            params,
+            approval,
+            agent,
+            fallback_cwd=working_directory,
+        )
 
-    cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
-    client = CodexAppServer(
-        command=command,
-        cwd=cwd or ".",
-        on_event=on_event,
-        on_approval=on_approval,
-        cancelled=cancelled if callable(cancelled) else None,
-    )
+    cancelled = _provider_cancellation_check(agent)
+    working_directory = cwd or "."
+    cancellation_check = cancelled if callable(cancelled) else None
+    client = None
     deadline = time.monotonic() + timeout
     force_close = False
+    keep_open = False
     try:
-        client.start()
-        client.initialize(timeout=_remaining(deadline))
-        client.refresh_account(timeout=_remaining(deadline))
+        has_prompt = bool(prompt.strip())
         approval_policy = "untrusted" if approval == "manual" else "never"
-        if session_id:
-            sid = client.resume_thread(
+        if session_id and has_prompt:
+            client = _take_open_thread(
                 session_id,
+                cwd=working_directory,
                 sandbox=sandbox,
                 model=model,
                 approval_policy=approval_policy,
-                timeout=_remaining(deadline),
             )
+        reused_open_thread = client is not None
+        if client is not None:
+            client.on_event = on_event
+            client.on_approval = on_approval
+            client.cancelled = cancellation_check or (lambda: False)
+            client.refresh_account(timeout=_remaining(deadline))
+            sid = session_id
             resumed = True
         else:
-            sid = client.start_thread(
-                sandbox=sandbox,
-                model=model,
-                approval_policy=approval_policy,
-                timeout=_remaining(deadline),
+            client = CodexAppServer(
+                command=command,
+                cwd=working_directory,
+                on_event=on_event,
+                on_approval=on_approval,
+                cancelled=cancellation_check,
             )
-            resumed = False
-        turn = client.run_turn(
-            sid,
-            prompt,
-            cwd=cwd,
-            timeout=_remaining(deadline),
-        )
+            client.start()
+            client.initialize(timeout=_remaining(deadline))
+            if has_prompt:
+                client.refresh_account(timeout=_remaining(deadline))
+        if not reused_open_thread:
+            if session_id:
+                sid = client.resume_thread(
+                    session_id,
+                    sandbox=sandbox,
+                    model=model,
+                    approval_policy=approval_policy,
+                    timeout=_remaining(deadline),
+                )
+                resumed = True
+            else:
+                sid = client.start_thread(
+                    sandbox=sandbox,
+                    model=model,
+                    approval_policy=approval_policy,
+                    timeout=_remaining(deadline),
+                )
+                resumed = False
+        if not has_prompt:
+            if not session_id:
+                _store_open_thread(
+                    sid,
+                    client,
+                    cwd=working_directory,
+                    sandbox=sandbox,
+                    model=model,
+                    approval_policy=approval_policy,
+                )
+                keep_open = True
+            return _envelope(
+                sid, resumed=resumed, exit_code=0, opened=True
+            )
+        turn_options = {
+            "cwd": cwd,
+            "timeout": _remaining(deadline),
+        }
+        # The built-in app-server client owns the native steering extension.
+        # Keeping it opt-in preserves the small adapter seam used by local
+        # integrations and test doubles which implement only the older
+        # ``run_turn(thread, prompt, cwd, timeout)`` contract.
+        if getattr(client, "supports_workroom_steering", False):
+            turn_options["on_workroom_input"] = lambda turn_id: _steer_workroom_inputs(
+                agent,
+                client,
+                sid,
+                turn_id,
+            )
+            turn_options["on_turn_started"] = lambda _turn_id: _confirm_started_workroom_turn(
+                agent,
+                prompt,
+            )
+        turn = client.run_turn(sid, prompt, **turn_options)
     except _ProviderCancelled as e:
+        # ``turn/interrupt`` is sent before this control path exits. The
+        # app-server owns the persisted native thread, but its local process
+        # must still be killed if it ignores shutdown; otherwise a revoked
+        # execution lease could keep mutating the workspace in the background.
         force_close = True
-        return _envelope(session_id, error=f"codex app-server: {e}")
+        return _envelope(
+            session_id,
+            status="cancelled",
+            error=f"codex app-server: {e}",
+        )
     except Exception as e:
         return _envelope(session_id, error=f"codex app-server: {e}")
     finally:
-        if force_close:
-            client.close(force=True)
-        else:
-            client.close()
+        if client is not None and not keep_open:
+            if force_close:
+                client.close(force=True)
+            else:
+                client.close()
 
     turn = turn or {}
     status = turn.get("status", "")
@@ -161,6 +257,95 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
                          usage=turn.get("usage", {}), exit_code=0)
     return _envelope(sid, resumed=resumed, last_message="".join(chunks),
                      usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}")
+
+
+def _thread_config(cwd, sandbox, model, approval_policy):
+    return cwd, sandbox, model, approval_policy
+
+
+def _store_open_thread(
+    thread_id, client, *, cwd, sandbox, model, approval_policy
+):
+    """Keep a no-turn thread alive until its first Work Room message."""
+    record = {
+        "client": client,
+        "config": _thread_config(cwd, sandbox, model, approval_policy),
+        "opened_at": time.monotonic(),
+    }
+    timer = threading.Timer(
+        _OPEN_THREAD_TTL_SECONDS, _expire_open_thread, (thread_id, client)
+    )
+    timer.daemon = True
+    record["timer"] = timer
+    with _open_threads_lock:
+        previous = _open_threads.pop(thread_id, None)
+        _open_threads[thread_id] = record
+        evicted = []
+        while len(_open_threads) > _MAX_OPEN_THREADS:
+            oldest = min(
+                _open_threads,
+                key=lambda key: _open_threads[key]["opened_at"],
+            )
+            evicted.append(_open_threads.pop(oldest))
+    _close_thread_records([previous] if previous is not None else [])
+    _close_thread_records(evicted)
+    timer.start()
+
+
+def _take_open_thread(
+    thread_id, *, cwd, sandbox, model, approval_policy
+):
+    """Claim a matching live open-only thread for its first provider turn."""
+    _close_expired_open_threads()
+    expected = _thread_config(cwd, sandbox, model, approval_policy)
+    with _open_threads_lock:
+        record = _open_threads.get(thread_id)
+        if record is None:
+            return None
+        _open_threads.pop(thread_id, None)
+    record["timer"].cancel()
+    if record["config"] != expected:
+        record["client"].close()
+        return None
+    return record["client"]
+
+
+def _close_expired_open_threads(now=None):
+    now = time.monotonic() if now is None else now
+    with _open_threads_lock:
+        expired = [
+            thread_id
+            for thread_id, record in _open_threads.items()
+            if now - record["opened_at"] >= _OPEN_THREAD_TTL_SECONDS
+        ]
+        records = [_open_threads.pop(thread_id) for thread_id in expired]
+    _close_thread_records(records)
+
+
+def _expire_open_thread(thread_id, client):
+    with _open_threads_lock:
+        record = _open_threads.get(thread_id)
+        if record is None or record["client"] is not client:
+            return
+        _open_threads.pop(thread_id, None)
+    record["client"].close()
+
+
+def _close_thread_records(records):
+    for record in records:
+        record["timer"].cancel()
+        record["client"].close()
+
+
+def _close_open_threads():
+    """Reap open-only app-servers when the Host process exits."""
+    with _open_threads_lock:
+        records = list(_open_threads.values())
+        _open_threads.clear()
+    _close_thread_records(records)
+
+
+atexit.register(_close_open_threads)
 
 
 def _turn_error(turn):
@@ -188,7 +373,7 @@ def _base_command():
     return [found, "app-server"] if found else None
 
 
-def _forward_ui(agent, event):
+def _forward_ui(agent, event, *, workspace=None):
     """Convert one Codex thread event into the frontend's native event stream.
 
     The @connectonion/react package maps `tool_call` (stable tool_id) → a
@@ -201,17 +386,146 @@ def _forward_ui(agent, event):
     parent_id = _active_parent_tool_call_id(agent)
     correlation = ({"invocationId": f"codex:{parent_id}",
                     "parentToolCallId": parent_id} if parent_id else {})
-    if kind == "tool_start":
+    if kind == "agent_message":
+        _emit_workroom_message(
+            agent,
+            correlation,
+            role="assistant",
+            text=event.get("text", ""),
+            message_id=f"assistant:{event.get('id') or time.monotonic_ns()}",
+        )
+    elif kind == "tool_start":
+        _emit_safe_provider_activity(agent, event, "running", correlation)
         _emit_provider_event(agent, "tool_call", tool_id=event.get("id", ""),
-                             name=event.get("name", "codex"), args={},
+                             name=event.get("name", "codex"),
+                             args=event.get("args", {}),
                              status="in_progress", provider="codex",
                              **correlation)
     elif kind == "tool_end":
+        _emit_safe_provider_activity(
+            agent,
+            event,
+            "failed" if event.get("failed") else "completed",
+            correlation,
+        )
         _emit_provider_event(agent, "tool_result", tool_id=event.get("id", ""),
-                             name=event.get("name", "codex"), args={},
+                             name=event.get("name", "codex"),
+                             args=event.get("args", {}),
                              status="failed" if event.get("failed") else "completed",
-                             result=event.get("name", ""), provider="codex",
+                             result=event.get("result", ""), provider="codex",
                              **correlation)
+    elif kind == "image_view":
+        _emit_workspace_image_artifact(agent, event, correlation, workspace)
+
+
+def _emit_workspace_image_artifact(agent, event, correlation, workspace):
+    """Forward a completed native `imageView`, never a terminal/text stand-in.
+
+    Codex alone decides whether it viewed an image. ConnectOnion permits that
+    image to become a Work Room thumbnail only after resolving it inside the
+    operator-selected workspace and validating the exact bounded PNG/JPEG
+    payload used on the OIP wire.
+    """
+    invocation_id = correlation.get("invocationId")
+    parent_id = correlation.get("parentToolCallId")
+    thumbnail = _workspace_image_data_url(event.get("path"), workspace)
+    if not invocation_id or not parent_id or thumbnail is None:
+        return
+    lifecycle = _emit_provider_event(
+        agent,
+        "provider_invocation",
+        invocationId=invocation_id,
+        parentToolCallId=parent_id,
+        provider="codex",
+        providerDisplayName="Codex",
+        status="running",
+        currentSummary=provider_status_summary("running"),
+    )
+    revision = lifecycle.get("stateRevision")
+    try:
+        artifact = provider_artifact_event(
+            provider="codex",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            artifact_id=f"image-{revision}",
+            state_revision=revision,
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+    except ValueError:
+        return
+    remember_provider_artifact(
+        agent,
+        provider="codex",
+        invocation_id=invocation_id,
+        parent_tool_call_id=parent_id,
+        thumbnail_data_url=thumbnail,
+        alt="Latest provider workspace view",
+    )
+    _emit_provider_event(agent, "provider_artifact", **_without_event_type(artifact))
+
+
+def _workspace_image_data_url(path, workspace):
+    """Read a small, regular workspace PNG/JPEG without leaking its path."""
+    if not isinstance(path, str) or not path or not isinstance(workspace, (str, Path)):
+        return None
+    try:
+        root = Path(workspace).expanduser().resolve(strict=True)
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        image = candidate.resolve(strict=True)
+        if not root.is_dir() or not image.is_relative_to(root) or not image.is_file():
+            return None
+        if image.stat().st_size > _MAX_WORKROOM_IMAGE_BYTES:
+            return None
+        binary = image.read_bytes()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if binary.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif binary.startswith(b"\xff\xd8") and binary.endswith(b"\xff\xd9"):
+        mime = "image/jpeg"
+    else:
+        return None
+    return f"data:{mime};base64,{base64.b64encode(binary).decode('ascii')}"
+
+
+def _emit_safe_provider_activity(agent, event, status, correlation):
+    """Send a redacted OIP activity before the legacy generic compatibility event."""
+    activity_id = event.get("id")
+    invocation_id = correlation.get("invocationId")
+    if not isinstance(activity_id, str) or not activity_id or not invocation_id:
+        return
+    details = event.get("args")
+    fields = provider_activity_event(
+        provider="codex",
+        activity_id=activity_id,
+        sequence=_provider_activity_sequence(agent, invocation_id, activity_id),
+        native_kind=event.get("native_kind", event.get("name", "")),
+        status=status,
+        name=event.get("name", ""),
+        details=details if isinstance(details, dict) else {},
+    )
+    fields.pop("type")
+    remember_provider_activity(agent, invocation_id, fields)
+    _emit_provider_event(agent, "provider_activity", **fields, **correlation)
+
+
+def _provider_activity_sequence(agent, invocation_id, activity_id):
+    """Keep start/result updates on one stable sequence number for replay."""
+    sequences = getattr(agent, "_provider_activity_sequences", None)
+    if not isinstance(sequences, dict):
+        sequences = {}
+        setattr(agent, "_provider_activity_sequences", sequences)
+    key = (invocation_id, activity_id)
+    if key not in sequences:
+        sequences[key] = 1 + max(
+            (value for (known_invocation, _), value in sequences.items()
+             if known_invocation == invocation_id),
+            default=0,
+        )
+    return sequences[key]
 
 
 def _active_parent_tool_call_id(agent):
@@ -220,18 +534,235 @@ def _active_parent_tool_call_id(agent):
     return value if isinstance(value, str) and value else None
 
 
+def _provider_cancellation_check(agent):
+    """Scope a Work Room Stop to this Codex invocation when the IO supports it."""
+    io = getattr(agent, "io", None)
+    parent_id = _active_parent_tool_call_id(agent)
+    invocation_id = f"codex:{parent_id}" if parent_id else ""
+    targeted = getattr(io, "is_provider_cancelled", None)
+    global_cancelled = getattr(io, "is_cancelled", None)
+
+    def cancelled():
+        if callable(global_cancelled) and global_cancelled():
+            return True
+        return bool(invocation_id and callable(targeted) and targeted(invocation_id))
+
+    return cancelled
+
+
+def _workroom_context(agent, correlation):
+    """Return explicit Work Room grouping only from Host-owned session state."""
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return {}
+    default = correlation.get("invocationId")
+    workroom_id = session.get("_provider_workroom_id", default)
+    continuation_of = session.get("_provider_continuation_of")
+    fields = {}
+    if isinstance(workroom_id, str) and workroom_id:
+        fields["workroom_id"] = workroom_id
+    if isinstance(continuation_of, str) and continuation_of:
+        fields["continuation_of"] = continuation_of
+    return fields
+
+
+def _emit_workroom_message(agent, correlation, *, role, text, message_id):
+    """Stream a bounded Codex/user message without exposing native tool output."""
+    invocation_id = correlation.get("invocationId")
+    parent_id = correlation.get("parentToolCallId")
+    if not isinstance(invocation_id, str) or not isinstance(parent_id, str):
+        return
+    try:
+        event = provider_message_event(
+            provider="codex",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            message_id=message_id,
+            role=role,
+            text=text,
+            **_workroom_context(agent, correlation),
+        )
+    except ValueError:
+        return
+    _emit_provider_event(agent, "provider_message", **_without_event_type(event))
+
+
+def _steer_workroom_inputs(agent, client, thread_id, turn_id):
+    """Apply exact, already-authorized Work Room messages to a live Codex turn."""
+    if not isinstance(turn_id, str) or not turn_id:
+        return
+    io = getattr(agent, "io", None)
+    receive_all = getattr(io, "receive_all", None)
+    parent_id = _active_parent_tool_call_id(agent)
+    invocation_id = f"codex:{parent_id}" if parent_id else ""
+    if not callable(receive_all) or not invocation_id:
+        return
+    for message in receive_all("PROVIDER_INPUT"):
+        if (
+            not isinstance(message, dict)
+            or message.get("invocationId") != invocation_id
+            or not isinstance(message.get("text"), str)
+        ):
+            continue
+        text = message["text"].replace("\x00", "").strip()
+        if not text or len(text) > _MAX_WORKROOM_INPUT_LENGTH:
+            continue
+        message_id = message.get("requestId")
+        if not isinstance(message_id, str) or not message_id:
+            continue
+        try:
+            client.steer_turn(thread_id, turn_id, text, message_id)
+        except (RuntimeError, TimeoutError, _ProviderCancelled):
+            # The turn may complete between Host routing and this
+            # native request. Do not claim delivery; the unchanged composer is
+            # an honest retry affordance and a later resume starts a new turn.
+            continue
+        _emit_workroom_message(
+            agent,
+            {
+                "invocationId": invocation_id,
+                "parentToolCallId": parent_id,
+            },
+            role="user",
+            text=text,
+            message_id=f"user:{message_id}",
+        )
+        _emit_workroom_input_ack(
+            agent,
+            invocation_id,
+            message_id,
+            message.get("stateRevision"),
+        )
+
+
+def _confirm_direct_workroom_turn(agent):
+    """Publish the direct user message only after native Codex starts its turn."""
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return
+    text = session.get("_provider_direct_message")
+    request_id = session.get("_provider_direct_message_id")
+    parent_id = _active_parent_tool_call_id(agent)
+    if (
+        not isinstance(text, str)
+        or not text.strip()
+        or not isinstance(request_id, str)
+        or not request_id
+        or not isinstance(parent_id, str)
+        or not parent_id
+    ):
+        return
+    invocation_id = f"codex:{parent_id}"
+    _emit_workroom_message(
+        agent,
+        {"invocationId": invocation_id, "parentToolCallId": parent_id},
+        role="user",
+        text=text,
+        message_id=f"user:{request_id}",
+    )
+    target_invocation = session.get("_provider_continuation_of", invocation_id)
+    state_revision = session.get("_provider_direct_state_revision")
+    _emit_workroom_input_ack(
+        agent,
+        target_invocation,
+        request_id,
+        state_revision,
+    )
+
+
+def _confirm_started_workroom_turn(agent, prompt):
+    """Publish user text only after the native Codex turn starts."""
+    session = getattr(agent, "current_session", None)
+    if isinstance(session, dict) and session.get("_provider_direct_message"):
+        _confirm_direct_workroom_turn(agent)
+        return
+    parent_id = _active_parent_tool_call_id(agent)
+    if not isinstance(parent_id, str) or not parent_id:
+        return
+    _emit_workroom_message(
+        agent,
+        {
+            "invocationId": f"codex:{parent_id}",
+            "parentToolCallId": parent_id,
+        },
+        role="user",
+        text=prompt,
+        message_id="user:initial",
+    )
+
+
+def _emit_workroom_input_ack(agent, invocation_id, request_id, state_revision):
+    """Resolve a browser composer only after native Codex accepted its text."""
+    if (
+        not isinstance(invocation_id, str)
+        or not invocation_id
+        or not isinstance(request_id, str)
+        or not request_id
+        or isinstance(state_revision, bool)
+        or not isinstance(state_revision, int)
+        or state_revision < 1
+    ):
+        return
+    sender = getattr(getattr(agent, "io", None), "send", None)
+    if callable(sender):
+        sender({
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": request_id,
+            "invocationId": invocation_id,
+            "accepted": True,
+            "stateRevision": state_revision,
+        })
+
+
 def _emit_provider_event(agent, event_type, **fields):
+    if event_type == "provider_invocation":
+        invocation_id = fields.get("invocationId")
+        if isinstance(invocation_id, str) and invocation_id:
+            # Native approval transitions share the outer invocation's
+            # revision stream.  React can therefore distinguish a replayed
+            # approval/running frame from a newer state after a scoped Stop.
+            fields["stateRevision"] = next_provider_state_revision(
+                agent, invocation_id
+            )
+    entry = {"type": event_type, **fields}
     record = getattr(agent, "_record_trace", None)
     if callable(record) and isinstance(getattr(agent, "current_session", None), dict):
-        record({"type": event_type, **fields})
+        record(entry)
+        stream_live = getattr(getattr(agent, "io", None), "send_live_trace", None)
+        if callable(stream_live):
+            stream_live(entry)
     else:
         if event_type == "tool_result":
             fields.pop("name", None)
             fields.pop("args", None)
         agent.io.log(event_type, **fields)
+    if event_type == "provider_invocation":
+        _emit_cached_provider_artifact(agent, entry)
+    return entry
 
 
-def _approval_allowed(method, params, approval, agent):
+def _emit_cached_provider_artifact(agent, lifecycle):
+    """Keep the latest real preview on a newer approval/terminal revision."""
+    artifact = provider_artifact_for_state(
+        agent,
+        provider=lifecycle.get("provider"),
+        invocation_id=lifecycle.get("invocationId"),
+        parent_tool_call_id=lifecycle.get("parentToolCallId"),
+        state_revision=lifecycle.get("stateRevision"),
+    )
+    if artifact is not None:
+        _emit_provider_event(
+            agent,
+            "provider_artifact",
+            **_without_event_type(artifact),
+        )
+
+
+def _without_event_type(event):
+    return {key: value for key, value in event.items() if key != "type"}
+
+
+def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
     """Whether one server approval request may proceed."""
     if approval == "auto":
         # ``approvalPolicy=never`` already permits work inside the selected
@@ -253,7 +784,50 @@ def _approval_allowed(method, params, approval, agent):
     io = getattr(agent, "io", None) if agent is not None else None
     if io is None:
         return False
-    return bool(io.request_approval("codex", _approval_details(method, params)))
+    context = _approval_context(agent, params)
+    presentation = _provider_approval_presentation(method, params, fallback_cwd=fallback_cwd)
+    if context:
+        context["providerApproval"] = presentation
+    if context:
+        _emit_provider_event(
+            agent,
+            "provider_invocation",
+            invocationId=context["invocationId"],
+            parentToolCallId=context["parentToolCallId"],
+            provider="codex",
+            providerDisplayName="Codex",
+            status="awaiting_approval",
+            currentSummary=provider_status_summary("awaiting_approval"),
+        )
+    try:
+        approved = bool(
+            io.request_approval(
+                "codex",
+                _approval_details(
+                    method,
+                    params,
+                    fallback_cwd=fallback_cwd,
+                    presentation=presentation,
+                ),
+                context=context or None,
+            )
+        )
+        # A client response is never sufficient to expand a Work Room's verified
+        # boundary. The provider still receives a normal decline for an elevated
+        # request, even if a stale or custom client sends `approved: true`.
+        return approved and presentation["allowOnce"]
+    finally:
+        if context:
+            _emit_provider_event(
+                agent,
+                "provider_invocation",
+                invocationId=context["invocationId"],
+                parentToolCallId=context["parentToolCallId"],
+                provider="codex",
+                providerDisplayName="Codex",
+                status="running",
+                currentSummary=provider_status_summary("running"),
+            )
 
 
 def _approval_response(method, params, allowed):
@@ -277,45 +851,201 @@ def _approval_response(method, params, allowed):
     }
 
 
-def _approval_details(method, params):
-    """Show the concrete scope of one Codex permission request."""
-    cmd = params.get("command")
-    if isinstance(cmd, list):
-        cmd = " ".join(cmd)
-    if isinstance(cmd, str) and cmd.strip():
-        return {
-            "action": cmd,
-            "command": cmd,
-            "cwd": params.get("cwd", ""),
-            "reason": params.get("reason", ""),
-        }
-    if method in {"item/fileChange/requestApproval", "applyPatchApproval"}:
-        root = params.get("grantRoot") or params.get("cwd") or "unknown path"
-        file_changes = params.get("fileChanges", {})
-        files = list(file_changes) if isinstance(file_changes, dict) else []
-        scope = f" under {root}"
-        if files:
-            scope += f" ({', '.join(files)})"
-        return {
-            "action": f"Allow file changes{scope}",
-            "grant_root": root,
-            "files": files,
-            "reason": params.get("reason", ""),
-        }
-    if method == "item/permissions/requestApproval":
-        permissions = params.get("permissions", {})
-        return {
-            "action": f"Grant permissions: {json.dumps(permissions, sort_keys=True)}",
-            "permissions": permissions,
-            "cwd": params.get("cwd", ""),
-            "reason": params.get("reason", ""),
-        }
-    action = params.get("reason") or params.get("cwd") or "codex action"
-    return {"action": action, "reason": params.get("reason", "")}
+def _approval_context(agent, params):
+    parent_id = _active_parent_tool_call_id(agent)
+    if not parent_id:
+        return {}
+    context = {
+        "provider": "codex",
+        "invocationId": f"codex:{parent_id}",
+        "parentToolCallId": parent_id,
+    }
+    for key in ("itemId", "item_id", "id"):
+        value = params.get(key)
+        if isinstance(value, str) and value:
+            context["activityId"] = value
+            break
+    return context
+
+
+def _approval_details(method, params, *, fallback_cwd="", presentation=None):
+    """Return the safe legacy presentation fields for one Codex approval."""
+    presentation = presentation or _provider_approval_presentation(
+        method, params, fallback_cwd=fallback_cwd
+    )
+    return {
+        "action": presentation["action"],
+        "scope": presentation["scope"],
+        "reason": presentation["reason"],
+    }
+
+
+def _provider_approval_presentation(method, params, *, fallback_cwd=""):
+    """Describe verified approval scope without exposing provider transport data."""
+    is_file_change = method in {"item/fileChange/requestApproval", "applyPatchApproval"}
+    command = params.get("command")
+    if isinstance(command, list):
+        command = " ".join(str(part) for part in command)
+    if isinstance(command, str) and command.strip():
+        action, reason = _command_approval_copy(command)
+    elif is_file_change:
+        action = "Make workspace file changes"
+        reason = "Apply the requested workspace file changes"
+    elif method == "item/permissions/requestApproval":
+        action = "Expand provider permissions"
+        reason = "Review the requested permission expansion"
+    else:
+        action = "Perform a provider action"
+        reason = "Codex requested approval to continue"
+    requested_root = params.get("grantRoot") if is_file_change else params.get("cwd")
+    if not isinstance(requested_root, str) or not requested_root:
+        requested_root = params.get("cwd") if is_file_change else requested_root
+    scope_classification = _approval_scope_classification(requested_root, fallback_cwd)
+    if isinstance(command, str) and _requests_external_effect(command):
+        # A Work Room directory is not authority to publish, fetch, or contact
+        # another machine. Keep the command hidden, but require a broader
+        # policy rather than allowing it through the filesystem label.
+        scope_classification = "elevated"
+    scope = {
+        "workroom": "This Work Room only",
+        "elevated": "Outside this Work Room",
+        "unknown": "Boundary could not be verified",
+    }[scope_classification]
+    presentation = {
+        "action": action,
+        "scope": scope,
+        "reason": reason,
+        "scopeClassification": scope_classification,
+        # Only a positively verified Work Room boundary may be approved. An
+        # omitted or malformed scope is not a smaller request; it is unknown.
+        "allowOnce": scope_classification == "workroom",
+        # Native Codex approvals are one request at a time. Calling this a
+        # session trust grant would promise authority this adapter does not have.
+        "allowSession": False,
+    }
+    files = _approval_file_names(
+        params,
+        fallback_cwd=fallback_cwd,
+        include_command=bool(isinstance(command, str) and command.strip()),
+    )
+    if files:
+        presentation["files"] = files
+    return presentation
+
+
+def _command_approval_copy(command):
+    """Return a finite, decision-useful command label without disclosing it."""
+    phase = command_phase(details={"command": command})
+    return {
+        "compile_c11": (
+            "Compile the requested C11 program",
+            "Compile the requested workspace files before continuing",
+        ),
+        "compile_c": (
+            "Compile the requested C program",
+            "Compile the requested workspace files before continuing",
+        ),
+        "compile_and_test": (
+            "Compile and run the requested tests",
+            "Verify the requested workspace changes before continuing",
+        ),
+        "test": (
+            "Run the requested tests",
+            "Verify the requested workspace changes before continuing",
+        ),
+        "run": (
+            "Run the requested program",
+            "Verify the requested program before continuing",
+        ),
+        "inspect": (
+            "Inspect the workspace",
+            "Check the requested workspace result before continuing",
+        ),
+        "command": (
+            "Run a workspace command",
+            "Codex requested approval to continue",
+        ),
+    }[phase]
+
+
+def _requests_external_effect(command):
+    return bool(re.search(
+        r"(?:^|\s)(?:curl|wget|ssh|scp|rsync|nc)(?:\s|$)"
+        r"|(?:^|\s)git\s+(?:push|fetch|pull|clone)(?:\s|$)"
+        r"|(?:^|\s)(?:npm|pnpm)\s+(?:publish|install)(?:\s|$)"
+        r"|(?:^|\s)pip(?:3)?\s+install(?:\s|$)",
+        command.lower(),
+    ))
+
+
+def _approval_scope_classification(requested_root, fallback_cwd):
+    if not isinstance(fallback_cwd, str) or not fallback_cwd:
+        return "unknown"
+    if not isinstance(requested_root, str) or not requested_root:
+        return "workroom"
+    if not os.path.isabs(requested_root):
+        return "elevated" if ".." in requested_root.replace("\\", "/").split("/") else "workroom"
+    try:
+        workroom = os.path.realpath(fallback_cwd)
+        requested = os.path.realpath(requested_root)
+        return "workroom" if os.path.commonpath((workroom, requested)) == workroom else "elevated"
+    except (OSError, ValueError):
+        return "unknown"
+
+
+def _approval_file_names(params, *, fallback_cwd="", include_command=False):
+    """Return only verified basenames, never raw paths or arbitrary arguments."""
+    file_changes = params.get("fileChanges", {})
+    candidates = list(file_changes) if isinstance(file_changes, dict) else []
+    names = []
+    for candidate in candidates[:8]:
+        if not _is_inside_workroom(candidate, fallback_cwd):
+            continue
+        name = candidate.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        if name and name not in {".", ".."} and name not in names:
+            names.append(name[:128])
+    if include_command:
+        command = params.get("command")
+        if isinstance(command, list):
+            command = " ".join(str(part) for part in command)
+        if isinstance(command, str):
+            # Bare C source/header names resolve inside the already verified
+            # command cwd. We intentionally never extract a path, flag, URL,
+            # variable, or provider-controlled free-form token for the UI.
+            for name in re.findall(r"(?<![\w./-])([A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.(?:c|h))(?![\w.-])", command):
+                if name not in names:
+                    names.append(name)
+                if len(names) == 8:
+                    break
+    return names
+
+
+def _is_inside_workroom(candidate, fallback_cwd):
+    if not isinstance(candidate, str) or not candidate:
+        return False
+    if not isinstance(fallback_cwd, str) or not fallback_cwd:
+        return False
+    try:
+        workroom = os.path.realpath(fallback_cwd)
+        path = os.path.realpath(candidate)
+        return os.path.commonpath((workroom, path)) == workroom
+    except (OSError, ValueError):
+        return False
+
+
+def _display_cwd(value):
+    """Keep approval context useful without exposing an operator's full path."""
+    if not isinstance(value, str) or not value:
+        return ""
+    if not os.path.isabs(value):
+        return value
+    normalized = value.rstrip("/\\")
+    return os.path.basename(normalized) or "."
 
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
-              usage: dict = None, exit_code: int = -1, error: str = "") -> str:
+              usage: dict = None, exit_code: int = -1, error: str = "",
+              opened: bool = False, status: str = "") -> str:
     """Build the JSON result envelope returned to the calling agent."""
     result = {
         "provider": "codex",
@@ -325,6 +1055,10 @@ def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
         "usage": usage or {},
         "exit_code": exit_code,
     }
+    if opened:
+        result["opened"] = True
+    if status:
+        result["status"] = status
     if error:
         result["error"] = error
     return json.dumps(result)
@@ -417,6 +1151,8 @@ class _ProviderCancelled(Exception):
 class CodexAppServer:
     """Minimal client for `codex app-server`: JSON-RPC 2.0 over stdio."""
 
+    supports_workroom_steering = True
+
     def __init__(
         self,
         command,
@@ -436,9 +1172,18 @@ class CodexAppServer:
         self._lock = threading.Lock()
         self._turn_done = threading.Event()
         self._turn_result = {}
+        self._active_thread_id = None
+        self._active_turn_id = None
+        self._interrupt_sent_for_turn = None
         self._stderr_tail = ""
         self._stderr_thread = None
         self._exit_error = None
+        # A human deciding on a nested approval is not active Codex execution.
+        # Keep that wall time separate from the bounded turn budget so a careful
+        # review cannot make the next provider step time out immediately.
+        self._approval_lock = threading.Lock()
+        self._approval_wait_seconds = 0.0
+        self._approval_started_at = None
 
     # ── lifecycle ────────────────────────────────────────────────
 
@@ -538,16 +1283,75 @@ class CodexAppServer:
             )
         return returned_id
 
-    def run_turn(self, thread_id, prompt, cwd="", timeout=600):
+    def run_turn(
+        self,
+        thread_id,
+        prompt,
+        cwd="",
+        timeout=600,
+        on_workroom_input=None,
+        on_turn_started=None,
+    ):
         deadline = time.monotonic() + timeout
+        approval_pause_mark = self._approval_pause_mark()
         self._turn_done.clear()
         self._turn_result = {}
-        self.request("turn/start", {
+        started = self.request("turn/start", {
             "threadId": thread_id, "cwd": cwd or self.cwd or ".",
             "input": [{"type": "text", "text": prompt}],
         }, timeout=_remaining(deadline))
-        self._wait_for(self._turn_done, deadline, "turn", timeout)
+        turn = started.get("turn", {}) if isinstance(started, dict) else {}
+        turn_id = turn.get("id") if isinstance(turn, dict) else None
+        self._active_thread_id = thread_id
+        self._active_turn_id = turn_id if isinstance(turn_id, str) and turn_id else None
+        self._interrupt_sent_for_turn = None
+        if callable(on_turn_started) and self._active_turn_id:
+            on_turn_started(self._active_turn_id)
+        self._wait_for_turn(
+            self._turn_done,
+            deadline,
+            approval_pause_mark,
+            "turn",
+            timeout,
+            on_workroom_input=on_workroom_input,
+        )
         return self._turn_result
+
+    def steer_turn(self, thread_id, expected_turn_id, text, client_user_message_id=""):
+        """Insert one user-authored message into the active native Codex turn."""
+        if not isinstance(thread_id, str) or not thread_id:
+            raise RuntimeError("turn/steer requires a thread id")
+        if not isinstance(expected_turn_id, str) or not expected_turn_id:
+            raise RuntimeError("turn/steer requires an active turn id")
+        params = {
+            "threadId": thread_id,
+            "expectedTurnId": expected_turn_id,
+            "input": [{"type": "text", "text": text}],
+        }
+        if isinstance(client_user_message_id, str) and client_user_message_id:
+            params["clientUserMessageId"] = client_user_message_id
+        return self.request("turn/steer", params, timeout=30)
+
+    def interrupt_active_turn(self):
+        """Ask Codex to interrupt its active turn before the Host closes it."""
+        thread_id = self._active_thread_id
+        turn_id = self._active_turn_id
+        if (
+            not isinstance(thread_id, str)
+            or not isinstance(turn_id, str)
+            or self._interrupt_sent_for_turn == turn_id
+        ):
+            return
+        self._interrupt_sent_for_turn = turn_id
+        try:
+            self.request("turn/interrupt", {
+                "threadId": thread_id,
+                "turnId": turn_id,
+            }, timeout=10)
+        except (RuntimeError, TimeoutError, _ProviderCancelled):
+            # A terminal notification can race this request. The caller still
+            # exits, but never fabricates a paused/resumed claim for that race.
+            pass
 
     # ── JSON-RPC plumbing ────────────────────────────────────────
 
@@ -584,6 +1388,40 @@ class CodexAppServer:
             if self.cancelled():
                 raise _ProviderCancelled(f"{operation} interrupted")
             remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"{operation} timed out after {timeout}s")
+            if event.wait(min(0.1, remaining)):
+                return
+
+    def _approval_pause_mark(self):
+        with self._approval_lock:
+            return self._approval_wait_seconds
+
+    def _approval_pause_since(self, mark, now):
+        with self._approval_lock:
+            paused = self._approval_wait_seconds - mark
+            if self._approval_started_at is not None:
+                paused += now - self._approval_started_at
+        return max(0.0, paused)
+
+    def _wait_for_turn(
+        self,
+        event,
+        deadline,
+        approval_pause_mark,
+        operation,
+        timeout,
+        on_workroom_input=None,
+    ):
+        """Wait for a turn without charging an operator's approval review time."""
+        while True:
+            if self.cancelled():
+                self.interrupt_active_turn()
+                raise _ProviderCancelled(f"{operation} interrupted")
+            if callable(on_workroom_input) and self._active_turn_id:
+                on_workroom_input(self._active_turn_id)
+            now = time.monotonic()
+            remaining = deadline + self._approval_pause_since(approval_pause_mark, now) - now
             if remaining <= 0:
                 raise TimeoutError(f"{operation} timed out after {timeout}s")
             if event.wait(min(0.1, remaining)):
@@ -655,10 +1493,18 @@ class CodexAppServer:
 
     def _handle_server_request(self, req_id, method, params):
         if method in _APPROVAL_METHODS:
+            started_at = time.monotonic()
+            with self._approval_lock:
+                self._approval_started_at = started_at
             try:
                 allowed = bool(self.on_approval(method, params))
             except Exception:
                 allowed = False
+            finally:
+                finished_at = time.monotonic()
+                with self._approval_lock:
+                    self._approval_wait_seconds += max(0.0, finished_at - started_at)
+                    self._approval_started_at = None
             self._send(
                 {
                     "id": req_id,
@@ -672,9 +1518,11 @@ class CodexAppServer:
     def _handle_notification(self, method, params):
         if method == "turn/completed":
             self._turn_result = params.get("turn", params)
+            self._active_turn_id = None
             self._turn_done.set()
         elif method == "turn/failed":
             self._turn_result = {"status": "failed", **params}
+            self._active_turn_id = None
             self._turn_done.set()
         elif method == "item/started":
             self.on_event(self._item_event(params.get("item", {}), start=True))
@@ -686,12 +1534,41 @@ class CodexAppServer:
         """Normalize a thread item into a flat event for forwarding."""
         itype = item.get("type", "")
         if itype == "agentMessage":
-            return {"kind": "agent_message", "text": item.get("text") or item.get("content", "")}
+            return {
+                "kind": "agent_message",
+                "id": item.get("id", ""),
+                "text": item.get("text") or item.get("content", ""),
+            }
+        if itype == "imageView":
+            # A thumbnail is emitted only once Codex completed the native image
+            # viewer item; a started item can point at a partially written file.
+            return {
+                "kind": "image_view" if not start else "image_view_started",
+                "id": item.get("id", ""),
+                "path": item.get("path") or item.get("filePath", ""),
+            }
         if itype in _TOOL_ITEM_TYPES:
             name = item.get("command") or item.get("title") or item.get("path") or itype
             if isinstance(name, list):
                 name = " ".join(name)
             failed = item.get("status") in ("failed", "error") or item.get("exitCode") not in (None, 0)
-            return {"kind": "tool_start" if start else "tool_end",
-                    "id": item.get("id", ""), "name": name, "failed": failed}
+            args = {}
+            if itype == "commandExecution" and item.get("command"):
+                command = item["command"]
+                args["command"] = " ".join(command) if isinstance(command, list) else str(command)
+            elif itype == "fileChange":
+                path = item.get("path") or item.get("filePath")
+                if isinstance(path, str) and path:
+                    args["path"] = path
+            elif itype == "webSearch" and item.get("query"):
+                args["query"] = str(item["query"])
+            return {
+                "kind": "tool_start" if start else "tool_end",
+                "id": item.get("id", ""),
+                "name": name,
+                "native_kind": itype,
+                "args": args,
+                "result": "Failed" if failed else "Completed",
+                "failed": failed,
+            }
         return {"kind": itype, "id": item.get("id", "")}

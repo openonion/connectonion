@@ -178,6 +178,7 @@ def check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, s
         (permitted, reason, source) tuple - source comes from permission that matched
     """
     import fnmatch
+
     from .approval import matches_permission_pattern
 
     subcommands = _extract_subcommands(command)

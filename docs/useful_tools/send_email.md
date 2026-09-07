@@ -45,7 +45,7 @@ python -c "from connectonion import send_email; print(send_email('your@email.com
 
 # 3. Common fixes
 co auth  # Refresh token if expired
-co init  # If missing .co directory
+co init  # If missing global credentials in ~/.co
 ```
 
 ---
@@ -225,7 +225,7 @@ Common errors:
 - `"Invalid email address"` - Check the recipient
 - `"Authentication failed"` - Token expired, run `co auth`
 - `"Email not activated"` - Run `co auth` to activate
-- `"Not in a ConnectOnion project"` - Run `co init` first
+- `"Not in a ConnectOnion project"` - Run `co init ./` first
 
 ---
 
@@ -384,7 +384,7 @@ Automatic rate limiting prevents abuse:
 
 3. **Common fixes**:
    - `co auth` - Refresh authentication token
-   - `co init` - Initialize project if missing `.co` directory
+   - `co init ./` - Initialize project if missing `.co` directory
    - Check internet connection
 
 4. **Test directly**:

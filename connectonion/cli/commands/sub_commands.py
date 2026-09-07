@@ -36,7 +36,6 @@ import httpx
 from rich.console import Console
 from rich.table import Table
 
-from .fanout import install_all, uninstall_all
 from ...backend import backend_url
 from ...network.profile_freshness import (
     read_state,
@@ -44,6 +43,7 @@ from ...network.profile_freshness import (
     validate_revision,
     write_state,
 )
+from .fanout import install_all, uninstall_all
 
 console = Console()
 
@@ -299,9 +299,10 @@ def _resolve_target(target: str) -> tuple[str, Optional[str]]:
         if alias == target:
             return addr, alias
     console.print(
-        f"[red]'{target}' is not a 0x address and I don't have it in subscriptions.txt.[/red]\n"
-        "Alias resolution on the relay isn't available yet — paste the full 0x address."
+        f"[red]'{target}' is not a 0x address and I don't have it in subscriptions.txt.[/red]"
     )
+    console.print("Get the full address from the publisher, then run:")
+    console.print("  [cyan]co sub sync <0xaddress>[/cyan]")
     raise SystemExit(1)
 
 
@@ -373,7 +374,8 @@ def handle_sub_list() -> None:
     """Show ~/.co/subscriptions.txt with local version info."""
     subs = _read_subs()
     if not subs:
-        console.print(f"\n[dim]No subscriptions. Subscribe with `co sub 0x...`[/dim]\n")
+        console.print("\n[dim]No subscriptions.[/dim]")
+        console.print("Follow one with: [cyan]co sub sync <0xaddress>[/cyan]\n")
         return
 
     table = Table(title="Subscriptions", show_lines=False, header_style="bold")
@@ -403,6 +405,7 @@ def handle_sub_remove(target: str) -> None:
     match = next(((a, al) for a, al in subs if a == target or al == target), None)
     if match is None:
         console.print(f"[yellow]Not subscribed to '{target}'.[/yellow]")
+        console.print("See local subscriptions: [cyan]co sub list[/cyan]")
         return
     address, alias = match
 

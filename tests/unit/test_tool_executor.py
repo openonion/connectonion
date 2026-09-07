@@ -70,6 +70,96 @@ class TestToolExecutor:
         # execute_single_tool stores the raw result as string in trace['result']
         assert "10" in str(trace["result"])
 
+    def test_summary_is_recorded_but_not_passed_to_an_ordinary_tool(self):
+        received = {}
+
+        def sample_tool(x: int) -> int:
+            received["x"] = x
+            return x * 2
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+        agent = FakeAgent()
+
+        trace = execute_single_tool(
+            tool_name="sample_tool",
+            tool_args={"x": 5, "summary": "Double the sample value"},
+            tool_id="call-summary",
+            tools=tools,
+            agent=agent,
+            logger=Logger("test-agent", log=False),
+        )
+
+        assert received == {"x": 5}
+        assert trace["summary"] == "Double the sample value"
+        assert trace["args"] == {"x": 5}
+        assert agent.current_session["trace"][0]["summary"] == trace["summary"]
+
+    def test_missing_summary_keeps_old_and_third_party_calls_working(self):
+        def sample_tool(x: int) -> int:
+            return x * 2
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+
+        trace = execute_single_tool(
+            "sample_tool",
+            {"x": 5},
+            "call-without-summary",
+            tools,
+            FakeAgent(),
+            Logger("test-agent", log=False),
+        )
+
+        assert trace["status"] == "success"
+        assert "summary" not in trace
+
+    def test_summary_is_normalised_and_bounded_before_it_reaches_the_trace(self):
+        def sample_tool() -> str:
+            return "ok"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+
+        trace = execute_single_tool(
+            "sample_tool",
+            {"summary": f"  Inspect\n\tfiles {'x' * 300}  "},
+            "call-bounded-summary",
+            tools,
+            FakeAgent(),
+            Logger("test-agent", log=False),
+        )
+
+        assert trace["summary"].startswith("Inspect files ")
+        assert "\n" not in trace["summary"]
+        assert len(trace["summary"]) == 240
+
+    def test_a_tools_own_summary_parameter_is_not_stripped(self):
+        received = {}
+
+        def block(client_id: str, summary: str = "") -> str:
+            received.update(client_id=client_id, summary=summary)
+            return "blocked"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(block))
+
+        trace = execute_single_tool(
+            "block",
+            {"client_id": "client-1", "summary": "Stopping abusive traffic"},
+            "call-owned-summary",
+            tools,
+            FakeAgent(),
+            Logger("test-agent", log=False),
+        )
+
+        assert received == {
+            "client_id": "client-1",
+            "summary": "Stopping abusive traffic",
+        }
+        assert trace["summary"] == "Stopping abusive traffic"
+        assert trace["args"]["summary"] == "Stopping abusive traffic"
+
     def test_execute_tool_not_found(self):
         """Unknown tool returns not_found status."""
         tools = ToolRegistry()

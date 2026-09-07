@@ -22,9 +22,11 @@ Usage:
 
 import re
 from typing import TYPE_CHECKING
+
+from rich.console import Console
+
 from ..core.events import before_each_tool
 from ..tui import pick
-from rich.console import Console
 
 if TYPE_CHECKING:
     from ..core.agent import Agent

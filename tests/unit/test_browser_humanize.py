@@ -36,6 +36,9 @@ class FakeKeyboard:
     def type(self, text):
         self._log.append(("type", text))
 
+    def press(self, key):
+        self._log.append(("press", key))
+
 
 class FakePage:
     """Records every low-level input call humanize makes."""
@@ -179,6 +182,20 @@ def test_type_text_latin_still_per_character_keystroke():
     page = FakePage()
     humanize.type_text(page, "hi")
     assert [e[1] for e in page.log if e[0] == "type"] == ["h", "i"]
+
+
+def test_type_text_cjk_paste_checks_the_active_field_without_crashing(monkeypatch):
+    page = FakePage()
+    lengths = iter((0, 2))
+    page.evaluate = lambda _script: next(lengths)
+    monkeypatch.setattr(humanize, "_clipboard_set_argv", lambda _text: ["pbcopy"])
+    monkeypatch.setattr(humanize, "_clipboard_get", lambda: "saved")
+    monkeypatch.setattr(humanize, "_clipboard_set", lambda _text: True)
+    monkeypatch.setattr(humanize.platform, "system", lambda: "Darwin")
+
+    humanize.type_text(page, "你好")
+
+    assert ("press", "Meta+v") in page.log
 
 
 def test_cursor_position_is_remembered_between_actions():

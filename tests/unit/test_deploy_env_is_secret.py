@@ -52,7 +52,9 @@ def test_the_unit_reads_the_env_file_systemd_owns():
     and that must not be a boot failure.
     """
     unit = dts._unit_text("myagent", "agent.py")
-    assert f"EnvironmentFile=-{dts.ENV_FILE_TEMPLATE.format(agent='myagent')}" in unit
+    env_file = dts.ENV_FILE_TEMPLATE.format(agent="myagent")
+    assert f"EnvironmentFile=-{env_file}" in unit
+    assert f"Environment=CONNECTONION_ENV_FILE={env_file}" in unit
 
 
 def test_the_env_file_lives_outside_the_rsync_root(tmp_path):
@@ -68,10 +70,12 @@ def test_local_config_path_is_rewritten_for_the_server():
     verbatim it points at a directory that cannot exist on Linux, and the OAuth
     tools that build their keys.env path from it fail there."""
     out = dts._env_for_server({"AGENT_CONFIG_PATH": "/Users/someone/.co",
-                               "OPENONION_API_KEY": "jwt"}, "myagent")
+                               "GEMINI_API_KEY": "AIza"}, "myagent")
 
     assert out["AGENT_CONFIG_PATH"] == f"{dts.SRV}/myagent/.co"
-    assert out["OPENONION_API_KEY"] == "jwt"
+    # Everything that is not identity passes through untouched. The identity
+    # keys are withheld deliberately — see test_a_deploy_runs_as_the_agent.py.
+    assert out["GEMINI_API_KEY"] == "AIza"
 
 
 def test_a_project_without_config_path_gains_nothing():
@@ -89,6 +93,8 @@ class TestAValueIsNeverShellSyntax:
     @staticmethod
     def _ssh_script(project, env_text):
         (project / ".env").write_text(env_text)
+        from connectonion.environment import select_env_file
+        select_env_file(project / ".env")
         with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
             dts._sync_env("user@host", "myagent", project)
         return ssh.call_args.args[1] if ssh.call_args else ""
@@ -118,6 +124,8 @@ def test_a_multiline_value_is_skipped_not_silently_mangled(tmp_path):
     import re
 
     (tmp_path / ".env").write_text('PEM="line1\nline2"\nOK=fine\n')
+    from connectonion.environment import select_env_file
+    select_env_file(tmp_path / ".env")
     with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
         dts._sync_env("user@host", "myagent", tmp_path)
 

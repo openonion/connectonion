@@ -23,10 +23,11 @@ from functools import partial
 from pathlib import Path
 from typing import Callable
 
-from ...core.approval_modes import READ_ONLY_PERMISSION_PROFILE
+from ...core.mode import AUTO
 from ...project import project_co_dir
 from ..asgi.http import CORS_HEADERS, read_body, send_html, send_json, send_text
 from ..trust.http_admin import handle_admin_routes
+from .protocol import oip_descriptor
 from .session import SessionStorage, session_to_chat_items
 from .session.mode import SERVER_OWNED_SESSION_KEYS as SERVER_OWNED_SESSION_KEYS
 from .session.mode import (
@@ -67,6 +68,9 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         policy=mode_policy,
         is_admin=is_admin,
     )
+    # claim_host_prompt() atomically rechecks the verified owner and replaces
+    # every SERVER_OWNED_SESSION_KEYS value with the durable server snapshot.
+    # This is the OIP successor to the 1.6.11 merge-and-restore guard.
     session = record.session
 
     start = time.time()
@@ -76,10 +80,10 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         agent.io = connection
         agent.storage = storage
         if mode_policy is not None:
-            if hasattr(agent, "_yolo_turns"):
-                agent._yolo_turns = None
-            if hasattr(agent, "_yolo_needs_activation"):
-                agent._yolo_needs_activation = False
+            if hasattr(agent, "_full_access_turns"):
+                agent._full_access_turns = None
+            if hasattr(agent, "_full_access_needs_activation"):
+                agent._full_access_needs_activation = False
             agent._host_full_access_turns_ceiling = mode_policy.full_access_turns
 
         result = agent.input(
@@ -142,7 +146,7 @@ def _normalized_host_result(
     mode_policy: HostPermissionPolicy,
     is_admin: bool,
 ) -> dict:
-    """Restore verified identity and fail invalid Agent policy state to read-only."""
+    """Restore verified identity and fail invalid Agent mode state to Auto."""
     final_session = copy.deepcopy(session)
     if requester is not None:
         final_session["requester"] = copy.deepcopy(requester)
@@ -152,10 +156,10 @@ def _normalized_host_result(
         return mode_policy.normalized(final_session, is_admin=is_admin)
     except ModeTransactionError:
         logger.exception(
-            "Agent produced invalid Host session policy; downgrading to :read-only"
+            "Agent produced invalid Host session mode; resetting to auto"
         )
         return mode_policy.apply(
-            final_session, READ_ONLY_PERMISSION_PROFILE, is_admin=is_admin
+            final_session, AUTO, is_admin=is_admin
         )
 
 
@@ -293,10 +297,10 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
                 ),
             },
         },
+        "protocol": oip_descriptor(),
     }
 
-    # Public transport discovery is intentionally separate from ACP's
-    # post-initialize feature capabilities.  It contains fixed route metadata
+    # Public transport discovery contains fixed route metadata
     # only: never copy connection, session, permission, or credential state here.
     if agent_metadata.get("transports"):
         result["transports"] = agent_metadata["transports"]
@@ -543,8 +547,7 @@ async def handle_http(
         await send_json(send, route_handlers["health"](start_time))
 
     elif method == "GET" and path == "/info":
-        # Transport absence selects the legacy fallback.  Never let a browser or
-        # intermediary reuse an answer from before an ACP deployment or rollback.
+        # Never let a browser or intermediary reuse stale transport discovery.
         await send_json(
             send,
             route_handlers["info"](trust, trust_config),

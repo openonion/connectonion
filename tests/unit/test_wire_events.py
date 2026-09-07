@@ -1,4 +1,4 @@
-"""Provider-neutral IO event vocabulary aligned with ACP tool lifecycles."""
+"""Provider-neutral OIP event vocabulary for tool lifecycles."""
 
 import pytest
 
@@ -13,7 +13,7 @@ from connectonion.core.wire_events import normalize_wire_event
         ("in_progress", "in_progress"),
     ],
 )
-def test_tool_start_statuses_use_the_acp_vocabulary(source, expected):
+def test_tool_start_statuses_use_the_oip_vocabulary(source, expected):
     event = {"type": "tool_call", "tool_id": "call-1", "status": source}
 
     assert normalize_wire_event(event)["status"] == expected
@@ -45,7 +45,7 @@ def test_tool_start_defaults_to_in_progress_without_mutating_the_trace():
         ("interrupted", "failed"),
     ],
 )
-def test_tool_result_statuses_use_the_acp_vocabulary(source, expected):
+def test_tool_result_statuses_use_the_oip_vocabulary(source, expected):
     event = {"type": "tool_result", "tool_id": "call-1", "status": source}
 
     assert normalize_wire_event(event)["status"] == expected

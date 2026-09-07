@@ -1,0 +1,95 @@
+name: triage-metadata
+
+on:
+  issues:
+    types: [opened, reopened, edited, unlabeled]
+  pull_request_target:
+    types: [opened, reopened, edited, unlabeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  labels-and-release-target:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require labels and release planning metadata
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const item = context.payload.issue || context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = item.number;
+            const isPullRequest = Boolean(context.payload.pull_request);
+
+            let labels = item.labels.map(label => label.name);
+            if (labels.length === 0) {
+              const title = item.title.toLowerCase();
+              let label = 'needs-triage';
+
+              if (/^(fix|bug)(\(.+\))?:/.test(title) || title.startsWith('[bug]')) label = 'bug';
+              else if (/^(feat|feature)(\(.+\))?:/.test(title) || title.startsWith('[feature]')) label = 'feature';
+              else if (/^docs?(\(.+\))?:/.test(title)) label = 'documentation';
+              else if (/^tests?(\(.+\))?:/.test(title)) label = 'tests';
+              else if (/^(design|rfc)(\(.+\))?:/.test(title) || title.startsWith('[rfc]')) label = 'design';
+
+              if (label === 'needs-triage') {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name: label,
+                    color: 'ededed',
+                    description: 'Needs maintainer classification and release planning',
+                  });
+                }
+              }
+
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [label] });
+              labels = [label];
+              core.notice(`Applied ${label} to #${issue_number}.`);
+            }
+
+            if (!isPullRequest) return;
+
+            const body = item.body || '';
+            const target = body.match(/\*\*Proposed target version:\*\*\s*([^\n\r]+)/i)?.[1]?.trim();
+            const window = body.match(/\*\*Estimated release window:\*\*\s*([^\n\r]+)/i)?.[1]?.trim();
+            const forwardTracker = body.match(/\*\*Forward-port tracking issue \(stable patches only\):\*\*\s*([^\n\r]+)/i)?.[1]?.trim();
+            const placeholder = value => !value || /^\[/.test(value) || /^(tbd|unknown)$/i.test(value);
+
+            if (placeholder(target) || placeholder(window)) {
+              core.setFailed(
+                'Fill in Proposed target version and Estimated release window in the PR template. ' +
+                'Use an honest estimate such as “1.8.0 / next alpha” or “future roadmap / unknown date”.'
+              );
+            }
+
+            const stablePatchTarget = /\bnext patch\b/i.test(target || '') ||
+              /\b\d+\.\d+\.[1-9]\d*\b/.test(target || '');
+            if (stablePatchTarget) {
+              const issueMatch = (forwardTracker || '').match(/(?:#|\/issues\/)(\d+)\b/);
+              if (!issueMatch) {
+                core.setFailed(
+                  'Stable patch PRs must link a separate open forward-port tracking issue.'
+                );
+                return;
+              }
+              const tracker = await github.rest.issues.get({
+                owner, repo, issue_number: Number(issueMatch[1]),
+              });
+              const trackerLabels = tracker.data.labels.map(label =>
+                typeof label === 'string' ? label : label.name
+              );
+              if (tracker.data.state !== 'open' || !trackerLabels.includes('forward-port-required')) {
+                core.setFailed(
+                  'The stable patch forward-port tracker must be open and labelled forward-port-required.'
+                );
+              }
+            }

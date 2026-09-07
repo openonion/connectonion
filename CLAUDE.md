@@ -130,15 +130,17 @@ co status                             # Show project status
 
 ### Building & Publishing
 ```bash
-# Build package (hatchling via pyproject.toml)
+# Validate the exact candidate locally (hatchling via pyproject.toml)
 python -m build
+python -m twine check dist/connectonion-X.Y.Z.tar.gz dist/connectonion-X.Y.Z-py3-none-any.whl
 
-# Publish to PyPI
-twine upload dist/*
-
-# Version update (see VERSIONING.md)
-# Current: 1.2.1
-# Strategy: increment PATCH (1.2.1 → 1.2.2), roll to MINOR at .10 (1.2.10 → 1.3.0)
+# Normal publication is tag-driven and uses PyPI Trusted Publishing.
+# Merge the reviewed version commit, tag that immutable commit, push the tag,
+# then wait for the pinned release workflow. Never publish from a workstation.
+git fetch origin
+git tag -a vX.Y.Z <reviewed-merge-commit> -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+gh run list --workflow release.yml --limit 1
 ```
 
 ## Project Structure
@@ -220,7 +222,7 @@ connectonion/
 - Session persists across turns for multi-turn conversations
 - `tools`: ToolRegistry with O(1) lookup via `.get()` or attribute access (`agent.tools.tool_name`)
 - Class instances accessible via `agent.tools.instance_name` (e.g., `agent.tools.gmail`)
-- Default model: `co/gemini-3.6-flash` (managed keys via OpenOnion proxy)
+- Default model: `co/gemini-3.7-flash` (managed keys via OpenOnion proxy)
 
 ### LLM Provider Routing (`connectonion/core/llm.py:create_llm()`)
 - Model prefix determines provider:
@@ -405,14 +407,13 @@ behaviour and is always loaded; a role is appended on top.
 
 ## Version Numbering Strategy
 
-**Current Version:** 1.2.1 (Production Ready)
+**Current candidate:** 1.7.0a2 (Preview). **Stable:** 1.6.4.
 
-**Strategy:** Semantic versioning with specific rollover rules
-- Increment PATCH: 1.2.1 → 1.2.2 → ... → 1.2.9
-- At .10, roll to MINOR: 0.4.10 → 0.5.0
-- At .10.0, roll to MAJOR: 0.10.0 → 1.0.0
-
-**Update Checklist:** See `VERSIONING.md` for complete steps (update `pyproject.toml`, `__init__.py`, create git tag, update CHANGELOG.md)
+Use SemVer with PEP 440 preview suffixes. Patch numbers do not roll over, and a
+whole-number release is earned by completed end-to-end evidence rather than by
+a counter. See `VERSIONING.md` for the authoritative rules and checklist. A
+release updates `_version.py`, `pyproject.toml`, `VERSIONING.md`, `uv.lock`, and
+the matching docs-site channel, then publishes only from the reviewed exact tag.
 
 ## Philosophy & Principles
 
@@ -450,7 +451,7 @@ behaviour and is always loaded; a role is appended on top.
 - Example:
   ```python
   try:
-      agent = Agent("my_agent", model="co/gemini-3.6-flash")
+      agent = Agent("my_agent", model="co/gemini-3.7-flash")
       response = agent.input("Hello")
   except InsufficientCreditsError as e:
       print(f"Need ${e.shortfall:.4f} more credits")
@@ -485,7 +486,7 @@ behaviour and is always loaded; a role is appended on top.
 
 ### Code Organization Preferences
 - Avoid `utils.py` - keep helper functions with their features
-- Default model for agents: `co/gemini-3.6-flash` (managed keys)
+- Default model for agents: `co/gemini-3.7-flash` (managed keys)
 - No Co-Authored-By lines in commit messages (no Claude, Happy, or other brand attribution)
 - Function-based tools over class-based tools
 - Events/plugins over subclassing Agent

@@ -24,8 +24,8 @@ Usage:
         return result
 """
 
-import inspect
 import builtins
+import inspect
 from typing import Any, Callable, Optional
 
 
@@ -149,7 +149,7 @@ class XrayDecorator:
         prompt_preview = (self._user_prompt[:50] + '...') if self._user_prompt and len(self._user_prompt) > 50 else self._user_prompt
 
         lines = [
-            f"<xray active>",
+            "<xray active>",
             f"  agent: '{agent_name}'",
             f"  task: '{prompt_preview}'",
             f"  iteration: {self._iteration}",
@@ -298,7 +298,7 @@ class XrayDecorator:
                 error = entry.get('error', 'Unknown error')
                 print(f"      ERR ✗ {error}")
             elif status == 'pending':
-                print(f"      ⋯ pending")
+                print("      ⋯ pending")
             else:
                 result = entry.get('result')
                 formatted_result = self._format_value_full(result)

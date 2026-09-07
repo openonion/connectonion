@@ -9,14 +9,13 @@ The plugin is the same in every mode; what moves is the gate.
 
 | mode | behaviour |
 |---|---|
-| `default` | local/admin operators confirm each unpermitted tool; hosted non-admin requesters are rejected without a dialog |
-| `plan` | O Chat workflow; server approval authority remains `default` |
-| `auto_approve` | local/admin-only: named file edits land without asking; every other unpermitted call still needs operator approval |
-| `full_access` | local/admin-only bounded approval bypass — see `useful_plugins/full_access` |
+| `read-only` | every effectful unpermitted live-IO call asks an authenticated user |
+| `auto` | deterministic Auto permits reversible workspace work and focused verification; higher-impact calls ask or deny |
+| `full-access` | explicit, bounded Host approval bypass — see `useful_plugins/full_access` |
 
 Mode changes arrive over the WebSocket, so a client can move between them
-mid-session without restarting the agent. In a hosted session, only the admin
-operator can enable `auto_approve` or `full_access`; other requesters remain in `default`.
+mid-session without restarting the agent. Every authenticated participant uses
+the same selected mode; admin control-plane authority is separate.
 
 ## Scope of an approval
 
@@ -28,14 +27,14 @@ into the next.
 
 ## Classification boundary
 
-The approval boundary is an allowlist, not a denylist. Template, config, skill,
-session, and explicit mode permissions run first. With live IO, every remaining
-tool must receive operator approval; a hosted non-admin requester is rejected
-without a dialog. Adding a plugin or MCP tool therefore cannot silently acquire
-side effects just because its name is new.
+The Auto policy is a narrow allowlist: workspace reads, reversible edits, and
+focused test/lint/build commands can proceed. Unknown or external calls ask;
+credential access, deletion, control-file writes, and writes outside the
+workspace are denied. An Auto `ask` cannot be overridden by a broad template,
+config, or skill rule; only a prior human session grant can reuse it.
 
 The co ai `codex` and `claude_code` wrappers receive explicit grants only inside
 the outer LLM-loop session because their inner runtimes own action approval.
 That scope applies to CLI and hosted co-ai sessions, but the grants never enter
-the shared remote-EXEC whitelist. Hosted non-admin Claude delegation is refused;
-hosted non-admin Codex is read-only with nested approvals denied.
+the shared remote-EXEC whitelist. Provider-private values are translated only
+at the Codex or Claude Code adapter boundary.

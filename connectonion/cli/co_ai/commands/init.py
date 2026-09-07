@@ -31,6 +31,7 @@ Initialize OO for a project.
 """
 
 from pathlib import Path
+
 from rich.console import Console
 from rich.panel import Panel
 
@@ -93,7 +94,7 @@ def cmd_init(args: str = "") -> str:
     oo_exists = oo_md.exists()
 
     if oo_exists:
-        console.print(f"[yellow].co/OO.md already exists[/]")
+        console.print("[yellow].co/OO.md already exists[/]")
         console.print(f"Edit [cyan]{oo_md}[/] to update configuration.")
         return "Already initialized"
 
@@ -122,7 +123,7 @@ def cmd_init(args: str = "") -> str:
 
     lines.extend([
         "",
-        f"Edit [cyan].co/OO.md[/] to configure OO for your project.",
+        "Edit [cyan].co/OO.md[/] to configure OO for your project.",
     ])
 
     output = "\n".join(lines)

@@ -3,7 +3,7 @@ LLM-Note: Browser daemon dispatch + socket round-trip tests
 
 What it tests:
 - Pure helpers: _coerce, _split_tokens, _is_verb, _stringify
-- dispatch(): verb matches a BrowserAutomation method → executes it; `do` → NL agent; unknown → error
+- dispatch(): verb matches a BrowserAutomation method → executes it; resident `do` is refused; unknown → error
 - Full socket round-trip: client.send() ↔ a running BrowserDaemon over a real AF_UNIX socket
 
 Components under test:
@@ -14,8 +14,12 @@ Strategy: a StubBrowser stands in for BrowserAutomation so no real Chrome/Playwr
 or network is needed. The daemon's lazy BrowserAutomation is swapped for the stub.
 """
 
+import asyncio
 import contextlib
+import io
+import json as _json
 import os
+import shlex
 import socket
 import subprocess
 import threading
@@ -25,12 +29,37 @@ from unittest.mock import Mock
 
 import pytest
 
-from connectonion.cli.browser_agent import daemon as d
 from connectonion.cli.browser_agent import client as c
+from connectonion.cli.browser_agent import daemon as d
 from connectonion.cli.browser_agent import transport as tp
+from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserCore
 
 IS_WINDOWS = tp.IS_WINDOWS
 posix_only = pytest.mark.skipif(IS_WINDOWS, reason="exercises the raw AF_UNIX socket mechanism (POSIX)")
+_CREATED_DAEMONS = []
+
+
+@pytest.fixture(autouse=True)
+def stop_created_daemons():
+    """Every test-created daemon must release its loop and Windows worker pool.
+
+    The server thread is daemonized in these socket tests, but the bounded named-
+    pipe executor deliberately is not. Letting a test return without stopping its
+    daemon therefore leaves pytest alive forever on Windows even though all tests
+    passed. Keep cleanup centralized so assertion failures take the same path.
+    """
+    start = len(_CREATED_DAEMONS)
+    yield
+    created = _CREATED_DAEMONS[start:]
+    del _CREATED_DAEMONS[start:]
+    for daemon in reversed(created):
+        daemon._cleanup()
+    deadline = time.time() + 5
+    while time.time() < deadline and any(
+        daemon._transport_pool is not None for daemon in created
+    ):
+        time.sleep(0.01)
+    assert all(daemon._transport_pool is None for daemon in created)
 
 
 @pytest.fixture
@@ -116,6 +145,14 @@ class StubBrowser:
     def get_links_from_page(self, domain_filter: str = "") -> list:
         return ["https://a.com", "https://b.com"]
 
+    def get_focused_element(self, value_preview_chars: int = 160) -> str:
+        self.calls.append(("get_focused_element", value_preview_chars))
+        return '{"tag":"input","is_editable":true}'
+
+    def keyboard_press(self, key: str, allow_non_editable: bool = False) -> str:
+        self.calls.append(("keyboard_press", key, allow_non_editable))
+        return f"Pressed {key} allow_non_editable={allow_non_editable}"
+
     def _browser_is_usable(self) -> bool:
         return True
 
@@ -146,6 +183,7 @@ def make_daemon(sock_path, stub=None):
     """Build a daemon whose lazy BrowserAutomation is replaced by a stub."""
     daemon = d.BrowserDaemon(sock_path, headless=True)
     daemon.browser = stub or StubBrowser()
+    _CREATED_DAEMONS.append(daemon)
     return daemon
 
 
@@ -188,6 +226,20 @@ def test_dispatch_coerces_bool_flag(tmp_path):
     assert payload == "shot path=None full=True"
 
 
+def test_dispatch_exposes_focus_json_and_destructive_shortcut_override(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+
+    ok, payload = daemon.dispatch("get_focused_element --value-preview-chars=42")
+    assert ok is True
+    assert payload == '{"tag":"input","is_editable":true}'
+    assert daemon.browser.calls[-1] == ("get_focused_element", 42)
+
+    ok, payload = daemon.dispatch("keyboard_press Meta+a --allow-non-editable")
+    assert ok is True
+    assert payload == "Pressed Meta+a allow_non_editable=True"
+    assert daemon.browser.calls[-1] == ("keyboard_press", "Meta+a", True)
+
+
 def test_dispatch_image_payload_shows_path_not_base64(tmp_path):
     """A CLI verb returning a base64 image shows the saved path, not the blob."""
     class ImageBrowser(StubBrowser):
@@ -203,6 +255,28 @@ def test_dispatch_image_payload_shows_path_not_base64(tmp_path):
     assert ok is True
     assert payload == "Screenshot saved to: .tmp/screenshots/step_x.png"
     assert "base64" not in payload
+
+
+def test_agent_image_payload_stays_raw_for_vision(tmp_path):
+    """The client-side agent still receives image data, not the shell summary."""
+    class ImageBrowser(StubBrowser):
+        def __init__(self):
+            super().__init__()
+            self.last_screenshot_path = ".tmp/screenshots/step_x.png"
+
+        def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+
+    daemon = make_daemon(str(tmp_path / "s.sock"), stub=ImageBrowser())
+    raw = _json.dumps({
+        "v": 1, "caller": "agent", "account": "0xcaller", "tab": None,
+        "line": "take_screenshot", "raw": True,
+    })
+
+    ok, payload = daemon.dispatch(raw)
+
+    assert ok is True
+    assert payload.startswith("data:image/png;base64,")
 
 
 def test_dispatch_list_result(tmp_path):
@@ -238,26 +312,15 @@ def test_dispatch_empty(tmp_path):
     assert ok == 2
 
 
-def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
-    """`do` must go to the NL agent, not function dispatch."""
-    captured = {}
-
-    class FakeAgent:
-        def input(self, command):
-            captured["command"] = command
-            return "agent says hi"
-
-    monkeypatch.setattr(d, "resolve_api_key", lambda: "key")
-    monkeypatch.setattr(d, "build_browser_agent", lambda browser, key: FakeAgent())
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
-
+def test_dispatch_do_refuses_a_resident_agent(tmp_path):
+    """An old client cannot put its whole model loop back inside the daemon."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, payload = daemon.dispatch(_env(
+    code, payload = daemon.dispatch(_env(
         "do find the cheapest flight", account="0xsame-account"
     ))
-    assert ok is True
-    assert payload == "agent says hi"
-    assert captured["command"] == "find the cheapest flight"
+    assert code == 2
+    assert "CLI process" in payload
+    assert daemon.browser._tab_meta == {}
 
 
 # ---- status + tab accountability ----------------------------------------
@@ -366,6 +429,30 @@ def test_status_does_not_become_the_last_command(tmp_path):
     assert daemon.last_command["line"] == "go_to x.com"
 
 
+def test_engine_status_is_a_no_claim_no_launch_protocol_probe(tmp_path):
+    class EngineBrowser(StubBrowser):
+        def engine_status(self):
+            return {"requested_engine": "onion", "resolved_engine": None}
+
+    daemon = make_daemon(str(tmp_path / "s.sock"), stub=EngineBrowser())
+    daemon.last_command = {"line": "go_to x.com", "at": 1}
+
+    ok, payload = daemon.dispatch(_json.dumps({
+        "v": 1,
+        "caller": "probe",
+        "account": "0xtest",
+        "tab": None,
+        "line": "engine_status",
+        "raw": False,
+        "engine": "auto",
+    }))
+
+    assert ok is True
+    assert "requested_engine" in payload
+    assert daemon.last_command["line"] == "go_to x.com"
+    assert daemon.browser._tab_meta == {}
+
+
 def test_status_before_any_command(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("status")
@@ -402,6 +489,7 @@ def test_handle_browser_help_needs_no_browser(capsys):
 def test_next_tip_rotates(tmp_path, monkeypatch):
     """Each run surfaces the next tip; the index wraps around and persists in ~/.co."""
     import pathlib
+
     from connectonion.cli.commands import browser_commands as bc
 
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
@@ -429,6 +517,7 @@ def test_tip_hidden_when_not_a_tty(monkeypatch, capsys):
 def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
     """On an interactive terminal a successful command appends a rotating tip."""
     import pathlib
+
     from connectonion.cli.commands import browser_commands as bc
 
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
@@ -450,6 +539,46 @@ def test_handle_browser_no_args_is_usage_error(capsys):
     assert "co browser [-t TAB] <function>" in err
 
 
+def test_type_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "type_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "type_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
+def test_fill_text_can_read_secret_from_stdin_without_argv(monkeypatch):
+    from connectonion.cli.commands import browser_commands as bc
+
+    captured = {}
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("one-run secret"))
+    monkeypatch.setattr(bc, "send", lambda line, **kwargs: captured.update(line=line, **kwargs) or 0)
+    args = ["-t", "release", "fill_text_by_selector", "#invite", "--stdin"]
+
+    assert bc.handle_browser(args) == 0
+    assert "one-run secret" not in args
+    assert shlex.split(captured["line"]) == [
+        "fill_text_by_selector", "#invite", "one-run secret",
+    ]
+    assert captured["tab"] == "release"
+
+
+def test_stdin_text_is_restricted_to_text_entry_commands(monkeypatch, capsys):
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(bc.sys, "stdin", io.StringIO("secret"))
+    assert bc.handle_browser(["go_to", "--stdin"]) == 2
+    assert "--stdin is only supported" in capsys.readouterr().err
+
+
 # ---- full socket round-trip: client.send() ↔ daemon ----------------------
 
 def test_socket_round_trip(short_sock, monkeypatch, capsys):
@@ -469,6 +598,98 @@ def test_socket_round_trip(short_sock, monkeypatch, capsys):
     assert daemon.browser.calls == [("go_to", "example.com")]
 
 
+def test_socket_screenshot_streams_to_caller_without_base64_or_daemon_path(
+    short_sock, monkeypatch, tmp_path
+):
+    """The same OIP request carries a multi-frame artifact larger than 1 MiB."""
+    content = b"png" + (b"browser-artifact" * 80_000)
+
+    class ScreenshotBrowser(StubBrowser):
+        def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
+            assert path is not None
+            Path(path).write_bytes(content)
+            self.last_screenshot_path = path
+            return "data:image/png;base64,this-must-not-cross-the-daemon-boundary"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    browser = ScreenshotBrowser()
+    daemon = make_daemon(short_sock, stub=browser)
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    code, payload = c._request("take_screenshot", headless=True, raw_result=True)
+
+    assert code == 0, payload
+    assert payload.startswith("Screenshot saved to: ")
+    assert "base64" not in payload
+    caller_path = Path(payload.removeprefix("Screenshot saved to: "))
+    assert caller_path.read_bytes() == content
+    assert caller_path.stat().st_size > 1024 * 1024
+    assert Path(browser.last_screenshot_path) != caller_path
+    assert not Path(browser.last_screenshot_path).exists()
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_close_stops_a_fresh_async_daemon_without_launching_chrome(short_sock, monkeypatch):
+    """The real async core returns a longer close message than the old stub."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    daemon = d.BrowserDaemon(short_sock, headless=True)
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    code, payload = c._request("close", headless=True)
+
+    assert code == 0
+    assert payload.startswith("Browser closed")
+    server.join(timeout=2)
+    assert not server.is_alive()
+
+
+def test_do_model_wait_does_not_hold_the_daemon_lane(short_sock, monkeypatch):
+    """Regression for #933: status is served while the client-side model thinks."""
+    from connectonion.cli.browser_agent import agent as agent_module
+
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+    daemon = make_daemon(sock_path)
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(sock_path)
+
+    thinking = threading.Event()
+    release = threading.Event()
+    result = []
+
+    class WaitingAgent:
+        def input(self, command):
+            thinking.set()
+            assert release.wait(timeout=5)
+            return "done"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xcaller")
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: WaitingAgent())
+
+    worker = threading.Thread(
+        target=lambda: result.append(c._run_do('do "wait for the model"', True, None))
+    )
+    worker.start()
+    assert thinking.wait(timeout=2)
+
+    code, payload = c._request("status", headless=True)
+    assert code == 0
+    assert "Browser: open" in payload
+
+    release.set()
+    worker.join(timeout=2)
+    assert result == [(0, "done")]
+    daemon._cleanup()
+
+
 def test_socket_round_trip_error_to_stderr(short_sock, monkeypatch, capsys):
     sock_path = short_sock
     monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
@@ -481,6 +702,53 @@ def test_socket_round_trip_error_to_stderr(short_sock, monkeypatch, capsys):
     err = capsys.readouterr().err.strip()
     assert code == 1
     assert "unknown command: frobnicate" in err
+
+
+class TimedOutNavigationBrowser(StubBrowser):
+    """A timed-out page is recoverable, but a post-timeout round trip deadlocks it."""
+
+    def __init__(self):
+        super().__init__()
+        self.recovered = False
+        self.liveness_calls = 0
+
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        raise TimeoutError("Page.goto: Timeout 30000ms exceeded.")
+
+    def keyboard_press(self, key: str) -> str:
+        self.recovered = True
+        return f"Pressed {key}"
+
+    def get_current_url(self) -> str:
+        return "http://127.0.0.1:3100"
+
+    def _context_is_alive(self) -> bool:
+        self.liveness_calls += 1
+        if not self.recovered:
+            raise AssertionError("post-timeout liveness probe would block")
+        return True
+
+
+def test_navigation_timeout_keeps_daemon_available_for_recovery(short_sock, monkeypatch, capsys):
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+    browser = TimedOutNavigationBrowser()
+    daemon = make_daemon(sock_path, stub=browser)
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(sock_path)
+
+    assert c.send("go_to http://127.0.0.1:3100", headless=True) == 1
+    assert "TimeoutError: Page.goto" in capsys.readouterr().err
+    assert browser.liveness_calls == 0
+
+    assert c.send("keyboard_press Escape", headless=True) == 0
+    assert capsys.readouterr().out.strip() == "Pressed Escape"
+    assert browser.recovered is True
+    assert browser.liveness_calls == 0
+
+    assert c.send("get_current_url", headless=True) == 0
+    assert capsys.readouterr().out.strip() == "http://127.0.0.1:3100"
+    assert browser.liveness_calls == 0
 
 
 class LaunchFailBrowser(StubBrowser):
@@ -538,8 +806,6 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
 
 # --- the -t / tab noun grammar (one task = one tab) ---
 
-import json as _json
-
 
 def _env(line, caller="", tab=None, account=""):
     """Build the v1 wire envelope the way client.send does."""
@@ -548,24 +814,8 @@ def _env(line, caller="", tab=None, account=""):
     })
 
 
-def test_do_refuses_to_bill_a_different_daemon_account(tmp_path, monkeypatch):
+def test_page_commands_remain_shared_across_billing_accounts(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
-
-    code, payload = daemon.dispatch(
-        _env("do send the form", caller="agent", account="0xcaller-account")
-    )
-
-    assert code == 5
-    assert "refusing `do`" in payload
-    assert "0xdaemon" in payload and "0xcaller" in payload
-    daemon._run_nl.assert_not_called()
-
-
-def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
 
     ok, _ = daemon.dispatch(
         _env("go_to example.com", caller="agent", account="0xcaller-account")
@@ -575,61 +825,56 @@ def test_page_commands_remain_shared_across_billing_accounts(tmp_path, monkeypat
     assert daemon.browser.calls == [("go_to", "example.com")]
 
 
-def test_do_runs_when_caller_and_daemon_accounts_match(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(return_value=(True, "done"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
+def test_do_thinks_in_the_client_without_opening_a_daemon_request(monkeypatch, capsys):
+    from connectonion.cli.browser_agent import agent as agent_module
 
-    result = daemon.dispatch(
-        _env("do send the form", caller="agent", account="0xsame-account")
+    captured = {}
+
+    class FakeAgent:
+        def input(self, command):
+            captured["command"] = command
+            return "done"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xcaller")
+    monkeypatch.setattr(c, "_connect", Mock(side_effect=AssertionError("model wait held a socket")))
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: FakeAgent())
+
+    assert c.send('do "send the form"') == 0
+    assert captured["command"] == "send the form"
+    assert capsys.readouterr().out.strip() == "done"
+
+
+def test_do_tool_calls_are_short_raw_daemon_requests(monkeypatch, capsys):
+    from connectonion.cli.browser_agent import agent as agent_module
+
+    requests = []
+
+    class FakeAgent:
+        def __init__(self, browser):
+            self.browser = browser
+
+        def input(self, command):
+            assert self.browser.go_to("https://example.com") == "navigated"
+            return "done"
+
+    def fake_request(line, **kwargs):
+        requests.append((line, kwargs))
+        return 0, "navigated"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xcaller")
+    monkeypatch.setattr(c, "_request", fake_request)
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(
+        agent_module, "build_browser_agent", lambda browser, key: FakeAgent(browser)
     )
 
-    assert result == (True, "done")
-    daemon._run_nl.assert_called_once_with("send the form")
-
-
-@pytest.mark.parametrize("raw", [
-    "do send the form",
-    _env("do send the form"),
-])
-def test_do_from_legacy_or_accountless_client_fails_closed(
-    tmp_path, monkeypatch, raw
-):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xdaemon-account")
-
-    code, payload = daemon.dispatch(raw)
-
-    assert code == 5
-    assert "cannot verify" in payload
-    daemon._run_nl.assert_not_called()
-    assert daemon.browser._tab_meta == {}
-
-
-def test_do_fails_closed_when_daemon_account_is_unavailable(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(side_effect=AssertionError("must not spend"))
-    monkeypatch.setattr(d, "_daemon_account", Mock(side_effect=OSError("bad identity")))
-
-    code, payload = daemon.dispatch(
-        _env("do send the form", caller="agent", account="0xcaller-account")
-    )
-
-    assert code == 5
-    assert "cannot verify" in payload
-    daemon._run_nl.assert_not_called()
-    assert daemon.browser._tab_meta == {}
-
-
-def test_do_compares_hex_addresses_case_insensitively(tmp_path, monkeypatch):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = Mock(return_value=(True, "done"))
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xAbCd")
-
-    result = daemon.dispatch(_env("do work", account="0xaBcD"))
-
-    assert result == (True, "done")
+    assert c.send('do "visit the site"', headless=True, tab="research") == 0
+    assert requests == [(
+        "go_to https://example.com",
+        {"headless": True, "tab": "research", "raw_result": True},
+    )]
+    assert capsys.readouterr().out.strip() == "done"
 
 
 def test_client_derives_only_the_public_billing_address(tmp_path, monkeypatch):
@@ -853,16 +1098,24 @@ def test_targeted_close_of_own_tab_is_allowed_bare_close_is_whole_browser(tmp_pa
     assert "closed" in payload.lower()
 
 
-def test_do_instruction_is_not_quote_mangled(tmp_path, monkeypatch):
+def test_do_instruction_is_not_quote_mangled(monkeypatch):
     """Fix: the NL instruction was re-derived from the shlex-joined line, leaking quotes.
     A multi-word instruction must reach the agent as clean text."""
     import shlex as _shlex
+
+    from connectonion.cli.browser_agent import agent as agent_module
+
     captured = {}
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon._run_nl = lambda cmd: captured.setdefault("cmd", cmd) or (True, "ok")
-    monkeypatch.setattr(d, "_daemon_account", lambda: "0xsame-account")
+    class FakeAgent:
+        def input(self, command):
+            captured["cmd"] = command
+            return "ok"
+
+    monkeypatch.setattr(c, "_caller_account", lambda: "0xsame-account")
+    monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
+    monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: FakeAgent())
     line = _shlex.join(["do", "log in and download my invoices"])   # what client.send builds
-    daemon.dispatch(_env(line, caller="a", account="0xsame-account"))
+    assert c.send(line) == 0
     assert captured["cmd"] == "log in and download my invoices"
 
 
@@ -1014,7 +1267,8 @@ def test_close_reserved_tab_before_browser_launch_forgets_it(tmp_path):
 
     ok, _ = daemon.dispatch(_env("tab open research", caller="agent-b"))
     assert ok is True                                       # name free immediately
-    daemon.browser._executor.shutdown(wait=False)
+    # The 1.8 daemon owns the asyncio core directly; there is deliberately no
+    # synchronous one-worker executor left to shut down in this no-launch test.
 
 
 def test_newtab_with_tab_target_is_rejected(tmp_path):
@@ -1047,11 +1301,11 @@ def test_bind_holds_an_exclusive_lock_for_life(short_sock):
     fresh_lock.close()
 
 
-# ---- concurrency: many clients, one single-threaded daemon ----------------
+# ---- concurrency: many clients, one asyncio-owned daemon ------------------
 
 def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
-    """8 clients firing at once against the single-threaded daemon: every request
-    must be served (queued, not dropped or deadlocked) and every reply delivered.
+    """8 clients firing at once against the asyncio daemon: every request
+    must be served (bounded, not dropped or deadlocked) and every reply delivered.
     On Windows this drives real named-pipe contention (mpc PIPE_BUSY waits); on
     POSIX the AF_UNIX accept backlog. This is the multi-agent daily reality."""
     monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
@@ -1071,6 +1325,153 @@ def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
 
     assert len(codes) == 8 and all(code == 0 for code in codes)
     assert len(daemon.browser.calls) == 8  # nothing dropped under contention
+
+
+class AsyncSocketBrowser(AsyncBrowserCore):
+    """Real per-tab scheduling, with no Chrome needed for transport E2E."""
+
+    def __init__(self):
+        super().__init__(headless=True)
+        self.intervals = []
+        self.started = threading.Event()
+
+    async def slow(self, seconds: float = 0.2) -> str:
+        async with self._tab_operation(ensure_page=False):
+            key = self._bound_session_key()
+            start = time.monotonic()
+            self.started.set()
+            try:
+                await asyncio.sleep(seconds)
+            finally:
+                self.intervals.append((key, start, time.monotonic()))
+            return f"finished {key}"
+
+
+def test_independent_tabs_overlap_through_the_native_transport(short_sock, monkeypatch):
+    """The issue's end-to-end claim: concurrency survives the actual IPC boundary."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setattr(c, "_caller", lambda: threading.current_thread().name)
+    daemon = make_daemon(short_sock, stub=AsyncSocketBrowser())
+    assert daemon.dispatch(_env("tab open left", caller="left-agent"))[0] is True
+    assert daemon.dispatch(_env("tab open right", caller="right-agent"))[0] is True
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    replies = []
+
+    def drive(tab):
+        replies.append(c._request("slow 0.2", headless=True, tab=tab))
+
+    workers = [
+        threading.Thread(target=drive, name="left-agent", args=("left",)),
+        threading.Thread(target=drive, name="right-agent", args=("right",)),
+    ]
+    started = time.monotonic()
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=3)
+    elapsed = time.monotonic() - started
+
+    assert sorted(code for code, _ in replies) == [0, 0]
+    assert elapsed < 1.5, "parallel clients did not finish promptly"
+    left, right = daemon.browser.intervals
+    assert min(left[2], right[2]) > max(left[1], right[1])
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_same_tab_stays_ordered_through_the_native_transport(short_sock, monkeypatch):
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setattr(c, "_caller", lambda: "owner")
+    daemon = make_daemon(short_sock, stub=AsyncSocketBrowser())
+    assert daemon.dispatch(_env("tab open work", caller="owner"))[0] is True
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    replies = []
+    workers = [
+        threading.Thread(
+            target=lambda: replies.append(
+                c._request("slow 0.08", headless=True, tab="work")
+            )
+        )
+        for _ in range(2)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert sorted(code for code, _ in replies) == [0, 0]
+    first, second = daemon.browser.intervals
+    assert first[2] <= second[1]
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_claim_race_through_native_transport_has_one_winner(short_sock, monkeypatch):
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setattr(c, "_caller", lambda: threading.current_thread().name)
+    daemon = make_daemon(short_sock, stub=AsyncSocketBrowser())
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+    gate = threading.Barrier(3)
+    replies = []
+
+    def contend():
+        gate.wait(timeout=2)
+        replies.append(c._request("slow 0.05", headless=True))
+
+    workers = [
+        threading.Thread(target=contend, name="agent-a"),
+        threading.Thread(target=contend, name="agent-b"),
+    ]
+    for worker in workers:
+        worker.start()
+    gate.wait(timeout=2)
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert sorted(code for code, _ in replies) == [0, 4]
+    assert len(daemon.browser.intervals) == 1
+    assert daemon.browser._tab_meta[None]["caller"] in {"agent-a", "agent-b"}
+    assert "active_requests" not in daemon.browser._tab_meta[None]
+    daemon._cleanup()
+    server.join(timeout=2)
+
+
+def test_disconnect_does_not_orphan_the_active_request_lease(short_sock, monkeypatch):
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    browser = AsyncSocketBrowser()
+    daemon = make_daemon(short_sock, stub=browser)
+    assert daemon.dispatch(_env("tab open work", caller="owner"))[0] is True
+    server = threading.Thread(target=daemon.serve, daemon=True)
+    server.start()
+    _wait_until_listening(short_sock)
+
+    conn = c._connect(short_sock)
+    request = _env("slow 0.05", caller="owner", tab="work").encode()
+    if IS_WINDOWS:
+        conn.send_bytes(request)
+    else:
+        conn.sendall(request)
+        conn.shutdown(socket.SHUT_WR)
+    conn.close()  # disappear before the reply
+
+    assert browser.started.wait(timeout=1)
+    deadline = time.time() + 2
+    while time.time() < deadline and "active_requests" in browser._tab_meta["work"]:
+        time.sleep(0.01)
+    meta = browser._tab_meta["work"]
+    assert "active_requests" not in meta
+    assert meta["caller"] == "owner"
+    assert browser._active_operations == 0
+    daemon._cleanup()
+    server.join(timeout=2)
 
 
 def test_second_daemon_yields_at_the_singleton_lock(short_sock, monkeypatch):

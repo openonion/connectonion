@@ -9,29 +9,94 @@ This file provides the `start_server()` function that:
 Architecture:
 - Uses one hosted coding agent for the web chat session
 - Trust level set to "careful" for web deployment
-- Host-acknowledged permission profiles for network sessions
+- Host-acknowledged modes for network sessions
 
 Used by:
 - CLI command: `co ai` (see cli/main.py)
 - Web chat interface at chat.openonion.ai
 """
 
-import hashlib
 import logging
+import os
 import threading
 import time
 import webbrowser
+from contextlib import contextmanager
 from pathlib import Path
+
+from connectonion.environment import (global_config_dir, explicit_env_file,
+                                      read_env_file, publish_values)
 
 from connectonion import address, host
 
 logging.basicConfig(level=logging.WARNING, format="[%(levelname)s] %(name)s: %(message)s")
 
 
-# Note: .env files already loaded by __init__.py with fallback chain:
-# 1. Current directory .env
-# 2. Global ~/.co/keys.env
-# No need to load again here (load_dotenv doesn't override existing env vars)
+# Package startup loads the selected global env; the CLI applies --env-file
+# before entering this module. Working directory does not select credentials.
+
+
+@contextmanager
+def _owner_invite_lock(co_dir: Path):
+    """Serialize the one-time invite mint across simultaneous ``co ai`` starts."""
+    co_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = co_dir / "owner-invite.lock"
+    with lock_path.open("a+b") as lock_file:
+        if os.name == "nt":
+            import msvcrt
+
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            lock_path.chmod(0o600)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _ensure_owner_invite(co_dir: Path) -> bool:
+    """Load or mint the private invite used by the careful onboarding policy.
+
+    The inherited process environment wins. Otherwise the selected value is loaded into this process
+    (dotenv loading happened before ``co ai`` reached this module), or one is
+    minted once and written with owner-only permissions.
+    """
+    if os.environ.get("CO_INVITE_CODE"):
+        return False
+
+    from ..commands.project_cmd_lib import mint_invite_code, upsert_env
+
+    keys_env = explicit_env_file() or co_dir / "keys.env"
+    with _owner_invite_lock(keys_env.parent):
+        existing = read_env_file(keys_env).get("CO_INVITE_CODE")
+        if existing:
+            publish_values({"CO_INVITE_CODE": existing})
+            return False
+
+        invite = mint_invite_code()
+        upsert_env(keys_env, {"CO_INVITE_CODE": invite})
+        publish_values({"CO_INVITE_CODE": invite})
+        return True
+
+
+def _prepare_owner_onboarding(co_dir: Path) -> bool:
+    """Ensure the global identity and its private owner invite exist."""
+    from ..commands.project_cmd_lib import ensure_global_config
+
+    ensure_global_config()
+    return _ensure_owner_invite(co_dir)
 
 
 def start_server(
@@ -40,18 +105,22 @@ def start_server(
     *,
     model: str | None = None,
     max_iterations: int | None = None,
-    yolo: bool = False,
-    yolo_turns: int = 100,
+    full_access: bool = False,
+    full_access_turns: int = 100,
+    agent_factory=None,
+    invite_code: str = None,
 ):
     """Start AI coding agent web server.
 
     Args:
         agent: Agent instance to host
         port: Port to run server on
-        model: Model for per-connection ACP coding agents
-        max_iterations: Tool iteration limit for ACP coding agents
-        yolo: Whether an administrator may select bounded Full access
-        yolo_turns: Maximum Full access turns before a checkpoint
+        model: Model used by the hosted coding agent
+        max_iterations: Tool iteration limit for the hosted coding agent
+        full_access: Whether bounded Full access is configured
+        full_access_turns: User-driven turns before Full access expires
+        agent_factory: Reserved configured factory for hosted sessions
+        invite_code: Optional in-memory invite for this server invocation
 
     The server will be accessible at:
     - POST http://localhost:{port}/input
@@ -60,69 +129,43 @@ def start_server(
     - GET http://localhost:{port}/info
     """
     from ...network.host.config import load_host_config
-    from .acp_server import capture_network_workspace, create_acp_agent
 
-    network_workspace = capture_network_workspace(Path.cwd())
-    try:
-        # Use global ~/.co/ for consistent identity across all co ai sessions
-        co_dir = Path.home() / ".co"
-        input_limits = load_host_config(co_dir)
-        addr_data = address.load(co_dir)
+    # Use global ~/.co/ for consistent identity across all co ai sessions.
+    from connectonion.project import selected_identity_dir
+    co_dir = selected_identity_dir()
+    if invite_code is None and _prepare_owner_onboarding(co_dir):
+        from ..commands.project_cmd_lib import console
 
-        # Open chat URL after agent successfully starts (2 second delay)
-        if addr_data:
-
-            def open_chat_delayed():
-                time.sleep(2)
-                webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
-
-            threading.Thread(target=open_chat_delayed, daemon=True).start()
-
-        # ACP needs one isolated lifecycle adapter per authenticated connection.
-        # The existing /ws web client remains available during its native-ACP
-        # migration; both doors share the host's signature and trust boundary.
-        acp_model = model or getattr(getattr(agent, "llm", None), "model", None)
-        acp_model = acp_model or "co/claude-opus-4-5"
-        acp_max_iterations = max_iterations if max_iterations is not None else getattr(agent, "max_iterations", 100)
-
-        def create_network_acp_agent(principal):
-            # A session ID is a routing value, never a credential. Keep persistent
-            # network sessions in a stable namespace selected only from the
-            # authenticated connection principal so copied IDs cross no boundary.
-            owner = "\0".join(
-                (
-                    "v1",
-                    principal.recipient,
-                    principal.address,
-                    principal.origin or "",
-                    principal.auth_method,
-                    network_workspace.namespace_key,
-                )
-            )
-            owner_id = hashlib.sha256(owner.encode("utf-8")).hexdigest()
-            session_co_dir = co_dir / "acp-principals" / owner_id
-            return create_acp_agent(
-                model=acp_model,
-                max_iterations=acp_max_iterations,
-                # --yolo is an operator ceiling, not authority delegated to every
-                # trusted remote caller. Only the authenticated administrator can
-                # receive the Full access profile on this direct endpoint.
-                yolo=yolo and principal.level == "admin",
-                yolo_turns=yolo_turns,
-                session_co_dir=session_co_dir,
-                network_workspace=network_workspace,
-                input_limits=input_limits,
-            )
-
-        # Start server with same co_dir (relay enabled by default for web chat).
-        # co ai keeps one Agent instance so browser/tool state can persist across
-        # continued inputs in the same local web server.
-        host(
-            agent,
-            port=port,
-            trust="careful",
-            co_dir=co_dir,
-            acp_agent_factory=create_network_acp_agent,
+        console.print(
+            "[green]Owner invite created.[/green] Run [bold]co keys --reveal[/bold] when onboarding your client."
         )
-    finally:
-        network_workspace.close()
+    elif invite_code is not None:
+        from ..commands.project_cmd_lib import ensure_global_config
+
+        ensure_global_config()
+    load_host_config(co_dir)
+    addr_data = address.load(co_dir)
+
+    if full_access:
+        from ...useful_plugins.full_access import offer_full_access
+
+        # Web sessions still begin in Auto. This configures only the Host-owned
+        # ceiling that makes Full access selectable after CONNECT.
+        offer_full_access(agent, full_access_turns)
+
+    # Open chat URL after agent successfully starts (2 second delay)
+    if addr_data:
+
+        def open_chat_delayed():
+            time.sleep(2)
+            webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
+        threading.Thread(target=open_chat_delayed, daemon=True).start()
+
+    # The first-party browser speaks OIP over /ws. Native Codex and Claude Code
+    # delegation stay inside the Agent as provider adapters.
+    trust = "careful"
+    if invite_code is not None:
+        from ...network.trust import TrustAgent
+
+        trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
+    host(agent, port=port, trust=trust, co_dir=co_dir)

@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 from pathlib import Path
+
 from .explain_context import RuntimeContext
 
 
@@ -31,8 +32,9 @@ def explain_tool_choice(
     Returns:
         Explanation string from the AI agent
     """
-    from ...core.agent import Agent
     import inspect
+
+    from ...core.agent import Agent
 
     # Get all the information we need
     tool_name = breakpoint_context.tool_name

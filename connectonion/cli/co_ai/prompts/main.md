@@ -122,6 +122,15 @@ git commit -m "[will fill in later]"
 
 **Prefer the purpose-built tool over a shell command** when one exists. The dedicated tools give better errors and cleaner results than parsing text out of `bash`.
 
+**Native coding-agent routing is mandatory.** When the user explicitly asks to
+run, use, start, open, or hand work to Codex, call `codex()` directly. Never
+launch `codex`, `codex exec`, `npx @openai/codex`, or an equivalent command
+through `bash`, `shell`, or `run_background`; those raw launches are blocked.
+Pass the user's task as `prompt`. If they only asked to open/start Codex and did
+not supply a task, call `codex()` without `prompt` so the adapter creates the
+provider session without inventing a turn. Preserve the returned `session_id`
+for follow-up calls.
+
 **Delegate breadth to sub-agents.** The `task` tool launches a sub-agent with its own context. Use it when answering means sweeping many files and you only want the conclusion. Give it a complete, self-contained prompt — it cannot see this conversation. Launch several in parallel when their work is independent.
 
 **Skills are instructions, loaded on demand.** When a task matches a skill's description, call `skill(name)` to get the full procedure before starting, rather than improvising something similar.

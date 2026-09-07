@@ -95,7 +95,7 @@ def test_send_email_not_activated(mock_post):
 # re-inject real credentials into the cleared environment (keeps this hermetic).
 # patch.object on the module object avoids the send_email module-vs-function name
 # collision that string-target patching resolves inconsistently across Python versions.
-@patch.object(send_email_module, 'load_dotenv', lambda *a, **k: None)
+@patch('connectonion.environment.load_environment', lambda: None)
 @patch.dict('os.environ', {}, clear=True)
 def test_send_email_no_project():
     """Test email sending when missing OPENONION_API_KEY."""
@@ -140,7 +140,7 @@ def test_send_email_rejects_a_foreign_account_before_post(monkeypatch):
 
 @patch.dict('os.environ', {}, clear=True)
 @patch('requests.post')
-def test_send_email_finds_the_project_env_from_a_deep_subdirectory(
+def test_send_email_uses_explicit_env_from_a_deep_subdirectory(
     mock_post, tmp_path, monkeypatch
 ):
     project = tmp_path / "project"
@@ -160,6 +160,8 @@ def test_send_email_finds_the_project_env_from_a_deep_subdirectory(
         json=lambda: {"message_id": "project-message"},
     )
 
+    from connectonion.environment import select_env_file
+    select_env_file(project / ".env")
     result = send_email("test@example.com", "Subject", "Message")
 
     assert result["success"] is True
@@ -211,6 +213,8 @@ def test_send_email_keeps_process_environment_precedence(
         json=lambda: {"message_id": "process-message"},
     )
 
+    from connectonion.environment import select_env_file
+    select_env_file(project / ".env")
     result = send_email("test@example.com", "Subject", "Message")
 
     assert result["success"] is True
@@ -349,6 +353,48 @@ def test_get_emails_success(mock_get, sample_emails_backend_format):
     assert call_args[1]["params"]["unread_only"] is False
 
 
+@pytest.mark.parametrize("last", [0, 1001, -1, True, 1.5, "10"])
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.get')
+def test_get_emails_rejects_an_unsupported_received_mail_limit(mock_get, last):
+    with pytest.raises(ValueError, match="last must be between 1 and 1000"):
+        get_emails(last=last)
+    mock_get.assert_not_called()
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_accepts_the_received_mail_maximum_and_offset(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": [], "offset": 2000}
+    mock_get.return_value = response
+
+    assert get_emails(last=1000, offset=2000) == []
+    assert mock_get.call_args.kwargs["params"]["limit"] == 1000
+    assert mock_get.call_args.kwargs["params"]["offset"] == 2000
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_refuses_to_silently_ignore_an_offset(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": []}
+    mock_get.return_value = response
+
+    with pytest.raises(RuntimeError, match="does not support received email pagination"):
+        get_emails(offset=100)
+
+
+@pytest.mark.parametrize("offset", [-1, True, 1.5, "10"])
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.get')
+def test_get_emails_rejects_an_invalid_offset_before_auth_or_network(mock_get, offset):
+    with pytest.raises(ValueError, match="offset must be a non-negative integer"):
+        get_emails(offset=offset)
+
+    mock_get.assert_not_called()
+
+
 @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
 @patch('requests.get')
 def test_get_emails_unread_only(mock_get):
@@ -371,6 +417,49 @@ def test_get_emails_unread_only(mock_get):
     assert emails[0]["read"] is False
     call_args = mock_get.call_args
     assert call_args[1]["params"]["unread_only"] is True
+
+
+@pytest.mark.parametrize("last", [0, 1001, -1, True, 1.5, "10"])
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.get')
+def test_get_emails_rejects_an_unsupported_limit_before_auth_or_network(mock_get, last):
+    with pytest.raises(ValueError, match="last must be between 1 and 1000"):
+        get_emails(last=last)
+
+    mock_get.assert_not_called()
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_accepts_the_received_mail_maximum_and_offset(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": [], "offset": 2000}
+    mock_get.return_value = response
+
+    assert get_emails(last=1000, offset=2000) == []
+    assert mock_get.call_args.kwargs["params"]["limit"] == 1000
+    assert mock_get.call_args.kwargs["params"]["offset"] == 2000
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_emails_refuses_to_silently_ignore_an_offset(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": []}
+    mock_get.return_value = response
+
+    with pytest.raises(RuntimeError, match="does not support received email pagination"):
+        get_emails(offset=100)
+
+
+@pytest.mark.parametrize("offset", [-1, True, 1.5, "10"])
+@patch.dict('os.environ', {}, clear=True)
+@patch('requests.get')
+def test_get_emails_rejects_an_invalid_offset_before_auth_or_network(mock_get, offset):
+    with pytest.raises(ValueError, match="offset must be a non-negative integer"):
+        get_emails(offset=offset)
+
+    mock_get.assert_not_called()
 
 
 @patch.dict('os.environ', {}, clear=True)
@@ -416,6 +505,17 @@ def test_get_sent_returns_what_was_sent(mock_get):
     call_args = mock_get.call_args
     assert call_args[0][0].endswith("/api/v1/email/sent")
     assert call_args[1]["params"] == {"limit": 5}
+
+
+@patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
+@patch('requests.get')
+def test_get_sent_still_accepts_one_thousand(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"emails": []}
+    mock_get.return_value = response
+
+    assert get_sent(last=1000) == []
+    assert mock_get.call_args.kwargs["params"]["limit"] == 1000
 
 
 @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})

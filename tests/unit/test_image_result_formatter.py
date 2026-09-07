@@ -27,6 +27,7 @@ from tests.utils.mock_helpers import MockLLM
 
 
 UPLOADED_URL = "https://oo.openonion.ai/img/test"
+PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
 
 @pytest.fixture(autouse=True)
@@ -64,7 +65,7 @@ class TestIsBase64Image:
 
     def test_detects_data_url_jpeg(self):
         """Test detection of JPEG data URL."""
-        data = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD"
+        data = "data:image/jpeg;base64,/9j/2Q=="
         is_image, mime_type, base64_data = _is_base64_image(data)
 
         assert is_image is True
@@ -88,8 +89,7 @@ class TestIsBase64Image:
 
     def test_detects_raw_base64(self):
         """Test detection of raw base64 string (no data URL)."""
-        # Long base64 string that looks like an image
-        data = "A" * 150  # Base64 chars only
+        data = PNG_BASE64
         is_image, mime_type, base64_data = _is_base64_image(data)
 
         assert is_image is True
@@ -119,12 +119,21 @@ class TestIsBase64Image:
         assert is_image is False
 
     def test_detects_embedded_data_url(self):
-        """Test detection when data URL is embedded in text."""
-        data = "Screenshot taken: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAE"
+        """Test detection when a complete data URL is embedded in text."""
+        data = f"Screenshot taken: data:image/png;base64,{PNG_BASE64}"
         is_image, mime_type, base64_data = _is_base64_image(data)
 
         assert is_image is True
         assert mime_type == "image/png"
+
+    def test_rejects_the_truncated_data_url_from_issue_1269(self):
+        data = ('{"src": "data:image/png;base64,'
+                'iVBORw0KGgoAAAANSUhEUgAABkAAAAOECAYAAAD5Tf"}')
+
+        assert _is_base64_image(data) == (False, "", "")
+
+    def test_rejects_decodable_base64_that_is_not_an_image(self):
+        assert _is_base64_image("A" * 152) == (False, "", "")
 
 
 class TestFormatImageResult:
@@ -171,7 +180,7 @@ class TestFormatImageResult:
     def test_drops_raw_base64_from_text_context(self):
         """Raw base64 image results should not be copied into text context."""
         agent = FakeAgent()
-        base64_data = "A" * 152  # valid base64: length divisible by 4
+        base64_data = PNG_BASE64
         agent.current_session['trace'] = [
             {
                 'type': 'tool_result',
@@ -209,14 +218,14 @@ class TestFormatImageResult:
                 'type': 'tool_result',
                 'name': 'capture',
                 'status': 'success',
-                'result': 'data:image/png;base64,iVBORw0KGgo=',
+                'result': f'data:image/png;base64,{PNG_BASE64}',
                 'tool_id': 'call_456'
             }
         ]
         agent.current_session['messages'] = [
             {
                 'role': 'tool',
-                'content': 'data:image/png;base64,iVBORw0KGgo=',
+                'content': f'data:image/png;base64,{PNG_BASE64}',
                 'tool_call_id': 'call_456'
             }
         ]
@@ -284,6 +293,34 @@ class TestFormatImageResult:
         assert agent.current_session['messages'][0]['content'] == 'Found 10 results for Python'
         agent.logger.print.assert_not_called()
 
+    def test_truncated_embedded_data_url_is_left_as_ordinary_tool_text(self):
+        """A DOM excerpt is not an image and must never reach the uploader."""
+        result = ('{"src": "data:image/png;base64,'
+                  'iVBORw0KGgoAAAANSUhEUgAABkAAAAOECAYAAAD5Tf"}')
+        agent = FakeAgent()
+        agent.current_session['trace'] = [{
+            'type': 'tool_result',
+            'name': 'inspect_dom',
+            'status': 'success',
+            'result': result,
+            'tool_id': 'call_truncated',
+        }]
+        agent.current_session['messages'] = [{
+            'role': 'tool',
+            'content': result,
+            'tool_call_id': 'call_truncated',
+        }]
+
+        _format_image_result(agent)
+
+        assert agent.current_session['messages'] == [{
+            'role': 'tool',
+            'content': result,
+            'tool_call_id': 'call_truncated',
+        }]
+        assert agent.current_session['trace'][0]['result'] == result
+        agent.logger.print.assert_not_called()
+
     def test_updates_trace_result(self):
         """Test that trace result is updated to short message."""
         agent = FakeAgent()
@@ -292,14 +329,14 @@ class TestFormatImageResult:
                 'type': 'tool_result',
                 'name': 'screenshot',
                 'status': 'success',
-                'result': 'data:image/png;base64,' + 'A' * 1000,
+                'result': 'data:image/png;base64,' + PNG_BASE64,
                 'tool_id': 'call_abc'
             }
         ]
         agent.current_session['messages'] = [
             {
                 'role': 'tool',
-                'content': 'data:image/png;base64,' + 'A' * 1000,
+                'content': 'data:image/png;base64,' + PNG_BASE64,
                 'tool_call_id': 'call_abc'
             }
         ]
@@ -514,9 +551,11 @@ class TestScreenshotPathDetection:
     def test_base64_still_wins_over_path_scanning(self):
         """In-process tools returning data URLs must keep working unchanged."""
         from connectonion.useful_plugins.image_result_formatter import _is_base64_image
-        is_image, mime, data = _is_base64_image("data:image/png;base64,iVBORw0KGgo=")
+        is_image, mime, data = _is_base64_image(
+            f"data:image/png;base64,{PNG_BASE64}"
+        )
         assert (is_image, mime) == (True, "image/png")
-        assert data == "iVBORw0KGgo="
+        assert data == PNG_BASE64
 
 
 def test_screenshot_path_becomes_an_attached_image(tmp_path, monkeypatch):

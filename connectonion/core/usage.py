@@ -23,6 +23,22 @@ class TokenUsage(BaseModel):
     cache_write_tokens: int = 0  # Tokens written to cache (Anthropic only)
     cost: float = 0.0           # USD cost for this call
     total_tokens: int = 0       # What the server says it billed for; 0 = it didn't say
+    # Exact managed-backend contract. Optional keeps direct providers and old
+    # saved sessions backward-compatible; co/ responses populate every field.
+    input_tokens_total: int | None = None
+    input_tokens_uncached: int | None = None
+    cache_read_input_tokens: int | None = None
+    cache_write_input_tokens: int | None = None
+    cache_write_5m_input_tokens: int | None = None
+    cache_write_1h_input_tokens: int | None = None
+    cache_metadata_status: str | None = None
+    provider: str | None = None
+    requested_model: str | None = None
+    provider_model: str | None = None
+    provider_reported_cost_usd: float | None = None
+    pricing_version: str | None = None
+    pricing_tier: str | None = None
+    cost_details: dict | None = None
 
     @property
     def billed_tokens(self) -> int:
@@ -92,6 +108,10 @@ MODEL_PRICING = {
     # Standard paid tier, per million tokens: input $1.50, output $7.50,
     # context-cached input $0.15 (Google pricing page, checked 2026-08-08).
     "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
+    # 3.8 and 3.7 Flash introductory rates through 2026-12-31: input $0.75, output
+    # $3.75, cached input $0.075 per million. Standard rates double in 2027.
+    "gemini-3.8-flash": {"input": 0.75, "output": 3.75, "cached": 0.075},
+    "gemini-3.7-flash": {"input": 0.75, "output": 3.75, "cached": 0.075},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     # Solved from real charges, two calls: (in=4, total=28, $0.000074) and
     # (in=2006, total=2101, $0.001288) give input 0.50 / output 3.00 and both
@@ -125,6 +145,8 @@ MODEL_CONTEXT_LIMITS = {
     "claude-3-7-sonnet": 200000,
 
     # Gemini
+    "gemini-3.8-flash": 1_048_576,
+    "gemini-3.7-flash": 1000000,
     "gemini-3.6-flash": 1000000,
     "gemini-3.5-flash": 1000000,
     # Without this row it took the 128,000 default, so `% ctx` read 7.8x high and
@@ -144,6 +166,14 @@ MODEL_CONTEXT_LIMITS = {
 DEFAULT_PRICING = {"input": 1.00, "output": 3.00, "cached": 0.50}
 DEFAULT_CONTEXT_LIMIT = 128000
 
+# The model every entry point uses when the user configures nothing. One
+# constant, imported by Agent, llm_do, transcribe, and the CLI — because
+# "what is the default model" was previously answered by separate literals
+# that drifted apart. The previous default stays on FREE_MANAGED_MODELS
+# below as the rollback.
+DEFAULT_MODEL = "co/gemini-3.8-flash"
+DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
+
 # Which managed models a free account can call. The backend refuses the rest
 # with error='paid_account_required': "Your free $5 credits work with
 # Google-routed models."
@@ -155,6 +185,8 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/gemini-3.8-flash",
+    "co/gemini-3.7-flash",
     "co/gemini-3.6-flash",
     "co/gemini-3.5-flash",
     "co/gemini-2.5-pro",
@@ -379,6 +411,18 @@ def turn_usage_from_trace(trace: list) -> dict | None:
         'total_tokens': 0,
         'cost': 0.0,
     }
+    measured_cache_fields = {
+        'input_tokens_total': 0,
+        'input_tokens_uncached': 0,
+        'cache_read_input_tokens': 0,
+        'cache_write_input_tokens': 0,
+        'cache_write_5m_input_tokens': 0,
+        'cache_write_1h_input_tokens': 0,
+    }
+    measured_present = {
+        field: any(field in usage and usage[field] is not None for usage in usages)
+        for field in measured_cache_fields
+    }
     for usage in usages:
         input_tokens = _usage_int(usage, 'input_tokens')
         output_tokens = _usage_int(usage, 'output_tokens')
@@ -392,6 +436,26 @@ def turn_usage_from_trace(trace: list) -> dict | None:
         cost = usage.get('cost', 0.0)
         if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
             totals['cost'] += float(cost)
+        for field in measured_cache_fields:
+            if measured_present[field]:
+                measured_cache_fields[field] += _usage_int(usage, field)
+
+    totals.update(
+        {
+            field: value
+            for field, value in measured_cache_fields.items()
+            if measured_present[field]
+        }
+    )
+    statuses = {
+        usage.get('cache_metadata_status')
+        for usage in usages
+        if usage.get('cache_metadata_status')
+    }
+    if statuses:
+        totals['cache_metadata_status'] = (
+            next(iter(statuses)) if len(statuses) == 1 else 'mixed'
+        )
     return totals
 
 

@@ -22,6 +22,7 @@ Usage:
 """
 
 from typing import TYPE_CHECKING
+
 from ..core.events import on_complete
 
 if TYPE_CHECKING:

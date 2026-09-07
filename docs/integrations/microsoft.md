@@ -140,6 +140,8 @@ outlook.send(to="alice@example.com", subject="Report", body="See attached.",
              attachments=["report.pdf"],              # local files, ~3MB Graph limit
              send_at="2026-07-06T15:30:00Z")           # deferred send (UTC ISO)
 outlook.reply(email_id, body="Thanks for your message")
+outlook.reply(email_id, body="Signed copy attached.",
+              attachments=["signed.pdf"])              # threaded, same limit as send
 
 # Contacts
 outlook.add_contact("Zhou Yifei", "zhou@example.com")

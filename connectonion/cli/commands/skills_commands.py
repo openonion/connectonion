@@ -18,11 +18,12 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from ...project import project_co_dir
 from typing import List, Optional
 
 from rich.console import Console
 from rich.table import Table
+
+from ...project import project_co_dir
 
 console = Console()
 
@@ -409,7 +410,9 @@ def handle_skills_list():
     the deployed agent would not have.
     """
     from ...useful_plugins.skills import (
-        _discover_all_skills, find_skill_problems, TRAVELS_ON_DEPLOY,
+        TRAVELS_ON_DEPLOY,
+        _discover_all_skills,
+        find_skill_problems,
     )
 
     skills = _discover_all_skills()

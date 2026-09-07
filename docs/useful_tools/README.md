@@ -9,7 +9,6 @@ Pre-built tools for common agent tasks.
 | [bash](bash.md) | Execute bash commands (Unix/Mac) | `from connectonion import bash` |
 | [Shell](shell.md) | Execute shell commands (cross-platform) | `from connectonion import Shell` |
 | [Claude Code](claude_code.md) | Run or resume Claude Code with live inner tool cards | `from connectonion import claude_code` |
-| [ACP Agent](acp_agent.md) | Delegate to a named ACP coding agent through a bounded edge adapter | `from connectonion.useful_tools import acp_agent` |
 | [FileTools](file_tools.md) | Read/edit files with safety tracking | `from connectonion.useful_tools import FileTools` |
 | [read_file](read_file.md) | Read any file: text, images, PDF, PPTX, DOCX, audio, video | `co copy read_file` |
 | [BrowserAutomation](browser_tools.md) | Natural language browser automation | `from connectonion.useful_tools.browser_tools import BrowserAutomation` |
@@ -18,9 +17,11 @@ Pre-built tools for common agent tasks.
 | [WebFetch](web_fetch.md) | Fetch web content | `from connectonion import WebFetch` |
 | [Gmail](gmail.md) | Gmail integration | `from connectonion import Gmail` |
 | [GDrive](gdrive.md) | Google Drive files | `from connectonion import GDrive` |
+| [YouTube](../cli/youtube.md) | YouTube Data API, preview-first writes | `from connectonion import YouTube` |
 | [Synology](synology.md) | Synology NAS files | `from connectonion import Synology` |
 | [get_emails](get_emails.md) | Email parsing utilities | `from connectonion import get_emails` |
 | [send_email](send_email.md) | Send emails via API | `from connectonion import send_email` |
+| [SMS inbox](sms.md) | Pair Android and decrypt Agent SMS | `from connectonion import get_sms` |
 | [Outlook](outlook.md) | Outlook integration | `from connectonion import Outlook` |
 | [GoogleCalendar](google_calendar.md) | Google Calendar | `from connectonion import GoogleCalendar` |
 | [MicrosoftCalendar](microsoft_calendar.md) | Microsoft Calendar | `from connectonion import MicrosoftCalendar` |
@@ -83,6 +84,7 @@ See [co copy](../cli/copy.md) for full details.
 ### Communication
 - **Gmail** - Send/read Gmail
 - **Outlook** - Send/read Outlook
+- **SMS inbox** - Pair a phone and read E2EE SMS as untrusted Agent data
 
 ### Calendar
 - **GoogleCalendar** - Google Calendar events

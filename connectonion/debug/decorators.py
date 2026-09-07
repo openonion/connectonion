@@ -9,10 +9,9 @@ LLM-Note:
   Errors: replay() with no active context prints helpful error message | re-execution errors are re-raised after printing
 """
 
-import functools
 import builtins
+import functools
 from typing import Any, Callable
-
 
 # =============================================================================
 # Replay Function and Decorator

@@ -7,8 +7,8 @@ LLM-Note:
   Integration: exposes TodoList class with add(content, active_form), start(content), complete(content), etc.
 """
 
-from typing import List, Literal, Optional
 from dataclasses import dataclass
+from typing import List, Literal, Optional
 
 
 @dataclass

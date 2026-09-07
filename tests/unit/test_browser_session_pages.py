@@ -13,7 +13,9 @@ import threading
 
 import pytest
 
-from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
+from connectonion.useful_tools.browser_tools.browser import (
+    LegacyBrowserAutomation as BrowserAutomation,
+)
 
 # No reset fixture needed: the session binding is owned by each BrowserAutomation
 # instance (per instance, per thread), so a fresh instance per test starts unbound.

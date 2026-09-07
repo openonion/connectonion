@@ -23,7 +23,7 @@ timestamp: 2024-11-27 11:39:58
 
 turns:
   - input: "check my emails"
-    model: "gemini-2.5-pro"
+    model: "gemini-3.7-flash"
     duration_ms: 11200
     tokens: 1234
     cost: 0.01
@@ -35,7 +35,7 @@ turns:
       expect_result: "shows email list"
 
   - input: "reply to first saying thanks"
-    model: "gemini-2.5-pro"
+    model: "gemini-3.7-flash"
     duration_ms: 8500
     tokens: 2345
     cost: 0.02

@@ -44,7 +44,7 @@ class TestTodoListAdd:
         assert todo._todos[0].status == "pending"
         assert todo._todos[0].priority == "medium"
 
-    def test_add_accepts_explicit_acp_priority(self):
+    def test_add_accepts_explicit_oip_priority(self):
         todo = TodoList(console=Mock())
 
         todo.add("Fix bug", "Fixing bug", priority="high")

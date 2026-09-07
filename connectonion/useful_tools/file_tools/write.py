@@ -12,6 +12,8 @@ use edit() or multi_edit() which provide diff preview and validation.
 
 from pathlib import Path
 
+from ...core.tool_result import ToolFailure
+
 
 def write(path: str, content: str) -> str:
     """
@@ -35,7 +37,10 @@ def write(path: str, content: str) -> str:
 
     # Check if file already exists - should use edit() instead
     if file_path.exists():
-        return f"Error: File '{path}' already exists. Use edit() or multi_edit() to modify existing files, not write()"
+        return ToolFailure(
+            f"Error: File '{path}' already exists. Use edit() or multi_edit() "
+            "to modify existing files, not write()"
+        )
 
     try:
         # Create parent directories if they don't exist
@@ -47,6 +52,6 @@ def write(path: str, content: str) -> str:
         return f"Successfully wrote {len(content)} bytes to '{path}'"
 
     except PermissionError:
-        return f"Error: Permission denied writing to '{path}'"
+        return ToolFailure(f"Error: Permission denied writing to '{path}'")
     except OSError as e:
-        return f"Error: Failed to write '{path}': {e}"
+        return ToolFailure(f"Error: Failed to write '{path}': {e}")

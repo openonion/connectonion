@@ -5,7 +5,7 @@
 
 ## Context
 
-ConnectOnion can register tools dynamically through plugins and, increasingly, external protocols such as ACP and MCP. The tool approval hook previously used `DANGEROUS_TOOLS` as a denylist: a live tool whose name was not in that set skipped approval automatically.
+ConnectOnion can register tools dynamically through plugins and MCP. The tool approval hook previously used `DANGEROUS_TOOLS` as a denylist: a live tool whose name was not in that set skipped approval automatically.
 
 That assumption was valid only while the framework controlled every tool name. A plugin can expose a new name with file, process, network, or external-service effects. Classifying that name as safe merely because core has never seen it turns extensibility into an approval bypass.
 
@@ -34,7 +34,7 @@ This policy stays inside the approval hook. Tool registration and execution rema
 - co ai grants `codex` and `claude_code` only inside its outer LLM-loop session because those wrappers own inner action approval. This applies to CLI and hosted co-ai sessions but never enters the shared remote-EXEC whitelist. Hosted non-admin Claude delegation is refused; hosted non-admin Codex is read-only with nested approvals denied.
 - Non-admin remote requesters fail closed instead of receiving an approval dialog they do not own.
 - A remote mode-change frame cannot escalate a requester past that owner gate.
-- ACP can forward future MCP tools through the same deterministic approval boundary.
+- OIP clients observe future MCP tools through the same deterministic approval boundary.
 
 ## Alternatives Rejected
 

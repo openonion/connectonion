@@ -5,6 +5,7 @@ on_approval callbacks, so these run without spawning `codex app-server`. A
 real-binary end-to-end lives in tests/e2e/real_api/test_real_codex.py.
 """
 
+import base64
 import importlib
 import io
 import json
@@ -18,6 +19,13 @@ from connectonion.useful_tools.codex import codex
 # `from .codex import codex` makes useful_tools.codex the function, shadowing the
 # module; reach the module (for CodexAppServer / helpers) via importlib.
 codex_module = importlib.import_module("connectonion.useful_tools.codex")
+
+
+@pytest.fixture(autouse=True)
+def _reap_open_only_clients():
+    codex_module._close_open_threads()
+    yield
+    codex_module._close_open_threads()
 
 
 class FakeServer:
@@ -77,7 +85,7 @@ class FakeServer:
         self.on_event({"kind": "tool_start", "id": "c1", "name": "pytest"})
         self.approval_decision = self.on_approval(
             "item/commandExecution/requestApproval",
-            {"command": "pytest -q", "cwd": "/repo"},
+            {"command": "pytest -q", "cwd": self.cwd},
         )
         self.on_event({"kind": "tool_end", "id": "c1", "name": "pytest", "failed": False})
         self.on_event({"kind": "agent_message", "text": "world"})
@@ -93,8 +101,8 @@ class _IO:
     def log(self, event_type, **data):
         self.events.append((event_type, data))
 
-    def request_approval(self, tool, arguments):
-        self.asked.append((tool, arguments))
+    def request_approval(self, tool, arguments, *, context=None):
+        self.asked.append((tool, arguments, context))
         return self.approve
 
 
@@ -104,6 +112,24 @@ class _Agent:
         self.current_session = current_session or {}
 
 
+class _WorkroomIO(_IO):
+    """Small native-message mailbox and wire capture for Work Room tests."""
+
+    def __init__(self, messages=()):
+        super().__init__()
+        self.messages = list(messages)
+        self.outbound = []
+
+    def receive_all(self, message_type):
+        assert message_type == "PROVIDER_INPUT"
+        result = self.messages
+        self.messages = []
+        return result
+
+    def send(self, event):
+        self.outbound.append(event)
+
+
 def _run(**kwargs):
     with patch.object(codex_module, "CodexAppServer", FakeServer), \
          patch.object(codex_module, "_base_command", return_value=["codex", "app-server"]):
@@ -111,6 +137,116 @@ def _run(**kwargs):
 
 
 class TestCodexRun:
+    def test_open_without_prompt_creates_thread_without_starting_a_turn(self):
+        result = _run(prompt="", cwd=".", approval="auto", agent=_Agent(_IO()))
+
+        assert result["session_id"] == "thread-1"
+        assert result["opened"] is True
+        assert result["exit_code"] == 0
+        assert "refresh_account" not in FakeServer.last.calls
+        assert not any(
+            isinstance(call, tuple) and call[0] == "run_turn"
+            for call in FakeServer.last.calls
+        )
+        assert "close" not in FakeServer.last.calls
+
+    def test_first_prompt_reuses_the_exact_open_only_thread(self):
+        with (
+            patch.object(codex_module, "CodexAppServer", FakeServer),
+            patch.object(
+                codex_module,
+                "_base_command",
+                return_value=["codex", "app-server"],
+            ),
+        ):
+            opened = json.loads(
+                codex(prompt="", cwd=".", approval="auto", agent=_Agent(_IO()))
+            )
+            server = FakeServer.last
+            result = json.loads(
+                codex(
+                    prompt="inspect",
+                    session_id=opened["session_id"],
+                    cwd=".",
+                    approval="auto",
+                    agent=_Agent(_IO()),
+                )
+            )
+
+        assert FakeServer.last is server
+        assert result["session_id"] == opened["session_id"]
+        assert result["resumed"] is True
+        assert ("run_turn", "thread-1", "inspect") in server.calls
+        assert not any(
+            isinstance(call, tuple) and call[0] == "resume_thread"
+            for call in server.calls
+        )
+        assert server.calls[-1] == "close"
+
+    def test_expired_open_only_thread_is_closed(self):
+        opened = _run(
+            prompt="", cwd=".", approval="auto", agent=_Agent(_IO())
+        )
+        server = FakeServer.last
+
+        codex_module._close_expired_open_threads(
+            now=codex_module.time.monotonic()
+            + codex_module._OPEN_THREAD_TTL_SECONDS
+        )
+
+        assert opened["session_id"] not in codex_module._open_threads
+        assert server.calls[-1] == "close"
+
+    def test_open_only_registry_evicts_the_oldest_process(self):
+        servers = []
+        for index in range(codex_module._MAX_OPEN_THREADS + 1):
+            server = FakeServer(["codex", "app-server"])
+            servers.append(server)
+            codex_module._store_open_thread(
+                f"thread-{index}",
+                server,
+                cwd=".",
+                sandbox="read-only",
+                model="",
+                approval_policy="never",
+            )
+
+        assert len(codex_module._open_threads) == codex_module._MAX_OPEN_THREADS
+        assert "thread-0" not in codex_module._open_threads
+        assert servers[0].calls[-1] == "close"
+
+    def test_changed_policy_refuses_and_closes_an_open_only_process(self):
+        _run(prompt="", cwd=".", approval="auto", agent=_Agent(_IO()))
+        server = FakeServer.last
+
+        claimed = codex_module._take_open_thread(
+            "thread-1",
+            cwd=".",
+            sandbox="workspace-write",
+            model="",
+            approval_policy="untrusted",
+        )
+
+        assert claimed is None
+        assert server.calls[-1] == "close"
+
+    def test_open_existing_session_without_prompt_resumes_without_turn(self):
+        result = _run(
+            prompt="",
+            session_id="prev",
+            cwd=".",
+            approval="auto",
+            agent=_Agent(_IO()),
+        )
+
+        assert result["session_id"] == "prev"
+        assert result["resumed"] is True
+        assert result["opened"] is True
+        assert not any(
+            isinstance(call, tuple) and call[0] == "run_turn"
+            for call in FakeServer.last.calls
+        )
+
     def test_new_thread_accumulates_message(self):
         agent = _Agent(_IO(approve=True))
         result = _run(prompt="fix", cwd=".", approval="auto", agent=agent)
@@ -127,6 +263,109 @@ class TestCodexRun:
             "refresh_account",
             ("start_thread", "workspace-write", "", "never"),
         ]
+
+    def test_live_workroom_message_is_acknowledged_only_after_native_steer(self):
+        io = _WorkroomIO([{
+            "type": "PROVIDER_INPUT",
+            "invocationId": "codex:outer",
+            "stateRevision": 7,
+            "text": "Please add a reverse-order fixture.",
+            "requestId": "direct-1",
+        }])
+        agent = _Agent(io, {"_active_tool_call_id": "outer"})
+        client = MagicMock()
+
+        codex_module._steer_workroom_inputs(agent, client, "thread-1", "turn-1")
+
+        client.steer_turn.assert_called_once_with(
+            "thread-1",
+            "turn-1",
+            "Please add a reverse-order fixture.",
+            "direct-1",
+        )
+        assert io.events == [("provider_message", {
+            "provider": "codex",
+            "invocationId": "codex:outer",
+            "parentToolCallId": "outer",
+            "messageId": "user:direct-1",
+            "role": "user",
+            "text": "Please add a reverse-order fixture.",
+            "workroomId": "codex:outer",
+        })]
+        assert io.outbound == [{
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": "direct-1",
+            "invocationId": "codex:outer",
+            "accepted": True,
+            "stateRevision": 7,
+        }]
+
+    def test_started_native_turn_emits_the_initiating_user_message(self):
+        io = _WorkroomIO()
+        agent = _Agent(io, {"_active_tool_call_id": "outer"})
+
+        codex_module._confirm_started_workroom_turn(
+            agent,
+            "Inspect the reconnect boundary.",
+        )
+
+        assert io.events == [("provider_message", {
+            "provider": "codex",
+            "invocationId": "codex:outer",
+            "parentToolCallId": "outer",
+            "messageId": "user:initial",
+            "role": "user",
+            "text": "Inspect the reconnect boundary.",
+            "workroomId": "codex:outer",
+        })]
+
+    def test_failed_native_steer_keeps_the_workroom_message_unacknowledged(self):
+        io = _WorkroomIO([{
+            "type": "PROVIDER_INPUT",
+            "invocationId": "codex:outer",
+            "stateRevision": 7,
+            "text": "Please add a reverse-order fixture.",
+            "requestId": "direct-1",
+        }])
+        agent = _Agent(io, {"_active_tool_call_id": "outer"})
+        client = MagicMock()
+        client.steer_turn.side_effect = RuntimeError("turn already completed")
+
+        codex_module._steer_workroom_inputs(agent, client, "thread-1", "turn-1")
+
+        assert io.events == []
+        assert io.outbound == []
+
+    def test_direct_continuation_acknowledges_the_source_only_after_turn_start(self):
+        io = _WorkroomIO()
+        agent = _Agent(io, {
+            "_active_tool_call_id": "continued",
+            "_provider_workroom_id": "codex:root",
+            "_provider_continuation_of": "codex:source",
+            "_provider_direct_message": "Run the C11 checks now.",
+            "_provider_direct_message_id": "direct-2",
+            "_provider_direct_state_revision": 7,
+        })
+
+        codex_module._confirm_direct_workroom_turn(agent)
+
+        assert io.events == [("provider_message", {
+            "provider": "codex",
+            "invocationId": "codex:continued",
+            "parentToolCallId": "continued",
+            "messageId": "user:direct-2",
+            "role": "user",
+            "text": "Run the C11 checks now.",
+            "workroomId": "codex:root",
+            "continuationOf": "codex:source",
+        })]
+        assert io.outbound == [{
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": "direct-2",
+            "invocationId": "codex:source",
+            "accepted": True,
+            "stateRevision": 7,
+        }]
 
     def test_auth_refresh_failure_does_not_start_a_thread(self):
         class AuthFailureServer(FakeServer):
@@ -239,8 +478,202 @@ class TestFrontendEventVocabulary:
         _run(prompt="fix", approval="auto", agent=agent)
         assert all(et != "codex_event" for et, _ in agent.io.events)
 
+    def test_safe_provider_activity_precedes_the_legacy_tool_compatibility_event(self):
+        agent = _Agent(_IO(), {"_active_tool_call_id": "parent-1"})
+        start = {
+            "kind": "tool_start",
+            "id": "compile-1",
+            "name": "cc -std=c11 -Wall -Werror sort.c -o sort",
+            "native_kind": "commandExecution",
+            "args": {
+                "command": "cc -std=c11 -Wall -Werror sort.c -o sort --token private-value",
+                "cwd": "/private/tmp/operator/private-workroom",
+            },
+        }
+        end = {**start, "kind": "tool_end", "failed": False, "result": "private output"}
+
+        codex_module._forward_ui(agent, start)
+        codex_module._forward_ui(agent, end)
+
+        typed = [data for event_type, data in agent.io.events if event_type == "provider_activity"]
+        assert typed == [
+            {
+                "provider": "codex",
+                "activityId": "compile-1",
+                "sequence": 1,
+                "kind": "command",
+                "status": "running",
+                "title": "Compile the requested C11 program",
+                "summary": "Compiling the requested C11 program",
+                "invocationId": "codex:parent-1",
+                "parentToolCallId": "parent-1",
+            },
+            {
+                "provider": "codex",
+                "activityId": "compile-1",
+                "sequence": 1,
+                "kind": "command",
+                "status": "completed",
+                "title": "Compile the requested C11 program",
+                "summary": "Compiled the requested C11 program",
+                "invocationId": "codex:parent-1",
+                "parentToolCallId": "parent-1",
+            },
+        ]
+        assert "private" not in json.dumps(typed)
+        assert [event_type for event_type, _ in agent.io.events] == [
+            "provider_activity", "tool_call", "provider_activity", "tool_result",
+        ]
+
+    def test_completed_workspace_image_view_becomes_a_current_safe_artifact(self, tmp_path):
+        workspace = tmp_path / "workroom"
+        workspace.mkdir()
+        image = workspace / "latest.png"
+        thumbnail = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlRjyoAAAAASUVORK5CYII="
+        )
+        image.write_bytes(base64.b64decode(thumbnail.split(",", 1)[1]))
+        agent = _Agent(_IO(), {"_active_tool_call_id": "parent-image-1"})
+
+        codex_module._forward_ui(
+            agent,
+            {"kind": "image_view", "id": "view-1", "path": str(image)},
+            workspace=workspace,
+        )
+
+        assert [event_type for event_type, _ in agent.io.events] == [
+            "provider_invocation", "provider_artifact",
+        ]
+        lifecycle, artifact = [data for _, data in agent.io.events]
+        assert lifecycle == {
+            "invocationId": "codex:parent-image-1",
+            "parentToolCallId": "parent-image-1",
+            "provider": "codex",
+            "providerDisplayName": "Codex",
+            "status": "running",
+            "currentSummary": "Working in the selected workspace",
+            "stateRevision": 1,
+        }
+        assert artifact["stateRevision"] == lifecycle["stateRevision"]
+        assert artifact["thumbnailDataUrl"] == thumbnail
+        assert artifact["alt"] == "Latest provider workspace view"
+        assert str(image) not in json.dumps(agent.io.events)
+
+    def test_image_view_outside_the_workspace_is_never_forwarded(self, tmp_path):
+        workspace = tmp_path / "workroom"
+        workspace.mkdir()
+        image = tmp_path / "private.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\nnot-a-workroom-preview")
+        agent = _Agent(_IO(), {"_active_tool_call_id": "parent-image-1"})
+
+        codex_module._forward_ui(
+            agent,
+            {"kind": "image_view", "id": "view-1", "path": str(image)},
+            workspace=workspace,
+        )
+
+        assert agent.io.events == []
+
 
 class TestApproval:
+    def test_native_approval_has_a_safe_verified_workroom_presentation(self):
+        agent = _Agent(
+            _IO(approve=True),
+            {"_active_tool_call_id": "parent-codex-call"},
+        )
+
+        allowed = codex_module._approval_allowed(
+            "item/commandExecution/requestApproval",
+            {
+                "command": "cc -std=c11 sort.c --token private-value",
+                "cwd": "/private/tmp/workroom",
+                "reason": "compile private-value",
+            },
+            "manual",
+            agent,
+            fallback_cwd="/private/tmp/workroom",
+        )
+
+        assert allowed is True
+        _, arguments, context = agent.io.asked[0]
+        assert arguments == {
+            "action": "Compile the requested C11 program",
+            "scope": "This Work Room only",
+            "reason": "Compile the requested workspace files before continuing",
+        }
+        assert context["providerApproval"] == {
+            "action": "Compile the requested C11 program",
+            "scope": "This Work Room only",
+            "reason": "Compile the requested workspace files before continuing",
+            "scopeClassification": "workroom",
+            "allowOnce": True,
+            "allowSession": False,
+            "files": ["sort.c"],
+        }
+        assert "private" not in json.dumps({"arguments": arguments, "context": context})
+        provider_events = [
+            data for event_type, data in agent.io.events
+            if event_type == "provider_invocation"
+        ]
+        assert provider_events == [
+            {
+                "invocationId": "codex:parent-codex-call",
+                "parentToolCallId": "parent-codex-call",
+                "provider": "codex",
+                "providerDisplayName": "Codex",
+                "status": "awaiting_approval",
+                "currentSummary": "Waiting for your decision",
+                "stateRevision": 1,
+            },
+            {
+                "invocationId": "codex:parent-codex-call",
+                "parentToolCallId": "parent-codex-call",
+                "provider": "codex",
+                "providerDisplayName": "Codex",
+                "status": "running",
+                "currentSummary": "Working in the selected workspace",
+                "stateRevision": 2,
+            },
+        ]
+
+    def test_native_approval_outside_the_workroom_fails_closed_after_review(self):
+        agent = _Agent(_IO(approve=True), {"_active_tool_call_id": "parent-codex-call"})
+
+        allowed = codex_module._approval_allowed(
+            "item/fileChange/requestApproval",
+            {
+                "grantRoot": "/private/tmp/outside-workroom",
+                "fileChanges": {"/private/tmp/outside-workroom/private.py": {}},
+            },
+            "manual",
+            agent,
+            fallback_cwd="/private/tmp/workroom",
+        )
+
+        assert allowed is False
+        _, arguments, context = agent.io.asked[0]
+        assert arguments["scope"] == "Outside this Work Room"
+        assert context["providerApproval"]["scopeClassification"] == "elevated"
+        assert context["providerApproval"]["allowOnce"] is False
+
+    def test_native_approval_with_an_unknown_boundary_fails_closed_after_review(self):
+        agent = _Agent(_IO(approve=True), {"_active_tool_call_id": "parent-codex-call"})
+
+        allowed = codex_module._approval_allowed(
+            "item/commandExecution/requestApproval",
+            {"command": "pytest -q"},
+            "manual",
+            agent,
+            fallback_cwd="",
+        )
+
+        assert allowed is False
+        _, arguments, context = agent.io.asked[0]
+        assert arguments["scope"] == "Boundary could not be verified"
+        assert context["providerApproval"]["scopeClassification"] == "unknown"
+        assert context["providerApproval"]["allowOnce"] is False
+
     def test_auto_denies_unexpected_callback_without_asking(self):
         agent = _Agent(_IO(approve=True))
         _run(prompt="fix", approval="auto", agent=agent)
@@ -252,14 +685,60 @@ class TestApproval:
         _run(prompt="fix", approval="manual", agent=agent)
         assert FakeServer.last.approval_decision is True
         assert agent.io.asked and agent.io.asked[0][0] == "codex"
-        # the approval summary shows the actual command
-        assert agent.io.asked[0][1]["command"] == "pytest -q"
-        assert agent.io.asked[0][1]["cwd"] == "/repo"
+        # The approval summary is safe presentation, not raw provider transport.
+        assert agent.io.asked[0][1] == {
+            "action": "Run the requested tests",
+            "scope": "This Work Room only",
+            "reason": "Verify the requested workspace changes before continuing",
+        }
 
     def test_manual_rejected_denies(self):
         agent = _Agent(_IO(approve=False))
         _run(prompt="fix", approval="manual", agent=agent)
         assert FakeServer.last.approval_decision is False
+
+    def test_manual_approval_has_provider_correlation(self):
+        agent = _Agent(
+            _IO(),
+            {"_active_tool_call_id": "parent-codex-call"},
+        )
+
+        _run(
+            prompt="fix",
+            cwd="/private/tmp/workspace/.workroom-e2e",
+            approval="manual",
+            agent=agent,
+        )
+
+        _, details, context = agent.io.asked[0]
+        assert details == {
+            "action": "Run the requested tests",
+            "scope": "This Work Room only",
+            "reason": "Verify the requested workspace changes before continuing",
+        }
+        assert context == {
+            "provider": "codex",
+            "invocationId": "codex:parent-codex-call",
+            "parentToolCallId": "parent-codex-call",
+            "providerApproval": {
+                "action": "Run the requested tests",
+                "scope": "This Work Room only",
+                "reason": "Verify the requested workspace changes before continuing",
+                "scopeClassification": "workroom",
+                "allowOnce": True,
+                "allowSession": False,
+            },
+        }
+        assert [event[0] for event in agent.io.events] == [
+            "provider_message",
+            "provider_activity",
+            "tool_call",
+            "provider_invocation",
+            "provider_invocation",
+            "provider_activity",
+            "tool_result",
+            "provider_message",
+        ]
 
     def test_hosted_contact_cannot_answer_manual_approval(self):
         agent = _Agent(
@@ -333,15 +812,33 @@ class TestApprovalDetails:
         details = codex_module._approval_details(
             "execCommandApproval", {"command": ["git", "push"], "cwd": "/repo"}
         )
-        assert details["command"] == "git push"
+        assert details == {
+            "action": "Run a workspace command",
+            "scope": "Outside this Work Room",
+            "reason": "Codex requested approval to continue",
+        }
+
+    def test_outbound_command_never_inherits_a_workroom_allowance(self):
+        presentation = codex_module._provider_approval_presentation(
+            "item/commandExecution/requestApproval",
+            {"command": "git push origin main", "cwd": "/private/tmp/workroom"},
+            fallback_cwd="/private/tmp/workroom",
+        )
+
+        assert presentation["action"] == "Run a workspace command"
+        assert presentation["scopeClassification"] == "elevated"
+        assert presentation["allowOnce"] is False
 
     def test_v2_file_change_shows_the_grant_root(self):
         details = codex_module._approval_details(
             "item/fileChange/requestApproval",
             {"grantRoot": "/repo/src", "reason": "write parser"},
         )
-        assert details["grant_root"] == "/repo/src"
-        assert "/repo/src" in details["action"]
+        assert details == {
+            "action": "Make workspace file changes",
+            "scope": "Boundary could not be verified",
+            "reason": "Apply the requested workspace file changes",
+        }
 
     def test_legacy_patch_shows_the_grant_root_and_changed_files(self):
         details = codex_module._approval_details(
@@ -355,10 +852,24 @@ class TestApprovalDetails:
                 "reason": "implement parser",
             },
         )
-        assert details["grant_root"] == "/repo/src"
-        assert details["files"] == ["parser.py", "test_parser.py"]
-        assert "parser.py" in details["action"]
-        assert "test_parser.py" in details["action"]
+        assert details == {
+            "action": "Make workspace file changes",
+            "scope": "Boundary could not be verified",
+            "reason": "Apply the requested workspace file changes",
+        }
+
+    def test_missing_provider_cwd_uses_a_safe_workroom_label(self):
+        details = codex_module._approval_details(
+            "item/fileChange/requestApproval",
+            {"fileChanges": {"dijkstra.py": {}}},
+            fallback_cwd="/private/tmp/operator-project/.workroom-e2e-20260816",
+        )
+
+        assert details == {
+            "action": "Make workspace file changes",
+            "scope": "This Work Room only",
+            "reason": "Apply the requested workspace file changes",
+        }
 
     def test_v2_permissions_show_the_exact_requested_profile(self):
         permissions = {"network": {"enabled": True}}
@@ -366,8 +877,11 @@ class TestApprovalDetails:
             "item/permissions/requestApproval",
             {"permissions": permissions, "cwd": "/repo"},
         )
-        assert details["permissions"] == permissions
-        assert '"network"' in details["action"]
+        assert details == {
+            "action": "Expand provider permissions",
+            "scope": "Boundary could not be verified",
+            "reason": "Review the requested permission expansion",
+        }
 
 
 class TestResumeProtocol:
@@ -448,6 +962,67 @@ class TestResumeProtocol:
 
         assert request.call_args.kwargs["timeout"] == 10
         done.wait.assert_called_once_with(0.1)
+
+    def test_turn_start_callback_runs_only_after_codex_returns_a_turn_id(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+        done = MagicMock()
+        done.wait.return_value = True
+        client._turn_done = done
+        started = []
+        with patch.object(
+            client,
+            "request",
+            return_value={"turn": {"id": "turn-7"}},
+        ):
+            client.run_turn(
+                "thread-1",
+                "continue",
+                timeout=10,
+                on_turn_started=started.append,
+            )
+
+        assert started == ["turn-7"]
+
+    def test_turn_wait_preserves_the_full_budget_after_manual_approval(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+
+        class ApprovalDelayEvent:
+            def __init__(self):
+                self.waits = []
+
+            def clear(self):
+                pass
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
+                if len(self.waits) == 1:
+                    # Simulate 100 seconds of operator review between two
+                    # active execution slices without sleeping in the test.
+                    client._approval_wait_seconds = 100
+                    return False
+                return True
+
+        done = ApprovalDelayEvent()
+        client._turn_done = done
+        with patch.object(client, "request", return_value={}), patch.object(
+            codex_module.time, "monotonic", side_effect=[0, 0, 1, 101]
+        ):
+            client.run_turn("thread-1", "continue", timeout=10)
+
+        assert done.waits == [0.1, 0.1]
+
+    def test_approval_request_records_operator_review_time(self):
+        client = codex_module.CodexAppServer(
+            ["codex", "app-server"], on_approval=lambda *_: True
+        )
+        with patch.object(client, "_send"), patch.object(
+            codex_module.time, "monotonic", side_effect=[10, 35]
+        ):
+            client._handle_server_request(
+                1, "item/commandExecution/requestApproval", {"command": "pytest -q"}
+            )
+
+        assert client._approval_wait_seconds == 25
 
     def test_close_reaps_the_process_tree_and_closes_every_pipe(self):
         client = codex_module.CodexAppServer(["codex", "app-server"])

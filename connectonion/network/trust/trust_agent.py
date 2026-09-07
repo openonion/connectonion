@@ -51,33 +51,63 @@ Extensibility:
     host(create_agent, trust=MyTrustAgent("careful"))
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from ...project import project_co_dir
-from typing import Optional
-import logging
 
-from .fast_rules import parse_policy, evaluate_request
+from ...core.usage import DEFAULT_MODEL
+from ...project import project_co_dir
+from .factory import PROMPTS_DIR, TRUST_LEVELS
+from .fast_rules import evaluate_request, parse_policy
 from .tools import (
-    is_whitelisted as _is_whitelisted,
-    is_blocked as _is_blocked,
-    is_contact as _is_contact,
-    is_stranger as _is_stranger,
-    promote_to_contact as _promote_to_contact,
-    promote_to_whitelist as _promote_to_whitelist,
-    demote_to_contact as _demote_to_contact,
-    demote_to_stranger as _demote_to_stranger,
+    add_admin as _add_admin,
+)
+from .tools import (
     block as _block,
-    unblock as _unblock,
+)
+from .tools import (
+    demote_to_contact as _demote_to_contact,
+)
+from .tools import (
+    demote_to_stranger as _demote_to_stranger,
+)
+from .tools import (
     get_level as _get_level,
+)
+from .tools import (
+    get_self_address as _get_self_address,
+)
+from .tools import (
     # Admin functions
     is_admin as _is_admin,
+)
+from .tools import (
+    is_blocked as _is_blocked,
+)
+from .tools import (
+    is_contact as _is_contact,
+)
+from .tools import (
+    is_stranger as _is_stranger,
+)
+from .tools import (
     is_super_admin as _is_super_admin,
-    get_self_address as _get_self_address,
-    add_admin as _add_admin,
+)
+from .tools import (
+    is_whitelisted as _is_whitelisted,
+)
+from .tools import (
+    promote_to_contact as _promote_to_contact,
+)
+from .tools import (
+    promote_to_whitelist as _promote_to_whitelist,
+)
+from .tools import (
     remove_admin as _remove_admin,
 )
-from .factory import PROMPTS_DIR, TRUST_LEVELS
+from .tools import (
+    unblock as _unblock,
+)
 
 
 @dataclass
@@ -107,7 +137,9 @@ class TrustAgent:
         authentication backends, or business logic. See module docstring.
     """
 
-    def __init__(self, trust: str = "careful", *, api_key: str = None, model: str = "co/gemini-3.6-flash"):
+    def __init__(self, trust: str = "careful", *, api_key: str = None,
+                 model: str = DEFAULT_MODEL, co_dir: Path = None,
+                 invite_code: str = None):
         """
         Create a TrustAgent.
 
@@ -115,13 +147,24 @@ class TrustAgent:
             trust: Trust level ("open", "careful", "strict") or path to policy file
             api_key: Optional API key for LLM (only needed if using 'ask' default)
             model: Model to use for LLM decisions
+            co_dir: Project .co directory. Bound at construction so trust state
+                does not move with, or disappear with, the process cwd.
+            invite_code: Optional in-memory override for this instance.
         """
         self.trust = trust
         self.api_key = api_key
         self.model = model
+        self._co_dir = Path(co_dir).resolve() if co_dir else project_co_dir()
 
         # Load policy and parse config
         self._config, self._prompt = self._load_policy(trust)
+        if invite_code is not None:
+            invite_code = invite_code.strip()
+            if not invite_code:
+                raise ValueError("invite_code cannot be empty")
+            onboard = dict(self._config.get("onboard") or {})
+            onboard["invite_code"] = [invite_code]
+            self._config = {**self._config, "onboard": onboard}
 
         # Lazy-loaded LLM agent (only created if needed)
         self._llm_agent = None
@@ -170,7 +213,7 @@ class TrustAgent:
         request = request or {}
 
         # Fast rules (no LLM)
-        result = evaluate_request(self._config, client_id, request)
+        result = evaluate_request(self._config, client_id, request, self._co_dir)
 
         if result == 'allow':
             return Decision(allow=True, reason="Allowed by fast rules")
@@ -209,9 +252,9 @@ class TrustAgent:
 
     def _llm_decide(self, client_id: str, request: dict) -> Decision:
         """Use LLM to make trust decision (only for 'ask' cases)."""
-        from ...core.agent import Agent
-        from ...llm_do import llm_do
         from pydantic import BaseModel
+
+        from ...llm_do import llm_do
 
         class TrustDecision(BaseModel):
             allow: bool
@@ -313,10 +356,7 @@ justify admitting them, it is not enough."""
 
     def _verify_transfer_via_api(self, from_addr: str, to_addr: str, min_amount: float) -> bool:
         """Call oo-api to verify a transfer was made."""
-        import os
-        import json
         import time
-        from pathlib import Path
 
         try:
             import httpx
@@ -334,7 +374,7 @@ justify admitting them, it is not enough."""
         from ... import address as addr
         from ...project import project_identity
 
-        keys = project_identity()
+        keys = project_identity(self._co_dir)
         if not keys:
             return False
 
@@ -388,31 +428,31 @@ justify admitting them, it is not enough."""
 
     def promote_to_contact(self, client_id: str) -> str:
         """Stranger -> Contact"""
-        return _promote_to_contact(client_id)
+        return _promote_to_contact(client_id, self._co_dir)
 
     def promote_to_whitelist(self, client_id: str) -> str:
         """Contact -> Whitelist"""
-        return _promote_to_whitelist(client_id)
+        return _promote_to_whitelist(client_id, self._co_dir)
 
     # === Demotion ===
 
     def demote_to_contact(self, client_id: str) -> str:
         """Whitelist -> Contact"""
-        return _demote_to_contact(client_id)
+        return _demote_to_contact(client_id, self._co_dir)
 
     def demote_to_stranger(self, client_id: str) -> str:
         """Contact -> Stranger"""
-        return _demote_to_stranger(client_id)
+        return _demote_to_stranger(client_id, self._co_dir)
 
     # === Blocking ===
 
     def block(self, client_id: str, reason: str = "") -> str:
         """Add to blocklist."""
-        return _block(client_id, reason)
+        return _block(client_id, reason, self._co_dir)
 
     def unblock(self, client_id: str) -> str:
         """Remove from blocklist."""
-        return _unblock(client_id)
+        return _unblock(client_id, self._co_dir)
 
     # === Queries ===
 
@@ -422,23 +462,23 @@ justify admitting them, it is not enough."""
 
         Returns: "stranger", "contact", "whitelist", or "blocked"
         """
-        return _get_level(client_id)
+        return _get_level(client_id, self._co_dir)
 
     def is_whitelisted(self, client_id: str) -> bool:
         """Check if client is whitelisted."""
-        return _is_whitelisted(client_id)
+        return _is_whitelisted(client_id, self._co_dir)
 
     def is_blocked(self, client_id: str) -> bool:
         """Check if client is blocked."""
-        return _is_blocked(client_id)
+        return _is_blocked(client_id, self._co_dir)
 
     def is_contact(self, client_id: str) -> bool:
         """Check if client is a contact."""
-        return _is_contact(client_id)
+        return _is_contact(client_id, self._co_dir)
 
     def is_stranger(self, client_id: str) -> bool:
         """Check if client is a stranger."""
-        return _is_stranger(client_id)
+        return _is_stranger(client_id, self._co_dir)
 
     # === Admin Management ===
     # Instance methods for easy subclass overloading.
@@ -446,23 +486,23 @@ justify admitting them, it is not enough."""
 
     def is_admin(self, client_id: str) -> bool:
         """Check if client is an admin. Override for custom admin logic."""
-        return _is_admin(client_id)
+        return _is_admin(client_id, self._co_dir)
 
     def is_super_admin(self, client_id: str) -> bool:
         """Check if client is super admin (self address). Override for custom logic."""
-        return _is_super_admin(client_id)
+        return _is_super_admin(client_id, self._co_dir)
 
     def get_self_address(self) -> str | None:
         """Get self address (super admin)."""
-        return _get_self_address()
+        return _get_self_address(self._co_dir)
 
     def add_admin(self, admin_id: str) -> str:
         """Add an admin. Super admin only. Override for custom storage."""
-        return _add_admin(admin_id)
+        return _add_admin(admin_id, self._co_dir)
 
     def remove_admin(self, admin_id: str) -> str:
         """Remove an admin. Super admin only. Override for custom storage."""
-        return _remove_admin(admin_id)
+        return _remove_admin(admin_id, self._co_dir)
 
     # === Config Access ===
 

@@ -205,6 +205,19 @@ class TestCopyCommand:
             assert skill_dir.exists()
             assert (skill_dir / "SKILL.md").exists()
 
+    def test_copy_oo_installs_the_single_canonical_skill(self):
+        """The public oo workflow is one self-contained, shareable SKILL.md."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', 'oo'])
+
+        assert result.exit_code == 0
+        skill_file = Path(self.test_dir) / ".co" / "skills" / "oo" / "SKILL.md"
+        assert skill_file.exists()
+        body = skill_file.read_text(encoding="utf-8")
+        assert "co announce --dry-run" in body
+        assert "co sub sync <0xaddress>" in body
+
     def test_copy_unknown_item(self):
         """Test copy shows error for unknown item."""
         from connectonion.cli.main import cli

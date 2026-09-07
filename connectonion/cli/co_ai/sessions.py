@@ -65,7 +65,7 @@ class SessionManager:
     def __init__(self):
         self.conn = get_connection()
         self.current_id: Optional[str] = None
-    
+
     def create_session(self, model: str = "") -> str:
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         now = datetime.now().isoformat()
@@ -76,19 +76,19 @@ class SessionManager:
         self.conn.commit()
         self.current_id = session_id
         return session_id
-    
+
     def save_message(self, role: str, content: str) -> None:
         if not self.current_id:
             return
-        
+
         row = self.conn.execute(
             "SELECT messages FROM sessions WHERE id = ?", (self.current_id,)
         ).fetchone()
-        
+
         if row:
             messages = json.loads(row["messages"])
             messages.append({"role": role, "content": content, "timestamp": datetime.now().isoformat()})
-            
+
             title = content[:50] + "..." if len(content) > 50 else content
             if len(messages) == 1:
                 self.conn.execute(
@@ -101,24 +101,24 @@ class SessionManager:
                     (json.dumps(messages), datetime.now().isoformat(), self.current_id)
                 )
             self.conn.commit()
-    
+
     def list_sessions(self, limit: int = 20) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id, title, model, created_at, updated_at FROM sessions ORDER BY updated_at DESC LIMIT ?",
             (limit,)
         ).fetchall()
         return [dict(row) for row in rows]
-    
+
     def load_session(self, session_id: str) -> Optional[list[dict]]:
         row = self.conn.execute(
             "SELECT messages FROM sessions WHERE id = ?", (session_id,)
         ).fetchone()
-        
+
         if row:
             self.current_id = session_id
             return json.loads(row["messages"])
         return None
-    
+
     def delete_session(self, session_id: str) -> bool:
         self.conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         self.conn.commit()

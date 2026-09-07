@@ -35,36 +35,36 @@ from typing import Any, Dict, List, Optional
 
 class PromptContext:
     """Context object holding all variables for prompt interpolation."""
-    
+
     def __init__(self):
         self._vars: Dict[str, Any] = {}
         self._tools: Dict[str, Any] = {}
         self._tool_set: set = set()
-    
+
     def set(self, key: str, value: Any):
         """Set a variable value."""
         self._vars[key] = value
         return self
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get a variable value."""
         return self._vars.get(key, default)
-    
+
     def register_tool(self, tool: Any):
         """Register a tool and extract its name."""
         name = _get_tool_name(tool)
         self._tools[name] = tool
         self._tool_set.add(name)
         return self
-    
+
     def has_tool(self, name: str) -> bool:
         """Check if a tool is available."""
         return name in self._tool_set
-    
+
     def get_tool_names(self):
         """Get set of available tool names."""
         return self._tool_set
-    
+
     def to_dict(self):
         """Export context as dict for interpolation."""
         result = dict(self._vars)
@@ -93,31 +93,31 @@ def interpolate(template: str, context: Dict[str, Any]) -> str:
     """
     def replace_var(match: re.Match) -> str:
         expr = match.group(1).strip()
-        
+
         # Handle ternary: condition ? "yes" : "no"
         ternary_match = re.match(r'(.+?)\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"', expr)
         if ternary_match:
             condition_expr, true_val, false_val = ternary_match.groups()
             condition_result = _eval_condition(condition_expr.strip(), context)
             return true_val if condition_result else false_val
-        
+
         # Handle: VAR_NAME or "default"
         or_match = re.match(r'(\w+)\s+or\s+"([^"]*)"', expr)
         if or_match:
             var_name, default = or_match.groups()
             value = context.get(var_name)
             return str(value) if value else default
-        
+
         # Simple variable lookup
         if expr in context:
             value = context[expr]
             if callable(value) and not isinstance(value, type):
                 return str(value())
             return str(value) if value is not None else ""
-        
+
         # Keep original if not found (for debugging)
         return match.group(0)
-    
+
     # Match ${...} patterns, handling nested braces
     pattern = r'\$\{([^}]+)\}'
     return re.sub(pattern, replace_var, template)
@@ -133,15 +133,15 @@ def _eval_condition(expr: str, context: Dict[str, Any]) -> bool:
         if callable(has_tool_fn):
             return bool(has_tool_fn(tool_name))
         return tool_name in context.get("AVAILABLE_TOOLS", set())
-    
+
     # Handle: VAR_NAME (truthy check)
     if expr in context:
         return bool(context[expr])
-    
+
     # Handle: !VAR_NAME (falsy check)
     if expr.startswith("!") and expr[1:] in context:
         return not bool(context[expr[1:]])
-    
+
     return False
 
 
@@ -178,29 +178,29 @@ def assemble_prompt(
     """
     prompts_path = Path(prompts_dir)
     parts = []
-    
+
     # Build context if not provided
     if context is None:
         context = PromptContext()
-    
+
     # Register tools
     if tools:
         for tool in tools:
             context.register_tool(tool)
-    
+
     # Add extra variables
     if extra_vars:
         for key, value in extra_vars.items():
             context.set(key, value)
-    
+
     # Build interpolation dict
     ctx_dict = context.to_dict()
-    
+
     # Add tool name mappings for convenience
     # e.g., SHELL_TOOL_NAME = "shell", READ_TOOL_NAME = "read_file"
     for name in context.get_tool_names():
         ctx_dict[f"{name.upper()}_TOOL_NAME"] = name
-    
+
     # 1. Main prompt (required) — domain-neutral agent behaviour
     main_file = prompts_path / "main.md"
     if main_file.exists():
@@ -237,7 +237,7 @@ def assemble_prompt(
             if tool_file.exists():
                 content = tool_file.read_text(encoding="utf-8")
                 parts.append(interpolate(content, ctx_dict))
-    
+
     return "\n\n---\n\n".join(parts)
 
 
@@ -264,22 +264,22 @@ def load_reminder(
     """
     reminders_dir = Path(prompts_dir) / "reminders"
     reminder_file = reminders_dir / f"{reminder_name}.md"
-    
+
     if not reminder_file.exists():
         return None
-    
+
     content = reminder_file.read_text(encoding="utf-8")
-    
+
     # Build interpolation context
     ctx_dict = {}
     if context:
         ctx_dict = context.to_dict()
     if extra_vars:
         ctx_dict.update(extra_vars)
-    
+
     # Interpolate variables
     interpolated = interpolate(content, ctx_dict)
-    
+
     return f"<system-reminder>\n{interpolated}\n</system-reminder>"
 
 

@@ -2,20 +2,21 @@
 Purpose: CLI surface for the agent mailbox — send, list (inbox), and read emails from the terminal
 LLM-Note:
   Dependencies: imports from [rich.console, rich.table, rich.panel, .project_cmd_lib.load_api_key, ...useful_tools.send_email.send_email, ...useful_tools.get_emails.get_emails/mark_read] | imported by [cli/main.py via handle_email_*()] | hits the configured backend through the engine tools at [/api/v1/email/*]
-  Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread) → Rich table | handle_email_read() → get_emails() → find by id → print body → mark_read(id)
-  State/Effects: no local state | network calls happen inside the engine tools | mark_read() flips server-side read status | writes to stdout via rich.Console
-  Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read() for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py | requires prior 'co auth'
+  Data flow: load_api_key() ensures OPENONION_API_KEY + AGENT_EMAIL are in env → handle_email_send() → send_email(to, subject, message) → prints message_id | handle_email_inbox() → get_emails(last, unread, offset) → Rich table | handle_email_read() → get_emails() → find by id → print body → optionally mark_read(id)
+  State/Effects: no local state | network calls happen inside the engine tools | only read --mark-read flips server-side read status | writes to stdout via rich.Console
+  Integration: exposes handle_email_send(), handle_email_inbox(), handle_email_read(), handle_email_addresses(), handle_email_share()/handle_email_unshare() (connectonion#1137) for cli/main.py | thin presentation layer — all email logic lives in useful_tools/{send_email,get_emails}.py, share/unshare hit /api/v1/email/share directly like addresses/name do | requires prior 'co auth'
   Errors: prints a 'run co auth' hint when no API key found | send_email returns {success, error} dicts (printed as-is); get_emails/mark_read let API errors crash
 """
 
-import os
+import shlex
 
 import requests
+import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from ...backend import backend_url
 
+from ...backend import backend_url
 from .project_cmd_lib import load_api_key
 
 console = Console()
@@ -27,11 +28,11 @@ def _print_no_auth():
 
 
 def _require_auth() -> bool:
-    """Ensure OPENONION_API_KEY (and the .env it lives next to) are loaded. Returns False if missing."""
+    """Ensure OPENONION_API_KEY (and the .env it lives next to) are loaded. Exits 1 if missing."""
     if load_api_key():
         return True
     _print_no_auth()
-    return False
+    raise typer.Exit(1)
 
 
 def _err(response) -> str:
@@ -43,62 +44,111 @@ def _err(response) -> str:
     return response.text.strip() or f"HTTP {response.status_code}"
 
 
-def handle_email_send(to: str, subject: str, message: str, idempotency_key: str = None):
+def handle_email_send(
+    to: str, subject: str, message: str,
+    idempotency_key: str = None, from_address: str = None,
+):
     """Send an email from the agent's address."""
     if not _require_auth():
         return
 
     from ...useful_tools.send_email import send_email
-    result = send_email(to, subject, message, idempotency_key=idempotency_key)
+    result = send_email(
+        to, subject, message,
+        idempotency_key=idempotency_key, from_address=from_address,
+    )
 
     if result.get("success"):
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
         console.print(f"  From:       {result.get('from', '')}")
-        console.print(f"  Message ID: {result.get('message_id', '')}\n")
+        console.print(f"  Message ID: {result.get('message_id', '')}")
+        console.print("\n[dim]See it in your sent mail:[/dim] [bold]co email sent[/bold]\n")
     else:
-        console.print(f"\n❌ [bold red]Failed:[/bold red] {result.get('error', 'Unknown error')}")
+        error = result.get("error", "Unknown error")
+        console.print(f"\n❌ [bold red]Failed:[/bold red] {error}")
         if result.get("request_id"):
             console.print(f"  Request ID: {result['request_id']}")
         if result.get("retryable") and result.get("idempotency_key"):
-            console.print(f"  Safe retry key: {result['idempotency_key']}")
-            console.print("  [dim]Retry the same command with --idempotency-key <key>[/dim]")
+            # The full command, restated — "the same command" is not in the
+            # output, so an agent reading only this output could not retry.
+            retry = ["co", "email", "send", shlex.quote(to), shlex.quote(subject), shlex.quote(message)]
+            if from_address:
+                retry += ["--from", shlex.quote(from_address)]
+            retry += ["--idempotency-key", shlex.quote(result["idempotency_key"])]
+            # Plain print, not console.print: Rich wraps at the console width,
+            # and a line-broken command is no longer copy-pasteable.
+            print("  Retry safely with: " + " ".join(retry))
+        if "not one of this account's email addresses" in error:
+            console.print("  See your addresses: [bold]co email addresses[/bold]")
         console.print()
+        raise typer.Exit(1)
 
 
-def handle_email_inbox(last: int = 10, unread: bool = False):
-    """List recent emails received at the agent's address."""
+def handle_email_inbox(
+    last: int = 10, unread: bool = False, offset: int = 0, address: str = None
+):
+    """List recent emails received at any address this account can read."""
     if not _require_auth():
         return
 
     from ...useful_tools.get_emails import get_emails
-    emails = get_emails(last=last)
+    emails = get_emails(last=last, offset=offset, address=address)
+    page_is_full = len(emails) == last
     if unread:
         # The /received endpoint ignores the unread param, so filter here to keep the flag honest.
         emails = [e for e in emails if not e.get("read")]
 
     if not emails:
         scope = "unread " if unread else ""
-        console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails\n")
+        where = f" at {address}" if address else ""
+        console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails{where}\n")
         return
+
+    # The To column earns its width only when the page actually spans more than
+    # one mailbox. On a single-address account it would be the same string on
+    # every row, which is noise; the moment a second address appears, knowing
+    # which one a message landed at is the whole point.
+    recipients = {e.get("to", "") for e in emails if e.get("to")}
+    show_to = len(recipients) > 1
 
     table = Table(title="📬 Inbox", show_header=True, header_style="bold cyan")
     table.add_column("#", justify="right")
     table.add_column("From")
+    if show_to:
+        # Fold, never ellipsize: a half-printed address is the one thing this
+        # column exists to disambiguate, and "aaron@mail.op…" and
+        # "aaron.xie@mail.op…" are the same string once Rich truncates them.
+        table.add_column("To", overflow="fold")
     table.add_column("Subject")
     table.add_column("Received")
 
     for email in emails:
         unread_mark = "" if email.get("read") else "[bold green]●[/bold green] "
-        table.add_row(
-            str(email.get("id", "")),
-            str(email.get("from", "")),
+        row = [str(email.get("id", "")), str(email.get("from", ""))]
+        if show_to:
+            row.append(str(email.get("to", "")))
+        row += [
             f"{unread_mark}{email.get('subject', '')}",
             str(email.get("timestamp", ""))[:19],
-        )
+        ]
+        table.add_row(*row)
 
     console.print()
     console.print(table)
-    console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]\n")
+    console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]")
+    if show_to:
+        console.print(
+            "[dim]One mailbox only:[/dim] "
+            "[bold]co email inbox --address <address>[/bold]"
+        )
+    if page_is_full:
+        next_offset = offset + last
+        address_flag = f" --address {address}" if address else ""
+        console.print(
+            "[dim]Next page:[/dim] "
+            f"[bold]co email inbox --last {last} --offset {next_offset}{address_flag}[/bold]"
+        )
+    console.print()
 
 
 def handle_email_sent(last: int = 10, to: str = None):
@@ -119,10 +169,10 @@ def handle_email_sent(last: int = 10, to: str = None):
         else:
             status = response.status_code if response is not None else "unknown"
             console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
-        return
+        raise typer.Exit(1)
     except requests.RequestException:
         console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
-        return
+        raise typer.Exit(1)
 
     if not emails:
         scope = f" to {to}" if to else ""
@@ -168,15 +218,15 @@ def handle_email_sent_read(email_id: str):
         else:
             status = response.status_code if response is not None else "unknown"
             console.print(f"\n[red]✗ Could not load sent mail (HTTP {status}).[/red]\n")
-        return
+        raise typer.Exit(1)
     except requests.RequestException:
         console.print("\n[red]✗ Could not reach the email service.[/red] Try again later.\n")
-        return
+        raise typer.Exit(1)
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
-        console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail.[/yellow]\n")
-        return
+        console.print(f"\n[yellow]No sent email with id {email_id} in your recent sent mail — run co email sent, then co email sent read <#>.[/yellow]\n")
+        raise typer.Exit(1)
 
     header = (
         f"[cyan]To:[/cyan]         {match.get('to', '')}\n"
@@ -193,18 +243,18 @@ def handle_email_sent_read(email_id: str):
     console.print()
 
 
-def handle_email_read(email_id: str):
-    """Show a single email's body and mark it read."""
+def handle_email_read(email_id: str, mark_read: bool = False):
+    """Show a single email's body; mutate its read state only when requested."""
     if not _require_auth():
         return
 
-    from ...useful_tools.get_emails import get_emails, mark_read
-    emails = get_emails(last=100)
+    from ...useful_tools.get_emails import get_emails
+    emails = get_emails(last=1000)
     match = next((e for e in emails if str(e.get("id")) == str(email_id)), None)
 
     if not match:
-        console.print(f"\n[yellow]No email with id {email_id} in your recent inbox.[/yellow]\n")
-        return
+        console.print(f"\n[yellow]No email with id {email_id} in your recent inbox — run co email inbox, then co email read <#>.[/yellow]\n")
+        raise typer.Exit(1)
 
     header = (
         f"[cyan]From:[/cyan]    {match.get('from', '')}\n"
@@ -217,7 +267,187 @@ def handle_email_read(email_id: str):
     console.print(match.get("message", "") or "[dim](empty body)[/dim]")
     console.print()
 
-    mark_read(str(email_id))
+    if mark_read:
+        from ...useful_tools.get_emails import mark_read as mark_email_read
+        mark_email_read(str(email_id))
+        console.print("[dim]Marked read.[/dim]")
+    else:
+        console.print("[dim]Unread state unchanged. Use --mark-read to change it.[/dim]")
+
+
+def handle_email_default(address: str):
+    """Choose which owned address this account sends from by default.
+
+    The default lives on the account, not in a local file, so it is the same
+    from every machine and every agent using this key. A per-project override
+    is still `--from` on the individual send — one place to look when a message
+    goes out as the wrong address, instead of two that can disagree.
+    """
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+
+    r = requests.post(
+        f"{backend_url()}/api/v1/email/addresses/default",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address": address},
+        timeout=10,
+    )
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    console.print(f"\n[green]✓[/green] {address} is now the default sender\n")
+
+
+def handle_email_addresses():
+    """List every email address this account owns, marking the default sender."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+
+    r = requests.get(
+        f"{backend_url()}/api/v1/email/addresses",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    addresses = r.json().get("addresses", [])
+    if not addresses:
+        console.print("\n[cyan]Addresses:[/cyan] none owned yet")
+        console.print("\n[dim]Get one with:[/dim] [bold]co email name <name>[/bold]\n")
+        return
+
+    if not console.is_terminal:
+        # Scripts and agents get tab-separated rows: address, default flag.
+        # Plain print, not console.print: Rich expands \t into spaces.
+        for a in addresses:
+            print(f"{a['address']}\t{'default' if a.get('is_default') else ''}")
+        print('Send as one with: co email send <to> "<subject>" "<body>" --from <address>')
+        return
+
+    table = Table(title="📧 Your addresses", show_header=True, header_style="bold cyan")
+    table.add_column("Address")
+    table.add_column("Default")
+    table.add_column("Since")
+
+    for a in addresses:
+        table.add_row(
+            str(a["address"]),
+            "[green]✓[/green]" if a.get("is_default") else "",
+            str(a.get("created_at") or "")[:10],
+        )
+
+    console.print()
+    console.print(table)
+    console.print('\n[dim]Send as one with:[/dim] [bold]co email send <to> "<subject>" "<body>" --from <address>[/bold]\n')
+
+
+_CAPABILITIES = {"send": "can_send", "read": "can_read"}
+
+
+def _parse_capabilities(can: str) -> dict:
+    """'send,read' -> {'can_send': True, 'can_read': True}. Rejects a typo rather
+    than silently granting nothing, which the server would also refuse but
+    only after a round trip."""
+    flags = {"can_send": False, "can_read": False}
+    for word in can.split(","):
+        word = word.strip().lower()
+        if not word:
+            continue
+        key = _CAPABILITIES.get(word)
+        if not key:
+            console.print(f"\n[red]✗ Unknown capability: '{word}'.[/red] Use send, read, or both.\n")
+            raise typer.Exit(1)
+        flags[key] = True
+    if not flags["can_send"] and not flags["can_read"]:
+        console.print("\n[red]✗ --can needs at least one of: send, read[/red]\n")
+        raise typer.Exit(1)
+    return flags
+
+
+def _print_shares_table(title: str, rows: list, other_key: str):
+    if not rows:
+        console.print(f"[cyan]{title}:[/cyan] none\n")
+        return
+    table = Table(title=title, show_header=True, header_style="bold cyan")
+    table.add_column("Address")
+    table.add_column("With" if other_key == "grantee_public_key" else "Owner")
+    table.add_column("Can")
+    for row in rows:
+        capabilities = ",".join(
+            name for name, key in _CAPABILITIES.items() if row.get(key)
+        )
+        table.add_row(str(row.get("address", "")), str(row.get(other_key, "")), capabilities)
+    console.print(table)
+    console.print()
+
+
+def handle_email_share(
+    address: str = None, *, with_: str = None, can: str = None, list_: bool = False,
+):
+    """Grant, or list, access to one of your addresses (connectonion#1137)."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    if list_:
+        r = requests.get(f"{backend_url()}/api/v1/email/share", headers=headers, timeout=10)
+        if not r.ok:
+            console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+            raise typer.Exit(1)
+        data = r.json()
+        console.print()
+        _print_shares_table("📤 Shared by you", data.get("granted_by_me", []), "grantee_public_key")
+        _print_shares_table("📥 Shared with you", data.get("granted_to_me", []), "owner_public_key")
+        return
+
+    if not address or not with_ or not can:
+        console.print(
+            "\n[red]✗ Usage:[/red] co email share <address> --with <who> --can send,read"
+            "\n         co email share --list\n"
+        )
+        raise typer.Exit(1)
+
+    payload = {"address": address, "grantee": with_, **_parse_capabilities(can)}
+    r = requests.post(f"{backend_url()}/api/v1/email/share", json=payload, headers=headers, timeout=15)
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    data = r.json()
+    granted = ",".join(name for name, key in _CAPABILITIES.items() if data.get(key))
+    console.print(f"\n[green]✓ Shared {address}[/green] with [cyan]{with_}[/cyan] ({granted})")
+    console.print("[dim]Revoke it with:[/dim]")
+    # Plain print, not console.print: Rich wraps at the console width, and a
+    # line-broken command is no longer copy-pasteable.
+    print(f"  co email unshare {address} --with {with_}\n")
+
+
+def handle_email_unshare(address: str, *, with_: str):
+    """Revoke a grant on one of your addresses (connectonion#1137)."""
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+
+    r = requests.delete(
+        f"{backend_url()}/api/v1/email/share/{address}/{with_}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    console.print(f"\n[green]✓ Revoked {with_}'s access to {address}[/green]\n")
 
 
 def handle_email_name(name: str, buy: bool = False):
@@ -225,7 +455,7 @@ def handle_email_name(name: str, buy: bool = False):
     token = load_api_key()
     if not token:
         _print_no_auth()
-        return
+        raise typer.Exit(1)
 
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -233,7 +463,7 @@ def handle_email_name(name: str, buy: bool = False):
         r = requests.get(f"{backend_url()}/api/v1/email/check-name", params={"name": name}, headers=headers, timeout=10)
         if not r.ok:
             console.print(f"\n[red]✗ {_err(r)}[/red]\n")
-            return
+            raise typer.Exit(1)
         data = r.json()
         if data.get("available"):
             console.print(f"\n[green]✓ {data['email']} is available[/green] — [bold]${data['price']:.2f}[/bold] one-time, from credits")
@@ -245,7 +475,7 @@ def handle_email_name(name: str, buy: bool = False):
     r = requests.post(f"{backend_url()}/api/v1/email/purchase-name", json={"name": name}, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
-        return
+        raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
     console.print(f"  Your address: [cyan]{data['email']}[/cyan]\n")
@@ -261,7 +491,7 @@ def handle_email_upgrade(
     token = load_api_key()
     if not token:
         _print_no_auth()
-        return
+        raise typer.Exit(1)
 
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"tier": tier}
@@ -275,7 +505,7 @@ def handle_email_upgrade(
     r = requests.post(f"{backend_url()}/api/v1/email/upgrade", json=payload, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
-        return
+        raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
     console.print(f"  Address: [cyan]{data['email_address']}[/cyan]")

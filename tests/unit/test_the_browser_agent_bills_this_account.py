@@ -6,10 +6,9 @@ it does not have is `_token_for_this_account()` — the check that the token in
 hand belongs to the account whose key this machine holds.
 
 That matters more here than almost anywhere else, because this is the path that
-spends money. `co browser do` / `click` run a natural-language agent against
-`co/gemini-3.6-flash`, billed to whatever the token says. And `daemon.py:642`
-resolves the key **once, when the daemon starts**, so every command for the life
-of that daemon bills whatever was in the environment at that moment.
+spends money. `co browser do` runs a natural-language agent, billed to whatever
+the token says. The model loop now lives in the caller process, so this lookup
+must validate the caller's token on every run before any browser tool is used.
 
 Observed on an operator machine: `co browser click` reporting insufficient
 credit on an account with a healthy balance. A `.env` in the working directory
@@ -61,8 +60,7 @@ class TestATokenForAnotherAccount:
 
         assert resolve_api_key() != token_for(SOMEONE_ELSE), (
             "the browser agent would run on a token billing "
-            f"{SOMEONE_ELSE[:14]}…, and the daemon caches this for its whole "
-            "lifetime — every later command bills that account too"
+            f"{SOMEONE_ELSE[:14]}…"
         )
 
     def test_the_caller_sees_no_key_rather_than_the_wrong_one(

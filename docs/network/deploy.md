@@ -60,7 +60,7 @@ Re-deploying the same project updates the same URL (like Heroku).
 
 ### Requirements
 
-- `.co/host.yaml` (created by `co create` or `co init`)
+- `.co/host.yaml` (created by `co create` or `co init ./`)
 - Authenticated (`co auth`)
 - Entrypoint must call `host()` (exports the ASGI app for the container)
 
@@ -114,7 +114,7 @@ examples:
 
 **Naming rule.** `name` becomes a hostname and a Docker image tag, so it must be
 1–39 characters of lowercase letters, digits, and hyphens, starting with a
-letter or digit. `co create` and `co init` write a conforming name for you — a
+letter or digit. `co create` and `co init ./` write a conforming name for you — a
 project created in a folder called `My_Project` gets `name: my-project`, and the
 adjustment is printed — so this only matters if you edit `host.yaml` by hand.
 `co deploy` checks it before uploading and suggests the corrected form.
@@ -142,7 +142,7 @@ BROWSER_PROXY=http://user:pass@host:port  # Optional browser proxy
 
 ## The agent you deploy (skills + browser)
 
-`co create` and `co init --template co-ai` scaffold the same agent the `co ai`
+`co create` and `co init ./ --template co-ai` scaffold the same agent the `co ai`
 command runs, wrapped in `host()`, plus a `Dockerfile` that ships a real
 Chrome + Xvfb browser runtime so browser tools work out of the box.
 
@@ -166,7 +166,7 @@ reports, and handles actions it cannot take back — is shared, and improves whe
 the SDK does.
 
 ```bash
-co init --template co-ai
+co init ./ --template co-ai
 co deploy
 ```
 
@@ -291,7 +291,7 @@ myagent → prod (co@1.2.3.4)
 ### What a deploy does
 
 ```
-ensure(setup) → sync code → install deps if changed → write unit if changed → restart
+ensure(setup) → sync code → install deps if changed → authenticate live identity → write unit if changed → restart
 ```
 
 `ensure(setup)` is idempotent and a no-op once the server is converged, which is why a
@@ -301,7 +301,8 @@ decide whether to spend seconds or tens of seconds.
 
 ### What survives, and what does not
 
-The rsync carries the project tree and **excludes `.co/`**, with one exception:
+The rsync carries the project tree. Framework-owned state under `.co/` is
+protected, while project-authored configuration and skills still travel:
 
 | | |
 |---|---|
@@ -310,8 +311,57 @@ The rsync carries the project tree and **excludes `.co/`**, with one exception:
 | `.co/skills/` | **synced** — skills are what the agent *is*, not state it accumulated |
 | everything else in the project | synced, with `--delete`, so a deleted file goes away |
 
-A change you make over ssh survives the next deploy, as long as it is not a file the
-sync owns.
+The project's root `.gitignore` is the boundary for its own generated state too.
+An ignored path is neither uploaded nor deleted on the server. For example, an agent
+that writes a cache under `work/` should include:
+
+```gitignore
+work/
+```
+
+The live `/srv/<agent>/work/` then survives every deploy, including files that exist
+only on the server. Non-ignored source still follows the laptop and `--delete`, so a
+source file removed locally is removed remotely. Keep large or irreplaceable state
+outside `/srv/<agent>/` when possible; otherwise list it in `.gitignore` before the
+first deploy.
+
+### The agent runs as itself, not as you
+
+Your project `.env` names *you*. `co init ./` puts `AGENT_ADDRESS`, `AGENT_EMAIL`,
+`IS_EMAIL_ACTIVE` and `OPENONION_API_KEY` there on purpose, so the project runs on
+your account while you are developing it.
+
+On the server those four are wrong, and not inertly so: `AGENT_EMAIL` overrides the
+mailbox the agent derives from its own address, and `OPENONION_API_KEY` decides whose
+credits every model call spends. So the deploy **withholds them** and substitutes the
+agent's own, authenticated from the key the server holds:
+
+```
+myagent → prod (co@1.2.3.4)
+  …
+  writing secrets … (5 keys)
+  account 0xcf1619cb4c… — the agent's own
+```
+
+Everything else in `.env` — your Gemini key, your database URL — travels unchanged.
+Deploy stores those values in the root-owned
+`/etc/connectonion/<agent>.env` (`0600`) and systemd loads that file. It is
+outside `/srv/<agent>/`, so rsync cannot expose or overwrite it. When Host
+startup reports an invite setting such as `CO_INVITE_CODE`, it names this exact
+file; edit it with root privileges, then restart the agent service.
+
+`--own-identity` mints the key on the machine, so this laptop cannot authenticate as
+that agent and no account is written. The deploy says so and the agent has no access
+to `co/*` models until you run `co auth` in `/srv/<agent>`:
+
+```
+  run co auth in /srv/myagent to give it one; co/* models need it
+```
+
+That is deliberate. An agent with no account fails visibly on its first model call;
+an agent quietly spending its author's credits does not fail at all — and the spend
+cannot be separated afterwards, because usage records carry no column naming the
+machine that made the call.
 
 ### https and the hostname
 

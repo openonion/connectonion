@@ -1,35 +1,38 @@
-"""CLI routing tests for `co ai` YOLO mode."""
+"""CLI routing tests for the bounded `co ai` Full access mode."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
+from connectonion.console import Console
+from connectonion.core.usage import DEFAULT_MODEL
 
 runner = CliRunner()
 
 
-def test_ai_forwards_yolo_options():
+def test_ai_forwards_full_access_options():
     with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
         result = runner.invoke(
             app,
-            ["ai", "task", "--yolo", "--yolo-turns", "4"],
+            ["ai", "task", "--full-access", "--full-access-turns", "4"],
         )
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model="co/gemini-3.6-flash",
+        model=DEFAULT_MODEL,
         max_iterations=100,
-        yolo=True,
-        yolo_turns=4,
+        full_access=True,
+        full_access_turns=4,
+        evaluate=False,
         json_output=False,
         resume=None,
-        acp=False,
-        acp_mcp=False,
-        state_dir=None,
+        invite_code=None,
+        invite_code_file=None,
     )
 
 
@@ -44,91 +47,68 @@ def test_ai_forwards_json_and_resume_options():
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model="co/gemini-3.6-flash",
+        model=DEFAULT_MODEL,
         max_iterations=100,
-        yolo=False,
-        yolo_turns=100,
+        full_access=False,
+        full_access_turns=100,
+        evaluate=False,
         json_output=True,
         resume="session-id",
-        acp=False,
-        acp_mcp=False,
-        state_dir=None,
+        invite_code=None,
+        invite_code_file=None,
     )
 
 
-def test_ai_forwards_acp_mode():
-    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
-        result = runner.invoke(app, ["ai", "--acp"])
-
-    assert result.exit_code == 0
-    handler.assert_called_once_with(
-        prompt=None,
-        port=8000,
-        model="co/gemini-3.6-flash",
-        max_iterations=100,
-        yolo=False,
-        yolo_turns=100,
-        json_output=False,
-        resume=None,
-        acp=True,
-        acp_mcp=False,
-        state_dir=None,
-    )
-
-
-def test_ai_forwards_explicit_acp_state_dir(tmp_path):
-    state_dir = tmp_path / "acp-state"
-    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
-        result = runner.invoke(
-            app,
-            ["ai", "--acp", "--state-dir", str(state_dir)],
-        )
-
-    assert result.exit_code == 0
-    assert handler.call_args.kwargs["acp"] is True
-    assert handler.call_args.kwargs["state_dir"] == state_dir
-
-
-def test_ai_forwards_explicit_acp_mcp_authority():
-    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
-        result = runner.invoke(app, ["ai", "--acp", "--acp-mcp"])
-
-    assert result.exit_code == 0
-    assert handler.call_args.kwargs["acp"] is True
-    assert handler.call_args.kwargs["acp_mcp"] is True
-
-
-def test_ai_rejects_acp_with_one_shot_options():
-    result = runner.invoke(app, ["ai", "task", "--acp"])
-
-    assert result.exit_code == 2
-    assert "--acp cannot be combined" in strip_ansi(result.output)
-
-
-def test_ai_rejects_acp_mcp_without_acp():
-    result = runner.invoke(app, ["ai", "--acp-mcp"])
-
-    assert result.exit_code == 2
-    assert "--acp-mcp requires --acp" in strip_ansi(result.output)
-
-
-def test_ai_rejects_state_dir_without_acp(tmp_path):
+def test_ai_rejects_non_positive_full_access_turns():
     result = runner.invoke(
         app,
-        ["ai", "--state-dir", str(tmp_path / "state")],
-    )
-
-    assert result.exit_code == 2
-    assert "--state-dir requires --acp" in strip_ansi(result.output)
-
-
-def test_ai_rejects_non_positive_yolo_turns():
-    result = runner.invoke(
-        app,
-        ["ai", "task", "--yolo", "--yolo-turns", "0"],
+        ["ai", "task", "--full-access", "--full-access-turns", "0"],
     )
 
     assert result.exit_code != 0
     output = strip_ansi(result.output)
-    assert "--yolo-turns" in output
+    assert "--full-access-turns" in output
     assert "1" in output
+
+
+def test_ai_eval_is_explicit_and_forwarded():
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(app, ["ai", "task", "--eval"])
+
+    assert result.exit_code == 0
+    assert handler.call_args.kwargs["evaluate"] is True
+
+
+def test_ai_forwards_invocation_invite_options():
+    with patch("connectonion.cli.commands.ai_commands.handle_ai") as handler:
+        result = runner.invoke(
+            app,
+            ["ai", "--invite-code-file", "/private/invite"],
+        )
+
+    assert result.exit_code == 0
+    assert handler.call_args.kwargs["invite_code"] is None
+    assert handler.call_args.kwargs["invite_code_file"] == Path("/private/invite")
+
+
+def test_ai_max_iterations_exits_nonzero_without_success_summary(monkeypatch):
+    class IncompleteAgent:
+        def input(self, prompt):
+            self.current_session = {
+                "trace": [{"type": "turn_result", "reason": "max_iterations"}]
+            }
+            Console().print_completion(0.1, self.current_session)
+            return "Task incomplete: Maximum iterations (1) reached."
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent",
+        lambda **_: IncompleteAgent(),
+    )
+
+    result = runner.invoke(app, ["ai", "task", "--max-iterations", "1"])
+
+    output = strip_ansi(result.output)
+    assert result.exit_code == 1
+    assert "Task incomplete" in output
+    assert "✓ complete" not in output
+    assert "✗ incomplete" in output

@@ -168,6 +168,47 @@ class TestInputHandler:
 
         assert mock_agent.storage == storage
 
+    def test_client_cannot_select_a_fresh_session_authorization_default(self, tmp_path):
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+        mock_agent = Mock()
+        mock_agent.input.return_value = "Response"
+        mock_agent.current_session = {}
+
+        input_handler(
+            Mock(return_value=mock_agent), storage, "Hello", result_ttl=3600,
+            session={
+                "session_id": "fresh",
+                "_new_session": False,
+                "approval_profile": {"id": "full_access", "version": 1},
+            },
+        )
+
+        passed = mock_agent.input.call_args.kwargs["session"]
+        assert "_new_session" not in passed
+        assert "approval_profile" not in passed
+
+    def test_client_cannot_mark_a_stored_legacy_session_as_new(self, tmp_path):
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+        storage.save(Session(
+            session_id="legacy",
+            status="done",
+            prompt="Earlier turn",
+            created=time.time(),
+            session={"session_id": "legacy", "mode": "default", "messages": []},
+        ))
+        mock_agent = Mock()
+        mock_agent.input.return_value = "Response"
+        mock_agent.current_session = {}
+
+        input_handler(
+            Mock(return_value=mock_agent), storage, "Continue", result_ttl=3600,
+            session={"session_id": "legacy", "_new_session": True},
+        )
+
+        passed = mock_agent.input.call_args.kwargs["session"]
+        assert "_new_session" not in passed
+        assert passed["mode"] == "default"
+
 
 class TestSessionHandler:
     """Test session_handler route."""

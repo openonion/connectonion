@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package connectonion.oip.v2;
+
+message Envelope {
+  uint32 protocol_version = 1;
+  string request_id = 2;
+  uint64 stream_id = 3;
+  uint64 sequence = 4;
+  uint64 offset = 5;
+
+  oneof frame {
+    BrowserCommand command = 10;
+    BrowserResult result = 11;
+    StreamOpen stream_open = 12;
+    StreamData stream_data = 13;
+    StreamFin stream_fin = 14;
+    StreamCommit stream_commit = 15;
+    ProtocolFailure failure = 16;
+  }
+}
+
+message BrowserCommand {
+  string caller = 1;
+  string account = 2;
+  string tab = 3;
+  bool has_tab = 4;
+  repeated string argv = 5;
+  string engine = 6;
+}
+
+message BrowserResult {
+  uint32 exit_code = 1;
+  string text = 2;
+  uint32 artifact_count = 3;
+}
+
+message StreamOpen {
+  string artifact_id = 1;
+  string proposed_name = 2;
+  string media_type = 3;
+  uint64 expected_size = 4;
+  bytes sha256 = 5;
+  bool sensitive = 6;
+}
+
+message StreamData {
+  bytes payload = 1;
+}
+
+message StreamFin {
+  uint64 actual_size = 1;
+  bytes sha256 = 2;
+}
+
+message StreamCommit {
+  uint64 actual_size = 1;
+  bytes sha256 = 2;
+}
+
+message ProtocolFailure {
+  string code = 1;
+  string message = 2;
+}

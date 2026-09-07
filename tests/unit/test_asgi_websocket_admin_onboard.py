@@ -187,7 +187,7 @@ class TestHandleOnboardSubmit:
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "forbidden: blocked"
 
-    async def test_invite_success(self):
+    async def test_invite_success(self, capsys):
         sent_messages = []
 
         async def send(msg):
@@ -211,8 +211,9 @@ class TestHandleOnboardSubmit:
 
         assert sent_messages[0]["type"] == "ONBOARD_SUCCESS"
         assert sent_messages[0]["level"] == "contact"
+        assert "BETA2024" not in capsys.readouterr().out
 
-    async def test_invite_invalid(self):
+    async def test_invite_invalid(self, capsys):
         sent_messages = []
 
         async def send(msg):
@@ -235,6 +236,7 @@ class TestHandleOnboardSubmit:
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "Invalid invite code" in sent_messages[0]["message"]
+        assert "WRONG" not in capsys.readouterr().out
 
     async def test_payment_success(self):
         sent_messages = []

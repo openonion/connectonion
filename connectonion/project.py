@@ -19,7 +19,6 @@ after it.
 from pathlib import Path
 from typing import Optional, Union
 
-
 CO_DIR = ".co"
 
 
@@ -63,22 +62,21 @@ def project_co_dir(start: Optional[Union[str, Path]] = None) -> Path:
     return project_root(start) / CO_DIR
 
 
-def project_identity(co_dir=None):
-    """The identity this project acts as: its own key, else the machine's.
-
-    The same rule `resolve_agent_identity` applies on the host side, in one
-    place so the trust layer, the host and `co doctor` cannot answer it
-    differently. Loading only the project directory came back empty for a
-    project with no key of its own -- which is what both `co init` and
-    `co create` produce -- so the payment door had no address to advertise and
-    payment verification gave up before calling oo-api (#716).
-
-    Deliberately *not* a per-project derived identity. An address is what an
-    OpenOnion account is keyed on: `authenticate()` signs with it and the
-    backend issues the token for that public key, so a new address is a new
-    account with an empty balance. #715 tried that and Aaron stopped it.
-    """
+def selected_identity_dir() -> Path:
+    """Global identity by default; an explicitly selected env can use its adjacent .co."""
     from . import address
+    from .environment import explicit_env_file, global_config_dir
+    selected = explicit_env_file()
+    if selected is not None:
+        local = selected.parent / CO_DIR
+        if address.load(local):
+            return local
+    return global_config_dir()
 
-    co_dir = Path(co_dir) if co_dir else project_co_dir()
-    return address.load(co_dir) or address.load(Path.home() / CO_DIR)
+
+def project_identity(co_dir=None):
+    """Load the selected identity; a supplied directory is an explicit SDK choice."""
+    from . import address
+    from .environment import global_config_dir
+    directory = Path(co_dir) if co_dir is not None else selected_identity_dir()
+    return address.load(directory) or address.load(global_config_dir())

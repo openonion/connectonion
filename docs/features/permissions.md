@@ -2,6 +2,28 @@
 
 ConnectOnion provides multiple permission mechanisms to balance safety and automation. This guide explains how they work together.
 
+## Permission modes
+
+Every new session starts in **Auto**. Auto runs a deterministic policy before
+the human approval hook:
+
+- workspace reads and reversible workspace edits are allowed;
+- focused test, lint, type-check, and build commands are allowed;
+- deletions and credential access are denied;
+- deployment, publishing, external communication, payments, outside-workspace
+  reads, and unknown tools ask a person.
+
+Every policy result contains `allow`, `ask`, or `deny` plus a policy ID,
+version, reason, effect class, and scope. An `ask` uses the existing
+`approval_needed` protocol and the existing `session['permissions']` store; the
+policy does not maintain a second approval cache.
+
+**Read only** asks for every effectful call that is not already explicitly
+permitted. **Full access** skips routine approval for a positive `turns_left`
+budget and expires to Auto. The only accepted IDs are `read-only`, `auto`, and
+`full-access`; unknown stored values are discarded to Auto, never translated.
+Todo List remains progress data and grants no authority. Plan is not a mode.
+
 ## Unified Permission System
 
 **Core Concept**: All permissions use a single, consistent data structure at runtime. Whether from config files, skills, or user approvals, every permission is stored the same way in `session['permissions']`.
@@ -52,9 +74,9 @@ session['permissions'] = {
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. Tool Approval - Resolve unpermitted operations          │
-│    Local/admin operator → explicit approval                │
-│    Hosted non-admin requester → reject without a dialog    │
+│ 5. Auto policy + Tool Approval                             │
+│    auto deterministically allows/asks/denies               │
+│    an ask reuses the authenticated human approval path     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,15 +154,12 @@ agent.input("Update the docs")
 # → Turn ends, permissions cleared ✓
 
 # Session memory - remember decisions
-agent.input("Run tests")
-# → bash("pytest") approval needed (first time, not in config)
-# → User approves for "session"
-# → Future pytest calls auto-approved for this session ✓
+agent.input("Run focused tests")
+# → in auto, bash("pytest tests/unit/test_api.py") is auto-approved ✓
 
-# Unpermitted operations - operator approval or fail closed
+# Unpermitted operations - authenticated human approval or fail closed
 agent.input("Delete all files")
-# → Local/admin operator: approval required
-# → Hosted non-admin requester: rejected without a dialog
+# → deletion denied by the built-in policy
 ```
 
 ## Unified Permission Format

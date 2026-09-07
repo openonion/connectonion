@@ -9,20 +9,21 @@ LLM-Note:
   Errors: lets errors crash naturally - no try-except unless absolutely needed
 """
 
-import sys
 import os
 import shlex
 import shutil
+import sys
 from pathlib import Path
 
-from ...credentials import account_in_token, api_key_account_mismatch
-from ...project import project_co_dir, project_identity
 import requests
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
 from ...backend import backend_url
-from rich import box
+from ...credentials import account_in_token, api_key_account_mismatch
+from ...project import project_co_dir, project_identity
 
 console = Console()
 
@@ -368,8 +369,10 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         config_table.add_row("Disk", f"[yellow]○[/yellow] {disk}")
 
     # Check for keys
-    local_keys = project_co_dir() / "keys" / "agent.key"
-    global_keys = Path.home() / ".co" / "keys" / "agent.key"
+    from ...project import selected_identity_dir
+    from ...environment import global_config_dir
+    local_keys = selected_identity_dir() / "keys" / "agent.key"
+    global_keys = global_config_dir() / "keys" / "agent.key"
 
     if local_keys.exists():
         config_table.add_row("Keys", f"[green]✓[/green] {_shown(local_keys)}")
@@ -392,14 +395,14 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     credential_actions = {
         "OPENONION_API_KEY": "co auth",
-        "OPENAI_API_KEY": "set OPENAI_API_KEY in <project>/.env",
-        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in <project>/.env",
-        "GEMINI_API_KEY": "set GEMINI_API_KEY in <project>/.env",
-        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in <project>/.env",
-        "GROQ_API_KEY": "set GROQ_API_KEY in <project>/.env",
-        "XAI_API_KEY": "set XAI_API_KEY in <project>/.env",
-        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in <project>/.env",
-        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in <project>/.env",
+        "OPENAI_API_KEY": "set OPENAI_API_KEY in global keys.env",
+        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in global keys.env",
+        "GEMINI_API_KEY": "set GEMINI_API_KEY in global keys.env",
+        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in global keys.env",
+        "GROQ_API_KEY": "set GROQ_API_KEY in global keys.env",
+        "XAI_API_KEY": "set XAI_API_KEY in global keys.env",
+        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in global keys.env",
+        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in global keys.env",
         "TELEGRAM_BOT_TOKEN": "set TELEGRAM_BOT_TOKEN in ~/.co/keys.env",
     }
     project_dir = project_co_dir().parent
@@ -470,7 +473,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     browser_table.add_column("Status")
 
     from ...useful_tools.browser_tools.browser import (
-        driver_stealth_status, installed_browser_path,
+        driver_stealth_status,
+        installed_browser_path,
     )
     daemon = runtime["browser-daemon"]
     daemon_mark = "[green]✓[/green]" if daemon.status == "ok" else "[yellow]○[/yellow]"
@@ -513,7 +517,9 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     # a deploy. A user-tier skill works for months and is simply absent everywhere
     # else, and nothing in the agent's output ever says so.
     from ...useful_plugins.skills import (
-        _discover_all_skills, find_skill_problems, TRAVELS_ON_DEPLOY,
+        TRAVELS_ON_DEPLOY,
+        _discover_all_skills,
+        find_skill_problems,
     )
 
     skills = _discover_all_skills()
@@ -567,8 +573,9 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         # independently, and doctor could report on an account that is not the
         # one in question.
         if addr_data:
-            from ... import address
             import time
+
+            from ... import address
 
 
             public_key = addr_data["address"]

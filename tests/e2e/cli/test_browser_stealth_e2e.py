@@ -13,7 +13,9 @@ skip cleanly in a plain CI shell with no DISPLAY, and skip an individual site if
 third party is down (5xx / unreachable) rather than failing on someone else's outage.
 """
 
+import json
 import os
+import platform
 import re
 import statistics
 import time
@@ -54,8 +56,8 @@ def stealth_browser():
 
 
 def _eval(browser, js):
-    """Evaluate JS on the browser worker thread (the page is thread-bound)."""
-    return browser._executor.submit(lambda: browser.page.evaluate(js)).result()
+    """Evaluate JS on the async-core runtime thread (the page is loop-bound)."""
+    return browser._run_on_runtime(lambda core: core.page.evaluate(js))
 
 
 def _text(browser):
@@ -176,6 +178,68 @@ def test_humanized_cjk_typing_uses_trusted_paste_or_ime(stealth_browser):
     assert pasted or composed, f"CJK not via paste or IME: {d.get('it')!r}"
     # Whichever path ran, its entry event must be trusted.
     assert "paste=true" in d.get("tr", "") or "cs=true" in d.get("tr", "")
+
+
+FOCUS_PAGE = """
+<!doctype html><meta charset=utf-8>
+<input id=password type=password value="not-for-output">
+<textarea id=notes>safe notes</textarea>
+<div id=editor role=textbox aria-label="Headline" contenteditable=true>editable headline</div>
+<div id=host></div>
+<iframe id=frame srcdoc='<textarea id="framed">inside frame</textarea>'></iframe>
+<script>
+  const root = document.getElementById('host').attachShadow({mode: 'open'});
+  root.innerHTML = '<input id="shadow-input" aria-label="Shadow editor" value="shadow value">';
+</script>
+"""
+
+
+def test_focus_introspection_and_destructive_shortcut_guard_end_to_end(stealth_browser):
+    """The real browser must redact secrets, cross open shadow roots, and block a
+    page-wide select-all before Playwright emits the keyboard event."""
+    b = stealth_browser
+    b.go_to(
+        "data:text/html," + urllib.parse.quote(FOCUS_PAGE),
+        purpose="focused element safety test",
+        who="e2e",
+    )
+
+    _eval(b, "() => document.getElementById('password').focus()")
+    password = json.loads(b.get_focused_element())
+    assert password["sensitive"] is True
+    assert password["value_preview"] is None
+
+    _eval(b, "() => document.getElementById('notes').focus()")
+    textarea = json.loads(b.get_focused_element())
+    assert textarea["tag"] == "textarea"
+    assert textarea["is_editable"] is True
+    assert textarea["value_preview"] == "safe notes"
+
+    _eval(b, "() => document.getElementById('host').shadowRoot.getElementById('shadow-input').focus()")
+    shadow = json.loads(b.get_focused_element())
+    assert shadow["id"] == "shadow-input"
+    assert shadow["aria_label"] == "Shadow editor"
+    assert shadow["is_editable"] is True
+
+    _eval(b, "() => { const input = document.createElement('input'); document.body.append(input); input.focus(); input.remove(); }")
+    detached = json.loads(b.get_focused_element())
+    assert detached["tag"] == "body"
+    assert detached["is_editable"] is False
+
+    _eval(b, "() => document.getElementById('frame').contentDocument.getElementById('framed').focus()")
+    framed = json.loads(b.get_focused_element())
+    assert framed["tag"] == "iframe"
+    assert framed["is_editable"] is False
+
+    _eval(b, "() => { document.body.tabIndex = -1; document.body.focus(); }")
+    shortcut = "Meta+a" if platform.system() == "Darwin" else "Control+a"
+    refused = b.keyboard_press(shortcut)
+    assert refused.startswith(f"Refused '{shortcut}'")
+    assert _eval(b, "() => String(getSelection())") == ""
+
+    _eval(b, "() => document.getElementById('editor').focus()")
+    assert b.keyboard_press(shortcut) == f"Pressed: '{shortcut}'"
+    assert _eval(b, "() => String(getSelection())") == "editable headline"
 
 
 # ---------------------------------------------------------------------------

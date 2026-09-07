@@ -9,7 +9,7 @@ LLM-Note:
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
 
-from typing import Callable, List, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Union
 
 if TYPE_CHECKING:
     from .agent import Agent

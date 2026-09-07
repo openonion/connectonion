@@ -20,6 +20,8 @@ import sys
 
 from connectonion.useful_tools.browser_tools import chrome_finder
 from connectonion.cli.browser_agent import client as c
+from connectonion.network.oip import browser_daemon_pb2 as wire
+from connectonion.network.oip.framing import decode_frame, encode_frame
 
 
 def test_find_system_chrome_hits_an_existing_candidate(monkeypatch):
@@ -120,17 +122,30 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
         sent = []
 
         class _Conn:
+            def __init__(self):
+                self._reply = b""
+
             def sendall(self, data):
-                sent.append(data.decode())
+                sent.append(data)
+                request_id = decode_frame(data).request_id
+                exit_code, text = replies[len(sent) - 1]
+                self._reply = encode_frame(
+                    wire.Envelope(
+                        protocol_version=2,
+                        request_id=request_id,
+                        result=wire.BrowserResult(
+                            exit_code=exit_code,
+                            text=text,
+                        ),
+                    )
+                )
 
             def shutdown(self, _how):
                 pass
 
-            def recv(self, _size):
-                if getattr(self, "_done", False):
-                    return b""
-                self._done = True
-                return replies[len(sent) - 1].encode()
+            def recv(self, size):
+                reply, self._reply = self._reply[:size], self._reply[size:]
+                return reply
 
             def close(self):
                 pass
@@ -139,14 +154,16 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
         monkeypatch.setattr(c, "default_sock_path", lambda: "/tmp/never-used.sock")
         return sent
 
-    NO_BROWSER = ("ERR\nBrowserType.launch_persistent_context: Executable doesn't exist\n"
-                  "Chrome failed to start. No browser is installed for this user.\n"
-                  "Install it with:  patchright install chromium")
+    NO_BROWSER = (
+        "BrowserType.launch_persistent_context: Executable doesn't exist\n"
+        "Chrome failed to start. No browser is installed for this user.\n"
+        "Install it with:  patchright install chromium"
+    )
 
     def test_it_installs_when_the_daemon_says_no_browser(self, monkeypatch):
         run = _RecordingRun(returncode=0)
         _patch_env(monkeypatch, None, run)
-        self._warm_daemon(monkeypatch, [self.NO_BROWSER, "OK\ndone"])
+        self._warm_daemon(monkeypatch, [(1, self.NO_BROWSER), (0, "done")])
 
         c.send("go_to https://example.com")
 
@@ -155,7 +172,7 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
     def test_it_retries_the_command_after_installing(self, monkeypatch):
         run = _RecordingRun(returncode=0)
         _patch_env(monkeypatch, None, run)
-        sent = self._warm_daemon(monkeypatch, [self.NO_BROWSER, "OK\ndone"])
+        sent = self._warm_daemon(monkeypatch, [(1, self.NO_BROWSER), (0, "done")])
 
         code = c.send("go_to https://example.com")
 
@@ -166,7 +183,9 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
         """A box where the install cannot fix it must fail, not retry forever."""
         run = _RecordingRun(returncode=0)
         _patch_env(monkeypatch, None, run)
-        sent = self._warm_daemon(monkeypatch, [self.NO_BROWSER, self.NO_BROWSER])
+        sent = self._warm_daemon(
+            monkeypatch, [(1, self.NO_BROWSER), (1, self.NO_BROWSER)]
+        )
 
         code = c.send("go_to https://example.com")
 
@@ -178,7 +197,7 @@ class TestAWarmDaemonWithNoBrowserStillProvisions:
         reported as-is — reinstalling a browser is not a general remedy."""
         run = _RecordingRun(returncode=0)
         _patch_env(monkeypatch, None, run)
-        sent = self._warm_daemon(monkeypatch, ["ERR 3\nunknown tab: research"])
+        sent = self._warm_daemon(monkeypatch, [(3, "unknown tab: research")])
 
         code = c.send("go_to https://example.com")
 

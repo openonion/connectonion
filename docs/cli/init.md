@@ -1,426 +1,99 @@
 # ConnectOnion Init Command
 
-The `co init` command initializes ConnectOnion in an existing directory, perfect for adding agent capabilities to existing projects.
+`co init` sets up global credentials. Project initialization requires an
+explicit directory, such as `co init ./`.
 
-## Overview
-
-```bash
-co init [options]
-```
-
-Initializes ConnectOnion in the current directory with:
-- AI features enabled by default
-- Global address/email from `~/.co/`
-- API keys appended to existing `.env` (or created if missing)
-- Template files added to your project
-- Docs always updated to latest version
-
-## Command Comparison
-
-| Feature | `co create` | `co init` |
-|---------|------------|-----------|
-| Creates new directory | ✅ Yes | ❌ No (uses current) |
-| Can work in non-empty dir | ❌ No | ✅ Yes |
-| Uses global identity | ✅ Yes | ✅ Yes |
-| Copies global API keys | ✅ Yes | ✅ Yes (appends) |
-| Supports templates | ✅ Yes | ✅ Yes |
-
-## Usage Scenarios
-
-### Scenario 1: Adding to Existing Project with .env
-
-You have a project with existing `.env` file:
+## Quick start
 
 ```bash
-$ cd my-existing-project
-$ cat .env
-DATABASE_URL=postgres://localhost/mydb
-SECRET_KEY=mysecret
-
-$ co init
-
-🧅 ConnectOnion Project Initializer
-========================================
-
-✓ Using global identity
-✓ Found existing .env file
-✓ Appending API keys from ~/.co/keys.env
-
-$ cat .env
-DATABASE_URL=postgres://localhost/mydb
-SECRET_KEY=mysecret
-
-# ConnectOnion API Keys
-OPENAI_API_KEY=sk-proj-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx
+co init --yes                     # ~/.co/keys.env and the global identity
+co init ./ --yes                  # configuration in this existing project
+co init /path/to/project --yes    # configuration in another existing project
+co init ./ --template co-ai       # also add the hosted agent template
 ```
 
-Your existing environment variables are preserved, API keys are appended!
+The path must name an existing directory. Use `co create my-agent` to create a
+new directory with the default `co-ai` template.
 
-### Scenario 2: Quick Init in Empty Directory
+## Global setup: no path
+
+Plain `co init` creates or reuses the signing identity in `~/.co/keys/` and
+attempts managed-key authentication, saving credentials to `~/.co/keys.env`.
+It does **not** create or modify the current directory's `.env`, `.co/`,
+`agent.py`, or other project files—even when run inside an existing project.
+
+Existing global provider credentials are preserved. An explicit `--key`
+saves that provider key globally; keys merely present in the process environment
+or loaded from a project are not copied into global storage. Avoid putting
+secrets into shell history; editing the private keys file is also supported.
+
+If authentication cannot complete, local identity setup remains available and
+the command tells you to run `co auth` later. Successful local initialization
+does not mean managed models or email are authenticated.
+
+## Project setup: explicit path
+
+`co init ./` uses the global identity and initializes the selected directory.
+It does not mint a separate project keypair.
+
+| File | Behavior |
+|---|---|
+| `.env` | Create or append missing credentials; preserve existing provider and application values |
+| Identity entries in `.env` | Refresh from global identity, including after `co reset` |
+| `CO_INVITE_CODE` | Create once per project; preserve on subsequent runs |
+| `.co/host.yaml` | Create project configuration if missing |
+| `.co/docs/` | Refresh bundled framework documentation |
+| `.co/admins.txt` | Record the creating identity as an admin |
+| Template files such as `agent.py` | Only with `--template`; preserve existing files unless `--force` |
+| `.gitignore` | Add secret/runtime exclusions when initializing inside a Git repository |
+
+Personal Google/Microsoft OAuth credentials and machine-specific configuration
+paths are not copied from global keys into a project. Keep both `.env` and
+`keys.env` out of source control.
 
 ```bash
-$ mkdir my-new-agent
-$ cd my-new-agent
-$ co init --yes
+# Add configuration without generating agent.py
+co init ./ --yes
 
-✓ Using global identity
-✓ Created new .env with API keys from ~/.co/keys.env
+# Add the hosted template
+co init ./ --template co-ai --yes
 
-✅ ConnectOnion project initialized!
+# Generate a custom agent
+co init ./ --template custom --description "Monitor a site and alert me"
+
+# Refresh configuration and bundled docs without selecting a code template
+co init ./ --yes
 ```
 
-### Scenario 3: Updating Documentation
+Non-empty and special directories prompt for confirmation unless `--yes` is
+given. `--yes` does not authorize overwriting existing template code;
+`--force` does. Treat refreshed `.co/docs/` as generated framework reference,
+not a place for personal notes.
 
-Running `co init` again updates docs to latest version:
+## Options
+
+| Option | Meaning |
+|---|---|
+| `PATH` | Optional existing project directory; omission selects global setup |
+| `--key` | Explicit provider key: global storage without PATH, project configuration with PATH |
+| `--yes`, `-y` | Skip project confirmation prompts |
+| `--template`, `-t` | Project only: `co-ai` or `custom`; omitted means configuration only |
+| `--description` | Project only: description for a custom template |
+| `--force` | Project only: allow replacing existing template files |
+
+Project-only options without PATH fail before writing files and show an example
+using `co init ./`.
+
+## Migrating scripts
+
+Commands that formerly relied on implicit project initialization must add a path:
 
 ```bash
-$ co init
-
-✓ Project already initialized
-✓ Updating .co/docs/ to latest version
-✓ .env already has API keys
-
-✅ Documentation updated!
+# Before: co init --yes --template co-ai
+co init ./ --yes --template co-ai
 ```
 
-## What Gets Added/Updated
-
-When you run `co init`:
-
-```
-your-project/
-├── agent.py             # Added if missing (skipped if exists)
-├── .env                 # APPENDED with API keys (created if missing)
-├── .co/
-│   ├── host.yaml       # Project config (uses global identity)
-│   └── docs/           # ALWAYS UPDATED to latest version
-│       ├── co-vibe-coding-all-in-one.md  # Overwritten
-│       └── connectonion.md                # Overwritten
-└── [your existing files remain untouched]
-```
-
-## File Handling Strategy
-
-| File/Directory | If Exists | Behavior |
-|----------------|-----------|----------|
-| `agent.py` | Skip | Won't overwrite user code |
-| `.env` | **Append** | Adds API keys if missing |
-| `.co/docs/` | **Overwrite** | Always latest documentation |
-| `.co/host.yaml` | Update | Preserves custom settings |
-| `.gitignore` | Append | Adds ConnectOnion entries |
-
-## .env Handling Details
-
-### Case 1: No .env File
-Creates new `.env` with API keys from `~/.co/keys.env`:
-```bash
-# Created .env
-OPENAI_API_KEY=sk-proj-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx
-```
-
-### Case 2: .env Exists, No API Keys
-Appends API keys to existing file:
-```bash
-# Original .env
-DATABASE_URL=postgres://localhost
-REDIS_URL=redis://localhost
-
-# After co init
-DATABASE_URL=postgres://localhost
-REDIS_URL=redis://localhost
-
-# ConnectOnion API Keys
-OPENAI_API_KEY=sk-proj-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx
-```
-
-### Case 3: .env Has Some API Keys
-Only appends missing keys:
-```bash
-# Original .env
-OPENAI_API_KEY=sk-proj-old
-
-# After co init (adds missing keys)
-OPENAI_API_KEY=sk-proj-old
-
-# ConnectOnion API Keys
-ANTHROPIC_API_KEY=sk-ant-xxx  # Added
-GEMINI_API_KEY=AIza...         # Added
-```
-
-### Case 4: .env Has All Keys
-No changes made:
-```bash
-✓ .env already contains all API keys
-```
-
-## Global Configuration
-
-Like `co create`, `co init` uses the global configuration:
-
-### First Time Setup
-If `~/.co/` doesn't exist, it's created automatically:
-
-```bash
-$ co init  # First time ever
-
-🚀 Welcome to ConnectOnion!
-✨ Setting up global configuration...
-  ✓ Generated master keypair
-  ✓ Your address: 0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a
-  ✓ Your email: 0x7a9f3b2c@mail.openonion.ai
-  ✓ Created ~/.co/keys.env
-
-[continues with project initialization...]
-```
-
-### Using Existing Global Config
-
-```bash
-$ co init  # After global config exists
-
-✓ Using global identity
-✓ Using global email: 0x7a9f3b2c@mail.openonion.ai
-✓ Found OpenAI key in ~/.co/keys.env
-✓ Appending to existing .env
-
-[continues with project initialization...]
-```
-
-## Command Options
-
-```bash
-co init [options]
-
-Options:
-  --template, -t          Template to use (co-ai/custom)
-  --yes, -y               Accept all defaults, skip prompts
-  --key                   API key to use (saves to global config)
-  --description           Description for the custom template
-  --force                 Overwrite existing files / init in special directories
-```
-
-## Templates
-
-Same templates as `co create`:
-
-1. **co-ai** - the same agent as `co ai`, hosted
-2. **custom** - an LLM writes `agent.py` from your `--description`
-4. **custom** - AI-generated based on description
-
-## Special Directory Warnings
-
-`co init` warns when initializing in special directories:
-
-- Home directory (`~`)
-- Root directory (`/`)
-- System directories (`/usr`, `/etc`)
-- Git repositories (warns but allows)
-
-Use `--force` to bypass warnings if you know what you're doing.
-
-## Examples
-
-### Basic Init
-```bash
-# In current directory
-$ co init
-
-# Accept all defaults
-$ co init -y
-
-# With specific template
-$ co init --template co-ai
-```
-
-### Adding to Django Project
-```bash
-$ cd my-django-app
-$ co init
-# Your existing .env is preserved
-# DATABASE_URL, SECRET_KEY remain
-# API keys are appended
-```
-
-### Refresh Framework Docs
-```bash
-# Re-run init to refresh the bundled vibe-coding docs; --force overwrites
-$ co init --force
-```
-
-### Custom Template
-```bash
-$ co init --template custom --description "Discord bot integration"
-```
-
-## Smart .env Merging
-
-The `.env` append logic is intelligent:
-
-```python
-# Pseudo-code of .env handling
-existing_env = read(".env")
-global_keys = read("~/.co/keys.env")
-
-for key, value in global_keys:
-    if key not in existing_env:
-        append_to_env(f"\n# ConnectOnion API Keys\n{key}={value}")
-```
-
-This ensures:
-- No duplicate keys
-- Existing values preserved
-- Clear section for ConnectOnion keys
-- Original file structure maintained
-
-## Documentation Updates
-
-The `.co/docs/` folder is **always overwritten** to ensure:
-- Latest documentation version
-- New features documented
-- Bug fixes in docs
-- Consistent formatting
-
-This is safe because users shouldn't edit framework docs directly.
-
-## Common Workflows
-
-### 1. Existing Django/Flask Project
-```bash
-cd my-web-app
-co init
-# .env preserved with database URLs
-# API keys appended
-# Latest docs installed
-```
-
-### 2. Updating Existing ConnectOnion Project
-```bash
-cd old-agent-project
-co init
-# Docs updated to latest
-# Missing API keys added
-# Config preserved
-```
-
-### 3. Converting Script to Agent
-```bash
-cd my-scripts
-co init
-# Creates .env with API keys
-# Adds agent.py template
-# Your scripts untouched
-```
-
-## Troubleshooting
-
-### .env Already Has Different API Key
-The existing key is preserved:
-```bash
-# Original .env
-OPENAI_API_KEY=sk-old-key
-
-# After co init - NOT changed
-OPENAI_API_KEY=sk-old-key
-```
-
-### Docs Seem Old
-Re-run init to refresh the bundled docs (`--force` overwrites existing files):
-```bash
-$ co init --force
-✓ Documentation refreshed to latest version
-```
-
-### Want Fresh .env
-Manually remove and re-init:
-```bash
-$ rm .env
-$ co init
-✓ Created new .env with latest API keys
-```
-
-## Best Practices
-
-1. **Review .env after init** - Check that API keys were appended correctly
-
-2. **Keep docs updated** - Re-run `co init --force` periodically to refresh bundled docs
-
-3. **Don't edit framework docs** - They'll be overwritten on update
-
-4. **Commit .co/host.yaml** - Track project configuration
-
-5. **Never commit .env** - Keep API keys secret
-
-## File Safety Summary
-
-| Action | Safe? | Why |
-|--------|-------|-----|
-| Append to .env | ✅ Yes | Only adds missing keys |
-| Overwrite docs | ✅ Yes | Framework docs, not user content |
-| Skip agent.py | ✅ Yes | Preserves user code |
-| Update config | ✅ Yes | Merges, doesn't replace |
-
-## Summary
-
-`co init` intelligently integrates ConnectOnion into existing projects:
-
-- **Preserves** - Your existing `.env` values
-- **Appends** - Only missing API keys
-- **Updates** - Documentation to latest
-- **Respects** - Your existing code
-- **Uses** - Global identity and keys
-
-Perfect for adding AI agents to any Python project without disrupting existing configuration!
-# ConnectOnion Init (co init)
-
-Add ConnectOnion to an existing folder safely.
-
-## Quick Start
-
-```bash
-cd existing-project
-co init
-```
-
-## What It Does
-
-- Uses your global identity from `~/.co` (address + email)
-- Appends missing API keys to `.env` (creates it if missing)
-- Adds `.co/host.yaml` and refreshes `.co/docs/`
-- Never overwrites your code (skips existing files)
-
-## Safe In Existing Folders
-
-- Warns in special/system directories (e.g., `~`, `/`)
-- Shows what will be created or updated
-- `--force` lets you continue when you know what you’re doing
-
-## Templates
-
-- co-ai: the same agent as `co ai`, hosted
-- custom: describe it, we generate it with AI
-
-```bash
-co init -t co-ai
-co init -t custom --description "Monitor a site and alert me"
-```
-
-## Options (the useful bits)
-
-- `--template, -t`: `co-ai` | `custom`
-- `--key`: paste an API key (auto-detects provider and appends to `.env`)
-- `--force`: continue in non-empty/special directories
-- `--yes, -y`: accept defaults and skip prompts
-
-Notes:
-- Keeps `.env` intact; only appends missing keys
-- Provider mapping: OpenAI → `OPENAI_API_KEY`, Anthropic → `ANTHROPIC_API_KEY`, Google → `GEMINI_API_KEY`, Groq → `GROQ_API_KEY`
-- Attempts managed-key authentication on success (or run `co auth` later)
-
-## Next Steps
-
-```bash
-python agent.py
-```
+Global setup scripts can keep `co init --yes`. `co create` is unchanged.
+At runtime, explicit process variables take precedence over the selected
+project's `.env`, which takes precedence over global `~/.co/keys.env`.
+See [CLI reference](README.md) for authentication and credential diagnostics.

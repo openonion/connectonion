@@ -12,7 +12,6 @@ initialized.
 from pathlib import Path
 from typing import Iterator, Optional
 
-
 DEFAULT_LIBRARY_SKILLS = (
     "install-connectonion",
     "co-browser",

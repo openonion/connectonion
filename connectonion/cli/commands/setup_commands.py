@@ -22,7 +22,9 @@ from rich.console import Console
 
 console = Console()
 
-CO_HOME = Path.home() / ".co"
+from ...environment import global_config_dir
+
+CO_HOME = global_config_dir()
 KEYS_FILE = CO_HOME / "keys" / "agent.key"
 AGENT_JSON = CO_HOME / "agent.json"
 KEYS_ENV = CO_HOME / "keys.env"
@@ -81,18 +83,18 @@ def handle_setup(
         _write_agent_json(alias, body, addr)
         console.print(f"[green]✓ Wrote[/green] {AGENT_JSON} (alias={alias})")
         if body.endswith("Edit ~/.co/agent.json to customize."):
-            console.print(f"  [yellow]Bio is a placeholder — edit before publishing.[/yellow]")
+            console.print("  [yellow]Bio is a placeholder — edit before publishing.[/yellow]")
 
     # Phase 3: skill library
     if not skip_skills:
         console.print("\n[cyan]Refreshing ~/.co/skills/ library...[/cyan]")
-        from .skills_commands import handle_skills_discover, handle_skills_copy, handle_skills_manifest
+        from .skills_commands import handle_skills_copy, handle_skills_discover, handle_skills_manifest
         handle_skills_discover(save=True, json_out=False)
         handle_skills_copy(names=[], all_=True, force=False)
         handle_skills_manifest()
 
     # Auth check
-    auth_ok = KEYS_ENV.exists() and "OPENONION_API_KEY=" in KEYS_ENV.read_text(encoding="utf-8")
+    auth_ok = bool(os.environ.get("OPENONION_API_KEY"))
     console.print()
     if auth_ok:
         console.print("[green]✓ Auth:[/green] OPENONION_API_KEY present")

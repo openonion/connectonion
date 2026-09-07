@@ -31,7 +31,8 @@ consecutive identical calls mean "stuck".
 """
 
 import json
-from ..core.events import after_user_input, after_iteration
+
+from ..core.events import after_iteration, after_user_input
 
 
 def _last_tool_signature(messages):

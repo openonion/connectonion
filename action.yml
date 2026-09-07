@@ -8,7 +8,7 @@ inputs:
   model:
     description: Model passed to co ai
     required: false
-    default: co/gemini-3.6-flash
+    default: co/gemini-3.7-flash
   python-version:
     description: Python version used to run ConnectOnion
     required: false

@@ -18,7 +18,7 @@ class _Tools:
 
 
 class _Llm:
-    model = "co/gemini-3.6-flash"
+    model = "co/gemini-3.7-flash"
 
 
 class _Agent:

@@ -49,7 +49,9 @@ closes it.
 
 import pytest
 
-from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
+from connectonion.useful_tools.browser_tools.browser import (
+    LegacyBrowserAutomation as BrowserAutomation,
+)
 
 
 try:

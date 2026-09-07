@@ -7,7 +7,7 @@ File format:
     ---
     name: explore
     description: Fast codebase exploration
-    model: co/gemini-3.6-flash
+    model: co/gemini-3.7-flash
     max_iterations: 15
     tools:
       - glob
@@ -146,7 +146,7 @@ def parse_subagent_file(file_path: Path) -> Optional[SubAgentDefinition]:
     return SubAgentDefinition(
         name=config.get('name', file_path.stem),
         description=config.get('description', ''),
-        model=config.get('model', 'co/gemini-3.6-flash'),
+        model=config.get('model', 'co/gemini-3.7-flash'),
         max_iterations=config.get('max_iterations', 15),
         tools=config.get('tools', []),
         system_prompt=system_prompt,

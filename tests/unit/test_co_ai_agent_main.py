@@ -9,6 +9,8 @@ Components under test:
 - Module: co_ai_agent_main
 """
 
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,13 +18,19 @@ import pytest
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
-from connectonion.cli.co_ai.one_shot_sessions import (
-    SessionSnapshotError,
-    load_snapshot,
-    save_snapshot,
+from connectonion import ClaudeCodePlugin, CodexPlugin
+from connectonion.cli.co_ai.plugins.native_coding_agent_routing import (
+    reject_raw_codex_launch,
+    route_explicit_codex_request,
 )
-from connectonion.network.host.acp_gateway import ACPPrincipal
+from connectonion.useful_plugins import eval as eval_plugin
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
+
+
+@pytest.fixture(autouse=True)
+def avoid_real_global_owner_setup(monkeypatch):
+    """Server tests exercise hosting without writing to the developer's home."""
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", lambda _co_dir: False)
 
 
 def test_managed_delegation_permissions_are_explicit(tmp_path):
@@ -32,7 +40,7 @@ def test_managed_delegation_permissions_are_explicit(tmp_path):
     agent_mod.grant_managed_delegation_permissions(agent)
 
     assert set(agent.current_session['permissions']) == {
-        'codex', 'claude_code', 'acp_agent'
+        'codex', 'claude_code'
     }
     assert all(
         permission['allowed'] is True
@@ -40,7 +48,7 @@ def test_managed_delegation_permissions_are_explicit(tmp_path):
         for permission in agent.current_session['permissions'].values()
     )
     shared_exec_permissions = load_permission_patterns(tmp_path / '.co')
-    assert not {'codex', 'claude_code', 'acp_agent'} & set(
+    assert not {'codex', 'claude_code'} & set(
         shared_exec_permissions
     )
 
@@ -64,6 +72,12 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
     assert "ask_user" in agent.tools._tools
     assert "codex" in agent.tools._tools
+    codex_plugins = [
+        plugin for plugin in agent.installed_plugins
+        if isinstance(plugin, CodexPlugin)
+    ]
+    assert len(codex_plugins) == 1
+    assert agent.tools.get("codex")._bound_instance is codex_plugins[0]
     codex_schema = agent.tools.get("codex").to_function_schema()["parameters"]
     assert set(codex_schema["properties"]) == {
         "prompt",
@@ -71,9 +85,16 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "cwd",
         "model",
         "timeout",
+        "summary",
     }
-    assert codex_schema["required"] == ["prompt", "cwd"]
+    assert codex_schema.get("required", []) == ["summary"]
     assert "claude_code" in agent.tools._tools
+    claude_plugins = [
+        plugin for plugin in agent.installed_plugins
+        if isinstance(plugin, ClaudeCodePlugin)
+    ]
+    assert len(claude_plugins) == 1
+    assert agent.tools.get("claude_code")._bound_instance is claude_plugins[0]
     claude_schema = agent.tools.get("claude_code").to_function_schema()["parameters"]
     assert set(claude_schema["properties"]) == {
         "prompt",
@@ -81,14 +102,10 @@ def test_create_coding_agent(monkeypatch, tmp_path):
         "cwd",
         "model",
         "timeout",
+        "summary",
     }
-    assert claude_schema["required"] == ["prompt", "cwd"]
-    assert "acp_agent" in agent.tools._tools
-    acp_schema = agent.tools.get("acp_agent").to_function_schema()["parameters"]
-    assert set(acp_schema["properties"]) == {
-        "prompt", "engine", "session_id", "cwd", "timeout"
-    }
-    assert acp_schema["required"] == ["prompt", "engine", "cwd"]
+    assert claude_schema["required"] == ["prompt", "summary"]
+    assert "acp_agent" not in agent.tools._tools
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
     # The browser is driven through the `co browser` CLI, so no in-process
@@ -96,6 +113,11 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # 40 tool schemas stay out of the request.
     assert agent.tools.get_instance("browserautomation") is None
     assert "bash" in agent.tools._tools
+    assert route_explicit_codex_request in agent.events["after_user_input"]
+    assert reject_raw_codex_launch in agent.events["before_each_tool"]
+    assert agent.events["before_each_tool"].index(reject_raw_codex_launch) < agent.events[
+        "before_each_tool"
+    ].index(agent_mod.tool_approval[-1])
     assert "todolist" in agent.tools._instances
     assert "enter_plan_mode" not in agent.tools._tools
     assert "exit_plan_and_implement" not in agent.tools._tools
@@ -106,6 +128,84 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # tabs itself (`-t <tab>`), so the workaround is gone.
     from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
     assert _bind_browser_session not in agent.events["before_each_tool"]
+    for handler in eval_plugin:
+        assert handler not in agent.events[handler._event_type]
+
+    evaluated = agent_mod.create_coding_agent(
+        model="fake",
+        max_iterations=5,
+        extra_plugins=(eval_plugin,),
+    )
+    for handler in eval_plugin:
+        assert handler in evaluated.events[handler._event_type]
+
+
+def test_co_ai_codex_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    import connectonion.plugins.coding_agents as coding_agents
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+    monkeypatch.setattr(
+        coding_agents,
+        "_run_codex",
+        lambda **kwargs: '{"provider":"codex","session_id":"s1","exit_code":0}',
+    )
+    monkeypatch.chdir(tmp_path)
+    agent = agent_mod.create_agent(model="fake", max_iterations=1)
+    agent.current_session = {
+        "trace": [],
+        "mode": "read-only",
+        "_active_tool_call_id": "call-1",
+    }
+
+    agent.tools.codex("inspect", agent=agent)
+
+    lifecycle = [
+        entry for entry in agent.current_session["trace"]
+        if entry["type"] == "provider_invocation"
+    ]
+    assert [entry["status"] for entry in lifecycle] == ["running", "completed"]
+    assert all(entry["parentToolCallId"] == "call-1" for entry in lifecycle)
+
+
+def test_co_ai_claude_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    import connectonion.plugins.coding_agents as coding_agents
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+    monkeypatch.setattr(
+        coding_agents,
+        "_run_claude_code",
+        lambda **kwargs: json.dumps({
+            "provider": "claude_code",
+            "session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "exit_code": 0,
+        }),
+    )
+    monkeypatch.chdir(tmp_path)
+    agent = agent_mod.create_agent(model="fake", max_iterations=1)
+    agent.current_session = {
+        "trace": [],
+        "mode": "read-only",
+        "_active_tool_call_id": "call-2",
+    }
+
+    agent.tools.claude_code("inspect", cwd=".", agent=agent)
+
+    lifecycle = [
+        entry for entry in agent.current_session["trace"]
+        if entry["type"] == "provider_invocation"
+    ]
+    assert [entry["status"] for entry in lifecycle] == ["running", "completed"]
+    assert all(entry["parentToolCallId"] == "call-2" for entry in lifecycle)
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):
@@ -122,183 +222,94 @@ def test_start_server_hosts_provided_agent(monkeypatch):
         })
 
     monkeypatch.setattr(main_mod, "host", fake_host)
-
     main_mod.start_server(agent, port=1234)
 
     assert called["port"] == 1234
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
     assert called["agent"] is agent
-    assert callable(called["acp_agent_factory"])
+    assert "acp_agent_factory" not in called
 
 
-def test_network_acp_sessions_are_principal_scoped_and_full_access_is_admin_only(
+def test_start_server_offers_full_access_without_activating_it(monkeypatch):
+    agent = SimpleNamespace(name="agent")
+    hosted = {}
+
+    def fake_host(value, **kwargs):
+        hosted["agent"] = value
+        hosted.update(kwargs)
+
+    monkeypatch.setattr(main_mod, "host", fake_host)
+
+    main_mod.start_server(
+        agent,
+        full_access=True,
+        full_access_turns=7,
+    )
+
+    assert hosted["agent"] is agent
+    assert agent._full_access_turns == 7
+    assert agent._full_access_needs_activation is False
+
+
+def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
+    agent = SimpleNamespace(name="agent")
+    printed = []
+    prepared = []
+    secret = "NEVER-PRINT-THIS2"
+
+    def prepare(co_dir):
+        prepared.append(co_dir)
+        return True
+
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", prepare)
+    monkeypatch.setattr(main_mod, "host", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "connectonion.cli.commands.project_cmd_lib.console.print",
+        lambda message: printed.append(message),
+    )
+    monkeypatch.setenv("CO_INVITE_CODE", secret)
+
+    main_mod.start_server(agent)
+
+    assert prepared == [Path.home() / ".co"]
+    output = " ".join(printed)
+    assert "co keys --reveal" in output
+    assert secret not in output
+
+
+def test_start_server_uses_runtime_invite_without_persisting_or_exporting(
     monkeypatch,
-    tmp_path,
 ):
     agent = SimpleNamespace(name="agent")
-    called = {}
-    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
-    global_co_dir = tmp_path / ".co"
-    global_co_dir.mkdir()
-    (global_co_dir / "host.yaml").write_text(
-        "max_file_size: 2\n"
-        "max_files_per_request: 4\n"
-        "max_acp_upload_storage: 20\n"
-        "max_acp_upload_files: 40\n"
-        "max_acp_sessions: 12\n"
-        "max_acp_session_storage: 24\n"
-        "max_acp_snapshot_size: 6\n",
-        encoding="utf-8",
+    hosted = {}
+    prepared = []
+    configured = []
+    secret = "RUN-ONLY-NEVER-PRINT"
+
+    monkeypatch.delenv("CO_INVITE_CODE", raising=False)
+    monkeypatch.setattr(
+        main_mod,
+        "_prepare_owner_onboarding",
+        lambda co_dir: prepared.append(co_dir),
+    )
+    monkeypatch.setattr(
+        "connectonion.cli.commands.project_cmd_lib.ensure_global_config",
+        lambda: configured.append(True),
+    )
+    monkeypatch.setattr(
+        main_mod,
+        "host",
+        lambda value, **kwargs: hosted.update({"agent": value, **kwargs}),
     )
 
-    def fake_host(_agent, **kwargs):
-        called.update(kwargs)
+    main_mod.start_server(agent, invite_code=secret)
 
-    monkeypatch.setattr(main_mod, "host", fake_host)
-    main_mod.start_server(agent, yolo=True, yolo_turns=7)
-    factory = called["acp_agent_factory"]
-
-    def principal(address, level, *, method="browser_ticket"):
-        return ACPPrincipal(
-            address=address,
-            level=level,
-            recipient="0xrecipient",
-            origin="https://chat.openonion.ai",
-            auth_method=method,
-            authenticated_at=1.0,
-        )
-
-    contact = factory(principal("0xcontact", "contact"))
-    same_contact = factory(principal("0xcontact", "contact"))
-    other_contact = factory(principal("0xother", "contact"))
-    signed_contact = factory(
-        principal("0xcontact", "contact", method="signed_headers")
-    )
-    admin = factory(principal("0xadmin", "admin"))
-
-    assert contact._session_co_dir == same_contact._session_co_dir
-    assert contact._session_co_dir != other_contact._session_co_dir
-    assert contact._session_co_dir != signed_contact._session_co_dir
-    assert contact._session_co_dir.is_relative_to(
-        tmp_path / ".co" / "acp-principals"
-    )
-    assert contact._yolo is False
-    assert contact._max_attachment_bytes == 2 * 1024 * 1024
-    assert contact._max_attachments == 4
-    assert contact._max_upload_storage_bytes == 20 * 1024 * 1024
-    assert contact._max_upload_files == 40
-    assert contact._snapshot_storage_limits.max_sessions == 12
-    assert contact._snapshot_storage_limits.max_total_bytes == 24 * 1024 * 1024
-    assert contact._snapshot_storage_limits.max_snapshot_bytes == 6 * 1024 * 1024
-    assert contact._snapshot_storage_limits is not same_contact._snapshot_storage_limits
-    assert admin._yolo is True
-    assert admin._yolo_turns == 7
-
-    session_id = "40c0397c-972b-4133-899b-5ab4cc5c4883"
-    snapshot = {
-        "session_id": session_id,
-        "messages": [],
-        "trace": [],
-        "turn": 0,
-        "mode": ":read-only",
-        "plan": [],
-    }
-    save_snapshot(contact._session_co_dir, snapshot, {}, cwd=tmp_path)
-    loaded, _ = load_snapshot(
-        same_contact._session_co_dir,
-        session_id,
-        cwd=tmp_path,
-    )
-    assert loaded["session_id"] == session_id
-    with pytest.raises(SessionSnapshotError, match="was not found"):
-        load_snapshot(other_contact._session_co_dir, session_id, cwd=tmp_path)
-
-
-def test_network_acp_workspace_is_captured_when_server_starts(monkeypatch, tmp_path):
-    launch_dir = tmp_path / "launch"
-    later_dir = tmp_path / "later"
-    launch_dir.mkdir()
-    later_dir.mkdir()
-    agent = SimpleNamespace(name="agent")
-    called = {}
-    monkeypatch.chdir(launch_dir)
-
-    def fake_host(_agent, **kwargs):
-        called.update(kwargs)
-
-    monkeypatch.setattr(main_mod, "host", fake_host)
-    main_mod.start_server(agent)
-    monkeypatch.chdir(later_dir)
-
-    principal = ACPPrincipal(
-        address="0xcontact",
-        level="contact",
-        recipient="0xrecipient",
-        origin="https://chat.openonion.ai",
-        auth_method="browser_ticket",
-        authenticated_at=1.0,
-    )
-    network_agent = called["acp_agent_factory"](principal)
-
-    assert network_agent._network_workspace.path == launch_dir.resolve()
-    assert network_agent._network_workspace.closed is True
-
-
-def test_network_acp_workspace_closes_when_host_raises(monkeypatch, tmp_path):
-    from connectonion.cli.co_ai import acp_server as acp_server_mod
-
-    captured = []
-    real_capture = acp_server_mod.capture_network_workspace
-
-    def capture(path):
-        workspace = real_capture(path)
-        captured.append(workspace)
-        return workspace
-
-    def fail_host(*_args, **_kwargs):
-        raise RuntimeError("host startup failed")
-
-    # start_server imports the function lazily from acp_server.
-    monkeypatch.setattr("connectonion.cli.co_ai.acp_server.capture_network_workspace", capture)
-    monkeypatch.setattr(main_mod, "host", fail_host)
-
-    with pytest.raises(RuntimeError, match="host startup failed"):
-        main_mod.start_server(SimpleNamespace(name="agent"))
-
-    assert captured and captured[0].closed is True
-
-
-def test_network_acp_session_namespace_is_workspace_scoped(monkeypatch, tmp_path):
-    first_dir = tmp_path / "first"
-    second_dir = tmp_path / "second"
-    first_dir.mkdir()
-    second_dir.mkdir()
-    agent = SimpleNamespace(name="agent")
-    factories = []
-    monkeypatch.setattr(main_mod.Path, "home", lambda: tmp_path)
-
-    def fake_host(_agent, **kwargs):
-        factories.append(kwargs["acp_agent_factory"])
-
-    monkeypatch.setattr(main_mod, "host", fake_host)
-    principal = ACPPrincipal(
-        address="0xcontact",
-        level="contact",
-        recipient="0xrecipient",
-        origin="https://chat.openonion.ai",
-        auth_method="browser_ticket",
-        authenticated_at=1.0,
-    )
-
-    monkeypatch.chdir(first_dir)
-    main_mod.start_server(agent)
-    monkeypatch.chdir(second_dir)
-    main_mod.start_server(agent)
-
-    first_agent = factories[0](principal)
-    second_agent = factories[1](principal)
-    assert first_agent._session_co_dir != second_agent._session_co_dir
+    assert prepared == []
+    assert configured == [True]
+    assert "CO_INVITE_CODE" not in os.environ
+    assert hosted["trust"].config["onboard"]["invite_code"] == [secret]
+    assert hosted["trust"].verify_invite("someone", "wrong") is False
 
 
 def test_role_reaches_the_assembler(monkeypatch, tmp_path):
@@ -346,6 +357,8 @@ def test_the_real_prompt_differs_with_and_without_a_role(tmp_path, monkeypatch):
     assert len(coding) > len(plain)
     assert "# Tool: Codex delegation" in coding
     assert "# Tool: Claude Code delegation" in coding
+    assert "Native coding-agent routing is mandatory" in coding
+    assert "call `codex()` without `prompt`" in coding
     assert "you are a coding agent" not in plain.lower()
     # Behaviour that every agent needs survives dropping the role.
     for prompt in (coding, plain):

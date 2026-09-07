@@ -10,16 +10,16 @@ LLM-Note:
 """
 
 import os
-import json
-import yaml
-import requests
 import uuid
 from pathlib import Path
+from typing import Dict, Optional
+
+import requests
+import yaml
+
+from ..backend import backend_url
 from ..credentials import AmbientCredentialError, require_ambient_api_key
 from ..project import project_co_dir, project_root
-from typing import Dict, Optional
-from dotenv import load_dotenv
-from ..backend import backend_url
 
 
 def send_email(
@@ -27,6 +27,7 @@ def send_email(
     subject: str,
     message: str,
     idempotency_key: Optional[str] = None,
+    from_address: Optional[str] = None,
 ) -> Dict:
     """Send an email using the agent's email address.
 
@@ -37,6 +38,9 @@ def send_email(
         idempotency_key: Reuse the key from a failed result to retry without
             sending the same email twice while the provider retry window is
             still active. A new key is generated when omitted.
+        from_address: Send as one of this account's owned addresses instead of
+            the default. The server verifies ownership and answers 403 for an
+            address this account does not hold.
 
     Returns:
         dict: Success status and details
@@ -49,16 +53,8 @@ def send_email(
             - retryable (bool): Whether retrying this key is currently safe
     """
     send_key = idempotency_key or str(uuid.uuid4())
-    # Environment values (container, CI, systemd, or an importing application)
-    # keep precedence. Canonical project/global files only fill missing values;
-    # the arbitrary five-parent crawl used here before disagreed with every
-    # other project boundary in the framework.
-    for env_file in (
-        project_root() / ".env",
-        Path.home() / ".co" / "keys.env",
-    ):
-        if env_file.is_file():
-            load_dotenv(env_file)
+    from ..environment import load_environment
+    load_environment()
 
     try:
         token = require_ambient_api_key()
@@ -81,9 +77,9 @@ def send_email(
             "idempotency_key": send_key,
             "retryable": False,
         }
-    
+
     # Validate recipient email
-    if not "@" in to or not "." in to.split("@")[-1]:
+    if "@" not in to or "." not in to.split("@")[-1]:
         return {
             "success": False,
             "error": f"Invalid email address: {to}",
@@ -91,7 +87,7 @@ def send_email(
             "idempotency_key": send_key,
             "retryable": False,
         }
-    
+
     # Prepare email payload
     payload = {
         "to": to,
@@ -103,17 +99,19 @@ def send_email(
         # backend's decision, and nothing here influences it.
         "body": message
     }
-    
+    if from_address:
+        payload["from_address"] = from_address
+
     # Send email via backend API
     endpoint = f"{backend_url()}/api/v1/email/send"
-    
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "X-Request-ID": send_key,
         "Idempotency-Key": send_key,
     }
-    
+
     try:
         response = requests.post(
             endpoint,
@@ -121,7 +119,7 @@ def send_email(
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             return {
@@ -176,7 +174,7 @@ def send_email(
                 "idempotency_key": returned_key,
                 "retryable": retryable,
             }
-            
+
     except requests.exceptions.Timeout:
         return {
             "success": False,
@@ -254,7 +252,7 @@ def get_agent_email() -> Optional[str]:
     co_dir = project_co_dir()
     if not co_dir.exists():
         return None
-    
+
     config_path = co_dir / "host.yaml"
     if not config_path.exists():
         return None

@@ -1,5 +1,9 @@
 # 🧅 ConnectOnion
 
+**Keep simple things simple, make complicated things possible.**
+
+A template-first toolkit for FDEs building, debugging, deploying, and operating real AI agents.
+
 <div align="center">
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
@@ -22,6 +26,41 @@
 > ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
 > 
 > This is the core principle that drives every design decision in ConnectOnion.
+
+## Start from a working agent
+
+You do not need to assemble a framework stack before doing useful work. Start
+from the same working agent that powers `co ai`, specialise it with skills, and
+use one CLI across the delivery path:
+
+```bash
+pip install connectonion
+
+co create sales-agent
+cd sales-agent
+co ai
+co doctor
+co deploy
+co status
+```
+
+`co create` supplies files, shell, browser, planning, todos, and sub-agents.
+`co ai` works in the project from a terminal or the web client. `co deploy`
+ships the agent, while `co status` and `co doctor` explain what is running and
+what needs attention. The Python runtime below remains directly available when
+you need a custom tool, hook, provider, or host boundary.
+
+The 1.8.2 default is `co/gemini-3.8-flash`, routed through the managed gateway
+without exposing Google's key to the client. Select `gemini-3.8-flash` to use
+your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
+Gemini model. Provider failures do not silently move a request to another model.
+
+Common delivery commands include:
+
+- `co browser` for a persistent browser;
+- `co server new --region <region>` and `co deploy --to <server>` for owned infrastructure;
+- `co email share` and `co email unshare` for scoped mailbox delegation;
+- `co gmail`, `co outlook`, and `co gdrive` for operator-connected services.
 
 ## 🎯 Living Our Philosophy
 
@@ -99,6 +138,7 @@ from connectonion.useful_tools import FileTools                         # File s
 from connectonion.useful_tools.browser_tools import BrowserAutomation   # Natural language browser automation
 
 from connectonion import Gmail, Outlook              # Email
+from connectonion import get_sms, wait_for_sms        # E2EE Android SMS inbox
 from connectonion import GDrive                      # Google Drive files
 from connectonion import GoogleCalendar              # Calendar
 from connectonion import Memory                      # Persistent memory
@@ -484,9 +524,12 @@ ConnectOnion CLI provides templates to get you started quickly:
 # Create an agent (the co-ai template)
 co create my-agent
 
-# Initialize in existing directory
-co init                # Adds .co folder only
-co init --template co-ai   # Adds the full project
+# Initialize global credentials (no project files)
+co init
+
+# Initialize an explicit existing directory
+co init ./                   # Adds project config, .env, and docs
+co init ./ --template co-ai   # Adds the full project
 ```
 
 **Available Templates:**
@@ -632,7 +675,7 @@ agent = Agent(name="test", api_key="your-api-key-here")
 
 ### Model Selection
 ```python
-agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.6-flash
+agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.8-flash
 ```
 
 ### Iteration Control

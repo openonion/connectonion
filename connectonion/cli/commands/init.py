@@ -1,10 +1,10 @@
 """
-Purpose: Initialize ConnectOnion project in current directory with template files, authentication, and configuration
+Purpose: Initialize global ConnectOnion credentials by default, or an explicitly selected project
 LLM-Note:
   Dependencies: imports from [os, sys, shutil, subprocess, yaml, datetime, pathlib, rich.console, rich.prompt, __version__, address, auth_commands.authenticate, project_cmd_lib] | imported by [cli/main.py via handle_init()] | uses templates from [cli/templates/co-ai] | tested by [tests/e2e/cli/test_cli_init.py]
-  Data flow: receives args (ai, key, template, description, yes, force) from CLI parser → ensure_global_config() creates ~/.co/ with master keypair if needed → check_environment_for_api_keys() detects existing keys → api_key_setup_menu() or detect_api_provider() validates API key → generate_custom_template() if template='custom' → copy template files from cli/templates/{template}/ to current dir → authenticate() to get OPENONION_API_KEY → create/update .env with API keys from ~/.co/keys.env → create .co/host.yaml with project metadata and global identity → copy vibe coding docs to .co/docs/ and project root → update .gitignore if git repo → display success message with next steps
-  State/Effects: modifies ~/.co/ (host.yaml, keys.env, keys/, logs/) on first run | writes to current dir: .co/host.yaml, .env, agent.py (if template), .gitignore | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files (agent.py, requirements.txt, etc.) | creates temp_project_dir during auth flow (cleaned up at end) | writes to stdout via rich.Console
-  Integration: exposes handle_init(ai, key, template, description, yes, force) | calls ensure_global_config() to create global identity | calls authenticate(global_co_dir, save_to_project=False) for managed keys | uses template files from cli/templates/ | relies on project_cmd_lib for shared functions | the project gets no keypair of its own: ensure_global_config() creates the machine identity in ~/.co and the project uses it | template options: 'co-ai', 'custom', 'none' (default)
+  Data flow: CLI without a path calls handle_global_init() → ensure_global_config() creates ~/.co/ identity → explicit --key saved in keys.env → authenticate(save_to_project=False); CLI with a path calls handle_init() → global setup and auth → selected project .env, .co/host.yaml, docs, optional template and gitignore
+  State/Effects: global mode writes only ~/.co/ (keys.env, keys/, logs/) and stdout; project mode additionally writes selected path/.env, .co/host.yaml, .co/docs/, .co/admins.txt, optional template files and .gitignore | authenticate() writes managed credentials into ~/.co/keys.env
+  Integration: exposes handle_global_init(key) and handle_init(ai, key, template, description, yes, force, path) | both use ensure_global_config() and authenticate(global_co_dir, save_to_project=False) | project initialization uses templates from cli/templates/ and project_cmd_lib | the project gets no keypair of its own: ensure_global_config() creates the machine identity in ~/.co | project template options: 'co-ai', 'custom', 'none' (default)
   Performance: authenticate() makes network call to backend (2-5s) | generate_custom_template() calls LLM API if template='custom' | template file copying is O(n) files | config/env file operations are I/O bound
   Errors: fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | warns if directory not empty (requires --force or confirmation) | warns for special directories (home, root, system dirs) | skips duplicate .env keys (safe append) | creates temp_project_dir but cleans up on completion
 """
@@ -13,42 +13,63 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 
+from ...core.usage import DEFAULT_MODEL
 from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
     PROVIDER_TO_ENV,
-    mint_invite_code,
-    ensure_global_config,
+    check_environment_for_api_keys,
     copy_docs,
     create_host_yaml,
-    record_creator_as_admin,
-    setup_gitignore,
-    print_resources,
+    detect_api_provider,
+    ensure_global_config,
+    generate_custom_template,
     get_special_directory_warning,
     is_directory_empty,
-    check_environment_for_api_keys,
-    detect_api_provider,
-    generate_custom_template,
+    mint_invite_code,
+    print_resources,
+    record_creator_as_admin,
+    setup_gitignore,
     show_progress,
     unknown_template_message,
+    upsert_env,
 )
 
 console = Console()
 
 
+def handle_global_init(key: Optional[str] = None) -> None:
+    """Set up this machine without writing into the current project."""
+    ensure_global_config()
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
+    # Startup may already have loaded a project's .env into os.environ. Only
+    # an explicit --key may promote a provider credential into global storage.
+    if key:
+        provider, _ = detect_api_provider(key)
+        upsert_env(global_dir / "keys.env", {PROVIDER_TO_ENV[provider]: key})
+    authenticated = authenticate(global_dir, save_to_project=False)
+    console.print(f"[green]✓ Global configuration: {global_dir / 'keys.env'}[/green]")
+    if not authenticated:
+        console.print("[yellow]Managed-key setup is incomplete. Run co auth when ready.[/yellow]")
+    console.print("[dim]For a project, pass its directory explicitly: co init ./[/dim]")
+
+
 def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
-                description: Optional[str], yes: bool, force: bool):
-    """Initialize a ConnectOnion project in the current directory."""
+                description: Optional[str], yes: bool, force: bool,
+                path: Optional[Path] = None):
+    """Initialize a project at path (cwd for existing programmatic callers)."""
     # Ensure global config exists first
     ensure_global_config()
 
-    current_dir = os.getcwd()
+    current_dir = str(path.resolve()) if path is not None else os.getcwd()
     project_name = os.path.basename(current_dir) or "my-agent"
 
     # Track temp directory for cleanup
@@ -169,24 +190,29 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         files_created.append("agent.py")
 
     # AUTHENTICATE FIRST - so we have OPENONION_API_KEY to add to .env
-    global_co_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_co_dir = global_config_dir()
 
     # Authenticate to get OPENONION_API_KEY (always, for everyone)
     auth_success = authenticate(global_co_dir, save_to_project=False)
 
-    from .env_inheritance import describes_this_machine, is_personal_account_credential
+    from .env_inheritance import AGENT_IDENTITY_KEYS, describes_this_machine, is_personal_account_credential
 
     # Handle .env file - append API keys from global config
     env_path = Path(current_dir) / ".env"
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     global_keys_env = global_dir / "keys.env"
 
     # Identity keys: always overwrite from global (co reset must propagate).
     # AGENT_CONFIG_PATH is not one of them — it describes the machine, not the
     # identity, and copying an absolute home directory into a file that travels
     # is what made a project only work where it was made (#438).
-    IDENTITY_KEYS = {'AGENT_ADDRESS', 'OPENONION_API_KEY',
-                     'AGENT_EMAIL', 'IS_EMAIL_ACTIVE'}
+    #
+    # Shared with `co deploy --to`, which withholds exactly this set: propagating
+    # the operator's identity into a project is the point here and a bug there,
+    # so the two must be reading one definition.
+    IDENTITY_KEYS = set(AGENT_IDENTITY_KEYS)
 
     # Read global keys.env into a dict
     global_keys = {}  # key -> "KEY=value" line
@@ -256,14 +282,14 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Write .env
     if not env_existed:
         if keys_to_add or global_keys:
-            env_content = "# Default model: co/gemini-3.6-flash (managed keys with free credits)\n\n"
+            env_content = f"# Default model: {DEFAULT_MODEL} (managed keys with free credits)\n\n"
             # Add all global keys + detected keys
             all_keys = list(global_keys.values()) + [k for k in keys_to_add if k not in global_keys.values()]
             env_content += '\n'.join(all_keys) + '\n'
             env_path.write_text(env_content, encoding='utf-8')
             console.print(f"[green]✓ Saved to {env_path}[/green]")
         else:
-            env_content = """# Add your LLM API key(s) below (uncomment one and set value)
+            env_content = f"""# Add your LLM API key(s) below (uncomment one and set value)
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
 # GEMINI_API_KEY=
@@ -272,7 +298,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # OPENROUTER_API_KEY=
 
 # Optional: Override default model
-# MODEL=co/gemini-3.6-flash
+# MODEL={DEFAULT_MODEL}
 """
             env_path.write_text(env_content, encoding='utf-8')
         files_created.append(".env")
@@ -339,11 +365,11 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
         # Vibe Coding hint - clean formatting with proper spacing
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-        console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
+        console.print("   [cyan].co/docs/[/cyan] for full documentation")
     else:
         # Vibe Coding hint for building from scratch
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-        console.print(f"   [cyan].co/docs/[/cyan] to build your agent")
+        console.print("   [cyan].co/docs/[/cyan] to build your agent")
 
     # Resources
     console.print()

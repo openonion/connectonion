@@ -33,6 +33,9 @@ Usage:
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ..core.usage import DEFAULT_MODEL
+
 from ..core.events import after_user_input
 from ..llm_do import llm_do
 from ..useful_events_handlers.reflect import reflect
@@ -134,7 +137,7 @@ Current user input: {user_prompt}
 
 Acknowledge this request (1-2 sentences):"""
 
-    model = "co/gemini-3.6-flash"
+    model = DEFAULT_MODEL
     agent.logger.print(f"[dim]/understanding ({model})...[/dim]")
 
     ack = llm_do(

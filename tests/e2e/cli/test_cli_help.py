@@ -58,6 +58,7 @@ class TestCliHelp:
         assert "status" in result.output
         assert "reset" in result.output
         assert "browser" in result.output
+        assert "remote-browser" in result.output
         assert "Commands" in result.output
 
     def test_version_flag(self):

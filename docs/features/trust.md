@@ -781,11 +781,20 @@ onboard:
 | `CO_INVITE_CODE` | no invite door; nothing is advertised | strangers who type that code become contacts |
 | `CO_PAYMENT` | no payment door | strangers who transfer at least that much to the agent's address become contacts |
 
-On a deployed agent these live in the root-owned env file `co deploy` writes,
-the same channel as every other secret — not in the project, and not in this
-repository. A literal in a shipped policy would be one password for every
-deployment (#561), and a shipped price would charge for every agent whose
+On an agent deployed with `co deploy --to`, these live in the root-owned
+`/etc/connectonion/<agent>.env` file (`0600`), the same channel as every other
+secret — not in the project, not in the server user's `~/.co/keys.env`, and not
+in this repository. A literal in a shipped policy would be one password for
+every deployment (#561), and a shipped price would charge for every agent whose
 operator never asked to (#672).
+
+The default **local** `co ai` host is the exception that makes first-owner setup
+usable without weakening that rule: on its first web-server start it mints one
+unique `CO_INVITE_CODE` in the owner-only `~/.co/keys.env`. Startup names the
+command to retrieve it but never prints the secret. Use `co keys` to confirm
+that an owner invite exists, then `co keys --reveal` only in a private terminal
+when you are ready to enter it in your client. Existing project, process, or
+global values are preserved.
 
 Writing the number in your own policy still works, and is the right thing when
 the price is part of what you are publishing:

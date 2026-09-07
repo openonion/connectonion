@@ -11,10 +11,9 @@
 - **Session State (conversation)**: Client-side is source of truth
 - **Final Results (completed tasks)**: Server-side for polling recovery
 
-This section describes browser-to-Host chat continuation. Persistent
-`co ai --acp` sessions are a separate server-owned mode with versioned private
-snapshots and runtime-long leases; see
-[DD-029](design-decisions/029-acp-persistent-session-ownership.md).
+This section describes browser-to-Host chat continuation over OIP. The Host
+owns the authenticated runtime session while the React client persists the
+browser view needed to reconnect.
 
 ### Why Client-Side for Session State?
 

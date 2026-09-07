@@ -11,7 +11,7 @@ LLM-Note:
   State/Effects: mutates trust agent state via trust_agent.verify_invite/verify_payment and admin_trust_* / admin_admins_* callbacks | prints colored audit lines to stdout via rich.Console (✓/✗ with truncated agent_address) | sends frames to client via injected send_msg
   Integration: exposes get_onboard_requirements(trust_agent), async handle_onboard_submit(data, send_msg, route_handlers), async handle_admin_message(data, send_msg, route_handlers) | route_handlers dict must contain auth, trust_agent, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove
   Errors: returns ERROR frames (never raises) for: invalid signature, blocked agent_address, missing client_id/admin_id, bad invite code, insufficient payment, non-admin, non-super-admin, unknown admin action
-  Security: ⚠️ all state-changing operations require valid signature + admin/super-admin level | invite/payment verification delegated to TrustAgent
+  Security: ⚠️ all state-changing operations require valid signature + admin/super-admin level | invite/payment verification delegated to TrustAgent | invite values are never printed
 """
 
 from rich.console import Console
@@ -82,7 +82,10 @@ async def handle_onboard_submit(data, send_msg, route_handlers):
     if invite_code:
         if trust_agent.verify_invite(agent_address, invite_code):
             actual_level = trust_agent.get_level(agent_address)
-            console.print(f"[green]✓[/green] Verified [bold]{agent_address[:16]}...[/bold] with invite code [cyan]{invite_code}[/cyan] → {actual_level}")
+            console.print(
+                f"[green]✓[/green] Verified [bold]{agent_address[:16]}...[/bold] "
+                f"with invite code → {actual_level}"
+            )
             await send_msg({
                 "type": "ONBOARD_SUCCESS",
                 "identity": agent_address,
@@ -91,7 +94,10 @@ async def handle_onboard_submit(data, send_msg, route_handlers):
             })
             return agent_address
         else:
-            console.print(f"[red]✗[/red] Invalid invite code [cyan]{invite_code}[/cyan] from {agent_address[:16]}...")
+            console.print(
+                f"[red]✗[/red] Invalid invite code from "
+                f"{agent_address[:16]}..."
+            )
             await send_msg({"type": "ERROR", "message": "Invalid invite code"})
             return
 

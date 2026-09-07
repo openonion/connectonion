@@ -18,8 +18,8 @@ the WS, so a reconnecting client just re-subscribes — no separate
 'disconnected' state to track.
 """
 
-import time
 import threading
+import time
 from dataclasses import dataclass
 from typing import Dict, Optional
 

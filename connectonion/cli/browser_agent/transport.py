@@ -2,22 +2,22 @@ r"""
 Purpose: Cross-platform IPC primitives for the browser daemon/client so `co browser` runs natively on Windows (named pipes) as well as macOS/Linux (Unix sockets) — no WSL.
 LLM-Note:
   Dependencies: imports from [os, time, getpass, subprocess, tempfile, hashlib, binascii, threading, multiprocessing.connection, pathlib | lazy: fcntl/msvcrt, ctypes] | imported by [browser_agent/daemon.py, browser_agent/client.py] | tested by [tests/unit/test_transport.py, tests/e2e/cli/test_browser_daemon.py]
-  Data flow: daemon/client call default_address() → POSIX returns a Unix-socket filesystem path (unchanged from before), Windows returns a per-user named pipe \\.\pipe\co-browser-<hash> | pid_path()/lock_path() resolve real filesystem sidecars (POSIX: <addr>.pid/.lock exactly as before; Windows: hashed files under %LOCALAPPDATA%/co since a pipe name is not a path) | Windows wire: win_listener() creates the pipe WITHOUT an authkey and the daemon runs the mutual HMAC challenge itself via accept_authenticated() under a hard deadline (mpc's own accept()-time handshake blocks forever on a stalled client — a wedged single-threaded daemon); win_connect() is a normal authenticated mpc.Client | POSIX keeps its raw AF_UNIX socket in daemon.py/client.py untouched
+  Data flow: daemon/client call default_address() for the ordinary endpoint or namespaced_address() for a short hashed private endpoint → POSIX returns a Unix-socket filesystem path, Windows returns a per-user named pipe \\.\pipe\co-browser-<hash> | pid_path()/lock_path() resolve filesystem sidecars | Windows wire: win_listener() creates the pipe WITHOUT an authkey and accept_authenticated() runs the mutual HMAC challenge under a hard deadline before the daemon submits the connection to its asyncio runtime; win_connect() is a normal authenticated mpc.Client | POSIX binding is handed to asyncio.start_unix_server after the same stale-owner checks
   State/Effects: default_address()/_sidecar_dir() may mkdir the runtime dir (and chmod 0700 on POSIX — the socket dir IS the POSIX trust boundary, so a chmod failure raises loudly) | load_or_create_authkey() creates a 0600 key file in the sidecar dir (only used on Windows) and atomically replaces a persistently-corrupt one | acquire_singleton_lock() holds an OS lock (fcntl.flock POSIX / msvcrt.locking Windows) for the daemon's lifetime, released by the OS on death | spawn_detached() launches the daemon fully detached
-  Integration: exposes IS_WINDOWS, AuthenticationError (= mpc's class), HANDSHAKE_TIMEOUT, default_address(), pid_path(), lock_path(), load_or_create_authkey(), pid_alive(), acquire_singleton_lock(), spawn_detached(), win_listener(), win_connect(), bounded_io(), accept_authenticated() | POSIX behavior is intentionally identical to the pre-existing raw-socket code so existing tests pass unchanged; only the Windows branch is new
+  Integration: exposes IS_WINDOWS, AuthenticationError (= mpc's class), HANDSHAKE_TIMEOUT, default_address(), namespaced_address(), ensure_endpoint_parent(), pid_path(), lock_path(), load_or_create_authkey(), pid_alive(), acquire_singleton_lock(), spawn_detached(), win_listener(), win_connect(), bounded_io(), accept_authenticated() | daemon.py owns asyncio admission/backpressure; this module preserves native platform security and blocking-pipe primitives
   Performance: all helpers are cheap local ops | authkey is a 64-byte file read | bounded_io adds one short-lived thread per bounded pipe operation (handshake/read/reply — never touches Playwright)
   Errors: acquire_singleton_lock returns None when the lock is held (caller exits 0) | pid_alive treats EPERM/access-denied as ALIVE (the pid exists — same lesson as browser.py's _pid_alive) | load_or_create_authkey converges on ONE key under the O_EXCL create race, atomically replaces a file that stays invalid past the writers' microsecond window, and RAISES if no valid key can be produced — it never falls back to a fixed key, which would silently disable authentication | bounded_io raises TimeoutError on deadline (after closing the connection so the helper unblocks) and re-raises the operation's own exception otherwise | accept_authenticated returns None on a bad key, a stalled handshake, or a vanished client (the daemon keeps serving); a closed listener still raises out of accept() so a dying daemon exits instead of spinning
 """
 
-import os
-import time
+import binascii
 import getpass
+import hashlib
+import multiprocessing.connection as mpc
+import os
 import subprocess
 import tempfile
-import hashlib
-import binascii
 import threading
-import multiprocessing.connection as mpc
+import time
 from pathlib import Path
 
 IS_WINDOWS = os.name == "nt"
@@ -29,6 +29,7 @@ AuthenticationError = mpc.AuthenticationError
 # The mutual HMAC handshake is three tiny local messages — normally sub-millisecond.
 # The deadline exists for a client that connects and then stalls mid-challenge.
 HANDSHAKE_TIMEOUT = 10.0
+_SHORT_RUNTIME_ROOT = Path("/tmp")
 
 
 def _current_user() -> str:
@@ -83,6 +84,54 @@ def default_address() -> str:
         who = hashlib.sha1(_current_user().encode()).hexdigest()[:12]
         return r"\\.\pipe\co-browser-" + who
     return str(_sidecar_dir() / "browser.sock")
+
+
+def namespaced_address(namespace: str) -> str:
+    """Return a short, per-user endpoint for an explicitly isolated daemon.
+
+    The caller's namespace may contain a long project path, so only its digest is
+    used in the Unix socket or named-pipe name. This avoids AF_UNIX path limits
+    while keeping different Host projects and the ordinary local daemon apart.
+    """
+    if not isinstance(namespace, str) or not namespace:
+        raise ValueError("browser daemon namespace must be nonempty")
+    digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:20]
+    if IS_WINDOWS:
+        who = hashlib.sha1(_current_user().encode()).hexdigest()[:12]
+        return rf"\\.\pipe\co-browser-{who}-{digest}"
+    filename = f"browser-{digest}.sock"
+    candidate = _sidecar_dir() / filename
+    # Darwin's sockaddr_un.sun_path is only 104 bytes (Linux is 108). An
+    # unusually long XDG_RUNTIME_DIR must not make every private daemon fail to
+    # bind, so use a deliberately short per-user 0700 fallback before the limit.
+    if len(os.fsencode(candidate)) >= 100:
+        who = hashlib.sha1(_current_user().encode()).hexdigest()[:12]
+        fallback = _SHORT_RUNTIME_ROOT / f"co-{who}"
+        fallback.mkdir(parents=True, exist_ok=True)
+        # Unlike an explicit legacy socket directly under /tmp, this directory
+        # is ours and is the private endpoint's trust boundary. Re-apply the
+        # mode even when it already exists; a directory owned by someone else
+        # makes chmod fail closed instead of exposing the daemon socket.
+        os.chmod(fallback, 0o700)
+        candidate = fallback / filename
+    return str(candidate)
+
+
+def ensure_endpoint_parent(address: str) -> None:
+    """Create and protect a missing POSIX endpoint directory before binding.
+
+    An explicit legacy socket may live directly in a shared directory such as
+    ``/tmp``. That directory is not ours to chmod. Private endpoints use the
+    per-user directory returned by :func:`namespaced_address`, which is either
+    already protected by ``_sidecar_dir`` or created here with mode 0700.
+    """
+    if IS_WINDOWS:
+        return
+    parent = Path(address).parent
+    existed = parent.exists()
+    parent.mkdir(parents=True, exist_ok=True)
+    if not existed:
+        os.chmod(parent, 0o700)
 
 
 def _addr_key(address: str) -> str:
@@ -144,7 +193,7 @@ def _replace_corrupt_key(key_file: Path):
     return key
 
 
-def load_or_create_authkey() -> bytes:
+def load_or_create_authkey(path: str | Path | None = None) -> bytes:
     """A per-user secret shared by daemon and client for the named-pipe HMAC handshake.
 
     Only used on Windows (POSIX relies on the 0700 socket dir). Fails CLOSED: this
@@ -154,7 +203,10 @@ def load_or_create_authkey() -> bytes:
     microsecond create→write window), and a file that stays invalid past that window
     is a crashed writer's leftover, replaced atomically.
     """
-    key_file = _sidecar_dir() / "authkey"
+    key_file = Path(path) if path is not None else _sidecar_dir() / "authkey"
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    if not IS_WINDOWS:
+        os.chmod(key_file.parent, 0o700)
     for attempt in range(50):
         key = _read_key(key_file)
         if key:
@@ -271,7 +323,7 @@ def bounded_io(conn, fn, timeout: float):
 
     mpc named-pipe Connections have no native timeouts anywhere — not in the accept
     handshake, not mid-frame in recv_bytes, not in send_bytes against a full pipe with
-    a stalled reader. Any of those would wedge the single-threaded daemon forever
+    a stalled reader. Any of those would exhaust a transport worker indefinitely
     (POSIX gets all of this from one settimeout(120)). The operation runs in a
     short-lived helper thread joined against the deadline; on timeout the connection
     is closed (which errors the helper's blocked syscall, so the thread exits) and
@@ -301,7 +353,7 @@ def accept_authenticated(listener, authkey: bytes, timeout: float = HANDSHAKE_TI
 
     mpc's `Listener(authkey=...)` runs the challenge INSIDE accept() with blocking
     recvs — a client that connects and then stalls mid-handshake would wedge the
-    single-threaded daemon forever, and the request read timeout starts too late to
+    transport worker forever, and the request read timeout starts too late to
     help. So win_listener() creates the pipe without an authkey and the challenge
     runs here, deadline-bounded. A closed/broken listener still raises out of
     accept() — a dying daemon must exit its serve loop, not spin on a dead endpoint.

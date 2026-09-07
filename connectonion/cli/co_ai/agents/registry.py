@@ -10,30 +10,30 @@ Key components:
 
 Architecture:
 - Each sub-agent config includes: description, tools, model, max_iterations
-- "explore": Fast codebase exploration (gemini-2.5-flash, glob/grep/read)
-- "plan": Implementation planning (gemini-2.5-pro, glob/grep/read)
+- "explore": Fast codebase exploration (gemini-3.8-flash, glob/grep/read)
+- "plan": Implementation planning (gemini-3.8-flash, glob/grep/read)
 - System prompts loaded from co_ai/prompts/agents/{type}.md
 - Falls back to description if prompt file not found
 """
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from connectonion import Agent
-
 from connectonion.cli.co_ai.tools import FileTools
-
+from connectonion.core.usage import DEFAULT_MODEL
 
 # Sub-agent configurations
 SUBAGENTS: Dict[str, Dict[str, Any]] = {
     "explore": {
         "description": "Fast agent for exploring codebases. Find files, search code, answer questions about structure.",
         "tools": [FileTools],
-        "model": "co/gemini-3.6-flash",  # Fast model for exploration
+        "model": DEFAULT_MODEL,
         "max_iterations": 15,
     },
     "plan": {
         "description": "Design implementation plans. Analyze architecture, identify files to change, plan steps.",
         "tools": [FileTools],
-        "model": "co/gemini-3.6-flash",  # Smarter model for planning
+        "model": DEFAULT_MODEL,
         "max_iterations": 10,
     },
 }

@@ -20,11 +20,13 @@ Usage:
 
 from datetime import datetime
 from typing import TYPE_CHECKING
-from ..core.events import before_each_tool, after_each_tool
-from ..tui import pick
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+
+from ..core.events import after_each_tool, before_each_tool
+from ..tui import pick
 
 if TYPE_CHECKING:
     from ..core.agent import Agent

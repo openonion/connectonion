@@ -2,8 +2,8 @@
 Purpose: Google Calendar integration tool for managing events and meetings via Google API
 LLM-Note:
   Dependencies: imports from [os, datetime, google.oauth2.credentials, googleapiclient.discovery] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_google_calendar.py]
-  Data flow: Agent calls GoogleCalendar methods → validates the ambient OpenOnion account and refreshes server-owned Google credentials via oo-api → builds Calendar API service → API calls to Calendar REST endpoints → returns formatted results (event lists, confirmations, free slots)
-  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Google Calendar API | can create/update/delete events
+  Data flow: Agent calls GoogleCalendar methods → refreshes the locally held Google token through oo-api's stateless exchange → builds Calendar API service → direct calls to Calendar REST endpoints → returns formatted results (event lists, confirmations, free slots)
+  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens only to the selected record (process overrides remain in memory) | makes HTTP calls to Google Calendar API | can create/update/delete events
   Integration: exposes GoogleCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_meet(), get_upcoming_meetings(), find_free_slots() | used as agent tool via Agent(tools=[GoogleCalendar()])
   Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
   Errors: raises ValueError if OAuth not configured | Google API errors propagate | returns error strings for display
@@ -44,14 +44,27 @@ Example:
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
 
 class GoogleCalendar:
     """Google Calendar tool for managing events and meetings."""
+
+    @property
+    def _credentials(self):
+        if not hasattr(self, "_credential_record"):
+            self._credential_record = resolve_provider_credentials("google")
+        return self._credential_record
+
+    @_credentials.setter
+    def _credentials(self, value):
+        self._credential_record = value
 
     def __init__(self):
         """Initialize Google Calendar tool.
@@ -59,8 +72,12 @@ class GoogleCalendar:
         Validates that calendar scope is authorized.
         Raises ValueError if scope is missing.
         """
-        scopes = os.getenv("GOOGLE_SCOPES", "")
-        if "calendar" not in scopes:
+        from .google_scopes import granted_scopes
+        self._credentials = resolve_provider_credentials("google")
+        scopes = self._credentials.scopes
+        if not scopes:
+            self._credentials.require_configured()
+        if scopes and not scopes.intersection({"calendar", "calendar.readonly"}):
             raise ValueError(
                 "Missing 'calendar' scope.\n"
                 f"Current scopes: {scopes}\n"
@@ -71,15 +88,19 @@ class GoogleCalendar:
         self._service = None
 
     def _get_service(self):
-        """Build a Calendar service backed by the server-owned token broker."""
+        """Build a Calendar service using credentials held on this computer."""
         if self._service:
             return self._service
 
-        access_token = self._refresh_via_backend(None)
+        self._credentials.require_configured()
+        access_token = self._credentials.get("ACCESS_TOKEN")
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        if self._credentials.get("REFRESH_TOKEN") or not access_token or (expiry and expiry <= datetime.now(timezone.utc) + timedelta(minutes=5)):
+            access_token = self._refresh_via_backend(None)
         creds = Credentials(
             token=access_token,
             refresh_token=None,
-            scopes=["https://www.googleapis.com/auth/calendar"],
+            scopes=self._credentials.scopes or None,
             expiry=self._token_expiry(),
             refresh_handler=self._refresh_handler,
         )
@@ -87,75 +108,22 @@ class GoogleCalendar:
         self._service = build('calendar', 'v3', credentials=creds)
         return self._service
 
-    def _token_expiry(self) -> datetime:
-        """Return google-auth's naive UTC expiry value."""
-        value = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
-        if not value:
-            return datetime.utcnow() + timedelta(minutes=55)
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if parsed.tzinfo:
-            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-        return parsed
+    def _token_expiry(self) -> datetime | None:
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        return expiry.replace(tzinfo=None) if expiry else None
 
     def _refresh_handler(self, request, scopes=None):
         """Recover a long-running cached Calendar service after a 401."""
         return self._refresh_via_backend(None), self._token_expiry()
 
     def _refresh_via_backend(self, refresh_token: str | None) -> str:
-        """Ask the backend to refresh its stored Google credentials.
-
-        Args:
-            refresh_token: The refresh token
-
-        Returns:
-            New access token
-        """
-        import httpx
-
-        # Get backend URL and auth
-        selected_backend = backend_url()
+        # The argument is retained for callers; it must belong to this record.
+        from ..provider_credentials import ProviderCredentialError
         api_key = require_ambient_api_key()
-
-        # Call backend refresh endpoint
-        response = httpx.post(
-            f"{selected_backend}/api/v1/oauth/google/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=15.0,
-        )
-
-        if response.status_code != 200:
-            try:
-                detail = response.json().get("detail")
-            except (TypeError, ValueError):
-                detail = None
-            if response.status_code == 401 and isinstance(detail, dict) \
-                    and detail.get("error") == "reauth_required":
-                raise ValueError("Google authorization expired. Run: co auth google")
-            raise ValueError("Failed to refresh Google authorization via backend")
-
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-        new_refresh_token = data.get("refresh_token")
-
-        # Update environment variables for this session
-        os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
-        os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
-        if new_refresh_token:
-            os.environ["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
-
-        from ..cli.commands.project_cmd_lib import upsert_env
-        env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        values = {
-            "GOOGLE_ACCESS_TOKEN": new_access_token,
-            "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
-        }
-        if new_refresh_token:
-            values["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
-        upsert_env(env_file, values)
-
-        return new_access_token
+        if refresh_token and refresh_token != self._credentials.get("REFRESH_TOKEN"):
+            raise ProviderCredentialError("record_changed", "Refresh token differs from the selected account.", "co status")
+        return refresh_credentials(self._credentials, backend=backend_url(),
+                                   api_key=api_key)
 
     def _format_datetime(self, dt_str: str) -> str:
         """Format datetime string to readable format."""
@@ -296,7 +264,7 @@ class GoogleCalendar:
         ]
 
         if attendee_list:
-            output.append(f"Attendees:\n  " + "\n  ".join(attendee_list))
+            output.append("Attendees:\n  " + "\n  ".join(attendee_list))
 
         return "\n".join(output)
 
@@ -542,9 +510,11 @@ class GoogleCalendar:
         service = self._get_service()
 
         # Parse date
-        target_date = datetime.strptime(date, '%Y-%m-%d')
-        start_of_day = target_date.replace(hour=9, minute=0, second=0).isoformat() + 'Z'
-        end_of_day = target_date.replace(hour=17, minute=0, second=0).isoformat() + 'Z'
+        if duration_minutes <= 0:
+            raise ValueError("Duration must be positive")
+        target_date = datetime.strptime(date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        start_of_day = target_date.replace(hour=9, minute=0, second=0).isoformat()
+        end_of_day = target_date.replace(hour=17, minute=0, second=0).isoformat()
 
         # Get events for the day
         events_result = service.events().list(
@@ -556,6 +526,17 @@ class GoogleCalendar:
         ).execute()
 
         events = events_result.get('items', [])
+        seen = set()
+        while events_result.get('nextPageToken'):
+            cursor = events_result['nextPageToken']
+            if cursor in seen:
+                raise ValueError("Calendar returned a repeated page; cannot determine free slots")
+            seen.add(cursor)
+            events_result = service.events().list(
+                calendarId='primary', timeMin=start_of_day, timeMax=end_of_day,
+                singleEvents=True, orderBy='startTime', pageToken=cursor,
+            ).execute()
+            events.extend(events_result.get('items', []))
 
         # Find gaps
         free_slots = []
@@ -563,14 +544,17 @@ class GoogleCalendar:
         end_time = target_date.replace(hour=17, minute=0)
 
         for event in events:
-            event_start = datetime.fromisoformat(event['start'].get('dateTime', '').replace('Z', '+00:00'))
-            event_end = datetime.fromisoformat(event['end'].get('dateTime', '').replace('Z', '+00:00'))
+            if event.get('status') == 'cancelled' or event.get('transparency') == 'transparent':
+                continue
+            event_start = self._parse_time(event['start'].get('dateTime') or event['start']['date']).replace(tzinfo=timezone.utc)
+            event_end = self._parse_time(event['end'].get('dateTime') or event['end']['date']).replace(tzinfo=timezone.utc)
+            event_start = min(event_start, end_time)
 
             # Check if there's a gap before this event
             if (event_start - current_time).total_seconds() >= duration_minutes * 60:
                 free_slots.append(f"{current_time.strftime('%I:%M %p')} - {event_start.strftime('%I:%M %p')}")
 
-            current_time = max(current_time, event_end)
+            current_time = min(end_time, max(current_time, event_end))
 
         # Check gap at end of day
         if (end_time - current_time).total_seconds() >= duration_minutes * 60:
@@ -594,10 +578,10 @@ class GoogleCalendar:
         Returns:
             datetime object
         """
-        for fmt in ['%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M']:
-            try:
-                return datetime.strptime(time_str, fmt)
-            except ValueError:
-                continue
-
-        raise ValueError(f"Cannot parse time: {time_str}. Use format: YYYY-MM-DD HH:MM or ISO format")
+        try:
+            parsed = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        except ValueError:
+            raise ValueError("Cannot parse time. Use YYYY-MM-DD HH:MM or an ISO timestamp.") from None
+        if parsed.tzinfo:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed

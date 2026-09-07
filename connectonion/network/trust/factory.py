@@ -31,11 +31,10 @@ String Resolution Priority:
 
 import os
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional, Union
 
-from .tools import get_trust_verification_tools
 from .fast_rules import parse_policy
-
+from .tools import get_trust_verification_tools
 
 # Path to trust policy files (in trust module: policies/)
 PROMPTS_DIR = Path(__file__).parent / "policies"
@@ -70,7 +69,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
         stacklevel=2
     )
     from ...core.agent import Agent  # Import here to avoid circular dependency
-    
+
     # If None, check for environment default
     if trust is None:
         env_trust = os.environ.get('CONNECTONION_TRUST')
@@ -78,16 +77,16 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
             trust = env_trust
         else:
             return None  # No trust agent
-    
+
     # If it's already an Agent, validate and return it
     if isinstance(trust, Agent):
         if not trust.tools:
             raise ValueError("Trust agent must have verification tools")
         return trust
-    
+
     # Get trust verification tools
     trust_tools = get_trust_verification_tools()
-    
+
     # Handle Path object
     if isinstance(trust, Path):
         if not trust.exists():
@@ -100,7 +99,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
             api_key=api_key,
             model=model
         )
-    
+
     # Handle string: trust level > file path > inline policy
     if isinstance(trust, str):
         if trust.lower() in TRUST_LEVELS:
@@ -136,7 +135,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
             api_key=api_key,
             model=model
         )
-    
+
     # Invalid type
     raise TypeError(f"Trust must be a string (level/policy/path), Path, Agent, or None, not {type(trust).__name__}")
 

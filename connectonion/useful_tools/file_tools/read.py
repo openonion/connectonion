@@ -15,6 +15,8 @@ Usage:
 from pathlib import Path
 from typing import Optional
 
+from ...core.tool_result import ToolFailure
+
 
 def read_file(
     path: str,
@@ -40,10 +42,10 @@ def read_file(
     file_path = Path(path)
 
     if not file_path.exists():
-        return f"Error: File '{path}' does not exist"
+        return ToolFailure(f"Error: File '{path}' does not exist")
 
     if not file_path.is_file():
-        return f"Error: '{path}' is not a file"
+        return ToolFailure(f"Error: '{path}' is not a file")
 
     content = file_path.read_text(encoding="utf-8", errors="replace")
     lines = content.splitlines()

@@ -15,8 +15,9 @@ See docs/network/websocket-protocol.md for full specification.
 import json
 
 from rich.console import Console
-from .http import pydantic_json_encoder
+
 from ..host.ws_router import run_ws_session
+from .http import pydantic_json_encoder
 
 console = Console()
 
@@ -65,6 +66,20 @@ async def handle_websocket(
                     })
                     continue
 
+    # The first frame decides whether this socket is sealed. A SEAL that does
+    # not verify closes the socket with 4003: an unauthenticated stranger gets
+    # no second try at a plaintext CONNECT. The same handshake serves a relay
+    # session in network/relay.py.
+    from ..sealed import host_seal_or_pass
+
+    send_msg, recv_msg, sealed_by = await host_seal_or_pass(
+        send_msg, recv_msg, route_handlers.get("identity"),
+        default=pydantic_json_encoder,
+    )
+    if send_msg is None:
+        await send({"type": "websocket.close", "code": 4003})
+        return
+
     await run_ws_session(
         send_msg, recv_msg,
         route_handlers=route_handlers,
@@ -73,6 +88,8 @@ async def handle_websocket(
         trust=trust,
         blacklist=blacklist,
         whitelist=whitelist,
+        transport="direct",
+        sealed_by=sealed_by,
     )
 
     console.print(f"[dim]⚡ ws-[/dim] [dim]({registry.count()} active)[/dim]")

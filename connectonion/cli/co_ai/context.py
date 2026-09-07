@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from connectonion.cli.co_ai.skills.loader import load_skills, get_skills_for_prompt
+from connectonion.cli.co_ai.skills.loader import get_skills_for_prompt, load_skills
 from connectonion.skill_preflight import format_preflight_report, preflight_skills
 
 

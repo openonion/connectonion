@@ -23,10 +23,19 @@ losing all of them costs the agent. So the call is allowed to fail and the rest
 is kept — which is what the header already claimed.
 """
 
+import asyncio
+
 import httpx
 import pytest
 
 from connectonion.network import announce
+
+
+def raise_when_called(error):
+    def fail(*args, **kwargs):
+        raise error
+
+    return fail
 
 
 class TestTheLookupIsAllowedToFail:
@@ -75,6 +84,122 @@ class TestTheLookupIsAllowedToFail:
         assert announce.get_ips()
 
 
+class TestLocalAdapterDiscoveryIsOptional:
+    class PublicResponse:
+        text = "203.0.113.7"
+
+    @staticmethod
+    def deny_adapters(monkeypatch, error):
+        monkeypatch.setattr(announce.ifaddr, "get_adapters", raise_when_called(error))
+
+    def test_permission_denial_keeps_the_public_address(self, monkeypatch):
+        self.deny_adapters(monkeypatch, PermissionError("private interface detail"))
+        monkeypatch.setattr(
+            announce.httpx, "get", lambda *a, **k: self.PublicResponse()
+        )
+
+        assert announce.get_ips() == ["localhost", "203.0.113.7"]
+
+    def test_another_os_error_is_also_a_degraded_path(self, monkeypatch):
+        self.deny_adapters(monkeypatch, OSError("netlink unavailable"))
+        monkeypatch.setattr(
+            announce.httpx, "get", lambda *a, **k: self.PublicResponse()
+        )
+
+        assert "203.0.113.7" in announce.get_ips()
+
+    def test_the_diagnostic_is_concise_and_does_not_leak_interfaces(
+        self, monkeypatch, capsys
+    ):
+        self.deny_adapters(monkeypatch, PermissionError("secret-interface-name"))
+        monkeypatch.setattr(
+            announce.httpx, "get", lambda *a, **k: self.PublicResponse()
+        )
+
+        announce.get_ips()
+        output = capsys.readouterr().out
+
+        assert "local network discovery unavailable (PermissionError)" in output
+        assert "secret-interface-name" not in output
+
+    def test_both_sources_can_fail_without_an_endpoint_or_traceback(
+        self, monkeypatch
+    ):
+        self.deny_adapters(monkeypatch, PermissionError("denied"))
+        monkeypatch.setattr(
+            announce.httpx,
+            "get",
+            raise_when_called(httpx.ConnectError("offline")),
+        )
+
+        assert announce.get_ips() == ["localhost"]
+        assert announce.get_endpoints(8000) == []
+
+    def test_a_local_address_survives_when_the_public_lookup_fails(
+        self, monkeypatch
+    ):
+        local_ip = type("IP", (), {"ip": "10.0.0.8"})()
+        adapter = type("Adapter", (), {"ips": [local_ip]})()
+        monkeypatch.setattr(announce.ifaddr, "get_adapters", lambda: [adapter])
+        monkeypatch.setattr(
+            announce.httpx,
+            "get",
+            raise_when_called(httpx.ConnectError("offline")),
+        )
+
+        assert announce.get_ips() == ["localhost", "10.0.0.8"]
+        assert "http://10.0.0.8:8000" in announce.get_endpoints(8000)
+
+    def test_loopback_addresses_are_never_announced(self, monkeypatch):
+        loopbacks = [
+            type("IP", (), {"ip": "127.0.0.2"})(),
+            type("IP", (), {"ip": "::1"})(),
+        ]
+        adapter = type("Adapter", (), {"ips": loopbacks})()
+        monkeypatch.setattr(announce.ifaddr, "get_adapters", lambda: [adapter])
+        monkeypatch.setattr(
+            announce.httpx,
+            "get",
+            raise_when_called(httpx.ConnectError("offline")),
+        )
+
+        assert announce.get_endpoints(8000) == []
+
+    @pytest.mark.asyncio
+    async def test_relay_startup_reaches_its_normal_path_when_both_sources_fail(
+        self, monkeypatch
+    ):
+        from connectonion.network import relay
+        from connectonion.network.host.server import _create_relay_lifespan
+
+        self.deny_adapters(monkeypatch, PermissionError("denied"))
+        monkeypatch.setattr(
+            announce.httpx,
+            "get",
+            raise_when_called(httpx.ConnectError("offline")),
+        )
+        serving = asyncio.Event()
+
+        async def serve_until_shutdown(*args, **kwargs):
+            serving.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(relay, "serve_once", serve_until_shutdown)
+        on_startup, on_shutdown = _create_relay_lifespan(
+            "wss://relay.example",
+            {"address": "0x" + "a" * 64},
+            "restricted host",
+            8000,
+            lambda *a, **k: None,
+        )
+
+        await on_startup()
+        try:
+            await asyncio.wait_for(serving.wait(), timeout=0.5)
+        finally:
+            await on_shutdown()
+
+
 class TestAWorkingLookupIsStillUsed:
 
     def test_the_public_address_is_included(self, monkeypatch):
@@ -110,7 +235,10 @@ class TestTheDomainOverrideSkipsItEntirely:
         called = []
         monkeypatch.setenv("AGENT_PUBLIC_DOMAIN", "agent.example.org")
         monkeypatch.setattr(
-            announce.httpx, "get", lambda *a, **k: called.append(1)
+            announce.ifaddr, "get_adapters", lambda: called.append("local")
+        )
+        monkeypatch.setattr(
+            announce.httpx, "get", lambda *a, **k: called.append("public")
         )
 
         announce.get_endpoints(8000)

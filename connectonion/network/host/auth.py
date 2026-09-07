@@ -387,6 +387,18 @@ def signature_already_used(data: dict) -> bool:
     return False
 
 
+def sealed_channel_replay_check(data: dict) -> bool:
+    """The replay guard for a frame that arrived inside a sealed socket.
+
+    Nobody but the peer who completed the SEAL handshake can produce a frame
+    that opens, and the CONNECT inside is bound to that peer (ws_router/
+    connect.py). A captured signature therefore cannot be presented on this
+    socket by anyone else, and the ledger has nothing to add. Not consulting
+    it is also what lets a sealed host keep no shared state at all.
+    """
+    return False
+
+
 def authenticate_connect(
     data: dict,
     trust,
@@ -397,6 +409,32 @@ def authenticate_connect(
     replay_check=signature_already_used,
 ):
     """Authenticate CONNECT in security order: signature, claim, then policy."""
+    prompt, agent_address, sig_valid, error = authenticate_connect_identity(
+        data,
+        blacklist=blacklist,
+        recipient_address=recipient_address,
+        replay_check=replay_check,
+    )
+    if error:
+        return prompt, agent_address, sig_valid, error
+
+    return _authorize_authenticated(data, prompt, agent_address, trust, whitelist)
+
+
+def authenticate_connect_identity(
+    data: dict,
+    *,
+    blacklist=None,
+    recipient_address=None,
+    replay_check=signature_already_used,
+):
+    """Verify a fresh CONNECT signature and replay claim without trust policy.
+
+    This is the cryptographic half of ``authenticate_connect``. It is also the
+    right gate for an equivalent relay reattach: that socket must prove the same
+    caller, recipient, capability and session again, but the already-authorized
+    live connection must not repeat mutable onboarding/contact policy.
+    """
     if "payload" not in data or "signature" not in data:
         return None, None, False, "unauthorized: signed request required"
 
@@ -423,7 +461,7 @@ def authenticate_connect(
             "unauthorized: this CONNECT was already used",
         )
 
-    return _authorize_authenticated(data, prompt, agent_address, trust, whitelist)
+    return prompt, agent_address, True, None
 
 
 def authenticated_command_payload(

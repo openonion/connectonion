@@ -133,7 +133,7 @@ Handles all incoming WebSocket messages:
 | SESSION_MERGED, session_sync | Update _currentSession |
 | mode_changed | Update approval mode |
 | thinking, tool_call, tool_result, llm_call, llm_result | Map to ChatItem via chat-item-mapper, append to _chatItems |
-| approval_needed, ask_user, plan_review | Map to ChatItem, set status = 'waiting' |
+| approval_needed, ask_user | Map to ChatItem, set status = 'waiting' |
 | OUTPUT | Resolve input() promise, update session |
 | ERROR | Reject with error message, disconnect |
 
@@ -214,7 +214,7 @@ input(prompt, options?)
   1. Clear error state
   2. Merge sessions:
      agent._currentSession = {
-       ...agent session      (preserves mode from setMode())
+       ...agent session      (Host mode is reapplied after CONNECTED)
        ...zustand session    (overlay store data)
        session_id            (ensure correct ID)
        messages              (from store)
@@ -256,12 +256,14 @@ agent.onMessage()
 
 Every streaming event (thinking, tool_call, etc.) triggers full state sync to localStorage. After refresh, UI restores exactly where it was — including pending approval cards.
 
-### setMode() — mirrors immediately
+### setSessionMode() — commits after Host acknowledgement
 
 ```typescript
-setMode(newMode, options?)
-  1. agent.setMode(newMode, options)        // Sends to server
-  2. Update Zustand store immediately       // UI reflects before server sync
+await setSessionMode(newMode)
+  1. Validate the exact Host-advertised mode
+  2. Send signed mode_change
+  3. Keep the prior mode while the request is pending
+  4. Commit React/Zustand state only after matching mode_changed
 ```
 
 ---
@@ -345,7 +347,6 @@ Converts server events into `ChatItem[]` for React rendering:
 | thinking, assistant | Add text content item |
 | approval_needed | Add approval item (shows Approve/Deny buttons) |
 | ask_user | Add question item (shows input field) |
-| plan_review | Add plan item (shows Accept/Reject) |
 
 ---
 
@@ -480,7 +481,7 @@ T+16   User clicks "Approve"
 |---|---|
 | `connectonion-react/src/connect/remote-agent.ts` | WebSocket lifecycle, CONNECT/INPUT, reconnect() |
 | `connectonion-react/src/use-agent-for-human.ts` | React hook, Zustand persistence, session merge |
-| `connectonion-react/src/connect/types.ts` | ConnectionState, SessionState, ApprovalMode |
+| `connectonion-react/src/connect/types.ts` | ConnectionState, SessionState, Mode |
 | `connectonion-react/src/connect/auth.ts` | Ed25519 signing for CONNECT messages |
 | `connectonion-react/src/connect/chat-item-mapper.ts` | Server events → ChatItem[] for UI rendering |
 | `oo-chat/components/chat/use-agent-sdk.ts` | oo-chat wrapper, respondToApproval() |

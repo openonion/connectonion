@@ -33,7 +33,6 @@ def create_app(
     blacklist: list | None = None,
     whitelist: list | None = None,
     http=None,
-    acp=None,
     on_startup: Callable[[], Awaitable[None]] | None = None,
     on_shutdown: Callable[[], Awaitable[None]] | None = None,
 ):
@@ -49,7 +48,6 @@ def create_app(
         whitelist: Allowed identities
         on_startup: Async function to run on startup (e.g., start relay connection)
         on_shutdown: Async function to run on shutdown (e.g., close relay connection)
-        acp: Optional authenticated ACP ASGI sub-application mounted at /acp
 
     Returns:
         ASGI application callable
@@ -74,23 +72,14 @@ def create_app(
                         return
                 elif message["type"] == "lifespan.shutdown":
                     try:
-                        try:
-                            if acp is not None:
-                                await acp.close()
-                        finally:
-                            if on_shutdown:
-                                await on_shutdown()
+                        if on_shutdown:
+                            await on_shutdown()
                         await send({"type": "lifespan.shutdown.complete"})
                     except Exception:
                         logger.exception("ASGI shutdown cleanup failed")
                         await send({"type": "lifespan.shutdown.complete"})
                     return
 
-        elif acp is not None and (
-            (scope["type"] == "websocket" and scope.get("path") == "/acp")
-            or (scope["type"] == "http" and scope.get("path") in ("/acp", "/acp/authorize"))
-        ):
-            await acp(scope, receive, send)
         elif scope["type"] == "http":
             await handle_http(
                 scope,

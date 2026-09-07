@@ -1,4 +1,12 @@
-"""Run Claude Code once while streaming its inner tools to ConnectOnion IO."""
+"""Run Claude Code once while streaming its inner tools to ConnectOnion IO.
+
+LLM-Note:
+  Data flow: native Claude stream-json -> bounded tool/approval events -> OIP
+  Work Room. A provider preview is emitted only from a real inline PNG/JPEG
+  image content block and is revalidated by provider_events.py before O Chat
+  renders it. See useful_tools/codex.py for the equivalent Codex imageView
+  path and plugins/coding_agents.py for the lifecycle writer.
+"""
 
 import hashlib
 import json
@@ -16,7 +24,15 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
 
-from acp import default_environment
+from ..core.provider_events import (
+    next_provider_state_revision,
+    provider_activity_event,
+    provider_artifact_event,
+    provider_message_event,
+    provider_status_summary,
+    remember_provider_activity,
+    remember_provider_artifact,
+)
 
 PERMISSION_MODES = (
     "default",
@@ -46,6 +62,7 @@ _MAX_SESSION_CHARS = 512
 _MAX_PATH_CHARS = 4_096
 _MAX_MODEL_CHARS = 128
 _MAX_TIMEOUT_SECONDS = 3_600
+_MAX_ARTIFACT_SOURCE_CHARS = 245_760
 _SENSITIVE_KEY_PARTS = (
     "api_key",
     "apikey",
@@ -74,6 +91,7 @@ _CLAUDE_ENVIRONMENT_KEYS = (
     "SYSTEMROOT",
     "TEMP",
     "TMP",
+    "USER",
     "USERPROFILE",
     "WINDIR",
 )
@@ -173,7 +191,12 @@ def _run_claude_code(
 
     argv = _stream_command(command, prompt, session_id, permission_mode, model)
     forwarder = _ClaudeStreamForwarder(agent)
-    cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
+    cancelled = _provider_cancellation_check(agent)
+
+    def provider_started() -> None:
+        forwarder.emit_user_message(prompt)
+        _confirm_direct_workroom_turn(agent)
+
     try:
         completed = _run_process(
             argv,
@@ -181,6 +204,7 @@ def _run_claude_code(
             timeout=timeout,
             cancelled=cancelled if callable(cancelled) else None,
             on_event=forwarder.handle,
+            on_started=provider_started,
         )
     except FileNotFoundError:
         return _envelope(session_id, error="Claude Code CLI not found during launch.")
@@ -245,9 +269,9 @@ def _resolve_workspace(workspace: str | Path | None) -> Path:
     try:
         resolved = root.expanduser().resolve(strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
-        raise ValueError(f"Claude Code workspace is unavailable: {exc}") from exc
+        raise ValueError("Claude Code workspace is unavailable.") from exc
     if not resolved.is_dir():
-        raise ValueError(f"Claude Code workspace is not a directory: {resolved}")
+        raise ValueError("Claude Code workspace is not a directory.")
     return resolved
 
 
@@ -256,16 +280,19 @@ def _working_directory(
 ) -> tuple[Path | None, str]:
     try:
         root = _resolve_workspace(workspace) if workspace is not None else None
+    except (OSError, RuntimeError, ValueError):
+        return None, "Claude Code workspace is unavailable."
+    try:
         requested = Path(cwd).expanduser() if cwd else (root or Path.cwd())
         if not requested.is_absolute():
             requested = (root or Path.cwd()) / requested
         directory = requested.resolve(strict=True)
-    except (OSError, RuntimeError, ValueError) as exc:
-        return None, f"Working directory is unavailable: {exc}"
+    except (OSError, RuntimeError, ValueError):
+        return None, "Working directory is unavailable."
     if not directory.is_dir():
-        return None, f"Working directory is not a directory: {directory}"
+        return None, "Working directory is not a directory."
     if root is not None and not directory.is_relative_to(root):
-        return None, f"Working directory must stay inside workspace: {root}"
+        return None, "Working directory must stay inside the configured workspace."
     return directory, ""
 
 
@@ -350,6 +377,23 @@ def _completed_envelope(completed, requested_session: str) -> str:
     )
 
 
+def _provider_cancellation_check(agent):
+    """Scope a Work Room Stop to this Claude Code invocation when available."""
+    io = getattr(agent, "io", None)
+    session = getattr(agent, "current_session", None)
+    parent_id = session.get("_active_tool_call_id") if isinstance(session, dict) else None
+    invocation_id = f"claude_code:{parent_id}" if isinstance(parent_id, str) and parent_id else ""
+    targeted = getattr(io, "is_provider_cancelled", None)
+    global_cancelled = getattr(io, "is_cancelled", None)
+
+    def cancelled():
+        if callable(global_cancelled) and global_cancelled():
+            return True
+        return bool(invocation_id and callable(targeted) and targeted(invocation_id))
+
+    return cancelled
+
+
 class _ClaudeStreamForwarder:
     """Translate Claude stream-json messages into native live tool events."""
 
@@ -366,7 +410,24 @@ class _ClaudeStreamForwarder:
             if self._parent_tool_call_id else {}
         )
         self._tools: dict[str, dict[str, Any]] = {}
+        self._activity_sequences: dict[str, int] = {}
+        self._messages: dict[str, str] = {}
         self._event_count = 0
+
+    def emit_user_message(self, text: str) -> None:
+        """Publish the initiating prompt only inside a correlated Work Room."""
+        session = getattr(self._agent, "current_session", None)
+        request_id = (
+            session.get("_provider_direct_message_id")
+            if isinstance(session, dict)
+            else None
+        )
+        message_id = (
+            f"user:{_stable_identifier(request_id)}"
+            if isinstance(request_id, str) and request_id
+            else "user:initial"
+        )
+        self._emit_message(message_id, "user", text)
 
     def handle(self, event: dict[str, Any]) -> None:
         if self._io is None or not isinstance(event, dict):
@@ -378,6 +439,22 @@ class _ClaudeStreamForwarder:
             self._user(event)
 
     def _assistant(self, event: dict[str, Any]) -> None:
+        text = "\n".join(
+            block["text"]
+            for block in _content_blocks(event)
+            if block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+            and block["text"].strip()
+        )
+        if text:
+            message = event.get("message")
+            native_id = message.get("id") if isinstance(message, dict) else None
+            stable_id = (
+                _stable_identifier(native_id)
+                if isinstance(native_id, str) and native_id
+                else hashlib.sha256(text.encode("utf-8")).hexdigest()
+            )
+            self._emit_message(f"assistant:{stable_id}", "assistant", text)
         for block in _content_blocks(event):
             if block.get("type") != "tool_use":
                 continue
@@ -395,17 +472,7 @@ class _ClaudeStreamForwarder:
                 continue
             metadata = _event_metadata(event)
             metadata["name"] = _bounded_text(block.get("name") or "Tool")
-            self._emit(
-                "tool_call",
-                tool_id=_wire_tool_id(provider_id),
-                name=f"Claude Code › {metadata['name']}",
-                args=_bounded_args(block.get("input")),
-                status="in_progress",
-                provider="claude_code",
-                child_session_id=metadata["session_id"],
-                parent_tool_id=metadata["parent_tool_id"],
-                **self._correlation,
-            )
+            self._emit_tool_start(provider_id, metadata, _bounded_args(block.get("input")))
             self._tools[tool_id] = metadata
 
     def _user(self, event: dict[str, Any]) -> None:
@@ -421,24 +488,68 @@ class _ClaudeStreamForwarder:
                 if self._event_count + len(self._tools) + 2 > _MAX_LIVE_EVENTS:
                     continue
                 self._emit_unknown_start(provider_id, metadata)
-            self._emit(
-                "tool_result",
-                tool_id=_wire_tool_id(provider_id),
-                status="failed" if block.get("is_error") else "completed",
-                result=_bounded_result(block.get("content")),
-                provider="claude_code",
-                child_session_id=metadata["session_id"],
-                parent_tool_id=metadata["parent_tool_id"],
-                **self._correlation,
+            self._emit_native_image_artifact(provider_id, block.get("content"))
+            self._emit_tool_result(
+                provider_id,
+                metadata,
+                "failed" if block.get("is_error") else "completed",
+                _safe_tool_result(block.get("content")),
             )
             self._tools.pop(tool_id, None)
 
+    def _emit_message(self, message_id: str, role: str, text: str) -> None:
+        if not self._correlation:
+            return
+        try:
+            session = getattr(self._agent, "current_session", None)
+            workroom_id = (
+                session.get("_provider_workroom_id")
+                if isinstance(session, dict)
+                else None
+            )
+            continuation_of = (
+                session.get("_provider_continuation_of")
+                if isinstance(session, dict)
+                else None
+            )
+            event = provider_message_event(
+                provider="claude_code",
+                invocation_id=self._correlation["invocationId"],
+                parent_tool_call_id=self._correlation["parentToolCallId"],
+                message_id=message_id,
+                role=role,
+                text=text,
+                **(
+                    {"workroom_id": workroom_id}
+                    if isinstance(workroom_id, str) and workroom_id
+                    else {}
+                ),
+                **(
+                    {"continuation_of": continuation_of}
+                    if isinstance(continuation_of, str) and continuation_of
+                    else {}
+                ),
+            )
+        except ValueError:
+            return
+        if self._messages.get(message_id) == event["text"]:
+            return
+        self._messages[message_id] = event["text"]
+        self._emit("provider_message", **_without_event_type(event))
+
     def _emit_unknown_start(self, provider_id: str, metadata: dict[str, Any]) -> None:
-        self._emit(
+        metadata["name"] = "Tool"
+        self._emit_tool_start(provider_id, metadata, {})
+
+    def _emit_tool_start(self, provider_id: str, metadata: dict[str, Any], args: dict[str, Any]) -> None:
+        if not self._reserve_event():
+            return
+        self._emit_safe_activity(provider_id, metadata, args, "running")
+        self._send(
             "tool_call",
             tool_id=_wire_tool_id(provider_id),
-            name="Claude Code › Tool",
-            args={},
+            name=f"Claude Code › {metadata['name']}",
+            args=args,
             status="in_progress",
             provider="claude_code",
             child_session_id=metadata["session_id"],
@@ -446,13 +557,131 @@ class _ClaudeStreamForwarder:
             **self._correlation,
         )
 
-    def _emit(self, event_type: str, **fields: Any) -> None:
-        if self._event_count >= _MAX_LIVE_EVENTS:
+    def _emit_tool_result(
+        self,
+        provider_id: str,
+        metadata: dict[str, Any],
+        status: str,
+        result: str,
+    ) -> None:
+        if not self._reserve_event():
             return
+        self._emit_safe_activity(provider_id, metadata, {}, status)
+        self._send(
+            "tool_result",
+            tool_id=_wire_tool_id(provider_id),
+            status=status,
+            result=result,
+            provider="claude_code",
+            child_session_id=metadata["session_id"],
+            parent_tool_id=metadata["parent_tool_id"],
+            **self._correlation,
+        )
+
+    def _emit_native_image_artifact(self, provider_id: str, content: Any) -> None:
+        """Forward a real Claude inline image, never text or an external URL."""
+        if not self._correlation or self._event_count + 2 > _MAX_LIVE_EVENTS:
+            return
+        thumbnail = _inline_image_data_url(content)
+        if thumbnail is None:
+            return
+        invocation_id = self._correlation["invocationId"]
+        parent_id = self._correlation["parentToolCallId"]
+        # Validate before advancing the visible lifecycle so an unsupported
+        # content block cannot create an otherwise meaningless state update.
+        try:
+            provider_artifact_event(
+                provider="claude_code",
+                invocation_id=invocation_id,
+                parent_tool_call_id=parent_id,
+                artifact_id="latest",
+                state_revision=1,
+                thumbnail_data_url=thumbnail,
+                alt="Latest provider workspace view",
+            )
+        except ValueError:
+            return
+        revision = next_provider_state_revision(self._agent, invocation_id)
+        artifact = provider_artifact_event(
+            provider="claude_code",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            artifact_id=f"image-{_stable_identifier(provider_id)}-{revision}",
+            state_revision=revision,
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+        remember_provider_artifact(
+            self._agent,
+            provider="claude_code",
+            invocation_id=invocation_id,
+            parent_tool_call_id=parent_id,
+            thumbnail_data_url=thumbnail,
+            alt="Latest provider workspace view",
+        )
+        self._emit(
+            "provider_invocation",
+            invocationId=invocation_id,
+            parentToolCallId=parent_id,
+            provider="claude_code",
+            providerDisplayName="Claude Code",
+            status="running",
+            currentSummary=provider_status_summary("running"),
+            stateRevision=revision,
+        )
+        self._emit("provider_artifact", **_without_event_type(artifact))
+
+    def _emit_safe_activity(
+        self,
+        provider_id: str,
+        metadata: dict[str, Any],
+        details: dict[str, Any],
+        status: str,
+    ) -> None:
+        if not self._correlation:
+            return
+        activity_id = _wire_tool_id(provider_id)
+        fields = provider_activity_event(
+            provider="claude_code",
+            activity_id=activity_id,
+            sequence=self._activity_sequence(activity_id),
+            native_kind="tool",
+            status=status,
+            name=metadata["name"],
+            details=details,
+        )
+        fields.pop("type")
+        remember_provider_activity(
+            self._agent,
+            self._correlation["invocationId"],
+            fields,
+        )
+        self._send("provider_activity", **fields, **self._correlation)
+
+    def _activity_sequence(self, activity_id: str) -> int:
+        if activity_id not in self._activity_sequences:
+            self._activity_sequences[activity_id] = len(self._activity_sequences) + 1
+        return self._activity_sequences[activity_id]
+
+    def _emit(self, event_type: str, **fields: Any) -> None:
+        if not self._reserve_event():
+            return
+        self._send(event_type, **fields)
+
+    def _reserve_event(self) -> bool:
+        if self._event_count >= _MAX_LIVE_EVENTS:
+            return False
         self._event_count += 1
+        return True
+
+    def _send(self, event_type: str, **fields: Any) -> None:
+        entry = {"type": event_type, **fields}
         record = getattr(self._agent, "_record_trace", None)
         if callable(record) and isinstance(getattr(self._agent, "current_session", None), dict):
-            record({"type": event_type, **fields})
+            record(entry)
+            stream_live = getattr(self._io, "send_live_trace", None)
+            if callable(stream_live):
+                stream_live(entry)
         else:
             self._io.log(event_type, **fields)
 
@@ -592,6 +821,52 @@ def _bounded_result(value: Any, limit: int = _MAX_RESULT_CHARS) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _safe_tool_result(value: Any) -> str:
+    """Summarize structured native results without copying inline image bytes."""
+    if not isinstance(value, list):
+        return _bounded_result(value)
+    parts: list[str] = []
+    for block in value[:_MAX_COLLECTION_ITEMS]:
+        if not isinstance(block, dict):
+            parts.append("Provider returned a structured result.")
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            parts.append(block["text"])
+        elif block.get("type") == "image":
+            parts.append("Provider returned a workspace image.")
+        else:
+            parts.append("Provider returned a structured result.")
+    return _bounded_result("\n".join(parts))
+
+
+def _inline_image_data_url(value: Any) -> str | None:
+    """Return the latest explicitly inline PNG/JPEG Claude image content block."""
+    if not isinstance(value, list):
+        return None
+    for block in reversed(value[:_MAX_COLLECTION_ITEMS]):
+        if not isinstance(block, dict) or block.get("type") != "image":
+            continue
+        source = block.get("source")
+        if not isinstance(source, dict) or source.get("type") != "base64":
+            continue
+        media_type = source.get("media_type")
+        data = source.get("data")
+        if (
+            media_type not in {"image/png", "image/jpeg"}
+            or not isinstance(data, str)
+            or not data
+            or len(data) > _MAX_ARTIFACT_SOURCE_CHARS
+        ):
+            continue
+        return f"data:{media_type};base64,{data}"
+    return None
+
+
+def _without_event_type(event: dict[str, Any]) -> dict[str, Any]:
+    """Use a canonical event with the forwarder's local event sender."""
+    return {key: value for key, value in event.items() if key != "type"}
+
+
 def _bounded_usage(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -633,9 +908,17 @@ def _run_process(
     timeout: int,
     cancelled: Callable[[], bool] | None = None,
     on_event: Callable[[dict[str, Any]], None],
+    on_started: Callable[[], None] | None = None,
 ) -> _StreamCompleted:
     """Read Claude NDJSON without blocking cancellation on one quiet stream."""
     process = _start_process(argv, cwd)
+    if on_started is not None:
+        try:
+            on_started()
+        except Exception:
+            _kill_process_tree(process)
+            _close_pipes(process)
+            raise
     mailbox: queue.Queue = queue.Queue(maxsize=_MAX_MAILBOX_LINES)
     readers_stopped = threading.Event()
     _start_reader(process.stdout, "stdout", mailbox, readers_stopped)
@@ -682,6 +965,35 @@ def _run_process(
     )
 
 
+def _confirm_direct_workroom_turn(agent) -> None:
+    """Acknowledge a Claude continuation only after its native process starts."""
+    session = getattr(agent, "current_session", None)
+    if not isinstance(session, dict):
+        return
+    request_id = session.get("_provider_direct_message_id")
+    invocation_id = session.get("_provider_continuation_of")
+    state_revision = session.get("_provider_direct_state_revision")
+    if (
+        not isinstance(request_id, str)
+        or not request_id
+        or not isinstance(invocation_id, str)
+        or not invocation_id
+        or isinstance(state_revision, bool)
+        or not isinstance(state_revision, int)
+        or state_revision < 1
+    ):
+        return
+    sender = getattr(getattr(agent, "io", None), "send", None)
+    if callable(sender):
+        sender({
+            "type": "PROVIDER_INPUT_ACK",
+            "requestId": request_id,
+            "invocationId": invocation_id,
+            "accepted": True,
+            "stateRevision": state_revision,
+        })
+
+
 def _start_process(argv: list[str], cwd: str):
     platform_options = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
@@ -704,7 +1016,14 @@ def _start_process(argv: list[str], cwd: str):
 
 
 def _claude_environment() -> dict[str, str]:
-    environment = default_environment()
+    # Keep the child usable without forwarding the caller's full environment.
+    # Claude Code needs executable discovery and a home/config root; provider
+    # credentials and platform variables are added from the explicit allowlist.
+    environment = {
+        key: value
+        for key in ("PATH", "HOME", "SHELL")
+        if (value := os.environ.get(key)) and not value.startswith("()")
+    }
     for key in _CLAUDE_ENVIRONMENT_KEYS:
         value = os.environ.get(key)
         if value and not value.startswith("()"):

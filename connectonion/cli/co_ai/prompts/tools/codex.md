@@ -3,9 +3,20 @@
 Delegate a scoped coding task to the user's installed Codex CLI when a separate
 coding agent is better suited to implement or investigate it.
 
+When the user explicitly asks to open, use, start, or hand work to Codex, call
+`codex()` immediately. Do not probe with `pwd`, `ls`, or `which codex`; the
+adapter resolves the workspace and reports an unavailable or unauthenticated
+Codex installation honestly.
+
+If the request only says to open or start Codex, call `codex()` with no
+`prompt`. That creates the native provider thread and Work Room without
+inventing or submitting a task. If the user included work, pass their actual
+request as `prompt`; never replace it with a generic greeting or probe.
+
 ## Contract
 
-- Always pass an explicit `cwd` for the target repository.
+- Pass `cwd` when the user named a specific repository. Otherwise omit it and
+  let the adapter use its operator-bound workspace.
 - Save the returned `session_id`. Pass the exact same ID on follow-up calls so
   Codex continues its existing thread instead of starting over.
 - Give Codex a bounded task with the relevant requirements, constraints, and

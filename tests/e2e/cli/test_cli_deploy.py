@@ -147,14 +147,14 @@ class TestCliDeploy:
             )
             mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running"})
 
-            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
-                self.runner.invoke(cli, ['deploy'])
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token", "AGENT_ADDRESS": "process-agent-address"}):
+                self.runner.invoke(cli, ['--env-file', str(Path('.env').resolve()), 'deploy'])
 
             secrets = json.loads(mock_post.call_args.kwargs["data"]["secrets"])
             assert secrets["AGENT_CONFIG_PATH"] == "/app/.co"
             assert "/Users/somedev" not in json.dumps(secrets)   # no host path leak
-            assert secrets["OPENONION_API_KEY"].startswith("eyJ")  # auth key preserved
-            assert secrets["AGENT_ADDRESS"].startswith("0xcd92")   # identity preserved
+            assert secrets["OPENONION_API_KEY"] == "test-token"  # auth key preserved
+            assert secrets["AGENT_ADDRESS"] == "process-agent-address"   # identity preserved
 
     def test_deploy_fetches_logs_after_success(self):
         """Test that deploy fetches and displays container logs after deployment.

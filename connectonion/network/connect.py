@@ -1,12 +1,12 @@
 """
-Purpose: Python client for remote ConnectOnion agents — signed transport, acknowledged Host permission profiles, streaming UI events, and onboarding.
+Purpose: Python client for remote ConnectOnion agents — signed transport, acknowledged Host modes, streaming UI events, and onboarding.
 LLM-Note:
-  Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign), ..core.acp_wire] | imported by [network/__init__.py, connectonion/__init__.py] | tested by [test_connect.py, test_each_command_is_signed.py, test_acp_host_set_mode.py]
-  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_permission_profile() validates Host SessionModeState, sends signed ACP_REQUEST, and waits for its exact ACP_RESPONSE before changing local authority
+  Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign)] | imported by [network/__init__.py, connectonion/__init__.py]
+  Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_session_mode() validates Host state, sends signed OIP mode_change, and waits for mode_changed
   State/Effects: mutates current session/modes/UI/status only from authenticated carrier responses; opens outbound sockets; signs deep-detached command payloads; endpoint resolution may query relay and candidate /info endpoints
-  Integration: exposes connect(), RemoteAgent, Response, ExecResult, ACPModeError; RemoteAgent provides input/call/set_permission_profile sync+async actions and read-only state; set_session_mode is deprecated
+  Integration: exposes connect(), RemoteAgent, Response, ExecResult, PermissionModeError; RemoteAgent provides input/call/set_session_mode sync+async actions and read-only state
   Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
-  Errors: raises ConnectionError on transport/auth failure, ACPModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
+  Errors: raises ConnectionError on transport/auth failure, PermissionModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.
 
@@ -32,14 +32,24 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 from .. import address as addr
-from ..core.acp_wire import (
-    acp_set_mode_request_frame,
-    acp_set_mode_response,
-    host_session_mode_state,
-    legacy_stream_event_from_acp,
-    session_mode_id,
-)
-from ..core.approval_modes import legacy_permission_profile_id
+from ..core.mode import FULL_ACCESS, mode_id, set_mode
+
+
+def _validated_remote_mode_state(mode: Any, turns_left: Any) -> tuple[str, int | None]:
+    """Validate an authoritative Host state before mirroring it locally."""
+
+    canonical = mode_id(mode)
+    if canonical == FULL_ACCESS:
+        if (
+            isinstance(turns_left, bool)
+            or not isinstance(turns_left, int)
+            or turns_left <= 0
+        ):
+            raise ValueError("full-access acknowledgement requires turns_left")
+        return canonical, turns_left
+    if turns_left is not None:
+        raise ValueError("turns_left is valid only for full-access")
+    return canonical, None
 
 
 def _tool_ui_status(status: Any, *, terminal: bool = False) -> str:
@@ -199,9 +209,11 @@ async def resolve_endpoint(
         sorted_endpoints = _sort_endpoints(agent_info["endpoints"])
 
         # Step 3: Try each HTTP endpoint
+        # Plaintext public endpoints are candidates too: _open_best_connection
+        # seals the socket end to end before any signed frame goes onto it,
+        # and drops it if the host cannot seal (see _seal_direct).
         http_endpoints = [ep for ep in sorted_endpoints
-                          if (ep.startswith("http://") or ep.startswith("https://"))
-                          and endpoint_is_safe(ep)]
+                          if ep.startswith("http://") or ep.startswith("https://")]
 
         for http_url in http_endpoints:
             try:
@@ -250,7 +262,7 @@ class ExecResult:
         return re.findall(r'data:image/[a-z]+;base64,[A-Za-z0-9+/=]+', self.text)
 
 
-class ACPModeError(ConnectionError):
+class PermissionModeError(ConnectionError):
     """An acknowledged Host session-mode policy rejection."""
 
     def __init__(self, code: int, message: str, data: Any = None):
@@ -296,7 +308,7 @@ class RemoteAgent:
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
         self._ui_events: List[Dict[str, Any]] = []
-        self._available_permission_profiles: List[Dict[str, Any]] = []
+        self._available_modes: List[Dict[str, Any]] = []
         self._resolved_endpoint: Optional[str] = None
         self._endpoint_resolved = False
 
@@ -323,34 +335,27 @@ class RemoteAgent:
 
     @property
     def available_modes(self) -> List[Dict[str, Any]]:
-        """Deprecated alias for :attr:`available_permission_profiles`."""
-        return self.available_permission_profiles
+        """Server-authorized public modes from the latest connection."""
+        return copy.deepcopy(self._available_modes)
 
-    @property
-    def available_permission_profiles(self) -> List[Dict[str, Any]]:
-        """Server-authorized permission profiles from the latest connection."""
-        return copy.deepcopy(self._available_permission_profiles)
-
-    def set_permission_profile(
-        self, profile_id: str, timeout: float = 30.0
-    ) -> None:
-        """Persist a Host permission profile after its owned acknowledgement."""
+    def set_session_mode(self, mode: str, timeout: float = 30.0) -> None:
+        """Persist a Host mode after its owned acknowledgement."""
         try:
             asyncio.get_running_loop()
             raise RuntimeError(
-                "set_permission_profile() cannot be used inside async context. "
-                "Use 'await agent.set_permission_profile_async()' instead."
+                "set_session_mode() cannot be used inside async context. "
+                "Use 'await agent.set_session_mode_async()' instead."
             )
         except RuntimeError as exc:
-            if "set_permission_profile() cannot be used" in str(exc):
+            if "set_session_mode() cannot be used" in str(exc):
                 raise
-        asyncio.run(self.set_permission_profile_async(profile_id, timeout=timeout))
+        asyncio.run(self.set_session_mode_async(mode, timeout=timeout))
 
-    async def set_permission_profile_async(
-        self, profile_id: str, timeout: float = 30.0
+    async def set_session_mode_async(
+        self, mode: str, timeout: float = 30.0
     ) -> None:
-        """Commit a permission profile, or time out with outcome unknown."""
-        profile_id = session_mode_id(profile_id)
+        """Commit one exact mode, or time out with outcome unknown."""
+        canonical = mode_id(mode)
         if (
             isinstance(timeout, bool)
             or not isinstance(timeout, (int, float))
@@ -359,54 +364,35 @@ class RemoteAgent:
             raise ValueError("timeout must be a positive number")
         try:
             await asyncio.wait_for(
-                self._set_permission_profile_transaction(profile_id), timeout=timeout
+                self._set_session_mode_transaction(canonical), timeout=timeout
             )
         except asyncio.TimeoutError:
             raise TimeoutError(
-                f"Permission profile change timed out after {timeout}s"
+                f"Permission mode change timed out after {timeout}s"
             ) from None
 
-    def set_session_mode(self, mode_id: str, timeout: float = 30.0) -> None:
-        """Deprecated alias for :meth:`set_permission_profile`."""
-        self.set_permission_profile(
-            legacy_permission_profile_id(mode_id), timeout=timeout
-        )
-
-    async def set_session_mode_async(
-        self, mode_id: str, timeout: float = 30.0
-    ) -> None:
-        """Deprecated alias for :meth:`set_permission_profile_async`."""
-        await self.set_permission_profile_async(
-            legacy_permission_profile_id(mode_id), timeout=timeout
-        )
-
-    async def _set_permission_profile_transaction(self, profile_id: str) -> None:
+    async def _set_session_mode_transaction(self, canonical: str) -> None:
         """Run negotiation and response handling under the caller's deadline."""
         import websockets
 
         await self._try_resolve_endpoint()
         connection, is_direct = await self._open_best_connection(websockets)
-        request_id = str(uuid.uuid4())
-
         async with connection as ws:
             await ws.send(json.dumps(self._build_connect_message(is_direct)))
             state = await self._wait_for_mode_connected(ws)
             if not any(
-                profile.get("id") == profile_id
-                for profile in state["availableModes"]
+                item.get("id") == canonical
+                for item in state["availableModes"]
             ):
                 raise ValueError(
-                    f"Permission profile is not available: {profile_id}"
+                    f"Permission mode is not available: {canonical}"
                 )
-            session_id = self._current_session["session_id"]
-            request = acp_set_mode_request_frame(
-                request_id, session_id, profile_id
-            )
+            request = {"type": "mode_change", "mode": canonical}
             await ws.send(json.dumps(
                 self._build_command_message(request, is_direct)
             ))
             await self._wait_for_mode_response(
-                ws, request_id, session_id, profile_id
+                ws, canonical
             )
 
     def input(
@@ -525,46 +511,9 @@ class RemoteAgent:
         try:
             async with connection as ws:
                 await ws.send(json.dumps(connect_msg))
-
-                # Wait for CONNECTED (EXEC needs the same auth gate as INPUT).
-                while True:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=30)
-                    event = json.loads(raw)
-                    etype = event.get("type")
-                    if etype == "CONNECTED":
-                        break
-                    if etype == "ONBOARD_REQUIRED":
-                        # The same exchange input() does, on the same socket: submit
-                        # credentials and keep waiting. The host finishes the CONNECT
-                        # its trust gate interrupted (ws_router/session.py pops the
-                        # stashed pending_connect and calls establish_connection), so
-                        # CONNECTED arrives on this loop and the EXEC goes out below.
-                        #
-                        # This used to answer "run input() once to onboard" — the
-                        # Python API, which is no help to whoever typed `co call`.
-                        methods = event.get("methods", [])
-                        if not sys.stdin.isatty():
-                            # A script has no stdin to answer with, and prompting
-                            # would hang it. Fail, but say what the agent asked for.
-                            return ExecResult(
-                                text="", status="error",
-                                error=f"agent requires onboarding ({', '.join(methods) or 'no methods offered'})"
-                                      " — run this from a terminal to enter an invite code")
-                        try:
-                            credentials = self._prompt_onboard(methods, event.get("payment_amount"))
-                        except ValueError as declined:
-                            # Entering nothing is an answer, and a normal one.
-                            # _prompt_onboard raises for it, and every other refusal
-                            # call() can meet — a blacklist, a bad code, a tool that
-                            # is not whitelisted — comes back as an ExecResult. This
-                            # is that same channel, not a swallowed error.
-                            return ExecResult(text="", status="error",
-                                              error=f"onboarding not completed: {declined}")
-                        await ws.send(json.dumps(self._build_onboard_submit(credentials)))
-                        continue
-                    if etype == "ERROR":
-                        return ExecResult(text="", status="error",
-                                          error=event.get("message", "connect failed"))
+                connect_error = await self._wait_for_direct_command_connected(ws)
+                if connect_error:
+                    return ExecResult(text="", status="error", error=connect_error)
 
                 await ws.send(json.dumps(exec_msg))
 
@@ -587,6 +536,154 @@ class RemoteAgent:
                                           error=event.get("message", "exec failed"))
         except asyncio.TimeoutError:
             return ExecResult(text="", status="error", error=f"exec timed out after {timeout}s")
+
+    def remote_browser(
+        self,
+        command: str,
+        *,
+        session_id: str | None = None,
+        timeout: float = 60.0,
+        **args,
+    ) -> Dict[str, Any]:
+        """Run one typed, owner-bound Remote Browser lifecycle command."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "remote_browser() cannot be used inside async context. "
+                "Use 'await agent.remote_browser_async()' instead."
+            )
+        except RuntimeError as exc:
+            if "remote_browser() cannot be used" in str(exc):
+                raise
+        return asyncio.run(
+            self.remote_browser_async(
+                command,
+                session_id=session_id,
+                timeout=timeout,
+                **args,
+            )
+        )
+
+    async def remote_browser_async(
+        self,
+        command: str,
+        *,
+        session_id: str | None = None,
+        timeout: float = 60.0,
+        **args,
+    ) -> Dict[str, Any]:
+        """Async Remote Browser lifecycle request over authenticated OIP."""
+        import websockets
+
+        await self._try_resolve_endpoint()
+        request_id = str(uuid.uuid4())
+        request = {
+            "type": "REMOTE_BROWSER",
+            "request_id": request_id,
+            "command": command,
+            "args": args,
+        }
+        if session_id is not None:
+            request["session_id"] = session_id
+
+        try:
+            connection, is_direct = await self._open_best_connection(websockets)
+            async with connection as ws:
+                await ws.send(json.dumps(self._build_connect_message(is_direct)))
+                connect_error = await self._wait_for_direct_command_connected(ws)
+                if connect_error:
+                    return self._remote_browser_client_error(
+                        request_id, command, "CONNECTION_FAILED", connect_error
+                    )
+                await ws.send(json.dumps(
+                    self._build_command_message(request, is_direct)
+                ))
+                while True:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                    event = json.loads(raw)
+                    event_type = event.get("type")
+                    if (
+                        event_type == "REMOTE_BROWSER_RESULT"
+                        and event.get("request_id") == request_id
+                    ):
+                        event.pop("type", None)
+                        return event
+                    if event_type == "PING":
+                        await ws.send(json.dumps({"type": "PONG"}))
+                    elif event_type == "ERROR":
+                        return self._remote_browser_client_error(
+                            request_id,
+                            command,
+                            "CONNECTION_FAILED",
+                            event.get("message", "remote browser request failed"),
+                        )
+        except asyncio.TimeoutError:
+            return self._remote_browser_client_error(
+                request_id,
+                command,
+                "TIMEOUT",
+                f"remote browser request timed out after {timeout}s",
+                retryable=True,
+            )
+        except OSError as exc:
+            return self._remote_browser_client_error(
+                request_id,
+                command,
+                "CONNECTION_FAILED",
+                str(exc),
+                retryable=True,
+            )
+
+    async def _wait_for_direct_command_connected(self, ws) -> str | None:
+        """Complete CONNECT/onboarding for non-LLM command APIs."""
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            event = json.loads(raw)
+            event_type = event.get("type")
+            if event_type == "CONNECTED":
+                return None
+            if event_type == "ONBOARD_REQUIRED":
+                methods = event.get("methods", [])
+                if not sys.stdin.isatty():
+                    offered = ", ".join(methods) or "no methods offered"
+                    return (
+                        f"agent requires onboarding ({offered}) — run this from "
+                        "a terminal to enter an invite code"
+                    )
+                try:
+                    credentials = self._prompt_onboard(
+                        methods, event.get("payment_amount")
+                    )
+                except ValueError as declined:
+                    return f"onboarding not completed: {declined}"
+                await ws.send(json.dumps(self._build_onboard_submit(credentials)))
+                continue
+            if event_type == "ERROR":
+                return event.get("message", "connect failed")
+
+    @staticmethod
+    def _remote_browser_client_error(
+        request_id: str,
+        command: str,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+    ) -> Dict[str, Any]:
+        return {
+            "schema_version": "1",
+            "ok": False,
+            "command": f"remote-browser.{command}",
+            "request_id": request_id,
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+            "retry_after_seconds": None,
+            "state": {},
+            "tips": [],
+            "warnings": [],
+            "next_actions": [],
+        }
 
     def reset(self) -> None:
         """Clear conversation and start fresh."""
@@ -621,11 +718,59 @@ class RemoteAgent:
         """
         for ws_url, is_direct in self._ways_to_reach():
             try:
-                return await websockets.connect(ws_url), is_direct
+                ws = await websockets.connect(ws_url)
             except OSError:
                 if not is_direct:
                     raise          # the relay is the last resort; there is no next
                 self._forget_direct_endpoint()
+                continue
+            if not is_direct:
+                if not self._keys:
+                    return ws, False       # nothing signed will go onto it
+                sealed = await self._offer_seal(ws)
+                if sealed is not None:
+                    return sealed, False
+                # A 1.8.0 host answers SEAL with "unknown message type" and
+                # has already consumed that socket's first frame. The relay
+                # link is TLS to the relay, which is every client's old
+                # footing; keep it, on a fresh socket.
+                await ws.close()
+                return await websockets.connect(ws_url), False
+            sealed = await self._offer_seal(ws)
+            if sealed is not None:
+                return sealed, True
+            if endpoint_is_safe(ws_url) or not self._keys:
+                # TLS or loopback: the link itself is private. No keys: nothing
+                # signed will go onto it, so there is nothing to capture.
+                return ws, True
+            # Plaintext to a host that cannot seal: a signed frame on that link
+            # is a captured CONNECT waiting to happen (#649). Not this way.
+            await ws.close()
+            self._forget_direct_endpoint()
+        raise OSError("no way to reach the agent")
+
+    async def _offer_seal(self, ws):
+        """Seal a socket end to end; None if the host does not seal.
+
+        Every socket, direct or relayed, is offered a SEAL first. A host that
+        understands it answers SEALED_OK and every later frame is encrypted
+        with one-time keys signed by both identities; a plaintext public
+        endpoint is then as private as TLS, and a relayed session is opaque
+        to the relay. An older host answers something else or nothing, and
+        the caller decides whether the bare link is acceptable.
+        """
+        from . import sealed
+
+        if not self._keys:
+            return None
+        hello, ephemeral = sealed.client_hello(self._keys, self.address)
+        await ws.send(json.dumps(hello))
+        try:
+            reply = json.loads(await asyncio.wait_for(ws.recv(), timeout=sealed.HANDSHAKE_TIMEOUT))
+            channel = sealed.client_finish(reply, hello, ephemeral)
+        except (asyncio.TimeoutError, sealed.SealRefused, ValueError):
+            return None
+        return sealed.SealedSocket(ws, channel)
 
     def _forget_direct_endpoint(self) -> None:
         """Stop trying a corpse on every turn; resolve again when next asked."""
@@ -813,7 +958,7 @@ class RemoteAgent:
                 state = self._consume_connected_mode_state(event)
                 if state is None:
                     raise ConnectionError(
-                        "Host does not support acknowledged ACP session modes"
+                        "Host does not support acknowledged OIP modes"
                     )
                 return state
             if event_type == "PING":
@@ -824,7 +969,7 @@ class RemoteAgent:
                 )
 
     async def _wait_for_mode_response(
-        self, ws, request_id: str, session_id: str, profile_id: str,
+        self, ws, expected_mode: str,
     ) -> None:
         while True:
             event = json.loads(await ws.recv())
@@ -836,26 +981,24 @@ class RemoteAgent:
                 raise ConnectionError(
                     event.get("message", "Session mode change failed")
                 )
-            if event_type != "ACP_RESPONSE":
+            if event_type != "mode_changed":
                 self._handle_stream_event(event)
                 continue
-            response = acp_set_mode_response(
-                event,
-                expected_request_id=request_id,
-                expected_session_id=session_id,
-            )
-            if "error" in response:
-                error = response["error"]
-                raise ACPModeError(
-                    error["code"], error["message"], error.get("data")
+            try:
+                acknowledged, turns_left = _validated_remote_mode_state(
+                    event.get("mode"), event.get("turns_left")
                 )
-            for field in (
-                "skip_tool_approval",
-                "full_access_turns",
-                "full_access_turns_used",
-            ):
-                self._current_session.pop(field, None)
-            self._current_session["mode"] = profile_id
+            except ValueError:
+                raise PermissionModeError(
+                    -32602, "Host acknowledged an invalid mode"
+                ) from None
+            if acknowledged != expected_mode:
+                raise PermissionModeError(-32602, "Host acknowledged another mode")
+            set_mode(
+                self._current_session,
+                acknowledged,
+                turns_left=turns_left,
+            )
             return
 
     def _consume_connected_mode_state(
@@ -866,15 +1009,27 @@ class RemoteAgent:
             self._current_session = {"session_id": sid}
         elif sid and self._current_session:
             self._current_session["session_id"] = sid
-        state = host_session_mode_state(event)
+        state = event.get("session_modes")
+        if not isinstance(state, dict):
+            state = None
         if state is None:
-            self._available_permission_profiles = []
+            self._available_modes = []
             return None
-        self._available_permission_profiles = copy.deepcopy(
-            state["availableModes"]
-        )
+        available = state.get("availableModes")
+        if not isinstance(available, list):
+            raise PermissionModeError(-32602, "Host advertised invalid modes")
+        try:
+            available_ids = [mode_id(item.get("id")) for item in available]
+            current, turns_left = _validated_remote_mode_state(
+                state.get("currentModeId"), state.get("turnsLeft")
+            )
+        except (AttributeError, ValueError):
+            raise PermissionModeError(-32602, "Host advertised invalid mode state") from None
+        if len(available_ids) != len(set(available_ids)) or current not in available_ids:
+            raise PermissionModeError(-32602, "Host advertised inconsistent modes")
+        self._available_modes = copy.deepcopy(available)
         if self._current_session is not None:
-            self._current_session["mode"] = state["currentModeId"]
+            set_mode(self._current_session, current, turns_left=turns_left)
         return state
 
     def _build_connect_message(self, is_direct: bool = False) -> Dict[str, Any]:
@@ -1002,19 +1157,6 @@ class RemoteAgent:
 
     def _handle_stream_event(self, event: Dict[str, Any]) -> None:
         """Handle streaming event and update UI."""
-        try:
-            session_id = (
-                self._current_session.get("session_id")
-                if isinstance(self._current_session, dict)
-                else None
-            )
-            acp_event = legacy_stream_event_from_acp(
-                event, expected_session_id=session_id
-            )
-        except (TypeError, ValueError):
-            return
-        if acp_event is not None:
-            event = acp_event
         event_type = event.get("type")
 
         if event_type == "tool_call":
@@ -1034,6 +1176,8 @@ class RemoteAgent:
                 "args": event.get("args"),
                 "status": _tool_ui_status(event.get("status")),
             }
+            if isinstance(event.get("summary"), str) and event["summary"]:
+                tool_item["summary"] = event["summary"]
             if existing is None:
                 self._add_ui_event(tool_item)
             else:
@@ -1049,7 +1193,7 @@ class RemoteAgent:
             if existing is not None:
                 if event.get("status") is not None:
                     existing["status"] = _tool_ui_status(event["status"])
-                for field in ("name", "args", "result", "timing_ms"):
+                for field in ("name", "args", "summary", "result", "timing_ms"):
                     if field in event:
                         existing[field] = event[field]
 
@@ -1095,10 +1239,12 @@ class RemoteAgent:
             ):
                 return
             try:
-                mode = session_mode_id(event.get("mode"))
+                mode, turns_left = _validated_remote_mode_state(
+                    event.get("mode"), event.get("turns_left")
+                )
             except ValueError:
                 return
-            self._current_session["mode"] = mode
+            set_mode(self._current_session, mode, turns_left=turns_left)
 
         elif event_type == "llm_call":
             # Internal event, add thinking indicator if not already present

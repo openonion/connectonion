@@ -26,21 +26,15 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
-from dotenv import load_dotenv
 from rich.console import Console
 
 # From _version, not from the package: `from .. import __version__` pulled in
 # the OpenAI and Anthropic SDKs before the CLI had parsed an argument, which
 # is what every command handler being imported inside its function was for.
 from .._version import __version__
+from ..core.usage import DEFAULT_MODEL
 
-# Load both env files for all CLI commands. keys.env stays first — that is
-# already the CLI's effective precedence, since commands that load .env do so
-# after this import and load_dotenv never overrides. Adding .env here only
-# fills in keys it alone defines.
-for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
-    if _env_file.exists():
-        load_dotenv(_env_file)
+# Package startup loads only global settings. --env-file replaces them explicitly.
 
 console = Console()
 
@@ -120,10 +114,22 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
+def env_file_callback(ctx: typer.Context, value: Optional[Path]):
+    from ..environment import EnvironmentError, select_env_file
+    try:
+        select_env_file(value)
+    except EnvironmentError as error:
+        console.print(str(error), markup=False)
+        raise typer.Exit(2) from None
+    return value
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
+    env_file: Optional[Path] = typer.Option(None, "--env-file", callback=env_file_callback,
+        is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
     if ctx.invoked_subcommand is None:
@@ -149,14 +155,18 @@ def _show_help():
     # belong on a new user's first screen is a product call, not this one's.
     console.print("[bold]Common commands:[/bold]")
     console.print("  [green]create[/green]  <name>     Create new project")
-    console.print("  [green]init[/green]              Initialize in current directory")
+    console.print("  [green]init[/green]   [path]     Set up global keys, or an explicit project directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
     console.print("  [green]eval[/green]              Run evals and show status")
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
+    console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
+    console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]gcalendar[/green]         Calendar events, free slots and Meet links (co auth google)")
+    console.print("  [green]youtube[/green]           Video metadata and preview-first uploads (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
@@ -175,15 +185,27 @@ def _show_help():
 
 @app.command()
 def init(
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: co-ai (default), custom"),
+    path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
+                                         help="Existing project directory; omit for global ~/.co/keys.env"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
 ):
-    """Initialize project in current directory."""
-    from .commands.init import handle_init
-    handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force)
+    """Initialize global ~/.co/keys.env, or use co init ./ for a project."""
+    from .commands.init import handle_global_init, handle_init
+    if path is None:
+        from ..environment import explicit_env_file
+        if explicit_env_file() is not None:
+            console.print("Global initialization does not accept --env-file. Next: co init")
+            raise typer.Exit(2)
+        if template is not None or description is not None or force:
+            console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
+            raise typer.Exit(2)
+        handle_global_init(key=key)
+        return
+    handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
 
 @app.command()
@@ -234,11 +256,15 @@ def deploy(
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
+def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft"),
+         scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube.")):
     """Authenticate with OpenOnion."""
+    if scopes is not None and service != "google":
+        print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
     if service == "google":
         from .commands.auth_commands import handle_google_auth
-        handle_google_auth()
+        handle_google_auth(scopes=scopes)
     elif service == "microsoft":
         from .commands.auth_commands import handle_microsoft_auth
         handle_microsoft_auth()
@@ -312,12 +338,47 @@ def doctor(
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
+    engine: str = typer.Option(
+        "auto",
+        "--engine",
+        help="Browser engine: system Chrome by default; --engine onion pays for the WTF Browser",
+    ),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
     use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
     from .commands.browser_commands import handle_browser
-    raise typer.Exit(handle_browser(args or [], headless=headless))
+    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=engine))
+
+
+@app.command(
+    "remote-browser",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def remote_browser(
+    args: List[str] = typer.Argument(
+        None, help="config <address> [--proxy shared] | [<address>] <start|status|sessions|stop|diagnose>"
+    ),
+):
+    """Manage an owner-bound browser session on a remote agent over OIP."""
+    from .commands.remote_browser_commands import handle_remote_browser
+
+    raise typer.Exit(handle_remote_browser(args or []))
+
+
+@app.command(
+    "proxy",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def proxy(
+    args: List[str] = typer.Argument(
+        None, help="share to <address> | status | stop <address> | diagnose <address>"
+    ),
+):
+    """Share this computer's internet connection with an authorized agent."""
+    from .commands.proxy_commands import handle_proxy
+
+    raise typer.Exit(handle_proxy(args or []))
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -347,14 +408,23 @@ def call(
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
-    model: str = typer.Option("co/gemini-3.6-flash", "--model", "-m", help="Model to use"),
+    model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
-    yolo: bool = typer.Option(False, "--yolo", help="Skip approvals and keep working autonomously"),
-    yolo_turns: int = typer.Option(
+    full_access: bool = typer.Option(
+        False,
+        "--full-access",
+        help="Bypass tool approvals for this bounded user-driven turn budget",
+    ),
+    full_access_turns: int = typer.Option(
         100,
-        "--yolo-turns",
+        "--full-access-turns",
         min=1,
-        help="Autonomous turns before a checkpoint (requires --yolo)",
+        help="User-driven turns before Full access expires to Auto",
+    ),
+    evaluate: bool = typer.Option(
+        False,
+        "--eval",
+        help="Score task completion with two extra model calls",
     ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit one machine-readable JSON result"
@@ -362,18 +432,11 @@ def ai(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume a prior one-shot session"
     ),
-    acp: bool = typer.Option(
-        False, "--acp", help="Serve co ai as an ACP v1 agent over stdio"
+    invite_code: Optional[str] = typer.Option(
+        None, "--invite-code", help="Invite code for this web-server run only"
     ),
-    acp_mcp: bool = typer.Option(
-        False,
-        "--acp-mcp",
-        help="Allow ACP clients to launch session-scoped stdio MCP servers",
-    ),
-    state_dir: Optional[Path] = typer.Option(
-        None,
-        "--state-dir",
-        help="With --acp, isolate mutable session and eval state",
+    invite_code_file: Optional[Path] = typer.Option(
+        None, "--invite-code-file", help="Read this run's invite code from a file"
     ),
 ):
     """Start AI coding agent or run one-shot prompt."""
@@ -383,13 +446,13 @@ def ai(
         port=port,
         model=model,
         max_iterations=max_iterations,
-        yolo=yolo,
-        yolo_turns=yolo_turns,
+        full_access=full_access,
+        full_access_turns=full_access_turns,
+        evaluate=evaluate,
         json_output=json_output,
         resume=resume,
-        acp=acp,
-        acp_mcp=acp_mcp,
-        state_dir=state_dir,
+        invite_code=invite_code,
+        invite_code_file=invite_code_file,
     )
 
 
@@ -486,11 +549,13 @@ def server_check(
 def server_new(
     name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
+    region: Optional[str] = typer.Option(None, "--region",
+                                         help="Where to provision (default: australia-southeast1)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
     """Have a server created for you. Charges 12 months of credit up front."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
         raise typer.Exit(1)
 
 
@@ -682,6 +747,69 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
     handle_admin_remove(address)
 
 
+# SMS command group. `co sms` (no args) shows the inbox without changing state.
+sms_app = _typer_app(help="Pair a phone and read the Agent's encrypted SMS inbox")
+app.add_typer(sms_app, name="sms")
+
+
+@sms_app.callback(invoke_without_command=True)
+def sms_callback(ctx: typer.Context):
+    """With no subcommand, show the inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sms_commands import handle_sms_inbox
+        handle_sms_inbox()
+
+
+@sms_app.command("pair")
+def sms_pair(
+    expires: int = typer.Option(
+        600, "--expires", min=60, max=1800,
+        help="One-time challenge lifetime in seconds",
+    ),
+    wait: bool = typer.Option(
+        True, "--wait/--no-wait",
+        help="Wait to compare and approve the phone's six-digit code",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable JSON and do not wait"),
+):
+    """Create an Agent-signed QR challenge for one Android phone."""
+    from .commands.sms_commands import handle_sms_pair
+    handle_sms_pair(expires=expires, wait=wait and not json_output, json_output=json_output)
+
+
+@sms_app.command("inbox")
+def sms_inbox(
+    last: int = typer.Option(10, "--last", "-n", min=1, max=100),
+    pending: bool = typer.Option(False, "--pending", help="Only unacknowledged messages"),
+    json_output: bool = typer.Option(False, "--json", help="Emit stable JSON"),
+):
+    """List decrypted SMS without acknowledging them."""
+    from .commands.sms_commands import handle_sms_inbox
+    handle_sms_inbox(last=last, pending=pending, json_output=json_output)
+
+
+sms_devices_app = _typer_app(help="List and revoke paired SMS phones")
+sms_app.add_typer(sms_devices_app, name="devices")
+
+
+@sms_devices_app.callback(invoke_without_command=True)
+def sms_devices_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
+    """With no subcommand, list paired phones."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sms_commands import handle_sms_devices
+        handle_sms_devices(json_output=json_output)
+
+
+@sms_devices_app.command("revoke")
+def sms_devices_revoke(
+    device_id: str = typer.Argument(..., help="Device UUID from co sms devices"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+):
+    """Revoke one phone's upload credential."""
+    from .commands.sms_commands import handle_sms_revoke
+    handle_sms_revoke(device_id, yes=yes)
+
+
 # Email command group. `co email` (no args) shows the inbox.
 email_app = _typer_app(help="Send and read email from the agent's address")
 app.add_typer(email_app, name="email")
@@ -705,27 +833,57 @@ def email_send(
         "--idempotency-key",
         help="Reuse a failed send's key to retry without sending twice",
     ),
+    from_address: Optional[str] = typer.Option(
+        None,
+        "--from",
+        help="Send as one of your owned addresses (server checks ownership)",
+    ),
 ):
     """Send an email from the agent's address."""
     from .commands.email_commands import handle_email_send
-    handle_email_send(to, subject, message, idempotency_key=idempotency_key)
+    handle_email_send(
+        to, subject, message,
+        idempotency_key=idempotency_key, from_address=from_address,
+    )
 
 
 @email_app.command("inbox")
 def email_inbox(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(
+        10,
+        "--last",
+        "-n",
+        min=1,
+        max=1000,
+        help="How many received emails to show in this page (1-1000)",
+    ),
+    offset: int = typer.Option(
+        0,
+        "--offset",
+        min=0,
+        help="Skip this many newer emails",
+    ),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    address: str = typer.Option(
+        None,
+        "--address",
+        "-a",
+        help="Only mail delivered to this address (default: every address you can read)",
+    ),
 ):
-    """List recent received emails."""
+    """List recent received emails, across every address this account can read."""
     from .commands.email_commands import handle_email_inbox
-    handle_email_inbox(last=last, unread=unread)
+    handle_email_inbox(last=last, offset=offset, unread=unread, address=address)
 
 
 @email_app.command("read")
-def email_read(email_id: str = typer.Argument(..., help="Email # from the inbox list")):
-    """Show one email's body and mark it read."""
+def email_read(
+    email_id: str = typer.Argument(..., help="Email # from the inbox list"),
+    mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+):
+    """Show one email's body without changing its unread state."""
     from .commands.email_commands import handle_email_read
-    handle_email_read(email_id)
+    handle_email_read(email_id, mark_read=mark_read)
 
 
 sent_app = _typer_app(help="List and read emails the agent has sent")
@@ -751,6 +909,22 @@ def email_sent_read(email_id: str = typer.Argument(..., help="Email # from the s
     handle_email_sent_read(email_id)
 
 
+@email_app.command("addresses")
+def email_addresses():
+    """List every email address this account owns, marking the default sender."""
+    from .commands.email_commands import handle_email_addresses
+    handle_email_addresses()
+
+
+@email_app.command("default")
+def email_default(
+    address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
+):
+    """Choose which of your addresses is the default sender."""
+    from .commands.email_commands import handle_email_default
+    handle_email_default(address)
+
+
 @email_app.command("name")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
@@ -759,6 +933,28 @@ def email_name(
     """Check a custom email name's availability, or --buy to claim it."""
     from .commands.email_commands import handle_email_name
     handle_email_name(name, buy=buy)
+
+
+@email_app.command("share")
+def email_share(
+    address: Optional[str] = typer.Argument(None, help="One of your addresses (omit with --list)"),
+    with_: Optional[str] = typer.Option(None, "--with", help="Grantee: public key or one of their addresses"),
+    can: Optional[str] = typer.Option(None, "--can", help="Comma-separated capabilities: send,read"),
+    list_: bool = typer.Option(False, "--list", help="Show what you've shared, and what's shared with you"),
+):
+    """Let another account send and/or read as one of your addresses, without moving it."""
+    from .commands.email_commands import handle_email_share
+    handle_email_share(address, with_=with_, can=can, list_=list_)
+
+
+@email_app.command("unshare")
+def email_unshare(
+    address: str = typer.Argument(..., help="One of your addresses"),
+    with_: str = typer.Option(..., "--with", help="Grantee to revoke: public key or one of their addresses"),
+):
+    """Revoke a grant. No key rotation — the address was never shared, only access to it."""
+    from .commands.email_commands import handle_email_unshare
+    handle_email_unshare(address, with_=with_)
 
 
 @email_app.command("upgrade")
@@ -775,6 +971,27 @@ def email_upgrade(
     """Upgrade email tier — deducts the monthly price from your credits."""
     from .commands.email_commands import handle_email_upgrade
     handle_email_upgrade(tier, domain=domain, alias=alias, keep_address=keep_address)
+
+
+# One command, not a group: a group callback with positional arguments would
+# swallow "list" as the address ('co transfer list' parses the group args
+# first), so the listing mode is the literal address "list" instead.
+@app.command("transfer")
+def transfer(
+    address: str = typer.Argument(..., help="Recipient 0x… address, or 'list' for your transfer history"),
+    amount: Optional[float] = typer.Argument(None, help="Amount in USD credits, e.g. 5.00"),
+    memo: Optional[str] = typer.Option(None, "--memo", help="Note stored with the transfer"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Send without the interactive confirmation"),
+    sent: bool = typer.Option(False, "--sent", help="With list: only transfers you sent"),
+    received: bool = typer.Option(False, "--received", help="With list: only transfers you received"),
+    last: int = typer.Option(50, "--last", "-n", help="With list: how many to show"),
+):
+    """Send credits to another agent address (irreversible, confirms first), or list transfers."""
+    from .commands.transfer_commands import handle_transfer_list, handle_transfer_send
+    if address == "list":
+        handle_transfer_list(sent=sent, received=received, last=last)
+    else:
+        handle_transfer_send(address, amount, memo=memo, yes=yes)
 
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
@@ -820,10 +1037,11 @@ def gmail_inbox(
 @gmail_app.command("read")
 def gmail_read(
     email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
 ):
-    """Show one email's full body and mark it read."""
+    """Show one email's full body without changing its unread state."""
     from .commands.gmail_commands import handle_gmail_read
-    handle_gmail_read(email_id)
+    handle_gmail_read(email_id, mark_read=mark_read)
 
 
 @gmail_app.command("reply")
@@ -869,6 +1087,89 @@ def gmail_search(
     """Search your mail with Gmail query syntax."""
     from .commands.gmail_commands import handle_gmail_search
     handle_gmail_search(query, last=last)
+
+
+# Drafts are a nested, explicit workflow: editing never sends, and the send
+# command always previews and confirms. Keeping these under `co gmail draft`
+# makes the safe path discoverable without changing the immediate-send command.
+gmail_draft_app = _typer_app(help="Create, inspect, and edit Gmail drafts; sending always asks for confirmation.")
+gmail_app.add_typer(gmail_draft_app, name="draft")
+
+
+@gmail_draft_app.command("list")
+def gmail_draft_list(
+    last: int = typer.Option(20, "--last", "-n", min=1, max=500, help="How many drafts to show"),
+):
+    """List Gmail drafts, numbered for later draft commands."""
+    from .commands.gmail_commands import handle_gmail_draft_list
+    handle_gmail_draft_list(last=last)
+
+
+@gmail_draft_app.command("create")
+def gmail_draft_create(
+    to: str = typer.Argument(..., help="Recipient address (comma-separated for several)"),
+    subject: str = typer.Argument(..., help="Email subject"),
+    message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+):
+    """Create an unsent Gmail draft."""
+    from .commands.gmail_commands import handle_gmail_draft_create
+    handle_gmail_draft_create(to, subject, message, cc=cc, bcc=bcc)
+
+
+@gmail_draft_app.command("attach")
+def gmail_draft_attach(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
+    link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
+):
+    """Stage a local/Drive file, or append a Drive link, without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_attach
+    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link)
+
+
+@gmail_draft_app.command("remove")
+def gmail_draft_remove(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+):
+    """Remove one staged attachment; the draft remains unsent."""
+    from .commands.gmail_commands import handle_gmail_draft_remove
+    handle_gmail_draft_remove(draft_id, attachment)
+
+
+@gmail_draft_app.command("replace")
+def gmail_draft_replace(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
+):
+    """Atomically replace one staged attachment without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_replace
+    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive)
+
+
+@gmail_draft_app.command("preview")
+def gmail_draft_preview(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+):
+    """Print recipients, body, and the final attachment manifest."""
+    from .commands.gmail_commands import handle_gmail_draft_preview
+    handle_gmail_draft_preview(draft_id)
+
+
+@gmail_draft_app.command("send")
+def gmail_draft_send(
+    draft_id: str = typer.Argument(..., help="Draft # from the last draft list, or a full draft id"),
+):
+    """Preview a draft and send it only after interactive confirmation."""
+    from .commands.gmail_commands import handle_gmail_draft_send
+    handle_gmail_draft_send(draft_id)
+
+
 # Google Drive command group. `co gdrive` (no args) lists recent files.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
 gdrive_app = _typer_app(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
@@ -933,6 +1234,81 @@ def gdrive_rm(
 
 # Synology command group. `co syno` (no args) lists your shared folders.
 # Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
+_YOUTUBE_AUTH_HELP = (
+    "Connect once with co auth google, then use the saved Google login like co gmail. "
+    "Tokens refresh automatically through the existing Google OAuth broker. "
+    "YouTube operations use the official Data API. Uploads default to private; "
+    "unverified API projects can force private visibility. --confirm is an external write."
+)
+youtube_app = _typer_app(help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
+app.add_typer(youtube_app, name="youtube")
+
+
+@youtube_app.callback(invoke_without_command=True)
+def youtube_callback(ctx: typer.Context,
+                     json_output: bool = typer.Option(False, "--json", help="Emit one JSON object")):
+    if ctx.invoked_subcommand is None:
+        from .commands.youtube_commands import handle_youtube_list
+        handle_youtube_list(json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Place --json after the subcommand; see co youtube --help.")
+
+
+@youtube_app.command("channel", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_channel(target: Optional[str] = typer.Argument(None, help="UC channel ID, @handle, or channel URL; default is your channel"),
+                    json_output: bool = typer.Option(False, "--json")):
+    """Read a channel and its uploads playlist ID."""
+    from .commands.youtube_commands import handle_youtube_channel
+    handle_youtube_channel(target, json_output=json_output)
+
+
+@youtube_app.command("list", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_list(target: Optional[str] = typer.Argument(None, help="Channel ID, @handle or URL; default is your channel"),
+                 last: int = typer.Option(20, "--last", "-n", min=1, max=200),
+                 json_output: bool = typer.Option(False, "--json")):
+    """List recent uploads; numbers refer to this exact listing."""
+    from .commands.youtube_commands import handle_youtube_list
+    handle_youtube_list(target, last, json_output=json_output)
+
+
+@youtube_app.command("video", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_video(item: str = typer.Argument(..., help="Number from your last listing, video ID, or URL; no media download"),
+                  json_output: bool = typer.Option(False, "--json")):
+    """Read one video's metadata and returned counts."""
+    from .commands.youtube_commands import handle_youtube_video
+    handle_youtube_video(item, json_output=json_output)
+
+
+@youtube_app.command("put", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_put(path: str = typer.Argument(..., help="Local video file"),
+                title: str = typer.Option(..., "--title"),
+                channel: str = typer.Option(..., "--channel", help="Exact UC channel ID, checked again before upload"),
+                description: str = typer.Option("", "--description"),
+                privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
+                category: str = typer.Option("22", "--category"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact preview digest; consumes this plan once and uploads"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Preview locally; upload only with the current plan's --confirm digest."""
+    from .commands.youtube_commands import handle_youtube_put
+    handle_youtube_put(path, title, channel, description, privacy, category, dry_run, confirm, json_output)
+
+
+@youtube_app.command("update", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_update(item: str = typer.Argument(..., help="Listing number, video ID, or URL"),
+                   title: Optional[str] = typer.Option(None, "--title"),
+                   description: Optional[str] = typer.Option(None, "--description"),
+                   dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact digest of the current metadata preview; performs one update"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Preview title/description edits without changing privacy or other parts."""
+    from .commands.youtube_commands import handle_youtube_update
+    handle_youtube_update(item, title, description, dry_run, confirm, json_output)
+
+from .commands.gcalendar_commands import gcalendar_app
+gcalendar_app.info.cls = _OneSuggestion
+app.add_typer(gcalendar_app, name="gcalendar")
+
 syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
 app.add_typer(syno_app, name="syno")
 
@@ -1083,31 +1459,41 @@ def outlook_inbox(
 
 
 @outlook_app.command("read")
-def outlook_read(email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)")):
-    """Show one email's body and mark it read."""
+def outlook_read(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)"),
+    mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+):
+    """Show one email's body without changing its unread state."""
     from .commands.outlook_commands import handle_outlook_read
-    handle_outlook_read(email_id)
+    handle_outlook_read(email_id, mark_read=mark_read)
 
 
 @outlook_app.command("download")
 def outlook_download(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
+    include_inline: bool = typer.Option(
+        False, "--include-inline",
+        help="Also save embedded signature images and logos (skipped by default)",
+    ),
 ):
     """Save an email's attachments to disk."""
     from .commands.outlook_commands import handle_outlook_download
-    handle_outlook_download(email_id, out_dir)
+    handle_outlook_download(email_id, out_dir, include_inline=include_inline)
 
 
-@outlook_app.command("reply")
+@outlook_app.command("reply", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "
+                                     "cat notes.txt | co outlook reply 3 -  |  "
+                                     "co outlook reply 3 \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+    attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
 ):
     """Reply to an email (threaded), now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, at=at)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at)
 
 
 @outlook_app.command("scheduled")
@@ -1193,7 +1579,14 @@ def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to un
 
 def cli():
     """Entry point."""
-    app()
+    from ..environment import EnvironmentError
+    from ..credentials import AmbientCredentialError
+    from ..provider_credentials import ProviderCredentialError
+    try:
+        app()
+    except (EnvironmentError, AmbientCredentialError, ProviderCredentialError) as error:
+        console.print(str(error), markup=False)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

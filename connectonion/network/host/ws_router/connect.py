@@ -2,9 +2,9 @@
 Purpose: Authenticate CONNECT, bind session ownership, initialize durable Host mode policy, advertise capabilities, and optionally reattach running work
 LLM-Note:
   Dependencies: imports from [..session (merge_sessions, session_to_chat_items via lazy local import), ...trust.ws_admin (get_onboard_requirements), .agent_io (resume_forwarding), uuid, rich.console] | imported by [.session as part of CONNECT dispatch]
-  Data flow: verify identity/trust → bind/replace session ID by owner → merge conversation → ensure durable Safe/current policy → derive identity-bounded SessionModeState → CONNECTED → optional running-agent rewind/resume
+  Data flow: verify identity/trust → bind/replace session ID by owner → merge conversation → ensure durable Safe/current policy → derive identity-bounded SessionModeState → CONNECTED → optional running-agent rewind/resume | equivalent authenticated relay CONNECT → reverify → republish CONNECTED without another forwarder
   State/Effects: mutates authenticated connection state; may append initial/normalized durable session; refreshes registry ping when reattaching
-  Integration: handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist) → returns (io, forward_task) for reattach or None
+  Integration: handle_connect(...) handles the first CONNECT; handle_authenticated_reconnect(...) handles a matching fresh relay reload; establish_connection(..., resume_running=False) republishes authority without a second forwarder
   Performance: one ownership read plus one atomic mode-state initialization and registry checks per CONNECT
   Errors: auth/policy/storage initialization failures surface as bounded ERROR frames; private storage exceptions are not sent
 """
@@ -14,21 +14,72 @@ import uuid
 
 from rich.console import Console
 
-from ....core.acp_wire import (
-    ACP_CANCEL_METHOD,
-    ACP_SCHEMA_VERSION,
-    ACP_SET_SESSION_MODE_METHOD,
-)
 from ...trust.ws_admin import get_onboard_requirements
+from ..protocol import oip_compatibility_record, oip_descriptor, supports_oip
 from .agent_io import resume_forwarding
 
 console = Console()
 logger = logging.getLogger(__name__)
 
 
-async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
-    """Handle CONNECT message: auth, session merge, send CONNECTED. Returns (io, task) for reattach or None."""
-    from ..auth import authenticate_connect, signature_already_used
+def _record_oip_compatibility(data, conn):
+    record = oip_compatibility_record(
+        data.get("protocol"), conn.get("transport", "unknown")
+    )
+    console.print(
+        "[dim]OIP_COMPAT "
+        f"transport={record['transport']} peer={record['peer']} "
+        f"outcome={record['outcome']}[/dim]"
+    )
+
+
+def replay_check_for(conn, route_handlers):
+    """The one-use signature guard this connection's frames are held to.
+
+    Inside a seal nobody but the sealed peer can put a frame on the socket
+    and the CONNECT is bound to that peer below, so the ledger is not
+    consulted; that is what lets a sealed host keep no shared state. A bare
+    socket keeps the host's injected ledger.
+    """
+    from ..auth import sealed_channel_replay_check, signature_already_used
+
+    if conn.get("sealed_by"):
+        return sealed_channel_replay_check
+    return route_handlers.get("replay", signature_already_used)
+
+
+def _is_the_standard_verifier(verifier):
+    """Whether the host wired auth.authenticate_connect with a bound ledger.
+
+    server.py binds the ledger with functools.partial; a deployment's own
+    verifier keeps whatever replay semantics it has and is never overridden.
+    """
+    import functools
+
+    from ..auth import authenticate_connect
+
+    return isinstance(verifier, functools.partial) and verifier.func is authenticate_connect
+
+
+def _not_the_sealed_peer(data, conn):
+    """A CONNECT inside a seal must be signed by the identity that sealed it.
+
+    Without this a stranger could open its own seal and feed a CONNECT
+    captured from someone else into it: the replay the ledger existed to
+    stop, now inside a channel the stranger controls.
+    """
+    sealed_by = (conn or {}).get("sealed_by")
+    return bool(sealed_by) and data.get("from") != sealed_by
+
+
+def authenticate_connect_frame(data, route_handlers, trust, blacklist, whitelist, conn=None):
+    """Authenticate one CONNECT with the Host's configured verifier."""
+    from ..auth import authenticate_connect
+
+    conn = conn or {}
+    if _not_the_sealed_peer(data, conn):
+        return None, data.get("from"), False, "unauthorized: CONNECT is not signed by the sealed peer"
+    replay_check = replay_check_for(conn, route_handlers)
 
     metadata = route_handlers.get("agent_metadata") or {}
     auth_kwargs = {"blacklist": blacklist, "whitelist": whitelist}
@@ -36,15 +87,46 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
         auth_kwargs["recipient_address"] = metadata["address"]
     connect_auth = route_handlers.get("connect_auth")
     if connect_auth is None:
-        _, agent_address, sig_valid, err = authenticate_connect(
-            data, trust,
-            replay_check=route_handlers.get("replay", signature_already_used),
-            **auth_kwargs,
-        )
-    else:
-        _, agent_address, sig_valid, err = connect_auth(
-            data, trust, **auth_kwargs
-        )
+        return authenticate_connect(data, trust, replay_check=replay_check, **auth_kwargs)
+    if conn.get("sealed_by") and _is_the_standard_verifier(connect_auth):
+        return connect_auth(data, trust, replay_check=replay_check, **auth_kwargs)
+    return connect_auth(data, trust, **auth_kwargs)
+
+
+def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelist, conn=None):
+    """Re-authenticate an equivalent live connection without repeating policy."""
+    from ..auth import authenticate_connect_identity
+
+    conn = conn or {}
+    if _not_the_sealed_peer(data, conn):
+        return None, data.get("from"), False, "unauthorized: CONNECT is not signed by the sealed peer"
+    replay_check = replay_check_for(conn, route_handlers)
+
+    metadata = route_handlers.get("agent_metadata") or {}
+    auth_kwargs = {"blacklist": blacklist}
+    if metadata.get("address"):
+        auth_kwargs["recipient_address"] = metadata["address"]
+
+    # A custom connection verifier may carry authentication semantics that the
+    # standard Ed25519 verifier cannot reproduce. Let deployments provide the
+    # narrow reattach half explicitly; otherwise preserve their existing gate.
+    reattach_auth = route_handlers.get("reattach_auth")
+    if reattach_auth is not None:
+        return reattach_auth(data, trust, whitelist=whitelist, **auth_kwargs)
+    connect_auth = route_handlers.get("connect_auth")
+    if connect_auth is not None:
+        if conn.get("sealed_by") and _is_the_standard_verifier(connect_auth):
+            return connect_auth(data, trust, whitelist=whitelist, replay_check=replay_check, **auth_kwargs)
+        return connect_auth(data, trust, whitelist=whitelist, **auth_kwargs)
+
+    return authenticate_connect_identity(data, replay_check=replay_check, **auth_kwargs)
+
+
+async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
+    """Handle CONNECT message: auth + merge + optional running reattach."""
+    _, agent_address, _, err = authenticate_connect_frame(
+        data, route_handlers, trust, blacklist, whitelist, conn=conn
+    )
 
     if err and "forbidden" in err.lower():
         trust_agent = route_handlers["trust_agent"]
@@ -75,8 +157,135 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
     )
 
 
+async def handle_authenticated_reconnect(data, send_msg, conn, route_handlers,
+                                         storage, registry, trust, blacklist,
+                                         whitelist):
+    """Accept only an equivalent, freshly authenticated relay reattach.
+
+    The relay multiplexes by application session id. A browser reload can put a
+    new CONNECT into the old logical queue before its close frame is observed.
+    Treat that narrow case as idempotent without allowing an authenticated
+    socket to change caller, recipient, capability level, or session.
+    """
+    _record_oip_compatibility(data, conn)
+    payload = data.get("payload") or {}
+    equivalent = (
+        data.get("session_id") == conn.get("session_id")
+        and (payload.get("signed_commands") == 1) == bool(conn.get("signed_commands"))
+        and payload.get("to") == conn.get("recipient_address")
+        and supports_oip(data.get("protocol"))
+    )
+    if not equivalent:
+        await send_msg({
+            "type": "ERROR",
+            "message": "already authenticated: open a new connection",
+        })
+        return
+
+    _, agent_address, _, err = authenticate_reattach_frame(
+        data, route_handlers, trust, blacklist, whitelist, conn=conn
+    )
+
+    if err:
+        await send_msg({"type": "ERROR", "message": err})
+        return
+    if agent_address != conn.get("agent_address"):
+        await send_msg({
+            "type": "ERROR",
+            "message": "already authenticated: open a new connection",
+        })
+        return
+
+    await republish_authenticated_connection(
+        data, send_msg, conn, storage, registry, route_handlers
+    )
+
+
+async def republish_authenticated_connection(data, send_msg, conn, storage,
+                                             registry, route_handlers):
+    """Republish an unchanged live connection without reopening its policy gate."""
+    session_id = conn["session_id"]
+    status = _connection_status(registry, session_id)
+    server_newer = _merge_reattach_session(data, conn, storage)
+    connected_msg = _reattach_connected_frame(
+        conn, status, route_handlers, server_newer
+    )
+    await send_msg(connected_msg)
+    await _send_agent_profile(send_msg, route_handlers, session_id)
+
+    # The physical browser socket is new even though the logical relay
+    # connection is not. Force the current Home snapshot onto that socket.
+    from .dashboard import send_dashboard
+    await send_dashboard(send_msg, session_id)
+    console.print(
+        f"[green]↻ REATTACH[/green] agent_address={conn['agent_address'][:16]}... "
+        f"session={session_id[:8]}... status={status}"
+    )
+
+
+def _connection_status(registry, session_id):
+    active = registry.get(session_id)
+    if active and active.status == "running":
+        return "running"
+    if active and active.status == "connected":
+        registry.update_ping(session_id)
+        return "connected"
+    return "new"
+
+
+def _merge_reattach_session(data, conn, storage):
+    stored = storage.get(conn["session_id"])
+    if not stored or not stored.session:
+        return False
+    from ..session import merge_sessions
+    conn["session"], server_newer = merge_sessions(
+        client_session=data.get("session") or {},
+        server_session=stored.session,
+    )
+    return server_newer
+
+
+def _reattach_connected_frame(conn, status, route_handlers, server_newer):
+    frame = {
+        "type": "CONNECTED",
+        "session_id": conn["session_id"],
+        "status": status,
+        "protocol": oip_descriptor(),
+    }
+    mode_policy = route_handlers.get("session_modes")
+    if mode_policy is not None and conn.get("session") is not None:
+        frame["session_modes"] = mode_policy.state(
+            conn["session"], is_admin=bool(conn.get("mode_is_admin"))
+        )
+    if server_newer:
+        from ..session import session_to_chat_items
+        frame.update({
+            "server_newer": True,
+            "session": conn["session"],
+            "chat_items": session_to_chat_items(conn["session"]),
+        })
+    return frame
+
+
+async def _send_agent_profile(send_msg, route_handlers, session_id):
+    metadata = route_handlers.get("agent_metadata")
+    if not metadata:
+        return
+    await send_msg({
+        "type": "AGENT_PROFILE",
+        "session_id": session_id,
+        "name": metadata.get("name"),
+        "address": metadata.get("address"),
+        "model": metadata.get("model"),
+        "tools": metadata.get("tools", []),
+        "skills": metadata.get("skills", []),
+        **({"balance_usd": metadata["balance_usd"]}
+           if metadata.get("balance_usd") is not None else {}),
+    })
+
+
 async def establish_connection(data, agent_address, send_msg, conn, storage, registry,
-                               route_handlers=None):
+                               route_handlers=None, resume_running=True):
     """Post-auth half of CONNECT: populate conn, merge sessions, send CONNECTED.
 
     Called by handle_connect and, after a successful onboard, with the stashed
@@ -85,6 +294,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     ``route_handlers`` is optional so a caller that only needs the session half can
     omit it; without it no AGENT_PROFILE is sent.
     """
+    _record_oip_compatibility(data, conn)
     # A second CONNECT on the same socket must not inherit the first identity
     # while durable policy initialization is in flight or after it fails.
     conn["authenticated"] = False
@@ -94,6 +304,16 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     ):
         conn.pop(key, None)
 
+    if not supports_oip(data.get("protocol")):
+        await send_msg({
+            "type": "ERROR",
+            "code": -32010,
+            "message": "Unsupported OIP protocol",
+            "retryable": False,
+            "protocol": oip_descriptor(),
+        })
+        return None
+
     signed_commands = (
         data.get("payload", {}).get("signed_commands") == 1
     )
@@ -101,6 +321,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     session_id = data.get("session_id") or str(uuid.uuid4())
     client_session = data.get("session")
     server_newer = False
+    stored = None
 
     if client_session:
         msg_count = len(client_session.get("messages", []))
@@ -219,14 +440,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         "type": "CONNECTED",
         "session_id": session_id,
         "status": status,
-        "carrier_capabilities": {
-            "acp": {
-                "schema": ACP_SCHEMA_VERSION,
-                "client_notifications": [ACP_CANCEL_METHOD],
-                **({"client_requests": [ACP_SET_SESSION_MODE_METHOD]}
-                   if mode_state is not None else {}),
-            }
-        },
+        "protocol": oip_descriptor(),
     }
     if mode_state is not None:
         connected_msg["session_modes"] = mode_state
@@ -262,6 +476,6 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     from .dashboard import send_dashboard
     await send_dashboard(send_msg, session_id, conn)
 
-    if status == "running":
+    if status == "running" and resume_running:
         active.io.rewind_to(data.get("last_msg_id"))
         return resume_forwarding(send_msg, active, registry, session_id, storage, conn)

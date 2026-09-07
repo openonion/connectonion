@@ -72,4 +72,4 @@ class TestWhatIsLeftIsStillUsable:
     def test_the_project_default_is_priced(self):
         from connectonion.core.usage import is_estimated_price
 
-        assert not is_estimated_price("co/gemini-3.6-flash")
+        assert not is_estimated_price("co/gemini-3.7-flash")

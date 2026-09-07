@@ -189,6 +189,390 @@ def test_methods_share_state_through_self():
         assert scraper.scraped_data[0] == "Title of example.com"
         assert result == "Scraped the title successfully."
 
+
+def test_empty_terminal_after_tool_gets_one_bounded_recovery_call():
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCall(
+                name="calculator",
+                arguments={"expression": "2+2"},
+                id="call_1",
+            )],
+            raw_response={},
+            usage=TokenUsage(),
+        ),
+        LLMResponse(content="", tool_calls=[], raw_response={}, usage=TokenUsage()),
+        LLMResponse(
+            content="The result is 4.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        ),
+    ])
+    agent = Agent(
+        name="empty-terminal-recovery",
+        llm=mock_llm,
+        tools=[calculator],
+        log=False,
+    )
+
+    assert agent.input("Calculate 2+2") == "The result is 4."
+    assert mock_llm.call_count == 3
+    recovery_messages = mock_llm.calls[2]["messages"]
+    assert any(
+        "previous model response was empty" in message.get("content", "")
+        for message in recovery_messages
+    )
+    assert all(
+        message.get("content") != ""
+        for message in agent.current_session["messages"]
+    )
+
+
+def test_repeated_empty_terminal_after_tool_fails_instead_of_hanging():
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCall(
+                name="calculator",
+                arguments={"expression": "2+2"},
+                id="call_1",
+            )],
+            raw_response={},
+            usage=TokenUsage(),
+        ),
+        LLMResponse(content=None, tool_calls=[], raw_response={}, usage=TokenUsage()),
+        LLMResponse(content="   ", tool_calls=[], raw_response={}, usage=TokenUsage()),
+    ])
+    agent = Agent(
+        name="empty-terminal-failure",
+        llm=mock_llm,
+        tools=[calculator],
+        log=False,
+    )
+
+    with pytest.raises(RuntimeError, match="empty terminal response"):
+        agent.input("Calculate 2+2")
+    assert mock_llm.call_count == 3
+
+
+def test_post_provider_llm_timeout_gets_one_bounded_recovery_call(monkeypatch):
+    import threading
+    import time
+
+    import connectonion.core.agent as agent_module
+
+    release = threading.Event()
+
+    def claude_code(prompt: str) -> str:
+        """Run a native Claude Code task."""
+        return "verified provider result"
+
+    class HangingSettlementLLM:
+        model = "fake/post-provider-timeout"
+
+        def __init__(self):
+            self.calls = 0
+            self.last_call = None
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            self.last_call = {"messages": messages, "tools": tools}
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="claude_code",
+                        arguments={"prompt": "build it"},
+                        id="provider-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            if self.calls == 2:
+                release.wait(timeout=2)
+                return LLMResponse(
+                    content="late answer",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            return LLMResponse(
+                content="Provider work completed and was verified.",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    monkeypatch.setattr(agent_module, "_POST_PROVIDER_LLM_TIMEOUT_SECONDS", 0.03)
+    llm = HangingSettlementLLM()
+    agent = Agent(
+        name="provider-timeout-recovery",
+        llm=llm,
+        tools=[claude_code],
+        log=False,
+        quiet=True,
+    )
+
+    before = time.monotonic()
+    result = agent.input("Delegate this")
+    elapsed = time.monotonic() - before
+    release.set()
+
+    assert result == "Provider work completed and was verified."
+    assert elapsed < 0.5
+    assert llm.calls == 3
+    assert [
+        entry["status"]
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_result"
+    ] == ["success", "error", "success"]
+    assert any(
+        "bounded settlement window" in str(message.get("content", ""))
+        for message in llm.last_call["messages"]
+    )
+    bounded_calls = [
+        entry for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_call" and "timeout_seconds" in entry
+    ]
+    assert [entry["timeout_seconds"] for entry in bounded_calls] == [0.03, 0.03]
+
+
+def test_provider_settlement_is_armed_before_hosted_tool_observers_normalize_the_call(monkeypatch):
+    """The real co-ai path must not rediscover provider identity after execution."""
+    import threading
+
+    import connectonion.core.agent as agent_module
+
+    release = threading.Event()
+
+    def claude_code(prompt: str) -> str:
+        """Run a native Claude Code task."""
+        return "verified provider result"
+
+    class HangingSettlementLLM:
+        model = "fake/hosted-provider-timeout"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="claude_code",
+                        arguments={"prompt": "build it"},
+                        id="provider-hosted-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            if self.calls == 2:
+                release.wait(timeout=2)
+                return LLMResponse(
+                    content="late answer",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            return LLMResponse(
+                content="Provider work completed and was verified.",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    monkeypatch.setattr(agent_module, "_POST_PROVIDER_LLM_TIMEOUT_SECONDS", 0.03)
+    llm = HangingSettlementLLM()
+    agent = Agent(
+        name="hosted-provider-timeout",
+        llm=llm,
+        tools=[claude_code],
+        log=False,
+        quiet=True,
+    )
+    execute = agent._execute_and_record_tools
+
+    def execute_like_hosted_observers(tool_calls):
+        execute(tool_calls)
+        for call in tool_calls:
+            call.name = "normalized_after_execution"
+
+    monkeypatch.setattr(agent, "_execute_and_record_tools", execute_like_hosted_observers)
+
+    result = agent.input("Delegate this")
+    release.set()
+
+    assert result == "Provider work completed and was verified."
+    assert llm.calls == 3
+    assert [
+        entry["status"]
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_result"
+    ] == ["success", "error", "success"]
+
+
+def test_durable_provider_result_rearms_the_hosted_settlement_bound():
+    from connectonion.core.agent import _has_unsettled_native_provider_result
+
+    assert _has_unsettled_native_provider_result([
+        {"type": "llm_call", "id": "decision"},
+        {"type": "provider_invocation", "provider": "claude_code"},
+        {"type": "tool_result", "name": "claude_code", "status": "success"},
+        {"type": "thinking", "kind": "runtime"},
+    ]) is True
+    assert _has_unsettled_native_provider_result([
+        {"type": "tool_result", "name": "claude_code", "status": "success"},
+        {"type": "llm_call", "id": "later-decision"},
+        {"type": "tool_result", "name": "bash", "status": "success"},
+    ]) is False
+
+
+def test_post_provider_settlement_rejects_a_new_tool_chain_and_returns_final_answer():
+    executed = []
+
+    def claude_code(prompt: str) -> str:
+        """Run a native Claude Code task."""
+        executed.append("claude_code")
+        return "verified provider result"
+
+    def glob(pattern: str) -> str:
+        """Search the workspace."""
+        executed.append("glob")
+        return "must not run"
+
+    class ToolHappySettlementLLM:
+        model = "fake/provider-terminal-settlement"
+
+        def __init__(self):
+            self.calls = 0
+            self.last_messages = None
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            self.last_messages = messages
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="claude_code",
+                        arguments={"prompt": "build it"},
+                        id="provider-terminal-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            if self.calls == 2:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="glob",
+                        arguments={"pattern": "*"},
+                        id="post-provider-glob",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            return LLMResponse(
+                content="Claude completed the verified project.",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    llm = ToolHappySettlementLLM()
+    agent = Agent(
+        name="provider-terminal-settlement",
+        llm=llm,
+        tools=[claude_code, glob],
+        log=False,
+        quiet=True,
+    )
+
+    assert agent.input("Delegate this") == "Claude completed the verified project."
+    assert executed == ["claude_code"]
+    assert llm.calls == 3
+    assert any(
+        "those calls were not executed" in str(message.get("content", ""))
+        for message in llm.last_messages
+    )
+
+
+def test_repeated_post_provider_llm_timeout_fails_with_terminal_outcome(monkeypatch):
+    import threading
+    import time
+
+    import connectonion.core.agent as agent_module
+
+    release = threading.Event()
+
+    def codex(prompt: str) -> str:
+        """Run a native Codex task."""
+        return "verified provider result"
+
+    class RepeatedHangingSettlementLLM:
+        model = "fake/repeated-post-provider-timeout"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, messages, tools=None):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(
+                        name="codex",
+                        arguments={"prompt": "build it"},
+                        id="provider-1",
+                    )],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+            release.wait(timeout=2)
+            return LLMResponse(
+                content="late answer",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+
+    monkeypatch.setattr(agent_module, "_POST_PROVIDER_LLM_TIMEOUT_SECONDS", 0.03)
+    llm = RepeatedHangingSettlementLLM()
+    agent = Agent(
+        name="provider-timeout-failure",
+        llm=llm,
+        tools=[codex],
+        log=False,
+        quiet=True,
+    )
+
+    before = time.monotonic()
+    with pytest.raises(TimeoutError, match="one bounded retry"):
+        agent.input("Delegate this")
+    elapsed = time.monotonic() - before
+    release.set()
+
+    assert elapsed < 0.5
+    assert llm.calls == 3
+    assert [
+        entry["status"]
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "llm_result"
+    ] == ["success", "error", "error"]
+    terminal = [
+        entry
+        for entry in agent.current_session["trace"]
+        if entry["type"] == "turn_result"
+    ]
+    assert len(terminal) == 1
+    assert terminal[0]["reason"] == "error"
+    assert terminal[0]["error_type"] == "TimeoutError"
+
+
 def test_mixed_functions_and_class_instance():
         """Test that agent can accept both functions and class instances."""
         

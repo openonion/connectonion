@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "pairing_id": "11111111-2222-4333-8444-555555555555",
+  "recipient": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "expires_at": 1788250600,
+  "grant_utf8": "{\"expires_at\":1788250600,\"nonce\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\",\"pairing_id\":\"11111111-2222-4333-8444-555555555555\",\"purpose\":\"openonion-sms-pair\",\"recipient\":\"0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8\",\"version\":2}",
+  "agent_signature_hex": "e0c8e230ffe8ee9f7d800c79fbe00ea8fff0f08a0c3dc56ac6720f28635ce811b65b35582c6dfaa7ad3e93bcc20094ff14ce8720e8431d9cac363e6ad288e709",
+  "device_public_key_base64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li/hp/m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q==",
+  "device_claim_utf8": "{\"device_public_key\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li/hp/m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q==\",\"grant\":\"{\\\"expires_at\\\":1788250600,\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\\\",\\\"pairing_id\\\":\\\"11111111-2222-4333-8444-555555555555\\\",\\\"purpose\\\":\\\"openonion-sms-pair\\\",\\\"recipient\\\":\\\"0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8\\\",\\\"version\\\":2}\",\"purpose\":\"openonion-sms-device-claim\",\"version\":2}",
+  "device_signature_base64": "MEUCIEmibfTChlccKdbYusj06IDsG48eC0sc/5C/tIPTExBtAiEAgUm2e0bWFaaOwCVL0AYfnErAA0pA7ZN9UTT1ZI7RrXk=",
+  "confirmation_code": "822149"
+}

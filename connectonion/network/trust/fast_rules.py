@@ -20,10 +20,11 @@ Config format:
 """
 
 import io
+from typing import Optional
 
 import yaml
-from typing import Optional
-from .tools import is_whitelisted, is_blocked, is_contact, is_admin, promote_to_contact
+
+from .tools import is_admin, is_blocked, is_contact, is_whitelisted, promote_to_contact
 
 
 def parse_policy(policy_text: str, source: str = None) -> tuple[dict, str]:
@@ -140,7 +141,8 @@ def _resolve_codes(codes) -> list:
     return out
 
 
-def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[str]:
+def evaluate_request(config: dict, client_id: str, request: dict,
+                     co_dir=None) -> Optional[str]:
     """
     Evaluate request using fast rules (no LLM).
 
@@ -177,7 +179,10 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     # 1. Check deny list first (blocked users)
     deny_list = config.get('deny', ['blocked'])
     for condition in deny_list:
-        if condition == 'blocked' and is_blocked(client_id):
+        if condition == 'blocked' and (
+            is_blocked(client_id) if co_dir is None
+            else is_blocked(client_id, co_dir)
+        ):
             logger.warning(f"[FAST_RULES] Client {client_id} is BLOCKED, returning 'deny'")
             return 'deny'
 
@@ -193,13 +198,22 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
         # Each of these says so on the way out. A log that recorded only the denials
         # left "did not grow" meaning either *allowed* or *never asked*, and those are
         # the two states an operator debugging a silent client most needs to separate.
-        if condition == 'admin' and is_admin(client_id):
+        if condition == 'admin' and (
+            is_admin(client_id) if co_dir is None
+            else is_admin(client_id, co_dir)
+        ):
             logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is admin")
             return 'allow'
-        if condition == 'whitelisted' and is_whitelisted(client_id):
+        if condition == 'whitelisted' and (
+            is_whitelisted(client_id) if co_dir is None
+            else is_whitelisted(client_id, co_dir)
+        ):
             logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is whitelisted")
             return 'allow'
-        if condition == 'contact' and is_contact(client_id):
+        if condition == 'contact' and (
+            is_contact(client_id) if co_dir is None
+            else is_contact(client_id, co_dir)
+        ):
             logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is contact")
             return 'allow'
 
@@ -210,7 +224,10 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     valid_codes = _resolve_codes(onboard.get('invite_code', []))
     request_code = request.get('invite_code')
     if request_code and request_code in valid_codes:
-        promote_to_contact(client_id)
+        if co_dir is None:
+            promote_to_contact(client_id)
+        else:
+            promote_to_contact(client_id, co_dir)
         # Promotion is durable — this client is a contact from now on. That is a
         # change to who can reach the agent, so it belongs in the record. The code
         # itself does not.
@@ -247,14 +264,14 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     logger.warning(f"[FAST_RULES] No match, using default={default}")
 
     if default == 'allow':
-        logger.warning(f"[FAST_RULES] Returning 'allow' (default)")
+        logger.warning("[FAST_RULES] Returning 'allow' (default)")
         return 'allow'
     elif default == 'deny':
-        logger.warning(f"[FAST_RULES] Returning 'deny' (default)")
+        logger.warning("[FAST_RULES] Returning 'deny' (default)")
         return 'deny'
     elif default == 'ask':
-        logger.warning(f"[FAST_RULES] Returning None (needs LLM)")
+        logger.warning("[FAST_RULES] Returning None (needs LLM)")
         return None  # Needs LLM evaluation
 
-    logger.warning(f"[FAST_RULES] Returning 'deny' (fallback)")
+    logger.warning("[FAST_RULES] Returning 'deny' (fallback)")
     return 'deny'  # Safe fallback

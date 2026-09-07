@@ -46,6 +46,7 @@ def test_json_review_uses_the_333_agent_factory_seam(tmp_path, monkeypatch):
                 **session,
                 "messages": session["messages"]
                 + [{"role": "user", "content": prompt}],
+                "trace": [{"type": "turn_result", "reason": "natural"}],
                 "turn": 1,
             }
             return "review result"
@@ -64,6 +65,7 @@ def test_json_review_uses_the_333_agent_factory_seam(tmp_path, monkeypatch):
     assert json.loads(stdout) == {
         "session_id": None,
         "result": "review result",
+        "outcome": "natural",
         "error": None,
     }
     assert calls == [(("co/test", 4, True, 1), {"resumable": True})]

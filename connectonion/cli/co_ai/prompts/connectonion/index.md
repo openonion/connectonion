@@ -18,7 +18,7 @@ agent = Agent(
     name="my_bot",                        # Required: identifier
     tools=[func1, func2],                 # Functions or class instances
     system_prompt="You are helpful",      # String or file path
-    model="co/gemini-3.6-flash",            # Default model
+    model="co/gemini-3.8-flash",            # Default model
     max_iterations=10,                    # Tool call limit per task
     plugins=[plugin1, plugin2],           # Event handlers
 )
@@ -96,7 +96,7 @@ Use `load_guide(path)` to load detailed documentation.
 | `useful_plugins/auto_compact` | Context window management |
 | `useful_plugins/image_result_formatter` | Format base64 images for vision models |
 | `useful_plugins/prefer_write_tool` | Block bash file creation, soft-remind for file reading |
-| `useful_plugins/full_access` | Full access mode — autonomous multi-turn sessions |
+| `useful_plugins/full_access` | Full access mode — bounded approval bypass |
 | `useful_plugins/gmail_plugin` | Email approval and CRM sync |
 | `useful_plugins/calendar_plugin` | Calendar operation approval |
 

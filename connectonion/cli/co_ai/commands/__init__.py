@@ -28,14 +28,19 @@ Used by:
 - Interactive co ai CLI
 """
 
-from connectonion.cli.co_ai.commands.init import cmd_init
+from connectonion.cli.co_ai.commands.compact import cmd_compact
+from connectonion.cli.co_ai.commands.compact import set_agent as set_compact_agent
+from connectonion.cli.co_ai.commands.cost import cmd_cost
+from connectonion.cli.co_ai.commands.cost import set_agent as set_cost_agent
+from connectonion.cli.co_ai.commands.export import cmd_export
+from connectonion.cli.co_ai.commands.export import set_agent as set_export_agent
 from connectonion.cli.co_ai.commands.help import cmd_help
-from connectonion.cli.co_ai.commands.cost import cmd_cost, set_agent as set_cost_agent
-from connectonion.cli.co_ai.commands.compact import cmd_compact, set_agent as set_compact_agent
+from connectonion.cli.co_ai.commands.init import cmd_init
+from connectonion.cli.co_ai.commands.sessions import cmd_new, cmd_resume, cmd_sessions
+from connectonion.cli.co_ai.commands.sessions import set_agent as set_sessions_agent
 from connectonion.cli.co_ai.commands.tasks import cmd_tasks
-from connectonion.cli.co_ai.commands.export import cmd_export, set_agent as set_export_agent
-from connectonion.cli.co_ai.commands.sessions import cmd_sessions, cmd_new, cmd_resume, set_agent as set_sessions_agent
-from connectonion.cli.co_ai.commands.undo import cmd_undo, cmd_redo, set_agent as set_undo_agent
+from connectonion.cli.co_ai.commands.undo import cmd_redo, cmd_undo
+from connectonion.cli.co_ai.commands.undo import set_agent as set_undo_agent
 
 BUILTIN_COMMANDS = {
     "init": cmd_init,

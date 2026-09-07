@@ -1,6 +1,18 @@
 # tool_approval
 
-Web-based approval for tools via WebSocket. With live IO, a tool without an explicit permission must receive approval from the local/admin operator before execution. A hosted non-admin requester is rejected without a dialog.
+Canonical OIP permission modes plus WebSocket approval for calls that need a
+human decision.
+
+## Modes
+
+| Mode | Behaviour |
+|---|---|
+| `read-only` | Manual approval for every effectful live-IO call not explicitly permitted |
+| `auto` | Auto-approves reversible workspace work and focused verification; asks or denies higher-impact calls |
+| `full-access` | Explicit bounded approval bypass under the Host launch ceiling |
+
+No aliases are accepted or translated. Unknown stored values become Auto.
+Todo List progress never grants a permission mode; Plan is not a mode.
 
 ## Quick Start
 
@@ -19,8 +31,8 @@ agent.input("Install dependencies")
 
 ## Lifecycle
 
-This example shows a local/admin operator session. Hosted non-admin requesters
-are rejected before an approval request is sent.
+This example applies to every authenticated participant. Administrative
+control-plane authorization is separate from an ordinary session mode.
 
 ```
 User sends prompt
@@ -32,8 +44,9 @@ LLM returns tool_calls batch: [bash("npm install"), write("config.json"), bash("
 tool_executor iterates sequentially:
     ↓
 ┌─ Tool #1: bash("npm install")
-│   before_each_tool fires → check_approval()
-│   → Explicitly permitted? No
+│   before_each_tool fires → deterministic policy → check_approval()
+│   → Policy result: ask (package installation is not focused verification)
+│   → Already approved for session? No
 │   → Send to client:
 │       {
 │         "type": "approval_needed",
@@ -139,22 +152,22 @@ send_email, post, delete, remove
 
 ### Unknown Tools
 
-Unknown and dynamically registered tools require operator approval when live IO is present. A hosted non-admin requester is rejected without a dialog. This fail-closed default keeps plugin and MCP tools behind the same approval boundary as built-in effectful tools.
-
-Three explicit exceptions preserve existing workflows:
-
-- Local library use without `agent.io` stays non-interactive.
-- `auto_approve` auto-approves only the named file-edit tools (`write`, `edit`, and `multi_edit`).
-- `full_access` remains an explicit bypass controlled by its own plugin.
-
-Only a local/admin operator receives approval dialogs or may enable
-`auto_approve` or `full_access`. In hosted sessions, only the admin operator can enable them.
-A contact, whitelisted caller, or stranger may switch back to `default`, but cannot
-turn a mode-change frame into file or dynamic-tool authority.
+Unknown and dynamically registered tools are never silently allowed. In Auto,
+they ask through the existing approval protocol; without an approval channel,
+they fail closed. Auto applies whenever the canonical session mode is `auto`.
+Authenticated participants can answer their own approval requests and use the
+same Host-advertised modes.
 
 ## Config-Based Auto-Approval
 
 Auto-approve safe commands permanently via `host.yaml` configuration. Config permissions never expire and apply to all sessions.
+
+In a headless one-shot run, a matching operator-configured `Bash(...)` rule can
+approve an ordinary command even though no dialog exists. Auto continues to
+deny destructive, credential, publication, deployment, external-effect, and
+unknown calls. For compatibility, the shipped broad `Bash(co *)` rule is
+narrowed at this boundary to `co status` and `co browser ...`; commands such as
+`co deploy`, `co publish`, and `co email send` do not inherit silent authority.
 
 ### Configuration
 

@@ -43,9 +43,9 @@ any of those turn stages record an error outcome and re-raise the original
 exception. Logging and console rendering after the terminal entry remain
 downstream and do not redefine whether the Agent work completed.
 
-Consumers can map the neutral reason into their own protocol. For ACP,
-`natural` becomes `end_turn`, `max_iterations` becomes `max_turn_requests`, and
-a client `interrupted` becomes `cancelled`. The adapter maps `stopped` according
+Consumers can map the neutral reason into their own protocol. For OIP,
+`natural` remains a successful completion, `max_iterations` is an iteration
+limit, and a client `interrupted` becomes cancelled. The adapter maps `stopped` according
 to its approval/refusal policy rather than misreporting it as cancellation.
 
 ## Rejected alternatives

@@ -4,35 +4,62 @@ LLM-Note:
   Dependencies: imports from [requests, typing, backend, credentials] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/unit/test_email_functions.py, tests/unit/test_credentials.py, tests/test_real_email.py]
   Data flow: Agent calls a mailbox function → require_ambient_api_key() checks the already-loaded environment token against the canonical project identity → request to the configured backend → normalized result
   State/Effects: reads the ambient token and local identity keys | makes HTTP GET/POST requests | no local caching | mark_read()/mark_unread() modify server-side read status
-  Integration: exposes get_emails(last, unread), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?last=N&unread=true, PUT /api/v1/email/s/mark-read
-  Performance: one HTTP request per call | no pagination (uses 'last' param) | synchronous blocking | no local cache
-  Errors: missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
+  Integration: exposes get_emails(last, unread, offset), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/v1/email/received?limit=N&offset=N, PUT /api/v1/email/s/mark-read
+  Performance: one HTTP request per call | received pages contain 1..1000 messages and offset selects older pages | synchronous blocking | no local cache
+  Errors: invalid received page sizes or offsets raise ValueError before auth/network | missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
 """
 
+from typing import Dict, List, Union
+
 import requests
-from typing import List, Dict, Union
+
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
 
+MIN_RECEIVED_EMAILS = 1
+MAX_RECEIVED_EMAILS = 1000
 
-def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
-    """Get emails sent to the agent's address.
+
+def get_emails(
+    last: int = 10, unread: bool = False, offset: int = 0, address: str = None
+) -> List[Dict]:
+    """Get emails sent to any address this account can read.
+
+    An account can hold several addresses, and can be granted read access to
+    another account's. They arrive as one merged list, so every message carries
+    `to` — which mailbox it landed in. Pass `address` to narrow to one.
 
     Args:
-        last: Number of emails to retrieve (default: 10)
+        last: Number of emails to retrieve (default: 10, range: 1..1000)
         unread: Only get unread emails (default: False)
+        offset: Number of newer emails to skip (default: 0)
+        address: Only mail delivered to this address (default: all readable)
 
     Returns:
         List of email dictionaries containing:
             - id: Unique message ID
             - from: Sender's email address
+            - to: The address that received it
             - subject: Email subject
             - message: Email body content
             - timestamp: ISO format timestamp
             - read: Boolean read status
     """
+    if (
+        isinstance(last, bool)
+        or not isinstance(last, int)
+        or not MIN_RECEIVED_EMAILS <= last <= MAX_RECEIVED_EMAILS
+    ):
+        raise ValueError(
+            f"last must be between {MIN_RECEIVED_EMAILS} and "
+            f"{MAX_RECEIVED_EMAILS} for received email"
+        )
+
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("offset must be a non-negative integer")
+
     token = require_ambient_api_key()
-    
+
     # Fetch emails from backend API
     endpoint = f"{backend_url()}/api/v1/email/received"
 
@@ -43,8 +70,11 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
 
     params = {
         "limit": last,
+        "offset": offset,
         "unread_only": unread
     }
+    if address:
+        params["address"] = address
 
     response = requests.get(
         endpoint,
@@ -57,6 +87,20 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
     response.raise_for_status()
 
     data = response.json()
+    if offset and data.get("offset") != offset:
+        raise RuntimeError(
+            "This backend does not support received email pagination yet; "
+            "upgrade the backend before using offset"
+        )
+    # An older backend ignores an unknown query parameter and answers with the
+    # whole mailbox. Silently showing every address when one was asked for is
+    # the failure this filter exists to prevent, so refuse rather than degrade.
+    if address and data.get("address_filter_applied") != address:
+        raise RuntimeError(
+            f"This backend does not support filtering received email by address "
+            f"yet, so it returned every address instead of {address}; upgrade the "
+            f"backend before relying on --address"
+        )
     emails = data.get("emails", [])
 
     # Ensure consistent format
@@ -65,6 +109,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
         formatted_emails.append({
             "id": email.get("id", ""),
             "from": email.get("from_email", email.get("from", "")),
+            "to": email.get("to_email", email.get("to", "")),
             "subject": email.get("subject", ""),
             "message": email.get("text") or email.get("html") or email.get("text_body") or email.get("html_body", ""),
             "timestamp": email.get("received_at", ""),
@@ -135,7 +180,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
         raise ValueError("No email IDs provided to mark as read")
 
     token = require_ambient_api_key()
-    
+
     # Mark emails as read via backend API
     endpoint = f"{backend_url()}/api/v1/email/s/mark-read"
 

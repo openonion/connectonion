@@ -19,7 +19,9 @@ agent.input("Take a screenshot and describe what you see")
 
 When a tool returns base64 encoded image data:
 
-1. Detects base64 image in tool result
+1. Strictly decodes the candidate and verifies a complete PNG, JPEG, GIF, or
+   WebP file. Truncated data URLs copied from DOM output and arbitrary
+   base64-looking text remain ordinary tool text.
 2. Uploads the bytes to oo-api and keeps only a short `/img` URL in the message history, so screenshots never bloat the replayed context (requires `OPENONION_API_KEY`, set up by `co init`)
 3. Converts to OpenAI vision format for LLM consumption
 4. Sends the image URL to frontend via WebSocket (if hosted with `agent.io`)
@@ -43,6 +45,11 @@ The plugin detects:
 # Plain base64 (defaults to PNG)
 "iVBORw0KGgoAAAANSUhEUgAA..."
 ```
+
+Detection is deliberately stricter than a base64-character regex. A candidate
+must have valid padding, the declared format's file signature, and its complete
+end marker before the plugin uploads anything. Network and HTTP upload failures
+still fail loudly after a genuine image has been identified.
 
 ## Events
 

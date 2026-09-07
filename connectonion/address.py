@@ -12,19 +12,19 @@ LLM-Note:
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from .derive import ACCOUNT_URI, derive_path, slip13_path, ssh_uri
 
 try:
-    from nacl.signing import SigningKey, VerifyKey
     from mnemonic import Mnemonic
+    from nacl.signing import SigningKey, VerifyKey
 except ImportError:
     # Graceful fallback if dependencies not installed
     SigningKey = None
     VerifyKey = None
     Mnemonic = None
-    
+
 
 # ---------------------------------------------------------------------------
 # Where the identity key comes from
@@ -119,27 +119,27 @@ def generate() -> Dict[str, Any]:
             "Required libraries not installed. "
             "Please run: pip install pynacl mnemonic"
         )
-    
+
     # Generate 12-word recovery phrase
     mnemo = Mnemonic("english")
     seed_phrase = mnemo.generate(strength=128)  # 128 bits = 12 words
-    
+
     # Derive seed from phrase
     seed = mnemo.to_seed(seed_phrase)
 
     # SLIP-0010 down the SLIP-0013 account path. See _account_key().
     signing_key = _account_key(seed)
-    
+
     # Create address (hex-encoded public key with 0x prefix)
     public_key_bytes = bytes(signing_key.verify_key)
     address = "0x" + public_key_bytes.hex()
-    
+
     # Create short display format
     short_address = f"{address[:6]}...{address[-4:]}"
-    
+
     # Create email address (first 10 chars of address)
     email = f"{address[:10]}@mail.openonion.ai"
-    
+
     return Identity({
         "address": address,
         "short_address": short_address,
@@ -173,27 +173,27 @@ def recover(seed_phrase: str) -> Dict[str, Any]:
             "Required libraries not installed. "
             "Please run: pip install pynacl mnemonic"
         )
-    
+
     mnemo = Mnemonic("english")
-    
+
     # Validate recovery phrase
     if not mnemo.check(seed_phrase):
         raise ValueError("Invalid recovery phrase")
-    
+
     # Derive seed from phrase
     seed = mnemo.to_seed(seed_phrase)
 
     # Must match generate() exactly, or a phrase recovers a different agent.
     signing_key = _account_key(seed)
-    
+
     # Recreate address
     public_key_bytes = bytes(signing_key.verify_key)
     address = "0x" + public_key_bytes.hex()
     short_address = f"{address[:6]}...{address[-4:]}"
-    
+
     # Create email address (first 10 chars of address)
     email = f"{address[:10]}@mail.openonion.ai"
-    
+
     return Identity({
         "address": address,
         "short_address": short_address,
@@ -219,7 +219,7 @@ def save(address_data: Dict[str, Any], co_dir: Path) -> None:
     # Create keys directory
     keys_dir = co_dir / "keys"
     keys_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Save private key (binary format)
     key_file = keys_dir / "agent.key"
     key_file.write_bytes(bytes(address_data["signing_key"]))
@@ -232,7 +232,7 @@ def save(address_data: Dict[str, Any], co_dir: Path) -> None:
         recovery_file.write_text(address_data["seed_phrase"], encoding='utf-8')
         if sys.platform != 'win32':
             recovery_file.chmod(0o600)  # Read/write for owner only (Unix/Mac only)
-    
+
     # Create warning file
     warning_file = keys_dir / "DO_NOT_SHARE"
     if not warning_file.exists():
@@ -268,23 +268,23 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
     """
     if SigningKey is None:
         return None
-        
+
     keys_dir = co_dir / "keys"
     key_file = keys_dir / "agent.key"
-    
+
     if not key_file.exists():
         return None
-    
+
     try:
         # Load signing key
         key_bytes = key_file.read_bytes()
         signing_key = SigningKey(key_bytes)
-        
+
         # Derive address from public key
         public_key_bytes = bytes(signing_key.verify_key)
         address = "0x" + public_key_bytes.hex()
         short_address = f"{address[:6]}...{address[-4:]}"
-        
+
         # Try to load recovery phrase if it exists
         recovery_file = keys_dir / "recovery.txt"
         seed_phrase = None
@@ -300,11 +300,11 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         # it, which is how someone recovers onto a fresh agent and wonders where
         # their credits went. Say it once, here, where both halves are in hand.
         legacy_derivation = bool(seed_phrase) and not derives_from(seed_phrase, signing_key)
-        
+
         # Load email and activation status from environment
         email = os.getenv("AGENT_EMAIL", f"{address[:10]}@mail.openonion.ai")
         email_active = os.getenv("IS_EMAIL_ACTIVE", "").lower() == "true"
-        
+
         result = Identity({
             "address": address,
             "short_address": short_address,
@@ -318,12 +318,12 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
             "source": str(co_dir),
             "signing_key": signing_key
         })
-        
+
         if seed_phrase:
             result["seed_phrase"] = seed_phrase
-            
+
         return result
-        
+
     except Exception:
         # Invalid key file or other error
         return None
@@ -352,23 +352,23 @@ def verify(address: str, message: bytes, signature: bytes) -> bool:
     """
     if VerifyKey is None:
         return False
-    
+
     try:
         # Validate address format
         if not address.startswith("0x") or len(address) != 66:
             return False
-            
+
         # Extract public key from address (it IS the public key!)
         public_key_hex = address[2:]
         public_key_bytes = bytes.fromhex(public_key_hex)
-        
+
         # Create verify key
         verify_key = VerifyKey(public_key_bytes)
-        
+
         # Verify signature
         verify_key.verify(message, signature)
         return True
-        
+
     except Exception:
         # Invalid signature, wrong key, or other error
         return False
@@ -391,7 +391,7 @@ def sign(address_data: Dict[str, Any], message: bytes) -> bytes:
     """
     if "signing_key" not in address_data:
         raise ValueError("No signing key in address data")
-        
+
     signed = address_data["signing_key"].sign(message)
     return signed.signature
 

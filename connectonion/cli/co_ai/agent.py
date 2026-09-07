@@ -13,12 +13,12 @@ Tools included:
 - Shell: bash (with approval flow)
 
 Plugins included:
-- eval: Session persistence for debugging
+- caller-supplied plugins: Explicit opt-ins such as task evaluation
 - system_reminder: Contextual hints
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
 - auto_compact: Context window management
-- yolo: Approval-free autonomous N-turn sessions with continuation
+- full_access: Bounded approval bypass; never starts another user turn
 
 Architecture:
 - Uses prompt assembly from prompts/assembler.py: main.md (domain-neutral) +
@@ -34,31 +34,31 @@ Debug:
 
 from pathlib import Path
 
-from connectonion import Agent, TodoList, bash
+from connectonion import Agent, ClaudeCodePlugin, CodexPlugin, TodoList, bash
 from connectonion.core.events import after_user_input
+from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
     auto_compact,
-    enable_yolo,
-    eval,
+    enable_full_access,
+    full_access,
     image_result_formatter,
     prefer_write_tool,
     runtime_input,
     subagents,
     tool_approval,
-    yolo,
 )
 from connectonion.useful_plugins.skills import skills as skills_plugin
+from connectonion.useful_plugins.tool_approval.policy import (
+    managed_delegation_permission,
+)
 
 from .context import load_project_context
-from .plugins import system_reminder
+from .plugins import native_coding_agent_routing, system_reminder
 from .prompts.assembler import assemble_prompt
 from .skills import skill
 from .tools import (
     FileTools,
-    acp_agent,
     ask_user,
-    claude_code,
-    codex,
     kill_task,
     load_guide,
     run_background,
@@ -78,13 +78,8 @@ def grant_managed_delegation_permissions(agent: Agent) -> None:
     shared defaults would also expose the wrappers to direct remote EXEC.
     """
     permissions = agent.current_session.setdefault('permissions', {})
-    for tool_name in ('codex', 'claude_code', 'acp_agent'):
-        permissions.setdefault(tool_name, {
-            'allowed': True,
-            'source': 'safe',
-            'reason': 'managed delegation owns inner approval',
-            'expires': {'type': 'never'},
-        })
+    for tool_name in ('codex', 'claude_code'):
+        permissions.setdefault(tool_name, managed_delegation_permission())
 
 
 def agent_name(co_dir: Path = Path(".co")) -> str:
@@ -112,13 +107,14 @@ def agent_name(co_dir: Path = Path(".co")) -> str:
 
 
 def create_agent(
-    model: str = "co/gemini-3.6-flash",
+    model: str = DEFAULT_MODEL,
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
-    yolo_turns: int | None = None,
+    full_access_turns: int | None = None,
     role: str | None = "coding",
     background_tools: bool = True,
     state_dir: Path | None = None,
+    extra_plugins=(),
 ) -> Agent:
     """Build the co-ai agent.
 
@@ -128,6 +124,14 @@ def create_agent(
     """
     todo = TodoList()
     file_tools = FileTools()
+    codex_plugin = CodexPlugin(
+        workspace=Path.cwd(),
+        use_host_permissions=True,
+    )
+    claude_plugin = ClaudeCodePlugin(
+        workspace=Path.cwd(),
+        use_host_permissions=True,
+    )
 
     tools = [
         file_tools,
@@ -138,17 +142,11 @@ def create_agent(
         *([run_background, task_output, kill_task] if background_tools else []),
         load_guide,
         ask_user,
-        # Codex owns approval for its concrete inner actions. The co ai wrapper
-        # derives that policy from the current mode instead of exposing it to
-        # the planner model as another set of permission switches.
-        codex,
-        claude_code,
-        acp_agent,
     ]
 
     base_prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
-        tools=tools,
+        tools=[*tools, codex_plugin.codex, claude_plugin.claude_code],
         role=role,
     )
 
@@ -163,19 +161,21 @@ def create_agent(
     # image_result_formatter stays — it turns the screenshot path the CLI prints
     # back into an image the model and the user can actually see.
     plugins = [
+        codex_plugin,
+        claude_plugin,
+        native_coding_agent_routing,
         skills_plugin,
         subagents,
-        eval,
+        *extra_plugins,
         system_reminder,
         prefer_write_tool,
         [grant_managed_delegation_permissions],
         tool_approval,
         auto_compact,
-        yolo,
+        full_access,
         image_result_formatter,
         runtime_input,
     ]
-
     agent = Agent(
         name=agent_name(co_dir),
         tools=tools,
@@ -192,8 +192,8 @@ def create_agent(
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.
     agent.tools.remove("wait_for_manual_login")
 
-    if yolo_turns is not None:
-        enable_yolo(agent, turns=yolo_turns)
+    if full_access_turns is not None:
+        enable_full_access(agent, turns=full_access_turns)
 
     return agent
 

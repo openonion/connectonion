@@ -50,6 +50,23 @@ class FakeContext:
         self.closed = True
 
 
+def test_browser_profile_dir_defaults_to_the_real_home(monkeypatch, tmp_path):
+    monkeypatch.delenv("CO_BROWSER_PROFILE_DIR", raising=False)
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
+
+    assert browser_mod._browser_profile_dir() == tmp_path / ".co" / "browser_profile"
+
+
+def test_browser_profile_dir_can_be_isolated_without_replacing_home(monkeypatch, tmp_path):
+    real_home = tmp_path / "real-home"
+    isolated_profile = tmp_path / "release-profile"
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: real_home)
+    monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(isolated_profile))
+
+    assert browser_mod._browser_profile_dir() == isolated_profile
+    assert browser_mod.Path.home() == real_home
+
+
 def test_open_browser_is_noop_when_context_is_already_open(monkeypatch, tmp_path):
     contexts = []
     playwrights = []
@@ -78,7 +95,7 @@ def test_open_browser_is_noop_when_context_is_already_open(monkeypatch, tmp_path
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: FakeSyncPlaywright())
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
 
     first_result = browser.open_browser()
     first_context = contexts[0]
@@ -125,7 +142,7 @@ def test_open_browser_force_reopens_existing_context(monkeypatch, tmp_path):
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: FakeSyncPlaywright())
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
     browser.open_browser()
     first_context = contexts[0]
     first_page = first_context.page
@@ -170,7 +187,7 @@ def test_open_browser_reopens_stale_context(monkeypatch, tmp_path):
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: FakeSyncPlaywright())
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
     browser.open_browser()
     first_context = contexts[0]
     first_page = first_context.page
@@ -188,7 +205,7 @@ def test_open_browser_reopens_stale_context(monkeypatch, tmp_path):
 
 
 def test_close_reports_cleanup_warnings_and_clears_state():
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
     page = FakePage()
     page.close()
     context = FakeContext()
@@ -255,7 +272,7 @@ def test_seed_state_injects_exported_cookies(monkeypatch, tmp_path):
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
-    browser = browser_mod.BrowserAutomation(headless=True, seed_state=str(state))
+    browser = browser_mod.LegacyBrowserAutomation(headless=True, seed_state=str(state))
     browser.open_browser()
 
     assert contexts[0].added_cookies == cookies
@@ -267,7 +284,7 @@ def test_no_seed_state_injects_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
     browser.open_browser()
 
     assert contexts[0].added_cookies is None
@@ -279,7 +296,7 @@ def test_save_state_exports_storage_state_to_path(monkeypatch, tmp_path):
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
     browser.open_browser()
     out = tmp_path / "exported.json"
     result = browser.save_state(str(out))
@@ -289,7 +306,7 @@ def test_save_state_exports_storage_state_to_path(monkeypatch, tmp_path):
 
 
 def test_save_state_without_browser_reports_not_open():
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
 
     assert browser.save_state("/tmp/whatever.json") == "Browser not open"
 
@@ -304,7 +321,7 @@ def test_wait_for_manual_login_refuses_without_tty(monkeypatch):
 
     monkeypatch.setattr(browser_mod.sys, "stdin", _NoTTY())
 
-    browser = browser_mod.BrowserAutomation(headless=True)
+    browser = browser_mod.LegacyBrowserAutomation(headless=True)
     browser.browser = FakeContext()
     try:
         result = browser.wait_for_manual_login("Example")

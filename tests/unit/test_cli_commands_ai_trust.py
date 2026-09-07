@@ -9,7 +9,7 @@ Components under test:
 - Module: cli_commands_ai_trust
 """
 
-import os
+from pathlib import Path
 
 import pytest
 import typer
@@ -18,6 +18,7 @@ import connectonion.cli.commands.ai_commands as ai_mod
 import connectonion.cli.commands.trust_commands as trust_mod
 from connectonion.cli.co_ai.agent import GLOBAL_CO_DIR
 from connectonion.core.exceptions import LLMAuthenticationError
+from connectonion.useful_plugins import eval as eval_plugin
 
 
 def test_handle_ai_calls_start_server(monkeypatch):
@@ -41,28 +42,90 @@ def test_handle_ai_calls_start_server(monkeypatch):
         port=1111,
         model="m",
         max_iterations=3,
-        yolo=True,
-        yolo_turns=7,
+        full_access=True,
+        full_access_turns=7,
+        evaluate=True,
     )
 
     assert called["port"] == 1111
     assert called["model"] == "m"
     assert called["max_iterations"] == 3
-    assert called["yolo"] is True
-    assert called["yolo_turns"] == 7
+    assert called["full_access"] is True
+    assert called["full_access_turns"] == 7
+    assert called["invite_code"] is None
+    assert callable(called["agent_factory"])
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
-    assert created["yolo_turns"] == 7
+    assert created["full_access_turns"] is None
+    assert created["extra_plugins"] == ()
 
 
-def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
+def test_handle_ai_passes_invocation_invite_to_web_server(monkeypatch):
+    called = {}
+
+    monkeypatch.setattr(ai_mod, "_create_agent", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.main.start_server",
+        lambda _agent, **kwargs: called.update(kwargs),
+    )
+
+    ai_mod.handle_ai(invite_code="  RUN-ONLY-123  ")
+
+    assert called["invite_code"] == "RUN-ONLY-123"
+
+
+def test_handle_ai_reads_invocation_invite_file(tmp_path, monkeypatch):
+    called = {}
+    secret_file = tmp_path / "invite"
+    secret_file.write_text("FILE-ONLY-456\n", encoding="utf-8")
+
+    monkeypatch.setattr(ai_mod, "_create_agent", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.main.start_server",
+        lambda _agent, **kwargs: called.update(kwargs),
+    )
+
+    ai_mod.handle_ai(invite_code_file=secret_file)
+
+    assert called["invite_code"] == "FILE-ONLY-456"
+
+
+def test_handle_ai_rejects_empty_invitation_file(tmp_path):
+    secret_file = tmp_path / "invite"
+    secret_file.write_text("\n", encoding="utf-8")
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(invite_code_file=secret_file)
+
+    assert caught.value.exit_code == 2
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"invite_code": ""},
+        {"invite_code": "line-one\nline-two"},
+        {"invite_code": "one", "invite_code_file": Path("two")},
+        {"prompt": "task", "invite_code": "one"},
+    ],
+)
+def test_handle_ai_rejects_invalid_invite_option_combinations(kwargs):
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(**kwargs)
+
+    assert caught.value.exit_code == 2
+
+
+def test_handle_ai_enables_eval_only_when_requested(monkeypatch, capsys):
     created = {}
 
     class FakeAgent:
         def input(self, prompt):
-            created["prompt"] = prompt
+            self.current_session = {
+                "trace": [{"type": "turn_result", "reason": "natural"}]
+            }
             return "done"
 
     def fake_create_agent(**kwargs):
@@ -74,31 +137,61 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
         fake_create_agent,
     )
 
-    ai_mod.handle_ai(prompt="task", yolo=False, yolo_turns=9)
+    ai_mod.handle_ai(prompt="task", evaluate=True)
 
-    assert created["prompt"] == "task"
-    assert created["yolo_turns"] is None
+    assert created["extra_plugins"] == (eval_plugin,)
     assert capsys.readouterr().out.endswith("done\n")
 
 
-def test_handle_ai_prepares_private_acp_state_dir(tmp_path, monkeypatch):
-    selected = tmp_path / "isolated" / "acp-state"
-    called = {}
+def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
+    created = {}
 
-    async def fake_serve_acp(**kwargs):
-        called.update(kwargs)
+    class FakeAgent:
+        def input(self, prompt):
+            created["prompt"] = prompt
+            self.current_session = {
+                "trace": [{"type": "turn_result", "reason": "natural"}]
+            }
+            return "done"
+
+    def fake_create_agent(**kwargs):
+        created.update(kwargs)
+        return FakeAgent()
 
     monkeypatch.setattr(
-        "connectonion.cli.co_ai.acp_server.serve_acp",
-        fake_serve_acp,
+        "connectonion.cli.co_ai.agent.create_agent",
+        fake_create_agent,
     )
 
-    ai_mod.handle_ai(acp=True, state_dir=selected)
+    ai_mod.handle_ai(prompt="task", full_access=False, full_access_turns=9)
 
-    assert called["state_dir"] == selected.resolve()
-    assert selected.is_dir()
-    if os.name != "nt":
-        assert selected.stat().st_mode & 0o777 == 0o700
+    assert created["prompt"] == "task"
+    assert created["full_access_turns"] is None
+    assert capsys.readouterr().out.endswith("done\n")
+
+
+def test_plain_one_shot_exits_nonzero_when_iterations_are_exhausted(
+    monkeypatch, capsys
+):
+    class IncompleteAgent:
+        def input(self, prompt):
+            self.current_session = {
+                "trace": [
+                    {"type": "turn_result", "reason": "max_iterations"}
+                ]
+            }
+            return "Task incomplete: Maximum iterations (1) reached."
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_agent",
+        lambda **_: IncompleteAgent(),
+    )
+
+    with pytest.raises(typer.Exit) as caught:
+        ai_mod.handle_ai(prompt="task", max_iterations=1)
+
+    assert caught.value.exit_code == 1
+    assert "Task incomplete" in capsys.readouterr().out
 
 
 def test_isolated_agent_keeps_global_config_and_redirects_only_state(
@@ -128,31 +221,6 @@ def test_isolated_agent_keeps_global_config_and_redirects_only_state(
 
     assert created["co_dir"] == GLOBAL_CO_DIR
     assert created["state_dir"] == state_dir
-
-
-@pytest.mark.skipif(os.name == "nt", reason="Windows symlink creation needs privileges")
-def test_handle_ai_rejects_a_symlink_state_dir(tmp_path, monkeypatch, capsys):
-    target = tmp_path / "target"
-    target.mkdir()
-    selected = tmp_path / "state"
-    selected.symlink_to(target, target_is_directory=True)
-    served = False
-
-    async def fake_serve_acp(**_kwargs):
-        nonlocal served
-        served = True
-
-    monkeypatch.setattr(
-        "connectonion.cli.co_ai.acp_server.serve_acp",
-        fake_serve_acp,
-    )
-
-    with pytest.raises(typer.Exit) as caught:
-        ai_mod.handle_ai(acp=True, state_dir=selected)
-
-    assert caught.value.exit_code == 2
-    assert served is False
-    assert "state directory is unavailable" in capsys.readouterr().out
 
 
 def test_handle_ai_reports_a_provider_failure_without_a_traceback(monkeypatch, capsys):
