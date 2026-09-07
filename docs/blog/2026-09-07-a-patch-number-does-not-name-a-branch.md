@@ -1,21 +1,36 @@
-# A patch number does not name a branch
+# A Patch Number Does Not Name a Branch
 
-The 1.8.4 readiness review found a pull request aimed at `main` failing a
-forward-port check. Its proposed version contained a nonzero patch number, so
-the workflow demanded an open issue promising to carry the change to a higher
-line. But the change was already headed to the newest line. Creating an issue
-would satisfy the expression while making the release ledger less truthful.
+Draft for the 1.8.4 release process.
 
-The original check protected a useful rule. A fix on `release/1.7` must reach
-the active higher lines before that work is considered finished. The mistake
-was treating a version string as the destination branch. We kept the open-issue
-and label checks and narrowed their trigger to maintenance branches. Mainline
-and feature stacks still require a release estimate; they do not invent a
-forward-port obligation. If a future maintenance branch uses another naming
-scheme, the policy and regression fixtures must change together.
+The readiness review reached a strange instruction: before a pull request
+could land on `main`, it needed an issue promising to carry the change forward.
+Forward to where? The change was already aimed at the newest line.
 
-The regression executes the workflow's actual JavaScript with synthetic PR
-events. It covers mainline 1.8.4, preview and stacked work, missing metadata,
-and maintenance trackers that are absent, closed, unlabelled or valid. This is
-a proposed process correction. It does not merge a feature, close an existing
-release ledger, or publish 1.8.4.
+At first this looked like another missing metadata field. Several PRs had
+release estimates in prose that the workflow could not parse. Those needed
+the exact field names. This failure survived that correction. The workflow
+parsed 1.8.4, saw a nonzero patch number, and required a forward-port tracker.
+It never checked the destination branch.
+
+Creating an issue would have made the expression happy. It would also have
+left someone responsible for work with no destination. The rule had a valid
+origin: a fix on an older maintenance line must reach the active newer lines.
+The version string had become a shortcut for deciding whether that situation
+existed, and 1.8.4 on main exposed the difference.
+
+The correction keeps the obligation where there is somewhere to port from:
+a patch aimed at a maintenance branch. Mainline and stacked feature work still
+need their release metadata. A regression runs the actual workflow JavaScript
+with both kinds of destination, including a maintenance PR with a closed or
+unlabelled tracker. Narrowing the trigger must not make those cases disappear.
+
+CI then caught a smaller surprise in the documentation. The release checklist
+scanner interpreted the example branch names `release/1.7` and `release/1.8`
+as files a releaser should edit. It too had collapsed two different meanings
+into one string. The scanner now recognizes that explicit branch-name pattern
+while continuing to check the real release files.
+
+Both failures could have been silenced by changing what the text happened to
+look like. Keeping the distinction in the checks makes the next release easier
+to reason about: a version names the artifact, a branch names where the change
+is going, and a forward-port issue names work that still has a destination.
