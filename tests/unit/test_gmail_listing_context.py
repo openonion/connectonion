@@ -117,6 +117,7 @@ def test_numeric_command_help_exposes_listing_selector(args, color, monkeypatch)
     from click import unstyle
     from typer import rich_utils
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", color)
     from typer.testing import CliRunner
     from connectonion.cli.main import app
