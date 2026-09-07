@@ -46,6 +46,7 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | The clock serves a saved time, not only run-at-load | `test_launchd_tick_serves_a_slot` (opt-in, ~10 min, no model call) | See "launchd calendar triggers" below |
 | Wrong environment says what to do: no login, no codex binary, a second sync while one runs | `tests/e2e/cli/test_wiki_failures.py` (real CLI process, no model, CI-safe) | Passing |
 | Luna (`gpt-5.6-luna`) drives the notebook tools | `CO_WIKI_TEST_MODEL=gpt-5.6-luna pytest tests/e2e/real_api/test_real_wiki.py` | **Passing, 2026-09-07, 62 s.** Luna wrote nothing at first and reported the tools as "Disabled"; bisecting the hardening overrides over all Codex features found `code_mode_host=false` alone hides dynamic tools from non-codex models. That one feature now stays on (`KEPT_FEATURES`); shell, exec, hooks, plugins, MCC, apps stay off, and the hostile-source test passes on Luna with it on |
+| With a read-only shell on, a hostile source still cannot reach past the notebook; a secret cannot be written into a page | `CO_WIKI_TEST_MODEL=gpt-5.6-luna` / `gpt-5.6-terra` on `test_real_wiki.py`; `test_pages_refuse_secret_shaped_content` | **Passing, 2026-09-08**, both models, 48 s each: no refusals, sentinel untouched, no file outside the notebook. The shell is for retrieval (grep the notebook, look back at a referenced rollout); the sandbox is read-only with no network, approvals are auto-declined, the wiki_* tools remain the only write path, and `Notebook.write` refuses private-key blocks and sk-/AKIA/ghp_/xox/AIza/JWT-shaped tokens |
 | Claude Code transcripts are a source; only what the two of them said is read | `test_claude_code_transcript_yields_only_what_the_two_of_them_said` | Passing against the nine row shapes seen in a real transcript |
 | Mail is a source: oldest first, one cursor, bodies fetched only for the batch, automated senders skipped, the user's own mail speaks as `user` | `tests/unit/test_wiki_mail.py`, `test_outlook_source_flows_through_sync_with_its_own_cursor` | Passing with a fake client; live Outlook not yet exercised |
 | Every real test isolates *both* transcript roots | fixtures in `test_real_wiki.py`, `test_real_wiki_journey.py` (`CLAUDE_CONFIG_DIR`), `wiki_prompt_eval.py` | Fixed 2026-09-07: after the Claude Code source landed, the synthetic tests read the operator's own `~/.claude/projects` into their temp notebooks (20 real messages showed up in a "no_change" pass). Nothing left the machine; the fixtures now point that root at an empty directory |
@@ -74,11 +75,15 @@ Nine synthetic scenarios, deterministic checks, real maintainer. Each row is one
 ### Models a ChatGPT-account Codex can run as the maintainer (2026-09-07)
 
 Through `codex app-server` with `allowProviderModelFallback: false`: Spark
-(`gpt-5.3-codex-spark`) and `gpt-5.5` drive the dynamic tools; Luna
-(`gpt-5.6-luna`) does once `code_mode_host` is left on; `gpt-5.3-codex`,
-`gpt-5.4`, `gpt-5.5-codex` and every `*-mini` return 400 "not supported when
-using Codex with a ChatGPT account" (`codex exec` answers with them only by
-falling back). Two dogfood runs plus three eval rounds exhausted the day's Spark
+(`gpt-5.3-codex-spark`), `gpt-5.5`, Luna (`gpt-5.6-luna`), Terra
+(`gpt-5.6-terra`) and Sol (`gpt-5.6-sol`) drive the dynamic tools (the three
+5.6 models only once `code_mode_host` is left on); `gpt-5.3-codex`, `gpt-5.4`,
+`gpt-5.5-codex` and every `*-mini` return 400 "not supported when using Codex
+with a ChatGPT account" (`codex exec` answers with them only by falling back).
+`model/list` on the account names exactly: gpt-5.6-sol, gpt-5.6-terra,
+gpt-5.6-luna, gpt-5.5, gpt-5.4-mini, gpt-5.3-codex-spark. The account's weekly
+meters are readable through `account/rateLimits/read` (`read_rate_limits()`):
+a shared `codex` pool that Luna/Terra/Sol/gpt-5.5 draw on, and Spark's own. Two dogfood runs plus three eval rounds exhausted the day's Spark
 allowance ("usage limit … try again at 2:28 AM"); a failed eval must be read
 from the run record's error before it is read as a prompt failure, and evals
 must not run while anything else is using the same account.
