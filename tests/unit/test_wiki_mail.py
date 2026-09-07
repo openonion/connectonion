@@ -42,12 +42,13 @@ def test_oldest_mail_first_with_a_cursor_that_never_repeats(tmp_path):
     client = FakeMail([mail(1, "2026-09-03T10:00:00+00:00"), mail(2, "2026-09-02T09:00:00+00:00"),
                        mail(3, "2026-09-05T08:00:00+00:00", sender="me@example.com", body="Agreed, Markdown.")])
     first = collect_mail(subscription(), {}, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["source"] for i in first.items] == ["outlook:m2", "outlook:m1"]
+    assert [i["reference"] for i in first.items] == ["outlook:m2", "outlook:m1"]
+    assert all(len(i["source"]) == len("outlook:") + 12 for i in first.items)  # short, readable ids
     assert first.items[0]["role"] == "other" and first.items[0]["speaker"] == "alice@example.com"
     assert "Subject: Aurora" in first.items[0]["text"] and "Markdown" in first.items[0]["text"]
     assert first.progress["cursor"] == "2026-09-03T10:00:00+00:00"
     second = collect_mail(subscription(), first.progress, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["source"] for i in second.items] == ["outlook:m3"]
+    assert [i["reference"] for i in second.items] == ["outlook:m3"]
     assert second.items[0]["role"] == "user"  # the user's own mail speaks as the user
     assert sorted(client.bodies_read) == ["m1", "m2", "m3"]  # each body read exactly once
     third = collect_mail(subscription(), second.progress, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
@@ -59,7 +60,7 @@ def test_same_second_mails_are_not_lost_or_repeated(tmp_path):
     client = FakeMail([mail(1, same), mail(2, same), mail(3, same)])
     first = collect_mail(subscription(), {}, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
     second = collect_mail(subscription(), first.progress, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert sorted(i["source"] for i in first.items + second.items) == ["outlook:m1", "outlook:m2", "outlook:m3"]
+    assert sorted(i["reference"] for i in first.items + second.items) == ["outlook:m1", "outlook:m2", "outlook:m3"]
 
 
 def test_automated_senders_are_skipped_unless_asked_for():
@@ -67,7 +68,7 @@ def test_automated_senders_are_skipped_unless_asked_for():
                        mail(2, "2026-09-02T10:00:00+00:00", sender="notification@github.com"),
                        mail(3, "2026-09-02T11:00:00+00:00", sender="bob@example.com")])
     batch = collect_mail(subscription(), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["source"] for i in batch.items] == ["outlook:m3"]
+    assert [i["reference"] for i in batch.items] == ["outlook:m3"]
     assert client.bodies_read == ["m3"]  # skipped mail is never fetched
     everything = collect_mail(subscription(exclude_automated=False), {}, 10, 100000, client,
                               now=datetime(2026, 9, 7, tzinfo=timezone.utc))
@@ -77,7 +78,7 @@ def test_automated_senders_are_skipped_unless_asked_for():
 def test_lookback_and_body_limit_are_honoured():
     client = FakeMail([mail(1, "2026-08-01T09:00:00+00:00"), mail(2, "2026-09-02T09:00:00+00:00", body="x" * 5000)])
     batch = collect_mail(subscription(), {}, 10, 1500, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["source"] for i in batch.items] == ["outlook:m2"]  # August is before `since`
+    assert [i["reference"] for i in batch.items] == ["outlook:m2"]  # August is before `since`
     assert "truncated" in batch.items[0]["text"] and len(batch.items[0]["text"]) < 1500
 
 

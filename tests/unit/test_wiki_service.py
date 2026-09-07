@@ -372,6 +372,6 @@ def test_outlook_source_flows_through_sync_with_its_own_cursor(tmp_path, monkeyp
         seen.extend(items)
         return {"usage": None, "changed": []}
     assert run_sync(root, runner=runner)["outcome"] == "completed"
-    assert [i["source"] for i in seen] == ["outlook:m1"] and seen[0]["role"] == "other"
+    assert [i["reference"] for i in seen] == ["outlook:m1"] and seen[0]["role"] == "other"
     assert read_json(state_path(root, "progress.json"), {})["outlook"]["cursor"] == "2026-09-02T09:00:00+00:00"
     assert run_sync(root, runner=runner)["outcome"] == "no_change"

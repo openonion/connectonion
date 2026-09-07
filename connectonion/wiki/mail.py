@@ -9,6 +9,7 @@ sender kept as `speaker`, so the maintainer can tell a request received from a
 commitment made.
 """
 
+import hashlib
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -67,9 +68,12 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
                 return Batch(items, updated)
             body = client.get_email_body(row["id"])
             text = _fit_text(body[:MAX_BODY_CHARS * 2], MAX_BODY_CHARS)
+            # Provider ids run to 150 characters; a Sources line of them is unreadable. The
+            # short form names the mail, the reference is what `co outlook read` needs.
+            short = hashlib.sha256(row["id"].encode()).hexdigest()[:12]
             item = {"role": "user" if sender in mine else "other", "speaker": sender,
                     "text": text, "timestamp": row["when"].isoformat(),
-                    "source": f"{kind}:{row['id']}", "reference": f"{kind}:{row['id']}",
+                    "source": f"{kind}:{short}", "reference": f"{kind}:{row['id']}",
                     "project": "", "subject": row.get("subject", "")}
             room = max_chars - used - 300
             if room < 500:

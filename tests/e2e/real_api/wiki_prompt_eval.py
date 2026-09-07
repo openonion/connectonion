@@ -117,10 +117,14 @@ def check_chinese(nb):
         f.append("Emma not recorded")
     if "355" not in text:
         f.append("floor price 355 not recorded")
-    if not any(word in text for word in ("不再", "自己改价", "自己定价", "手动")):
+    if not any(word in text for word in ("不再", "自己改价", "自己定价", "自行定价", "自行改价", "手动", "Emma 自")):
         f.append("the rule that Emma prices herself now is missing")
     if "清洁" not in text and "cleaning" not in text.lower():
         f.append("the 'net of cleaning fee' qualification was dropped")
+    # The user wrote Chinese; the notebook must answer in Chinese, names untranslated.
+    chinese = sum(1 for ch in text if "一" <= ch <= "鿿")
+    if chinese < 20:
+        f.append("the page was written in English for a Chinese source")
     return f
 
 
