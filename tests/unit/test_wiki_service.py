@@ -265,3 +265,40 @@ def test_sigterm_during_a_batch_is_recorded_as_interrupted(wiki):
     from connectonion.wiki.service import run_logs
     assert run_logs(root)[0]["outcome"] == "interrupted"
     assert read_json(state_path(root, "progress.json"), {}) == {}
+
+
+def test_latest_slot_is_the_most_recent_saved_time_in_the_saved_zone():
+    from datetime import datetime, timezone
+
+    from connectonion.wiki.service import latest_slot
+    config = {"schedule": {"times": ["03:00", "17:00"], "timezone": "Australia/Sydney"}}
+    # 2026-09-07 12:00 UTC is 22:00 in Sydney: the 17:00 slot of that day is the latest.
+    slot = latest_slot(config, datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    assert slot.isoformat() == "2026-09-07T17:00:00+10:00"
+    # 2026-09-07 06:30 UTC is 16:30 Sydney: 17:00 has not come, so 03:00 today is the latest.
+    slot = latest_slot(config, datetime(2026, 9, 7, 6, 30, tzinfo=timezone.utc))
+    assert slot.isoformat() == "2026-09-07T03:00:00+10:00"
+
+
+def test_scheduled_sync_runs_once_per_slot_and_coalesces_missed_ones(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    from connectonion.wiki.service import start
+    root, sessions = tmp_path / "wiki", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    clock = {"now": datetime(2026, 9, 7, 6, 30, tzinfo=timezone.utc)}  # 16:30 Sydney
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: clock["now"])
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "schedule.times", "03:00,17:00,18:00"])
+    calls = []
+    start(root, confirm=lambda s: True, scheduler=FakeScheduler(), runner=_runner_recording(calls))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    # Installed after today's 03:00: that slot is not owed, so a tick before 17:00 does nothing.
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None
+    clock["now"] = datetime(2026, 9, 7, 7, 2, tzinfo=timezone.utc)   # 17:02 Sydney -> due
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls))["outcome"] == "completed"
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None  # same slot, served
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello"), ("user", "more")])
+    clock["now"] = datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc)   # next day 11:00: 18:00 and 03:00 missed
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls))["outcome"] == "completed"
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None  # one catch-up, not two
+    assert len(calls) == 2

@@ -36,13 +36,14 @@ the first PR. Real model tests, when explicitly run, receive synthetic text only
 | Declined start reads nothing and installs nothing | `test_declined_start_reads_nothing_and_installs_nothing`, `test_noninteractive_start_cannot_consent_silently` | Passing; the summary names the exact directory before any body is read |
 | First start consents once, installs the clock, runs one batch; repeat start asks nothing and reruns nothing | `test_first_start_consents_installs_and_runs_one_batch_then_repeat_start_does_not_rerun`, `test_start_yes_then_stop` | Passing with an injected scheduler and runner |
 | Stop removes the job; manual sync still works; consent stays | `test_stop_disables_background_but_manual_sync_still_works` | Passing |
-| The launchd job file: six slots, sync as the program, PATH that finds codex, private mode, idempotent reload | `tests/unit/test_wiki_schedule.py` | Passing with an injected `launchctl`; live `bootstrap`/`print`/`bootout` exercised by hand on 2026-09-07 (see below) |
+| The launchd job file: an interval tick running `sync --scheduled`, PATH that finds codex, private mode, idempotent reload, no calendar triggers | `tests/unit/test_wiki_schedule.py` | Passing with an injected `launchctl`; live `bootstrap`/`print`/`bootout` exercised on 2026-09-07 (see below) |
+| A saved time is served once, in the saved timezone; missed slots collapse into one catch-up | `test_latest_slot_is_the_most_recent_saved_time_in_the_saved_zone`, `test_scheduled_sync_runs_once_per_slot_and_coalesces_missed_ones` | Passing |
 | Stop works while the job's own batch holds the lock | `test_stop_does_not_wait_for_a_running_batch` | Passing; found live — the first `stop` after a live install failed with "Wiki is busy" because loading the job fires its run-at-load batch at once |
 | First batch runs before the clock is installed | `test_first_batch_runs_before_the_clock_is_installed` | Passing; same finding — otherwise the foreground batch and the run-at-load batch race |
 | SIGTERM (bootout / stop) closes the run as interrupted | `test_sigterm_during_a_batch_is_recorded_as_interrupted` | Passing; checkpoint not advanced |
 | Sleep catch-up, skipped-when-busy | launchd semantics, not our code | Relied on, documented in `schedule.py`; not tested here |
 | **The whole loop as a user lives it**: tell Codex → `start --yes` (real CLI process, real maintainer, real launchd) → a Codex with `wiki-use` answers through `co wiki` → correction → `sync` rewrites the page → `sync` again makes no model call → `open` carries it → `stop` leaves nothing | `tests/e2e/real_api/test_real_wiki_journey.py::test_tell_start_ask_correct_stop` (opt-in) | **Passing, 2026-09-07, 87 s.** The assistant ran `co wiki search`/`show` (visible in its rollout) and answered with the record path. First run found that Codex injects a `<recommended_plugins>` block as a `role: user` message and the maintainer had turned it into an `opportunities` page; user messages opening with such a tag are now excluded (`test_codex_injected_blocks_are_not_user_messages`, red before the fix) |
-| The clock fires at a calendar slot, not only at load | `test_launchd_fires_at_a_calendar_slot` (opt-in, ~3 min, no model call) | See below |
+| The clock serves a saved time, not only run-at-load | `test_launchd_tick_serves_a_slot` (opt-in, ~10 min, no model call) | See "launchd calendar triggers" below |
 | Wrong environment says what to do: no login, no codex binary, a second sync while one runs | `tests/e2e/cli/test_wiki_failures.py` (real CLI process, no model, CI-safe) | Passing |
 
 ### Live launchd round-trip (2026-09-07, this machine)
@@ -53,6 +54,17 @@ plist written 0600 under `~/Library/LaunchAgents/ai.openonion.co-wiki.<hash>.pli
 sync), that sync completed with exit 0 (2 new messages, 3 pages changed) and
 `last exit code = 0`; `co wiki stop` then removed the job and the file, and
 `launchctl print` no longer knows the label. Nothing remains installed.
+
+### launchd calendar triggers do not fire here (2026-09-07)
+
+The first version of the job used `StartCalendarInterval`. Its run-at-load
+batch ran, but the slot two minutes later never did. Three experiments on this
+machine (macOS 26, Darwin 25.5, on AC power, user logged in), all with plain
+`/bin/sh` jobs appending a timestamp to a file: calendar trigger in array form,
+in dict form, with and without `ProcessType=Background` — **none fired in 13–15
+minutes**, and the unified log has no launchd entry for the labels. In the same
+experiment `StartInterval=120` fired seven times to the second. The job is now
+an interval tick and `sync --scheduled` owns the due-check (see DD-065).
 
 ### Dogfood on the author's own sessions (2026-09-07)
 

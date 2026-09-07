@@ -31,7 +31,7 @@ def make(tmp_path, monkeypatch):
     return scheduler, calls
 
 
-def test_plist_runs_sync_at_the_six_times_with_a_path_that_can_find_codex(tmp_path, monkeypatch):
+def test_plist_runs_scheduled_sync_with_a_path_that_can_find_codex(tmp_path, monkeypatch):
     scheduler, _ = make(tmp_path, monkeypatch)
     root = tmp_path / "wiki"
     config = default_config()
@@ -39,10 +39,7 @@ def test_plist_runs_sync_at_the_six_times_with_a_path_that_can_find_codex(tmp_pa
     plist = plistlib.loads(scheduler.render(root, config).encode())
     assert plist["Label"] == label_for(root)
     assert plist["ProgramArguments"] == ["/venv/bin/python", "-m", "connectonion.cli.main",
-                                         "wiki", "--root", str(root), "sync"]
-    assert [(e["Hour"], e["Minute"]) for e in plist["StartCalendarInterval"]] == [
-        (3, 0), (4, 0), (6, 0), (17, 0), (18, 0), (19, 0)]
-    assert plist["RunAtLoad"] is True  # the catch-up batch after a power-off; sync itself is bounded
+                                         "wiki", "--root", str(root), "sync", "--scheduled"]
     assert "/opt/codex/bin" in plist["EnvironmentVariables"]["PATH"]
     assert "/venv/bin" in plist["EnvironmentVariables"]["PATH"]
     assert plist["StandardErrorPath"].startswith(str(root / ".state"))
@@ -79,3 +76,15 @@ def test_custom_roots_get_their_own_label():
 def test_unsupported_platform_says_how_to_run_by_hand(tmp_path):
     with pytest.raises(WikiError, match="co wiki sync"):
         Unsupported().install(tmp_path, default_config())
+
+
+def test_job_ticks_on_an_interval_and_never_relies_on_calendar_triggers(tmp_path, monkeypatch):
+    """Measured 2026-09-07 on macOS 26: StartCalendarInterval (array or dict form) never fired
+    in three experiments; StartInterval fired every time to the second. The clock is ours."""
+    from connectonion.wiki.schedule import TICK_SECONDS
+    scheduler, _ = make(tmp_path, monkeypatch)
+    plist = plistlib.loads(scheduler.render(tmp_path / "wiki", default_config()).encode())
+    assert plist["StartInterval"] == TICK_SECONDS and 60 <= TICK_SECONDS <= 600
+    assert "StartCalendarInterval" not in plist
+    assert plist["RunAtLoad"] is False  # the first tick catches up; no batch races the foreground one
+    assert plist["ProgramArguments"][-2:] == ["sync", "--scheduled"]

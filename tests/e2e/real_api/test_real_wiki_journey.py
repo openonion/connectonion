@@ -142,34 +142,38 @@ def test_tell_start_ask_correct_stop(world):
     assert co(world, "status")["data"]["state"].startswith("Stopped")
 
 
-def test_launchd_fires_at_a_calendar_slot(world):
-    """Run-at-load proves the job loads; this proves the clock. A slot is set two
-    minutes ahead in the saved timezone and the run record it produces is awaited."""
+def test_launchd_tick_serves_a_slot(world):
+    """The real clock: a saved time one minute ahead, the launchd tick (every
+    TICK_SECONDS) notices it has come due and runs one batch; the tick after that
+    runs nothing. No sessions exist, so no model is called. Takes ~TICK_SECONDS×2."""
     import time
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
+    from connectonion.wiki.schedule import TICK_SECONDS
+
     label = None
     try:
-        # No sessions yet: every batch is no_change, so this costs no model call.
         assert co(world, "config", "set", "schedule.timezone", "Australia/Sydney")["ok"]
         zone = ZoneInfo("Australia/Sydney")
-        slot = datetime.now(zone) + timedelta(minutes=2)
+        slot = (datetime.now(zone) + timedelta(minutes=1)).replace(second=0, microsecond=0)
         assert co(world, "config", "set", "schedule.times", slot.strftime("%H:%M"))["ok"]
         started = co(world, "start", "--yes")
         label = started["data"]["label"]
         assert launchd_knows(label)
-        installed_at = datetime.now(zone)
+        assert started["data"]["first_batch"]["outcome"] == "no_change"
         fired = None
-        deadline = time.monotonic() + 200
+        deadline = time.monotonic() + 2 * TICK_SECONDS + 60
         while time.monotonic() < deadline and fired is None:
-            time.sleep(10)
+            time.sleep(15)
             for run in co(world, "logs")["data"]:
-                started_at = datetime.fromisoformat(run["started_at"]).astimezone(zone)
-                if started_at >= slot.replace(second=0, microsecond=0):
+                if datetime.fromisoformat(run["started_at"]).astimezone(zone) >= slot:
                     fired = run
-        assert fired is not None, f"no run after the {slot:%H:%M} slot (installed {installed_at:%H:%M:%S})"
+        assert fired is not None, f"no scheduled run after the {slot:%H:%M} slot within two ticks"
         assert fired["outcome"] == "no_change" and fired["runner_attempts"] == 0
+        # The tick that ran it recorded the slot as served; a manual scheduled tick is now quiet.
+        assert co(world, "sync", "--scheduled")["data"] == {"due": False, "ran": False}
+        assert co(world, "status")["data"]["worker"]["last_scheduled_slot"] == slot.isoformat()
     finally:
         co(world, "stop", check=False)
         if label:

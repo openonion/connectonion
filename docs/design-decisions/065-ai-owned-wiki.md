@@ -113,13 +113,19 @@ worker/login wrapper and HTML reader are subsequent work; any command depending
 on them remains explicitly unshipped until it works.
 
 The background lifecycle is the OS scheduler, not a worker of ours. `start`
-writes one per-user launchd job that runs `co wiki sync` at the six times and
-once at login; `sync` carries the lock, the attempt cap and the checkpoint, so
-there is one implementation of the logic and one declarative file per OS. A
-process of our own would still need a per-OS login launcher and would sit on
-top of it. Other platforms get consent and manual `sync` until their job file
-exists. The consent summary is shown before any body is read, and a
-noninteractive first start refuses rather than consenting silently.
+writes one per-user launchd job that wakes `co wiki sync --scheduled` every
+five minutes; `sync` decides in the saved timezone whether a saved time has
+come due since the last scheduled batch, and carries the lock, the attempt cap
+and the checkpoint. One implementation of the logic, one declarative file per
+OS. The job is an interval tick rather than calendar triggers because
+`StartCalendarInterval` was measured not to fire on macOS 26 (three
+experiments, 2026-09-07) while `StartInterval` fired to the second — and a tick
+also keeps the timezone ours and makes catch-up after sleep a property of the
+due-check rather than of launchd. A process of our own would still need a
+per-OS login launcher and would sit on top of it. Other platforms get consent
+and manual `sync` until their job file exists. The consent summary is shown
+before any body is read, and a noninteractive first start refuses rather than
+consenting silently.
 
 Default Claude Code and authenticated email subscriptions remain the product
 policy. Implementing only the Codex adapter first must not display the others

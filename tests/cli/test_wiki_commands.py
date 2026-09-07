@@ -226,3 +226,11 @@ def test_subscribe_and_unsubscribe_round_trip(lifecycle):
     off = invoke(root, "unsubscribe", "codex")
     assert off.exit_code == 0
     assert json.loads(invoke(root, "--json", "subscriptions").stdout)["data"]["codex"]["enabled"] is False
+
+
+def test_scheduled_sync_is_quiet_when_no_slot_is_due(lifecycle):
+    root, sessions, calls = lifecycle
+    assert invoke(root, "start", "--yes").exit_code == 0
+    result = invoke(root, "--json", "sync", "--scheduled")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["due"] is False

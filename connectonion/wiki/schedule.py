@@ -1,16 +1,25 @@
 """Background maintenance rides the OS scheduler; there is no daemon of our own.
 
 `co wiki sync` already carries the lock, the attempt cap and the incremental
-checkpoint, so the only thing the background needs is a clock that survives a
-closed terminal and a reboot. launchd is that clock on macOS: one declarative
-job file, six calendar triggers, and it coalesces slots missed while asleep into
-a single firing on wake. A worker process of ours would still need a login
-launcher per OS and would add a process on top -- so the per-OS part is kept to
-this one file, and everything else stays one implementation in `sync`.
+checkpoint, so the only thing the background needs is something that survives a
+closed terminal and a reboot and wakes us now and then. launchd is that on
+macOS: one declarative job file. A worker process of ours would still need a
+login launcher per OS and would add a process on top -- so the per-OS part is
+kept to this one file, and everything else stays one implementation in `sync`.
 
-Known launchd behaviour this relies on (measured 2026-08-18 on this machine):
-a job still running when its next slot arrives is skipped silently, which is
-what the notebook wants -- one batch at a time.
+The job is a tick, not a calendar. Measured 2026-09-07 on macOS 26: a
+`StartCalendarInterval` job -- array or dict form, plain /bin/sh, with or
+without ProcessType -- never fired in three experiments, while `StartInterval`
+fired to the second every time. So launchd runs `co wiki sync --scheduled`
+every TICK_SECONDS, and `sync` decides whether one of the saved times has come
+due since the last scheduled batch, in the saved timezone rather than the
+machine's. Missed slots (asleep, powered off) collapse into one catch-up at the
+first tick after wake, and a tick that finds nothing due exits at once without
+touching the notebook. RunAtLoad is off: the first tick is the catch-up, and
+nothing races the foreground batch `start` just ran.
+
+Known launchd behaviour (measured 2026-08-18): a job still running when its
+interval elapses is skipped silently -- harmless here, the next tick catches up.
 """
 
 import hashlib
@@ -25,6 +34,7 @@ from pathlib import Path
 from .files import WikiError
 
 LABEL = "ai.openonion.co-wiki"
+TICK_SECONDS = 300  # a slot is served within five minutes of its time; a no-op tick is cheap
 
 
 def default_root() -> Path:
@@ -59,10 +69,6 @@ class Launchd:
         if codex:
             dirs.append(str(Path(codex).parent))
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-        intervals = []
-        for value in config["schedule"]["times"]:
-            hour, minute = value.split(":")
-            intervals.append({"Hour": int(hour), "Minute": int(minute)})
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
         if os.environ.get("PYTHONPATH"):
             # The job must run the same connectonion the user is running now; a
@@ -71,11 +77,9 @@ class Launchd:
         job = {
             "Label": label_for(root),
             "ProgramArguments": [self.python, "-m", "connectonion.cli.main",
-                                 "wiki", "--root", str(root), "sync"],
-            "StartCalendarInterval": intervals,
-            # One bounded batch at login: the catch-up for slots missed while powered
-            # off. launchd already coalesces slots missed while merely asleep.
-            "RunAtLoad": True,
+                                 "wiki", "--root", str(root), "sync", "--scheduled"],
+            "StartInterval": TICK_SECONDS,
+            "RunAtLoad": False,
             "ProcessType": "Background",
             "EnvironmentVariables": env,
             "StandardOutPath": str(root / ".state" / "launchd.log"),

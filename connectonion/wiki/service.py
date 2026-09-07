@@ -96,6 +96,26 @@ def worker_state(root: Path) -> dict:
     return saved if isinstance(saved, dict) else {}
 
 
+def latest_slot(config: dict, moment: datetime) -> datetime | None:
+    """The most recent saved time at or before `moment`, in the saved zone.
+
+    Comparing the last served slot against this -- rather than asking "is it
+    17:00 right now" -- is what makes a missed slot catch up, and catch up once:
+    a night asleep is one batch, not three. Same rule as host/schedule.py.
+    """
+    schedule = config.get("schedule", {})
+    times, zone_name = schedule.get("times", []), schedule.get("timezone", "")
+    if not times or not zone_name:
+        return None
+    local = moment.astimezone(ZoneInfo(zone_name))
+    candidates = []
+    for value in times:
+        hour, minute = (int(part) for part in value.split(":"))
+        slot = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        candidates.append(slot if slot <= local else slot - timedelta(days=1))
+    return max(candidates)
+
+
 def next_slot(config: dict, zone) -> str | None:
     """The next configured time after now, in the saved zone; None without a timezone."""
     times = config.get("schedule", {}).get("times", [])
@@ -198,8 +218,12 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
         write_json(state_path(root, "worker.json"), {"enabled": False, "scheduler": "none",
                                                      "installed_at": None, "stopped_at": None})
         raise
+    # Nothing is owed at install: the slot that has already passed today belongs
+    # to before the clock existed. The next saved time is the first one served.
+    served = latest_slot(read_config(root), now())
     write_json(state_path(root, "worker.json"), {"enabled": True, **installed,
-                                                 "installed_at": now().isoformat(), "stopped_at": None})
+                                                 "installed_at": now().isoformat(), "stopped_at": None,
+                                                 "last_scheduled_slot": served.isoformat() if served else None})
     return {"started": True, "consented": True, "first_batch": first_batch, **installed}
 
 
@@ -229,9 +253,28 @@ def _selected_sources(root: Path, selector: str) -> dict:
             if source.get("enabled") and source.get("kind") == "codex"}
 
 
-def run_sync(root: Path, *, source: str = "", dry_run: bool = False, runner=None) -> dict:
-    """Internal foreground entry; caller must have recorded explicit source consent."""
+def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: bool = False,
+             runner=None) -> dict | None:
+    """One bounded batch; caller must have recorded explicit source consent.
+
+    `scheduled` is what the background tick passes: run only if a saved time has
+    come due since the last scheduled batch, otherwise return None at once, with
+    no lock taken and nothing read. Stopped notebooks tick to nothing.
+    """
     root = root.resolve()
+    if scheduled:
+        worker = worker_state(root)
+        if not worker.get("enabled"):
+            return None
+        slot = latest_slot(read_config(root), now())
+        served = worker.get("last_scheduled_slot")
+        if slot is None or (served and datetime.fromisoformat(served) >= slot):
+            return None
+        record = run_sync(root, source=source, runner=runner)
+        # Any recorded outcome serves the slot; a refusal to start (busy) raised
+        # above this line and leaves it owed for the next tick.
+        write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})
+        return record
     if dry_run:
         progress = read_json(state_path(root, "progress.json"), {})
         return {"dry_run": True, "sources": {

@@ -35,11 +35,16 @@ co wiki doctor
 `start` prints the consent summary (exact session directory, lookback, model and
 where messages go, timezone and the six slots, limits, what the background job
 is) and asks once. In a pipe it refuses and asks for `--yes` after the summary
-has been read; it never consents silently. On the first confirmed start it
-installs a per-user launchd job that runs `co wiki sync` at the six times (and
-once at login, as the catch-up after a power-off), then runs the first bounded
-batch in the foreground so there is something to look at immediately. Repeating
-`start` re-applies the schedule without asking again or repeating that batch.
+has been read; it never consents silently. On the first confirmed start it runs
+the first bounded batch in the foreground so there is something to look at
+immediately, then installs a per-user launchd job that runs
+`co wiki sync --scheduled` every five minutes. That tick checks, in the saved
+timezone, whether one of the six times has come due since the last scheduled
+batch: if so it runs one batch, otherwise it exits at once without touching the
+notebook. Slots missed while asleep or powered off collapse into one catch-up at
+the first tick after wake. (launchd's own calendar triggers were measured not to
+fire on macOS 26; the interval tick fires to the second.) Repeating `start`
+re-applies the schedule without asking again or repeating the first batch.
 `stop` removes the job and records it; consent, notes and manual `sync` remain.
 Background scheduling is macOS-only in this milestone; elsewhere `start` records
 consent and tells you to run `sync` yourself.
@@ -136,10 +141,10 @@ Sleeping/off computers do not run; missed slots coalesce into at most one
 catch-up batch. A run is not promised at every slot when access/budget is missing
 or another batch is already active.
 
-There is no worker process of ours: the OS clock (launchd) runs `sync`, which
-already carries the lock, the attempt cap and the checkpoint. A job still
-running when its next slot arrives is skipped by launchd, which is the
-one-batch-at-a-time rule for free.
+There is no worker process of ours: launchd wakes `sync --scheduled` every five
+minutes and `sync` owns the decision — the saved times, the saved timezone, the
+lock, the attempt cap and the checkpoint. A tick that arrives while a batch is
+still running is refused as busy and the slot stays owed for the next tick.
 
 ## Reading and configuration
 

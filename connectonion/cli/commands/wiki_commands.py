@@ -156,13 +156,18 @@ def make_wiki_app(factory):
     @wiki.command("sync")
     def sync_wiki(ctx: typer.Context,
                   source: str = typer.Option("", "--source", help="Only this subscription"),
-                  dry_run: bool = typer.Option(False, "--dry-run", help="Pending file metadata only; no body reads")):
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Pending file metadata only; no body reads"),
+                  scheduled: bool = typer.Option(False, "--scheduled",
+                                                 help="Only if a saved time has come due since the last scheduled "
+                                                      "batch (what the background job passes); otherwise exit at once")):
         """Run one bounded incremental batch now (does not enable the background schedule)."""
         from ...wiki.files import WikiError
         from ...wiki.service import run_sync
 
         def operation(root):
-            record = run_sync(root, source=source, dry_run=dry_run)
+            record = run_sync(root, source=source, dry_run=dry_run, scheduled=scheduled)
+            if scheduled and record is None:
+                return {"due": False, "ran": False}, ["status"]
             if dry_run:
                 return record, ["sync"]
             if record["outcome"] == "failed":
