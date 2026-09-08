@@ -100,6 +100,8 @@ dev = [
     # Without it a hung test is indistinguishable from a slow one: no output,
     # no failure, nothing to grep. One cost 25 minutes before anyone looked.
     "pytest-timeout>=2.3.0",
+    # `pytest -n auto` runs the offline suite in under a minute instead of four.
+    "pytest-xdist>=3.6.0",
     "psutil>=5.9.0",
 ]
 
@@ -161,24 +163,6 @@ include = [
     "connectonion/**/*.js",
     "connectonion/cli/templates/**/Dockerfile",
 ]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-asyncio_mode = "auto"
-markers = [
-    "unit: Unit tests (fast, isolated)",
-    "integration: Integration tests (multi-component)",
-    "real_api: Tests requiring real API keys",
-    "slow: Tests that take >10 seconds",
-    "network: Tests requiring network/relay",
-]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
-addopts = "-m 'not real_api and not slow'"
 
 [tool.ruff]
 line-length = 120
