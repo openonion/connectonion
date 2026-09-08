@@ -24,17 +24,17 @@ Windows uses the task's process tree. The reader closes its pipe before it
 finishes. The regression checks that termination has actually reaped the process
 and retired the thread, rather than trusting the confirmation string.
 
-Another CI failure was less dramatic. A long missing-skill path wrapped between
-`missing` and `-skill`, so a useful diagnostic no longer contained the name the
-test expected. The diagnostic now keeps the path intact. Shortening the test
-path would only have hidden the next long path someone supplied.
+The harder regression starts a child that ignores the first termination signal.
+The shell can exit while that child still owns the pipe. The test now waits for
+the reader to retire and checks the closed stream; a friendly "terminated"
+message alone cannot satisfy it. That case passed locally with the bounded
+forced stop.
 
-The same suite audit added an offline network guard and removed competing test
-configuration. A test that swallows a connection error can still be caught for
-attempting that connection. Those guards are deliberately left enabled while
-fixing their failures. They are how an earlier test's unfinished work becomes a
-local, named problem instead of a mystery much later in the run.
+The original scroll test had been the place unfinished work became visible.
+The new failure belonged to the background-task test itself. That was the useful
+change: cleanup became part of the operation being tested, with an owner and a
+checkable end, instead of a promise left for the next test to discover.
 
-These changes do not prove the absence of every resource leak or reproduce every
-Linux scheduling condition on a Mac. They make two observable obligations harder
-to evade: a test owns the worker it started, and an offline test must stay offline.
+The local run does not reproduce every Linux scheduling condition or prove that
+all workers are gone. It gives the next leaked thread a shorter journey from
+cause to failure. The thread guard remains enabled.
