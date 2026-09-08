@@ -21,7 +21,11 @@ The release candidate passed real-account read-only checks for all four services
 on 2026-09-07 using an existing local grant. Uploads and other mutations have
 isolated regression coverage; no production write is claimed as release evidence.
 PyPI and the GitHub Release are produced by the immutable-tag release workflow.
-TikTok and new messaging adapters are deferred until after 1.8.5.
+TikTok stays deferred. Inbound messaging adapters are scheduled, as of
+2026-09-08: **1.8.5** ships the shared mailbox core with Feishu/Lark
+(`co feishu listen | receive | send | reply`, #1462); **1.8.6** ships the
+WhatsApp, Discord and Telegram adapters on that core (#1463). Both enter
+through a patch preview first, per [VERSIONING.md](../VERSIONING.md).
 The sections below describe historical 1.7 preview work, not current
 installation recommendations.
 
