@@ -71,7 +71,7 @@ class TestAValidTokenNeedsNoBroker:
 
         assert result.exit_code == 0, result.output
         assert calls and all(auth == "Bearer stored-token" for _, _, auth in calls)
-        assert "graph.microsoft.com" in calls[0][1]
+        assert calls[0][1].startswith("https://graph.microsoft.com/v1.0/")
 
 
 class TestTheErrorNamesTheLayerThatFailed:
