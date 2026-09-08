@@ -18,7 +18,7 @@ def test_outlook_reply_routes_without_attachments():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", "Sounds good", attachments=None, at=None)
+    handler.assert_called_once_with("3", "Sounds good", attachments=None, at=None, cc=None, bcc=None)
 
 
 def test_outlook_reply_collects_repeated_attach_flags():
@@ -34,7 +34,7 @@ def test_outlook_reply_collects_repeated_attach_flags():
     assert result.exit_code == 0
     handler.assert_called_once_with(
         "3", "Both attached",
-        attachments=["report.pdf", "chart.png"], at=None,
+        attachments=["report.pdf", "chart.png"], at=None, cc=None, bcc=None,
     )
 
 
@@ -49,5 +49,22 @@ def test_outlook_reply_routes_attachments_with_schedule():
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "3", "Tomorrow", attachments=["report.pdf"], at="+2h",
+        "3", "Tomorrow", attachments=["report.pdf"], at="+2h", cc=None, bcc=None,
+    )
+
+
+def test_outlook_reply_routes_cc_and_bcc():
+    """#1247: a copied third person rides on the threaded reply, not a new send."""
+    with patch(
+        "connectonion.cli.commands.outlook_commands.handle_outlook_reply"
+    ) as handler:
+        result = runner.invoke(app, [
+            "outlook", "reply", "3", "Looping in Sam",
+            "--cc", "sam@example.com", "--bcc", "me@example.com",
+        ])
+
+    assert result.exit_code == 0
+    handler.assert_called_once_with(
+        "3", "Looping in Sam", attachments=None, at=None,
+        cc="sam@example.com", bcc="me@example.com",
     )

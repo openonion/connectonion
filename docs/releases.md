@@ -10,6 +10,13 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release work
 
+Preview **1.8.4b1** (first 1.8.4 beta) closes the open Outlook issues —
+stored-token reuse, credential errors that name the right `co auth`, scheduled
+sends that say how to cancel, `reply --cc/--bcc` — and adds `co outlook
+calendar` over the existing Microsoft Calendar tool. See
+[1.8.4b1 notes](releases/1.8.4b1.md). Earlier 1.8.4 previews:
+[1.8.4a1](releases/1.8.4a1.md), [1.8.4a2](releases/1.8.4a2.md).
+
 Version **1.8.3** brings Gmail, Drive, Calendar and YouTube together through
 local Google authorization, with supported scopes by default and an optional
 `--scopes` restriction. It adds Gmail draft attachments and Calendar/YouTube

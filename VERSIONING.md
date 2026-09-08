@@ -43,7 +43,28 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Release candidate: 1.8.4a2 (preview, prepared for publication)
+## Release candidate: 1.8.4b1 (beta preview, prepared for publication)
+
+The first 1.8.4 beta closes the open Outlook complaints from one working day
+and gives the Microsoft calendar a terminal. A valid Microsoft token is used
+until five minutes before its expiry, so an oo-api outage no longer makes a
+reachable mailbox look expired (#1312). Each credential failure names the
+layer that broke — `co auth` for a missing or dead OpenOnion key, `co auth
+microsoft` for a revoked or incomplete Microsoft record — instead of blaming
+Microsoft for both (#1313). A scheduled send or reply ends by naming the
+cancel path, and `co outlook --help` groups Mail, Send, Scheduled sends,
+Contacts and Calendar (#1314). `co outlook reply --cc/--bcc` copies a third
+person without leaving the thread (#1247). `co outlook calendar` mirrors
+`co gcalendar` leaf for leaf over the existing MicrosoftCalendar tool, with
+writes that preview by default and print the exact `--yes` command (#816).
+
+Beta means the 1.8.4 surface is now frozen for exercise: no new command groups
+after this, only fixes found by running it. Every Outlook command ends with one
+next command that survives piping; the exit-code and tip evidence is in the
+release PR. Stable remains 1.8.3; physical Synology acceptance and the final
+1.8.4 decision are unchanged from 1.8.4a2. See [1.8.4b1 notes](docs/releases/1.8.4b1.md).
+
+## Release candidate: 1.8.4a2 (preview, published)
 
 This preview fixes Gmail send-receipt recovery when Google rewrites Message-ID.
 Reviewed MIME carries a provider-preserved attempt marker; recovery requires a
@@ -58,9 +79,24 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.4a2
+## Current Version: 1.8.4b1
 
 ### Version History
+- 1.8.4b1 (**the first 1.8.4 beta: Outlook stops blaming the wrong credential, says how
+  to cancel, copies a third person without leaving the thread, and gets a calendar.**
+  A valid Microsoft token is used until five minutes before expiry rather than
+  discarded on every command (#1312, a regression test now pins it). Broker 401s and
+  a missing `OPENONION_API_KEY` point to `co auth`; a revoked or refresh-less
+  Microsoft record points to `co auth microsoft` (#1313). Scheduled sends and
+  replies end with `co outlook scheduled` and name `co outlook cancel <#>`; the
+  group help reads as Mail / Send / Scheduled sends / Contacts / Calendar (#1314).
+  `co outlook reply --cc/--bcc` sets recipients on Graph's reply action or on the
+  deferred reply draft, so the reply stays threaded (#1247). New `co outlook
+  calendar` group — list, today, read, meetings, free, create, teams, update,
+  delete — over the existing MicrosoftCalendar tool, previews by default, ISO
+  offsets converted to UTC, Graph error bodies never printed (#816). Every Outlook
+  command ends with one next command that survives piping. Beta: the 1.8.4 surface
+  is frozen for exercise. Stable remains 1.8.3.)
 - 1.8.4a2 (**preview recovery fix:** Gmail-preserved attempt markers recover a
   lost send receipt despite rewritten Message-ID; bounded unique lookup remains
   fail-closed. Full real Gmail/Drive acceptance passed; physical NAS pending.)

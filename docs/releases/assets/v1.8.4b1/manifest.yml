@@ -1,0 +1,9 @@
+version: v1.8.4b1
+images:
+- file: cli-outlook.svg
+  alt: co outlook --help grouped as Mail, Send, Scheduled sends, Contacts and Calendar; send --help naming co outlook cancel; the new co outlook calendar group; and a create preview ending with the exact --yes command.
+  caption: Every Outlook command now ends by naming the next one, scheduling reads as one feature, and the Microsoft calendar has a terminal.
+  scenario: Account-free rendering of the installed CLI in an empty configuration directory, no credentials loaded, 100-column terminal.
+  viewport: 100-column terminal
+  commit: 27d31825c1a7d7d80b54e77b880a40632ce1a67a
+  source_run: scripts/capture_184b1_release_cli.py
