@@ -23,8 +23,9 @@ co env
 No newer preview is currently recommended. The published 1.8.4a1 and 1.8.4a2
 previews are historical; the planned b1 was folded into the stable release.
 The tag workflow builds and verifies the public package before documentation
-is deployed. Google authorization from 1.8.3 is retained. TikTok and new messaging
-adapters remain deferred. The sections below are historical notes.
+is deployed. Google authorization from 1.8.3 is retained. TikTok remains deferred. Feishu/Lark and the shared mailbox are planned for
+1.8.5, with Telegram, Discord and WhatsApp in 1.8.6. These are planned releases,
+not packages available for installation; 1.8.4 remains stable. The sections below are historical notes.
 
 ## Historical 1.7 preview work
 
