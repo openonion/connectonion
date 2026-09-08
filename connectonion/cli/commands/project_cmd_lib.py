@@ -3,7 +3,7 @@ Purpose: Shared utility functions for CLI project commands including validation,
 LLM-Note:
   Dependencies: imports from [os, re, sys, time, shutil, rich.console, rich.prompt, rich.progress, rich.table, rich.panel, datetime, pathlib, __version__, address] | imported by [cli/commands/init.py, cli/commands/create.py] | calls LLM APIs for custom template generation | tested indirectly via test_cli_init.py and test_cli_create.py
   Data flow: provides utility functions called by init.py and create.py → validate_project_name() checks regex patterns → check_environment_for_api_keys() scans env vars for OpenAI/Anthropic/Google/Groq/Grok/OpenRouter keys → detect_api_provider() inspects key format to identify provider → api_key_setup_menu() displays interactive menu for key selection → generate_custom_template_with_name() calls LLM API with custom prompt to generate agent.py code → show_progress() displays Rich spinner → LoadingAnimation context manager for long operations → get_special_directory_warning() warns about home/root dirs
-  State/Effects: no persistent state | reads from environment variables | writes to stdout via rich.Console | calls LLM APIs (OpenAI/Anthropic/Google) when generating custom templates | creates Rich UI elements (tables, panels, progress bars, prompts) | writes no files except create_host_yaml() (.co/host.yaml)
+  State/Effects: reads from environment variables | writes to stdout via rich.Console | calls LLM APIs (OpenAI/Anthropic/Google) when generating custom templates | creates Rich UI elements (tables, panels, progress bars, prompts) | create_host_yaml() writes .co/host.yaml | copy_control_center_template() copies the bundled full Web app once without overwriting user work
   Integration: exposes 16+ utility functions and 1 class (LoadingAnimation) | used by init.py and create.py for shared logic | validate_project_name() enforces naming conventions for the project/directory name (starts with letter, no spaces, max 50 chars) | normalize_deploy_name()/DEPLOY_NAME_PATTERN cover the separate, stricter rule for the deploy name written into host.yaml (a DNS label and Docker tag: lowercase, digits, hyphens), applied by create_host_yaml() and re-checked by deploy_commands.py | check_environment_for_api_keys() scans OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY | detect_api_provider() identifies provider by key prefix (sk- for OpenAI, sk-ant- for Anthropic, AIzaSy for Google, gsk- for Groq, xai- for Grok, sk-or- for OpenRouter) | generate_custom_template_with_name() uses LLM to create agent.py from natural language description
   Performance: environment scanning is O(n) env vars | regex validation is fast (<1ms) | LLM API calls for custom templates (5-15s) | Rich UI rendering is lightweight | LoadingAnimation runs in main thread (non-blocking spinner)
   Errors: validate_project_name() returns (False, error_msg) for invalid names | detect_api_provider() returns ("unknown", "unknown") for unrecognized keys | generate_custom_template_with_name() may fail if LLM API unreachable | api_key_setup_menu() catches KeyboardInterrupt and returns ("", "", None) | no try-except blocks (follows fail-fast principle)
@@ -30,8 +30,12 @@ from ... import address
 # the other model facts, and PaidModelRequiredError offers the same tuple when a
 # free account picks a paid model. It used to be written out twice in this file,
 # and both copies had gone stale.
-from ...core.usage import FREE_MANAGED_MODELS as MANAGED_MODELS
-from ...core.usage import PAID_MANAGED_MODELS as PAID_MODELS
+from ...core.usage import (
+    DEFAULT_DIRECT_GEMINI_MODEL,
+    DEFAULT_MODEL,
+    FREE_MANAGED_MODELS as MANAGED_MODELS,
+    PAID_MANAGED_MODELS as PAID_MODELS,
+)
 from ...credentials import account_in_token
 
 console = Console()
@@ -70,7 +74,8 @@ def record_creator_as_admin(project_dir: Path) -> None:
     """
     from ... import address
 
-    data = address.load(Path.home() / ".co")
+    from ...environment import global_config_dir
+    data = address.load(global_config_dir())
     if not data or not data.get("address"):
         return
 
@@ -627,7 +632,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'google': {
             'var': 'GEMINI_API_KEY',
-            'model': 'gemini-3.7-flash'
+            'model': DEFAULT_DIRECT_GEMINI_MODEL,
         },
         'groq': {
             'var': 'GROQ_API_KEY',
@@ -643,7 +648,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gemini-3.7-flash'  # Prefixed models for managed keys
+            'model': DEFAULT_MODEL,
         }
     }
 
@@ -652,14 +657,14 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     # Special handling for ConnectOnion managed keys
     if provider == 'connectonion':
         if api_key == 'managed':
-            return """# ConnectOnion Managed Keys Configuration
+            return f"""# ConnectOnion Managed Keys Configuration
 # Authenticate with: co auth
 # Purchase credits at: https://o.openonion.ai
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.7-flash
-# Available models: co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
+MODEL={DEFAULT_MODEL}
+# Available models: {DEFAULT_MODEL}, co/gemini-3.7-flash, co/gemini-3.6-flash, co/gemini-3.5-flash, co/gemini-2.5-pro, co/gemini-2.5-flash
 # With purchased credits: co/gpt-5, co/o4-mini, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
@@ -669,13 +674,13 @@ MODEL=co/gemini-3.7-flash
 # TEMPERATURE=0.7
 """
         elif api_key == 'star':
-            return """# ConnectOnion Free Credits (100k tokens)
+            return f"""# ConnectOnion Free Credits (100k tokens)
 # 1. Star us: https://github.com/openonion/connectonion
 # 2. Authenticate with: co auth
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-3.7-flash
+MODEL={DEFAULT_MODEL}
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -702,7 +707,7 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
     Args:
         description: What the agent should do
         api_key: API key or token for LLM
-        model: Optional model to use (e.g., "co/gemini-3.7-flash")
+        model: Optional model to use (e.g., "co/gemini-3.8-flash")
         loading_animation: Optional LoadingAnimation instance to update
 
     Returns:
@@ -718,8 +723,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...core.llm import create_llm
 
-            # Use the model specified or default to co/gemini-3.7-flash
-            llm_model = model if model else "co/gemini-3.7-flash"
+            # Use the model specified or the product default.
+            llm_model = model if model else DEFAULT_MODEL
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -804,7 +809,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{model if model and model.startswith('co/') else 'co/gemini-3.7-flash'}",
+    model="{model if model and model.startswith('co/') else DEFAULT_MODEL}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",
@@ -950,6 +955,25 @@ def copy_docs(co_dir: Path) -> bool:
         return False
 
 
+def copy_control_center_template(co_dir: Path) -> bool:
+    """Create the editable full-Web Control Center starter once.
+
+    The directory is product source, unlike the replaceable ``.co/docs`` mirror.
+    Never merge into or overwrite an existing app: a second ``co init`` must not
+    replace work the operator or Agent has authored.
+    """
+    target = co_dir / "control-center"
+    if target.exists():
+        return False
+    source = Path(__file__).parent.parent / "assets" / "control-center"
+    if not source.is_dir():
+        console.print(f"[yellow]⚠️  Warning: Control Center template not found at {source}[/yellow]")
+        return False
+    shutil.copytree(source, target)
+    console.print("  [green]Created[/green] .co/control-center/")
+    return True
+
+
 # The name in host.yaml becomes a DNS label and a Docker image tag when the
 # project is deployed, so `co deploy` and the backend both reject anything
 # outside this set. Kept here because host.yaml is written here.
@@ -1036,39 +1060,11 @@ def print_resources():
 
 
 def load_api_key() -> Optional[str]:
-    """Load OPENONION_API_KEY from environment.
-
-    Checks in order:
-    1. Environment variable
-    2. Project-root .env file
-    3. Global ~/.co/keys.env file
-
-    Every source goes through `_token_for_this_account()`. The environment used
-    to skip it, which made the check dead code in practice: `connectonion/
-    __init__.py` calls `load_dotenv(Path.cwd() / ".env")` at import time, so by
-    the time any command runs the variable is already set and the early return
-    always fired. A `.env` in whatever directory you happened to be standing in
-    could then bill and read another agent's account in silence.
-
-    Returns:
-        API key if found, None otherwise
-    """
-    from dotenv import load_dotenv
-
-    from ...project import project_root
-
-    if api_key := os.getenv("OPENONION_API_KEY"):
-        return _token_for_this_account(api_key)
-
-    for env_path in [
-        project_root() / ".env",
-        Path.home() / ".co" / "keys.env",
-    ]:
-        if env_path.exists():
-            load_dotenv(env_path)
-            if api_key := os.getenv("OPENONION_API_KEY"):
-                return _token_for_this_account(api_key)
-    return None
+    """Resolve the selected env and inherited process key; never discover project files."""
+    from ...environment import load_environment
+    load_environment()
+    token = os.getenv("OPENONION_API_KEY")
+    return _token_for_this_account(token) if token else None
 
 
 def _token_for_this_account(token: str) -> Optional[str]:
@@ -1084,18 +1080,16 @@ def _token_for_this_account(token: str) -> Optional[str]:
     waiting for a balance to look wrong. Cheap: a local decode, and a network
     call only when the two disagree.
     """
-    from ...project import project_co_dir, project_identity
+    from ...project import selected_identity_dir, project_identity
     from .auth_commands import authenticate
 
-    project_dir = project_co_dir()
-    global_dir = Path.home() / ".co"
     identity = project_identity()
     if not identity:
         return token
 
     # authenticate() needs the directory that owns the selected signing key.
     # This mirrors project_identity(): local project key, else machine key.
-    co_dir = project_dir if address.load(project_dir) else global_dir
+    co_dir = selected_identity_dir()
 
     claimed = account_in_token(token)
     if not claimed or claimed.casefold() == identity["address"].casefold():
@@ -1105,14 +1099,8 @@ def _token_for_this_account(token: str) -> Optional[str]:
                   f"current identity is {identity['address'][:16]}…. "
                   f"Authenticating again.[/dim]")
     if authenticate(co_dir, save_to_project=False, quiet=True):
-        from dotenv import load_dotenv
-
-        token_file = (
-            co_dir / "keys.env"
-            if co_dir.resolve() == global_dir.resolve()
-            else co_dir.parent / ".env"
-        )
-        load_dotenv(token_file, override=True)
+        from ...environment import selected_env_file, read_env_file, publish_values
+        publish_values(read_env_file(selected_env_file()))
         refreshed = os.getenv("OPENONION_API_KEY")
         refreshed_account = account_in_token(refreshed) if refreshed else None
         if (
@@ -1134,45 +1122,8 @@ def _token_for_this_account(token: str) -> Optional[str]:
 
 
 def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> None:
-    """Read .env, replace/append key=value pairs, write back with 0600.
-
-    Args:
-        env_path: Path to .env file
-        updates: {KEY: value} to upsert. None values are skipped.
-        strip_prefix: Remove ALL lines starting with this prefix first
-                      (for GOOGLE_*, MICROSOFT_* OAuth credential replacement)
-    """
-    # Filter out None values
-    updates = {k: v for k, v in updates.items() if v is not None}
-
-    lines = []
-    found = set()
-
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines(keepends=True):
-            stripped = line.strip()
-            if strip_prefix and stripped.startswith(strip_prefix):
-                continue
-            if '=' in stripped and not stripped.startswith('#'):
-                key = stripped.split('=')[0].strip()
-                if key in updates:
-                    lines.append(f"{key}={updates[key]}\n")
-                    found.add(key)
-                    continue
-            lines.append(line)
-
-    # A file whose last line has no newline would otherwise get the first
-    # appended key glued onto it (FOO=barBAZ=qux).
-    if lines and not lines[-1].endswith("\n"):
-        lines[-1] += "\n"
-
-    for key, value in updates.items():
-        if key not in found:
-            lines.append(f"{key}={value}\n")
-
-    env_path.write_text(''.join(lines), encoding="utf-8")
-    if sys.platform != 'win32':
-        env_path.chmod(0o600)
+    from ...env_file import upsert_env as atomic_upsert
+    atomic_upsert(env_path, updates, strip_prefix=strip_prefix)
 
 
 def _state_the_address_the_key_has(global_dir: Path) -> None:
@@ -1205,20 +1156,7 @@ def _state_the_address_the_key_has(global_dir: Path) -> None:
                               "AGENT_CONFIG_PATH": str(global_dir)})
         return
 
-    lines = keys_env.read_text(encoding="utf-8").splitlines(keepends=True)
-    wanted = f"AGENT_ADDRESS={data['address']}\n"
-    out, found = [], False
-    for line in lines:
-        if line.startswith("AGENT_ADDRESS="):
-            found = True
-            out.append(wanted)
-        else:
-            out.append(line)
-    if not found:
-        out.append(wanted)
-
-    if out != lines:
-        keys_env.write_text("".join(out), encoding="utf-8")
+    upsert_env(keys_env, {"AGENT_ADDRESS": data["address"]})
 
 
 def ensure_global_config() -> None:
@@ -1228,7 +1166,8 @@ def ensure_global_config() -> None:
     and writes keys.env with AGENT_CONFIG_PATH and AGENT_ADDRESS.
     Reuses an existing keypair, reconciling its address or restoring keys.env.
     """
-    global_dir = Path.home() / ".co"
+    from ...environment import global_config_dir
+    global_dir = global_config_dir()
     key_file = global_dir / "keys" / "agent.key"
 
     # If keys exist, already initialized — except for one line, which is a copy
@@ -1255,39 +1194,15 @@ def ensure_global_config() -> None:
     console.print("  ✓ Generated master keypair")
     console.print(f"  ✓ Your address: {addr_data['short_address']}")
 
-    # Create keys.env with config path and agent address
-    keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        with open(keys_env, 'w', encoding='utf-8') as f:
-            f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
-            f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
-            f.write("# Your agent address (Ed25519 public key) is used for:\n")
-            f.write("#   - Secure agent communication (encrypt/decrypt with private key)\n")
-            f.write("#   - Authentication with OpenOnion managed LLM provider\n")
-            f.write(f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n")
-        if sys.platform != 'win32':
-            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
-    else:
-        # keys.env exists but agent.key was missing — update address to match new keypair
-        lines = []
-        config_path_found = False
-        address_updated = False
-        for line in keys_env.read_text(encoding="utf-8").splitlines(keepends=True):
-            if line.strip().startswith('AGENT_ADDRESS='):
-                lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
-                address_updated = True
-            elif line.strip().startswith('AGENT_CONFIG_PATH='):
-                config_path_found = True
-                lines.append(line)
-            else:
-                lines.append(line)
-        if not config_path_found:
-            lines.insert(0, f"AGENT_CONFIG_PATH={global_dir}\n")
-        if not address_updated:
-            lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
-        keys_env.write_text(''.join(lines), encoding="utf-8")
-        if sys.platform != 'win32':
-            os.chmod(keys_env, 0o600)
+    from ...env_file import upsert_env as atomic_upsert
+    atomic_upsert(global_dir / "keys.env", {
+        "AGENT_CONFIG_PATH": str(global_dir), "AGENT_ADDRESS": addr_data["address"],
+    }, initial_comments=(
+        "# Your agent address (Ed25519 public key) is used for:\n"
+        "#   - Secure agent communication (encrypt/decrypt with private key)\n"
+        "#   - Authentication with OpenOnion managed LLM provider\n"
+        f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n"
+    ))
     console.print("  ✓ Created ~/.co/keys.env")
 
 
@@ -1296,6 +1211,7 @@ __all__ = [
     'GITIGNORE_CONTENT',
     'PROVIDER_TO_ENV',
     'copy_docs',
+    'copy_control_center_template',
     'create_host_yaml',
     'normalize_deploy_name',
     'DEPLOY_NAME_PATTERN',

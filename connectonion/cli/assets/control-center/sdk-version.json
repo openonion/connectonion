@@ -1,0 +1,6 @@
+{
+  "package": "@connectonion/react",
+  "version": "0.4.4-rc.2",
+  "source": "src/control-center.ts",
+  "sha256": "42282a9abc66f507a4f278b9824a5a91c270c497cbda6a204fbfec7aa8dad837"
+}

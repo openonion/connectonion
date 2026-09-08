@@ -92,6 +92,7 @@ my-agent/
 ├── .env                     # API keys (from ~/.co/keys.env)
 ├── .co/
 │   ├── host.yaml            # Project config
+│   ├── control-center/      # Editable full Web app
 │   └── docs/                # Framework docs
 ├── co-vibecoding-principles-docs-contexts-all-in-one.md
 └── .gitignore               # Safe defaults
@@ -130,6 +131,7 @@ co init ./                      # Safe - preserves existing files
 - ✅ **Preserves** existing files and `.env`
 - ✅ **Appends** only missing API keys
 - ✅ **Updates** `.co/docs/` to latest
+- ✅ **Adds once** `.co/control-center/` and never overwrites your website
 - ✅ **Skips** existing files (like `agent.py`)
 
 **Options:**
@@ -189,13 +191,13 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-4o")
 response = llm_do("Hello", model="co/claude-sonnet-4-5")
-response = llm_do("Hello", model="co/gemini-3.7-flash")
+response = llm_do("Hello", model="co/gemini-3.8-flash")
 ```
 
 **Available models:**
 - OpenAI: `co/gpt-4o`, `co/gpt-4o-mini`, `co/o4-mini`
 - Anthropic: `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- Google: `co/gemini-3.7-flash` (default), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Google: `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 - And more...
 
 **Benefits:**
@@ -308,7 +310,7 @@ saved as `GOOGLE_*` in `.env` / `~/.co/keys.env`).
 ```bash
 co gdrive                             # 20 most recently modified files
 co gdrive search report                # find by name (word prefixes)
-co gdrive get 3 --to ~/Downloads       # download #3 from the listing
+co gdrive get 3 --listing <listing-id> --to ~/Downloads       # download #3 from the listing
 co gdrive put report.pdf               # upload
 ```
 
@@ -325,41 +327,45 @@ The CLI wraps the same `Gmail` tool your agents use. See
 [gmail.md](gmail.md) for details.
 - `co gdrive` / `co gdrive list` - recent files (`--last/-n`)
 - `co gdrive search <query>` - find by file name
+- `co gdrive info <full-file-id> --json` - read-only metadata and export format
 - `co gdrive get <#>` - download (`--to`); Docs/Sheets/Slides are exported to md/csv/pdf
 - `co gdrive put <path>` - upload (`--name`)
 - `co gdrive rm <#>` - move to trash (recoverable)
 
 See [gdrive.md](gdrive.md) for details.
 
+#### Google Calendar and YouTube
+
+The Google-only 1.8.3 candidate adds `co gcalendar` and `co youtube` alongside
+Gmail and Drive. Default `co auth google` requests all four supported services;
+tokens and granted scopes remain local. See [Google auth](../integrations/google.md).
+
+- [co gcalendar](gcalendar.md): list/read events, find free slots, preview and confirm Calendar writes and Meet creation.
+- [co youtube](youtube.md): read channels/videos and preview or confirm uploads and metadata updates.
+
 ---
 
-#### `co syno` - Synology NAS Files
+#### `co syno` - Synology NAS
 
-Your NAS from the terminal. Requires `co syno login` once (QuickConnect ID or
-`--url`; saved as `SYNOLOGY_*` in `~/.co/keys.env`).
+Verified profiles, source-labeled inspections, ordinary file operations and
+explicit sharing-link controls. All twenty core leaves support `--json`,
+`--nas`, `--non-interactive` and `--timeout`.
 
-**Basic usage:**
 ```bash
-co syno                                # your shared folders
-co syno ls /home/photos                # inside one
-co syno search invoice --in /home      # find by name
-co syno get 3 --to ~/Downloads         # download #3 from the listing
-co syno put report.pdf /home/docs      # upload
+co syno login --name home --url https://nas.example:5001 --username alice
+co syno status --json
+co syno ls /home/docs --json
+co syno search invoice --in /home/docs --json
+co syno download /home/docs/report.pdf --to ./Downloads/
+co syno upload ./report.pdf /home/docs
+co syno share list --json
 ```
 
-**Subcommands:**
-
-- `co syno login` - connect by QuickConnect ID, or directly with `--url`
-- `co syno` / `co syno ls [path]` - shared folders, or one folder (`--last/-n`)
-- `co syno search <query>` - find by file name (`--in` to scope)
-- `co syno get <#>` - download (`--to`)
-- `co syno put <path> <nas-folder>` - upload (`--overwrite`)
-- `co syno share <#>` - create a public sharing link
-
-There is deliberately no `co syno rm` — File Station's delete API is permanent,
-so unlike `co gdrive rm` it could not be made recoverable.
-
-See [synology.md](synology.md) for details.
+Legacy env-only NAS credentials require verified login. Numeric migration
+references require the exact `--listing` ID; downloads and uploads never
+overwrite by default. Optional monitoring requires explicit SNMPv3/SSH setup.
+Real NAS acceptance is pending. See [synology.md](synology.md) for the complete
+command inventory, adapter sources and migration behavior.
 
 ---
 
@@ -1206,3 +1212,7 @@ See [server.md](server.md).
 - [Interactive Debugging](../debug/auto_debug.md) - `@xray` debugger
 - [Trust System](../features/trust.md) - Multi-agent trust
 - [Getting Started](../quickstart.md) - Full tutorial
+
+The 1.8.4 Gmail candidate adds `co gmail draft review <draft-id> --json` and
+`co gmail draft send <draft-id> --confirm <review-token> --json`. See
+[gmail.md](gmail.md) for the MIME-bound send and uncertain-outcome contract.

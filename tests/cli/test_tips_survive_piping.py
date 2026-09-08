@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 import typer
+from rich.console import Console
 
 from connectonion.cli.commands import email_commands, gdrive_commands, gmail_commands, outlook_commands
 import connectonion.useful_tools.send_email  # noqa: F401 — the real modules, past the package re-exports
@@ -27,12 +28,20 @@ _get_module = sys.modules["connectonion.useful_tools.get_emails"]
 EMAILS = [{"id": "18f2a", "from": "a@x.com", "subject": "hi", "date": "Unknown", "unread": False}]
 
 
+@pytest.fixture(autouse=True)
+def piped_consoles(monkeypatch):
+    # FORCE_COLOR in CI must not turn this pipe-contract test into a terminal test.
+    for module in (email_commands, gdrive_commands, gmail_commands, outlook_commands):
+        monkeypatch.setattr(module, "console", Console(force_terminal=False, width=200))
+
+
 def test_gmail_piped_listing_still_names_the_next_step(tmp_path, capsys):
     gmail = Mock()
+    gmail.get_account_email.return_value = "sender@example.invalid"
     gmail._format_dicts.return_value = "1. a@x.com  hi  ID: 18f2a"
     with patch.object(gmail_commands, "INBOX_CACHE", tmp_path / "gmail.json"):
         gmail_commands._print_listing(gmail, EMAILS, "inbox")
-    assert "Read one with: co gmail read <#>" in capsys.readouterr().out
+    assert "Read one with: co gmail read 18f2a" in capsys.readouterr().out
 
 
 def test_outlook_piped_listing_still_names_the_next_step(tmp_path, capsys):
@@ -57,8 +66,10 @@ def test_outlook_piped_scheduled_still_names_the_next_step(tmp_path, capsys):
 def test_gdrive_piped_listing_still_names_the_next_step(tmp_path, capsys):
     files = [{"id": "f1", "name": "report.pdf", "type": "application/pdf", "size": "10", "modified": ""}]
     with patch.object(gdrive_commands, "LIST_CACHE", tmp_path / "gdrive.json"):
-        gdrive_commands._print_listing(files, "drive")
-    assert "Download one with: co gdrive get <#>" in capsys.readouterr().out
+        drive = Mock()
+        drive.get_account_email.return_value = 'owner@example.test'
+        gdrive_commands._print_listing(drive, files, "drive")
+    assert "Download one with: co gdrive get f1" in capsys.readouterr().out
 
 
 def test_retry_hint_restates_the_full_command(capsys):
@@ -75,12 +86,12 @@ def test_retry_hint_restates_the_full_command(capsys):
     assert "co email send bob@example.com Hello 'Body text' --idempotency-key k-123" in out
 
 
-def test_stale_gmail_number_names_the_step_after_the_refresh(capsys):
+def test_stale_gmail_number_names_the_refresh_command(capsys):
     with patch.object(gmail_commands, "_gmail", return_value=Mock()), \
          patch.object(gmail_commands, "_resolve_email_id", return_value=""):
         with pytest.raises(typer.Exit):
             gmail_commands.handle_gmail_read("3")
-    assert "run co gmail, then co gmail read <#>" in capsys.readouterr().out
+    assert "Refresh the listing: co gmail inbox" in capsys.readouterr().out
 
 
 def test_stale_email_id_names_the_step_after_the_refresh(capsys):

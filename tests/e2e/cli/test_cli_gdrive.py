@@ -46,7 +46,7 @@ def test_gdrive_get_routes_id_and_destination():
         result = runner.invoke(app, ["gdrive", "get", "3", "--to", "/tmp"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", dest="/tmp")
+    handler.assert_called_once_with("3", dest="/tmp", listing=None)
 
 
 def test_gdrive_get_defaults_to_cwd():
@@ -54,7 +54,7 @@ def test_gdrive_get_defaults_to_cwd():
         result = runner.invoke(app, ["gdrive", "get", "3"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", dest=".")
+    handler.assert_called_once_with("3", dest=".", listing=None)
 
 
 def test_gdrive_put_routes_path_and_name():
@@ -70,7 +70,7 @@ def test_gdrive_rm_routes_id():
         result = runner.invoke(app, ["gdrive", "rm", "2"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2")
+    handler.assert_called_once_with("2", listing=None)
 
 
 def test_gdrive_requires_an_id_to_get():

@@ -100,9 +100,11 @@ TRUST = {
 
 # Registry of copyable skills (directories with SKILL.md, copied to .co/skills/)
 SKILLS = {
+    "agent-identity": "agent-identity",
     "browser-workflow-skill-builder": "browser-workflow-skill-builder",
     "co-browser": "co-browser",
     "co-mail-and-drive": "co-mail-and-drive",
+    "co-synology": "co-synology",
     "commit": "commit",
     "install-connectonion": "install-connectonion",
     "oo": "oo",

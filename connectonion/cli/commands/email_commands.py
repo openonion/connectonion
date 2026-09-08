@@ -84,13 +84,15 @@ def handle_email_send(
         raise typer.Exit(1)
 
 
-def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
-    """List recent emails received at the agent's address."""
+def handle_email_inbox(
+    last: int = 10, unread: bool = False, offset: int = 0, address: str = None
+):
+    """List recent emails received at any address this account can read."""
     if not _require_auth():
         return
 
     from ...useful_tools.get_emails import get_emails
-    emails = get_emails(last=last, offset=offset)
+    emails = get_emails(last=last, offset=offset, address=address)
     page_is_full = len(emails) == last
     if unread:
         # The /received endpoint ignores the unread param, so filter here to keep the flag honest.
@@ -98,32 +100,53 @@ def handle_email_inbox(last: int = 10, unread: bool = False, offset: int = 0):
 
     if not emails:
         scope = "unread " if unread else ""
-        console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails\n")
+        where = f" at {address}" if address else ""
+        console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails{where}\n")
         return
+
+    # The To column earns its width only when the page actually spans more than
+    # one mailbox. On a single-address account it would be the same string on
+    # every row, which is noise; the moment a second address appears, knowing
+    # which one a message landed at is the whole point.
+    recipients = {e.get("to", "") for e in emails if e.get("to")}
+    show_to = len(recipients) > 1
 
     table = Table(title="📬 Inbox", show_header=True, header_style="bold cyan")
     table.add_column("#", justify="right")
     table.add_column("From")
+    if show_to:
+        # Fold, never ellipsize: a half-printed address is the one thing this
+        # column exists to disambiguate, and "aaron@mail.op…" and
+        # "aaron.xie@mail.op…" are the same string once Rich truncates them.
+        table.add_column("To", overflow="fold")
     table.add_column("Subject")
     table.add_column("Received")
 
     for email in emails:
         unread_mark = "" if email.get("read") else "[bold green]●[/bold green] "
-        table.add_row(
-            str(email.get("id", "")),
-            str(email.get("from", "")),
+        row = [str(email.get("id", "")), str(email.get("from", ""))]
+        if show_to:
+            row.append(str(email.get("to", "")))
+        row += [
             f"{unread_mark}{email.get('subject', '')}",
             str(email.get("timestamp", ""))[:19],
-        )
+        ]
+        table.add_row(*row)
 
     console.print()
     console.print(table)
     console.print("\n[dim]Read one with:[/dim] [bold]co email read <#>[/bold]")
+    if show_to:
+        console.print(
+            "[dim]One mailbox only:[/dim] "
+            "[bold]co email inbox --address <address>[/bold]"
+        )
     if page_is_full:
         next_offset = offset + last
+        address_flag = f" --address {address}" if address else ""
         console.print(
             "[dim]Next page:[/dim] "
-            f"[bold]co email inbox --last {last} --offset {next_offset}[/bold]"
+            f"[bold]co email inbox --last {last} --offset {next_offset}{address_flag}[/bold]"
         )
     console.print()
 
@@ -250,6 +273,32 @@ def handle_email_read(email_id: str, mark_read: bool = False):
         console.print("[dim]Marked read.[/dim]")
     else:
         console.print("[dim]Unread state unchanged. Use --mark-read to change it.[/dim]")
+
+
+def handle_email_default(address: str):
+    """Choose which owned address this account sends from by default.
+
+    The default lives on the account, not in a local file, so it is the same
+    from every machine and every agent using this key. A per-project override
+    is still `--from` on the individual send — one place to look when a message
+    goes out as the wrong address, instead of two that can disagree.
+    """
+    token = load_api_key()
+    if not token:
+        _print_no_auth()
+        raise typer.Exit(1)
+
+    r = requests.post(
+        f"{backend_url()}/api/v1/email/addresses/default",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address": address},
+        timeout=10,
+    )
+    if not r.ok:
+        console.print(f"\n[red]✗ {_err(r)}[/red]\n")
+        raise typer.Exit(1)
+
+    console.print(f"\n[green]✓[/green] {address} is now the default sender\n")
 
 
 def handle_email_addresses():

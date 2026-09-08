@@ -34,58 +34,12 @@ from rich.console import Console
 from .._version import __version__
 from ..core.usage import DEFAULT_MODEL
 
-# Package startup already loads project-root .env, then global keys.env,
-# without overriding the process environment. Do not reload cwd/.env here:
-# inside a subdirectory it belongs to neither the selected project nor identity.
+# Package startup loads only global settings. --env-file replaces them explicitly.
 
 console = Console()
 
 
-class _OneSuggestion(typer.core.TyperGroup):
-    """Answer a mistyped command once (#714).
-
-        $ co skil
-        No such command 'skil'. Did you mean 'skills'? Did you mean 'skills'?
-
-    Two layers each append one: Click builds the message with its own suggestion
-    and Typer's resolve_command adds a second to whatever Click produced. It read
-    that way at every level, including the nested `co outlook contact` group.
-
-    The two arrive by different routes, which is why this does not just switch a
-    layer off. Click 8.4's NoSuchCommand keeps `possibilities` and appends the
-    clause when the message is *rendered*:
-
-        def format_message(self):
-            if not self.possibilities:
-                return self.message
-            return f"{self.message} {_format_possibilities(self.possibilities)}"
-
-    while Typer writes its own copy into `.message` beforehand. So the fix is to
-    drop the text copy exactly when the exception is going to render one of its
-    own, and to leave it alone when it is not.
-
-    Which layer speaks is not stable: turning Typer's `suggest_commands` off
-    fixed this on typer 0.20 and left plain `No such command 'skil'.` on 0.27,
-    where Typer's is the only clause because Click gets no possibilities.
-    pyproject asks for `typer>=0.20.0`, so a user has either.
-    """
-
-    def resolve_command(self, ctx, args):
-        try:
-            return super().resolve_command(ctx, args)
-        except Exception as error:
-            # Not `except click.UsageError`: typer 0.27 vendors its own Click
-            # (typer._click), so the exception it raises is a different class from
-            # the installed click's and the handler would silently never run —
-            # inert in exactly the version where CI runs. Catching broadly is safe
-            # because this always re-raises and only touches an object carrying
-            # both of the attributes it is about to use.
-            if getattr(error, "possibilities", None) and hasattr(error, "message"):
-                error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
-            raise
-
-
-_SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
+from .typer_groups import _OneSuggestion
 
 
 def _typer_app(**kwargs) -> typer.Typer:
@@ -116,10 +70,22 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
+def env_file_callback(ctx: typer.Context, value: Optional[Path]):
+    from ..environment import EnvironmentError, select_env_file
+    try:
+        select_env_file(value)
+    except EnvironmentError as error:
+        console.print(str(error), markup=False)
+        raise typer.Exit(2) from None
+    return value
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
+    env_file: Optional[Path] = typer.Option(None, "--env-file", callback=env_file_callback,
+        is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
     if ctx.invoked_subcommand is None:
@@ -134,19 +100,15 @@ def _show_help():
     console.print("A simple Python framework for creating AI agents.")
     console.print()
     console.print("[bold]Quick Start:[/bold]")
-    console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
-    console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
+    console.print("  co init                          Set up global credentials", markup=False)
+    console.print("  [cyan]co create my-agent[/cyan]               Create a project")
+    console.print("  [cyan]cd my-agent && python agent.py[/cyan]    Run your agent")
     console.print()
-    # A selection, not the register. Eight real commands are not here — ai,
-    # announce, call, reset, server, setup, skills, sub — and calling this
-    # "Commands:" read as the whole list. `co --help` is generated from the
-    # commands themselves and does show all of them, so the honest fix is to
-    # say which of the two this is and point at the other. Which of the eight
-    # belong on a new user's first screen is a product call, not this one's.
     console.print("[bold]Common commands:[/bold]")
-    console.print("  [green]create[/green]  <name>     Create new project")
-    console.print("  [green]init[/green]   [path]     Set up global keys, or an explicit project directory")
-    console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
+    console.print("  [green]create[/green]  <name>     Create a project")
+    console.print("  [green]init[/green]              Set up global credentials (co init ./ for a project)")
+    console.print("  [green]copy[/green]    <name>     Copy tool/plugin source to project")
+    console.print("  [green]ai[/green]                Start the agent in this directory")
     console.print("  [green]eval[/green]              Run evals and show status")
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
@@ -155,6 +117,8 @@ def _show_help():
     console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
     console.print("  [green]transfer[/green]          Send credits to another agent address")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]gcalendar[/green]         Calendar events, free slots and Meet links (co auth google)")
+    console.print("  [green]youtube[/green]           Video metadata and preview-first uploads (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]feishu[/green]            Feishu bot as a mailbox: listen, receive, send, reply")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
@@ -165,7 +129,12 @@ def _show_help():
     console.print("  [green]status[/green]            Check credentials, account, and deployments")
     console.print("  [green]doctor[/green]            Diagnose installation")
     console.print()
-    console.print("  [dim]co --help[/dim]         All commands")
+    console.print("[bold]Configuration:[/bold]")
+    console.print("  Global by default: ~/.co/keys.env", markup=False)
+    console.print("  co --env-file .env <command>     Use a project env file", markup=False)
+    console.print()
+    console.print("  co --help                       All commands", markup=False)
+    console.print("  co <command> --help              Command options", markup=False)
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")
@@ -185,6 +154,10 @@ def init(
     """Initialize global ~/.co/keys.env, or use co init ./ for a project."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
+        from ..environment import explicit_env_file
+        if explicit_env_file() is not None:
+            console.print("Global initialization does not accept --env-file. Next: co init")
+            raise typer.Exit(2)
         if template is not None or description is not None or force:
             console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
             raise typer.Exit(2)
@@ -241,11 +214,15 @@ def deploy(
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
+def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft"),
+         scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube.")):
     """Authenticate with OpenOnion."""
+    if scopes is not None and service != "google":
+        print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
     if service == "google":
         from .commands.auth_commands import handle_google_auth
-        handle_google_auth()
+        handle_google_auth(scopes=scopes)
     elif service == "microsoft":
         from .commands.auth_commands import handle_microsoft_auth
         handle_microsoft_auth()
@@ -319,7 +296,11 @@ def doctor(
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
-    engine: str = typer.Option("auto", "--engine", help="Browser engine: auto, system, or onion"),
+    engine: str = typer.Option(
+        "auto",
+        "--engine",
+        help="Browser engine: system Chrome by default; --engine onion pays for the WTF Browser",
+    ),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
@@ -841,10 +822,16 @@ def email_inbox(
         help="Skip this many newer emails",
     ),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    address: str = typer.Option(
+        None,
+        "--address",
+        "-a",
+        help="Only mail delivered to this address (default: every address you can read)",
+    ),
 ):
-    """List recent received emails."""
+    """List recent received emails, across every address this account can read."""
     from .commands.email_commands import handle_email_inbox
-    handle_email_inbox(last=last, offset=offset, unread=unread)
+    handle_email_inbox(last=last, offset=offset, unread=unread, address=address)
 
 
 @email_app.command("read")
@@ -885,6 +872,15 @@ def email_addresses():
     """List every email address this account owns, marking the default sender."""
     from .commands.email_commands import handle_email_addresses
     handle_email_addresses()
+
+
+@email_app.command("default")
+def email_default(
+    address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
+):
+    """Choose which of your addresses is the default sender."""
+    from .commands.email_commands import handle_email_default
+    handle_email_default(address)
 
 
 @email_app.command("name")
@@ -1055,46 +1051,65 @@ app.add_typer(_mailbox_group("lark", "Lark (global Feishu) bot as a mailbox: lis
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
+from .commands.gmail_mailbox_registration import MailboxCommand, register_mailbox_commands
+
 gmail_app = _typer_app(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
 app.add_typer(gmail_app, name="gmail")
 
 
 @gmail_app.callback(invoke_without_command=True)
-def gmail_callback(ctx: typer.Context):
+def gmail_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
     """With no subcommand, show the Gmail inbox."""
     if ctx.invoked_subcommand is None:
+        if json_output:
+            from .commands.gmail_mailbox_commands import handle_mailbox
+            return handle_mailbox("inbox", json_output=True, last=10, unread=False, cursor=None)
         from .commands.gmail_commands import handle_gmail_inbox
         handle_gmail_inbox()
+    elif json_output:
+        from .commands.gmail_mailbox_registration import usage_error
+        usage_error("Put --json after the leaf command, or use it with bare co gmail.", "", True)
 
 
-@gmail_app.command("inbox")
+@gmail_app.command("inbox", cls=MailboxCommand)
 def gmail_inbox(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List recent inbox emails, numbered for read/reply."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_inbox
     handle_gmail_inbox(last=last, unread=unread)
 
 
-@gmail_app.command("read")
+@gmail_app.command("read", cls=MailboxCommand)
 def gmail_read(
-    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
 ):
     """Show one email's full body without changing its unread state."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("read", json_output=json_output, email_id=email_id, mark_read=mark_read, listing=listing)
     from .commands.gmail_commands import handle_gmail_read
-    handle_gmail_read(email_id, mark_read=mark_read)
+    handle_gmail_read(email_id, mark_read=mark_read, listing=listing)
 
 
 @gmail_app.command("reply")
 def gmail_reply(
-    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Reply to an email from the last listing."""
     from .commands.gmail_commands import handle_gmail_reply
-    handle_gmail_reply(email_id, message)
+    handle_gmail_reply(email_id, message, listing=listing)
 
 
 @gmail_app.command("send", epilog="Examples:  co gmail send a@b.com \"Hi\" \"Quick note\"  |  "
@@ -1113,23 +1128,158 @@ def gmail_send(
     handle_gmail_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach)
 
 
-@gmail_app.command("sent")
+@gmail_app.command("sent", cls=MailboxCommand)
 def gmail_sent(
-    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many emails to show"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List recently sent emails."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("sent", json_output=json_output, last=last, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_sent
     handle_gmail_sent(last=last)
 
 
-@gmail_app.command("search")
+@gmail_app.command("search", cls=MailboxCommand)
 def gmail_search(
     query: str = typer.Argument(..., help="Gmail search query, e.g. 'from:alice@example.com'"),
-    last: int = typer.Option(10, "--last", "-n", help="How many matches to show"),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many matches to show"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """Search your mail with Gmail query syntax."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("search", json_output=json_output, query=query, last=last, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_search
     handle_gmail_search(query, last=last)
+
+
+# Drafts are a nested, explicit workflow: editing never sends, and the send
+# command always previews and confirms. Keeping these under `co gmail draft`
+# makes the safe path discoverable without changing the immediate-send command.
+gmail_draft_app = _typer_app(help="Create, inspect, and edit Gmail drafts; sending always asks for confirmation.")
+gmail_app.add_typer(gmail_draft_app, name="draft")
+
+
+@gmail_draft_app.command("list", cls=MailboxCommand)
+def gmail_draft_list(
+    last: int = typer.Option(20, "--last", "-n", min=1, max=500, help="How many drafts to show"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
+):
+    """List Gmail drafts, numbered for later draft commands."""
+    if json_output or cursor:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.list", json_output=json_output, last=last, cursor=cursor)
+    from .commands.gmail_commands import handle_gmail_draft_list
+    handle_gmail_draft_list(last=last)
+
+
+@gmail_draft_app.command("create")
+def gmail_draft_create(
+    to: str = typer.Argument(..., help="Recipient address (comma-separated for several)"),
+    subject: str = typer.Argument(..., help="Email subject"),
+    message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+):
+    """Create an unsent Gmail draft."""
+    from .commands.gmail_commands import handle_gmail_draft_create
+    handle_gmail_draft_create(to, subject, message, cc=cc, bcc=bcc)
+
+
+@gmail_draft_app.command("attach")
+def gmail_draft_attach(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
+    link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
+    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Drive listing token required for a Drive row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+):
+    """Stage a local/Drive file, or append a Drive link, without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_attach
+    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link, listing=listing, drive_listing=drive_listing)
+
+
+@gmail_draft_app.command("remove")
+def gmail_draft_remove(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+):
+    """Remove one staged attachment; the draft remains unsent."""
+    from .commands.gmail_commands import handle_gmail_draft_remove
+    handle_gmail_draft_remove(draft_id, attachment, listing=listing)
+
+
+@gmail_draft_app.command("replace")
+def gmail_draft_replace(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
+    drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
+    link: bool = typer.Option(False, "--link", help="Replace with a managed Drive link; requires --drive"),
+    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Drive listing token required for a Drive row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+):
+    """Atomically replace one staged attachment without sending."""
+    from .commands.gmail_commands import handle_gmail_draft_replace
+    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive, link=link, listing=listing, drive_listing=drive_listing)
+
+
+@gmail_draft_app.command("preview", cls=MailboxCommand)
+def gmail_draft_preview(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+):
+    """Print recipients, body, and the final attachment manifest."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.preview", json_output=json_output, draft_id=draft_id, listing=listing)
+    from .commands.gmail_commands import handle_gmail_draft_preview
+    handle_gmail_draft_preview(draft_id, listing=listing)
+
+
+@gmail_draft_app.command("review", cls=MailboxCommand)
+def gmail_draft_review(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row with --listing"),
+    listing: Optional[str] = typer.Option(None, "--listing"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """Review the complete outgoing content and produce its confirmation token."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.review", draft_id=draft_id, listing=listing, json_output=True)
+    from .commands.gmail_commands import handle_gmail_draft_review
+    handle_gmail_draft_review(draft_id, listing=listing)
+
+
+@gmail_draft_app.command("send", cls=MailboxCommand)
+def gmail_draft_send(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    confirm: Optional[str] = typer.Option(None, "--confirm", help="Token from draft review; required without a real TTY"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """Send reviewed MIME; require a token or default-No interactive confirmation."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.send", draft_id=draft_id, listing=listing, confirm=confirm, json_output=True)
+    from .commands.gmail_commands import handle_gmail_draft_send
+    if confirm is None:
+        handle_gmail_draft_send(draft_id, listing=listing)
+    else:
+        handle_gmail_draft_send(draft_id, listing=listing, confirm=confirm)
+
+
+register_mailbox_commands(gmail_app, _OneSuggestion)
+
+
 # Google Drive command group. `co gdrive` (no args) lists recent files.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
 gdrive_app = _typer_app(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
@@ -1163,14 +1313,29 @@ def gdrive_search(
     handle_gdrive_search(query, last=last)
 
 
+from .commands.gmail_mailbox_registration import DriveInfoCommand
+
+
+@gdrive_app.command("info", cls=DriveInfoCommand)
+def gdrive_info(
+    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned inspection result"),
+):
+    """Inspect metadata and export format without downloading or changing sharing."""
+    from .commands.gdrive_commands import handle_gdrive_info
+    handle_gdrive_info(file_id, listing=listing, json_output=json_output)
+
+
 @gdrive_app.command("get")
 def gdrive_get(
-    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
     dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
 ):
     """Download a file (Google Docs/Sheets/Slides are exported)."""
     from .commands.gdrive_commands import handle_gdrive_get
-    handle_gdrive_get(file_id, dest=dest)
+    handle_gdrive_get(file_id, dest=dest, listing=listing)
 
 
 @gdrive_app.command("put")
@@ -1185,85 +1350,91 @@ def gdrive_put(
 
 @gdrive_app.command("rm")
 def gdrive_rm(
-    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
 ):
     """Move a file to the Drive trash (recoverable)."""
     from .commands.gdrive_commands import handle_gdrive_rm
-    handle_gdrive_rm(file_id)
+    handle_gdrive_rm(file_id, listing=listing)
 
 
-# Synology command group. `co syno` (no args) lists your shared folders.
-# Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
-syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
-app.add_typer(syno_app, name="syno")
+_YOUTUBE_AUTH_HELP = (
+    "Connect once with co auth google, then use the saved Google login like co gmail. "
+    "Tokens refresh automatically through the existing Google OAuth broker. "
+    "YouTube operations use the official Data API. Uploads default to private; "
+    "unverified API projects can force private visibility. --confirm is an external write."
+)
+youtube_app = _typer_app(help="YouTube Data API using your saved Google login. Writes preview by default.", epilog=_YOUTUBE_AUTH_HELP)
+app.add_typer(youtube_app, name="youtube")
 
 
-@syno_app.callback(invoke_without_command=True)
-def syno_callback(ctx: typer.Context):
-    """With no subcommand, list your NAS shared folders."""
+@youtube_app.callback(invoke_without_command=True)
+def youtube_callback(ctx: typer.Context,
+                     json_output: bool = typer.Option(False, "--json", help="Emit one JSON object")):
     if ctx.invoked_subcommand is None:
-        from .commands.synology_commands import handle_syno_list
-        handle_syno_list()
+        from .commands.youtube_commands import handle_youtube_list
+        handle_youtube_list(json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Place --json after the subcommand; see co youtube --help.")
 
 
-@syno_app.command("login")
-def syno_login(
-    url: str = typer.Option(None, "--url", help="Connect directly, e.g. https://nas.local:5001 (skips QuickConnect)"),
-):
-    """Connect your NAS by QuickConnect ID, or directly with --url."""
-    from .commands.synology_commands import handle_syno_login
-    handle_syno_login(url=url)
+@youtube_app.command("channel", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_channel(target: Optional[str] = typer.Argument(None, help="UC channel ID, @handle, or channel URL; default is your channel"),
+                    json_output: bool = typer.Option(False, "--json")):
+    """Read a channel and its uploads playlist ID."""
+    from .commands.youtube_commands import handle_youtube_channel
+    handle_youtube_channel(target, json_output=json_output)
 
 
-@syno_app.command("ls")
-def syno_ls(
-    path: str = typer.Argument(None, help="Folder path, e.g. /home/photos. Omit to list shared folders."),
-    last: int = typer.Option(20, "--last", "-n", help="How many entries to show"),
-):
-    """List shared folders, or the contents of one folder."""
-    from .commands.synology_commands import handle_syno_list
-    handle_syno_list(path=path, last=last)
+@youtube_app.command("list", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_list(target: Optional[str] = typer.Argument(None, help="Channel ID, @handle or URL; default is your channel"),
+                 last: int = typer.Option(20, "--last", "-n", min=1, max=200),
+                 json_output: bool = typer.Option(False, "--json")):
+    """List recent uploads; numbers refer to this exact listing."""
+    from .commands.youtube_commands import handle_youtube_list
+    handle_youtube_list(target, last, json_output=json_output)
 
 
-@syno_app.command("search")
-def syno_search(
-    query: str = typer.Argument(..., help="Text or glob to look for in file names"),
-    path: str = typer.Option("/", "--in", help="Folder to search under"),
-    last: int = typer.Option(20, "--last", "-n", help="How many matches to show"),
-):
-    """Search the NAS by file name."""
-    from .commands.synology_commands import handle_syno_search
-    handle_syno_search(query, path=path, last=last)
+@youtube_app.command("video", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_video(item: str = typer.Argument(..., help="Number from your last listing, video ID, or URL; no media download"),
+                  json_output: bool = typer.Option(False, "--json")):
+    """Read one video's metadata and returned counts."""
+    from .commands.youtube_commands import handle_youtube_video
+    handle_youtube_video(item, json_output=json_output)
 
 
-@syno_app.command("get")
-def syno_get(
-    ref: str = typer.Argument(..., help="File # from the last listing, or a full NAS path"),
-    dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
-):
-    """Download a file from the NAS."""
-    from .commands.synology_commands import handle_syno_get
-    handle_syno_get(ref, dest=dest)
+@youtube_app.command("put", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_put(path: str = typer.Argument(..., help="Local video file"),
+                title: str = typer.Option(..., "--title"),
+                channel: str = typer.Option(..., "--channel", help="Exact UC channel ID, checked again before upload"),
+                description: str = typer.Option("", "--description"),
+                privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
+                category: str = typer.Option("22", "--category"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact preview digest; consumes this plan once and uploads"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Preview locally; upload only with the current plan's --confirm digest."""
+    from .commands.youtube_commands import handle_youtube_put
+    handle_youtube_put(path, title, channel, description, privacy, category, dry_run, confirm, json_output)
 
 
-@syno_app.command("put")
-def syno_put(
-    local_path: str = typer.Argument(..., help="Local file to upload"),
-    path: str = typer.Argument(..., help="Destination NAS folder, e.g. /home/photos"),
-    overwrite: bool = typer.Option(False, "--overwrite", help="Replace an existing file of the same name"),
-):
-    """Upload a local file to the NAS."""
-    from .commands.synology_commands import handle_syno_put
-    handle_syno_put(local_path, path, overwrite=overwrite)
+@youtube_app.command("update", epilog=_YOUTUBE_AUTH_HELP)
+def youtube_update(item: str = typer.Argument(..., help="Listing number, video ID, or URL"),
+                   title: Optional[str] = typer.Option(None, "--title"),
+                   description: Optional[str] = typer.Option(None, "--description"),
+                   dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
+                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact digest of the current metadata preview; performs one update"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Preview title/description edits without changing privacy or other parts."""
+    from .commands.youtube_commands import handle_youtube_update
+    handle_youtube_update(item, title, description, dry_run, confirm, json_output)
 
+from .commands.gcalendar_commands import gcalendar_app
+gcalendar_app.info.cls = _OneSuggestion
+app.add_typer(gcalendar_app, name="gcalendar")
 
-@syno_app.command("share")
-def syno_share(
-    ref: str = typer.Argument(..., help="File # from the last listing, or a full NAS path"),
-):
-    """Create a public sharing link for a file or folder."""
-    from .commands.synology_commands import handle_syno_share
-    handle_syno_share(ref)
+from .commands.synology_cli import syno_app
+app.add_typer(syno_app, name="syno")
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
@@ -1464,7 +1635,14 @@ def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to un
 
 def cli():
     """Entry point."""
-    app()
+    from ..environment import EnvironmentError
+    from ..credentials import AmbientCredentialError
+    from ..provider_credentials import ProviderCredentialError
+    try:
+        app()
+    except (EnvironmentError, AmbientCredentialError, ProviderCredentialError) as error:
+        console.print(str(error), markup=False)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

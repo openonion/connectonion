@@ -18,6 +18,7 @@ import contextvars
 import json
 import os
 import platform
+import re
 import sys
 import time
 import urllib.parse
@@ -53,6 +54,15 @@ class PaidSessionEndedError(RuntimeError):
     def __init__(self, reason: str):
         super().__init__(f"paid browser session ended: {reason}")
         self.reason = reason
+
+
+class BrowserNavigationError(RuntimeError):
+    """Navigation failed without committing a usable destination document."""
+
+    def __init__(self, code: str):
+        self.code = code
+        # URLs and driver call logs can contain proxy credentials or tokens.
+        super().__init__(code)
 
 
 _FOCUSED_ELEMENT_SCRIPT = """
@@ -834,10 +844,31 @@ class AsyncBrowserCore:
             if self.page is None:
                 await self.open_browser()
 
-            await self.page.goto(
-                _normalize_url(url), wait_until="domcontentloaded", timeout=30000
-            )
+            try:
+                response = await self.page.goto(
+                    _normalize_url(url), wait_until="domcontentloaded", timeout=30000
+                )
+            except Exception as exc:
+                match = re.search(r"net::(ERR_[A-Z0-9_]+)", str(exc))
+                if match:
+                    code = (
+                        "NAVIGATION_PROXY_AUTH_FAILED"
+                        if match[1] in {"ERR_INVALID_AUTH_CREDENTIALS", "ERR_PROXY_AUTH_REQUESTED"}
+                        else "NAVIGATION_NETWORK_ERROR"
+                    )
+                    raise BrowserNavigationError(code) from None
+                raise
+            if response is not None and response.status == 407:
+                raise BrowserNavigationError("NAVIGATION_PROXY_AUTH_FAILED")
             await self.page.wait_for_timeout(2000)
+            # Chrome may commit its internal error document without goto raising.
+            # An empty page or an ordinary HTTP 4xx response alone is not failure.
+            document_uri = await self.page.evaluate("() => document.documentURI")
+            if (
+                self.page.url.startswith("chrome-error://")
+                or isinstance(document_uri, str) and document_uri.startswith("chrome-error://")
+            ):
+                raise BrowserNavigationError("NAVIGATION_NETWORK_ERROR")
             self.current_url = self.page.url
             meta = self._tab_meta.setdefault(
                 key,

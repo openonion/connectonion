@@ -47,10 +47,11 @@ glob, grep, bash, plan mode, a todo list, background tasks, subagents, skills, a
 `ask_user`. Browsing is via bash calling `co browser`. Email is **not** a wired tool
 on this agent — it is a separate CLI path (§3).
 
-**Default model** for `co ai` is `co/gemini-3.7-flash` (`cli/main.py:224`; note
-`ai_commands.py:13` carries `co/claude-opus-4-5` as a Python-level default that the
-CLI always overrides — do not quote that one). `Agent()` and the `co create`
-template also default to `co/gemini-3.7-flash` (`core/agent.py:41`).
+**Default model** for `co ai` is `co/gemini-3.8-flash`, sourced from the shared
+`core.usage.DEFAULT_MODEL` constant used by the CLI, `Agent()`, `llm_do()`,
+transcription, and project templates. Gemini 3.7 stays selectable as an explicit
+rollback; OpenAI and Anthropic remain selectable and are never chosen as a silent
+fallback.
 
 ---
 
@@ -109,7 +110,7 @@ answer to "do I have to buy into all of this?" is that you do not.
 | `co gmail` | inbox, read, reply, send, sent, search (`cli/main.py:498-569`) |
 | `co outlook` | mail plus contacts, deferred and scheduled send |
 | `co gdrive` | list, search, get, put, rm |
-| `co syno` | a Synology NAS: login, ls, search, get, put, share |
+| `co syno` | a Synology NAS: read-only status/list/search/share audit plus get, put, and public-link creation |
 | `co email` | the agent's **own** mailbox — see the limit below |
 | `co call <addr> <cmd>` | run one command on a *remote* agent, no LLM in the loop, gated by that agent's whitelist (`cli/commands/call_commands.py:51-135`) |
 | `co copy <name>` | vendor any built-in into your project to edit: 16 tools, 13 plugins, 10 TUI components, trust policies, skills (`cli/commands/copy_commands.py:20-104`) |
@@ -333,8 +334,6 @@ Worth saying out loud on any page that sells to a business:
   /sessions /new /resume /undo /redo` are defined and imported nowhere — issue #965.
   Working slash commands are skill names.
 - `cli/co_ai/sessions.py` and its SQLite store are reachable only from those commands.
-- `cli/co_ai/agents/registry.py` duplicates the explore and plan subagents; the running
-  agent uses `useful_plugins/builtin_agents/` — issue #966.
 - `create_app()` advertises `sha256(agent.name)` as the agent address — a fake
   unrelated to the Ed25519 key, inconsistent with `host()`.
 - `@expose` has a design document and no implementation.

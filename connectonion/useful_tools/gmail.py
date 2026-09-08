@@ -2,9 +2,9 @@
 Purpose: Gmail integration tool for reading, sending, and managing emails via Google API
 LLM-Note:
   Dependencies: imports from [os, base64, google.oauth2.credentials, googleapiclient.discovery, googleapiclient.errors] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gmail.py]
-  Data flow: Agent calls Gmail methods → validates the ambient OpenOnion account and refreshes server-owned Google credentials via oo-api → builds Gmail API service → API calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
-  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens to ~/.co/keys.env | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
-  Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
+  Data flow: Agent calls Gmail methods → refreshes the locally held Google token through oo-api's stateless exchange → builds Gmail API service → direct calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
+  State/Effects: reads GOOGLE_* env vars and OPENONION_API_KEY | persists refreshed tokens only to the selected record (process overrides remain in memory) | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails)
+  Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), draft CRUD/attachment methods, send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately (lazy loading)
   Errors: raises ValueError if OAuth not configured | HttpError from Google API propagates | returns error strings for display to user
 
@@ -62,14 +62,26 @@ from googleapiclient.discovery import build
 
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 from ..project import project_root
 from ._attachment_files import path_of_open_file
+from .gmail_mailbox import GmailMailbox
 
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
 
-class Gmail:
+class Gmail(GmailMailbox):
     """Gmail tool for reading and managing emails."""
+
+    @property
+    def _credentials(self):
+        if not hasattr(self, "_credential_record"):
+            self._credential_record = resolve_provider_credentials("google")
+        return self._credential_record
+
+    @_credentials.setter
+    def _credentials(self, value):
+        self._credential_record = value
 
     def __init__(self, emails_csv: str = "data/emails.csv", contacts_csv: str = "data/contacts.csv",
                  allow_external_attachments: bool = False):
@@ -85,23 +97,21 @@ class Gmail:
         Validates that gmail.readonly scope is authorized.
         Raises ValueError if scope is missing.
         """
-        scopes = os.getenv("GOOGLE_SCOPES", "")
-        if "gmail.readonly" not in scopes:
+        from .google_scopes import granted_scopes
+        self._credentials = resolve_provider_credentials("google")
+        scopes = self._credentials.scopes
+        if not scopes:
+            self._credentials.require_configured()
+        if scopes and not scopes.intersection({"gmail.readonly", "gmail.modify", "https://mail.google.com/"}):
             raise ValueError(
                 "Missing 'gmail.readonly' scope.\n"
                 f"Current scopes: {scopes}\n"
                 "Please authorize Gmail access:\n"
                 "  co auth google"
             )
-        if "gmail.send" not in scopes:
-            raise ValueError(
-                "Missing 'gmail.send' scope.\n"
-                f"Current scopes: {scopes}\n"
-                "Please authorize Gmail send access:\n"
-                "  co auth google"
-            )
 
         self._service = None
+        self._scopes = scopes
         self.emails_csv = emails_csv
         self.contacts_csv = contacts_csv
         self._attachment_root = project_root().resolve()
@@ -121,7 +131,11 @@ class Gmail:
         if self._service:
             return self._service
 
-        access_token = self._refresh_via_backend(None)
+        self._credentials.require_configured()
+        access_token = self._credentials.get("ACCESS_TOKEN")
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        if self._credentials.get("REFRESH_TOKEN") or not access_token or (expiry and expiry <= datetime.now(timezone.utc) + timedelta(minutes=5)):
+            access_token = self._refresh_via_backend(None)
         expiry = self._token_expiry()
 
         # Backend owns client_id/client_secret. google-auth invokes our broker
@@ -129,9 +143,7 @@ class Gmail:
         creds = Credentials(
             token=access_token,
             refresh_token=None,
-            scopes=["https://www.googleapis.com/auth/gmail.readonly",
-                   "https://www.googleapis.com/auth/gmail.modify",
-                   "https://www.googleapis.com/auth/gmail.send"],
+            scopes=self._credentials.scopes or None,
             expiry=expiry,
             refresh_handler=self._refresh_handler,
         )
@@ -139,77 +151,22 @@ class Gmail:
         self._service = build('gmail', 'v1', credentials=creds)
         return self._service
 
-    def _token_expiry(self) -> datetime:
-        """Return google-auth's naive UTC expiry value."""
-        value = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
-        if not value:
-            return datetime.utcnow() + timedelta(minutes=55)
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if parsed.tzinfo:
-            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-        return parsed
+    def _token_expiry(self) -> datetime | None:
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        return expiry.replace(tzinfo=None) if expiry else None
 
     def _refresh_handler(self, request, scopes=None):
         """Let google-auth recover a long-running Gmail client after a 401."""
         return self._refresh_via_backend(None), self._token_expiry()
 
     def _refresh_via_backend(self, refresh_token: str | None) -> str:
-        """Ask the backend to refresh its stored Google credentials.
-
-        Args:
-            refresh_token: Ignored; retained for compatibility with copied tools.
-
-        Returns:
-            New access token
-        """
-        import httpx
-
-        # Get backend URL and auth
-        selected_backend = backend_url()
+        # The argument is retained for callers; it must belong to this record.
+        from ..provider_credentials import ProviderCredentialError
         api_key = require_ambient_api_key()
-
-        # Call backend refresh endpoint
-        response = httpx.post(
-            f"{selected_backend}/api/v1/oauth/google/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=15.0,
-        )
-
-        if response.status_code != 200:
-            try:
-                detail = response.json().get("detail")
-            except (TypeError, ValueError):
-                detail = None
-            if response.status_code == 401 and isinstance(detail, dict) \
-                    and detail.get("error") == "reauth_required":
-                raise ValueError("Google authorization expired. Run: co auth google")
-            raise ValueError("Failed to refresh Google authorization via backend")
-
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-        new_refresh_token = data.get("refresh_token")
-
-        # Update environment variables for this session
-        os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
-        os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
-        if new_refresh_token:
-            os.environ["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
-
-        # Persist to global keys.env so the refreshed token survives this
-        # process. Persist a rotated refresh token if Google issued one.
-        from ..cli.commands.project_cmd_lib import upsert_env
-        env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        values = {
-            "GOOGLE_ACCESS_TOKEN": new_access_token,
-            "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
-        }
-        if new_refresh_token:
-            values["GOOGLE_REFRESH_TOKEN"] = new_refresh_token
-        upsert_env(env_file, values)
-
-        return new_access_token
+        if refresh_token and refresh_token != self._credentials.get("REFRESH_TOKEN"):
+            raise ProviderCredentialError("record_changed", "Refresh token differs from the selected account.", "co status")
+        return refresh_credentials(self._credentials, backend=backend_url(),
+                                   api_key=api_key)
 
     def _email_dicts(self, messages, max_results=10):
         """Fetch metadata for message stubs and return plain email dicts."""
@@ -264,6 +221,16 @@ class Gmail:
 
     # === Reading ===
 
+    def get_account_email(self) -> str:
+        """Return the provider-confirmed account for this client, not saved metadata."""
+        if not getattr(self, "_account_email", None):
+            profile = self._get_service().users().getProfile(userId='me').execute()
+            value = profile.get('emailAddress')
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("Gmail did not return an account identity")
+            self._account_email = value.strip().casefold()
+        return self._account_email
+
     def list_inbox(self, last: int = 10, unread: bool = False) -> list:
         """Fetch inbox emails as dicts (id, from, subject, date, snippet, unread).
 
@@ -284,6 +251,7 @@ class Gmail:
             maxResults=last
         ).execute()
 
+        self._last_message_page = results
         return self._email_dicts(results.get('messages', []), last)
 
     def list_search(self, query: str, max_results: int = 10) -> list:
@@ -299,6 +267,7 @@ class Gmail:
             maxResults=max_results
         ).execute()
 
+        self._last_message_page = results
         return self._email_dicts(results.get('messages', []), max_results)
 
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
@@ -494,6 +463,298 @@ class Gmail:
             output.append(f"   ID: {att['id']}\n")
 
         return "\n".join(output)
+
+    # === Drafts ===
+
+    def _require_draft_write_scope(self) -> None:
+        """Require one of the scopes accepted by Gmail's draft write APIs."""
+        scopes = self._credentials.scopes
+        if scopes and not any(scope in scopes for scope in ("gmail.modify", "gmail.compose", "https://mail.google.com/")):
+            raise ValueError(
+                "Gmail draft permission missing.\n"
+                "Reconnect Google to grant draft access:\n"
+                "  co auth google"
+            )
+
+    @staticmethod
+    def _decode_message(raw: str):
+        """Decode Gmail's base64url `raw` field into an EmailMessage."""
+        from email import policy
+        from email.parser import BytesParser
+
+        padded = raw + "=" * (-len(raw) % 4)
+        return BytesParser(policy=policy.default).parsebytes(base64.urlsafe_b64decode(padded))
+
+    @staticmethod
+    def _encode_message(message) -> str:
+        """Encode an EmailMessage for Gmail's `raw` field."""
+        return base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+
+    @staticmethod
+    def _attachment_parts(message) -> list[tuple[object, object]]:
+        """Return every attachment with its parent, including nested MIME parts."""
+        found = []
+
+        def visit(parent):
+            if not parent.is_multipart():
+                return
+            for part in parent.iter_parts():
+                if part.get_filename() or part.get_content_disposition() == "attachment":
+                    found.append((parent, part))
+                else:
+                    visit(part)
+
+        visit(message)
+        return found
+
+    @staticmethod
+    def _attachment_dict(part) -> dict:
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            payload = part.as_bytes()
+        return {
+            "name": part.get_filename() or "attachment",
+            "type": part.get_content_type(),
+            "size": len(payload),
+        }
+
+    @staticmethod
+    def _message_body(message) -> str:
+        """Return the draft body without treating an attachment as content."""
+        part = message.get_body(preferencelist=("plain", "html")) if message.is_multipart() else message
+        if part is None or part.get_content_disposition() == "attachment":
+            return ""
+        content = part.get_content()
+        return content if isinstance(content, str) else ""
+
+    def _draft_message(self, draft_id: str):
+        draft = self._get_service().users().drafts().get(
+            userId="me", id=draft_id, format="raw"
+        ).execute()
+        return draft, self._decode_message(draft["message"]["raw"])
+
+    def _draft_dict(self, draft_id: str, message) -> dict:
+        from .gmail_draft_sources import file_source, read_links
+        parts = self._attachment_parts(message)
+        attachments = [self._attachment_dict(part) for _, part in parts]
+        items = [{**item, **file_source(part)} for item, (_, part) in zip(attachments, parts)]
+        items.extend({key:value for key,value in row.items() if key != "text"} for row in read_links(message))
+        return {
+            "id": draft_id,
+            "to": str(message.get("To", "")),
+            "cc": str(message.get("Cc", "")),
+            "bcc": str(message.get("Bcc", "")),
+            "subject": str(message.get("Subject", "")),
+            "body": self._message_body(message),
+            "attachments": attachments,
+            "items": items,
+            "attachment_size": sum(item["size"] for item in attachments),
+        }
+
+    def list_drafts(self, last: int = 20) -> list:
+        """List Gmail drafts with recipient, subject, and attachment metadata."""
+        if last < 1:
+            return []
+        service = self._get_service()
+        response = service.users().drafts().list(
+            userId="me", maxResults=last
+        ).execute()
+        self._last_draft_page = response
+        stubs = response.get("drafts", [])
+        drafts = []
+        for stub in stubs:
+            full = service.users().drafts().get(
+                userId="me", id=stub["id"], format="full"
+            ).execute()
+            message = full.get("message", {})
+            headers = {
+                header.get("name", "").lower(): header.get("value", "")
+                for header in message.get("payload", {}).get("headers", [])
+            }
+
+            def count(parts) -> int:
+                return sum(
+                    (1 if part.get("filename") else count(part.get("parts", [])))
+                    for part in parts
+                )
+
+            drafts.append({
+                "id": stub["id"],
+                "to": headers.get("to", ""),
+                "subject": headers.get("subject", ""),
+                "attachments": count(message.get("payload", {}).get("parts", [])),
+            })
+        return drafts
+
+    def create_draft(self, to: str, subject: str, body: str, cc: str = None,
+                     bcc: str = None) -> dict:
+        """Create a Gmail draft without sending it."""
+        from email.message import EmailMessage
+
+        self._require_draft_write_scope()
+        message = EmailMessage()
+        message.set_content(body)
+        message["To"] = to
+        message["Subject"] = subject
+        if cc:
+            message["Cc"] = cc
+        if bcc:
+            message["Bcc"] = bcc
+        from .gmail_draft_mime import validate_message
+        validate_message(self, message)
+        created = self._get_service().users().drafts().create(
+            userId="me", body={"message": {"raw": self._encode_message(message)}}
+        ).execute()
+        return self._draft_dict(created["id"], message)
+
+    def get_draft(self, draft_id: str) -> dict:
+        """Return a draft's exact headers/body and attachment manifest."""
+        _, message = self._draft_message(draft_id)
+        return self._draft_dict(draft_id, message)
+
+    def _update_draft(self, draft_id: str, message) -> dict:
+        from .gmail_draft_mime import validate_message
+        self._require_draft_write_scope()
+        result = self._draft_dict(draft_id, message)
+        validate_message(self, message)
+        self._get_service().users().drafts().update(
+            userId="me",
+            id=draft_id,
+            body={"message": {"raw": self._encode_message(message)}},
+        ).execute()
+        return result
+
+    def _draft_attachment_budget(self, draft_id: str, replacing: int | None = None) -> int:
+        """Bound an incoming Drive stream against the current remaining file budget."""
+        _, message = self._draft_message(draft_id)
+        if replacing is not None:
+            self._remove_draft_item(message, replacing)
+        used = sum(self._attachment_dict(part)["size"] for _, part in self._attachment_parts(message))
+        if used > GMAIL_ATTACHMENT_LIMIT:
+            raise ValueError("Existing attachments exceed the 25MB limit; remove an item first.")
+        return GMAIL_ATTACHMENT_LIMIT - used
+
+    def _add_draft_attachment(self, draft_id: str, name: str, mime_type: str,
+                              data: bytes, *, source: dict | None = None) -> dict:
+        _, message = self._draft_message(draft_id)
+        existing = sum(
+            item["size"]
+            for item in (self._attachment_dict(part) for _, part in self._attachment_parts(message))
+        )
+        if existing + len(data) > GMAIL_ATTACHMENT_LIMIT:
+            raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+        main, _, sub = (mime_type or "application/octet-stream").partition("/")
+        message.add_attachment(data, maintype=main, subtype=sub or "octet-stream", filename=name)
+        from .gmail_draft_sources import tag_file
+        tag_file(list(message.iter_parts())[-1], data, source)
+        return self._update_draft(draft_id, message)
+
+    def add_draft_attachment(self, draft_id: str, path: str) -> dict:
+        """Stage a local file into a Gmail draft; the draft remains unsent."""
+        from contextlib import ExitStack
+        import mimetypes
+
+        with ExitStack() as stack:
+            name, handle = self._open_attachments([path], stack)[0]
+            data = handle.read(GMAIL_ATTACHMENT_LIMIT + 1)
+        mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return self._add_draft_attachment(draft_id, name, mime_type, data, source={"source":"local"})
+
+    def add_draft_link(self, draft_id: str, name: str, url: str) -> dict:
+        """Append a Drive link to a plain-text draft without changing sharing."""
+        _, message = self._draft_message(draft_id)
+        part = message.get_body(preferencelist=("plain",)) if message.is_multipart() else message
+        if part is None or part.get_content_type() != "text/plain":
+            raise ValueError("Draft has no plain-text body; attach the Drive file instead.")
+        body = part.get_content()
+        separator = "" if body.endswith("\n\n") else ("\n" if body.endswith("\n") else "\n\n")
+        part.set_content(f"{body}{separator}{name}: {url}\n")
+        return self._update_draft(draft_id, message)
+
+    def _add_managed_draft_link(self, draft_id: str, item: dict) -> dict:
+        from .gmail_draft_sources import add_link
+        _, message = self._draft_message(draft_id)
+        add_link(message, item)
+        return self._update_draft(draft_id, message)
+
+    def _remove_draft_item(self, message, attachment: int) -> None:
+        from .gmail_draft_sources import remove_link
+        parts = self._attachment_parts(message)
+        if attachment < 1:
+            raise ValueError(f"Draft has no attachment #{attachment}.")
+        if attachment > len(parts):
+            try:
+                remove_link(message, attachment - len(parts) - 1)
+            except ValueError as error:
+                raise ValueError(f"Cannot remove attachment #{attachment}: {error}") from None
+            return
+        parent, selected = parts[attachment - 1]
+        parent.set_payload([part for part in parent.iter_parts() if part is not selected])
+
+    def remove_draft_attachment(self, draft_id: str, attachment: int) -> dict:
+        """Remove one file or managed link by its current review number."""
+        _, message = self._draft_message(draft_id)
+        self._remove_draft_item(message, attachment)
+        return self._update_draft(draft_id, message)
+
+    def _replace_draft_attachment(self, draft_id: str, attachment: int, name: str,
+                                  mime_type: str, data: bytes, *, source: dict | None = None) -> dict:
+        from email.message import EmailMessage
+        from .gmail_draft_sources import tag_file
+        _, message = self._draft_message(draft_id)
+        parts = self._attachment_parts(message)
+        selected = parts[attachment - 1] if 1 <= attachment <= len(parts) else None
+        if selected:
+            parent, old = selected
+            position = list(parent.iter_parts()).index(old)
+        self._remove_draft_item(message, attachment)
+        total = sum(self._attachment_dict(part)["size"] for _, part in self._attachment_parts(message))
+        if total + len(data) > GMAIL_ATTACHMENT_LIMIT:
+            raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+        replacement = EmailMessage()
+        main, _, sub = (mime_type or "application/octet-stream").partition("/")
+        replacement.set_content(data, maintype=main, subtype=sub or "octet-stream")
+        replacement.add_header("Content-Disposition", "attachment", filename=name)
+        tag_file(replacement, data, source)
+        if selected:
+            payload = list(parent.iter_parts())
+            payload.insert(position, replacement)
+            parent.set_payload(payload)
+        else:
+            if message.get_content_subtype() != "mixed":
+                message.make_mixed()
+            message.attach(replacement)
+        return self._update_draft(draft_id, message)
+
+    def _replace_draft_link(self, draft_id: str, attachment: int, item: dict) -> dict:
+        from .gmail_draft_sources import add_link
+        _, message = self._draft_message(draft_id)
+        self._remove_draft_item(message, attachment)
+        add_link(message, item)
+        return self._update_draft(draft_id, message)
+
+    def replace_draft_attachment(self, draft_id: str, attachment: int, path: str) -> dict:
+        """Replace one draft attachment with a local file in one update."""
+        from contextlib import ExitStack
+        import mimetypes
+
+        with ExitStack() as stack:
+            name, handle = self._open_attachments([path], stack)[0]
+            data = handle.read(GMAIL_ATTACHMENT_LIMIT + 1)
+        mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return self._replace_draft_attachment(draft_id, attachment, name, mime_type, data, source={"source":"local"})
+
+    def _send_draft(self, draft_id: str, *, raw: str | None = None, thread_id: str | None = None) -> dict:
+        """Send the CLI-reviewed payload in the same operation that consumes the draft."""
+        if not raw:
+            raise ValueError("A reviewed raw payload is required; use co gmail draft review.")
+        self._require_draft_write_scope()
+        message = {"raw": raw}
+        if thread_id:
+            message["threadId"] = thread_id
+        return self._get_service().users().drafts().send(
+            userId="me", body={"id": draft_id, "message": message}
+        ).execute()
 
     def _open_attachments(self, attachments: list, stack) -> list[tuple[str, object]]:
         """Open and validate attachments, retaining the checked file objects."""
@@ -1233,190 +1494,12 @@ Emails:
         return f"Analysis for {email}:\n\n{analysis}"
 
     def get_unanswered_emails(self, within_days: int = 120, max_results: int = 20) -> str:
-        """Find emails from the last N days that we haven't replied to.
-
-        Useful for CRM to identify conversations that need follow-up.
-        Checks threads where the last message is FROM someone else (not us).
-
-        Args:
-            within_days: Look back this many days (default: 120 = ~4 months)
-            max_results: Maximum emails to return (default: 20)
-
-        Returns:
-            List of unanswered emails with sender, subject, date, and age
-        """
-        import re
-        from datetime import datetime, timezone
-        from email.utils import parsedate_to_datetime
-
-        service = self._get_service()
-
-        # Get ALL user email addresses including Cloudflare routed addresses (auto-detected)
-        user_emails = self.get_all_my_emails(max_emails=50)
-
-        # Search for inbox emails from the last N days
-        # Use pagination to ensure we find enough unanswered emails
-        query = f"in:inbox newer_than:{within_days}d"
-        unanswered = []
-        seen_threads = set()
-        page_token = None
-        max_pages = 10  # Safety limit to avoid infinite loops
-        pages_fetched = 0
-
-        while len(unanswered) < max_results and pages_fetched < max_pages:
-            results = service.users().messages().list(
-                userId='me',
-                q=query,
-                maxResults=100,  # Fetch in larger batches for efficiency
-                pageToken=page_token
-            ).execute()
-
-            messages = results.get('messages', [])
-            if not messages:
-                break
-
-            for msg in messages:
-                # Get thread to check if we replied
-                thread_id = msg.get('threadId')
-                if thread_id in seen_threads:
-                    continue
-                seen_threads.add(thread_id)
-
-                # Get full thread
-                thread = service.users().threads().get(
-                    userId='me',
-                    id=thread_id,
-                    format='metadata',
-                    metadataHeaders=['From', 'Subject', 'Date']
-                ).execute()
-
-                thread_messages = thread.get('messages', [])
-                if not thread_messages:
-                    continue
-
-                # Check the last message in thread
-                last_msg = thread_messages[-1]
-                headers = last_msg['payload']['headers']
-                last_from = next((h['value'] for h in headers if h['name'] == 'From'), '')
-
-                # Extract email from "Name <email>" format
-                email_match = re.search(r'<([^>]+)>', last_from)
-                last_from_email = email_match.group(1).lower() if email_match else last_from.lower()
-
-                # Skip if last message is from us (we already replied)
-                # Check against ALL our email addresses (primary + aliases)
-                if any(email in last_from_email for email in user_emails):
-                    continue
-
-                # Get first message details
-                first_msg = thread_messages[0]
-                first_headers = first_msg['payload']['headers']
-                first_from = next((h['value'] for h in first_headers if h['name'] == 'From'), '')
-                first_email_match = re.search(r'<([^>]+)>', first_from)
-                first_from_email = first_email_match.group(1).lower() if first_email_match else first_from.lower()
-                subject = next((h['value'] for h in first_headers if h['name'] == 'Subject'), 'No Subject')
-                subject_lower = subject.lower()
-
-                # Skip if WE sent the first message (we initiated, not awaiting reply)
-                # Check against ALL our email addresses (primary + aliases)
-                if any(email in first_from_email for email in user_emails):
-                    continue
-
-                # Skip automated senders by email patterns
-                automated_email_patterns = [
-                    # Generic automated prefixes
-                    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
-                    'notifications@', 'notification@', 'newsletter@', 'news@',
-                    'alerts@', 'alert@', 'updates@', 'update@',
-                    'security@', 'team@', 'support@', 'help@', 'info@',
-                    'marketing@', 'promo@', 'promotions@', 'offers@',
-                    'billing@', 'invoice@', 'receipt@', 'order@',
-                    'feedback@', 'survey@', 'announce@', 'digest@',
-                    'hello@',  # Common marketing prefix
-                    # Common automated domains/subdomains
-                    'mail.instagram.com', 'mail.linkedin.com', 'mail.facebook.com',
-                    'mail.twitter.com', 'mail.x.com', 'mail.google.com',
-                    'facebookmail.com', 'linkedin.com', 'glassdoor.com',
-                    'calendly.com', 'zoom.us', 'mailchimp', 'sendgrid',
-                    'amazonses', 'postmark', 'intercom', 'hubspot',
-                    'mailgun', 'sparkpost', 'constantcontact', 'campaign-archive',
-                    'vimeo.com', 'vimeo@',  # Video platforms
-                    'mongodb.com', 'mongodb@', 'atlassian.com', 'github.com',
-                    'aws.amazon.com', 'cloud.google.com', 'azure.microsoft.com',
-                    # Subdomain patterns (careful - these match anywhere in domain)
-                    'mail.', 'send.', 'email.', 'mailer.', 'bounce.',
-                    'notify.', 'msg.', 'campaigns.',
-                ]
-                if any(p in last_from_email for p in automated_email_patterns):
-                    continue
-
-                # Skip by subject line patterns (common automated email subjects)
-                automated_subject_patterns = [
-                    'your job', 'job alert', 'new jobs', 'jobs for you',
-                    'password reset', 'verify your', 'confirm your',
-                    'security alert', 'new sign-in', 'new login', 'login attempt',
-                    'weekly digest', 'daily digest', 'monthly digest',
-                    'newsletter', 'unsubscribe', 'subscription',
-                    'receipt for', 'invoice', 'payment confirmation', 'order confirmation',
-                    'your order', 'shipping confirmation', 'delivery update',
-                    'welcome to', 'thanks for signing up', 'account created',
-                    'is active', 'expiring soon', 'expires', 'renew',
-                    # Calendar/meeting related
-                    'invitation:', 'invitation from', 'canceled event', 'accepted:', 'declined:',
-                    'updated invitation', 'event canceled', 'meeting canceled',
-                    'from an unknown sender',
-                    # Account related
-                    'account registration', 'registration complete', 'verify your email',
-                    'confirm your email', 'activate your account', 'action required',
-                    'build your first', 'getting started with', 'complete your setup',
-                    # Monthly/periodic reports
-                    'in january', 'in february', 'in march', 'in april', 'in may',
-                    'in june', 'in july', 'in august', 'in september', 'in october',
-                    'in november', 'in december', 'this month', 'last month',
-                    'pro tips', 'tips to', 'getting started',
-                ]
-                if any(p in subject_lower for p in automated_subject_patterns):
-                    continue
-                from_email = next((h['value'] for h in first_headers if h['name'] == 'From'), 'Unknown')
-                date_str = next((h['value'] for h in first_headers if h['name'] == 'Date'), '')
-
-                # Calculate age
-                age_days = within_days  # Default fallback
-                if date_str:
-                    date_obj = parsedate_to_datetime(date_str)
-                    now = datetime.now(timezone.utc)
-                    age_days = (now - date_obj).days
-
-                unanswered.append({
-                    'thread_id': thread_id,
-                    'from': from_email,
-                    'subject': subject,
-                    'date': date_str,
-                    'age_days': age_days,
-                    'messages_in_thread': len(thread_messages)
-                })
-
-                if len(unanswered) >= max_results:
-                    break
-
-            # Pagination: get next page
-            page_token = results.get('nextPageToken')
-            pages_fetched += 1
-            if not page_token:
-                break
-
-        if not unanswered:
-            return f"No unanswered emails found in the last {within_days} days."
-
-        # Format output
-        output = [f"Found {len(unanswered)} unanswered email(s) from the last {within_days} days:\n"]
-        for i, email in enumerate(unanswered, 1):
-            output.append(f"{i}. From: {email['from']}")
-            output.append(f"   Subject: {email['subject']}")
-            output.append(f"   Age: {email['age_days']} days ({email['messages_in_thread']} messages in thread)")
-            output.append(f"   Thread ID: {email['thread_id']}\n")
-
-        return "\n".join(output)
+        """Describe one page of latest-incoming threads; use list_unanswered for cursors."""
+        page = self.list_unanswered(within_days=within_days, last=max_results)
+        output = self._format_dicts(page['items'])
+        if page['truncated']:
+            output += "\nMore candidate threads exist; use list_unanswered and next_cursor to continue."
+        return output
 
     # === CSV Caching ===
 

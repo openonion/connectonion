@@ -22,7 +22,9 @@ from rich.console import Console
 
 console = Console()
 
-CO_HOME = Path.home() / ".co"
+from ...environment import global_config_dir
+
+CO_HOME = global_config_dir()
 KEYS_FILE = CO_HOME / "keys" / "agent.key"
 AGENT_JSON = CO_HOME / "agent.json"
 KEYS_ENV = CO_HOME / "keys.env"
@@ -92,7 +94,7 @@ def handle_setup(
         handle_skills_manifest()
 
     # Auth check
-    auth_ok = KEYS_ENV.exists() and "OPENONION_API_KEY=" in KEYS_ENV.read_text(encoding="utf-8")
+    auth_ok = bool(os.environ.get("OPENONION_API_KEY"))
     console.print()
     if auth_ok:
         console.print("[green]✓ Auth:[/green] OPENONION_API_KEY present")

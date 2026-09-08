@@ -18,7 +18,7 @@ AGENT.md Format:
 ---
 name: explore
 description: Fast codebase exploration agent
-model: co/gemini-3.7-flash
+model: co/gemini-3.8-flash
 max_iterations: 15
 tools:
   - glob
@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..core.events import on_agent_ready
+from ..core.usage import DEFAULT_MODEL
 from ..project import project_co_dir
 
 if TYPE_CHECKING:
@@ -163,7 +164,7 @@ def task(agent, prompt: str, agent_type: str) -> str:
     # Extract configuration
     frontmatter = config['frontmatter']
     system_prompt = config['system_prompt']
-    model = frontmatter.get('model', 'co/gemini-3.7-flash')
+    model = frontmatter.get('model', DEFAULT_MODEL)
     max_iterations = frontmatter.get('max_iterations', 10)
     tool_names = frontmatter.get('tools', [])
 

@@ -3,7 +3,7 @@ Purpose: Display and manage agent keys, credentials, and OAuth connections with 
 LLM-Note:
   Dependencies: imports from [os, pathlib, rich.console, rich.panel, rich.table, credentials, project, status_commands, address] | imported by [cli/main.py via handle_keys()] | tested by [tests/e2e/cli/test_cli_keys.py]
   Data flow: receives reveal flag (bool) → _find_co_dir() resolves project/global identity → _load_env_vars() inspects process/project-root/global sources without loading them → compares an inspectable OpenOnion account claim with that identity → masks secrets unless --reveal → displays Identity, Secrets, OAuth, and Env Files tables
-  State/Effects: no state modifications | reads from .co/keys/agent.key, recovery.txt, project-root .env, ~/.co/keys.env | writes to stdout via rich.Console | does not mutate os.environ or credential files
+  State/Effects: no state modifications | reads from .co/keys/agent.key, recovery.txt, the selected env file (global by default) | writes to stdout via rich.Console | does not mutate os.environ or credential files
   Integration: exposes handle_keys() for CLI | similar to status command but focuses on credentials | relies on address module for keypair loading | uses Rich for formatted panel output | checks env vars in priority order: OPENONION_API_KEY, GOOGLE_EMAIL/tokens, MICROSOFT_EMAIL/tokens | recovery phrase shown if recovery.txt exists
   Performance: file I/O for key loading and env vars (<50ms) | Rich table rendering is fast | no network calls
   Errors: prints message if no .co directory found (run 'co init' or 'co create') | prints message if keys fail to load | gracefully handles missing recovery.txt (shows "missing" message) | gracefully handles missing OAuth tokens (not shown in table) | gracefully handles missing env files (shows red ✗)
@@ -41,17 +41,9 @@ def _find_co_dir() -> Path:
     configuration -- `co init` usually produces one -- and it is what
     resolve_agent_identity does on the host side.
     """
-    from ...project import project_co_dir
-
-    local = project_co_dir()
-    if local.exists() and (local / "keys" / "agent.key").exists():
-        return local
-
-    global_dir = Path.home() / ".co"
-    if global_dir.exists() and (global_dir / "keys" / "agent.key").exists():
-        return global_dir
-
-    return None
+    from ...project import selected_identity_dir
+    selected = selected_identity_dir()
+    return selected if (selected / "keys" / "agent.key").exists() else None
 
 
 def _load_env_vars(
@@ -121,7 +113,8 @@ def _source_label(co_dir: Path) -> str:
     the relative `Path(".co")`; once it became the resolved project path the
     panel printed the machine's whole directory tree.
     """
-    if co_dir.resolve() == (Path.home() / ".co").resolve():
+    from ...environment import global_config_dir
+    if co_dir.resolve() == global_config_dir():
         return "~/.co (global)"
     try:
         shown = co_dir.relative_to(Path.cwd())
@@ -265,11 +258,9 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     files_table.add_column("key", style="cyan", min_width=14)
     files_table.add_column("value")
 
-    global_env = Path.home() / ".co" / "keys.env"
-    local_env = project_root() / ".env"
-
-    files_table.add_row("Global", f"{'[green]✓[/green]' if global_env.exists() else '[red]✗[/red]'} {_short_path(global_env)}")
-    files_table.add_row("Local", f"{'[green]✓[/green]' if local_env.exists() else '[red]✗[/red]'} {_short_path(local_env)}")
+    from ...environment import selected_env_file
+    selected = selected_env_file()
+    files_table.add_row("Selected", f"{'[green]✓[/green]' if selected.exists() else '[red]✗[/red]'} {_short_path(selected)}")
 
     console.print(Panel(files_table, title="[bold]Env Files[/bold]", border_style="dim"))
 

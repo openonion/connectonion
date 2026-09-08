@@ -124,6 +124,7 @@ class TestHandleList:
 
     def test_empty_listing_message(self, capsys):
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.list_files.return_value = []
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
@@ -131,19 +132,23 @@ class TestHandleList:
 
         assert "no files" in capsys.readouterr().out
 
-    def test_empty_listing_writes_no_cache(self):
+    def test_empty_listing_clears_numbers(self):
         """An empty listing must not clobber the numbering from the last one."""
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.list_files.return_value = []
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
             handle_gdrive_list()
 
         assert not gdrive_commands.LIST_CACHE.exists()
+        record = json.loads(next((gdrive_commands.LIST_CACHE.parent / 'gdrive-listings').glob('*.json')).read_text())
+        assert record['ids'] == []
 
     def test_table_and_cache(self, monkeypatch, capsys):
         monkeypatch.setattr(gdrive_commands, "console", Console(force_terminal=True, width=120))
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.list_files.return_value = sample_files(3)
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
@@ -152,13 +157,14 @@ class TestHandleList:
         output = plain(capsys.readouterr().out)
         assert "Document 1.pdf" in output
         assert "co gdrive get" in output
-        assert json.loads(gdrive_commands.LIST_CACHE.read_text()) == {
-            "1": "file-1", "2": "file-2", "3": "file-3",
-        }
+        record = json.loads(next((gdrive_commands.LIST_CACHE.parent / 'gdrive-listings').glob('*.json')).read_text())
+        assert record['ids'] == ['file-1','file-2','file-3']
+        assert record['provider'] == 'gdrive'
 
     def test_piped_output_carries_full_ids(self, monkeypatch, capsys):
         monkeypatch.setattr(gdrive_commands, "console", Console(force_terminal=False, width=120))
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.list_files.return_value = sample_files(2)
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
@@ -168,11 +174,12 @@ class TestHandleList:
         assert "file-1" in output and "file-2" in output
         # Real tabs, not Rich's space-expanded ones — `cut -f4` must work.
         assert output.splitlines()[0].split("\t") == [
-            "Document 1.pdf", "application/pdf", "2048", "file-1",
+            "Document 1.pdf", "application/pdf", "2048", "file-1", "1",
         ]
 
     def test_limit_reaches_the_tool(self):
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.list_files.return_value = []
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
@@ -186,6 +193,7 @@ class TestHandleSearch:
     def test_no_matches_explains_prefix_matching(self, capsys):
         """Drive matches word prefixes, so a 'no results' needs that caveat."""
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.search_files.return_value = []
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
@@ -203,7 +211,12 @@ class TestResolveFileId:
         gdrive_commands.LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gdrive_commands.LIST_CACHE.write_text(json.dumps({"1": "file-a", "2": "file-b"}))
 
-        assert _resolve_file_id("2") == "file-b"
+        from connectonion.cli.commands.gmail_listings import save_listing
+        token = save_listing(gdrive_commands.LIST_CACHE.parent / 'gdrive-listings', 'owner@example.test',
+                             'files', ['file-a','file-b'], provider='gdrive')
+        drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
+        assert _resolve_file_id("2", drive, token) == "file-b"
 
     def test_full_id_passes_through(self):
         assert _resolve_file_id("1A2b3C4d5E6f7G8h") == "1A2b3C4d5E6f7G8h"
@@ -212,7 +225,9 @@ class TestResolveFileId:
         gdrive_commands.LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gdrive_commands.LIST_CACHE.write_text(json.dumps({"1": "file-a"}))
 
-        assert _resolve_file_id("7") == ""
+        from connectonion.cli.commands.gmail_listings import ListingError
+        with pytest.raises(ListingError, match='--listing'):
+            _resolve_file_id("7")
 
 
 class TestGetPutRm:
@@ -221,28 +236,34 @@ class TestGetPutRm:
         gdrive_commands.LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gdrive_commands.LIST_CACHE.write_text(json.dumps({"1": "file-a"}))
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.download.return_value = "Downloaded to /tmp/Report.pdf"
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
-            handle_gdrive_get("1", dest="/tmp")
+            from connectonion.cli.commands.gmail_listings import save_listing
+            token = save_listing(gdrive_commands.LIST_CACHE.parent / 'gdrive-listings', 'owner@example.test',
+                                 'files', ['file-a'], provider='gdrive')
+            handle_gdrive_get("1", dest="/tmp", listing=token)
 
         drive.download.assert_called_once_with("file-a", dest="/tmp")
         assert "Report.pdf" in plain(capsys.readouterr().out)
 
     def test_get_unknown_number_exits(self, capsys):
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
             with pytest.raises(typer.Exit):
                 handle_gdrive_get("9")
 
         drive.download.assert_not_called()
-        assert "No file #9" in capsys.readouterr().out
+        assert "--listing" in capsys.readouterr().out
 
     def test_put_uploads_and_shows_the_link(self, tmp_path, capsys):
         local = tmp_path / "report.pdf"
         local.write_bytes(b"data")
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
         drive.upload.return_value = {
             "id": "file-1", "name": "report.pdf", "type": "application/pdf",
             "modified": "", "size": 4, "link": "https://drive.google.com/file/d/file-1/view",
@@ -268,9 +289,45 @@ class TestGetPutRm:
         gdrive_commands.LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gdrive_commands.LIST_CACHE.write_text(json.dumps({"1": "file-a"}))
         drive = MagicMock()
+        drive.get_account_email.return_value = 'owner@example.test'
 
         with patch.object(gdrive_commands, "_gdrive", return_value=drive):
-            handle_gdrive_rm("1")
+            from connectonion.cli.commands.gmail_listings import save_listing
+            token = save_listing(gdrive_commands.LIST_CACHE.parent / 'gdrive-listings', 'owner@example.test',
+                                 'files', ['file-a'], provider='gdrive')
+            handle_gdrive_rm("1", listing=token)
 
         drive.delete.assert_called_once_with("file-a")
         assert "trash" in plain(capsys.readouterr().out)
+
+
+def test_info_json_uses_confirmed_account_and_full_file_id(monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    drive = MagicMock()
+    drive.get_account_email.return_value = 'owner@example.test'
+    drive.get_info.return_value = {**sample_files(1)[0], 'raw_size':None, 'export_type':'text/markdown'}
+    monkeypatch.setattr(gdrive_commands, '_gdrive', lambda:drive)
+    result = CliRunner().invoke(app, ['gdrive','info','file-1','--json'])
+    data = json.loads(result.stdout)
+    assert result.exit_code == 0, result.output
+    assert data['account'] == 'owner@example.test'
+    assert data['data']['raw_size'] is None
+    drive.get_info.assert_called_once_with('file-1')
+
+
+def test_info_json_usage_and_provider_failures_are_single_safe_documents(monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from googleapiclient.errors import HttpError
+    from httplib2 import Response
+    result = CliRunner().invoke(app, ['gdrive','info','--json'])
+    assert result.exit_code == 2
+    assert json.loads(result.stdout)['provider'] == 'gdrive'
+    drive = MagicMock()
+    drive.get_account_email.side_effect = HttpError(Response({'status':'403'}), b'PRIVATE_BODY')
+    monkeypatch.setattr(gdrive_commands, '_gdrive', lambda:drive)
+    result = CliRunner().invoke(app, ['gdrive','info','file-1','--json'])
+    assert result.exit_code == 1
+    assert 'PRIVATE_BODY' not in result.output
+    assert json.loads(result.stdout)['next_command'] == 'co auth google'
