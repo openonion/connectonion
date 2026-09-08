@@ -43,6 +43,21 @@ The CLI automatically:
 
 ## All Commands
 
+This page walks through the commands in prose. The CLI itself is the register,
+at three levels, each complete at its own level:
+
+```bash
+co                      # every top-level command with a one-line summary
+co commands             # every command and subcommand, one per line — grep it
+co gmail --help         # the options and subcommands of one command
+```
+
+`co commands` is plain text with no colour codes, so `co commands | grep draft`
+finds the draft commands without knowing which group holds them. Every tip the
+CLI prints after a command names the next command spelled out, and a test
+checks each of those names against this register, so a tip never points at a
+command that does not exist.
+
 ### Project Commands
 
 #### `co create [name]` - Create New Project
@@ -1186,6 +1201,7 @@ See [server.md](server.md).
 | `co server` | Servers you own, and deploy targets | No | ✅ Yes (except `destroy`) |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
+| `co commands` | List every command and subcommand, one per line | No | ✅ Yes |
 | `co browser` | Browser command (local) | No | ✅ Yes |
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |

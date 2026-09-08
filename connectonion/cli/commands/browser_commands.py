@@ -1,7 +1,7 @@
 """
 Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwards one command to the persistent browser daemon, and serves self-describing help.
 LLM-Note:
-  Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send | lazy: browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Dependencies: imports from [sys, shlex, browser_agent.client.send | lazy: command_tips.rotating_tip for the success tip, browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
   State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
@@ -11,7 +11,6 @@ LLM-Note:
 
 import shlex
 import sys
-from pathlib import Path
 
 from ..browser_agent.client import send
 
@@ -49,19 +48,14 @@ TIPS = [
     'Let the AI do it:  co browser do "log in and download my invoices"',
     "List every function you can call directly:  co browser help",
     "Run without a visible window:  co browser --headless <function>",
-    "The browser stays open between commands — one shared session until close.",
+    "The browser stays open between commands, one shared session, until you run:  co browser close",
 ]
 
 
 def _next_tip():
-    """Rotate through TIPS so each run teaches something new; index persists in ~/.co.
-    A garbled state file (e.g. two commands racing the write) resets to the first tip."""
-    state = Path.home() / ".co" / ".browser_tip"
-    raw = state.read_text(encoding="utf-8").strip() if state.exists() else ""
-    idx = int(raw) if raw.isdigit() else 0
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(str((idx + 1) % len(TIPS)), encoding="utf-8")
-    return TIPS[idx % len(TIPS)]
+    """Rotate through TIPS so each run teaches something new; cursor at ~/.co/.browser_tip."""
+    from .command_tips import rotating_tip
+    return rotating_tip("browser", TIPS)
 
 
 def _extract_tab(args):

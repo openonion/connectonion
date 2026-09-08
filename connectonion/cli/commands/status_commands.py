@@ -571,7 +571,9 @@ def handle_status(reveal: bool = False):
     if user.get('balance_usd', 0) <= 0:
         console.print("\n[yellow]⚠️  Low balance! Add credits at https://o.openonion.ai/purchase[/yellow]")
 
-    console.print("\n[yellow]💡 Tips:[/yellow]")
-    console.print("   • Add credits: https://o.openonion.ai/purchase")
-    console.print("   • Use 'co auth' to refresh your token")
-    console.print("   • Pricing: https://docs.connectonion.com/models/pricing\n")
+    # One tip per run, and it names a command. The old block was three bullets,
+    # two of them URLs — a reader with only this output could not act on it in
+    # the shell. Rotation because status has no single next step; the useful
+    # thing to teach here is the rest of the surface.
+    from .command_tips import STATUS_TIPS, rotating_tip
+    console.print(f"\n[dim]💡 {rotating_tip('status', STATUS_TIPS)}[/dim]\n", highlight=False)

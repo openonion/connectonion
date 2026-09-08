@@ -1,10 +1,10 @@
 """
 Purpose: Entry point for ConnectOnion CLI application using Typer framework with Rich formatting
 LLM-Note:
-  Dependencies: imports from [typer, rich.console, typing, __version__] | imported by [__main__.py] | the `co` and `connectonion` commands come from pyproject.toml [project.scripts] -> connectonion.cli.main:cli; there is no setup.py in this repo | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
+  Dependencies: imports from [typer, rich.console, typing, __version__ | lazy: discovery.command_tree for the bare screen and `co commands`] | imported by [__main__.py] | the `co` and `connectonion` commands come from pyproject.toml [project.scripts] -> connectonion.cli.main:cli; there is no setup.py in this repo | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
   Data flow: cli() entry point → creates Typer app → registers command callbacks (init, create, deploy, auth, status, reset, doctor, browser) → Typer parses args (including status --reveal/-r) → invokes corresponding handle_*() function from commands module → command outputs via rich.Console
   State/Effects: no persistent state | writes to stdout via rich.Console | lazy imports command handlers on invocation | registers typer.Option and typer.Argument decorators | uses typer.Exit() for early termination
-  Integration: exposes cli() entry point registered in pyproject.toml [project.scripts] as the 'co' and 'connectonion' commands | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status (--reveal/-r), reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
+  Integration: exposes cli() entry point registered in pyproject.toml [project.scripts] as the 'co' and 'connectonion' commands | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status (--reveal/-r), reset, doctor, commands (every command path with its summary, from discovery.command_tree), browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
   Performance: fast startup (lazy imports) | Typer arg parsing is O(n) args | Rich console initialization is lightweight
   Errors: typer.Exit() on --version or --browser | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
 """
@@ -103,36 +103,28 @@ def _show_help():
     console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
     console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
     console.print()
-    # A selection, not the register. Eight real commands are not here — ai,
-    # announce, call, reset, server, setup, skills, sub — and calling this
-    # "Commands:" read as the whole list. `co --help` is generated from the
-    # commands themselves and does show all of them, so the honest fix is to
-    # say which of the two this is and point at the other. Which of the eight
-    # belong on a new user's first screen is a product call, not this one's.
-    console.print("[bold]Common commands:[/bold]")
-    console.print("  [green]create[/green]  <name>     Create new project")
-    console.print("  [green]init[/green]   [path]     Set up global keys, or an explicit project directory")
-    console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
-    console.print("  [green]eval[/green]              Run evals and show status")
-    console.print("  [green]trust[/green]             Manage trust lists")
-    console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
-    console.print("  [green]auth[/green]              Authenticate for managed keys")
-    console.print("  [green]email[/green]             Send and read agent email")
-    console.print("  [green]sms[/green]               Pair a phone and read encrypted SMS")
-    console.print("  [green]transfer[/green]          Send credits to another agent address")
-    console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
-    console.print("  [green]gcalendar[/green]         Calendar events, free slots and Meet links (co auth google)")
-    console.print("  [green]youtube[/green]           Video metadata and preview-first uploads (co auth google)")
-    console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
-    console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
-    console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
-    console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
-    console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
-    console.print("  [green]keys[/green]              Show agent keys and credentials")
-    console.print("  [green]status[/green]            Check credentials, account, and deployments")
-    console.print("  [green]doctor[/green]            Diagnose installation")
+    # The register, not a selection. This list used to be typed by hand and
+    # named 16 of 24 commands — ai, announce, call, reset, server, setup,
+    # skills and sub were real and absent, and a hand-typed list has no way
+    # to notice the ninth. Reading the Typer app means a command is on the
+    # first screen the moment it is registered, with the same summary its
+    # --help carries, and a test compares the two so this cannot silently
+    # become a selection again.
+    from rich.markup import escape
+    from .discovery import command_tree
+    top_level = [e for e in command_tree(app) if e.path.count(" ") == 1]
+    width = max(len(e.path) for e in top_level) - len("co ")
+    console.print("[bold]Commands:[/bold]")
+    for entry in top_level:
+        name = entry.path[len("co "):]
+        # escape(): a summary that mentions `[path]` must not be read as markup.
+        # soft_wrap: a pipe is 80 columns to Rich, and a wrapped summary reads
+        # as two commands.
+        console.print(f"  [green]{name.ljust(width)}[/green]  {escape(entry.summary)}",
+                      highlight=False, soft_wrap=True)
     console.print()
-    console.print("  [dim]co --help[/dim]         All commands")
+    console.print("  [dim]co commands[/dim]           Every subcommand, one per line", highlight=False)
+    console.print("  [dim]co <command> --help[/dim]   Options for one command", highlight=False)
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")
@@ -289,6 +281,25 @@ def doctor(
     # be 0 even under its own `✗ broken symlink`.
     if handle_doctor(fix=fix, yes=yes, json_output=json_output):
         raise typer.Exit(1)
+
+
+@app.command()
+def commands():
+    """List every command, including subcommands, one per line with its summary."""
+    # `co --help` shows one level; `co gmail --help` the next; `co gmail draft
+    # --help` the one below that. An agent looking for "the command that sends
+    # a draft" has to guess which group to open, and a wrong guess is a round
+    # trip — or an invented command. This is the whole tree in one call, in
+    # the order --help prints it, plain text so it can be grepped. No Rich:
+    # the audience is a pipe.
+    from .discovery import command_tree
+    entries = command_tree(app)
+    width = max(len(e.path) for e in entries)
+    for entry in entries:
+        print(f"{entry.path.ljust(width)}  {entry.summary}")
+    print()
+    print("Options for one command: co <command> --help")
+    print("Functions inside the browser: co browser help")
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
