@@ -284,5 +284,7 @@ class TestTheCommandRuns:
 
         assert result.returncode == 0, result.stderr[-400:]
         assert (project / ".co" / "host.yaml").exists()
+        # The global-env foundation makes init minimal; co create owns scaffolds.
+        assert not (project / ".co" / "control-center").exists()
         docs = list((project / ".co" / "docs").rglob("*.md"))
         assert len(docs) > 50, f"co init produced {len(docs)} docs"

@@ -299,6 +299,7 @@ def _create_route_handlers(
     replay_check=None,
     mode_policy: HostPermissionPolicy | None = None,
     remote_browser_service=None,
+    project_dir=None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -322,6 +323,22 @@ def _create_route_handlers(
         from .auth import signature_already_used
         replay_check = signature_already_used
 
+    controller = None
+    if config.get('control_center'):
+        from .control_center.controller import controller_from_config
+        base_factory = create_agent
+        controller = controller_from_config(config['control_center'],
+            project_dir or project_root(), agent_metadata['address'], base_factory)
+        create_agent = lambda: controller.attach(base_factory())
+
+    def notify_result(result, prompt):
+        if controller is not None:
+            try:
+                controller.completed_turn(result, prompt)
+            except (ValueError, RuntimeError, OSError) as exc:
+                Console().print(f'[yellow]Control Center event was not queued: {type(exc).__name__}[/yellow]')
+        return result
+
     def requester_for(requester_address):
         if not requester_address:
             return None
@@ -337,11 +354,11 @@ def _create_route_handlers(
         validate_files(files, config)
         validate_images(images, config)
         requester = requester_for(requester_address)
-        return input_handler(
+        return notify_result(input_handler(
             create_agent, storage, prompt, result_ttl, session, connection,
             images, files, requester=requester, mode_policy=mode_policy,
             is_admin=bool(requester and requester["level"] == "admin"),
-        )
+        ), prompt)
 
     def handle_ws_input(storage, prompt, connection, session=None, images=None,
                         files=None, requester_address=None):
@@ -353,10 +370,10 @@ def _create_route_handlers(
         # .co/admins.txt, which is a separate question, and conflating them
         # would have refused the owner as loudly as everyone else.
         requester = requester_for(requester_address)
-        return input_handler(create_agent, storage, prompt, result_ttl, session,
+        return notify_result(input_handler(create_agent, storage, prompt, result_ttl, session,
                              connection, images, files, requester=requester,
                              mode_policy=mode_policy,
-                             is_admin=bool(requester and requester["level"] == "admin"))
+                             is_admin=bool(requester and requester["level"] == "admin")), prompt)
 
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
     handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent)
@@ -394,6 +411,7 @@ def _create_route_handlers(
         return admin_logs_handler(create_agent().logger.log_file_path)
 
     return {
+        "control_center": controller,
         "input": handle_input,
         "session": session_handler,
         "sessions": sessions_handler,
@@ -1137,6 +1155,7 @@ def host(
         exec_permissions, replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
         remote_browser_service=remote_browser_service,
+        project_dir=co_dir.parent,
     )
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
@@ -1184,6 +1203,7 @@ def host(
     # networking question.
     sched_startup, sched_shutdown = create_schedule_lifespan(
         co_dir, create_agent, storage, result_ttl, console=Console(),
+        extra_tick=(route_handlers['control_center'].tick if route_handlers['control_center'] else None),
     )
     on_startup = _both(on_startup, sched_startup)
     on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first
@@ -1215,7 +1235,7 @@ def host(
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
-def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None, http=None):
+def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None, http=None, control_center=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
     Each request calls create_agent() to get a fresh Agent instance.
@@ -1277,14 +1297,21 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     )
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent,
-        DEFAULT_FILE_LIMITS, load_permission_patterns(),
+        {**DEFAULT_FILE_LIMITS, 'control_center': control_center}, load_permission_patterns(),
         replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
         remote_browser_service=remote_browser_service,
+        project_dir=replay_dir.parent,
     )
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
     )
+    if route_handlers['control_center'] is not None:
+        sched_startup, sched_shutdown = create_schedule_lifespan(
+            replay_dir, create_agent, storage, result_ttl,
+            extra_tick=route_handlers['control_center'].tick)
+        balance_startup = _both(balance_startup, sched_startup)
+        balance_shutdown = _both(sched_shutdown, balance_shutdown)
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

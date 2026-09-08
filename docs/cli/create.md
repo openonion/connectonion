@@ -123,6 +123,10 @@ my-agent/
 ├── .env                 # API keys (from ~/.co/keys.env)
 ├── .co/
 │   ├── host.yaml       # Project config (uses global address/email)
+│   ├── control-center/ # Full Web app source
+│   │   ├── index.html
+│   │   ├── control-center.js
+│   │   └── CONTROL_CENTER.md
 │   └── docs/           # Framework documentation
 │       ├── co-vibe-coding-all-in-one.md
 │       └── connectonion.md
