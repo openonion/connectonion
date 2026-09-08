@@ -1,5 +1,7 @@
 """Canonical Markdown and small operational files; no knowledge database."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
