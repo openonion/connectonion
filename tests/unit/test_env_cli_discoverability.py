@@ -18,7 +18,7 @@ CASES = [
     (["gcalendar", "list"], "Connect the Google account for this command", "auth google"),
     (["youtube", "channel"], "Connect the Google account for this command", "auth google"),
     (["outlook", "inbox"], "Connect the Microsoft account for this command", "auth microsoft"),
-    (["gmail", "inbox"], "Repair the selected env file configuration", None),
+    (["gmail", "inbox"], "Create the selected env file so the command can run", None),
     (["init"], "Initialize global configuration", "init"),
 ]
 
@@ -39,7 +39,10 @@ def capture(args, root, invalid=False):
 def test_selected_source_is_in_piped_recovery(args, goal, recovery, tmp_path):
     result = capture(args, tmp_path, invalid=recovery is None)
     assert result.exit_code == (2 if recovery in (None, "init") else 1), result.output
-    expected = ("co --help" if recovery is None else "co init" if recovery == "init"
+    # A missing selected file is created by saving its first setting; the tip
+    # used to be `co --help`, which lists commands and creates nothing.
+    expected = (f"co --env-file {shlex.quote(str(tmp_path / 'absent.env'))} env set" if recovery is None
+                else "co init" if recovery == "init"
                 else f"co --env-file {shlex.quote(str(tmp_path / 'test.env'))} {recovery}")
     assert expected in result.output, result.output
     assert "Traceback" not in result.output
@@ -51,7 +54,8 @@ if __name__ == "__main__":
         root = Path(directory).resolve()
         for args, goal, recovery in CASES:
             result = capture(args, root, invalid=recovery is None)
-            expected = ("co --help" if recovery is None else "co init" if recovery == "init"
+            expected = (f"co --env-file {shlex.quote(str(root / 'absent.env'))} env set" if recovery is None
+                        else "co init" if recovery == "init"
                         else f"co --env-file {shlex.quote(str(root / 'test.env'))} {recovery}")
             reply = llm_do(f"You just ran a shell command. Its full output was:\n\n{result.output}\n\n"
                            f"Your goal: {goal}. Reply with ONE shell command and nothing else.",

@@ -109,8 +109,11 @@ def test_custom_global_path_ignores_routing_inside_env(layout):
 def test_invalid_explicit_file_fails_before_command(layout, name):
     result = probe(layout, layout[2], selected=layout[1] / name)
     assert result.returncode == 2
-    assert "co --help" in result.stderr + result.stdout
-    assert "global-token" not in result.stderr + result.stdout
+    # The tip keeps the selector and names `co env`, the command that runs on
+    # a file nothing else can use — not `co --help`, which repairs nothing.
+    output = result.stderr + result.stdout
+    assert f"Next: co --env-file {layout[1] / name} env" in output
+    assert "global-token" not in output
 
 
 def test_malformed_explicit_file_does_not_print_credentials(layout):
@@ -118,7 +121,7 @@ def test_malformed_explicit_file_does_not_print_credentials(layout):
     path.write_text('GOOGLE_ACCESS_TOKEN="secret-unclosed\n')
     result = probe(layout, layout[2], selected=path)
     assert result.returncode == 2
-    assert "Invalid syntax" in result.stdout + result.stderr
+    assert "invalid syntax on line 1" in result.stdout + result.stderr
     assert "secret-unclosed" not in result.stdout + result.stderr
     assert "global-token" not in result.stdout + result.stderr
 
