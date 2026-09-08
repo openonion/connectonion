@@ -72,3 +72,8 @@ backend URL resolution requests the `default_backend_url` fixture.
 with a 15 minute job timeout, measures coverage on 3.12 and fails below the
 floor set there (raise it as coverage rises, never lower it to pass), and
 runs the platform-specific browser and transport suites on Windows and macOS.
+
+Background-task termination also reaps the owned shell process tree and joins
+its output reader. A termination confirmation must not leave a live reader or
+an open stdout pipe. Missing-skill diagnostics preserve full paths when piped,
+including paths longer than the terminal width.
