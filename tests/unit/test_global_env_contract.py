@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -112,7 +113,8 @@ def test_invalid_explicit_file_fails_before_command(layout, name):
     # The tip keeps the selector and names `co env`, the command that runs on
     # a file nothing else can use — not `co --help`, which repairs nothing.
     output = result.stderr + result.stdout
-    assert f"Next: co --env-file {layout[1] / name} env" in output
+    selector = shlex.quote(str((layout[1] / name).resolve()))
+    assert f"Next: co --env-file {selector} env" in output
     assert "global-token" not in output
 
 
