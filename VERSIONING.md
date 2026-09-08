@@ -63,7 +63,7 @@ or advertise this candidate as published until the remaining gates pass.
 ## Current Version: 1.8.3
 
 ### Version History
-- 1.8.3 (**prepared, not published — Google tools with local credentials:**
+- 1.8.3 (**Google tools with local credentials:**
   unify Gmail, Drive, Calendar and YouTube authorization and command discovery;
   add Gmail draft attachments, Calendar CLI and preview-confirmed YouTube
   uploads/metadata updates. Preserve local token ownership, refresh rotation
