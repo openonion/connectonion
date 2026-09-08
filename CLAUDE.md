@@ -77,25 +77,23 @@ pip install -e .  # Development mode (deps from pyproject.toml)
 
 ### Testing
 ```bash
-# Run all tests except real API calls (default)
-python -m pytest
+pip install -e ".[dev]"
 
-# Run specific test categories
-python -m pytest tests/unit           # Unit tests (fast, mocked)
-python -m pytest tests/e2e            # All e2e (cli + real_api + offline)
-python -m pytest tests/e2e/cli        # CLI tests
-python -m pytest tests/e2e/real_api   # Real API tests
+make test                             # everything offline, all cores, ~1 minute (what CI runs)
+make test-unit                        # unit only
+make test-e2e                         # our own system end to end
+make test-real                        # paid providers (requires keys)
+make cov                              # with the coverage report CI gates on
 
-# Run real API tests (requires keys)
-python -m pytest -m real_api
-
-# Run with coverage
-python -m pytest --cov=connectonion --cov-report=term-missing
-
-# Run single test file
+# Single file / single test: plain in-process pytest, so -s and breakpoints work
 python -m pytest tests/unit/test_agent.py
 python -m pytest tests/unit/test_agent.py::test_specific_function
 ```
+
+`pytest.ini` is the only test configuration. Every test is held to the
+policy in `tests/conftest.py` — no network, no leaked threads, isolated HOME,
+60s timeout — and `tests/README.md` explains each rule and how to opt out
+when a test is about exactly that thing.
 
 ### CLI Commands
 ```bash
@@ -299,15 +297,12 @@ Two layers — **unit** and **e2e**. CLI and real-API tests are subtypes of e2e.
 
 ### Running Tests
 ```bash
-# Default: unit + offline e2e (excludes real_api, network)
-pytest
-
-# Single file
-pytest tests/unit/test_agent.py
+make test                       # default: unit + offline e2e, parallel (excludes real_api, network)
+pytest tests/unit/test_agent.py # single file, in-process
 
 # Real API tests (set API keys first)
 export OPENAI_API_KEY=sk-...
-pytest -m real_api
+make test-real
 ```
 
 ### Test Markers

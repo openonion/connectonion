@@ -126,3 +126,29 @@ def test_recursive_download_preserves_empty_directories(nas,tmp_path):
     nas._list_raw=lambda p,*a: ([entries['/home/folder/empty']],1) if p=='/home/folder' else ([],0)
     result=nas.download('/home/folder',str(tmp_path),recursive=True)
     assert result['status']=='complete' and (tmp_path/'folder'/'empty').is_dir()
+
+
+def test_download_skip_keeps_existing_bytes_without_opening_network(nas,tmp_path):
+    target=tmp_path/'a';target.write_bytes(b'keep these bytes')
+    nas._transport=httpx.MockTransport(lambda r:pytest.fail('skip must not download'))
+    result=nas.download('/home/a',str(tmp_path),skip_existing=True)
+    assert result['status']=='complete' and not result['completed'] and result['skipped']
+    assert target.read_bytes()==b'keep these bytes'
+
+
+def test_download_successfully_overwrites_and_cleans_temporary_name(nas,tmp_path):
+    target=tmp_path/'a';target.write_bytes(b'old')
+    nas._transport=httpx.MockTransport(lambda r:httpx.Response(200,content=b'new'))
+    result=nas.download('/home/a',str(tmp_path),overwrite=True)
+    assert result['status']=='complete' and target.read_bytes()==b'new'
+    assert list(tmp_path.iterdir())==[target]
+
+
+def test_recursive_upload_rejects_symlink_before_any_transfer(nas,tmp_path):
+    tree=tmp_path/'tree';tree.mkdir();(tree/'a').write_bytes(b'ok')
+    (tree/'leak').symlink_to(tmp_path/'outside')
+    nas._maybe_info=Mock(return_value=None)
+    nas._transport=httpx.MockTransport(lambda r:pytest.fail('preflight must reject before upload'))
+    with pytest.raises(SynologyError) as error:
+        nas.upload(str(tree),'/home',recursive=True)
+    assert error.value.code=='path_escape'

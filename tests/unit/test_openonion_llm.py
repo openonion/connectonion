@@ -36,7 +36,7 @@ class TestOpenOnionLLM:
             assert llm.auth_token == "mock-jwt-token"
             assert llm.model == "o4-mini"  # co/ prefix stripped by implementation
 
-    def test_initialization_development(self):
+    def test_initialization_development(self, default_backend_url):
         """Test OpenOnionLLM initializes with development URL."""
         with patch.dict(os.environ, {'OPENONION_DEV': '1', 'OPENONION_API_KEY': 'mock-jwt-token'}):
             llm = OpenOnionLLM(model="co/o4-mini")
@@ -251,7 +251,7 @@ class TestOpenOnionLLM:
                 # Should return None when balance_usd is missing
                 assert balance is None
 
-    def test_get_balance_development_url(self):
+    def test_get_balance_development_url(self, default_backend_url):
         """Test get_balance uses correct URL in development mode."""
         with patch.dict(os.environ, {'OPENONION_DEV': '1', 'OPENONION_API_KEY': 'mock-jwt-token'}):
             llm = OpenOnionLLM(model="co/o4-mini")

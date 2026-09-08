@@ -71,12 +71,18 @@ def version_callback(value: bool):
 
 
 def env_file_callback(ctx: typer.Context, value: Optional[Path]):
+    """Select the env file before any command runs.
+
+    A failure is recorded, not raised here: this eager callback runs before
+    Typer knows which command was asked for, and `co env` must still run on a
+    broken file — it is the command that says which line to fix. main() exits
+    for every other command.
+    """
     from ..environment import EnvironmentError, select_env_file
     try:
         select_env_file(value)
-    except EnvironmentError as error:
-        console.print(str(error), markup=False)
-        raise typer.Exit(2) from None
+    except EnvironmentError:
+        pass
     return value
 
 
@@ -88,6 +94,12 @@ def main(
         is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
+    from ..environment import selection_error
+    error = selection_error()
+    if error is not None and ctx.invoked_subcommand != "env":
+        # Plain print: Rich would wrap the path and split the "Next:" tip.
+        print(error)
+        raise typer.Exit(2)
     if ctx.invoked_subcommand is None:
         _show_help()
 
@@ -132,6 +144,7 @@ def _show_help():
     console.print()
     console.print("[bold]Configuration:[/bold]")
     console.print("  Global by default: ~/.co/keys.env", markup=False)
+    console.print("  co env                           Show the settings in it; co env set <KEY> <value> saves one", markup=False)
     console.print("  co --env-file .env <command>     Use a project env file", markup=False)
     console.print()
     console.print("  co --help                       All commands", markup=False)
@@ -464,6 +477,57 @@ def announce(
 
 
 # Server command group — the machines `co deploy --to` can target
+env_app = _typer_app(help="Show, set and remove settings in the selected env file (global ~/.co/keys.env unless --env-file was given). Bare 'co env' shows them.")
+app.add_typer(env_app, name="env")
+
+
+@env_app.callback(invoke_without_command=True)
+def env_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
+    """Show, set and remove settings in the selected env file."""
+    if ctx.invoked_subcommand is None:
+        from .commands.env_commands import handle_env_show
+        handle_env_show(reveal=False, json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Put --json on bare co env or after env show.")
+
+
+@env_app.command("show")
+def env_show(reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full values"),
+             json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
+    """List setting sources; all values stay hidden unless --reveal is explicit."""
+    from .commands.env_commands import handle_env_show
+    handle_env_show(reveal=reveal, json_output=json_output)
+
+
+@env_app.command("path")
+def env_path():
+    """Print the selected env file's path and nothing else, for $(co env path)."""
+    from .commands.env_commands import handle_env_path
+    handle_env_path()
+
+
+@env_app.command("get")
+def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY")):
+    """Print one value as a command would see it: the process wins, then the file."""
+    from .commands.env_commands import handle_env_get
+    handle_env_get(key)
+
+
+@env_app.command("set")
+def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
+            value: str = typer.Argument(..., help="Value; quote it if it has spaces")):
+    """Save one setting to the selected file, keeping every other line as it is."""
+    from .commands.env_commands import handle_env_set
+    handle_env_set(key, value)
+
+
+@env_app.command("unset")
+def env_unset(key: str = typer.Argument(..., help="Setting name; a GOOGLE_*/MICROSOFT_* account field removes the whole record")):
+    """Remove one setting from the selected file."""
+    from .commands.env_commands import handle_env_unset
+    handle_env_unset(key)
+
+
 server_app = _typer_app(help="Register, list and preflight the servers you can deploy to")
 app.add_typer(server_app, name="server")
 
@@ -1440,7 +1504,7 @@ app.add_typer(syno_app, name="syno")
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
-outlook_app = _typer_app(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
+outlook_app = _typer_app(help="Your Outlook account: mail, scheduled sends, contacts and calendar. Bare 'co outlook' shows the inbox.")
 app.add_typer(outlook_app, name="outlook")
 
 
@@ -1456,7 +1520,13 @@ outlook_contact_app = _typer_app(
     help="Add, list, and search Outlook contacts.",
     no_args_is_help=True,
 )
-outlook_app.add_typer(outlook_contact_app, name="contact")
+outlook_app.add_typer(outlook_contact_app, name="contact", rich_help_panel="Contacts")
+
+# Outlook is one product with three panes: Mail, Calendar, People. The
+# calendar therefore lives here beside `contact`, not as a fourth top-level
+# name an agent would have to guess (#816). Its leaves mirror `co gcalendar`.
+from .commands.outlook_calendar_commands import outlook_calendar_app
+outlook_app.add_typer(outlook_calendar_app, name="calendar", rich_help_panel="Calendar")
 
 
 @outlook_contact_app.command("add")
@@ -1488,7 +1558,7 @@ def outlook_contact_search(
     handle_outlook_contact_search(query, last=last)
 
 
-@outlook_app.command("send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "
+@outlook_app.command("send", rich_help_panel="Send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "
                                     "cat body.txt | co outlook send a@b.com \"Report\" -  |  "
                                     "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h")
 def outlook_send(
@@ -1498,14 +1568,14 @@ def outlook_send(
     cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
-    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
 ):
     """Send an email from your Outlook account, now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_send
     handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at)
 
 
-@outlook_app.command("inbox")
+@outlook_app.command("inbox", rich_help_panel="Mail")
 def outlook_inbox(
     last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
@@ -1515,7 +1585,7 @@ def outlook_inbox(
     handle_outlook_inbox(last=last, unread=unread)
 
 
-@outlook_app.command("read")
+@outlook_app.command("read", rich_help_panel="Mail")
 def outlook_read(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
@@ -1525,7 +1595,7 @@ def outlook_read(
     handle_outlook_read(email_id, mark_read=mark_read)
 
 
-@outlook_app.command("download")
+@outlook_app.command("download", rich_help_panel="Mail")
 def outlook_download(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
@@ -1539,42 +1609,45 @@ def outlook_download(
     handle_outlook_download(email_id, out_dir, include_inline=include_inline)
 
 
-@outlook_app.command("reply", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "
+@outlook_app.command("reply", rich_help_panel="Send", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "
                                      "cat notes.txt | co outlook reply 3 -  |  "
+                                     "co outlook reply 3 \"Looping in Sam\" --cc sam@example.com  |  "
                                      "co outlook reply 3 \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+    cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated); the reply stays in its thread"),
+    bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
-    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
 ):
     """Reply to an email (threaded), now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, attachments=attach, at=at)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc)
 
 
-@outlook_app.command("scheduled")
+@outlook_app.command("scheduled", rich_help_panel="Scheduled sends")
 def outlook_scheduled():
     """List emails waiting for scheduled delivery."""
     from .commands.outlook_commands import handle_outlook_scheduled
     handle_outlook_scheduled()
 
 
-@outlook_app.command("cancel")
+@outlook_app.command("cancel", rich_help_panel="Scheduled sends")
 def outlook_cancel(email_id: str = typer.Argument(..., help="Email # from 'co outlook scheduled' (or a full message ID)")):
     """Cancel a scheduled email before it goes out."""
     from .commands.outlook_commands import handle_outlook_cancel
     handle_outlook_cancel(email_id)
 
 
-@outlook_app.command("sent")
+@outlook_app.command("sent", rich_help_panel="Mail")
 def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many emails to show")):
     """List recently sent Outlook emails."""
     from .commands.outlook_commands import handle_outlook_sent
     handle_outlook_sent(last=last)
 
 
-@outlook_app.command("search")
+@outlook_app.command("search", rich_help_panel="Mail")
 def outlook_search(
     query: str = typer.Argument(..., help="Search query (matches subject and body)"),
     last: int = typer.Option(10, "--last", "-n", help="How many results to show"),

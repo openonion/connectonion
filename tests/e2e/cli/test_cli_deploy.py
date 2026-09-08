@@ -483,7 +483,10 @@ class TestDeploySkillsPackaging:
             result = runner.invoke(cli, ['deploy', '--name', 'other-name'])
             assert "--name only applies to template deploys" in result.output
 
-    def test_skills_flag_takes_multiple_paths(self, tmp_path):
+    def test_skills_flag_takes_multiple_paths(self, tmp_path, monkeypatch):
+        from rich.console import Console
+        from connectonion.cli.commands import deploy_commands
+        monkeypatch.setattr(deploy_commands, "console", Console(width=30))
         runner = ArgparseCliRunner()
         with runner.isolated_filesystem():
             from connectonion.cli.main import cli
@@ -500,7 +503,7 @@ class TestDeploySkillsPackaging:
                 '--skills', str(first),
                 '--skills', str(tmp_path / 'missing-skill'),
             ])
-            assert "missing-skill" in result.output
+            assert str(tmp_path / "missing-skill") in result.output
             assert "Skills path not found" in result.output
 
     def test_missing_skills_path_errors_clearly(self):

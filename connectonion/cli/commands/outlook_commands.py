@@ -2,7 +2,7 @@
 Purpose: CLI surface for Outlook email and contacts — send/read/search mail and add/list/search contacts from the terminal
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
-  Data flow: _outlook() loads MICROSOFT_* from the global default or explicit --env-file and checks the operation scope → Outlook() instance | mail commands use list/read/send/reply methods and the numbered inbox cache | send and reply share _check_attachments() to reject missing or oversize --attach files before megabytes are base64-encoded | handle_outlook_reply(email_id, message, at, *, attachments) keeps `at` third positional for pre-attachment callers, so attachments is keyword-only | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
+  Data flow: _microsoft_record() loads MICROSOFT_* from the global default or explicit --env-file and checks the operation scope (shared with outlook_calendar_commands) → _outlook() wraps it in an Outlook() instance | mail commands use list/read/send/reply methods and the numbered inbox cache | send and reply share _check_attachments() to reject missing or oversize --attach files before megabytes are base64-encoded | handle_outlook_reply(email_id, message, at, *, attachments, cc, bcc) keeps `at` third positional for pre-attachment callers, so attachments/cc/bcc are keyword-only | every handler ends with one print_tip() next command that survives piping; a scheduled send or reply names the cancel path (#1314) | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
   State/Effects: writes ~/.co/outlook_last_inbox.json for mail numbering | read changes mailbox state only with --mark-read; send/reply/contact commands mutate their named data | Outlook auto-refreshes expired tokens via oo-api and saves the selected credential record
   Integration: exposes handle_outlook_* functions for cli/main.py, including handle_outlook_contact_add/list/search | presentation mirrors existing mail tables | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
   Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/Mail/Contacts.ReadWrite scopes, invalid files/times/ids | Graph API errors propagate from Outlook
@@ -26,8 +26,12 @@ console = Console()
 
 INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
 
-def _outlook(required_scope: str = "Mail"):
-    """Load Microsoft credentials and require the Graph scope this command needs."""
+def _microsoft_record(required_scope: str = "Mail"):
+    """Load the selected Microsoft record and require the Graph scope this command needs.
+
+    Shared by mail, contacts and calendar so all three answer "not connected"
+    and "permission missing" with the same words and the same next command.
+    """
     from ...environment import load_environment
     load_environment()
     from ...provider_credentials import resolve_provider_credentials
@@ -41,14 +45,18 @@ def _outlook(required_scope: str = "Mail"):
         raise typer.Exit(1)
 
     # "Mail" matches any Mail.* grant; "Contacts.ReadWrite" matches only itself.
-    from ...provider_credentials import resolve_provider_credentials
-    scopes = resolve_provider_credentials("microsoft").scopes
+    scopes = record.scopes
     if scopes and not any(s == required_scope or s.startswith(f"{required_scope}.") for s in scopes):
         console.print(f"\n❌ [bold red]Microsoft {required_scope} permission missing[/bold red]")
         console.print("\n[cyan]Reconnect Microsoft to grant it:[/cyan]")
         print(f"Next: {auth_tip}")
         raise typer.Exit(1)
+    return record
 
+
+def _outlook(required_scope: str = "Mail"):
+    """Load Microsoft credentials and require the Graph scope this command needs."""
+    _microsoft_record(required_scope)
     from ...useful_tools.outlook import Outlook
     return Outlook(allow_external_attachments=True)
 
@@ -100,6 +108,7 @@ def _parse_send_at(at: str) -> str:
     def bad():
         console.print(f"\n❌ [bold red]Invalid --at value:[/bold red] {at}")
         console.print("   Use [bold]+30m[/bold], [bold]+2h[/bold], or UTC ISO like [bold]2026-07-06T15:30:00Z[/bold]\n")
+        print_tip("Next: co outlook send --help")
         raise typer.Exit(1)
 
     if at.startswith("+"):
@@ -152,10 +161,30 @@ def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc
     else:
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
     console.print(f"  From: {resolve_provider_credentials('microsoft').get('EMAIL') or ''}")
+    if cc:
+        console.print(f"  Cc: {cc}")
+    if bcc:
+        console.print(f"  Bcc: {bcc}")
     if attachments:
         names = ", ".join(Path(p).name for p in attachments)
         console.print(f"  Attached: {names}")
-    console.print()
+    _after_send(send_at)
+
+
+def _after_send(send_at: str | None) -> None:
+    """The send most likely to be taken back is the one that says how (#1314).
+
+    Four emails queued for the next morning, wording that then had to change,
+    and the cancel path found by reading useful_tools/outlook.py rather than
+    any CLI output. So the confirmation names it, and the same tip survives
+    piping — the agent that scheduled the mail is the one that needs it.
+    """
+    if send_at:
+        console.print("  Cancel before it goes out: co outlook scheduled, then co outlook cancel <#>",
+                      markup=False, highlight=False)
+        print_tip("Next: co outlook scheduled")
+    else:
+        print_tip("Next: co outlook sent")
 
 
 @microsoft_errors("co outlook inbox")
@@ -166,6 +195,7 @@ def handle_outlook_inbox(last: int = 10, unread: bool = False):
     if not emails:
         scope = "unread " if unread else ""
         console.print(f"\n[cyan]Outlook inbox:[/cyan] no {scope}emails\n")
+        print_tip("Next: co outlook inbox -n 25" if unread else "Next: co outlook search <words>")
         return
     _print_listing(outlook, emails, f"📬 Outlook — {resolve_provider_credentials('microsoft').get('EMAIL') or ''}")
 
@@ -212,7 +242,10 @@ def handle_outlook_read(email_id: str, mark_read: bool = False):
     console.print(content.strip() or "[dim](empty body)[/dim]", markup=False, highlight=False)
 
     marked = "Unread state unchanged. "
-    if mark_read and "Mail.ReadWrite" in os.getenv("MICROSOFT_SCOPES", ""):
+    # The scope comes from the same selected record as the token — a per-field
+    # os.getenv read could answer for a different account than the one that
+    # is about to be written to.
+    if mark_read and "Mail.ReadWrite" in outlook._credentials.scopes:
         # Marking read is a mailbox write — Graph rejects it with 403 on
         # tokens that only carry Mail.Read + Mail.Send.
         outlook.mark_read(resolved)
@@ -235,20 +268,23 @@ def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: b
     if not saved:
         console.print("\n[yellow]No file attachments on that email.[/yellow]")
         console.print("[dim]Embedded signature images are skipped — --include-inline saves them too.[/dim]\n")
+        print_tip(f"Next: co outlook download {email_id} --include-inline")
         return
 
     console.print()
     for path in saved:
         console.print(f"[green]✓[/green] {path}")
-    console.print()
+    print_tip(f"Next: co outlook read {email_id}")
 
 
 @microsoft_errors("co outlook sent")
-def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachments: list = None):
+def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachments: list = None,
+                         cc: str = None, bcc: str = None):
     """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin.
 
     `at` keeps its third-positional slot from before attachments existed;
-    attachments is keyword-only so no caller can pass a schedule as a file.
+    attachments, cc and bcc are keyword-only so no caller can pass a schedule
+    as a file or an address.
     """
     if message == "-":
         message = sys.stdin.read()
@@ -262,15 +298,19 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachm
         print_tip(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook reply <#> <message>.[/yellow]\n")
         raise typer.Exit(1)
 
-    outlook.reply(resolved, message, attachments=attachments, send_at=send_at)
+    outlook.reply(resolved, message, attachments=attachments, send_at=send_at, cc=cc, bcc=bcc)
     if send_at:
         console.print(f"\n[green]✓ Reply scheduled[/green] for [bold]{send_at}[/bold] to email {email_id}")
     else:
         console.print(f"\n[green]✓ Replied[/green] to email {email_id}")
+    if cc:
+        console.print(f"  Cc: {cc}")
+    if bcc:
+        console.print(f"  Bcc: {bcc}")
     if attachments:
         names = ", ".join(Path(p).name for p in attachments)
         console.print(f"  Attached: {names}")
-    console.print()
+    _after_send(send_at)
 
 
 @microsoft_errors("co outlook inbox")
@@ -279,7 +319,7 @@ def handle_outlook_sent(last: int = 10):
     outlook = _outlook()
     console.print(f"\n📤 [bold cyan]Outlook sent[/bold cyan] [dim]({resolve_provider_credentials('microsoft').get('EMAIL') or ''})[/dim]\n")
     console.print(outlook.get_sent_emails(max_results=last), markup=False, highlight=False)
-    console.print()
+    print_tip("Next: co outlook inbox")
 
 
 @microsoft_errors("co outlook inbox")
@@ -289,6 +329,7 @@ def handle_outlook_search(query: str, last: int = 10):
     emails = outlook.list_search(query, max_results=last)
     if not emails:
         console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]\n")
+        print_tip("Next: co outlook inbox -n 25")
         return
     _print_listing(outlook, emails, f"🔎 Outlook — {query}")
 
@@ -300,6 +341,7 @@ def _print_contacts(contacts: list, title: str):
         # silently turns tab-separated output into something cut -f can't read.
         for contact in contacts:
             print(f"{contact['name']}\t{contact['email']}\t{contact['id']}")
+        print_tip('Next: co outlook send <email from this listing> "<subject>" "<message>"')
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -310,7 +352,7 @@ def _print_contacts(contacts: list, title: str):
         table.add_row(str(index), contact["name"], contact["email"])
     console.print()
     console.print(table)
-    console.print()
+    print_tip('Next: co outlook send <email from this listing> "<subject>" "<message>"')
 
 
 @microsoft_errors("co outlook inbox")
@@ -322,6 +364,7 @@ def handle_outlook_contact_add(name: str, email: str):
         f"\n[green]✓ Saved contact[/green] "
         f"[bold]{contact['name']}[/bold] <[cyan]{contact['email']}[/cyan]>\n"
     )
+    print_tip("Next: co outlook contact list")
 
 
 @microsoft_errors("co outlook inbox")
@@ -331,6 +374,7 @@ def handle_outlook_contact_list(last: int = 25):
     contacts = outlook.list_contacts(max_results=last)
     if not contacts:
         console.print("\n[cyan]Outlook contacts:[/cyan] none saved\n")
+        print_tip('Next: co outlook contact add "<name>" <email>')
         return
     _print_contacts(contacts, "👥 Outlook contacts")
 
@@ -345,6 +389,7 @@ def handle_outlook_contact_search(query: str, last: int = 25):
             f"\n[cyan]Contact search:[/cyan] no contacts matching "
             f"[bold]{query}[/bold]\n"
         )
+        print_tip("Next: co outlook contact list -n 100")
         return
     _print_contacts(contacts, f"🔎 Outlook contacts — {query}")
 
@@ -356,6 +401,7 @@ def handle_outlook_scheduled():
     scheduled = outlook.get_scheduled()
     if not scheduled:
         console.print("\n[cyan]No scheduled emails.[/cyan]\n")
+        print_tip('Next: co outlook send <to> "<subject>" "<message>" --at +2h')
         return
 
     INBOX_CACHE.parent.mkdir(exist_ok=True)
@@ -394,4 +440,5 @@ def handle_outlook_cancel(email_id: str):
         raise typer.Exit(1)
 
     outlook.cancel_scheduled(resolved)
-    console.print(f"\n[green]✓ Canceled[/green] scheduled email {email_id}\n")
+    console.print(f"\n[green]✓ Canceled[/green] scheduled email {email_id}")
+    print_tip("Next: co outlook scheduled")

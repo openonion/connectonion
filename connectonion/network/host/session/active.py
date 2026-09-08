@@ -3,7 +3,7 @@ Purpose: In-memory registry preserving running agents across WebSocket reconnect
 LLM-Note:
   Dependencies: imports from [time, threading, dataclasses] | imported by [server.py, websocket.py, __init__.py]
   Data flow: websocket.py calls register(session_id, io, thread) → stores ActiveSession(status='running') → agent finishes → mark_session_connected() → cleanup_expired() removes after 10min idle
-  State/Effects: in-memory dict with threading.Lock | no persistence | background cleanup thread runs every 60s
+  State/Effects: in-memory dict with threading.Lock | no persistence | CleanupJob thread runs every 60s, started/stopped by the app lifespan
 
 Lifecycle:
     NEW: register() → status='running'
@@ -118,15 +118,39 @@ class ActiveSessionRegistry:
             return len(self._sessions)
 
 
-def start_cleanup_job(registry: ActiveSessionRegistry) -> threading.Thread:
-    """Start background cleanup daemon (runs every 60s)."""
-    def cleanup_loop():
-        while True:
-            time.sleep(60)
-            removed = registry.cleanup_expired()
+class CleanupJob(threading.Thread):
+    """Background thread that expires idle sessions until told to stop.
+
+    It used to be a bare `while True: time.sleep(60)` daemon thread with no
+    handle, so every `create_app()` leaked one for the life of the process.
+    In the test suite that meant dozens of them by the time a test patched
+    `time.sleep` to a no-op — at which point they all spun flat out, starved
+    the main thread, and the run died on the 300s timeout (#1246). Waiting on
+    an Event instead of sleeping means `stop()` takes effect immediately and
+    a patched `time.sleep` cannot turn the wait into a busy loop.
+    """
+
+    def __init__(self, registry: ActiveSessionRegistry, interval: float = 60.0):
+        super().__init__(daemon=True, name="registry-cleanup")
+        self._registry = registry
+        self._interval = interval
+        self._stop = threading.Event()
+
+    def run(self) -> None:
+        while not self._stop.wait(self._interval):
+            removed = self._registry.cleanup_expired()
             if removed > 0:
                 print(f"[Registry] Cleaned up {removed} expired sessions")
 
-    thread = threading.Thread(target=cleanup_loop, daemon=True, name="registry-cleanup")
-    thread.start()
-    return thread
+    def stop(self, timeout: float = 5.0) -> None:
+        """Ask the loop to exit and wait for it. Safe to call twice."""
+        self._stop.set()
+        if self.is_alive() and threading.current_thread() is not self:
+            self.join(timeout)
+
+
+def start_cleanup_job(registry: ActiveSessionRegistry, interval: float = 60.0) -> CleanupJob:
+    """Start the background cleanup thread. Call `.stop()` on the result to end it."""
+    job = CleanupJob(registry, interval)
+    job.start()
+    return job

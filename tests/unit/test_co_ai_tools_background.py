@@ -11,6 +11,8 @@ Components under test:
 
 
 import sys
+import os
+import pytest
 import time
 
 from connectonion.cli.co_ai.tools.background import (
@@ -52,3 +54,46 @@ def test_kill_task_and_missing():
     msg = kill_task("bg_1")
     assert "terminated" in msg
     _reset_for_testing()
+
+
+def test_kill_reaps_the_process_and_reader_thread():
+    import threading
+    from connectonion.cli.co_ai.tools import background
+    _reset_for_testing()
+    before={t.ident for t in threading.enumerate()}
+    try:
+        run_background(f'{sys.executable} -c "import time; print(\'ready\', flush=True); time.sleep(20)"')
+        for _ in range(100):
+            if 'ready' in background._tasks['bg_1'].output:
+                break
+            time.sleep(0.01)
+        task=background._tasks['bg_1']
+        assert 'terminated' in kill_task('bg_1')
+        assert task.process.poll() is not None
+        assert not [t for t in threading.enumerate() if t.ident not in before and t.is_alive()]
+        assert task.process.stdout.closed
+    finally:
+        _reset_for_testing()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX process group and signal escalation')
+def test_kill_stops_a_descendant_that_ignores_termination():
+    import shlex
+    from connectonion.cli.co_ai.tools import background
+    child = "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print('child-ready',flush=True); time.sleep(20)"
+    parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(20)"
+    _reset_for_testing()
+    try:
+        run_background(shlex.join([sys.executable,'-c',parent]))
+        for _ in range(100):
+            if 'child-ready' in background._tasks['bg_1'].output:
+                break
+            time.sleep(0.01)
+        task=background._tasks['bg_1']
+        assert 'child-ready' in task.output
+        assert 'terminated' in kill_task('bg_1')
+        assert not task.reader.is_alive()
+        assert task.process.poll() is not None
+        assert task.process.stdout.closed
+    finally:
+        _reset_for_testing()

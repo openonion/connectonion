@@ -17,10 +17,38 @@ PROVIDER_FIELDS = ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES"
 PROVIDER_PREFIXES = ("GOOGLE", "MICROSOFT")
 _selected: Path | None = None
 _loaded: dict[str, str] = {}
+# A selection that failed at CLI startup. Every other command exits on it;
+# `co env` runs anyway, because it is the command that explains the failure.
+_selection_error: "EnvironmentError | None" = None
 
 
 class EnvironmentError(ValueError):
-    """A selected configuration file cannot be used (never includes its contents)."""
+    """A selected configuration file cannot be used (never includes its contents).
+
+    `path` and `line` are carried separately so `co env` can say which line to
+    fix without the message ever quoting what is on it — the broken line of a
+    credentials file is as likely as any other to hold a secret.
+    """
+
+    def __init__(self, message: str, *, path: Path | None = None, line: int | None = None):
+        super().__init__(message)
+        self.path = path
+        self.line = line
+
+
+def selection_error() -> "EnvironmentError | None":
+    return _selection_error
+
+
+def display_path(path: Path) -> str:
+    """The path as people write it: ~ for the home directory, otherwise absolute."""
+    resolved = Path(path).expanduser().resolve()
+    try:
+        # Both sides resolved: on macOS a temporary home is /var/... while the
+        # file resolves to /private/var/..., and the two never match otherwise.
+        return "~/" + resolved.relative_to(Path.home().resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
 
 
 def global_config_dir() -> Path:
@@ -45,17 +73,42 @@ def selected_command(command: str) -> str:
     return command
 
 
-def read_env_file(path: Path, *, required: bool = False) -> dict[str, str]:
-    """Parse without logging dotenv contents or interpolating other accounts."""
-    if not path.exists() and not required:
-        return {}
+def parse_env_file(path: Path) -> list:
+    """Every binding in the file, or an EnvironmentError that names the first bad line.
+
+    The error's tip is `co env`: the one command that still runs on a broken
+    file, and the one that says which line to fix. It used to be `co --help`,
+    which lists commands and repairs nothing.
+    """
+    if not path.exists():
+        shown = display_path(path)
+        raise EnvironmentError(f"Selected env file does not exist: {shown}. "
+                               f"Next: {selected_command('co env set <KEY> <value>')} "
+                               "(creates it owner-only)", path=path)
     try:
         with path.open(encoding="utf-8") as stream:
             bindings = list(parse_stream(stream))
     except (OSError, UnicodeError):
-        raise EnvironmentError("Cannot read the selected env file. No configuration was changed. Run the following command to inspect --env-file before choosing a readable file:\nNext: co --help") from None
-    if any(binding.error for binding in bindings):
-        raise EnvironmentError("Invalid syntax in the selected env file. Next: co --help")
+        raise EnvironmentError(f"Cannot read {display_path(path)}. No configuration was changed. "
+                               f"Next: {selected_command('co env')}", path=path) from None
+    for binding in bindings:
+        if binding.error:
+            # Measured with the text-only tip test: "invalid syntax on line 2.
+            # Next: co env" made the model reply `cat -n ~/.co/keys.env`. The
+            # tip has to say what `co env` does that cat does not.
+            raise EnvironmentError(f"{display_path(path)}: invalid syntax on line "
+                                   f"{binding.original.line}. Do not cat this file into a log; "
+                                   f"it holds secrets. Next: {selected_command('co env')} "
+                                   "(explains the line without printing it)",
+                                   path=path, line=binding.original.line)
+    return bindings
+
+
+def read_env_file(path: Path, *, required: bool = False) -> dict[str, str]:
+    """Parse without logging dotenv contents or interpolating other accounts."""
+    if not path.exists() and not required:
+        return {}
+    bindings = parse_env_file(path)
     return {item.key: item.value for item in bindings if item.key and item.value is not None
             and item.key != "AGENT_CONFIG_PATH"}
 
@@ -104,15 +157,23 @@ def load_environment() -> None:
 
 
 def select_env_file(path: Path | None) -> None:
-    """Switch files before command execution, preserving only explicit overrides."""
-    global _selected
-    selected = path.expanduser().resolve() if path is not None else None
-    read_env_file(selected or global_config_dir() / "keys.env", required=selected is not None)
+    """Switch files before command execution, preserving only explicit overrides.
+
+    The selection is recorded before the file is read, so that when the read
+    fails, `co env` and every tip still name the file the user asked for.
+    """
+    global _selected, _selection_error
+    _selected = path.expanduser().resolve() if path is not None else None
+    _selection_error = None
+    try:
+        read_env_file(selected_env_file(), required=_selected is not None)
+    except EnvironmentError as error:
+        _selection_error = error
+        raise
     for key, value in _loaded.items():
         if os.environ.get(key) == value:
             os.environ.pop(key, None)
     _loaded.clear()
-    _selected = selected
     load_environment()
 
 

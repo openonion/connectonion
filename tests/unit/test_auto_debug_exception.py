@@ -214,23 +214,38 @@ class TestAutoDebugException:
                 assert "KeyError" in prompt
 
     def test_no_frame_found_handling(self):
-        """Test handling when no relevant frame is found."""
-        with patch('connectonion.console.Console') as mock_console_class:
-            mock_console = Mock()
-            mock_console_class.return_value = mock_console
+        """With no user frame in the traceback the hook falls back to the last
+        frame and still runs the analysis — without crashing.
 
-            # Enable auto_debug_exception
-            auto_debug_exception()
+        The old version of this test raised from the test function itself, so
+        the test file *was* the user frame, and it mocked only the console: the
+        hook built a real debug Agent and the unmocked `agent.input()` went to
+        the network. On CI it hung for the full 300s timeout with an API key
+        of "test-key".
+        """
+        # Every frame in this traceback has a "<string>" filename, which the
+        # hook classifies as system code.
+        namespace = {}
+        exec(compile(
+            "def boom():\n"
+            "    try:\n"
+            "        1/0\n"
+            "    except ZeroDivisionError:\n"
+            "        import sys\n"
+            "        return sys.exc_info()\n",
+            "<string>", "exec"), namespace)
+        exc_info = namespace["boom"]()
 
-            # Create an exception with only system frames
-            # This is a bit artificial but tests the edge case
-            try:
-                # Use eval to create a more "system-like" exception
-                eval("1/0")
-            except ZeroDivisionError:
-                exc_info = sys.exc_info()
-                # Manually call the hook
-                sys.excepthook(exc_info[0], exc_info[1], exc_info[2])
+        with patch('connectonion.console.Console'):
+            with patch('connectonion.debug.runtime_inspector.create_debug_agent') as mock_create_agent:
+                mock_agent = Mock()
+                mock_agent.input.return_value = "analysis"
+                mock_create_agent.return_value = mock_agent
+                auto_debug_exception()
+                sys.excepthook(*exc_info)
 
-            # Should handle gracefully even if no user frame found
-            # Just verify it doesn't crash
+        # The fallback frame is the one the exception was raised in.
+        mock_create_agent.assert_called_once()
+        prompt = mock_agent.input.call_args[0][0]
+        assert "ZeroDivisionError" in prompt
+        assert "<string>" in prompt

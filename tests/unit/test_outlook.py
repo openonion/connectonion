@@ -1165,8 +1165,9 @@ class TestOutlookReplyPositionalCompatibility:
         from connectonion.useful_tools.outlook import Outlook
 
         params = inspect.signature(Outlook.reply).parameters
-        assert list(params) == ["self", "email_id", "body", "send_at", "attachments"]
-        assert params["attachments"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc"]
+        for name in ("attachments", "cc", "bcc"):
+            assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class TestOutlookActions:

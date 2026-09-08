@@ -71,8 +71,7 @@ Unsure where to begin? You can start by looking through these issues:
 
 3. **Install Development Dependencies**
    ```bash
-   pip install -e .
-   pip install pytest pytest-cov
+   pip install -e ".[dev]"
    ```
 
 4. **Set Up Pre-commit Hooks (Optional)**
@@ -83,17 +82,15 @@ Unsure where to begin? You can start by looking through these issues:
 
 5. **Run Tests**
    ```bash
-   # Fast feedback (excludes real API tests)
-   pytest -m "not real_api"
-
-   # Or use Makefile shortcuts
-   make test          # not real_api
-   make test-unit     # unit
-   make test-integration
-   make test-cli
-   make test-e2e
-   make test-real     # requires API keys
+   make test          # everything offline, all cores, about a minute
+   make test-unit     # unit only
+   make test-cli      # CLI only
+   make test-e2e      # our own system end to end
+   make test-real     # paid providers; requires API keys
    ```
+   See `tests/README.md` for what every test is held to (no network, no
+   leaked threads, isolated HOME) and how to opt out when a test is about
+   exactly that.
 
 ## Pull Request Process
 
@@ -110,14 +107,8 @@ Unsure where to begin? You can start by looking through these issues:
 
 3. **Test Your Changes**
    ```bash
-   # Run unit tests
-   pytest -m unit
-
-   # Run everything except real API
-   pytest -m "not real_api"
-
-   # With coverage
-   pytest --cov=connectonion --cov-report=term-missing -m "not real_api"
+   make test          # the same selection CI runs
+   make cov           # with the coverage report CI gates on
    ```
 
 4. **Commit Your Changes**

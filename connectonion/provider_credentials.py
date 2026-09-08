@@ -48,9 +48,26 @@ class ProviderCredentials:
         selector = f" --env-file {shlex.quote(str(self.path))}" if self.path and explicit_env_file() else ""
         return f"co{selector} auth {self.provider}"
 
+    def where(self) -> str:
+        """Which source the record came from, as a person would name it.
+
+        "Not connected" used to be the whole message, and it sent people to
+        re-authorize an account they had connected an hour earlier — in the
+        other env file. Naming the source, and the command that shows it,
+        turns a wrong-file failure into a one-look diagnosis.
+        """
+        from .environment import display_path
+        if self.path is not None:
+            return f"in {display_path(self.path)}"
+        return "in the process environment, which supplies a partial record"
+
     def require_configured(self) -> None:
         if not (self.get("ACCESS_TOKEN") or self.get("REFRESH_TOKEN")):
-            raise ProviderCredentialError("not_configured", f"{self.provider.title()} account not connected.", self.auth_command)
+            raise ProviderCredentialError(
+                "not_configured",
+                f"{self.provider.title()} account not connected {self.where()}. "
+                "Run co env to see what that source holds and which values the shell overrides.",
+                self.auth_command)
 
 
 def resolve_provider_credentials(provider: str) -> ProviderCredentials:
@@ -143,7 +160,11 @@ def refresh_credentials(record: ProviderCredentials, *, backend: str, api_key: s
         else:
             refresh_token = latest.get("REFRESH_TOKEN")
             if not refresh_token:
-                raise ProviderCredentialError("incomplete_record", f"Local {record.provider.title()} refresh token missing.", record.auth_command)
+                raise ProviderCredentialError(
+                    "incomplete_record",
+                    f"Local {record.provider.title()} refresh token missing {record.where()}: "
+                    "the record is incomplete. Run co env to see which source supplies it.",
+                    record.auth_command)
             try:
                 response = post(f"{backend}/api/v1/oauth/{record.provider}/refresh",
                                 headers={"Authorization": f"Bearer {api_key}"},

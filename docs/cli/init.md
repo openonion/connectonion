@@ -94,6 +94,8 @@ co init ./ --yes --template co-ai
 ```
 
 Global setup scripts can keep `co init --yes`. `co create` is unchanged.
-At runtime, explicit process variables take precedence over the selected
-project's `.env`, which takes precedence over global `~/.co/keys.env`.
+At runtime, explicit process variables take precedence over the selected env
+file, which is global `~/.co/keys.env` unless `co --env-file PATH` names a
+project file; there is no per-key fallback between files. `co env` shows what
+the selected file holds and `co env set` edits it.
 See [CLI reference](README.md) for authentication and credential diagnostics.

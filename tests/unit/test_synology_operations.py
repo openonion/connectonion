@@ -90,3 +90,12 @@ def test_self_descendant_and_missing_trailing_slash_are_rejected(nas):
     assert error.value.code=='path_conflict'
     with pytest.raises(SynologyError):
         nas.copy('/home/docs/a','/home/missing/')
+
+
+def test_failed_task_status_does_not_submit_another_copy(nas):
+    nas._request.side_effect=[{'taskid':'task'},SynologyError('Poll timeout','timeout')]
+    pending=nas.copy('/home/docs/a','/home/dest/')
+    nas._request=Mock(return_value={'finished':True,'errors':[{'code':402}]})
+    result=nas.operation_status(pending['operation_id'],wait=True)
+    assert result['status']=='operation_failed'
+    assert all(call.args[1]=='status' for call in nas._request.call_args_list)

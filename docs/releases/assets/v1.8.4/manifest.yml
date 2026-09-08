@@ -41,8 +41,17 @@ images:
     Synology command groups.
   caption: The installed 1.8.4 candidate adds content-bound draft review and the complete
     Synology command groups.
-  scenario: Account-free --version and Gmail draft/Synology --help from the installed
-    1.8.4 wheel in an unrelated temporary directory.
+  scenario: Account-free help from installed 1.8.4 wheel with isolated configuration;
+    version metadata promoted from the merged code.
   viewport: 100-column terminal
-  commit: 15fae85efc59e611a3458e49e5d3a71cc7d6aa64
+  commit: 15a6fb10
   source_run: scripts/capture_184_release_cli.py
+- file: cli-outlook.svg
+  alt: Outlook groups mail and calendar commands, with calendar writes previewed before
+    confirmation.
+  caption: Installed 1.8.4 Outlook help and a synthetic calendar preview.
+  scenario: Account-free installed wheel with empty configuration; synthetic example.com
+    attendee and no submission.
+  viewport: 100-column terminal
+  commit: 15a6fb10
+  source_run: scripts/capture_184b1_release_cli.py --version 1.8.4

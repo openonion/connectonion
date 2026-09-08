@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
   Data flow: Agent calls Outlook methods → _get_access_token() uses a cached Microsoft access token while its expiry is valid or unknown, preemptively refreshing near expiry via oo-api and refreshing after a Graph 401 → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | download_attachments() decodes Graph fileAttachment bytes into a caller-selected project directory without overwriting existing paths | send()/reply() with attachments share _encoded_attachments() (validate, size-check, base64) and place fileAttachments on the sent message — reply() puts them on the reply action's message so Graph still threads it | send()/reply() with send_at never use the one-shot sendMail / reply actions (they delivered at once, #1198): send() creates a draft carrying PidTagDeferredSendTime (SystemTime 0x3FEF) and PidTagDeferredDeliveryTime (0x000F) and submits it; reply() does createReply → POST attachments → PATCH the same two properties → send, so Exchange holds the exact draft until then (needs Mail.ReadWrite) | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails), create contacts, and write downloaded attachments inside the project boundary | token refresh atomically saves the selected credential record
-  Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments) keeps send_at third positional for pre-attachment callers, so attachments is keyword-only
+  Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()]) | reply(email_id, body, send_at, *, attachments, cc, bcc) keeps send_at third positional for pre-attachment callers, so attachments/cc/bcc are keyword-only; cc/bcc are set on the reply action's message (or PATCHed onto the deferred reply draft) so a copied third person still gets a threaded reply (#1247)
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
   Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
 
@@ -22,7 +22,7 @@ Usage:
     # - search_emails(query, max_results)
     # - get_email_body(email_id)
     # - send(to, subject, body, cc, bcc, attachments, send_at)
-    # - reply(email_id, body, send_at, *, attachments)
+    # - reply(email_id, body, send_at, *, attachments, cc, bcc)
     # - get_scheduled(max_results)
     # - add_contact(name, email)
     # - list_contacts(max_results)
@@ -136,9 +136,16 @@ class Outlook:
             refresh_at = expires_at - timedelta(minutes=5)
             if datetime.now(timezone.utc) >= refresh_at:
                 if not refresh_token:
-                    raise ValueError(
-                        "Microsoft access token is expiring, but its refresh "
-                        "credential is missing.\nRun: co auth microsoft"
+                    # A plain ValueError here was rendered by the CLI as
+                    # "invalid input; check the command arguments" (#1313
+                    # family): nothing about the arguments is wrong, the saved
+                    # record is missing its refresh half. Say that, and name
+                    # the command that completes the record.
+                    from ..provider_credentials import ProviderCredentialError
+                    raise ProviderCredentialError(
+                        "incomplete_record",
+                        "Microsoft access token is expiring and the saved record has no refresh token.",
+                        self._credentials.auth_command,
                     )
                 access_token = self._refresh_via_backend(refresh_token)
 
@@ -715,8 +722,16 @@ class Outlook:
         self._request("POST", "/me/sendMail", json={"message": message})
         return f"Email sent successfully to {to}{suffix}"
 
+    @staticmethod
+    def _recipients(value: str | None) -> list[dict]:
+        """Comma-separated addresses as Graph recipient objects; empty for None."""
+        if not value:
+            return []
+        return [{"emailAddress": {"address": addr.strip()}}
+                for addr in value.split(",") if addr.strip()]
+
     def reply(self, email_id: str, body: str, send_at: str = None, *,
-              attachments: list = None) -> str:
+              attachments: list = None, cc: str = None, bcc: str = None) -> str:
         """Reply to an email, immediately or at a scheduled time.
 
         send_at stays third positional — callers written before attachments
@@ -732,6 +747,10 @@ class Outlook:
                 Exchange holds until then (needs the Mail.ReadWrite scope)
             attachments: Optional list of local file paths to attach — same
                 files and ~3MB total Graph limit as send()
+            cc: Optional CC recipients (comma-separated). Without this, copying
+                a third person meant a fresh `send` with "RE:" in the subject —
+                a new thread on the receiving end (#1247).
+            bcc: Optional BCC recipients (comma-separated)
 
         Returns:
             Confirmation message
@@ -746,20 +765,32 @@ class Outlook:
         encoded = self._encoded_attachments(attachments) if attachments else []
         suffix = self._attachment_suffix(attachments)
 
+        # `reply` (not replyAll) starts with empty CC/BCC, so setting the
+        # collections adds the named people rather than replacing anyone.
+        extra = {}
+        if cc:
+            extra["ccRecipients"] = self._recipients(cc)
+        if bcc:
+            extra["bccRecipients"] = self._recipients(bcc)
+
         if send_at:
-            self._scheduled_reply(email_id, body, encoded, send_at)
+            self._scheduled_reply(email_id, body, encoded, send_at, extra)
             return f"Reply scheduled for {send_at}{suffix}"
 
         # The reply action takes writable message properties beside the
-        # comment, so attachments ride along without giving up the threading
-        # Graph does for us (In-Reply-To, References, same conversation).
+        # comment, so attachments and recipients ride along without giving up
+        # the threading Graph does for us (In-Reply-To, References, same
+        # conversation).
         data = {"comment": body}
         if encoded:
-            data["message"] = {"attachments": encoded}
+            extra["attachments"] = encoded
+        if extra:
+            data["message"] = extra
         self._request("POST", f"/me/messages/{email_id}/reply", json=data)
         return f"Reply sent successfully{suffix}"
 
-    def _scheduled_reply(self, email_id: str, body: str, encoded: list, send_at: str) -> str:
+    def _scheduled_reply(self, email_id: str, body: str, encoded: list, send_at: str,
+                         recipients: dict | None = None) -> str:
         """Create a reply draft, set the deferred-send properties, submit it.
 
         The reply action is create-and-send in one step, like sendMail was
@@ -778,7 +809,10 @@ class Outlook:
         for attachment in encoded:
             # PATCH does not take attachments; the attachments collection does.
             self._request("POST", f"/me/messages/{draft_id}/attachments", json=attachment)
+        # Recipients and the deferred-send time go on the same PATCH, so the
+        # draft is never submitted with one and not the other.
         self._request("PATCH", f"/me/messages/{draft_id}", json={
+            **(recipients or {}),
             "singleValueExtendedProperties": [
                 {"id": "SystemTime 0x3FEF", "value": send_at},
                 {"id": "SystemTime 0x000F", "value": send_at},
