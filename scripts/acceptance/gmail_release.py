@@ -36,7 +36,7 @@ def main() -> int:
     if not args.allow_self_send_and_fixture_writes:
         parser.error('Explicit consent is required for one self-send and fixture writes.')
 
-    report = {'passed': False, 'checks': [], 'cleanup': []}
+    report = {'passed': False, 'checks': [], 'cleanup': [], 'observations': {}}
     phase = 'initialize'
     draft_id = sent_id = None
     drive_ids = []
@@ -49,7 +49,7 @@ def main() -> int:
             from googleapiclient.http import MediaIoBaseUpload
             from connectonion.useful_tools.gmail import Gmail
             from connectonion.useful_tools.gdrive import GDrive
-            from connectonion.cli.commands.gmail_draft_review import prepare_review
+            from connectonion.cli.commands.gmail_draft_review import ATTEMPT_HEADER, prepare_review, send_reviewed
 
             gmail, drive = Gmail(), GDrive()
             account = gmail.get_account_email()
@@ -58,7 +58,7 @@ def main() -> int:
             gmail_service, drive_service = gmail._get_service(), drive._get_service()
             run_name = 'ConnectOnion release acceptance ' + uuid.uuid4().hex
             with tempfile.TemporaryDirectory(prefix='co-gmail-acceptance-') as temporary:
-                root = Path(temporary)
+                root = Path(temporary).resolve()
                 other = root / 'unrelated-directory'
                 other.mkdir(mode=0o700)
 
@@ -128,51 +128,74 @@ def main() -> int:
                 sent = cli('gmail', 'draft', 'send', draft_id, '--confirm', frozen.token,
                            '--json', machine=True)
                 sent_id = sent['id']
+                phase = 'verify_saved_receipt_without_second_send'
                 receipt = cli('gmail', 'draft', 'send', draft_id, '--confirm', frozen.token,
                               '--json', machine=True)
                 assert receipt['id'] == sent_id and receipt['recovered'] is True
+                phase = 'verify_consumed_draft'
                 try:
                     gmail_service.users().drafts().get(userId='me', id=draft_id).execute()
                 except HttpError as error:
                     assert error.resp.status == 404
                 else:
                     raise AssertionError('Sent draft still exists')
-                draft_id = None
-                deadline = time.monotonic() + 90
-                while True:
-                    delivered = gmail_service.users().messages().get(
-                        userId='me', id=sent_id, format='raw').execute()
-                    if 'INBOX' in delivered.get('labelIds', []):
-                        break
-                    assert time.monotonic() < deadline
-                    time.sleep(3)
+                consumed_draft_id, draft_id = draft_id, None
+                phase = 'verify_provider_stored_content'
+                delivered = gmail_service.users().messages().get(
+                    userId='me', id=sent_id, format='raw').execute()
+                # Inbox routing is separate from provider storage: account rules
+                # can archive a self-send. Do not claim independent SMTP delivery.
+                report['observations']['inbox_label_observed'] = 'INBOX' in delivered.get('labelIds', [])
+                assert 'SENT' in delivered.get('labelIds', [])
                 parsed = BytesParser(policy=policy.SMTP).parsebytes(base64.urlsafe_b64decode(delivered['raw']))
                 expected = BytesParser(policy=policy.SMTP).parsebytes(base64.urlsafe_b64decode(frozen.raw))
                 assert attachment_hashes(parsed) == attachment_hashes(expected)
-                assert parsed['Message-ID'] == frozen.message_id
                 assert parsed.get_body(preferencelist=('plain',)).get_content() == expected.get_body(preferencelist=('plain',)).get_content()
-                report['checks'].append('delivered_reviewed_content_draft_consumed_no_duplicate_send')
+                phase = 'verify_provider_preserved_attempt_marker'
+                assert str(parsed[ATTEMPT_HEADER]).strip() == frozen.token
+                provider_message_id = str(parsed['Message-ID']).strip()
+                report['observations']['message_id_rewritten'] = provider_message_id != frozen.message_id
+                report['checks'].append('stored_reviewed_content_draft_consumed_no_duplicate_send')
 
-                phase = 'mailbox_commands_and_attachment_downloads'
-                result = cli('gmail', 'search', 'rfc822msgid:' + frozen.message_id,
+                phase = 'recover_a_lost_receipt_without_resending'
+                recovery_dir = root / 'recovery'
+                recovery_dir.mkdir(mode=0o700)
+                key = hashlib.sha256(json.dumps([account, consumed_draft_id]).encode()).hexdigest()
+                attempt = {'schema_version': 1, 'status': 'submitted', 'token': frozen.token,
+                           'message_id': frozen.message_id, 'marker': frozen.token,
+                           'submitted_at': int(time.time())}
+                (recovery_dir / f'{key}.json').write_text(json.dumps(attempt))
+                def must_not_send(*args, **kwargs):
+                    raise AssertionError('Recovery must never submit another message')
+                gmail._send_draft = must_not_send
+                recovered = send_reviewed(gmail, consumed_draft_id, frozen.token, directory=recovery_dir)
+                assert recovered == {'id': sent_id, 'recovered': True}
+                report['checks'].append('provider_marker_recovers_lost_receipt_without_resending')
+
+                phase = 'search_stored_message'
+                result = cli('gmail', 'search', 'rfc822msgid:' + provider_message_id,
                              '--last', '10', '--json', machine=True)
                 assert len(result['items']) == 1 and result['items'][0]['id'] == sent_id
+                phase = 'read_frozen_listing'
                 assert cli('gmail', 'read', '1', '--listing', result['listing_id'],
                            '--json', machine=True)['id'] == sent_id
                 labels = [('mark', '--unread', 'UNREAD', True), ('mark', '--read', 'UNREAD', False),
                           ('star', None, 'STARRED', True), ('star', '--remove', 'STARRED', False)]
                 for operation, option, label, present in labels:
+                    phase = 'mailbox_' + operation + '_' + ('add' if present else 'remove')
                     cli('gmail', operation, sent_id, *([option] if option else []), '--json', machine=True)
                     current = gmail_service.users().messages().get(userId='me', id=sent_id, format='minimal').execute()
                     assert (label in current.get('labelIds', [])) is present
                 for operation in ['add', 'remove']:
+                    phase = 'important_label_' + operation
                     cli('gmail', 'label', operation, sent_id, 'IMPORTANT', '--json', machine=True)
                     current = gmail_service.users().messages().get(userId='me', id=sent_id, format='minimal').execute()
                     assert ('IMPORTANT' in current.get('labelIds', [])) == (operation == 'add')
                 downloads = root / 'downloads'
                 downloads.mkdir(mode=0o700)
                 paths = set()
-                for _ in range(2):
+                for pass_index in range(2):
+                    phase = 'download_attachments_' + str(pass_index + 1)
                     saved = cli('gmail', 'download', sent_id, '--all', '--to', str(downloads), '--json', machine=True)
                     assert Counter(row['sha256'] for row in saved['items']) == attachment_hashes(expected)
                     for row in saved['items']:
@@ -182,6 +205,7 @@ def main() -> int:
                         if os.name == 'posix':
                             assert path.stat().st_mode & 0o777 == 0o600
                         paths.add(path)
+                phase = 'archive_message'
                 cli('gmail', 'archive', sent_id, '--json', machine=True)
                 archived = gmail_service.users().messages().get(userId='me', id=sent_id, format='minimal').execute()
                 assert 'INBOX' not in archived.get('labelIds', [])

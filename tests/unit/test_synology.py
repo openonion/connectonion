@@ -143,3 +143,58 @@ def test_sdk_dry_run_never_refreshes_or_saves_auth(tmp_path):
         client._login()
     assert error.value.code=='auth_required'
     assert 'sid' not in store.credentials(store.selected())
+
+
+def test_quickconnect_portal_falls_back_to_verified_regional_relay():
+    from connectonion.useful_tools.synology_discovery import pick_reachable
+    calls = []
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if method == 'POST':
+            assert kwargs['json']['command'] == 'request_tunnel'
+            assert kwargs['json']['serverID'] == 'mynas'
+            return {'errno': 0, 'env': {'relay_region': 'sg4'}}
+        if url.startswith('https://mynas.sg4.quickconnect.to/'):
+            return {'success': True}
+        raise SynologyError('HTML portal, not DSM', 'discovery_failed')
+    with patch('connectonion.useful_tools.synology_discovery._read_discovery', side_effect=request):
+        assert pick_reachable(['https://mynas.quickconnect.to']) == 'https://mynas.sg4.quickconnect.to'
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize('response', [
+    {'errno': 19}, {'errno': 0, 'env': {'relay_region': 'sg4.evil.test/path'}},
+    {'errno': 0, 'env': None},
+])
+def test_quickconnect_rejects_disabled_or_malformed_relay(response):
+    from connectonion.useful_tools.synology_discovery import pick_reachable
+    def request(method, url, **kwargs):
+        if method == 'POST':
+            return response
+        raise SynologyError('not DSM', 'discovery_failed')
+    with patch('connectonion.useful_tools.synology_discovery._read_discovery', side_effect=request):
+        with pytest.raises(SynologyError):
+            pick_reachable(['https://mynas.quickconnect.to'])
+
+
+def test_regional_relay_certificate_failure_is_not_accepted():
+    from connectonion.useful_tools.synology_discovery import pick_reachable
+    def request(method, url, **kwargs):
+        if method == 'POST':
+            return {'errno': 0, 'env': {'relay_region': 'sg4'}}
+        raise SynologyError('Certificate verification failed', 'discovery_failed')
+    with patch('connectonion.useful_tools.synology_discovery._read_discovery', side_effect=request):
+        with pytest.raises(SynologyError):
+            pick_reachable(['https://mynas.quickconnect.to'])
+
+
+def test_login_prompt_accepts_a_quickconnect_id():
+    from connectonion.cli.commands.synology_commands import handle_login
+    options={'nas':None, 'json':False, 'non_interactive':False, 'timeout':30}
+    with patch('connectonion.cli.commands.synology_commands.interactive', return_value=True), \
+         patch('connectonion.cli.commands.synology_commands.typer.prompt', return_value='mynas'), \
+         patch('connectonion.useful_tools.synology.resolve_quickconnect', side_effect=SynologyError('probe reached', 'discovery_failed')) as resolve:
+        with pytest.raises(SynologyError, match='probe reached'):
+            handle_login(options,name=None,url=None,quickconnect=None,username='alice',password_stdin=False,
+                         ca_cert=None,credential_store='keyring',monitoring=None,snmp_secrets_file=None)
+    resolve.assert_called_once_with('mynas',timeout=15)

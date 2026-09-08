@@ -93,3 +93,10 @@ class TestTheFirstScreenStillWorks:
 
     def test_it_exits_zero(self):
         assert runner.invoke(cli_main.app, []).exit_code == 0
+
+
+def test_first_screen_explains_explicit_project_configuration():
+    output = " ".join(runner.invoke(cli_main.app, []).output.split())
+    assert "~/.co/keys.env" in output
+    assert "co init ./" in output
+    assert "co --env-file .env <command>" in output

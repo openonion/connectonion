@@ -180,7 +180,11 @@ def handle_login(options: dict, *, name, url, quickconnect, username, password_s
     name=name or options.get('nas') or 'home'
     if not url and not quickconnect:
         _require_interaction(options)
-        url=typer.prompt('HTTPS NAS URL',err=True)
+        target=typer.prompt('QuickConnect ID or HTTPS NAS URL',err=True).strip()
+        if '://' in target:
+            url=target
+        else:
+            quickconnect=target
     if not username:
         _require_interaction(options)
         username=typer.prompt('DSM username',err=True)

@@ -100,19 +100,15 @@ def _show_help():
     console.print("A simple Python framework for creating AI agents.")
     console.print()
     console.print("[bold]Quick Start:[/bold]")
-    console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
-    console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
+    console.print("  co init                          Set up global credentials", markup=False)
+    console.print("  [cyan]co create my-agent[/cyan]               Create a project")
+    console.print("  [cyan]cd my-agent && python agent.py[/cyan]    Run your agent")
     console.print()
-    # A selection, not the register. Eight real commands are not here — ai,
-    # announce, call, reset, server, setup, skills, sub — and calling this
-    # "Commands:" read as the whole list. `co --help` is generated from the
-    # commands themselves and does show all of them, so the honest fix is to
-    # say which of the two this is and point at the other. Which of the eight
-    # belong on a new user's first screen is a product call, not this one's.
     console.print("[bold]Common commands:[/bold]")
-    console.print("  [green]create[/green]  <name>     Create new project")
-    console.print("  [green]init[/green]   [path]     Set up global keys, or an explicit project directory")
-    console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
+    console.print("  [green]create[/green]  <name>     Create a project")
+    console.print("  [green]init[/green]              Set up global credentials (co init ./ for a project)")
+    console.print("  [green]copy[/green]    <name>     Copy tool/plugin source to project")
+    console.print("  [green]ai[/green]                Start the agent in this directory")
     console.print("  [green]eval[/green]              Run evals and show status")
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
@@ -132,7 +128,12 @@ def _show_help():
     console.print("  [green]status[/green]            Check credentials, account, and deployments")
     console.print("  [green]doctor[/green]            Diagnose installation")
     console.print()
-    console.print("  [dim]co --help[/dim]         All commands")
+    console.print("[bold]Configuration:[/bold]")
+    console.print("  Global by default: ~/.co/keys.env", markup=False)
+    console.print("  co --env-file .env <command>     Use a project env file", markup=False)
+    console.print()
+    console.print("  co --help                       All commands", markup=False)
+    console.print("  co <command> --help              Command options", markup=False)
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")

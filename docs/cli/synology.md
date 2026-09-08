@@ -17,6 +17,15 @@ The destination directory in this example must already exist. Paths are NAS
 shared-folder paths such as `/home/docs`, never an implicit remote working
 directory. `/` lists accessible shares, not DSM's system root.
 
+## QuickConnect connection
+
+`co syno login` accepts a QuickConnect ID or an HTTPS URL at its first prompt.
+For an explicit invocation, use `co syno login --quickconnect YOUR_ID --username YOUR_USER`.
+If direct addresses cannot answer, discovery requests Synology's temporary HTTPS
+relay and verifies the regional DSM endpoint within the command timeout. The
+public QuickConnect webpage alone is not a DSM API endpoint. Certificates are
+always verified; discovery never sends your NAS password.
+
 ## Connection and monitoring
 
 Install the optional adapters with `pip install 'connectonion[synology]'`.

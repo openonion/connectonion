@@ -68,6 +68,30 @@ def resolve_quickconnect(server_id: str, timeout: float = 15) -> list:
     return list(dict.fromkeys(validate_settings({'url':base,'account':'probe'})['url'] for base in candidates))
 
 
+def _regional_relay(base: str, deadline: float, ca_cert: str | None) -> str | None:
+    """The public QuickConnect portal is HTML; request its temporary DSM relay."""
+    match=re.fullmatch(r'https://([A-Za-z0-9-]{1,64})\.quickconnect\.to',base)
+    if not match or deadline<=time.monotonic():
+        return None
+    server_id=match.group(1)
+    info=_read_discovery('POST',QUICKCONNECT_GLOBAL,timeout=deadline-time.monotonic(),json={
+        'version':1,'command':'request_tunnel','stop_when_error':False,'stop_when_success':True,
+        'id':'dsm_portal_https','serverID':server_id})
+    env=info.get('env')
+    region=env.get('relay_region') if isinstance(env,dict) else None
+    if info.get('errno') or not isinstance(region,str) or not re.fullmatch('[A-Za-z0-9-]{1,32}',region):
+        raise SynologyError('QuickConnect relay is unavailable; check DSM QuickConnect relay settings or use --url.', 'relay_unavailable')
+    # Synology's browser client uses ID.REGION.quickconnect.to on HTTPS 443.
+    # relay_ip and relay_dn are not certificate-valid substitutes for this host.
+    relay=f'https://{server_id}.{region}.quickconnect.to'
+    remaining=deadline-time.monotonic()
+    if remaining<=0:
+        raise SynologyError('QuickConnect relay setup exceeded the command timeout.', 'discovery_failed')
+    body=_read_discovery('GET',f'{relay}/webapi/query.cgi',timeout=min(3,remaining),ca_cert=ca_cert,
+                         params={'api':'SYNO.API.Info','version':1,'method':'query','query':'SYNO.API.Auth'})
+    return relay if body.get('success') is True else None
+
+
 def pick_reachable(candidates: list, timeout: float = 15, ca_cert: str | None = None) -> str:
     """Probe within one total budget; TLS failures never cause insecure fallback."""
     deadline=time.monotonic()+timeout
@@ -80,6 +104,9 @@ def pick_reachable(candidates: list, timeout: float = 15, ca_cert: str | None = 
             body=_read_discovery('GET',f'{base}/webapi/query.cgi',timeout=min(3,remaining),ca_cert=ca_cert,
                                  params={'api':'SYNO.API.Info','version':1,'method':'query','query':'SYNO.API.Auth'})
         except SynologyError:
+            relay=_regional_relay(base,deadline,ca_cert)
+            if relay:
+                return relay
             continue
         if body.get('success') is True:
             return base

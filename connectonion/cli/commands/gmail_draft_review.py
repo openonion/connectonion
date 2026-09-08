@@ -11,11 +11,14 @@ from pathlib import Path
 import re
 import shlex
 import tempfile
+import time
 
 from ...environment import global_config_dir
 from ...env_file import env_lock
 
 from ...useful_tools.gmail_draft_mime import MIME_LIMIT, ATTACHMENT_LIMIT, validate_message
+
+ATTEMPT_HEADER = 'X-ConnectOnion-Send-Attempt'
 
 
 class DraftReviewError(ValueError):
@@ -44,8 +47,8 @@ def prepare_review(gmail, draft_id: str) -> DraftReview:
     source = validate_message(gmail, message)
     context = json.dumps([1, account, draft_id, thread_id], separators=(',', ':')).encode()
     token = hashlib.sha256(context + b'\0' + source).hexdigest()
-    # This stable attempt ID permits inspection after a lost response. It is not
-    # an idempotency promise from Gmail; the local ledger prevents resubmission.
+    # Gmail can rewrite Message-ID. A separate marker survives provider storage;
+    # neither header is an idempotency promise. The ledger prevents resubmission.
     message_id = f'<co-{token}@connectonion.local>'
     manifest = gmail._draft_dict(draft_id, message)
     from ...useful_tools.gmail_draft_sources import SOURCE_HEADER, LINK_HEADER
@@ -54,6 +57,8 @@ def prepare_review(gmail, draft_id: str) -> DraftReview:
         del part[LINK_HEADER]
     del message['Message-ID']
     message['Message-ID'] = message_id
+    del message[ATTEMPT_HEADER]
+    message[ATTEMPT_HEADER] = token
     raw = validate_message(gmail, message)
     recipients = getaddresses(message.get_all('To', []) + message.get_all('Cc', []) + message.get_all('Bcc', []))
     if not recipients or any(not address or '@' not in address for _,address in recipients):
@@ -108,6 +113,30 @@ def _read_attempt(path: Path) -> dict | None:
         raise DraftReviewError('invalid_send_record', 'Saved send outcome is unreadable; inspect sent mail before retrying.', 'co gmail sent --json') from None
 
 
+def _find_attempt_marker(gmail, attempt: dict) -> list[dict]:
+    """Inspect one bounded, complete sent page; never guess from subject/content."""
+    marker, submitted_at = attempt.get('marker'), attempt.get('submitted_at')
+    if marker is None:  # Older ledgers have no provider-preserved marker.
+        return []
+    if marker != attempt['token'] or type(submitted_at) is not int or submitted_at < 0:
+        raise DraftReviewError('invalid_send_record', 'Saved send identity is invalid; inspect sent mail.')
+    messages = gmail._get_service().users().messages()
+    response = messages.list(userId='me', q=f'in:sent after:{max(0, submitted_at - 300)}',
+                             maxResults=100).execute()
+    if response.get('nextPageToken'):
+        return []  # An incomplete scan cannot establish a unique match.
+    found = []
+    for row in response.get('messages', []):
+        stored = messages.get(userId='me', id=row['id'], format='metadata',
+                              metadataHeaders=[ATTEMPT_HEADER]).execute()
+        values = [header.get('value', '').strip()
+                  for header in stored.get('payload', {}).get('headers', [])
+                  if header.get('name', '').casefold() == ATTEMPT_HEADER.casefold()]
+        if values == [marker]:
+            found.append(row)
+    return found
+
+
 def _recover(gmail, attempt: dict, path: Path, token: str) -> dict | None:
     if attempt['status'] == 'rejected':
         return None
@@ -118,6 +147,8 @@ def _recover(gmail, attempt: dict, path: Path, token: str) -> dict | None:
         query = f'in:sent rfc822msgid:{message_id}'
         response = gmail._get_service().users().messages().list(userId='me', q=query, maxResults=2).execute()
         found = response.get('messages', [])
+        if not found:
+            found = _find_attempt_marker(gmail, attempt)
         if len(found) == 1:
             attempt.update(status='sent', sent_id=found[0]['id'])
             _write_attempt(path, attempt)
@@ -150,7 +181,8 @@ def send_reviewed(gmail, draft_id: str, token: str, *, directory: Path | None = 
         if review.token != token:
             raise DraftReviewError('stale_review', 'Draft changed since review; review the current content before sending.', f'co gmail draft review {shlex.quote(draft_id)} --json')
         gmail._require_draft_write_scope()
-        attempt = {'schema_version':1, 'status':'submitted', 'token':token, 'message_id':review.message_id}
+        attempt = {'schema_version':1, 'status':'submitted', 'token':token,
+                   'message_id':review.message_id, 'marker':token, 'submitted_at':int(time.time())}
         _write_attempt(path, attempt)
         try:
             result = gmail._send_draft(draft_id, raw=review.raw, thread_id=review.thread_id)
