@@ -6,7 +6,7 @@ from connectonion.network.host.control_center.upload import ArtifactUploader
 from connectonion.network.host.control_center.runtime import RuntimeErrorState
 
 
-def test_upload_sends_frozen_bundle_and_checks_origin_revision(monkeypatch):
+def test_upload_sends_frozen_bundle_and_checks_origin_revision(monkeypatch, default_backend_url):
     bundle = Bundle({'index.html': b'<h1>fixed</h1>'})
     seen = []
     def handle(request):
@@ -25,7 +25,7 @@ def test_upload_sends_frozen_bundle_and_checks_origin_revision(monkeypatch):
 @pytest.mark.parametrize('url', ['http://app.test/', 'https://oo.openonion.ai/',
     'https://r-' + 'a' * 52 + '.apps.example.net/changed.html',
     'https://r-' + 'a' * 52 + '.apps.example.net/index.html?token=x'])
-def test_invalid_publication_target_cannot_activate(url):
+def test_invalid_publication_target_cannot_activate(url, default_backend_url):
     bundle = Bundle({'index.html': b'<h1>fixed</h1>'})
     uploader = ArtifactUploader('home', 'apps.example.net', token=lambda: 'synthetic',
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json={
@@ -34,7 +34,7 @@ def test_invalid_publication_target_cannot_activate(url):
         uploader(bundle)
 
 
-def test_auth_redirect_is_not_followed_and_failure_is_not_retried():
+def test_auth_redirect_is_not_followed_and_failure_is_not_retried(default_backend_url):
     seen = []
     def redirect(request):
         seen.append(request)
@@ -46,7 +46,7 @@ def test_auth_redirect_is_not_followed_and_failure_is_not_retried():
     assert len(seen) == 1
 
 
-def test_historical_source_is_read_without_credentials_and_verified_by_manifest():
+def test_historical_source_is_read_without_credentials_and_verified_by_manifest(default_backend_url):
     bundle = Bundle({'index.html': b'<h1>fixed</h1>'})
     app = {'revision': bundle.revision, 'url': 'https://r-' + 'a' * 52 + '.apps.example.net/index.html'}
     record = bundle.manifest['files'][0]

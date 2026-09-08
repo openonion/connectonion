@@ -217,7 +217,7 @@ class TestHostRelayConnection:
         assert profile["alias"]
         assert "summary" not in profile
 
-    def test_host_starts_relay_with_default_url(self, tmp_path, create_mock_agent):
+    def test_host_starts_relay_with_default_url(self, tmp_path, create_mock_agent, default_backend_url):
         """Test that host() uses default relay URL (from config)."""
         mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
 
