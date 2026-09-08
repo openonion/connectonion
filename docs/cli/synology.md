@@ -136,7 +136,8 @@ canonical options. New help examples and recovery commands use canonical names.
 
 ## Listings and search
 
-`ls` now sorts by name ascending, replacing the historical modified-time order.
+`ls` requests DSM name-ascending order, replacing the historical modified-time
+order. DSM can group directories before files; pagination preserves that order.
 Directories have `size: null`; an empty file has `size: 0`. Machine output keeps
 complete paths. Live directory/link pages can change between requests; they
 are not immutable snapshots.
@@ -241,7 +242,15 @@ are prompted with `--password` or read from one line with `--password-stdin`.
 The negotiated v3 contract accepts at most 16 characters; no truncation or
 silent weakening occurs.
 
-Creation returns its usable URL. Inventory hides bearer URLs unless `--show-url`
+Creation reads the new link back from DSM and checks its identity, password
+protection flag and expiry date before returning its URL with
+`settings_verified: true`. The expiry includes DSM's returned time, when present.
+If settings differ, the CLI attempts to revoke only that newly identified link
+and reports a failure. Uncertain readback or revocation requires inspecting
+`co syno share list` before retrying; it never silently creates another link.
+This settings check does not replace testing access through the sharing page.
+
+Inventory hides bearer URLs unless `--show-url`
 is given, and includes ID/path/expiry/protection/provider status. Revocation
 requires confirmation or `--yes` and never deletes the source. There is no
 public file-delete or service-control command in this core.
@@ -264,3 +273,11 @@ Read the result as well as the exit code. Missing authentication, unsupported
 sources, stale cursors, conflicts, incomplete searches and uncertain writes
 have distinct error codes. Empty results never suggest downloading a nonexistent
 first row.
+
+For opt-in command acceptance, run `scripts/acceptance/synology_release.py` with
+the candidate's Python and explicit `--nas`, `--parent`, and
+`--allow-fixture-writes`. Add `--allow-test-share` only when synthetic sharing
+links are wanted. The script creates a unique fixture directory, checks command
+results and transfer bytes, then removes its own files and links. It retains the
+owner login. Reports may contain local test paths and should be reviewed before
+sharing. No real-device reports are included in this change.
