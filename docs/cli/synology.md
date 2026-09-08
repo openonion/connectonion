@@ -1,9 +1,11 @@
 # Synology CLI (co syno)
 
-The 1.8.4 candidate provides twenty everyday NAS commands: connection profiles,
-read-only inspections, ordinary files and sharing links. It has synthetic
-regression coverage; real NAS/model acceptance is still pending. See the
-[acceptance record](../acceptance/1.8.4-synology.md).
+ConnectOnion 1.8.4 provides twenty everyday NAS commands: connection profiles,
+read-only inspections, ordinary files and sharing links. Regression tests and
+focused journeys on one physical NAS cover file operations and sharing. Password,
+already-expired link and revocation behavior were also checked in a browser.
+This does not imply a hardware matrix or midnight-transition coverage. See the
+[release notes](../releases/1.8.4.md) for the evidence and remaining limits.
 
 ```bash
 co syno login --name home --url https://nas.example:5001 --username alice
