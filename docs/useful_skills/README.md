@@ -6,6 +6,7 @@ Pre-built skills you can copy into your project and invoke with `/skill-name`.
 
 | Skill | Purpose | Invoke |
 |-------|---------|--------|
+| [agent-identity](agent-identity.md) | Establish which address an agent really has, which account pays for it, and why a second source disagrees — before publishing an address, or when two hosts answer as one agent | `/agent-identity` |
 | [browser-workflow-skill-builder](browser-workflow-skill-builder.md) | Build robust browser automation skills for logged-in sites — save page context, write skill-local extract/verify scripts, and lock flows with hash-verified one-shot actions | `/browser-workflow-skill-builder` |
 | [cli-skill-design](cli-skill-design.md) | Design a `co <thing>` command surface and its SKILL.md together — tip-tested discoverability and self-diagnosing errors, both as checks you run | `/cli-skill-design` |
 | [co-browser](co-browser.md) | Drive one persistent, logged-in browser from the shell — solo or multi-agent | `/co-browser` |
