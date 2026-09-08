@@ -8,15 +8,16 @@ LLM-Note:
   Performance: deliver() is two small writes; receive() polls new/ four times a second; lookup() and already_replied() scan a JSONL file linearly, which is fine for the sizes one bot sees
   Errors: a torn last line in inbox.jsonl is skipped, never raised | a rename lost to another consumer moves on to the next file | a queue file that is not a message is set aside in bad/ with a log line | the listener lock is held by the kernel, so a dead listener holds nothing
 
-Why files and not a database: Maildir solved "many writers, many readers, no
-locks, crash-safe" for mail in 1995 with three directories and rename(2). A
-message is a file; taking it is a rename, which is atomic, so two consumers
-can never take the same one; the log beside the queue means a consumer that
-crashes loses nothing that cannot be found again. Nothing here needs a
-library, and nothing that reads it needs one either. DD-063 has the argument.
+Messages stay inspectable as files. Built-in mutations use a short kernel lock
+because the visibility timestamp, rename and completion record must agree. A
+raw filesystem consumer still owns its claim lifetime; use receive/done for
+the coordinated lease and durable completion behavior. DD-063 has the interface.
 """
 
 import json
+import hashlib
+from contextlib import contextmanager
+from functools import wraps
 import os
 import re
 import subprocess
@@ -56,7 +57,46 @@ def _now_iso() -> str:
 def _safe(message_id: str) -> str:
     """A message id as a file-name fragment. Feishu's om_…, Telegram's
     chat.msg and WhatsApp's wamid.…== all survive unchanged."""
-    return _UNSAFE.sub("_", message_id)
+    cleaned = _UNSAFE.sub("_", message_id).replace(":", "_")
+    if cleaned != message_id:
+        return cleaned[:100] + "-" + hashlib.sha256(message_id.encode()).hexdigest()
+    return cleaned
+
+
+@contextmanager
+def _locked(path: Path):
+    """Coordinate short mailbox mutations across threads and CLI processes."""
+    from ..cli.browser_agent.transport import acquire_singleton_lock
+
+    deadline = time.monotonic() + 30
+    while True:
+        handle = acquire_singleton_lock(str(path))
+        if handle is not None:
+            break
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Mailbox is busy; retry after the active operation completes")
+        time.sleep(0.01)
+    try:
+        yield
+    finally:
+        handle.close()  # Keep the inode: unlinking allows two independent locks.
+
+
+def _serialized(function):
+    @wraps(function)
+    def run(self, *args, **kwargs):
+        with _locked(self.root / "queue.lock"):
+            return function(self, *args, **kwargs)
+    return run
+
+
+def _sync_directory(path: Path) -> None:
+    if os.name == "posix":
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
 
 @dataclass
@@ -98,6 +138,10 @@ class Message:
 
     @classmethod
     def from_dict(cls, record: dict) -> "Message":
+        if not isinstance(record, dict) or any(
+            not isinstance(record.get(key), str) or not record[key] for key in ("id", "chat")
+        ):
+            raise ValueError("A mailbox message needs nonempty string id and chat fields")
         return cls(
             id=str(record["id"]),
             chat=str(record["chat"]),
@@ -126,6 +170,7 @@ class Mailbox:
         self.root = Path(home) if home else default_home(provider)
         self.inbox = self.root / "inbox.jsonl"
         self.outbox = self.root / "outbox.jsonl"
+        self.completed = self.root / "done.jsonl"
         self.tmp = self.root / "tmp"
         self.new = self.root / "new"
         self.cur = self.root / "cur"
@@ -143,6 +188,7 @@ class Mailbox:
 
     # ---- inbound -----------------------------------------------------------
 
+    @_serialized
     def deliver(self, message: Message, *, raw: bool = False) -> bool:
         """Record one inbound message. Returns False for a duplicate id.
 
@@ -156,19 +202,27 @@ class Mailbox:
         delivery, Feishu's redelivery in practice, is the recovery: the
         queue file is written and the log is left as it is.
         """
-        if self._seen is None:
-            self._seen = self._ids_in(self.inbox)
+        self._seen = self._ids_in(self.inbox)
+        if message.id in self._ids_in(self.completed):
+            return False
         if message.id in self._seen:
             if self._queued(message.id) or self.already_replied(message.id):
                 return False
+            original = self.lookup(message.id)
+            if original is not None:
+                message = original
             self.log(f"re-queued {message.id}: logged earlier but never queued")
         else:
             self._append(self.inbox, message.to_json(raw=raw))
             self._seen.add(message.id)
         name = f"{int(time.time() * 1000)}-{_safe(message.id)}"
         staging = self.tmp / name
-        staging.write_text(message.to_json() + "\n", encoding="utf-8")
+        with staging.open("w", encoding="utf-8") as handle:
+            handle.write(message.to_json() + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(staging, self.new / name)
+        _sync_directory(self.new)
         return True
 
     # ---- consuming ---------------------------------------------------------
@@ -176,7 +230,7 @@ class Mailbox:
     def unread(self) -> list:
         """Our files in new/, oldest first. Names start with arrival time so
         sort order is arrival order."""
-        return sorted(p for p in self.new.iterdir() if p.is_file() and _QUEUE_NAME.match(p.name))
+        return sorted(p for p in self.new.iterdir() if not p.is_symlink() and p.is_file() and _QUEUE_NAME.match(p.name))
 
     def receive(self, timeout: Optional[float] = None, poll: float = 0.25) -> Optional[Message]:
         """Block until a message is available, take it, return it.
@@ -195,6 +249,7 @@ class Mailbox:
                 return None
             time.sleep(poll)
 
+    @_serialized
     def _claim(self, path: Path) -> Optional[Message]:
         target = self.cur / path.name
         try:
@@ -206,21 +261,35 @@ class Mailbox:
             os.utime(target, None)
         except FileNotFoundError:
             return None
+        return self._read_queue_file(target)
+
+    def _read_queue_file(self, path: Path) -> Optional[Message]:
         try:
-            return Message.from_dict(json.loads(target.read_text(encoding="utf-8")))
-        except (ValueError, KeyError, TypeError) as exc:
-            # Not a message: a zero-byte file from a disk-full crash, half a
-            # line, someone's experiment. Set it aside where the sweep will
-            # not find it, say so, and let the caller take the next one.
-            os.replace(target, self.bad / path.name)
-            self.log(f"{path.name} is not a message ({type(exc).__name__}); moved to bad/")
+            return Message.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except FileNotFoundError:
+            return None
+        except (ValueError, KeyError, TypeError):
+            try:
+                os.replace(path, self.bad / path.name)
+            except FileNotFoundError:
+                return None
+            self.log(f"{path.name} is not a message; moved to bad/")
             return None
 
+    @_serialized
+    def list_messages(self) -> list:
+        """Inspect the queue without claiming messages; quarantine malformed files."""
+        return [message for path in self.unread()
+                if (message := self._read_queue_file(path)) is not None]
+
+    @_serialized
     def done(self, message_id: str) -> None:
         """Forget a message: the reply went out, or the consumer decided there
         is nothing to say. Clears the queue as well as cur/, so a reply made
         straight from `ls` without a `receive` does not leave the message
         waiting to be handed out again."""
+        # Persist completion before removal; silence is an outcome, not a send.
+        self._append(self.completed, json.dumps({"id": message_id, "at": _now_iso()}))
         wanted = _safe(message_id)
         for directory in (self.cur, self.new):
             for path in directory.iterdir():
@@ -237,6 +306,7 @@ class Mailbox:
                     return True
         return False
 
+    @_serialized
     def release_stale(self, max_age: float = STALE_AFTER_SECONDS) -> int:
         """Return taken-but-never-replied messages to new/. Returns how many."""
         cutoff = time.time() - max_age
@@ -345,7 +415,6 @@ class Mailbox:
     def release_lock(self) -> None:
         if self._lock_handle is None:
             return
-        self.lock.unlink(missing_ok=True)
         self._lock_handle.close()
         self._lock_handle = None
 
@@ -400,8 +469,17 @@ class Mailbox:
 
     @staticmethod
     def _append(path: Path, line: str) -> None:
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
+        with _locked(path.with_name(path.name + ".lock")):
+            with path.open("a+b") as handle:
+                handle.seek(0, os.SEEK_END)
+                if handle.tell():
+                    handle.seek(-1, os.SEEK_END)
+                    if handle.read(1) != b"\n":
+                        handle.write(b"\n")  # Isolate a torn record before appending.
+                handle.write((line + "\n").encode("utf-8"))
+                handle.flush()
+                os.fsync(handle.fileno())
+            _sync_directory(path.parent)
 
     @staticmethod
     def _records(path: Path):

@@ -46,6 +46,8 @@ Add the bot to a group, @ it, and it is listening.
 ~/.co/feishu/
 ├── inbox.jsonl      every message received, one JSON line, appended, never deleted
 ├── outbox.jsonl     every message sent, and every send that failed
+├── done.jsonl       durable completion IDs, including messages handled without replying
+├── queue.lock       short kernel lock for queue mutations (never delete lock files)
 ├── new/             messages nobody has taken yet, one file each
 │   └── 1756808267-om_9f8e
 ├── cur/             taken but not yet replied; back to new/ after an hour
@@ -53,6 +55,13 @@ Add the bot to a group, @ it, and it is listening.
 ├── log              the tool's own log: connected, reconnecting, send failed
 └── listen.lock      held by the running listener (a kernel lock; the pid inside is for you)
 ```
+
+Built-in receive, completion and stale recovery coordinate with the same short
+kernel lock. The claim timestamp and rename cannot be separated by the sweep.
+Completion is flushed to `done.jsonl` before queue removal, so a redelivery does
+not resurrect a message whose consumer deliberately chose silence. This records
+completion without pretending a reply was sent. Lock files stay in place; the
+kernel releases ownership when a process exits.
 
 Only files named `<arrival>-<id>` are the tool's. Anything else that lands in
 `new/` (`.DS_Store`, an editor's swap file, a note) is left alone, never
@@ -77,7 +86,8 @@ You do not need the commands below to consume it:
 ls ~/.co/feishu/new/                      # how many are waiting
 tail -f ~/.co/feishu/inbox.jsonl          # watch live
 grep on_7c6d ~/.co/feishu/inbox.jsonl | jq -r .text
-mv ~/.co/feishu/new/X ~/.co/feishu/cur/   # take one; rename is atomic, two takers never collide
+co feishu receive --no-start -t 0       # claim with a fresh visibility timestamp
+co feishu done MESSAGE_ID              # finish durably without sending a reply
 ```
 
 A second application gets its own directory: `CO_FEISHU_HOME=~/.co/feishu-ops co feishu listen`.
@@ -251,3 +261,16 @@ type in brackets, `[image]`), and it does not stream partial replies.
 
 Messages are plain text on disk in a directory only you can read. The log
 grows; rotate it with `logrotate` like any other.
+
+## 1.8.5 integration acceptance
+
+The implementation is being integrated on top of stable 1.8.4. Synthetic tests
+cover durable completion after silence, redelivery after a partial write, torn
+JSONL tails, unsafe ID collisions, and a stale sweep racing the claim timestamp.
+An unread malformed file is quarantined by both receive and ls; valid messages
+remain available. Queue/log writes are flushed before delivery returns.
+
+Real channel delivery and provider behavior during a network gap remain separate
+acceptance gates. Local concurrency tests do not establish that Feishu retains
+events throughout an arbitrarily long disconnection. No existing listener or
+polling automation should be stopped merely to run a synthetic test.

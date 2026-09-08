@@ -200,8 +200,8 @@ def handle_check(name: str) -> None:
 def handle_ls(name: str) -> None:
     """Unread messages, one per line: id, chat, sender, text."""
     mailbox = Mailbox(name)
-    for path in mailbox.unread():
-        record = json.loads(path.read_text(encoding="utf-8"))
+    for message in mailbox.list_messages():
+        record = message.to_dict()
         text = " ".join(str(record.get("text", "")).split())
         print(f"{record['id']}\t{record['chat']}\t{record.get('sender', '')}\t{text}")
 

@@ -324,3 +324,12 @@ def test_listen_reports_a_refused_connection_in_one_line_and_exits_1(box, fake, 
     assert "Traceback" not in err
     assert "listener stopped" in box.logfile.read_text()
     assert box.listener_pid() is None, "the lock is released for the next listener"
+
+
+def test_ls_skips_malformed_queue_files_without_claiming_valid_messages(box, capsys):
+    (box.new / '1-torn').write_text('{')
+    deliver(box)
+    listen_commands.handle_ls('feishu')
+    assert 'om_1\toc_a' in capsys.readouterr().out
+    assert box.receive(0).id == 'om_1'
+    assert (box.bad / '1-torn').exists()

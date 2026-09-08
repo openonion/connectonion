@@ -15,6 +15,7 @@ Components under test:
 
 import json
 import os
+from pathlib import Path
 import threading
 import time
 
@@ -412,3 +413,85 @@ def test_done_clears_the_queue_too_and_matches_the_whole_id(tmp_path):
     box.done("123.55")
 
     assert [p.name.split("-", 1)[1] for p in box.unread()] == ["-123.55"]
+
+
+def test_done_without_a_reply_survives_redelivery_and_restart(tmp_path):
+    box = make(tmp_path)
+    box.deliver(msg())
+    box.receive(0)
+    box.done('om_1')
+    assert make(tmp_path).deliver(msg()) is False
+    assert box.receive(0) is None
+    assert not box.already_replied('om_1'), 'choosing silence must not pretend a reply was sent'
+
+
+def test_recovery_uses_the_original_logged_message(tmp_path):
+    box = make(tmp_path)
+    box.deliver(msg(chat='original', text='approved inbound'))
+    box.unread()[0].unlink()
+    box.deliver(msg(chat='different', text='changed payload'))
+    received = box.receive(0)
+    assert received.chat == 'original'
+    assert received.text == 'approved inbound'
+
+
+def test_torn_log_tail_does_not_swallow_the_next_message(tmp_path):
+    box = make(tmp_path)
+    box.inbox.write_text('{"id":"torn')
+    box.deliver(msg())
+    assert make(tmp_path).lookup('om_1').text == 'hello'
+
+
+def test_releasing_listener_keeps_the_same_lock_inode(tmp_path):
+    box = make(tmp_path)
+    assert box.hold_lock()
+    inode = box.lock.stat().st_ino
+    box.release_lock()
+    assert box.lock.exists(), 'unlinking a lock permits contenders to lock different inodes'
+    assert box.lock.stat().st_ino == inode
+    assert make(tmp_path).listener_pid() is None
+
+
+def test_different_unsafe_ids_cannot_share_a_queue_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(mailbox_module.time, 'time', lambda: 1)
+    box = make(tmp_path)
+    box.deliver(msg(i='unsafe/a'))
+    box.deliver(msg(i='unsafe?a'))
+    assert {box.receive(0).id, box.receive(0).id} == {'unsafe/a', 'unsafe?a'}
+
+
+def test_sweep_cannot_reclaim_a_message_between_rename_and_claim_timestamp(tmp_path, monkeypatch):
+    box = make(tmp_path)
+    box.deliver(msg())
+    old = time.time() - 7200
+    os.utime(box.unread()[0], (old, old))
+    renamed, continue_claim, swept = threading.Event(), threading.Event(), threading.Event()
+    original_utime = os.utime
+    result = {}
+
+    def delayed_utime(path, *args, **kwargs):
+        if Path(path).parent == box.cur:
+            renamed.set()
+            assert continue_claim.wait(5)
+        return original_utime(path, *args, **kwargs)
+
+    def sweep():
+        result['released'] = make(tmp_path).release_stale()
+        swept.set()
+
+    monkeypatch.setattr(os, 'utime', delayed_utime)
+    consumer = threading.Thread(target=lambda: result.update(message=box.receive(0)))
+    reclaimer = threading.Thread(target=sweep)
+    consumer.start()
+    try:
+        assert renamed.wait(5)
+        reclaimer.start()
+        assert not swept.wait(0.1), 'claim timestamp and rename form one transaction'
+    finally:
+        continue_claim.set()
+        consumer.join(5)
+        if reclaimer.ident is not None:
+            reclaimer.join(5)
+    assert result['message'].id == 'om_1'
+    assert result['released'] == 0
+    assert box.receive(0) is None

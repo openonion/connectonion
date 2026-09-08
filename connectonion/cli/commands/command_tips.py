@@ -85,6 +85,24 @@ NEXT = {
     "co status": HANDLER,             # rotating STATUS_TIPS
     "co transfer": HANDLER,           # "co transfer list" / "co transfer <address> <amount>"
     # -- groups --
+    "co feishu listen": "co feishu receive --timeout 0",
+    "co feishu receive": "co feishu reply <message-id>",
+    "co feishu send": "co feishu receive --timeout 0",
+    "co feishu reply": "co feishu receive --timeout 0",
+    "co feishu done": "co feishu receive --timeout 0",
+    "co feishu check": "co feishu listen",
+    "co feishu ls": "co feishu receive --timeout 0",
+    "co feishu log": "co feishu ls",
+    "co feishu serve": "co feishu ls",
+    "co lark listen": "co lark receive --timeout 0",
+    "co lark receive": "co lark reply <message-id>",
+    "co lark send": "co lark receive --timeout 0",
+    "co lark reply": "co lark receive --timeout 0",
+    "co lark done": "co lark receive --timeout 0",
+    "co lark check": "co lark listen",
+    "co lark ls": "co lark receive --timeout 0",
+    "co lark log": "co lark ls",
+    "co lark serve": "co lark ls",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
@@ -95,21 +113,23 @@ NEXT = {
     "co email share": HANDLER,
     "co email unshare": "See remaining grants:  co email share --list",
     "co email upgrade": "See the new balance:  co status",
+    "co env *": HANDLER,  # path/get intentionally remain bare values
+    "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
     "co gmail *": HANDLER,
     "co outlook inbox": HANDLER,
     "co outlook read": HANDLER,
-    "co outlook reply": "See it in sent mail:  co outlook sent",
-    "co outlook send": "See it in sent mail:  co outlook sent",
-    "co outlook sent": "Back to the inbox:  co outlook inbox",
+    "co outlook reply": HANDLER,  # 1.8.4 already emits a contextual next step
+    "co outlook send": HANDLER,  # 1.8.4 already emits a contextual next step
+    "co outlook sent": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook search": HANDLER,
-    "co outlook download": "Back to the inbox:  co outlook inbox",
+    "co outlook download": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook scheduled": HANDLER,
-    "co outlook cancel": "What is still scheduled:  co outlook scheduled",
-    "co outlook contact add": "See every contact:  co outlook contact list",
-    "co outlook contact list": 'Send to one:  co outlook send <email> "<subject>" "<body>"',
-    "co outlook contact search": 'Send to one:  co outlook send <email> "<subject>" "<body>"',
+    "co outlook cancel": HANDLER,  # 1.8.4 already emits a contextual next step
+    "co outlook contact add": HANDLER,  # 1.8.4 already emits a contextual next step
+    "co outlook contact list": HANDLER,  # 1.8.4 already emits a contextual next step
+    "co outlook contact search": HANDLER,  # 1.8.4 already emits a contextual next step
     "co server add": HANDLER,
     "co server ls": HANDLER,
     "co server check": "Deploy to it:  co deploy --to <name>",
