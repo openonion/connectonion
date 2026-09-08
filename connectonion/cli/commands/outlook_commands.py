@@ -165,7 +165,9 @@ def handle_outlook_inbox(last: int = 10, unread: bool = False):
     emails = outlook.list_inbox(last=last, unread=unread)
     if not emails:
         scope = "unread " if unread else ""
-        console.print(f"\n[cyan]Outlook inbox:[/cyan] no {scope}emails\n")
+        console.print(f"\n[cyan]Outlook inbox:[/cyan] no {scope}emails")
+        print_tip("Including read ones: co outlook inbox" if unread
+                  else 'Send one: co outlook send <to> "<subject>" "<body>"')
         return
     _print_listing(outlook, emails, f"📬 Outlook — {resolve_provider_credentials('microsoft').get('EMAIL') or ''}")
 
@@ -234,7 +236,8 @@ def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: b
     saved = outlook.download_attachments(resolved, out_dir, include_inline=include_inline)
     if not saved:
         console.print("\n[yellow]No file attachments on that email.[/yellow]")
-        console.print("[dim]Embedded signature images are skipped — --include-inline saves them too.[/dim]\n")
+        console.print("[dim]Embedded signature images are skipped.[/dim]")
+        print_tip("Save those too: co outlook download <#> --include-inline")
         return
 
     console.print()
@@ -288,7 +291,8 @@ def handle_outlook_search(query: str, last: int = 10):
     outlook = _outlook()
     emails = outlook.list_search(query, max_results=last)
     if not emails:
-        console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]\n")
+        console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]")
+        print_tip("Show recent mail: co outlook inbox")
         return
     _print_listing(outlook, emails, f"🔎 Outlook — {query}")
 
@@ -330,7 +334,8 @@ def handle_outlook_contact_list(last: int = 25):
     outlook = _outlook(required_scope="Contacts.ReadWrite")
     contacts = outlook.list_contacts(max_results=last)
     if not contacts:
-        console.print("\n[cyan]Outlook contacts:[/cyan] none saved\n")
+        console.print("\n[cyan]Outlook contacts:[/cyan] none saved")
+        print_tip("Add one: co outlook contact add <name> <email>")
         return
     _print_contacts(contacts, "👥 Outlook contacts")
 
@@ -343,8 +348,9 @@ def handle_outlook_contact_search(query: str, last: int = 25):
     if not contacts:
         console.print(
             f"\n[cyan]Contact search:[/cyan] no contacts matching "
-            f"[bold]{query}[/bold]\n"
+            f"[bold]{query}[/bold]"
         )
+        print_tip("See every contact: co outlook contact list")
         return
     _print_contacts(contacts, f"🔎 Outlook contacts — {query}")
 
@@ -355,7 +361,8 @@ def handle_outlook_scheduled():
     outlook = _outlook()
     scheduled = outlook.get_scheduled()
     if not scheduled:
-        console.print("\n[cyan]No scheduled emails.[/cyan]\n")
+        console.print("\n[cyan]No scheduled emails.[/cyan]")
+        print_tip('Schedule one: co outlook send <to> "<subject>" "<body>" --at +2h')
         return
 
     INBOX_CACHE.parent.mkdir(exist_ok=True)

@@ -222,6 +222,7 @@ def copy_file(source: Path, dest_dir: Path, force: bool):
 
     shutil.copy2(source, dest)
     console.print(f"[green]✓ Copied: {dest}[/green]")
+    console.print("[dim]Everything else you can copy:[/dim] [bold]co copy --list[/bold]")
 
 
 def copy_directory(source: Path, dest_dir: Path, force: bool):

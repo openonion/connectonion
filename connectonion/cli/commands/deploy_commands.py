@@ -700,6 +700,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
             console.print(f"[dim]{logs}[/dim]")
 
     console.print()
+    console.print("[dim]See it among your deployments:[/dim] [bold]co status[/bold]\n")
     return deploy_success
 
 

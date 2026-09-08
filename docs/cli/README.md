@@ -53,10 +53,15 @@ co gmail --help         # the options and subcommands of one command
 ```
 
 `co commands` is plain text with no colour codes, so `co commands | grep draft`
-finds the draft commands without knowing which group holds them. Every tip the
-CLI prints after a command names the next command spelled out, and a test
-checks each of those names against this register, so a tip never points at a
-command that does not exist.
+finds the draft commands without knowing which group holds them.
+
+Every command ends by naming the next one. Commands whose next step depends on
+what they found print it themselves (`Read one with: co gmail read <#>`); every
+other command gets a `Next: …` line on stderr after it returns, from one table
+in the CLI, so stdout stays the command's data and the line still reaches a
+pipe. A test fails when a registered command has no entry, and every tip's
+command is checked against this register, so a tip never points at a command
+that does not exist.
 
 ### Project Commands
 

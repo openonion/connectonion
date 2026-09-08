@@ -109,6 +109,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             print(f"Onionwright {result.version} is already installed.")
         else:
             print(f"Installed Onionwright {result.version} from the signed OpenOnion release.")
+        print("Use it:  co browser --engine onion <function> [args]", file=sys.stderr)
         return 0
     tab, args = _extract_tab(args)
     if args is None:
@@ -120,6 +121,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
     if args[0] in ("help", "--list", "list"):  # after -t extraction: `-t x help` is still help
         from ..browser_agent.daemon import list_functions
         print(USAGE + "\n\nFunctions:\n" + list_functions())
+        print("\nRun one directly:  co browser <function> [args]", file=sys.stderr)
         return 0
     if args[-1] == "--stdin":
         if args[0] not in ("fill_text_by_selector", "type_text_by_selector", "keyboard_type"):
@@ -130,6 +132,11 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             return 2
         args = [*args[:-1], sys.stdin.read()]
     code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
-    if code == 0 and sys.stdout.isatty():
-        print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)
+    if code == 0:
+        # Not gated on a terminal: an agent captures stdout, and it is the
+        # reader this tip exists for. stderr keeps stdout pure data.
+        tip = f"💡 {_next_tip()}"
+        if sys.stderr.isatty():
+            tip = f"\033[2m{tip}\033[0m"
+        print(f"\n{tip}", file=sys.stderr)
     return code

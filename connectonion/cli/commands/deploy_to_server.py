@@ -1214,10 +1214,11 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     if hostname:
         console.print(f"  [cyan]https://{hostname}[/cyan] "
                       f"[dim]— the certificate lands within a minute of first boot[/dim]")
-    console.print(f"[dim]  logs:  co server ssh {server} 'journalctl -u {agent} -f'[/dim]")
     console.print(f"[dim]  state: {SRV}/{agent}/.co/  — untouched by deploys[/dim]")
     if deployer_address:
         console.print(f"[dim]  admin: {deployer_address[:16]}…  (your key)[/dim]")
+    # The command goes last: it is the line a reader acts on.
+    console.print(f"[dim]  logs:  co server ssh {server} 'journalctl -u {agent} -f'[/dim]")
     console.print()
     return True
 

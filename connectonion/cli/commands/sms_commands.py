@@ -125,7 +125,7 @@ def handle_sms_devices(json_output: bool = False):
         )
     console.print()
     console.print(table)
-    console.print()
+    console.print("\n[dim]Revoke one:[/dim] [bold]co sms devices revoke <id from this list>[/bold]\n")
 
 
 def handle_sms_revoke(device_id: str, yes: bool = False):
