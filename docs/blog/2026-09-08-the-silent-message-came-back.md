@@ -17,24 +17,22 @@ sent something it had never received. Instead, completion now has its own small
 append-only record. It is flushed before the queue file is removed. A replay sees
 the completed ID and stops; the outbox still says nothing was sent.
 
-The next test changed the replay's chat and body after removing the first queue
-file. Recovery recreated those new values while the inbox log retained the old
-ones. We now recover from the original logged message. A second delivery is a
-reason to recover the recorded operation, not permission to replace its content.
+Deleting the queue file was easy to observe. Remembering why it had disappeared
+was the missing part. The inbox records arrival; the outbox records a reply;
+neither records the consumer's decision that processing is finished. We had
+mistaken the absence of a file for enough evidence of that decision.
 
-Another fixture left half a JSON line at the end of the inbox. The next append
-joined that broken line and disappeared from lookup even though its queue file
-existed. Separating a torn tail before appending preserved the new record. Five
-regression cases failed on the imported branch, including two unrelated message
-IDs that collapsed to the same sanitized filename and a listener lock removed
-while contenders could still hold its inode.
+The regression test now completes a synthetic message without replying, opens a
+fresh mailbox instance, and delivers the same event again. No queue file returns.
+The reply check still reports that nothing was sent. Those two assertions belong
+together: suppressing the replay must not invent a conversation with the provider.
 
-There was a race beside these crash cases. Rename preserves a file's old timestamp;
-the stale sweep could return a freshly claimed message before the consumer reset
-that timestamp. Built-in queue mutations now share a short kernel lock. A test
-pauses the claim in that interval and starts the sweep from a second mailbox. The
-sweep waits, then leaves the fresh claim alone.
+The order of the two writes matters as well. If completion were recorded after
+deleting the file, a crash in between would recreate the original ambiguity. By
+making completion durable first, recovery can finish removing the file without
+asking the consumer to repeat its work.
 
-These fixtures make the local boundary more precise. They do not tell us how long
-a provider retains events while disconnected. That still needs the real-channel
-run before 1.8.5 can claim its listener has passed release acceptance.
+This test establishes a local recovery rule. It does not establish whether the
+provider will retain events during a disconnected listener's absence; the real
+channel run is still pending. But once an event reaches our mailbox and the
+consumer explicitly finishes it, silence now leaves a record of its own.
