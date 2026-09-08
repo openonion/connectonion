@@ -4,6 +4,49 @@ Status: incomplete milestone / draft PR, 2026-09-07. Run only against synthetic 
 and an isolated notebook. No personal source ingestion is needed to validate
 the first PR. Real model tests, when explicitly run, receive synthetic text only.
 
+## Fresh revalidation (2026-09-08)
+
+The following is a new synthetic-only run of the follow-up PR, not a repeat
+of the historical personal-source experiments below. Both transcript roots
+were isolated; no live mailbox was ingested.
+
+- Real Spark successive update and hostile-source checks: **2 passed, 74.34 s**.
+  Aurora's storage decision changed from portability to inspectability without
+  adopting SQLite; an unchanged pass made no model call. The hostile fixture
+  left its outside sentinel and approved Skills untouched. This is evidence
+  for those assertions, not a proof against every possible private-file read.
+- Real CLI journey (tell → start → ask → correct → sync → open → stop):
+  **1 passed, 77.89 s**. The two maintenance batches took **25.4 s / 21.4 s**
+  and recorded **177,772 input / 6,139 output tokens**, with **151,040 cached
+  input tokens**. These counts exclude the separate tell/ask Codex calls;
+  cached input is part of input, not an additional count. No-op made no call.
+- Actual launchd scheduled tick: **1 passed, 305.25 s**. The saved slot was
+  served once, a subsequent scheduled invocation was not due, and stop
+  removed the temporary job. Empty synthetic sources meant no inference.
+- Headless Chrome `file://` reader: **1 passed, 2.45 s**. Navigation, relative
+  record links, search, inert source markup, desktop and 375px mobile rendering
+  passed; no horizontal overflow, JavaScript errors, or HTTP(S) requests.
+  Reproduce with `CO_WIKI_BROWSER_TEST=1 python -m pytest
+  tests/e2e/cli/test_wiki_reader_browser.py -q` (installed Chrome required).
+- The initial focused offline suite passed **135 tests**. CI nevertheless
+  exposed eager annotation evaluation on Python 3.10–3.13: `Notebook.list`
+  shadowed the built-in in `search`'s `list[dict]` return annotation. A new
+  `get_type_hints` regression failed before postponing annotations and passed
+  afterward; the foundation suite passed **64 tests**. Full older-Python
+  verification remains a CI responsibility; local runtime was Python 3.14.
+  After merging the fix, the focused suite passed **136 tests, 1 skipped**
+  in **2.40 s**; the opt-in browser test was run separately as recorded above.
+
+Readiness: the core loop works on this Mac, but both stacked PRs remain drafts.
+Tiny inputs can still incur many model turns: the separate two-update core
+test recorded **200,244 input / 6,041 output**, including **173,440 cached
+input**. Cost needs further tuning. Linux scheduling, fresh live mail coverage,
+and the full scenario scorecard were not exercised in this revalidation.
+Earlier entries below describe their own revisions, not necessarily today's
+tool exposure or defaults. In particular, the current runner permits a
+read-only shell; historical statements that all shell features are off do
+not describe the current implementation.
+
 ## Behavioral matrix
 
 | Contract | Test / evidence | Current status |
