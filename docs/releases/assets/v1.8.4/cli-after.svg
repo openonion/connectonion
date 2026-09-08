@@ -1,0 +1,347 @@
+<svg class="rich-terminal" viewBox="0 0 1238 1831.1999999999998" xmlns="http://www.w3.org/2000/svg">
+    <!-- Generated with Rich https://www.textualize.io -->
+    <style>
+
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Regular"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Regular.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Regular.woff") format("woff");
+        font-style: normal;
+        font-weight: 400;
+    }
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Bold"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Bold.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Bold.woff") format("woff");
+        font-style: bold;
+        font-weight: 700;
+    }
+
+    .terminal-1334745406-matrix {
+        font-family: Fira Code, monospace;
+        font-size: 20px;
+        line-height: 24.4px;
+        font-variant-east-asian: full-width;
+    }
+
+    .terminal-1334745406-title {
+        font-size: 18px;
+        font-weight: bold;
+        font-family: arial;
+    }
+
+    .terminal-1334745406-r1 { fill: #68a0b3;font-weight: bold }
+.terminal-1334745406-r2 { fill: #c5c8c6 }
+    </style>
+
+    <defs>
+    <clipPath id="terminal-1334745406-clip-terminal">
+      <rect x="0" y="0" width="1219.0" height="1780.1999999999998" />
+    </clipPath>
+    <clipPath id="terminal-1334745406-line-0">
+    <rect x="0" y="1.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-1">
+    <rect x="0" y="25.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-2">
+    <rect x="0" y="50.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-3">
+    <rect x="0" y="74.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-4">
+    <rect x="0" y="99.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-5">
+    <rect x="0" y="123.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-6">
+    <rect x="0" y="147.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-7">
+    <rect x="0" y="172.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-8">
+    <rect x="0" y="196.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-9">
+    <rect x="0" y="221.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-10">
+    <rect x="0" y="245.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-11">
+    <rect x="0" y="269.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-12">
+    <rect x="0" y="294.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-13">
+    <rect x="0" y="318.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-14">
+    <rect x="0" y="343.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-15">
+    <rect x="0" y="367.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-16">
+    <rect x="0" y="391.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-17">
+    <rect x="0" y="416.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-18">
+    <rect x="0" y="440.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-19">
+    <rect x="0" y="465.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-20">
+    <rect x="0" y="489.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-21">
+    <rect x="0" y="513.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-22">
+    <rect x="0" y="538.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-23">
+    <rect x="0" y="562.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-24">
+    <rect x="0" y="587.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-25">
+    <rect x="0" y="611.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-26">
+    <rect x="0" y="635.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-27">
+    <rect x="0" y="660.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-28">
+    <rect x="0" y="684.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-29">
+    <rect x="0" y="709.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-30">
+    <rect x="0" y="733.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-31">
+    <rect x="0" y="757.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-32">
+    <rect x="0" y="782.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-33">
+    <rect x="0" y="806.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-34">
+    <rect x="0" y="831.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-35">
+    <rect x="0" y="855.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-36">
+    <rect x="0" y="879.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-37">
+    <rect x="0" y="904.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-38">
+    <rect x="0" y="928.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-39">
+    <rect x="0" y="953.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-40">
+    <rect x="0" y="977.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-41">
+    <rect x="0" y="1001.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-42">
+    <rect x="0" y="1026.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-43">
+    <rect x="0" y="1050.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-44">
+    <rect x="0" y="1075.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-45">
+    <rect x="0" y="1099.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-46">
+    <rect x="0" y="1123.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-47">
+    <rect x="0" y="1148.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-48">
+    <rect x="0" y="1172.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-49">
+    <rect x="0" y="1197.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-50">
+    <rect x="0" y="1221.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-51">
+    <rect x="0" y="1245.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-52">
+    <rect x="0" y="1270.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-53">
+    <rect x="0" y="1294.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-54">
+    <rect x="0" y="1319.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-55">
+    <rect x="0" y="1343.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-56">
+    <rect x="0" y="1367.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-57">
+    <rect x="0" y="1392.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-58">
+    <rect x="0" y="1416.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-59">
+    <rect x="0" y="1441.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-60">
+    <rect x="0" y="1465.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-61">
+    <rect x="0" y="1489.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-62">
+    <rect x="0" y="1514.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-63">
+    <rect x="0" y="1538.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-64">
+    <rect x="0" y="1563.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-65">
+    <rect x="0" y="1587.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-66">
+    <rect x="0" y="1611.9" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-67">
+    <rect x="0" y="1636.3" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-68">
+    <rect x="0" y="1660.7" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-69">
+    <rect x="0" y="1685.1" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-70">
+    <rect x="0" y="1709.5" width="1220" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-1334745406-line-71">
+    <rect x="0" y="1733.9" width="1220" height="24.65"/>
+            </clipPath>
+    </defs>
+
+    <rect fill="#292929" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="1236" height="1829.2" rx="8"/><text class="terminal-1334745406-title" fill="#c5c8c6" text-anchor="middle" x="618" y="27">ConnectOnion&#160;1.8.4&#160;·&#160;installed&#160;CLI&#160;help</text>
+            <g transform="translate(26,22)">
+            <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
+            <circle cx="22" cy="0" r="7" fill="#febc2e"/>
+            <circle cx="44" cy="0" r="7" fill="#28c840"/>
+            </g>
+        
+    <g transform="translate(9, 41)" clip-path="url(#terminal-1334745406-clip-terminal)">
+    
+    <g class="terminal-1334745406-matrix">
+    <text class="terminal-1334745406-r1" x="0" y="20" textLength="170.8" clip-path="url(#terminal-1334745406-line-0)">$&#160;co&#160;--version</text><text class="terminal-1334745406-r2" x="1220" y="20" textLength="12.2" clip-path="url(#terminal-1334745406-line-0)">
+</text><text class="terminal-1334745406-r2" x="0" y="44.4" textLength="97.6" clip-path="url(#terminal-1334745406-line-1)">co&#160;1.8.4</text><text class="terminal-1334745406-r2" x="1220" y="44.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-1)">
+</text><text class="terminal-1334745406-r2" x="1220" y="68.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-2)">
+</text><text class="terminal-1334745406-r1" x="0" y="93.2" textLength="280.6" clip-path="url(#terminal-1334745406-line-3)">$&#160;co&#160;gmail&#160;draft&#160;--help</text><text class="terminal-1334745406-r2" x="1220" y="93.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-3)">
+</text><text class="terminal-1334745406-r2" x="1220" y="117.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-4)">
+</text><text class="terminal-1334745406-r2" x="0" y="142" textLength="1220" clip-path="url(#terminal-1334745406-line-5)">&#160;Usage:&#160;python&#160;-m&#160;connectonion.cli.main&#160;gmail&#160;draft&#160;[OPTIONS]&#160;COMMAND&#160;[ARGS]...&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text><text class="terminal-1334745406-r2" x="1220" y="142" textLength="12.2" clip-path="url(#terminal-1334745406-line-5)">
+</text><text class="terminal-1334745406-r2" x="1220" y="166.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-6)">
+</text><text class="terminal-1334745406-r2" x="0" y="190.8" textLength="1220" clip-path="url(#terminal-1334745406-line-7)">&#160;Create,&#160;inspect,&#160;and&#160;edit&#160;Gmail&#160;drafts;&#160;sending&#160;always&#160;asks&#160;for&#160;confirmation.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text><text class="terminal-1334745406-r2" x="1220" y="190.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-7)">
+</text><text class="terminal-1334745406-r2" x="1220" y="215.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-8)">
+</text><text class="terminal-1334745406-r2" x="0" y="239.6" textLength="1220" clip-path="url(#terminal-1334745406-line-9)">╭─&#160;Options&#160;────────────────────────────────────────────────────────────────────────────────────────╮</text><text class="terminal-1334745406-r2" x="1220" y="239.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-9)">
+</text><text class="terminal-1334745406-r2" x="0" y="264" textLength="1220" clip-path="url(#terminal-1334745406-line-10)">│&#160;--help&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Show&#160;this&#160;message&#160;and&#160;exit.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="264" textLength="12.2" clip-path="url(#terminal-1334745406-line-10)">
+</text><text class="terminal-1334745406-r2" x="0" y="288.4" textLength="1220" clip-path="url(#terminal-1334745406-line-11)">╰──────────────────────────────────────────────────────────────────────────────────────────────────╯</text><text class="terminal-1334745406-r2" x="1220" y="288.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-11)">
+</text><text class="terminal-1334745406-r2" x="0" y="312.8" textLength="1220" clip-path="url(#terminal-1334745406-line-12)">╭─&#160;Commands&#160;───────────────────────────────────────────────────────────────────────────────────────╮</text><text class="terminal-1334745406-r2" x="1220" y="312.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-12)">
+</text><text class="terminal-1334745406-r2" x="0" y="337.2" textLength="1220" clip-path="url(#terminal-1334745406-line-13)">│&#160;list&#160;&#160;&#160;&#160;&#160;List&#160;Gmail&#160;drafts,&#160;numbered&#160;for&#160;later&#160;draft&#160;commands.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="337.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-13)">
+</text><text class="terminal-1334745406-r2" x="0" y="361.6" textLength="1220" clip-path="url(#terminal-1334745406-line-14)">│&#160;create&#160;&#160;&#160;Create&#160;an&#160;unsent&#160;Gmail&#160;draft.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="361.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-14)">
+</text><text class="terminal-1334745406-r2" x="0" y="386" textLength="1220" clip-path="url(#terminal-1334745406-line-15)">│&#160;attach&#160;&#160;&#160;Stage&#160;a&#160;local/Drive&#160;file,&#160;or&#160;append&#160;a&#160;Drive&#160;link,&#160;without&#160;sending.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="386" textLength="12.2" clip-path="url(#terminal-1334745406-line-15)">
+</text><text class="terminal-1334745406-r2" x="0" y="410.4" textLength="1220" clip-path="url(#terminal-1334745406-line-16)">│&#160;remove&#160;&#160;&#160;Remove&#160;one&#160;staged&#160;attachment;&#160;the&#160;draft&#160;remains&#160;unsent.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="410.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-16)">
+</text><text class="terminal-1334745406-r2" x="0" y="434.8" textLength="1220" clip-path="url(#terminal-1334745406-line-17)">│&#160;replace&#160;&#160;Atomically&#160;replace&#160;one&#160;staged&#160;attachment&#160;without&#160;sending.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="434.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-17)">
+</text><text class="terminal-1334745406-r2" x="0" y="459.2" textLength="1220" clip-path="url(#terminal-1334745406-line-18)">│&#160;preview&#160;&#160;Print&#160;recipients,&#160;body,&#160;and&#160;the&#160;final&#160;attachment&#160;manifest.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="459.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-18)">
+</text><text class="terminal-1334745406-r2" x="0" y="483.6" textLength="1220" clip-path="url(#terminal-1334745406-line-19)">│&#160;review&#160;&#160;&#160;Review&#160;the&#160;complete&#160;outgoing&#160;content&#160;and&#160;produce&#160;its&#160;confirmation&#160;token.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="483.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-19)">
+</text><text class="terminal-1334745406-r2" x="0" y="508" textLength="1220" clip-path="url(#terminal-1334745406-line-20)">│&#160;send&#160;&#160;&#160;&#160;&#160;Send&#160;reviewed&#160;MIME;&#160;require&#160;a&#160;token&#160;or&#160;default-No&#160;interactive&#160;confirmation.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="508" textLength="12.2" clip-path="url(#terminal-1334745406-line-20)">
+</text><text class="terminal-1334745406-r2" x="0" y="532.4" textLength="1220" clip-path="url(#terminal-1334745406-line-21)">╰──────────────────────────────────────────────────────────────────────────────────────────────────╯</text><text class="terminal-1334745406-r2" x="1220" y="532.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-21)">
+</text><text class="terminal-1334745406-r2" x="1220" y="556.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-22)">
+</text><text class="terminal-1334745406-r2" x="1220" y="581.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-23)">
+</text><text class="terminal-1334745406-r1" x="0" y="605.6" textLength="195.2" clip-path="url(#terminal-1334745406-line-24)">$&#160;co&#160;syno&#160;--help</text><text class="terminal-1334745406-r2" x="1220" y="605.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-24)">
+</text><text class="terminal-1334745406-r2" x="1220" y="630" textLength="12.2" clip-path="url(#terminal-1334745406-line-25)">
+</text><text class="terminal-1334745406-r2" x="0" y="654.4" textLength="1220" clip-path="url(#terminal-1334745406-line-26)">&#160;Usage:&#160;python&#160;-m&#160;connectonion.cli.main&#160;syno&#160;[OPTIONS]&#160;COMMAND&#160;[ARGS]...&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text><text class="terminal-1334745406-r2" x="1220" y="654.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-26)">
+</text><text class="terminal-1334745406-r2" x="1220" y="678.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-27)">
+</text><text class="terminal-1334745406-r2" x="0" y="703.2" textLength="1220" clip-path="url(#terminal-1334745406-line-28)">&#160;Connect&#160;to&#160;a&#160;Synology&#160;NAS,&#160;inspect&#160;its&#160;state&#160;and&#160;manage&#160;everyday&#160;files.&#160;Bare&#160;co&#160;syno&#160;lists&#160;shared&#160;&#160;</text><text class="terminal-1334745406-r2" x="1220" y="703.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-28)">
+</text><text class="terminal-1334745406-r2" x="0" y="727.6" textLength="1220" clip-path="url(#terminal-1334745406-line-29)">&#160;folders.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text><text class="terminal-1334745406-r2" x="1220" y="727.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-29)">
+</text><text class="terminal-1334745406-r2" x="1220" y="752" textLength="12.2" clip-path="url(#terminal-1334745406-line-30)">
+</text><text class="terminal-1334745406-r2" x="0" y="776.4" textLength="1220" clip-path="url(#terminal-1334745406-line-31)">╭─&#160;Options&#160;────────────────────────────────────────────────────────────────────────────────────────╮</text><text class="terminal-1334745406-r2" x="1220" y="776.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-31)">
+</text><text class="terminal-1334745406-r2" x="0" y="800.8" textLength="1220" clip-path="url(#terminal-1334745406-line-32)">│&#160;--nas&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&lt;str&gt;&#160;&#160;&#160;&#160;Select&#160;a&#160;saved&#160;NAS&#160;for&#160;this&#160;invocation.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="800.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-32)">
+</text><text class="terminal-1334745406-r2" x="0" y="825.2" textLength="1220" clip-path="url(#terminal-1334745406-line-33)">│&#160;--json&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Emit&#160;one&#160;JSON&#160;result;&#160;never&#160;prompt.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="825.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-33)">
+</text><text class="terminal-1334745406-r2" x="0" y="849.6" textLength="1220" clip-path="url(#terminal-1334745406-line-34)">│&#160;--non-interactive&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Never&#160;prompt.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="849.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-34)">
+</text><text class="terminal-1334745406-r2" x="0" y="874" textLength="1220" clip-path="url(#terminal-1334745406-line-35)">│&#160;--timeout&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&lt;float&gt;&#160;&#160;Command&#160;waiting&#160;budget&#160;in&#160;seconds&#160;(0&#160;&lt;&#160;seconds&#160;&lt;=&#160;3600).&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="874" textLength="12.2" clip-path="url(#terminal-1334745406-line-35)">
+</text><text class="terminal-1334745406-r2" x="0" y="898.4" textLength="1220" clip-path="url(#terminal-1334745406-line-36)">│&#160;--help&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Show&#160;this&#160;message&#160;and&#160;exit.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="898.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-36)">
+</text><text class="terminal-1334745406-r2" x="0" y="922.8" textLength="1220" clip-path="url(#terminal-1334745406-line-37)">╰──────────────────────────────────────────────────────────────────────────────────────────────────╯</text><text class="terminal-1334745406-r2" x="1220" y="922.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-37)">
+</text><text class="terminal-1334745406-r2" x="0" y="947.2" textLength="1220" clip-path="url(#terminal-1334745406-line-38)">╭─&#160;Commands&#160;───────────────────────────────────────────────────────────────────────────────────────╮</text><text class="terminal-1334745406-r2" x="1220" y="947.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-38)">
+</text><text class="terminal-1334745406-r2" x="0" y="971.6" textLength="1220" clip-path="url(#terminal-1334745406-line-39)">│&#160;login&#160;&#160;&#160;&#160;&#160;Verify&#160;File&#160;Station&#160;access&#160;before&#160;saving&#160;a&#160;profile.&#160;HTTPS&#160;and&#160;interactive-only&#160;OTP;&#160;no&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="971.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-39)">
+</text><text class="terminal-1334745406-r2" x="0" y="996" textLength="1220" clip-path="url(#terminal-1334745406-line-40)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;secrets&#160;on&#160;argv.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="996" textLength="12.2" clip-path="url(#terminal-1334745406-line-40)">
+</text><text class="terminal-1334745406-r2" x="0" y="1020.4" textLength="1220" clip-path="url(#terminal-1334745406-line-41)">│&#160;logout&#160;&#160;&#160;&#160;Clear&#160;local&#160;authentication&#160;even&#160;when&#160;remote&#160;session&#160;invalidation&#160;is&#160;unavailable;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1020.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-41)">
+</text><text class="terminal-1334745406-r2" x="0" y="1044.8" textLength="1220" clip-path="url(#terminal-1334745406-line-42)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;retain&#160;settings.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1044.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-42)">
+</text><text class="terminal-1334745406-r2" x="0" y="1069.2" textLength="1220" clip-path="url(#terminal-1334745406-line-43)">│&#160;status&#160;&#160;&#160;&#160;Inspect&#160;live&#160;connectivity&#160;and&#160;configured&#160;monitoring&#160;sources.&#160;Partial&#160;coverage&#160;exits&#160;1.&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1069.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-43)">
+</text><text class="terminal-1334745406-r2" x="0" y="1093.6" textLength="1220" clip-path="url(#terminal-1334745406-line-44)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Operation&#160;checks&#160;never&#160;resubmit&#160;writes.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1093.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-44)">
+</text><text class="terminal-1334745406-r2" x="0" y="1118" textLength="1220" clip-path="url(#terminal-1334745406-line-45)">│&#160;ls&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;List&#160;accessible&#160;shares&#160;or&#160;a&#160;full&#160;directory&#160;path.&#160;Default&#160;order&#160;is&#160;name&#160;ascending.&#160;Live&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1118" textLength="12.2" clip-path="url(#terminal-1334745406-line-45)">
+</text><text class="terminal-1334745406-r2" x="0" y="1142.4" textLength="1220" clip-path="url(#terminal-1334745406-line-46)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;pages&#160;can&#160;change.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1142.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-46)">
+</text><text class="terminal-1334745406-r2" x="0" y="1166.8" textLength="1220" clip-path="url(#terminal-1334745406-line-47)">│&#160;info&#160;&#160;&#160;&#160;&#160;&#160;Inspect&#160;a&#160;complete&#160;NAS&#160;file&#160;or&#160;directory&#160;path.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1166.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-47)">
+</text><text class="terminal-1334745406-r2" x="0" y="1191.2" textLength="1220" clip-path="url(#terminal-1334745406-line-48)">│&#160;search&#160;&#160;&#160;&#160;Search&#160;names&#160;in&#160;an&#160;explicit&#160;shared-directory&#160;scope.&#160;Wait&#160;for&#160;completion&#160;and&#160;clean&#160;the&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1191.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-48)">
+</text><text class="terminal-1334745406-r2" x="0" y="1215.6" textLength="1220" clip-path="url(#terminal-1334745406-line-49)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;task&#160;before&#160;paging&#160;its&#160;snapshot.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1215.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-49)">
+</text><text class="terminal-1334745406-r2" x="0" y="1240" textLength="1220" clip-path="url(#terminal-1334745406-line-50)">│&#160;download&#160;&#160;Download&#160;without&#160;overwrite&#160;by&#160;default.&#160;Directories&#160;require&#160;--recursive;&#160;local&#160;parents&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1240" textLength="12.2" clip-path="url(#terminal-1334745406-line-50)">
+</text><text class="terminal-1334745406-r2" x="0" y="1264.4" textLength="1220" clip-path="url(#terminal-1334745406-line-51)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;must&#160;exist.&#160;Numeric&#160;migration&#160;rows&#160;require&#160;--listing.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1264.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-51)">
+</text><text class="terminal-1334745406-r2" x="0" y="1288.8" textLength="1220" clip-path="url(#terminal-1334745406-line-52)">│&#160;upload&#160;&#160;&#160;&#160;Upload&#160;into&#160;an&#160;existing&#160;NAS&#160;directory.&#160;Directories&#160;require&#160;--recursive&#160;and&#160;preserve&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1288.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-52)">
+</text><text class="terminal-1334745406-r2" x="0" y="1313.2" textLength="1220" clip-path="url(#terminal-1334745406-line-53)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;their&#160;base&#160;name&#160;and&#160;empty&#160;directories.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1313.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-53)">
+</text><text class="terminal-1334745406-r2" x="0" y="1337.6" textLength="1220" clip-path="url(#terminal-1334745406-line-54)">│&#160;mkdir&#160;&#160;&#160;&#160;&#160;Create&#160;ordinary&#160;directories;&#160;never&#160;create&#160;DSM&#160;shared&#160;roots.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1337.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-54)">
+</text><text class="terminal-1334745406-r2" x="0" y="1362" textLength="1220" clip-path="url(#terminal-1334745406-line-55)">│&#160;copy&#160;&#160;&#160;&#160;&#160;&#160;Copy&#160;within&#160;one&#160;NAS&#160;without&#160;directory-tree&#160;merging.&#160;Pending&#160;task&#160;IDs&#160;survive&#160;restart;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1362" textLength="12.2" clip-path="url(#terminal-1334745406-line-55)">
+</text><text class="terminal-1334745406-r2" x="0" y="1386.4" textLength="1220" clip-path="url(#terminal-1334745406-line-56)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;repeat&#160;this&#160;command&#160;only&#160;when&#160;continuation&#160;is&#160;requested.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1386.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-56)">
+</text><text class="terminal-1334745406-r2" x="0" y="1410.8" textLength="1220" clip-path="url(#terminal-1334745406-line-57)">│&#160;move&#160;&#160;&#160;&#160;&#160;&#160;Move&#160;or&#160;rename&#160;within&#160;one&#160;NAS.&#160;No&#160;self-descendant&#160;moves&#160;or&#160;existing-directory-tree&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1410.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-57)">
+</text><text class="terminal-1334745406-r2" x="0" y="1435.2" textLength="1220" clip-path="url(#terminal-1334745406-line-58)">│&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;merging.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1435.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-58)">
+</text><text class="terminal-1334745406-r2" x="0" y="1459.6" textLength="1220" clip-path="url(#terminal-1334745406-line-59)">│&#160;get&#160;&#160;&#160;&#160;&#160;&#160;&#160;Migration&#160;alias&#160;for&#160;download.&#160;Numeric&#160;rows&#160;always&#160;require&#160;their&#160;frozen&#160;--listing&#160;ID.&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1459.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-59)">
+</text><text class="terminal-1334745406-r2" x="0" y="1484" textLength="1220" clip-path="url(#terminal-1334745406-line-60)">│&#160;put&#160;&#160;&#160;&#160;&#160;&#160;&#160;Migration&#160;alias&#160;for&#160;upload;&#160;all&#160;transfer&#160;safeguards&#160;and&#160;options&#160;apply.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1484" textLength="12.2" clip-path="url(#terminal-1334745406-line-60)">
+</text><text class="terminal-1334745406-r2" x="0" y="1508.4" textLength="1220" clip-path="url(#terminal-1334745406-line-61)">│&#160;shares&#160;&#160;&#160;&#160;Migration&#160;alias&#160;for&#160;share&#160;list;&#160;URLs&#160;are&#160;hidden&#160;unless&#160;explicitly&#160;requested.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1508.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-61)">
+</text><text class="terminal-1334745406-r2" x="0" y="1532.8" textLength="1220" clip-path="url(#terminal-1334745406-line-62)">│&#160;nas&#160;&#160;&#160;&#160;&#160;&#160;&#160;Inspect&#160;saved&#160;NAS&#160;profiles&#160;and&#160;select&#160;the&#160;default.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1532.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-62)">
+</text><text class="terminal-1334745406-r2" x="0" y="1557.2" textLength="1220" clip-path="url(#terminal-1334745406-line-63)">│&#160;network&#160;&#160;&#160;Inspect&#160;NAS&#160;interfaces&#160;separately&#160;from&#160;client&#160;connectivity.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1557.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-63)">
+</text><text class="terminal-1334745406-r2" x="0" y="1581.6" textLength="1220" clip-path="url(#terminal-1334745406-line-64)">│&#160;storage&#160;&#160;&#160;Inspect&#160;the&#160;capacity&#160;and&#160;disk&#160;indicators&#160;supplied&#160;by&#160;the&#160;configured&#160;SNMPv3&#160;source.&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1581.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-64)">
+</text><text class="terminal-1334745406-r2" x="0" y="1606" textLength="1220" clip-path="url(#terminal-1334745406-line-65)">│&#160;service&#160;&#160;&#160;Enumerate&#160;services&#160;using&#160;explicitly&#160;configured&#160;SSH&#160;read&#160;commands.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1606" textLength="12.2" clip-path="url(#terminal-1334745406-line-65)">
+</text><text class="terminal-1334745406-r2" x="0" y="1630.4" textLength="1220" clip-path="url(#terminal-1334745406-line-66)">│&#160;share&#160;&#160;&#160;&#160;&#160;Create,&#160;list&#160;and&#160;revoke&#160;sharing&#160;links.&#160;Legacy&#160;share&#160;PATH&#160;dispatches&#160;to&#160;create.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;│</text><text class="terminal-1334745406-r2" x="1220" y="1630.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-66)">
+</text><text class="terminal-1334745406-r2" x="0" y="1654.8" textLength="1220" clip-path="url(#terminal-1334745406-line-67)">╰──────────────────────────────────────────────────────────────────────────────────────────────────╯</text><text class="terminal-1334745406-r2" x="1220" y="1654.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-67)">
+</text><text class="terminal-1334745406-r2" x="1220" y="1679.2" textLength="12.2" clip-path="url(#terminal-1334745406-line-68)">
+</text><text class="terminal-1334745406-r2" x="0" y="1703.6" textLength="1220" clip-path="url(#terminal-1334745406-line-69)">&#160;Examples:&#160;co&#160;syno&#160;login&#160;--name&#160;home;&#160;co&#160;syno&#160;--nas&#160;home&#160;status;&#160;co&#160;syno&#160;ls&#160;/home/docs&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text><text class="terminal-1334745406-r2" x="1220" y="1703.6" textLength="12.2" clip-path="url(#terminal-1334745406-line-69)">
+</text><text class="terminal-1334745406-r2" x="1220" y="1728" textLength="12.2" clip-path="url(#terminal-1334745406-line-70)">
+</text><text class="terminal-1334745406-r2" x="1220" y="1752.4" textLength="12.2" clip-path="url(#terminal-1334745406-line-71)">
+</text><text class="terminal-1334745406-r2" x="1220" y="1776.8" textLength="12.2" clip-path="url(#terminal-1334745406-line-72)">
+</text>
+    </g>
+    </g>
+</svg>
