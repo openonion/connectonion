@@ -75,6 +75,25 @@ Nine synthetic scenarios, deterministic checks, real maintainer. Each row is one
 | `gpt-5.6-terra`, same Skills | **9/9** | 6–101 s (dedupe across sessions was the slow one), 14k–124k input tokens |
 | `gpt-5.3-codex-spark`, current prompt | not rerun | the week's Spark allowance (96%) was exhausted before the prompt fixes landed |
 
+### Why the people pages were thin, and what fixed it (2026-09-08)
+
+The 60-day Outlook run's `people/vern-chan.md` was two sentences. His seven
+mails held his full title and office, his address, a dated back-and-forth
+over two weeks, fixed greeting and sign-off habits, a cc habit, "thank you for
+being frank", and the user's own "On capacity: … On timing: …" style. Reading
+the run's extraction notes (now kept under `.state/extracts/`) placed the loss
+at the extract pass: 79 mails → 18 bullets, one line per person, no quote.
+Three causes, each with a fix and a measurement:
+
+| cause | fix | measured |
+|---|---|---|
+| the extract Skill capped itself at "forty bullets" and never asked for style, quotes, contact or a timeline | People are a block per person with five sub-bullets (role/contact, dated history with both sides, how they write + quote, how the user writes to them, open); no length cap; every non-noise mail yields a bullet | notes per 40 mails: 19–20 bullets, 8–10k chars (was 18 bullets / 6.5k for 79) |
+| the maintain Skill's only people example was three sentences | a full person-page shape and example; a person's page grows and is never shrunk | Vern's page: role, address, contact, four dated exchanges, style with a quote, the user's style, open |
+| Outlook flattens a mail to one line, so the quoted-thread cut (`^From: … Sent:`, `wrote:$`) never matched and every reply carried the whole thread | markers match without line anchors or word boundaries; signature links dropped | `test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line` |
+
+Cost of the richer notes: ~200k input tokens and 2.5–3 min per 40 mails
+(extract ≈ 75k, maintain ≈ 100–160k), against ~250k per 70 before.
+
 ### Models a ChatGPT-account Codex can run as the maintainer (2026-09-07)
 
 Through `codex app-server` with `allowProviderModelFallback: false`: Spark
