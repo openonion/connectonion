@@ -99,3 +99,23 @@ Implementation details and current evidence are recorded in the
 [Synology decision](../design-decisions/070-synology-inspections-and-durable-operations.md)
 and [acceptance record](../acceptance/1.8.4-synology.md). This is a candidate
 implementation, not a package release announcement.
+
+## A returned link was not proof of its settings
+
+A sharing regression exposed the same boundary. Its fake NAS accepted a create
+request, then returned a link with password protection disabled. The client had
+been filling the result from the request, so it could describe protection that
+the returned link did not have.
+
+Creation now reads the link back before returning it. The regression supplies a
+matching link ID and path but the wrong protection flag. The client revokes only
+that identified new link and reports a failure. If the identity does not match,
+it cannot safely choose a link to revoke. If readback or cleanup is uncertain,
+it names that uncertainty and asks for inspection before another create call.
+
+The fixtures also distinguish a missing expiry field from an explicit no-expiry
+value. Empty-string and zero sentinels normalize to no expiry; missing metadata
+cannot certify the requested settings. A settings check still cannot prove that
+a browser enforces a password or that an in-flight download stops on revocation.
+Those are separate acceptance questions, just as a returned task ID is separate
+from a completed copy.
