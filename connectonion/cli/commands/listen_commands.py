@@ -192,6 +192,12 @@ def handle_check(name: str) -> None:
     if problems:
         sys.exit(EXIT_CONFIG)
     mailbox = Mailbox(name)
+    recovery_error = mailbox.root / "recovery-error.txt"
+    if recovery_error.exists():
+        errors.print("History recovery is incomplete. Check bot history permissions and network; "
+                     f"the listener retains its checkpoint and retries. Details: {recovery_error}",
+                     style="red")
+        sys.exit(1)
     pid = mailbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"[green]✓[/green] {name} reachable · {listener} · {len(mailbox.unread())} unread · {mailbox.root}")

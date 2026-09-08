@@ -275,3 +275,29 @@ Real channel delivery and provider behavior during a network gap remain separate
 acceptance gates. Local concurrency tests do not establish that Feishu retains
 events throughout an arbitrarily long disconnection. No existing listener or
 polling automation should be stopped merely to run a synthetic test.
+
+## Recovering a disconnected listener
+
+The candidate reconciles history on startup and after an SDK reconnect. It uses
+only conversations already recorded in this mailbox; it does not discover or
+import every chat the bot can access. The first run starts a new history boundary
+at the listener's start time. Preserve `recovery.json` with the mailbox when
+restarting: deleting it discards that recovery boundary.
+
+Every history page passes through the same message-ID deduplication and durable
+completion records as WebSocket events. A successful pass advances the checkpoint;
+a failed page, denied permission, or storage failure leaves it unchanged and is
+retried after 60 seconds. `co lark check` reports an outstanding recovery failure.
+This work runs outside the WebSocket callback so fetching history does not delay
+live-event acknowledgements.
+
+Recovery requires the bot's message-history read permissions and access to each
+known conversation. Group recovery admits only messages that mention this bot;
+it does not turn unrelated group discussion into agent work. Known direct chats
+retain their direct-message semantics. Known threads and threads discovered in
+history are paginated separately. Messages in conversations the mailbox has never
+seen, deleted messages, and history the provider no longer exposes cannot be
+promised recoverable. These limits also apply to `co feishu`.
+
+This repair is awaiting a repeat of the live gap test. The earlier observed loss
+remains an open release gate until that run passes.

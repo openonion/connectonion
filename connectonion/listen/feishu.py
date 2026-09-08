@@ -18,6 +18,7 @@ from typing import Optional
 import requests
 
 from .mailbox import Mailbox, Message, iso_utc
+from .recovery import HistoryRecovery
 
 DOMAINS = {
     "feishu": "https://open.feishu.cn",
@@ -151,6 +152,8 @@ class Feishu:
             # open_id until then.
             mailbox.log(f"bot info failed: {exc}")
 
+        recovery = HistoryRecovery(self, mailbox, raw=raw)
+
         def on_message(data) -> None:
             # Parsing failures must not raise. The SDK answers a
             # raising handler with HTTP 500, and Feishu treats 500 as "not
@@ -163,6 +166,7 @@ class Feishu:
                 return
             if message is None:
                 return
+            recovery.note_chat(message.chat, getattr(data.event.message, 'chat_type', None))
             if raw:
                 try:
                     message.raw = _raw_of(data)
@@ -188,8 +192,16 @@ class Feishu:
             log_level=lark.LogLevel.WARNING,
         )
         client.on_reconnecting = lambda: mailbox.log("reconnecting")
-        client.on_reconnected = lambda: mailbox.log("reconnected")
-        client.start()
+        def reconnected():
+            mailbox.log("reconnected; reconciling known conversation history")
+            recovery.request()
+
+        client.on_reconnected = reconnected
+        recovery.start()
+        try:
+            client.start()
+        finally:
+            recovery.stop()
 
     def to_message(self, data, *, raw: bool = False) -> Optional[Message]:
         """An im.message.receive_v1 event as a Message, or None for an event
