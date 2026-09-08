@@ -102,3 +102,10 @@ class TestTheFirstScreenStillWorks:
         assert len(listing) == len(_real_commands())
         for line in listing:
             assert line.startswith("  ") and line.split()[0] in _real_commands(), line
+
+
+def test_first_screen_explains_explicit_project_configuration():
+    output = " ".join(_bare_co().split())
+    assert "~/.co/keys.env" in output
+    assert "co init ./" in output
+    assert "co --env-file .env <command>" in output

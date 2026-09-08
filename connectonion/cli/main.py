@@ -105,8 +105,9 @@ def _show_help():
     console.print("A simple Python framework for creating AI agents.")
     console.print()
     console.print("[bold]Quick Start:[/bold]")
-    console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
-    console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
+    console.print("  co init                          Set up global credentials", markup=False)
+    console.print("  [cyan]co create my-agent[/cyan]               Create a project")
+    console.print("  [cyan]cd my-agent && python agent.py[/cyan]    Run your agent")
     console.print()
     # The register, not a selection. This list used to be typed by hand and
     # named 16 of 24 commands — ai, announce, call, reset, server, setup,
@@ -128,8 +129,14 @@ def _show_help():
         console.print(f"  [green]{name.ljust(width)}[/green]  {escape(entry.summary)}",
                       highlight=False, soft_wrap=True)
     console.print()
-    console.print("  [dim]co commands[/dim]           Every subcommand, one per line", highlight=False)
-    console.print("  [dim]co <command> --help[/dim]   Options for one command", highlight=False)
+    console.print("[bold]Configuration:[/bold]")
+    console.print("  Global by default: ~/.co/keys.env", markup=False)
+    console.print("  co init ./                       Set up a project explicitly", markup=False)
+    console.print("  co --env-file .env <command>     Use a project env file", markup=False)
+    console.print()
+    console.print("  co commands                      Every subcommand, one per line", markup=False)
+    console.print("  co --help                        All commands", markup=False)
+    console.print("  co <command> --help              Command options", markup=False)
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")

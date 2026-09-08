@@ -6,6 +6,9 @@ global directory and its `keys.env`. A dotenv file cannot redirect that path.
 `co init` initializes the global configuration and identity. It rejects
 `--env-file` with exit 2; omit that selector for global initialization.
 
+Run `co` for a short command guide and configuration examples, or `co --help`
+for the complete command list. `co init ./` initializes a project explicitly.
+
 Use a project file explicitly, with the option **before** the command:
 
 ```sh

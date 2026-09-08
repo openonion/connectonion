@@ -155,12 +155,13 @@ class TestCliHelp:
         result = self.runner.invoke(cli, [])
 
         line_count = len(result.output.split('\n'))
-        # One line per registered command plus a fixed frame: the list is
+        # One line per registered command plus a fixed frame (title, Quick
+        # Start, Configuration, pointers, links: ~24 lines): the list is
         # generated from the register, so the bound moves with it.
         from connectonion.cli.discovery import command_tree
         from connectonion.cli.main import app
         top_level = [e for e in command_tree(app) if e.path.count(" ") == 1]
-        assert line_count <= len(top_level) + 20, "Brief help should be one line per command"
+        assert line_count <= len(top_level) + 30, "Brief help should be one line per command"
         assert "Quick Start:" in result.output
         assert "Commands:" in result.output
 

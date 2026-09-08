@@ -43,34 +43,27 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Release candidate: 1.8.4a1 (preview, prepared for publication)
+## Release candidate: 1.8.4a2 (preview, prepared for publication)
 
-All ConnectOnion-managed env settings default to the global configuration file,
-independent of cwd. A root `--env-file PATH` explicitly selects project settings;
-provider credential records preserve their account and source through refresh.
-Plain `co init` initializes the global setup; explicit project creation remains.
+This preview fixes Gmail send-receipt recovery when Google rewrites Message-ID.
+Reviewed MIME carries a provider-preserved attempt marker; recovery requires a
+unique match within one bounded, complete metadata page and never blindly resends.
+The real installed-wheel Gmail/Drive journey passed, including simulated lost
+receipt recovery, mailbox operations and private collision-safe downloads.
 
-Gmail adds account-bound frozen listings, bounded mailbox JSON and attachment
-operations, and exact-content draft review with durable uncertain-send recovery.
-Drive binary/native exports and managed links retain provider-backed source
-records through draft edits. Synology implements the agreed 20-command core with
-explicit profiles, HTTPS, bounded inspection/transfers and durable copy/move tasks.
-Control Center adds immutable bundles, fresh review, retained approved revisions,
-manual/periodic/event updates and the scoped browser bridge.
+Core regression: 8,568 passed, 22 skipped and 184 live tests excluded. Local
+browser flows, loopback storage and six configured provider reads passed.
+Physical NAS acceptance still needs a reachable profile and disposable directory.
+Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
+See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
+[local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-The paired SDK `@connectonion/react@0.4.4-rc.2` is published. This Core version is
-prepared as an opt-in preview for installed-artifact acceptance. The owner
-authorized publishing the preview first and continuing local acceptance afterward.
-Final 1.8.4 still needs the outstanding live journeys. See the
-[release readiness record](docs/acceptance/1.8.4-release-readiness.md) for exact
-checks and outstanding live-account/NAS and PR review gates. Hosting acceptance
-uses a local GCS emulator at the operator's request; no cloud bucket or production
-hosting service was provisioned. Do not tag or advertise Core 1.8.4 as published
-until its required acceptance and review gates are complete.
-
-## Current Version: 1.8.4a1
+## Current Version: 1.8.4a2
 
 ### Version History
+- 1.8.4a2 (**preview recovery fix:** Gmail-preserved attempt markers recover a
+  lost send receipt despite rewritten Message-ID; bounded unique lookup remains
+  fail-closed. Full real Gmail/Drive acceptance passed; physical NAS pending.)
 - 1.8.4a1 (**opt-in preview of 1.8.4:** owner-authorized preview publication before
   the final live Gmail/Drive and physical NAS journeys. Runtime/platform checks,
   local hosting, browser and installed-artifact checks pass. Stable stays 1.8.3;

@@ -1,0 +1,88 @@
+{
+  "public_preview": "1.8.4a1",
+  "candidate_is_unpublished_local_fix": true,
+  "wheel_sha256": "b6862c4922aa95814059fde662f2df98037ae602b4dba889e787aedefe1a9d3c",
+  "gmail_drive": {
+    "checks": [
+      "local_binary_native_link_survive_process_restart",
+      "noninteractive_confirmation_and_stale_review_rejected",
+      "stored_reviewed_content_draft_consumed_no_duplicate_send",
+      "provider_marker_recovers_lost_receipt_without_resending",
+      "frozen_listing_labels_archive_and_private_collision_safe_downloads"
+    ],
+    "cleanup": [
+      "message_trashed",
+      "drive_fixture_trashed",
+      "drive_fixture_trashed"
+    ],
+    "observations": {
+      "inbox_label_observed": true,
+      "message_id_rewritten": true
+    },
+    "passed": true
+  },
+  "browser": {
+    "passed": 26,
+    "scope": "local production O Chat browser flows with scripted Host; not an independent live model authoring claim",
+    "source_commit": "5ed55728d6e972118776c94b78c172b6e001d3d6",
+    "sdk": "0.4.4-rc.2"
+  },
+  "hosting": {
+    "backend": "local_emulator",
+    "checks": [
+      "concurrent_reservations_and_idempotent_publication",
+      "gcs_client_bytes_and_static_response_contract",
+      "corrupted_stored_object_not_served"
+    ],
+    "cleanup": true,
+    "passed": true
+  },
+  "physical_nas": {
+    "status": "pending",
+    "configured_profiles": 0,
+    "needs": "reachable NAS address/profile and disposable directory"
+  },
+  "public_preview_provider_reads": [
+    {
+      "provider": "gmail",
+      "status": "passed",
+      "source": "global"
+    },
+    {
+      "provider": "drive",
+      "status": "passed",
+      "read_completed": true
+    },
+    {
+      "provider": "google_calendar",
+      "status": "passed",
+      "read_completed": true
+    },
+    {
+      "provider": "youtube",
+      "status": "passed",
+      "read_completed": true
+    },
+    {
+      "provider": "outlook",
+      "status": "passed",
+      "source": "global"
+    },
+    {
+      "provider": "microsoft_calendar",
+      "status": "passed",
+      "read_completed": true
+    }
+  ],
+  "live_harness_sha256": "d20ecc8f2f061e65b60dcea557a38c2b3ce59ef37583962531a017ad7333883d",
+  "runtime_fix_sha256": "c3ba02a0fa5a25107af1c45f1cea43247e71e4749ec1e5160cab59f1149ff01a",
+  "core_regression": {
+    "passed": 8568,
+    "skipped": 22,
+    "deselected": 184,
+    "seconds": 291.12,
+    "real_api_tests_excluded_from_this_count": true,
+    "environment": "repository test venv on PATH; PYTHONPATH=.; OPENONION_API_KEY=test-key as in CI"
+  },
+  "journal_model_check": "pending explicit per-payload approval after automatic approval rejection"
+}
