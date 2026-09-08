@@ -90,12 +90,33 @@ co feishu done om_9f8e           # took it, decided not to answer; do not bring 
 co feishu check                  # credentials, connectivity, listener, unread; exit 3 on a problem
 co feishu ls                     # unread: id, chat, sender, text
 co feishu log -f                 # inbox.jsonl, following
+co feishu listen --raw           # also keep Feishu's own payload on each inbox.jsonl line
+co feishu receive --no-start     # wait for a message but never start a listener (a cron job, a test)
+co feishu serve -- ./answer.sh   # the loop: receive, run the command, reply with its stdout
 ```
 
 `receive` starts a background `listen` if none is running, so there is no
 daemon to remember; if that listener dies within a second (no SDK, bad
 credentials) `receive` exits 1 and points at `log`. `listen` in the foreground is for watching it work and
-for `systemd`; one listener per directory.
+for a service manager; one listener per directory. A second `listen` on the
+same directory says `already listening (pid N)` and exits 1.
+
+Exit codes, the same on every verb:
+
+| exit | meaning | what to do |
+|---|---|---|
+| 0 | done | |
+| 1 | the platform or the listener refused; its own sentence is on stderr | read it; `log` has the same line |
+| 2 | usage: unknown flag, nothing to send | `--help` |
+| 3 | not configured: a credential, the SDK, or the bot capability is missing | `check` names the item |
+| 124 | `receive -t N` saw nothing in N seconds | the same as `timeout(1)` |
+
+`listen` never prints a traceback. When Feishu refuses the credentials it
+writes one line (`Feishu refused the credentials: 10003 invalid param`),
+points at `log`, releases the lock and exits 1, without dialling the long
+connection: a pair Feishu has just rejected cannot connect, and the SDK's
+own retry would otherwise hide the refusal behind `connect failed` lines
+every two minutes.
 
 `reply ID` needs only the id: chat and thread are read from `inbox.jsonl`. It
 refuses to answer the same message twice unless you pass `--again`, so a loop
@@ -160,6 +181,42 @@ What this tool spends, per Feishu's own list of what counts:
 So 10,000 a month is 10,000 replies, and listening costs nothing. Do not poll
 `check` on a timer: a bot that probed itself every minute is how others burnt
 the whole month in a week.
+
+## Lark
+
+`co lark` is the same tool with three differences: the domain is
+`open.larksuite.com`, the credentials are `LARK_APP_ID` and `LARK_APP_SECRET`,
+and the directory is `~/.co/lark/` (or `$CO_LARK_HOME`). Every verb, flag,
+file and exit code above is identical. A tenant on Feishu and a tenant on Lark
+are two applications with two directories; nothing is shared between them.
+Error messages name the platform you are talking to, so a `co lark` user is
+never sent to the Feishu console.
+
+## Keeping it running
+
+`receive` and `serve` restart a listener that died, so a consumer loop is
+enough for most setups. To hold the connection whether or not anything is
+consuming, run `listen` under the service manager you already have. On macOS:
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.openonion.co-feishu-listen.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>ai.openonion.co-feishu-listen</string>
+  <key>ProgramArguments</key><array><string>/usr/local/bin/co</string><string>feishu</string><string>listen</string></array>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/tmp/co-feishu-listen.err</string>
+</dict></plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.openonion.co-feishu-listen.plist
+```
+
+On Linux the equivalent is a `systemd --user` unit with `Restart=always`.
+Either way the process reads `~/.co/keys.env` itself, so the unit carries no
+secrets. The listener writes nothing to stdout; its life is in `log`.
 
 ## What it does not do
 
