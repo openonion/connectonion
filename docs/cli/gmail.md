@@ -169,8 +169,8 @@ the draft. Explicit HTTP rejections allow a later deliberate attempt. This is a
 local retry guard, not a Gmail exactly-once guarantee across other clients or
 machines. Existing one-shot send/reply behavior remains separate.
 
-The provider-preserved marker fallback is a local fix after the published
-`1.8.4a1` preview, tracked in #1460. Preview `1.8.4a1` itself still uses only
+The provider-preserved marker fallback is included in the `1.8.4a2` preview,
+tracked in #1460. Preview `1.8.4a1` itself still uses only
 Message-ID lookup. The live acceptance script checks provider-stored content
 and reports whether the inbox label was observed separately; mailbox routing
 does not change the send receipt, and this is not independent SMTP delivery proof.

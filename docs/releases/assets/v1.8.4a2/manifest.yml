@@ -1,0 +1,6 @@
+version: v1.8.4a2
+no_visual_change: >-
+  This update changes Gmail send headers and receipt recovery, plus acceptance
+  diagnostics. CLI commands, arguments and rendered UI are unchanged from a1.
+  Current desktop/mobile Control Center evidence remains recorded in
+  docs/acceptance/1.8.4-live-followup/ at source f5c20128.
