@@ -254,8 +254,11 @@ class TestHandleOutlookInbox:
 class TestHandleOutlookRead:
     """Opening a message preserves unread state unless --mark-read was chosen."""
 
-    def _outlook_mock(self):
+    def _outlook_mock(self, scopes=("Mail.ReadWrite", "Mail.Send", "Contacts.ReadWrite")):
         outlook = MagicMock()
+        # The handler reads the write scope from the same selected record the
+        # token came from, not from a per-field os.getenv.
+        outlook._credentials.scopes = set(scopes)
         outlook.get_email_body.return_value = (
             "From: alice@example.com\nSubject: Hello\n--- Email Body ---\nThe body text"
         )
@@ -280,7 +283,7 @@ class TestHandleOutlookRead:
         assert "Marked read" in capsys.readouterr().out
 
     def test_explicit_mark_read_explains_missing_scope(self, capsys):
-        outlook = self._outlook_mock()
+        outlook = self._outlook_mock(scopes=("Mail.Read", "Mail.Send"))
         with patch.dict(os.environ, CONNECTED_ENV, clear=False), \
              patch.object(outlook_commands, "_outlook", return_value=outlook):
             outlook_commands.handle_outlook_read("msg-123", mark_read=True)
@@ -345,7 +348,7 @@ class TestHandleOutlookReply:
         self._reply(outlook, monkeypatch, email_id="3", message="Sounds good")
 
         outlook.reply.assert_called_once_with(
-            "msg-cached-3", "Sounds good", attachments=None, send_at=None,
+            "msg-cached-3", "Sounds good", attachments=None, send_at=None, cc=None, bcc=None,
         )
         output = capsys.readouterr().out
         assert "Replied" in output
@@ -363,7 +366,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Both attached",
-            attachments=[str(report), str(chart)], send_at=None,
+            attachments=[str(report), str(chart)], send_at=None, cc=None, bcc=None,
         )
         output = capsys.readouterr().out
         assert "Replied" in output
@@ -380,7 +383,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Body from stdin\nline two\n",
-            attachments=[str(report)], send_at=None,
+            attachments=[str(report)], send_at=None, cc=None, bcc=None,
         )
 
     def test_scheduled_reply_keeps_its_attachment(self, tmp_path, monkeypatch, capsys):
@@ -393,7 +396,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Tomorrow",
-            attachments=[str(report)], send_at="2026-07-06T15:30:00Z",
+            attachments=[str(report)], send_at="2026-07-06T15:30:00Z", cc=None, bcc=None,
         )
         output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
         assert "Reply scheduled" in output
@@ -454,7 +457,7 @@ class TestHandleOutlookReplyPositionalCompatibility:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "See you then",
-            attachments=None, send_at="2026-07-06T15:30:00Z",
+            attachments=None, send_at="2026-07-06T15:30:00Z", cc=None, bcc=None,
         )
         output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
         assert "Reply scheduled" in output
@@ -476,8 +479,9 @@ class TestHandleOutlookReplyPositionalCompatibility:
         import inspect
 
         params = inspect.signature(handle_outlook_reply).parameters
-        assert list(params) == ["email_id", "message", "at", "attachments"]
-        assert params["attachments"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc"]
+        for name in ("attachments", "cc", "bcc"):
+            assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class TestHandleOutlookContacts:

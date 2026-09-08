@@ -1,6 +1,6 @@
 ---
 name: co-mail-and-drive
-description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, or a file in Drive.
+description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts and the Outlook calendar, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, a meeting on their Outlook calendar, or a file in Drive.
 ---
 
 ## Environment selection in the 1.8.4 implementation
@@ -28,6 +28,7 @@ the `co email` exception). The output still carries the recovery step; read it.
 | `co outlook` | the user's **personal Outlook** | same, on the Microsoft account |
 | `co email` | the **agent's own** address (`*@mail.openonion.ai`) | "send from the agent", "what did the agent receive" |
 | `co gdrive` | the user's **Google Drive** | "my files", "that doc" |
+| `co outlook calendar` | the user's **Outlook calendar** | "my meetings", "am I free", "book a Teams call" (Google: `co gcalendar`) |
 
 When both mail accounts are connected and the request is ambiguous, ask which one
 rather than guessing. Sending from the wrong identity is not undoable.
@@ -143,7 +144,16 @@ co gmail send bob@example.com "Invoice" "Attached." --cc a@x.com --attach invoic
 `co outlook send`. Attachments are checked before the send: a missing file or a set
 over the size limit (Gmail 25MB, Outlook 3MB) exits `1` without sending.
 
-Outlook additionally schedules:
+`co outlook reply` takes `--cc` / `--bcc` too, and the reply stays in its thread —
+before 1.8.4b1 copying a third person meant a fresh `send` with "RE:" in the
+subject, which the recipient saw as a new conversation:
+
+```bash
+co outlook reply 3 "Looping in Sam" --cc sam@example.com
+```
+
+Outlook additionally schedules. A scheduled send or reply ends with the cancel
+path; run it as printed rather than looking for a separate command:
 
 ```bash
 co outlook send bob@example.com "Nudge" "Following up" --at +2h    # +30m, +2h, or 2026-07-06T15:30:00Z
@@ -211,6 +221,30 @@ co outlook contact add "Full Name" name@example.com
 co outlook contact list -n 50
 co outlook contact search yifei
 ```
+
+## Outlook calendar
+
+Same Microsoft account, needs the `Calendars` scope (`co auth microsoft` grants
+it). Event IDs are stable IDs, not row numbers. Reads run at once; every write
+previews by default and prints the exact `--yes` command that performs it.
+
+```bash
+co outlook calendar                               # bare = upcoming events
+co outlook calendar list --days 14 -n 50
+co outlook calendar today
+co outlook calendar read <event-id>               # ID from the listing
+co outlook calendar meetings --days 7             # events that have attendees
+co outlook calendar free 2026-09-10 --minutes 30  # 09:00–17:00 UTC, your calendar only
+co outlook calendar create "Standup" 2026-09-10T09:00:00+10:00 2026-09-10T09:15:00+10:00 --attendees a@x.com
+co outlook calendar teams "Design review" 2026-09-10T10:00:00Z 2026-09-10T11:00:00Z --attendees a@x.com,b@x.com
+co outlook calendar update <event-id> --title "Moved" --start 2026-09-11T10:00:00Z
+co outlook calendar delete <event-id>
+```
+
+Times: an ISO offset is converted to UTC; a naive time means UTC. `update`
+preserves omitted fields. `free` reads only this calendar, not attendees'.
+The preview shows arguments, not proof of account access: after an uncertain
+write, run `co outlook calendar list` before retrying.
 
 ## Drive files
 
@@ -325,6 +359,20 @@ For Gmail and Drive, these are the concrete recovery routes:
 | Missing Drive info argument (exit 2) | `co gdrive info --help` |
 | Missing Drive get argument (exit 2) | `co gdrive get --help` |
 
+For Outlook, mail and calendar share one credential layer, and the next command
+names the layer that actually failed (#1313):
+
+| Result | Next command |
+|---|---|
+| Outlook send or reply succeeded | `co outlook sent` |
+| Scheduled send or reply succeeded | `co outlook scheduled`, then `co outlook cancel <#>` to pull it back |
+| No `OPENONION_API_KEY`, or oo-api rejected it during a token refresh (exit 1) | `co auth` — not `co auth microsoft`; the Microsoft grant is fine |
+| Microsoft revoked the refresh token, or the record has no refresh token (exit 1) | `co auth microsoft` |
+| Microsoft `<scope>` permission missing (exit 1) | `co auth microsoft` (re-consent; a refresh cannot widen scopes) |
+| Graph returned an error status (exit 1; body never printed) | `co outlook inbox` / `co outlook calendar list` |
+| Calendar write preview (exit 0, `No changes made.`) | the printed `co outlook calendar <op> … --yes` |
+| `update` with no fields (exit 2) | `co outlook calendar update --help` |
+
 A connection failure does not prove a write failed: inspect the provider state
 before repeating a send, reply, upload, or draft creation. Provider error bodies
 are omitted from CLI error messages. Outlook and agent-mail recovery behavior
@@ -340,7 +388,8 @@ When a command says the account is not connected:
 ❌ Gmail draft permission missing   → co auth google      (re-consent)
 ❌ Google Drive permission missing  → co auth google      (re-consent)
 ❌ Microsoft account not connected  → co auth microsoft
-❌ Microsoft <scope> permission missing → co auth microsoft
+❌ Microsoft <scope> permission missing → co auth microsoft   (Mail, Contacts.ReadWrite, Calendars)
+Error: OpenOnion authentication failed while refreshing provider access. → co auth
 ❌ No API key found (co email)      → co auth
 ```
 

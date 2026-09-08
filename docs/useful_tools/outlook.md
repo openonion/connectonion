@@ -121,7 +121,7 @@ outlook.send(
 )
 ```
 
-**`reply(email_id, body, send_at=None, *, attachments=None)`**
+**`reply(email_id, body, send_at=None, *, attachments=None, cc=None, bcc=None)`**
 - Reply to an existing email (threaded), now or scheduled
 - `body` is plain text — paragraphs (blank-line separated) convert to HTML
   `<p>` blocks and single newlines to `<br>`, with HTML characters escaped,
@@ -132,11 +132,16 @@ outlook.send(
 - `attachments`: Keyword-only list of local file paths, validated and limited
   exactly like `send()`. They travel on Graph's reply action, so the message
   stays in the original conversation
+- `cc`, `bcc`: Keyword-only comma-separated addresses. They are set on the
+  reply action's message (or PATCHed onto the deferred reply draft when
+  `send_at` is given), so copying a third person keeps the reply in its
+  thread instead of starting a new "RE:" conversation (#1247)
 
 ```python
 outlook.reply(
     email_id, "Signed copy attached.",
     attachments=["signed.pdf"],
+    cc="sam@example.com",
 )
 ```
 
