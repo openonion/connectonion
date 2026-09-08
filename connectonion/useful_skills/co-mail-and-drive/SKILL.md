@@ -407,3 +407,5 @@ it themselves**, do not try to drive that flow.
 - [ ] IDs taken from piped output, never from a truncated table column
 - [ ] `--from` address taken from `co email addresses`, never guessed
 - [ ] Empty search reported as "no match", not as "does not exist"
+
+If Teams creation returns an event without a usable meeting link, the command exits 1 and retains the event ID. Follow `co outlook calendar read EVENT_ID` to inspect that event; do not repeat creation. A missing event ID requires listing the calendar before another write.

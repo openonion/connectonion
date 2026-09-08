@@ -43,6 +43,8 @@ Example:
 """
 
 import os
+import shlex
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -264,7 +266,7 @@ class MicrosoftCalendar:
         """
         endpoint = f"/me/calendar/events/{event_id}"
         params = {
-            "$select": "subject,start,end,body,location,attendees,onlineMeetingUrl"
+            "$select": "subject,start,end,body,location,attendees,onlineMeeting,onlineMeetingUrl"
         }
 
         event = self._request("GET", endpoint, params=params)
@@ -282,7 +284,7 @@ class MicrosoftCalendar:
             status = a.get('status', {}).get('response', 'none')
             attendee_list.append(f"{email} ({status})")
 
-        meeting_url = event.get('onlineMeetingUrl', 'No meeting link')
+        meeting_url = self._meeting_url(event) or 'No meeting link'
 
         output = [
             f"Event: {subject}",
@@ -398,9 +400,37 @@ class MicrosoftCalendar:
 
         created_event = self._request("POST", "/me/calendar/events", json=event)
 
-        meeting_url = created_event.get('onlineMeeting', {}).get('joinUrl', '') or created_event.get('onlineMeetingUrl', 'No meeting link')
+        meeting_url = self._meeting_url(created_event)
+        if not meeting_url:
+            from ..provider_credentials import ProviderCredentialError
+            event_id = created_event.get('id')
+            if isinstance(event_id, str) and event_id and not any(ord(c)<32 for c in event_id):
+                raise ProviderCredentialError('meeting_link_unconfirmed',
+                    f'Event created (ID: {event_id}), but its Teams link is not confirmed. '
+                    'Inspect this event; do not repeat creation.',
+                    shlex.join(['co','outlook','calendar','read',event_id]))
+            raise ProviderCredentialError('creation_unconfirmed',
+                'Microsoft accepted the request but returned no confirmed Teams link or usable event ID. '
+                'Inspect the calendar before retrying creation.', 'co outlook calendar list')
 
         return f"Teams meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nTeams link: {meeting_url}\nEvent ID: {created_event['id']}"
+
+    @staticmethod
+    def _meeting_url(event: dict) -> str | None:
+        """Only a usable HTTPS link confirms the requested meeting outcome."""
+        meeting = event.get('onlineMeeting')
+        candidates = [meeting.get('joinUrl') if isinstance(meeting, dict) else None,
+                      event.get('onlineMeetingUrl')]
+        for value in candidates:
+            if not isinstance(value, str) or any(c.isspace() for c in value):
+                continue
+            try:
+                parsed = urlsplit(value)
+            except ValueError:
+                continue
+            if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
+                return value
+        return None
 
     def update_event(self, event_id: str, title: str = None, start_time: str = None,
                      end_time: str = None, description: str = None,

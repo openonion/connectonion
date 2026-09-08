@@ -120,3 +120,43 @@ def test_offsets_normalize_to_utc_and_naive_means_utc(given, expected, monkeypat
     monkeypatch.setenv("MICROSOFT_SCOPES", "Calendars.ReadWrite")
     monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN", "t")
     assert MicrosoftCalendar()._parse_time(given).isoformat() == expected
+
+
+@pytest.mark.parametrize('meeting', [None, {}, {'joinUrl':''}, {'joinUrl':'not-a-url'}])
+def test_teams_without_a_link_is_partial_and_never_repeats_creation(monkeypatch, meeting):
+    from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+    client=object.__new__(MicrosoftCalendar)
+    client._request=MagicMock(return_value={'id':'event-created','onlineMeeting':meeting})
+    monkeypatch.setattr(commands,'_client',lambda:client)
+    args=next(args for args,method in WRITES if method=='create_teams_meeting')
+    result=CliRunner().invoke(app,['outlook','calendar',*args,'--yes'])
+    assert result.exit_code == 1,result.output
+    assert 'Event created' in result.output and 'event-created' in result.output
+    assert 'Teams meeting created:' not in result.output
+    assert 'co outlook calendar read event-created' in result.output
+    client._request.assert_called_once()
+
+
+def test_teams_success_requires_a_usable_link(monkeypatch):
+    from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+    client=object.__new__(MicrosoftCalendar)
+    client._request=MagicMock(return_value={'id':'event-created','onlineMeeting':{'joinUrl':'https://teams.example.test/join'}})
+    monkeypatch.setattr(commands,'_client',lambda:client)
+    args=next(args for args,method in WRITES if method=='create_teams_meeting')
+    result=CliRunner().invoke(app,['outlook','calendar',*args,'--yes'])
+    assert result.exit_code==0,result.output
+    assert 'https://teams.example.test/join' in result.output
+    client._request.assert_called_once()
+
+
+def test_read_recovers_the_existing_events_join_url(monkeypatch):
+    from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+    client=object.__new__(MicrosoftCalendar)
+    client._request=MagicMock(return_value={'subject':'Existing','start':{'dateTime':'2026-09-10T10:00:00'},
+        'end':{'dateTime':'2026-09-10T11:00:00'},'onlineMeeting':{'joinUrl':'https://teams.example.test/existing'}})
+    monkeypatch.setattr(commands,'_client',lambda:client)
+    result=CliRunner().invoke(app,['outlook','calendar','read','event-created'])
+    assert result.exit_code==0,result.output
+    assert 'https://teams.example.test/existing' in result.output
+    assert client._request.call_args.args[0]=='GET'
+    assert 'onlineMeeting' in client._request.call_args.kwargs['params']['$select'].split(',')

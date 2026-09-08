@@ -226,3 +226,5 @@ refresh still needs a valid OpenOnion session.
 **Microsoft authorization expired or permission denied**: Run
 `co auth microsoft` again. Tokens auto-refresh when possible; reauthorization
 is required after Microsoft revokes a refresh token or when a scope is missing.
+
+If Teams creation returns an event without a usable meeting link, the command exits 1 and retains the event ID. Follow `co outlook calendar read EVENT_ID` to inspect that event; do not repeat creation. A missing event ID requires listing the calendar before another write.

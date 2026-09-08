@@ -347,3 +347,5 @@ Other cases:
 - **`co outlook cancel` rejected with 403** → some Exchange work/school
   tenants lock deferred messages against API deletion; use Cancel Send in
   Outlook instead. On personal outlook.com accounts cancel works normally.
+
+If Teams creation returns an event without a usable meeting link, the command exits 1 and retains the event ID. Follow `co outlook calendar read EVENT_ID` to inspect that event; do not repeat creation. A missing event ID requires listing the calendar before another write.
