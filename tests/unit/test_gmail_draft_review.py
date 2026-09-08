@@ -149,3 +149,41 @@ def test_unknown_send_recovers_one_sent_receipt_without_resubmission(gmail, tmp_
     service.users().messages().list().execute.return_value = {'messages':[{'id':'recovered-a'}]}
     assert send_reviewed(client, 'draft-a', review.token, directory=tmp_path) == {'id':'recovered-a', 'recovered':True}
     assert service.users().drafts().send().execute.call_count == before
+
+
+def test_review_has_provider_preserved_attempt_marker(gmail):
+    from email import policy
+    from email.parser import BytesParser
+    from connectonion.cli.commands.gmail_draft_review import prepare_review
+    client, _ = gmail
+    review = prepare_review(client, 'draft-a')
+    message = BytesParser(policy=policy.SMTP).parsebytes(base64.urlsafe_b64decode(review.raw))
+    assert str(message['X-ConnectOnion-Send-Attempt']).strip() == review.token
+
+
+@pytest.mark.parametrize('rewritten_result', ['single', 'duplicate', 'next_page', 'missing'])
+def test_lost_response_recovers_only_unique_complete_marker_match(gmail, tmp_path, rewritten_result):
+    from connectonion.cli.commands.gmail_draft_review import prepare_review, send_reviewed, DraftReviewError
+    client, service = gmail
+    review = prepare_review(client, 'draft-a')
+    service.users().drafts().send().execute.side_effect = TimeoutError()
+    with pytest.raises(DraftReviewError, match='uncertain'):
+        send_reviewed(client, 'draft-a', review.token, directory=tmp_path)
+    count = service.users().drafts().send().execute.call_count
+    rows = [{'id': 'rewritten-a'}]
+    if rewritten_result == 'duplicate':
+        rows.append({'id': 'rewritten-b'})
+    response = {'messages': rows}
+    if rewritten_result == 'next_page':
+        response['nextPageToken'] = 'more'
+    service.users().messages().list().execute.side_effect = [{'messages': []}, response]
+    marker = review.token if rewritten_result != 'missing' else 'unrelated'
+    service.users().messages().get().execute.return_value = {
+        'payload': {'headers': [{'name': 'x-connectonion-send-attempt', 'value': ' '+marker+' '}]}}
+    if rewritten_result == 'single':
+        assert send_reviewed(client, 'draft-a', review.token, directory=tmp_path) == {
+            'id': 'rewritten-a', 'recovered': True}
+    else:
+        with pytest.raises(DraftReviewError, match='uncertain'):
+            send_reviewed(client, 'draft-a', review.token, directory=tmp_path)
+    assert service.users().drafts().send().execute.call_count == count
