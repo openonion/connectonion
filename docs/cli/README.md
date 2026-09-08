@@ -389,6 +389,26 @@ The CLI wraps the same `Outlook` tool your agents use. See
 
 ---
 
+#### `co env` - See, Set and Repair the Selected Env File
+
+Works on global `~/.co/keys.env`, or on the file chosen with `co --env-file PATH`.
+
+```bash
+co env                              # every setting, secrets masked, with its source
+co env get MODEL                    # one value, bare, for $(...)
+co env set OPENAI_API_KEY sk-...    # save one setting (creates the file if needed)
+co env unset OPENAI_API_KEY         # remove one setting
+co env path                         # the selected file's path
+co --env-file ./project.env env     # the same on a project file
+```
+
+- Secrets (`*KEY*`, `*TOKEN*`, `*SECRET*`, …) are masked; `co env show --reveal` prints them.
+- `GOOGLE_*` / `MICROSOFT_*` account fields are refused by `set` and removed as a whole record by `unset`; use `co auth google` / `co auth microsoft` to connect an account.
+- `AGENT_CONFIG_PATH` cannot live in the file it selects; `export` it in your shell.
+- When the file has a broken line, every other `co` command exits 2 and says `Next: co env`; `co env` names the line to fix (never its contents).
+
+Full reference: [env.md](env.md).
+
 #### `co status` - Check Credentials, Account, and Deployments
 
 Shows redacted provider credential availability and source paths, followed by your

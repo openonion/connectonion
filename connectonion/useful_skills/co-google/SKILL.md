@@ -9,7 +9,9 @@ Global `keys.env` is the default for every setting and account. To use a project
 file, put `--env-file` before the command: `co --env-file /absolute/path/.env gmail
 inbox`. Auth and refresh use that selected file. No project env loads implicitly;
 process overrides remain explicit and provider fields are kept as whole records.
-See `docs/cli/environment.md` for migration and error recovery.
+`co env` (same selector) shows which file is in use and what it holds — run it
+first when a command says "not connected in <file>". See
+`docs/cli/environment.md` for migration and error recovery.
 
 
 # Google tools

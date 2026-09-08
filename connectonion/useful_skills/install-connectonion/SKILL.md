@@ -131,10 +131,11 @@ co doctor        # cross-platform health check; "API Key" line should be ✓
 ```
 
 **Optional — own provider keys instead of managed:** if the person would rather use their
-own OpenAI/Anthropic/Google account, add the key to global `~/.co/keys.env` by default,
-or to an explicitly selected project's `.env`, with the
-`write`/`edit` tool (never echo it back): `OPENAI_API_KEY=…` (`gpt-*`),
-`ANTHROPIC_API_KEY=…` (`claude-*`), `GEMINI_API_KEY=…` (`gemini-*`). Plain init does not
+own OpenAI/Anthropic/Google account, save the key with `co env set` (never echo it back):
+`co env set OPENAI_API_KEY …` (`gpt-*`), `co env set ANTHROPIC_API_KEY …` (`claude-*`),
+`co env set GEMINI_API_KEY …` (`gemini-*`). That writes global `~/.co/keys.env`; put
+`co --env-file /abs/path/.env` before `env set` for a project file. `co env` shows what
+the selected file holds, secrets masked. Plain init does not
 copy implicitly loaded project or process keys into global storage; `--key` is
 an explicit request to save a provider key. Managed `co/*` still
 needs `OPENONION_API_KEY` from Step 3.

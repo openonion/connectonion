@@ -27,6 +27,22 @@ from ...project import project_co_dir, project_identity
 
 console = Console()
 
+# The right-hand column of every credential row is a command, not an
+# instruction. "set OPENAI_API_KEY in global keys.env" told people what to
+# achieve and left them to find the file; `co env set` is the file.
+CREDENTIAL_ACTIONS = {
+    "OPENONION_API_KEY": "co auth",
+    "OPENAI_API_KEY": "co env set OPENAI_API_KEY <key>",
+    "ANTHROPIC_API_KEY": "co env set ANTHROPIC_API_KEY <key>",
+    "GEMINI_API_KEY": "co env set GEMINI_API_KEY <key>",
+    "GOOGLE_API_KEY": "co env set GOOGLE_API_KEY <key>",
+    "GROQ_API_KEY": "co env set GROQ_API_KEY <key>",
+    "XAI_API_KEY": "co env set XAI_API_KEY <key>",
+    "OPENROUTER_API_KEY": "co env set OPENROUTER_API_KEY <key>",
+    "MISTRAL_API_KEY": "co env set MISTRAL_API_KEY <key>",
+    "TELEGRAM_BOT_TOKEN": "co env set TELEGRAM_BOT_TOKEN <token>",
+}
+
 
 def _repair_runtime(*, yes: bool) -> None:
     """Show the complete plan, apply approved mutations, and print outcomes."""
@@ -393,18 +409,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         _short_account,
     )
 
-    credential_actions = {
-        "OPENONION_API_KEY": "co auth",
-        "OPENAI_API_KEY": "set OPENAI_API_KEY in global keys.env",
-        "ANTHROPIC_API_KEY": "set ANTHROPIC_API_KEY in global keys.env",
-        "GEMINI_API_KEY": "set GEMINI_API_KEY in global keys.env",
-        "GOOGLE_API_KEY": "set GOOGLE_API_KEY in global keys.env",
-        "GROQ_API_KEY": "set GROQ_API_KEY in global keys.env",
-        "XAI_API_KEY": "set XAI_API_KEY in global keys.env",
-        "OPENROUTER_API_KEY": "set OPENROUTER_API_KEY in global keys.env",
-        "MISTRAL_API_KEY": "set MISTRAL_API_KEY in global keys.env",
-        "TELEGRAM_BOT_TOKEN": "set TELEGRAM_BOT_TOKEN in ~/.co/keys.env",
-    }
+    credential_actions = CREDENTIAL_ACTIONS
     project_dir = project_co_dir().parent
     selected_api_key = _selected_credential_values(
         ("OPENONION_API_KEY",),

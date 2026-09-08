@@ -46,3 +46,23 @@ These are local fixes after the published 1.8.4a1 preview. They do not change th
 bytes already on PyPI, and they do not turn an unconfigured physical NAS into a
 passed test. They do change what the next acceptance run measures: the content
 Google stored, the receipt we can recover, and whether another send was prevented.
+
+## The receipt became the release criterion
+
+When the preview was ready for promotion, a green command was no longer enough
+for us. The first test had already shown why: the provider had completed the work
+while our local lookup insisted it had not. We went back to the lost-receipt case
+instead of adding a retry to make the command look successful.
+
+That distinction survived the stable review. Recovery still has to find one
+provider-preserved marker within a complete bounded page; an ambiguous result
+still leaves the send uncertain. Promoting the package does not widen that search
+or make a subject line count as a receipt. If Gmail stops preserving the marker,
+we will need another way to identify the approved operation before allowing
+recovery to report success.
+
+The 1.8.4 release includes that behavior after the real self-send journey and the
+combined 8,665-test regression run. The mock remains useful for proving that an
+uncertain send cannot repeat. The stored message remains necessary for proving
+that our chosen identifier survives the service. Neither test can replace the
+other; the first failed acceptance run is the reason we now keep both.

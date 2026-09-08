@@ -7,9 +7,7 @@ from pathlib import Path
 import tempfile
 import time
 
-from dotenv.parser import parse_stream
-
-from .environment import EnvironmentError
+from .environment import EnvironmentError, parse_env_file
 
 
 @contextmanager
@@ -56,17 +54,21 @@ def _encode(value: str) -> str:
 
 
 def write_env_unlocked(path: Path, updates: dict, *, strip_prefix: str | None = None,
-                       initial_comments: str = "") -> None:
-    """Replace a complete file atomically; callers must hold env_lock(path)."""
+                       initial_comments: str = "", remove: frozenset | set = frozenset()) -> None:
+    """Replace a complete file atomically; callers must hold env_lock(path).
+
+    `remove` names keys to drop. A broken file is never rewritten: the parse
+    error names the line, and rewriting around it would silently drop whatever
+    that line was meant to say.
+    """
     updates = {key: str(value) for key, value in updates.items() if value is not None}
     lines, found = ([] if path.exists() or not initial_comments else [initial_comments]), set()
     if path.exists():
-        with path.open(encoding="utf-8") as stream:
-            bindings = list(parse_stream(stream))
-        if any(item.error for item in bindings):
-            raise EnvironmentError("Invalid syntax in the selected env file. Next: co --help")
+        bindings = parse_env_file(path)
         for item in bindings:
             if strip_prefix and item.key and item.key.startswith(strip_prefix):
+                continue
+            if item.key in remove:
                 continue
             if item.key in updates:
                 if item.key not in found:
@@ -89,8 +91,9 @@ def write_env_unlocked(path: Path, updates: dict, *, strip_prefix: str | None = 
 
 
 def upsert_env(path: Path, updates: dict, *, strip_prefix: str | None = None,
-               initial_comments: str = "") -> None:
+               initial_comments: str = "", remove: frozenset | set = frozenset()) -> None:
     """Preserve unrelated settings, serialize updates and replace with mode 0600."""
     path = Path(path).resolve()
     with env_lock(path):
-        write_env_unlocked(path, updates, strip_prefix=strip_prefix, initial_comments=initial_comments)
+        write_env_unlocked(path, updates, strip_prefix=strip_prefix,
+                           initial_comments=initial_comments, remove=remove)

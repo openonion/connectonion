@@ -484,7 +484,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     skills_paths = [Path(s).expanduser().resolve() for s in (skills or [])]
     for sp in skills_paths:
         if not sp.is_dir():
-            console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
+            console.print(f"Skills path not found or not a directory: {sp}", style="red", markup=False, soft_wrap=True)
             return False
 
     from ...skill_deploy import collect_deploy_skill_requirements

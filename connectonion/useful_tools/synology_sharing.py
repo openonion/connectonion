@@ -19,7 +19,7 @@ class SharingMixin:
     @staticmethod
     def _share_dict(item: dict, show_url: bool = False) -> dict:
         result={'id':link_id(item.get('id')), 'path':nas_path(item.get('path'),root=False),
-                'expires':None if item.get('date_expired') in {None,0,'0'} else item['date_expired'],
+                'expires':None if item.get('date_expired') in (None,0,'0','') else item['date_expired'],
                 'protected':item.get('has_password'),'status':item.get('status'),'nas_timezone':None}
         if show_url:
             url = item.get('url')
@@ -53,10 +53,35 @@ class SharingMixin:
         links=data.get('links')
         if not isinstance(links,list) or len(links)!=1 or links[0].get('error') not in {0,None}:
             raise SynologyError('DSM did not confirm sharing-link creation; inspect existing links before retrying.', 'submission_unknown')
-        item={**links[0],'date_expired':expires or '0','has_password':password is not None}
+        item=links[0]
         if item.get('path')!=path:
             raise SynologyError('DSM returned a different sharing path; inspect links before retrying.', 'submission_unknown')
-        return {**self._share_dict(item,True),'dry_run':False}
+        return self._verify_created_share(link_id(item.get('id')),path,expires,password is not None)
+
+    def _verify_created_share(self, identifier: str, path: str, expires: str | None, protected: bool) -> dict:
+        try:
+            item=self._request('SYNO.FileStation.Sharing','getinfo',version=3,id=json.dumps(identifier))
+        except SynologyError:
+            raise SynologyError('The link was created but its protection could not be verified. Inspect co syno share list before retrying.', 'submission_unknown') from None
+        if item.get('id')!=identifier or item.get('path')!=path:
+            raise SynologyError('The created link identity could not be verified. Inspect co syno share list before retrying.', 'submission_unknown')
+        expiry=item.get('date_expired')
+        expiry_day=expiry.split(' ',1)[0] if isinstance(expiry,str) else expiry
+        matches=('date_expired' in item and not isinstance(expiry,bool)
+                 and (expiry_day==expires if expires else expiry in (None,0,'0','')))
+        if item.get('has_password') is not protected or not matches:
+            try:
+                cleanup=self._request('SYNO.FileStation.Sharing','delete',version=3,id=[identifier])
+                if cleanup.get('errors'):
+                    raise SynologyError('Revocation failed','revoke_failed')
+            except SynologyError:
+                raise SynologyError('Link protection differs from the request and revocation is unconfirmed. Inspect co syno share list.', 'submission_unknown') from None
+            raise SynologyError('The new link was revoked because its password or expiry did not match the request.', 'share_verification_failed')
+        try:
+            result=self._share_dict(item,True)
+        except SynologyError:
+            raise SynologyError('The link was created but its URL could not be verified. Inspect co syno share list before retrying.', 'submission_unknown') from None
+        return {**result,'dry_run':False,'settings_verified':True}
 
     @command_budget
     def share_list(self, *, limit: int = 20, cursor: str | None = None, show_url: bool = False) -> dict:

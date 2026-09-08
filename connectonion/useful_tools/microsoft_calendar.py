@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: reads and locally refreshes MICROSOFT_* OAuth tokens | persists rotated tokens to user keys.env and an existing project .env | makes HTTP calls to Microsoft Graph API | can create/update/delete events, create Teams meetings
   Integration: exposes MicrosoftCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_teams_meeting(), get_upcoming_meetings(), find_free_slots(), check_availability() | used as agent tool via Agent(tools=[MicrosoftCalendar()])
   Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
-  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display
+  Errors: raises ValueError if OAuth not configured | Graph 401/403 and other non-2xx responses raise ProviderCredentialError with a status code and a next command, never the response body | returns error strings for display | driven from the terminal by cli/commands/outlook_calendar_commands.py (`co outlook calendar`)
 
 Microsoft Calendar tool for managing calendar events via Microsoft Graph API.
 
@@ -43,7 +43,9 @@ Example:
 """
 
 import os
-from datetime import datetime, timedelta
+import shlex
+from urllib.parse import urlsplit
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -128,7 +130,11 @@ class MicrosoftCalendar:
                 "Microsoft permission denied." if response.status_code == 403 else "Microsoft authorization expired.",
                 self._credentials.auth_command)
         if response.status_code not in [200, 201, 202, 204]:
-            raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
+            # Same shape as Outlook: the status is the diagnosis, the body is
+            # tenant text that must not reach a terminal or an agent transcript.
+            from ..provider_credentials import ProviderCredentialError
+            raise ProviderCredentialError("provider_unavailable",
+                f"Microsoft Graph API error (HTTP {response.status_code}).", "co outlook calendar list")
 
         if response.status_code == 204:
             return {}
@@ -140,7 +146,21 @@ class MicrosoftCalendar:
         return dt.strftime('%Y-%m-%d %I:%M %p')
 
     def _parse_time(self, time_str: str) -> datetime:
-        """Parse time string to datetime object."""
+        """Parse a time as naive UTC: offsets are converted, naive means UTC.
+
+        Every event is sent to Graph with timeZone "UTC", so a value carrying
+        its own offset ("2026-09-10T20:00:00+10:00") has to be converted before
+        it is stripped — passing it through unconverted would book the meeting
+        ten hours late. Same contract as GoogleCalendar.
+        """
+        try:
+            parsed = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed.replace(microsecond=0)
         for fmt in ['%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M']:
             try:
                 return datetime.strptime(time_str, fmt)
@@ -246,7 +266,7 @@ class MicrosoftCalendar:
         """
         endpoint = f"/me/calendar/events/{event_id}"
         params = {
-            "$select": "subject,start,end,body,location,attendees,onlineMeetingUrl"
+            "$select": "subject,start,end,body,location,attendees,onlineMeeting,onlineMeetingUrl"
         }
 
         event = self._request("GET", endpoint, params=params)
@@ -264,7 +284,7 @@ class MicrosoftCalendar:
             status = a.get('status', {}).get('response', 'none')
             attendee_list.append(f"{email} ({status})")
 
-        meeting_url = event.get('onlineMeetingUrl', 'No meeting link')
+        meeting_url = self._meeting_url(event) or 'No meeting link'
 
         output = [
             f"Event: {subject}",
@@ -380,9 +400,37 @@ class MicrosoftCalendar:
 
         created_event = self._request("POST", "/me/calendar/events", json=event)
 
-        meeting_url = created_event.get('onlineMeeting', {}).get('joinUrl', '') or created_event.get('onlineMeetingUrl', 'No meeting link')
+        meeting_url = self._meeting_url(created_event)
+        if not meeting_url:
+            from ..provider_credentials import ProviderCredentialError
+            event_id = created_event.get('id')
+            if isinstance(event_id, str) and event_id and not any(ord(c)<32 for c in event_id):
+                raise ProviderCredentialError('meeting_link_unconfirmed',
+                    f'Event created (ID: {event_id}), but its Teams link is not confirmed. '
+                    'Inspect this event; do not repeat creation.',
+                    shlex.join(['co','outlook','calendar','read',event_id]))
+            raise ProviderCredentialError('creation_unconfirmed',
+                'Microsoft accepted the request but returned no confirmed Teams link or usable event ID. '
+                'Inspect the calendar before retrying creation.', 'co outlook calendar list')
 
         return f"Teams meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nTeams link: {meeting_url}\nEvent ID: {created_event['id']}"
+
+    @staticmethod
+    def _meeting_url(event: dict) -> str | None:
+        """Only a usable HTTPS link confirms the requested meeting outcome."""
+        meeting = event.get('onlineMeeting')
+        candidates = [meeting.get('joinUrl') if isinstance(meeting, dict) else None,
+                      event.get('onlineMeetingUrl')]
+        for value in candidates:
+            if not isinstance(value, str) or any(c.isspace() for c in value):
+                continue
+            try:
+                parsed = urlsplit(value)
+            except ValueError:
+                continue
+            if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
+                return value
+        return None
 
     def update_event(self, event_id: str, title: str = None, start_time: str = None,
                      end_time: str = None, description: str = None,
