@@ -169,6 +169,7 @@ With multiple lines.
         # First tool should be BrowserAutomation instance
         from connectonion.useful_tools.browser_tools import BrowserAutomation
         assert isinstance(tools[0], BrowserAutomation)
+        tools[0].close()   # constructing it started its runtime thread
 
     def test_subagents_export(self):
         """Test that subagents and task are properly exported"""

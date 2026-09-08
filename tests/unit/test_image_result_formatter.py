@@ -435,7 +435,7 @@ class TestImageResultFormatterPlugin:
 class TestUploadToOoApi:
     """Every image is uploaded to oo-api and referenced by URL."""
 
-    def test_uploads_and_uses_returned_url(self, monkeypatch):
+    def test_uploads_and_uses_returned_url(self, monkeypatch, default_backend_url):
         agent = FakeAgent(with_io=True)
         base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         data_url = f"data:image/png;base64,{base64_data}"

@@ -7,6 +7,8 @@ for unit tests — covered only at e2e where a real browser is available.
 
 from unittest.mock import Mock, patch
 
+import time
+
 import pytest
 
 from connectonion.useful_tools.browser_tools.scroll import (
@@ -17,8 +19,17 @@ from connectonion.useful_tools.browser_tools.scroll import (
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch):
-    """Sleep calls inside scroll() add up — skip them in unit tests."""
-    monkeypatch.setattr("time.sleep", lambda *_: None)
+    """Sleep calls inside scroll() add up — skip them in unit tests.
+
+    Patch the module's view of `time`, not `time.sleep` itself. The global
+    patch applied to every thread in the process, and any background thread
+    that happened to be sleeping in a loop turned into a busy loop for the
+    duration of these tests (#1246).
+    """
+    import types
+    from connectonion.useful_tools.browser_tools import scroll as scroll_module
+    fake_time = types.SimpleNamespace(sleep=lambda *_: None, time=time.time, monotonic=time.monotonic)
+    monkeypatch.setattr(scroll_module, "time", fake_time)
 
 
 # ---------- top-level scroll() orchestration ----------

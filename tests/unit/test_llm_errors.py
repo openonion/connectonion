@@ -487,7 +487,7 @@ class TestOpenOnionAuthentication:
                 llm = OpenOnionLLM(model="co/o4-mini")
                 assert llm.model == "o4-mini"  # Prefix stripped
 
-    def test_openonion_dev_mode_uses_localhost(self):
+    def test_openonion_dev_mode_uses_localhost(self, default_backend_url):
         """Test that OPENONION_DEV env var uses localhost."""
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token", "OPENONION_DEV": "1"}):
             with patch('builtins.print'):  # Suppress warning

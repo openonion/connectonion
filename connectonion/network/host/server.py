@@ -725,6 +725,27 @@ def _invite_line(trust_config) -> str | None:
     return None
 
 
+
+def _create_cleanup_lifespan(registry):
+    """Start the session-registry cleanup thread with the app, stop it with the app.
+
+    Starting it in create_app() itself meant every construction of the app —
+    each test, each import-time probe — left a thread behind that nothing
+    could stop. The lifespan is the only place that knows when the app is
+    actually serving, so the thread lives exactly that long.
+    """
+    job = None
+
+    async def on_startup():
+        nonlocal job
+        job = start_cleanup_job(registry)
+
+    async def on_shutdown():
+        if job is not None:
+            job.stop()
+
+    return on_startup, on_shutdown
+
 def _both(first, second):
     """Run two lifespan callbacks as one, in order.
 
@@ -1124,7 +1145,7 @@ def host(
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
-    start_cleanup_job(registry)  # Start background cleanup
+    cleanup_startup, cleanup_shutdown = _create_cleanup_lifespan(registry)
 
     # Create TrustAgent instance - the single interface for all trust operations
     # Users can subclass TrustAgent to customize (e.g., database-backed admin storage)
@@ -1207,6 +1228,8 @@ def host(
     )
     on_startup = _both(on_startup, sched_startup)
     on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first
+    on_startup = _both(on_startup, cleanup_startup)
+    on_shutdown = _both(cleanup_shutdown, on_shutdown)
 
     app = asgi_create_app(
         route_handlers=route_handlers,
@@ -1262,7 +1285,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
-    start_cleanup_job(registry)
+    cleanup_startup, cleanup_shutdown = _create_cleanup_lifespan(registry)
 
     # Extract metadata once at startup. `name` is host.yaml's, when the caller
     # has read it — host() does; a bare ASGI caller may not, and then the
@@ -1312,6 +1335,8 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
             extra_tick=route_handlers['control_center'].tick)
         balance_startup = _both(balance_startup, sched_startup)
         balance_shutdown = _both(sched_shutdown, balance_shutdown)
+    balance_startup = _both(balance_startup, cleanup_startup)
+    balance_shutdown = _both(cleanup_shutdown, balance_shutdown)
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
