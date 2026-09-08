@@ -34,7 +34,7 @@ class FakeProvider:
     def check(self):
         return self.problems
 
-    def send(self, chat, text, *, reply_to=None):
+    def send(self, chat, text, *, reply_to=None, fresh=False):
         self.sent.append((chat, text, reply_to))
         return f"om_sent{len(self.sent)}"
 
@@ -168,7 +168,14 @@ def test_serve_pipes_the_message_through_a_command_and_replies_with_its_stdout(b
     assert (box.root / "chats" / "oc_s").is_dir()
 
 
+def _taken(box):
+    return sorted(p.name.split("-", 1)[1] for p in box.cur.iterdir())
+
+
 def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypatch):
+    # A command that exits non-zero did not answer: the message stays taken
+    # and comes back in an hour, as the docs promise. Empty stdout with exit
+    # 0 is the command choosing silence: done. Both are one log line.
     monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_f")
     listen_commands.handle_serve("feishu", [sys.executable, "-c", "import sys; sys.exit(3)"], once=True)
@@ -176,8 +183,63 @@ def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypa
     listen_commands.handle_serve("feishu", [sys.executable, "-c", "pass"], once=True)
 
     assert fake.sent == []
-    assert "exited 3 for om_f" in box.logfile.read_text()
-    assert list(box.cur.iterdir()) == []
+    log = box.logfile.read_text()
+    assert "exited 3 for om_f" in log
+    assert "nothing to say for om_g" in log
+    assert _taken(box) == ["om_f"], "the failed one waits for the sweep; the silent one is done"
+
+
+def test_serve_keeps_a_message_whose_reply_the_platform_refused(box, fake, monkeypatch):
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
+
+    def refuse(chat, text, *, reply_to=None):
+        raise RuntimeError("Feishu error 99991400: too many requests")
+
+    fake.send = refuse
+    deliver(box, i="om_r")
+
+    listen_commands.handle_serve("feishu", [sys.executable, "-c", "print('answer')"], once=True)
+
+    assert _taken(box) == ["om_r"], "not consumed by a refusal it can retry later"
+    assert "reply to om_r failed" in box.logfile.read_text()
+
+
+def test_serve_refuses_a_command_it_cannot_run_before_taking_a_message(box, fake, monkeypatch, capsys):
+    # A typo in the command used to claim the message into cur/ and then
+    # traceback, stranding one message per restart.
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
+    deliver(box, i="om_n")
+
+    with pytest.raises(SystemExit) as exit_:
+        listen_commands.handle_serve("feishu", ["./no-such-answer.sh"], once=True)
+
+    assert exit_.value.code == 2
+    assert "no-such-answer.sh" in capsys.readouterr().err
+    assert len(box.unread()) == 1, "the message was not claimed"
+
+
+def test_listen_exits_3_before_taking_the_lock_when_the_sdk_is_missing(box, fake, capsys):
+    fake.listen_requirements = lambda: ["The Feishu SDK is not installed. Run: pip install lark-oapi"]
+
+    with pytest.raises(SystemExit) as exit_:
+        listen_commands.handle_listen("feishu")
+
+    assert exit_.value.code == 3
+    assert "pip install lark-oapi" in capsys.readouterr().err
+    assert box.listener_pid() is None
+
+
+def test_a_listener_that_died_is_reported_with_its_reason_inline(box, fake, monkeypatch, capsys):
+    # "see the log" sent an agent to a file it may not read; the reason is
+    # three lines, so print them.
+    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: None)
+    box.log("The Feishu SDK is not installed. Run: pip install lark-oapi")
+    box.log("listener exited at once with 3; see the lines above")
+
+    with pytest.raises(SystemExit):
+        listen_commands.handle_receive("feishu", timeout=0)
+
+    assert "pip install lark-oapi" in capsys.readouterr().err
 
 
 def test_check_exits_3_and_names_each_problem(box, monkeypatch, capsys):

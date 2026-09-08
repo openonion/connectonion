@@ -364,3 +364,93 @@ def test_refused_credentials_stop_before_the_connection_is_opened(creds, monkeyp
 
     assert ws.started == [], "no connection attempted"
     assert "refused the credentials" in box.logfile.read_text()
+
+
+class HtmlPage:
+    """What Feishu's edge returns when it is having a bad minute."""
+
+    status_code = 502
+
+    def json(self):
+        raise ValueError("not JSON")
+
+
+def test_a_gateway_page_on_bot_info_is_not_a_refusal_and_the_connection_is_still_dialled(creds, monkeypatch, tmp_path):
+    # Only "Feishu answered and said no to these credentials" stops the
+    # listener. A 502 page, a rate limit, or a quota error on the bot-info
+    # call is transient: the long connection has its own reconnect.
+    from connectonion.listen.mailbox import Mailbox
+
+    ws = _fake_sdk(monkeypatch, lambda handler: None)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: HtmlPage())
+    box = Mailbox("feishu", home=tmp_path / "feishu")
+
+    Feishu().run(box)
+
+    assert len(ws.started) == 1, "dialled despite the bad minute"
+    assert "bot info failed" in box.logfile.read_text()
+
+
+def test_an_invalid_token_reply_refreshes_the_token_once_and_retries(creds, monkeypatch):
+    # The token is cached by the clock. When the secret is rotated in the
+    # console the cached string is dead for up to two hours unless the
+    # "invalid access token" reply drops it.
+    tokens = []
+    sends = []
+
+    def post(url, **kwargs):
+        if url.endswith("/tenant_access_token/internal"):
+            tokens.append(f"t{len(tokens) + 1}")
+            return FakeResponse({"code": 0, "tenant_access_token": tokens[-1], "expire": 7200})
+        sends.append(kwargs["headers"]["Authorization"])
+        if len(sends) == 1:
+            return FakeResponse({"code": 99991663, "msg": "Invalid access token"})
+        return FakeResponse({"code": 0, "data": {"message_id": "om_new"}})
+
+    monkeypatch.setattr(feishu_module.requests, "post", post)
+
+    assert Feishu().send("oc_a", "hi") == "om_new"
+    assert sends == ["Bearer t1", "Bearer t2"]
+
+
+def test_ten_or_more_mentions_are_put_back_without_prefix_collisions(creds):
+    # Keys are @_user_1, @_user_2, … so @_user_1 is a prefix of @_user_10.
+    e = event(text='{"text":"@_user_1 @_user_10 hi"}', mentions=[
+        mention(open_id="ou_a", key="@_user_1", name="Alice"),
+        mention(open_id="ou_j", key="@_user_10", name="Jon"),
+    ])
+
+    assert Feishu().to_message(e).text == "@Alice @Jon hi"
+
+
+def test_reply_again_with_the_same_text_carries_a_new_uuid(creds, monkeypatch):
+    # Feishu holds a reply uuid to one post per hour. A retry of the same
+    # text must reuse it; `--again` with the same text must not, or the
+    # second reply is silently swallowed while the CLI reports success.
+    bodies = []
+
+    def post(url, **kwargs):
+        if url.endswith("/tenant_access_token/internal"):
+            return FakeResponse({"code": 0, "tenant_access_token": "t", "expire": 7200})
+        bodies.append(kwargs["json"])
+        return FakeResponse({"code": 0, "data": {"message_id": "om_x"}})
+
+    monkeypatch.setattr(feishu_module.requests, "post", post)
+    bot = Feishu()
+    bot.send("oc_a", "done", reply_to="om_9f8e")
+    bot.send("oc_a", "done", reply_to="om_9f8e")
+    bot.send("oc_a", "done", reply_to="om_9f8e", fresh=True)
+
+    assert bodies[0]["uuid"] == bodies[1]["uuid"], "a retry is the same post"
+    assert bodies[2]["uuid"] != bodies[0]["uuid"], "--again is a new post"
+
+
+def test_listen_needs_the_sdk_and_says_how_to_get_it(creds, monkeypatch):
+    # send/reply are REST and work without the SDK; only listen needs it, so
+    # the requirement is asked for by listen, not by every verb.
+    monkeypatch.setitem(sys.modules, "lark_oapi", None)
+
+    assert Feishu().missing() == []
+    assert Feishu().listen_requirements() == [feishu_module.SDK_MISSING]

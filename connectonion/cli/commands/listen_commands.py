@@ -10,6 +10,7 @@ LLM-Note:
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -52,7 +53,14 @@ def _text_from(argument: Optional[str]) -> str:
 def _listener_or_exit(mailbox: Mailbox) -> None:
     """Make sure a listener is running, or say why one could not start."""
     if mailbox.ensure_listener() is None:
-        errors.print(f"the listener exited at once; the reason is at the end of {mailbox.logfile}", style="red")
+        errors.print("the listener exited at once:", style="red")
+        # The reason is the child's last few lines; an agent that reads
+        # stderr should not have to go and open the log to learn "pip
+        # install lark-oapi".
+        for line in mailbox.last_log_lines():
+            # Unwrapped: a pip command split across two lines cannot be copied.
+            errors.print(f"  {line}", style="red", soft_wrap=True, markup=False, highlight=False)
+        errors.print(f"full log: {mailbox.logfile}", style="dim")
         sys.exit(1)
 
 
@@ -65,6 +73,14 @@ def handle_listen(name: str, raw: bool = False) -> None:
     """Hold the connection and write every message to the mailbox."""
     p = _configured(name)
     mailbox = Mailbox(name)
+    # The SDK is needed by listen alone; asking here, before the lock, means
+    # the answer is exit 3 with the pip command on stderr, the same shape as
+    # a missing credential, and not "the listener exited at once".
+    needed = getattr(p, "listen_requirements", list)()
+    if needed:
+        for problem in needed:
+            errors.print(problem, style="red")
+        sys.exit(EXIT_CONFIG)
     if not mailbox.hold_lock():
         errors.print(f"already listening (pid {mailbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
@@ -157,7 +173,7 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
         sys.exit(1)
     body = _text_from(text)
     try:
-        sent = p.send(original.chat, body, reply_to=message_id)
+        sent = p.send(original.chat, body, reply_to=message_id, fresh=again)
     except Exception as exc:
         mailbox.record_sent(chat=original.chat, text=body, reply_to=message_id, error=str(exc))
         errors.print(str(exc), style="red")
@@ -211,6 +227,12 @@ def handle_serve(name: str, command: List[str], once: bool = False) -> None:
     stdout back as the reply. Empty stdout or a non-zero exit sends nothing."""
     p = _configured(name)
     mailbox = Mailbox(name)
+    if not command or shutil.which(command[0]) is None:
+        # Found out now, before a message is taken. A typo used to claim the
+        # message into cur/ and then traceback, one stranded message per
+        # restart.
+        errors.print(f"cannot run {command[0] if command else '(no command)'}: not found or not executable", style="red")
+        sys.exit(2)
     _listener_or_exit(mailbox)
     try:
         while True:
@@ -226,17 +248,27 @@ def handle_serve(name: str, command: List[str], once: bool = False) -> None:
             )
             os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
             run = subprocess.run(command, input=message.to_json() + "\n", capture_output=True, text=True, env=env)
+            # Only an answer that went out, or a command that chose silence
+            # (exit 0, nothing on stdout), finishes a message. A command that
+            # failed, or a reply Feishu refused, leaves it in cur/: the sweep
+            # brings it back in an hour, which is the promise the directory
+            # makes. Consuming it here turned every transient failure into
+            # an unanswered question.
             if run.returncode != 0:
                 mailbox.log(f"serve: command exited {run.returncode} for {message.id}: {run.stderr.strip()[:500]}")
-            elif run.stdout.strip():
+            elif not run.stdout.strip():
+                mailbox.log(f"serve: nothing to say for {message.id}")
+                mailbox.done(message.id)
+            else:
                 reply = run.stdout.rstrip("\n")
                 try:
                     sent = p.send(message.chat, reply, reply_to=message.id)
-                    mailbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
                 except Exception as exc:
                     mailbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, error=str(exc))
                     mailbox.log(f"serve: reply to {message.id} failed: {exc}")
-            mailbox.done(message.id)
+                else:
+                    mailbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
+                    mailbox.done(message.id)
             if once:
                 return
     except KeyboardInterrupt:

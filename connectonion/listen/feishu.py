@@ -36,6 +36,14 @@ _REPLY_NAMESPACE = uuid.UUID("7d2a5b1e-0c4f-4e8a-9b3d-2f6c1a0e5d47")
 # the tenant token are not counted; replies are.
 _RATE_LIMITED = {99991400}
 QUOTA_EXHAUSTED = 99991403
+# The tenant token Feishu gave us is no longer good: rotated secret, or
+# invalidated on their side. The cache is wrong, not the clock.
+_TOKEN_INVALID = {99991663, 99991664, 99991665, 99991668}
+
+
+class CredentialsRefused(RuntimeError):
+    """Feishu answered the token request and said no to this app_id and
+    app_secret. The one error that no retry and no reconnect can fix."""
 QUOTA_MESSAGE = (
     "Feishu's monthly API quota for this tenant is used up (error 99991403). "
     "Replies count against it, receiving does not. It resets on the 1st of the "
@@ -83,16 +91,23 @@ class Feishu:
                 )
         return problems
 
+    def listen_requirements(self) -> list:
+        """What `listen` needs beyond the credentials: the SDK. send and
+        reply are plain REST and work without it, so this is asked by
+        listen alone and not by every verb."""
+        try:
+            _sdk()
+        except RuntimeError as exc:
+            return [str(exc)]
+        return []
+
     def check(self) -> list:
         """Everything that must be true before `listen` can work. Each entry
         is a problem and its next action; an empty list is a pass."""
         problems = self.missing()
         if problems:
             return problems
-        try:
-            _sdk()
-        except RuntimeError as exc:
-            problems.append(str(exc))
+        problems.extend(self.listen_requirements())
         try:
             info = self.bot_info()
         except Exception as exc:  # the API's own words are the diagnosis
@@ -121,7 +136,7 @@ class Feishu:
         try:
             info = self.bot_info()
             mailbox.log(f"connected as {info.get('name') or self.app_id}")
-        except RuntimeError as exc:
+        except CredentialsRefused as exc:
             # Feishu answered and said no: wrong app_id, wrong secret, app not
             # published. Dialling the WebSocket with the same pair cannot
             # succeed, and the SDK would retry it every two minutes forever,
@@ -129,9 +144,11 @@ class Feishu:
             mailbox.log(f"bot info failed: {exc}")
             raise
         except Exception as exc:
-            # No answer at all (DNS, proxy, a flaky link): the long connection
-            # has its own reconnect and may well get through; only the
-            # own-@mention check runs without the bot's open_id until then.
+            # Anything else is a bad minute, not a bad key: a 502 page from
+            # the edge, a rate limit on the info call, no answer at all. The
+            # long connection has its own reconnect and may well get
+            # through; only the own-@mention check runs without the bot's
+            # open_id until then.
             mailbox.log(f"bot info failed: {exc}")
 
         def on_message(data) -> None:
@@ -210,18 +227,25 @@ class Feishu:
 
     # ---- outbound ----------------------------------------------------------
 
-    def send(self, chat: str, text: str, *, reply_to: Optional[str] = None) -> str:
+    def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False) -> str:
         """Send text to a chat, or as a reply to a message. Returns the new
-        message id."""
+        message id. `fresh` is `reply --again`: a deliberate second post,
+        even of the same words."""
         content = json.dumps({"text": text}, ensure_ascii=False)
         if reply_to:
             # Same message, same text: a retry, and Feishu drops the second
-            # copy. Same message, different text (`reply --again`): a new key.
-            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            # copy for an hour. `--again` asks for a second post on purpose,
+            # so it must not reuse the key, or Feishu swallows it while the
+            # CLI reports an id: a fresh key for a fresh post.
+            if fresh:
+                key = str(uuid.uuid4())
+            else:
+                digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+                key = str(uuid.uuid5(_REPLY_NAMESPACE, f"{self.name}:{reply_to}:{digest}"))
             body = {
                 "msg_type": "text",
                 "content": content,
-                "uuid": str(uuid.uuid5(_REPLY_NAMESPACE, f"{self.name}:{reply_to}:{digest}")),
+                "uuid": key,
             }
             result = self._post(f"/open-apis/im/v1/messages/{reply_to}/reply", body)
         else:
@@ -246,7 +270,7 @@ class Feishu:
         )
         body = response.json()
         if body.get("code") != 0:
-            raise RuntimeError(f"{self.brand} refused the credentials: {body.get('code')} {body.get('msg')}")
+            raise CredentialsRefused(f"{self.brand} refused the credentials: {body.get('code')} {body.get('msg')}")
         self._token = body["tenant_access_token"]
         # Refresh a minute early; Feishu's own expiry is two hours.
         self._token_expires_at = time.time() + int(body.get("expire", 7200)) - 60
@@ -255,14 +279,27 @@ class Feishu:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self._tenant_token()}"}
 
+    def _call(self, send):
+        """One request; a second one with a fresh token if Feishu says the
+        cached token is no longer good. The token is otherwise cached by the
+        clock, and a secret rotated in the console would leave `serve`
+        failing every reply for up to two hours."""
+        response = send()
+        if _code(response) in _TOKEN_INVALID:
+            self._token = None
+            response = send()
+        return response
+
     def _get(self, path: str) -> dict:
-        response = requests.get(f"{self.base}{path}", headers=self._headers(), timeout=15)
+        url = f"{self.base}{path}"
+        response = self._call(lambda: requests.get(url, headers=self._headers(), timeout=15))
         return _data(response, self.brand)
 
     def _post(self, path: str, body: dict) -> dict:
+        url = f"{self.base}{path}"
         delay = 1.0
         for attempt in range(3):
-            response = requests.post(f"{self.base}{path}", headers=self._headers(), json=body, timeout=15)
+            response = self._call(lambda: requests.post(url, headers=self._headers(), json=body, timeout=15))
             code = _code(response)
             if code == QUOTA_EXHAUSTED:
                 raise RuntimeError(QUOTA_MESSAGE)
@@ -317,7 +354,9 @@ def _text_of(message, mentions) -> str:
         text = _post_text(content)
     else:
         text = f"[{message_type}]"
-    for mention in mentions:
+    # Keys are @_user_1, @_user_2, … so @_user_1 is a prefix of @_user_10:
+    # longest key first, or a message tagging ten people loses the tenth.
+    for mention in sorted(mentions, key=lambda m: -len(getattr(m, "key", None) or "")):
         key = getattr(mention, "key", None)
         name = getattr(mention, "name", None)
         if key:
