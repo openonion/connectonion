@@ -65,11 +65,12 @@ from ..credentials import require_ambient_api_key
 from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 from ..project import project_root
 from ._attachment_files import path_of_open_file
+from .gmail_mailbox import GmailMailbox
 
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
 
-class Gmail:
+class Gmail(GmailMailbox):
     """Gmail tool for reading and managing emails."""
 
     @property
@@ -250,6 +251,7 @@ class Gmail:
             maxResults=last
         ).execute()
 
+        self._last_message_page = results
         return self._email_dicts(results.get('messages', []), last)
 
     def list_search(self, query: str, max_results: int = 10) -> list:
@@ -265,6 +267,7 @@ class Gmail:
             maxResults=max_results
         ).execute()
 
+        self._last_message_page = results
         return self._email_dicts(results.get('messages', []), max_results)
 
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
@@ -548,9 +551,11 @@ class Gmail:
         if last < 1:
             return []
         service = self._get_service()
-        stubs = service.users().drafts().list(
+        response = service.users().drafts().list(
             userId="me", maxResults=last
-        ).execute().get("drafts", [])
+        ).execute()
+        self._last_draft_page = response
+        stubs = response.get("drafts", [])
         drafts = []
         for stub in stubs:
             full = service.users().drafts().get(
@@ -1435,190 +1440,12 @@ Emails:
         return f"Analysis for {email}:\n\n{analysis}"
 
     def get_unanswered_emails(self, within_days: int = 120, max_results: int = 20) -> str:
-        """Find emails from the last N days that we haven't replied to.
-
-        Useful for CRM to identify conversations that need follow-up.
-        Checks threads where the last message is FROM someone else (not us).
-
-        Args:
-            within_days: Look back this many days (default: 120 = ~4 months)
-            max_results: Maximum emails to return (default: 20)
-
-        Returns:
-            List of unanswered emails with sender, subject, date, and age
-        """
-        import re
-        from datetime import datetime, timezone
-        from email.utils import parsedate_to_datetime
-
-        service = self._get_service()
-
-        # Get ALL user email addresses including Cloudflare routed addresses (auto-detected)
-        user_emails = self.get_all_my_emails(max_emails=50)
-
-        # Search for inbox emails from the last N days
-        # Use pagination to ensure we find enough unanswered emails
-        query = f"in:inbox newer_than:{within_days}d"
-        unanswered = []
-        seen_threads = set()
-        page_token = None
-        max_pages = 10  # Safety limit to avoid infinite loops
-        pages_fetched = 0
-
-        while len(unanswered) < max_results and pages_fetched < max_pages:
-            results = service.users().messages().list(
-                userId='me',
-                q=query,
-                maxResults=100,  # Fetch in larger batches for efficiency
-                pageToken=page_token
-            ).execute()
-
-            messages = results.get('messages', [])
-            if not messages:
-                break
-
-            for msg in messages:
-                # Get thread to check if we replied
-                thread_id = msg.get('threadId')
-                if thread_id in seen_threads:
-                    continue
-                seen_threads.add(thread_id)
-
-                # Get full thread
-                thread = service.users().threads().get(
-                    userId='me',
-                    id=thread_id,
-                    format='metadata',
-                    metadataHeaders=['From', 'Subject', 'Date']
-                ).execute()
-
-                thread_messages = thread.get('messages', [])
-                if not thread_messages:
-                    continue
-
-                # Check the last message in thread
-                last_msg = thread_messages[-1]
-                headers = last_msg['payload']['headers']
-                last_from = next((h['value'] for h in headers if h['name'] == 'From'), '')
-
-                # Extract email from "Name <email>" format
-                email_match = re.search(r'<([^>]+)>', last_from)
-                last_from_email = email_match.group(1).lower() if email_match else last_from.lower()
-
-                # Skip if last message is from us (we already replied)
-                # Check against ALL our email addresses (primary + aliases)
-                if any(email in last_from_email for email in user_emails):
-                    continue
-
-                # Get first message details
-                first_msg = thread_messages[0]
-                first_headers = first_msg['payload']['headers']
-                first_from = next((h['value'] for h in first_headers if h['name'] == 'From'), '')
-                first_email_match = re.search(r'<([^>]+)>', first_from)
-                first_from_email = first_email_match.group(1).lower() if first_email_match else first_from.lower()
-                subject = next((h['value'] for h in first_headers if h['name'] == 'Subject'), 'No Subject')
-                subject_lower = subject.lower()
-
-                # Skip if WE sent the first message (we initiated, not awaiting reply)
-                # Check against ALL our email addresses (primary + aliases)
-                if any(email in first_from_email for email in user_emails):
-                    continue
-
-                # Skip automated senders by email patterns
-                automated_email_patterns = [
-                    # Generic automated prefixes
-                    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
-                    'notifications@', 'notification@', 'newsletter@', 'news@',
-                    'alerts@', 'alert@', 'updates@', 'update@',
-                    'security@', 'team@', 'support@', 'help@', 'info@',
-                    'marketing@', 'promo@', 'promotions@', 'offers@',
-                    'billing@', 'invoice@', 'receipt@', 'order@',
-                    'feedback@', 'survey@', 'announce@', 'digest@',
-                    'hello@',  # Common marketing prefix
-                    # Common automated domains/subdomains
-                    'mail.instagram.com', 'mail.linkedin.com', 'mail.facebook.com',
-                    'mail.twitter.com', 'mail.x.com', 'mail.google.com',
-                    'facebookmail.com', 'linkedin.com', 'glassdoor.com',
-                    'calendly.com', 'zoom.us', 'mailchimp', 'sendgrid',
-                    'amazonses', 'postmark', 'intercom', 'hubspot',
-                    'mailgun', 'sparkpost', 'constantcontact', 'campaign-archive',
-                    'vimeo.com', 'vimeo@',  # Video platforms
-                    'mongodb.com', 'mongodb@', 'atlassian.com', 'github.com',
-                    'aws.amazon.com', 'cloud.google.com', 'azure.microsoft.com',
-                    # Subdomain patterns (careful - these match anywhere in domain)
-                    'mail.', 'send.', 'email.', 'mailer.', 'bounce.',
-                    'notify.', 'msg.', 'campaigns.',
-                ]
-                if any(p in last_from_email for p in automated_email_patterns):
-                    continue
-
-                # Skip by subject line patterns (common automated email subjects)
-                automated_subject_patterns = [
-                    'your job', 'job alert', 'new jobs', 'jobs for you',
-                    'password reset', 'verify your', 'confirm your',
-                    'security alert', 'new sign-in', 'new login', 'login attempt',
-                    'weekly digest', 'daily digest', 'monthly digest',
-                    'newsletter', 'unsubscribe', 'subscription',
-                    'receipt for', 'invoice', 'payment confirmation', 'order confirmation',
-                    'your order', 'shipping confirmation', 'delivery update',
-                    'welcome to', 'thanks for signing up', 'account created',
-                    'is active', 'expiring soon', 'expires', 'renew',
-                    # Calendar/meeting related
-                    'invitation:', 'invitation from', 'canceled event', 'accepted:', 'declined:',
-                    'updated invitation', 'event canceled', 'meeting canceled',
-                    'from an unknown sender',
-                    # Account related
-                    'account registration', 'registration complete', 'verify your email',
-                    'confirm your email', 'activate your account', 'action required',
-                    'build your first', 'getting started with', 'complete your setup',
-                    # Monthly/periodic reports
-                    'in january', 'in february', 'in march', 'in april', 'in may',
-                    'in june', 'in july', 'in august', 'in september', 'in october',
-                    'in november', 'in december', 'this month', 'last month',
-                    'pro tips', 'tips to', 'getting started',
-                ]
-                if any(p in subject_lower for p in automated_subject_patterns):
-                    continue
-                from_email = next((h['value'] for h in first_headers if h['name'] == 'From'), 'Unknown')
-                date_str = next((h['value'] for h in first_headers if h['name'] == 'Date'), '')
-
-                # Calculate age
-                age_days = within_days  # Default fallback
-                if date_str:
-                    date_obj = parsedate_to_datetime(date_str)
-                    now = datetime.now(timezone.utc)
-                    age_days = (now - date_obj).days
-
-                unanswered.append({
-                    'thread_id': thread_id,
-                    'from': from_email,
-                    'subject': subject,
-                    'date': date_str,
-                    'age_days': age_days,
-                    'messages_in_thread': len(thread_messages)
-                })
-
-                if len(unanswered) >= max_results:
-                    break
-
-            # Pagination: get next page
-            page_token = results.get('nextPageToken')
-            pages_fetched += 1
-            if not page_token:
-                break
-
-        if not unanswered:
-            return f"No unanswered emails found in the last {within_days} days."
-
-        # Format output
-        output = [f"Found {len(unanswered)} unanswered email(s) from the last {within_days} days:\n"]
-        for i, email in enumerate(unanswered, 1):
-            output.append(f"{i}. From: {email['from']}")
-            output.append(f"   Subject: {email['subject']}")
-            output.append(f"   Age: {email['age_days']} days ({email['messages_in_thread']} messages in thread)")
-            output.append(f"   Thread ID: {email['thread_id']}\n")
-
-        return "\n".join(output)
+        """Describe one page of latest-incoming threads; use list_unanswered for cursors."""
+        page = self.list_unanswered(within_days=within_days, last=max_results)
+        output = self._format_dicts(page['items'])
+        if page['truncated']:
+            output += "\nMore candidate threads exist; use list_unanswered and next_cursor to continue."
+        return output
 
     # === CSV Caching ===
 

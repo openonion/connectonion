@@ -175,6 +175,70 @@ Search results use the same full-ID and `--listing` rules as the inbox.
 
 ## Piping
 
+### Structured pages and mailbox actions (1.8.4 candidate)
+
+```bash
+co gmail inbox --json
+co gmail search "in:sent" -n 25 --json
+co gmail search "in:sent" -n 25 --cursor <next-cursor> --json
+co gmail read <message-id> --json
+co gmail draft list --json
+co gmail draft preview <draft-id> --json
+co gmail mark <message-id> --read
+co gmail mark <message-id> --unread
+co gmail archive <message-id>
+co gmail star <message-id> --remove
+co gmail label list --json
+co gmail label add <message-id> <label-name-or-id>
+co gmail label remove <message-id> <label-name-or-id>
+co gmail attachments <message-id> --json
+co gmail download <message-id> --all --to ~/Downloads --json
+co gmail download <message-id> --attachment <attachment-id> --to ~/Downloads --json
+co gmail unanswered --within-days 30 --last 20 --json
+```
+
+Every new mailbox command supports `--json`, as do inbox, sent, search, read,
+draft list and draft preview. `co gmail --json` is the default inbox. JSON uses
+one schema-1 envelope: `provider`, `account`, `operation`, `status`, `complete`,
+`data`, `error`, `next_command`. It prints no prompts or extra stdout text.
+New commands put human hints on stderr. Operational/partial failures exit 1;
+invalid flags and missing arguments exit 2. A read with `--mark-read` fails when
+that mutation fails. Unknown scope metadata lets the provider decide.
+
+`data.next_cursor` continues the same account/query/filter/limit for 15 minutes.
+`data.truncated` reports more candidate pages; `complete` means this requested
+page or operation completed, not that the entire mailbox was fetched. Messages
+and drafts allow 1–500 items; unanswered scans 1–100 threads per page and can
+return fewer matches. Provider counts are estimates. Unanswered's estimate is
+explicitly for candidate threads. Live pages may repeat/omit rows if mail changes.
+Human listings also report whether more provider results exist.
+
+Unanswered selects the latest non-draft message by provider timestamp, checks
+that it is incoming and within the selected window, and includes conversations
+you started. Exact normalized mailbox identity and provider SENT evidence avoid
+substring matches and guessed aliases. `--exclude-automated` is optional and
+filters Auto-Submitted and bulk/list/junk headers. Sender names such as support,
+billing and invoice are not automatically filtered.
+
+Incoming attachments include nested named files and explicitly inline parts.
+Provider attachment IDs and `part:<partId>` inline identifiers are stable within
+the message. Attached-message bytes are downloaded as one file; nested children
+are also listed when the provider supplies them as MIME parts. Downloads require
+an existing destination directory and exactly one selector: `--all` or
+`--attachment ID`. Names are sanitized; collisions gain suffixes. Existing files
+and symlinks are never overwritten. Private temporary files become visible only
+after base64 and size checks pass. Limits: 25 MB/file, 100 MB/invocation,
+100 attachments, MIME depth 30/1,000 nodes, and 40 MB per streamed API response.
+Filesystems without atomic hard-link placement report a failure. Partial results
+retain completed files and include each path, hash or error; inspect before retry.
+
+Actions need `gmail.modify` or the full-mail grant. Read/list/download operations
+need Gmail read access. No label creation, automatic reply, Drive sharing or
+scheduled sending is added. [DD-068](../design-decisions/068-gmail-mailbox-pages-and-downloads.md)
+records the transport and pagination decisions.
+
+### Human output
+
 In a terminal you get a Rich table with truncated columns. When output is
 piped, you get the plain listing with **full message ids** instead, so scripts
 and agents never receive a truncated value:
