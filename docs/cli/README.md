@@ -61,7 +61,8 @@ other command gets a `Next: …` line on stderr after it returns, from one table
 in the CLI, so stdout stays the command's data and the line still reaches a
 pipe. A test fails when a registered command has no entry, and every tip's
 command is checked against this register, so a tip never points at a command
-that does not exist.
+that does not exist. `co --no-tips <command>` drops the line for one run and
+`CO_TIPS=off` for every run; error text is never a tip and is never dropped.
 
 ### Project Commands
 

@@ -6,6 +6,7 @@ invent a command name. tests/unit/test_cli_tips_name_real_commands.py sweeps
 the source for tip strings and checks each named command against the register.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -156,6 +157,24 @@ def next_step_for(path: str):
     raise KeyError(path)
 
 
+def tips_enabled() -> bool:
+    """False when the user asked for no tips: `co --no-tips <command>` for one
+    run, or CO_TIPS=off (also 0/false/no) in the environment for every run.
+    Covers the Next: line and the rotating status/browser tips alike; error
+    text is never a tip and is never suppressed."""
+    if _SUPPRESSED:
+        return False
+    return os.environ.get("CO_TIPS", "").strip().lower() not in ("0", "off", "false", "no")
+
+
+_SUPPRESSED = False
+
+
+def suppress_tips() -> None:
+    global _SUPPRESSED
+    _SUPPRESSED = True
+
+
 def print_next_step(path: str) -> None:
     """After a command returns normally, name the next command.
 
@@ -169,6 +188,8 @@ def print_next_step(path: str) -> None:
     know. A path missing from the table also prints nothing, and the test
     in tests/unit/test_every_command_has_a_next_step.py fails on it.
     """
+    if not tips_enabled():
+        return
     try:
         tip = next_step_for(path)
     except KeyError:

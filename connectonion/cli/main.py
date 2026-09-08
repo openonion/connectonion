@@ -86,8 +86,13 @@ def main(
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
     env_file: Optional[Path] = typer.Option(None, "--env-file", callback=env_file_callback,
         is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
+    no_tips: bool = typer.Option(False, "--no-tips",
+        help="Do not print the Next: line after the command (CO_TIPS=off does the same for every run)."),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
+    if no_tips:
+        from .commands.command_tips import suppress_tips
+        suppress_tips()
     if ctx.invoked_subcommand is None:
         _show_help()
 

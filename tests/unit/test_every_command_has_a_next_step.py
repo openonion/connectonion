@@ -92,6 +92,36 @@ class TestItIsPrinted:
         assert "Next:" not in result.stderr
 
 
+class TestItCanBeTurnedOff:
+    """#71 asked for a dismissible tip: `--no-tips` for one run, CO_TIPS=off
+    for every run. Neither touches error text — only the tip is a tip."""
+
+    @pytest.fixture(autouse=True)
+    def hermetic_handler(self, monkeypatch):
+        monkeypatch.setattr(
+            "connectonion.cli.commands.trust_commands.handle_admin_remove",
+            lambda address: None)
+        monkeypatch.setitem(command_tips.NEXT, "co trust admin remove",
+                            "See every list:  co trust list")
+        monkeypatch.setattr(command_tips, "_SUPPRESSED", False)
+        monkeypatch.delenv("CO_TIPS", raising=False)
+
+    def test_no_tips_flag_silences_one_run(self):
+        result = runner.invoke(cli_main.app, ["--no-tips", "trust", "admin", "remove", "0xabc"])
+        assert result.exit_code == 0, result.output
+        assert "Next:" not in result.stderr
+
+    def test_co_tips_off_silences_every_run(self, monkeypatch):
+        monkeypatch.setenv("CO_TIPS", "off")
+        result = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"])
+        assert result.exit_code == 0, result.output
+        assert "Next:" not in result.stderr
+
+    def test_the_default_is_on(self):
+        result = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"])
+        assert "Next: See every list:  co trust list" in result.stderr
+
+
 def test_wildcard_resolution_prefers_the_exact_key():
     assert next_step_for("co gmail read") is HANDLER            # via "co gmail *"
     assert next_step_for("co email default") is not HANDLER     # exact

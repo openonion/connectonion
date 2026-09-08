@@ -575,5 +575,6 @@ def handle_status(reveal: bool = False):
     # two of them URLs — a reader with only this output could not act on it in
     # the shell. Rotation because status has no single next step; the useful
     # thing to teach here is the rest of the surface.
-    from .command_tips import STATUS_TIPS, rotating_tip
-    console.print(f"\n[dim]💡 {rotating_tip('status', STATUS_TIPS)}[/dim]\n", highlight=False)
+    from .command_tips import STATUS_TIPS, rotating_tip, tips_enabled
+    if tips_enabled():
+        console.print(f"\n[dim]💡 {rotating_tip('status', STATUS_TIPS)}[/dim]\n", highlight=False)

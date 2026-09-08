@@ -132,7 +132,8 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             return 2
         args = [*args[:-1], sys.stdin.read()]
     code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
-    if code == 0:
+    from .command_tips import tips_enabled
+    if code == 0 and tips_enabled():
         # Not gated on a terminal: an agent captures stdout, and it is the
         # reader this tip exists for. stderr keeps stdout pure data.
         tip = f"💡 {_next_tip()}"
