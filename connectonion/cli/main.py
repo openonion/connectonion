@@ -71,12 +71,18 @@ def version_callback(value: bool):
 
 
 def env_file_callback(ctx: typer.Context, value: Optional[Path]):
+    """Select the env file before any command runs.
+
+    A failure is recorded, not raised here: this eager callback runs before
+    Typer knows which command was asked for, and `co env` must still run on a
+    broken file — it is the command that says which line to fix. main() exits
+    for every other command.
+    """
     from ..environment import EnvironmentError, select_env_file
     try:
         select_env_file(value)
-    except EnvironmentError as error:
-        console.print(str(error), markup=False)
-        raise typer.Exit(2) from None
+    except EnvironmentError:
+        pass
     return value
 
 
@@ -88,6 +94,12 @@ def main(
         is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
+    from ..environment import selection_error
+    error = selection_error()
+    if error is not None and ctx.invoked_subcommand != "env":
+        # Plain print: Rich would wrap the path and split the "Next:" tip.
+        print(error)
+        raise typer.Exit(2)
     if ctx.invoked_subcommand is None:
         _show_help()
 
@@ -130,6 +142,7 @@ def _show_help():
     console.print()
     console.print("[bold]Configuration:[/bold]")
     console.print("  Global by default: ~/.co/keys.env", markup=False)
+    console.print("  co env                           Show the settings in it; co env set <KEY> <value> saves one", markup=False)
     console.print("  co --env-file .env <command>     Use a project env file", markup=False)
     console.print()
     console.print("  co --help                       All commands", markup=False)
@@ -462,6 +475,57 @@ def announce(
 
 
 # Server command group — the machines `co deploy --to` can target
+env_app = _typer_app(help="Show, set and remove settings in the selected env file (global ~/.co/keys.env unless --env-file was given). Bare 'co env' shows them.")
+app.add_typer(env_app, name="env")
+
+
+@env_app.callback(invoke_without_command=True)
+def env_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
+    """Show, set and remove settings in the selected env file."""
+    if ctx.invoked_subcommand is None:
+        from .commands.env_commands import handle_env_show
+        handle_env_show(reveal=False, json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Put --json on bare co env or after env show.")
+
+
+@env_app.command("show")
+def env_show(reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full values"),
+             json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
+    """List setting sources; all values stay hidden unless --reveal is explicit."""
+    from .commands.env_commands import handle_env_show
+    handle_env_show(reveal=reveal, json_output=json_output)
+
+
+@env_app.command("path")
+def env_path():
+    """Print the selected env file's path and nothing else, for $(co env path)."""
+    from .commands.env_commands import handle_env_path
+    handle_env_path()
+
+
+@env_app.command("get")
+def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY")):
+    """Print one value as a command would see it: the process wins, then the file."""
+    from .commands.env_commands import handle_env_get
+    handle_env_get(key)
+
+
+@env_app.command("set")
+def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
+            value: str = typer.Argument(..., help="Value; quote it if it has spaces")):
+    """Save one setting to the selected file, keeping every other line as it is."""
+    from .commands.env_commands import handle_env_set
+    handle_env_set(key, value)
+
+
+@env_app.command("unset")
+def env_unset(key: str = typer.Argument(..., help="Setting name; a GOOGLE_*/MICROSOFT_* account field removes the whole record")):
+    """Remove one setting from the selected file."""
+    from .commands.env_commands import handle_env_unset
+    handle_env_unset(key)
+
+
 server_app = _typer_app(help="Register, list and preflight the servers you can deploy to")
 app.add_typer(server_app, name="server")
 

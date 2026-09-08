@@ -9,7 +9,9 @@ Global `keys.env` is the default for every setting and account. To use a project
 file, put `--env-file` before the command: `co --env-file /absolute/path/.env gmail
 inbox`. Auth and refresh use that selected file. No project env loads implicitly;
 process overrides remain explicit and provider fields are kept as whole records.
-See `docs/cli/environment.md` for migration and error recovery.
+`co env` (same selector) shows which file is in use, what it holds and which
+values the shell overrides — run it first when a command says "not connected in
+<file>". See `docs/cli/environment.md` for migration and error recovery.
 
 
 # co gmail / co outlook / co email / co gdrive
@@ -335,7 +337,7 @@ The printed messages carry the current recovery step — trust them over this ta
 When a command says the account is not connected:
 
 ```
-❌ Google account not connected     → co auth google
+❌ Google account not connected in <file> → co env shows that file; then co auth google
 ❌ Gmail permission missing         → co auth google      (re-consent)
 ❌ Gmail draft permission missing   → co auth google      (re-consent)
 ❌ Google Drive permission missing  → co auth google      (re-consent)
