@@ -101,3 +101,26 @@ def test_quoted_reply_chains_are_cut_off():
     client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", body=body)])
     batch = collect_mail(subscription(), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
     assert "Can we do Friday" not in batch.items[0]["text"] and "Friday works" in batch.items[0]["text"]
+
+
+def test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line():
+    """Outlook's HTML-to-text turns a mail into one long line, so `^From: … Sent:` and
+    `wrote:$` never matched and every reply carried the whole thread beneath it."""
+    from connectonion.wiki.mail import strip_quoted
+    flat = ("Hi Aaron,I'm connecting you with Helena and Natalie.Thank you,Vern Chan UNSW Global Program Manager"
+            "From: Vern Chan <vern.chan@unsw.edu.au>Sent: 10 July 2026 11:56To: xietianle Subject: US Students Dear Aaron,Thank you for your interest")
+    assert strip_quoted(flat).endswith("Program Manager") and "Dear Aaron,Thank you for your interest" not in strip_quoted(flat)
+    flat2 = "Agreed, Friday works. On Tue, 2 Sep 2026 at 09:00, Alice Chen <alice@example.com> wrote: Can we do Friday?"
+    assert strip_quoted(flat2).strip() == "Agreed, Friday works."
+
+
+def test_signature_link_noise_is_dropped():
+    """Booking links and newsletter links in signatures are tokens, not facts."""
+    from connectonion.wiki.mail import strip_noise
+    body = ("Thanks,Vern Chan Subscribe to Our Fortnightly Newsletter <https://unswfounders.typeform.com/newsletter>"
+            "https://outlook.office.com/bookwithme/user/34b2cc480b9d4541a2f837bc47adae32@unsw.edu.au?anonymous&ismsaljsauthenabled&ep=bwmEmailSignature"
+            "Book a time <https://outlook.office.com/bookwithme/user/34b2cc480b9d4541a2f837bc47adae32@unsw.edu.au?anonymous>with me")
+    cleaned = strip_noise(body)
+    assert "bookwithme" not in cleaned and "typeform" not in cleaned
+    assert "Vern Chan" in cleaned and "Book a time" in cleaned
+    assert strip_noise("see https://example.com/docs for details") == "see https://example.com/docs for details"

@@ -22,8 +22,19 @@ batch holds nothing worth keeping, reply with exactly `Nothing worth keeping.`
 
 ## What to keep
 
-- **People**: who someone is, their role and organisation, what they said they
-  prefer, what they told the user, what the user told them, where things stand.
+- **People**: this is where a thin notebook fails, so be generous. For each
+  person who wrote or was written to: their exact role, organisation and
+  location as their signature gives it; contact details (address, phone,
+  booking link) verbatim; how the user knows them; each interaction with its
+  date and what each side said or asked; what they want from the user and
+  what the user promised them. Then **how they communicate**, observed, with
+  evidence: how they open and sign off ("Dear Aaron" / "Thanks and with warm
+  regards"), long or terse, formal or warm, bullets or prose, emoji, who they
+  cc, how fast they reply, which language — and one to three short verbatim
+  quotes that show it. Then **how the user writes to this person**, the same
+  way ("Hi Vern," then "On capacity: … On timing: …", direct, says when
+  something would stretch them). A person page is the user's memory of a
+  relationship; the maintainer can only write what you hand it.
 - **Projects**: what it is for, what changed, what is blocked, where to resume.
 - **Decisions**: what was chosen, over which alternatives, why — and whether it
   was later corrected. A suggestion ("we could try Redis", "should I set up X?")
@@ -90,5 +101,7 @@ sender), the date, and the source ids it comes from, like this:
 Write the notes in the language the user's own messages are written in —
 English messages, English notes; 中文消息，中文要点 — regardless of the
 language of these instructions; never translate names. Keep qualifications and
-uncertainty ("tentative", "not confirmed"). Prefer forty precise bullets over a
-summary; prefer nothing over a guess.
+uncertainty ("tentative", "not confirmed"). There is no cap on length: a batch
+of a hundred mails from twenty people needs a hundred or more bullets, and a
+person's bullets are long ones. Losing a fact here loses it for good; prefer a
+precise bullet over a summary, and nothing over a guess.

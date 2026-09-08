@@ -79,6 +79,7 @@
   .eyebrow .when { color: var(--ink-3); letter-spacing: 0.02em; text-transform: none; font-variant-numeric: tabular-nums; }
   h1 { font: 500 34px/1.15 var(--display); letter-spacing: -0.005em; margin: 0 0 12px; text-wrap: balance; color: var(--ink); }
   .lede { color: var(--ink-2); font-size: 15px; margin: 0 0 34px; max-width: 66ch; }
+  .lede-person { font-size: 18px; line-height: 1.55; color: var(--ink); margin-bottom: 28px; }
   h2.section { font: 500 22px/1.2 var(--display); margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
   h2.section .n { font: 13px var(--body); color: var(--ink-3); text-align: right; }
 
@@ -132,6 +133,8 @@
   .hits .t a { color: var(--ink); }
   .hits .hit { margin-top: 6px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
   .hits .eyebrow { margin-bottom: 4px; }
+  .hits .open { color: var(--ink); }
+  .hits .open .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--moss); }
   mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 2px; }
   .empty { color: var(--ink-3); padding: 34px 0; font-size: 15px; max-width: 60ch; }
 
@@ -411,9 +414,13 @@ function category(c) {
   if (!items.length) { main.appendChild(el("div", { class: "empty", text: "Nothing here yet. An empty category is not an error; the notebook fills what the sources support." })); return; }
   const ul = el("ul", { class: "hits" });
   for (const r of items) {
-    const lead = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "").replace(/[#*`>]/g, "").trim().split(/\n\s*\n/)[0] || "";
-    ul.appendChild(el("li", {}, [el("div", { class: "t" }, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })]),
-      el("div", { class: "hit", text: lead.length > 220 ? lead.slice(0, 217) + "…" : lead })]));
+    const text = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "");
+    const lead = text.replace(/[#*`>]/g, "").trim().split(/\n\s*\n/)[0] || "";
+    const li = el("li", {}, [el("div", { class: "t" }, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })]),
+      el("div", { class: "hit", text: lead.length > 220 ? lead.slice(0, 217) + "…" : lead })]);
+    const open = /\n##\s*(?:Open|Where we left off|待办|未决)[^\n]*\n+([^\n#]+)/i.exec(text);
+    if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: "Open · " }), open[1].trim()]));
+    ul.appendChild(li);
   }
   main.appendChild(ul);
 }
@@ -426,10 +433,23 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }),
     el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: "updated " + fmtDate(r.updated) })]));
   main.appendChild(el("h1", { text: r.title }));
-  const body = parts.body.replace(/^#[^\n]*\n?/, "");
+  let body = parts.body.replace(/^#[^\n]*\n?/, "");
+  const contacts = r.category === "people" ? [...new Set((r.text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []))] : [];
+  if (r.category === "people") {
+    // The first paragraph of a person's page is who they are; it reads as the lede.
+    const m = /^\s*([^\n]+(?:\n(?!\s*\n|#)[^\n]+)*)/.exec(body);
+    if (m && !m[1].startsWith("#") && !m[1].startsWith("-")) {
+      main.appendChild(el("p", { class: "lede lede-person", html: inline(m[1].replace(/\n/g, " "), r.path) }));
+      body = body.slice(m[0].length);
+    }
+  }
   main.appendChild(el("div", { class: "note", html: markdown(body, r.path) }));
-  if (parts.related || parts.sources) {
+  if (parts.related || parts.sources || contacts.length) {
     const aside = el("div", { class: "aside" });
+    if (contacts.length) {
+      aside.appendChild(el("div", { class: "k", text: "Contact" }));
+      aside.appendChild(el("div", { class: "chips" }, contacts.map(a => el("a", { class: "chip", href: "mailto:" + a, text: a }))));
+    }
     if (parts.related) {
       aside.appendChild(el("div", { class: "k", text: "Related" }));
       const links = [...parts.related.matchAll(/\[([^\]]+)\]\(([^)\s]+)\)/g)];

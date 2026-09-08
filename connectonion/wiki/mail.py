@@ -28,16 +28,34 @@ LISTING_LIMIT = 200                  # per window; a busier week continues on th
 MAX_BODY_CHARS = 8_000               # a mail body beyond this is a pasted log or a marketing template
 # Where the quoted thread below a reply begins. Those mails were already read on
 # their own day; carrying them again turned a 17-mail batch into 370k tokens.
+# Outlook's HTML-to-text collapses a mail into one line, so none of these may
+# rely on line starts or ends; each is the first sign of the quoted thread.
+# No word boundaries either: flattened text runs "…Program ManagerFrom: Vern…"
+# straight through, so the header words themselves are the only signal.
 QUOTED_REPLY = re.compile(
-    r"^(?:On .{0,120}? wrote:\s*$|-{3,}\s*Original Message\s*-{3,}|_{10,}\s*$|From: .{0,200}\nSent: |"
-    r"在.{0,80}写道[：:]\s*$|> .*$)",
+    r"(?:\bOn [^\n]{0,160}? wrote:|-{3,}\s*Original Message\s*-{3,}|_{10,}|"
+    r"From: [^\n]{0,240}?Sent: |From: [^\n]{0,240}?Date: [^\n]{0,80}?Subject: |"
+    r"在[^\n]{0,80}写道[：:]|(?:^|\n)> )",
     re.MULTILINE)
+# Signature furniture: links wrapped in angle brackets (how Outlook renders a
+# hyperlink), Outlook booking links, newsletter/unsubscribe links. Tokens, not
+# facts; a plain URL in prose stays. Flattened text leaves no space after a
+# URL, so each pattern names where the URL ends rather than reading to a space.
+SIGNATURE_NOISE = re.compile(
+    r"<https?://[^>]{0,400}>"
+    r"|https?://outlook\.office\.com/bookwithme/(?:[^\s<>]*?ep=bwmEmailSignature|[^\s<>]*?\?anonymous)"
+    r"|https?://[^\s<>]*?(?:typeform\.com/newsletter|unsubscribe|list-manage\.com|mailchimp)[^\s<>]*?(?=\s|<|$)",
+    re.IGNORECASE)
 
 
 def strip_quoted(body: str) -> str:
     """The reply itself, without the thread it quotes."""
     match = QUOTED_REPLY.search(body)
     return body[:match.start()] if match else body
+
+
+def strip_noise(body: str) -> str:
+    return SIGNATURE_NOISE.sub("", body)
 
 
 def _address(value: str) -> str:
@@ -80,7 +98,7 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
                 return Batch(items, updated)
             body = client.get_email_body(row["id"])
             head, _, rest = body.partition("--- Email Body ---")
-            body = head + "--- Email Body ---" + strip_quoted(rest) if rest else strip_quoted(body)
+            body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             text = _fit_text(body[:MAX_BODY_CHARS * 2], MAX_BODY_CHARS)
             # Provider ids run to 150 characters; a Sources line of them is unreadable. The
             # short form names the mail, the reference is what `co outlook read` needs.

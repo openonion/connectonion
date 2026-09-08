@@ -60,20 +60,61 @@ assistant's replies, these instructions and the notebook's existing pages do not
 decide the language; the user's messages do. If they mix, use the one the user
 uses most. Never translate people's names, product names or quoted terms.
 
-Two short examples of the shape that works. They are examples, not templates to
-fill in; omit what the evidence does not support.
+## A person's page
+
+This is the page the user will open most, and the one most likely to come out
+thin. It is the memory of a relationship, and it grows with every interaction;
+never shrink it back to a summary. Its sections, in this order, each present
+only when the evidence supports it:
 
 ```markdown
-# Alice Chen
+# Vern Chan
 
-Product lead at Example Co; works with me on Aurora. Prefers email over calls
-(she said so on 2026-09-02, not inferred from one short reply). Last contact
-2026-09-05: she is waiting on my draft of the storage proposal.
+UNSW Global Program Manager, UNSW Founders + UNSW Office of Global Affairs
+(Hilmer Building, Kensington). Runs the startup side of the Practice of
+WorkXStartup program; introduced me to Concord Visa. vern.chan@unsw.edu.au.
 
-Related: [Aurora](../projects/aurora.md)
+## Our history
+- 2026-07-10 — Introduced me to Julia Lustig at Concord Visa after my US
+  visa refusal in May; in the same hour, invited me to be a startup partner
+  for the Summer 2027 CDEV3000/6000 cohort (11 Jan–5 Feb, six touchpoints at
+  the CBD campus), WIL agreement due 17 July.
+- 2026-07-21 — Handed me to Helena (contract) and Natalie (dates); asked
+  whether I wanted 2 or 3 teams. I said one team of 4–6 and asked for 3–5 pm;
+  he thanked me for "being frank at this early planning stage" and copied the
+  team in.
 
-Sources: codex:session-12:4410 (2026-09-02), codex:session-15:220 (2026-09-05)
+## How they communicate
+Opens "Hi Aaron," or "Dear Aaron,"; signs off "Thank you," or "Thanks and
+with warm regards," with a full institutional signature and a booking link.
+Short operational mails with a "Next steps:" list; copies colleagues in and
+asks to keep them in the loop; an occasional 😊. Replies within a day.
+> "Thank you for participating and being frank at this early planning stage.
+> We're trying to make things work for both sides." (2026-07-21)
+
+## How I write to them
+"Hi Vern," then one short paragraph per topic — "On capacity: … On timing: …
+On location: …" — direct about limits ("two or three teams would stretch me
+too thin").
+
+## Open
+Waiting on Helena for the WIL agreement; confirm the 3–5 pm slot with Natalie.
+
+Related: [UNSW Practice of WorkXStartup](../projects/unsw-practice-of-workxstartup.md), [Julia Lustig](./julia-lustig.md)
+
+Sources: outlook:e20338b4fb8e (2026-07-10), outlook:59f218fbda83 (2026-07-10), outlook:1b7a3c2d9e4f (2026-07-21)
 ```
+
+The summary line names role, organisation and how the user knows them; the
+contact address is verbatim. "Our history" is dated and keeps both sides of
+each exchange. "How they communicate" is observed, not inferred from one
+message, and carries a quote. "How I write to them" is the user's own style
+with this person. "Open" is where things stand. A person with one message and
+no identity does not get this page; a person with a second message gets their
+history extended, not rewritten.
+
+Two more examples of the shape that works elsewhere. They are examples, not
+templates to fill in; omit what the evidence does not support.
 
 ```markdown
 # Aurora stores notes as Markdown, not SQLite
@@ -92,7 +133,7 @@ Sources: codex:session-1:0 (2026-09-02), codex:session-1:347 (2026-09-07)
 
 | Directory | What it should help the next assistant understand |
 |---|---|
-| `people/` | Identity, relationships, interactions, source-backed preferences and communication examples. Do not infer personality from one message. |
+| `people/` | Role, organisation, contact; dated history of both sides of every exchange; how they communicate, with quotes; how the user writes to them; what is open. See "A person's page" above. Do not infer personality from one message. |
 | `projects/` | Goals, context, constraints, progress, and where to resume; link related records. |
 | `skills/candidates/` | Useful repeatable procedures with triggers, steps, checks, and provenance. Inert Markdown, never installed or executed. |
 | `knowledge/` | Concepts, methods, lessons, explanations, references, and counterexamples. |

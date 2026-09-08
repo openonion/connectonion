@@ -444,6 +444,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             usage = dict(digest.get("usage") or {})
             record["usage_by_stage"]["extract"] = digest.get("usage")
             notes = digest["notes"].strip()
+            # The digest is the only thing the maintainer sees. Keeping it is how
+            # a thin page gets traced to the pass that lost the fact.
+            extracts = state_path(root, "extracts")
+            extracts.mkdir(parents=True, exist_ok=True, mode=0o700)
+            (extracts / f"{record['id']}.md").write_text(notes, encoding="utf-8")
+            record["extract_notes"] = f".state/extracts/{record['id']}.md"
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
             result = runner(Notebook(root), items, config)
