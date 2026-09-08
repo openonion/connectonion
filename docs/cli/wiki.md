@@ -138,7 +138,12 @@ so the notebook grows the way the user's understanding did. Only the user's
 own messages are read from a coding session: they are the user's will (what was
 asked, decided, corrected); the assistant's replies are execution — code, test
 counts, confirmations — and are skipped, which halves the volume. Mail keeps
-both sides, because the other side is a person. Enable Gmail/Outlook
+both sides, because the other side is a person, and is worked **one
+correspondent at a time**: the listing is scanned once into a queue per
+person, and a batch takes whole people in order of their first mail, so a
+person's page is written from their entire history with the user rather than
+assembled a week at a time. The user's own mail is filed under the person it
+went to. Enable Gmail/Outlook
 only when the corresponding adapter exists and existing co authentication has
 read access. No login flow or newly discovered account is silently added. The
 default lookback is 60 days; a custom scope may ask for at most 180 days of

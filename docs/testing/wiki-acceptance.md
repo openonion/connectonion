@@ -75,6 +75,39 @@ Nine synthetic scenarios, deterministic checks, real maintainer. Each row is one
 | `gpt-5.6-terra`, same Skills | **9/9** | 6–101 s (dedupe across sessions was the slow one), 14k–124k input tokens |
 | `gpt-5.3-codex-spark`, current prompt | not rerun | the week's Spark allowance (96%) was exhausted before the prompt fixes landed |
 
+### Mail worked one correspondent at a time (2026-09-08, real 60-day Outlook, Luna)
+
+The user's direction: not "all sixty days in time order" but "one person, one
+address at a time, summarise each first". The adapter now scans the listing
+once into a queue per correspondent and hands out whole people, oldest person
+first; measuring it on the real mailbox also found that 64 of the 96 sent
+mails carried an Exchange legacy DN as sender and had been speaking as
+`other`, and that neither listing returned recipients, so a sent mail had no
+person to be filed under.
+
+| | time-ordered (v1, 2026-09-08 early) | per correspondent |
+|---|---|---|
+| mails / correspondents | 816 (all senders) | 645 / 121 after `automated@` + newsletter platforms excluded; 96 of them the user's own, filed under the recipient |
+| batches, wall time | 12, 37 min | 21, 50 min |
+| input tokens | ~3.3M | 3.75M |
+| pages / people pages | 173 / — | 143 / 76 |
+| people pages with a dated history | — | 75 of 76 |
+| with a "How they communicate" section | — | 62 of 76 (the rest are one- or two-mail contacts, where the Skill says not to infer style) |
+| with a verbatim quote | — | 12 |
+
+Vern Chan's page came out of batch 1 (his five mails plus the user's replies,
+nothing else): full title and office, five dated exchanges both ways
+including the user moving him to BCC, two quotes, the user's own style, and an
+Open that says what the mail does not settle. Ody Zhou's page is in Chinese
+because his mail is; Karen's records the user's same-day correction of an
+overcommitment. Guests still land on one rolling `agenda/airbnb-guest-inquiries.md`
+because their correspondent is the Airbnb relay address, not the guest.
+
+Left as is: 37 people pages have one dated entry — a single mail with a role
+or an agreement in it, which the Skill allows. Whether those should be lines
+on the page of the outreach they belong to instead is a judgement for the
+user, not a bug in the run.
+
 ### Why the people pages were thin, and what fixed it (2026-09-08)
 
 The 60-day Outlook run's `people/vern-chan.md` was two sentences. His seven
