@@ -288,3 +288,36 @@ class TestTheCommandRuns:
         assert not (project / ".co" / "control-center").exists()
         docs = list((project / ".co" / "docs").rglob("*.md"))
         assert len(docs) > 50, f"co init produced {len(docs)} docs"
+
+
+def test_installed_mailbox_receive_and_completion_need_no_provider_connection(installed, tmp_path):
+    import json
+
+    _, bin_dir, _, _ = installed
+    python = bin_dir / ('python.exe' if os.name == 'nt' else 'python')
+    co = bin_dir / ('co.exe' if os.name == 'nt' else 'co')
+    config = tmp_path / 'config'
+    home = tmp_path / 'home'
+    home.mkdir()
+    env = dict(_runtime_env(), HOME=str(home), USERPROFILE=str(home), AGENT_CONFIG_PATH=str(config))
+    env.pop('CO_LARK_HOME', None)
+    for key in ('LARK_APP_ID', 'LARK_APP_SECRET'):
+        env.pop(key, None)
+    seed = (
+        'from connectonion.listen import Mailbox, Message; '
+        'box=Mailbox("lark"); '
+        'm=Message(id="synthetic-185",chat="test-chat",sender="test-sender",text="fixture",at="2026-09-08T00:00:00Z"); '
+        'print(box.deliver(m))'
+    )
+    result = subprocess.run([str(python), '-c', seed], cwd=home, env=env, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    result = subprocess.run([str(co), '--no-tips', 'lark', 'receive', '--no-start', '-t', '0'],
+                            cwd=home, env=env, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['id'] == 'synthetic-185'
+    result = subprocess.run([str(co), '--no-tips', 'lark', 'done', 'synthetic-185'],
+                            cwd=home, env=env, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    replay = subprocess.run([str(python), '-c', seed], cwd=home, env=env, capture_output=True, text=True, timeout=30)
+    assert replay.returncode == 0, replay.stderr
+    assert replay.stdout.strip() == 'False'

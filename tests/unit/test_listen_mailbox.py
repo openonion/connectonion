@@ -495,3 +495,9 @@ def test_sweep_cannot_reclaim_a_message_between_rename_and_claim_timestamp(tmp_p
     assert result['message'].id == 'om_1'
     assert result['released'] == 0
     assert box.receive(0) is None
+
+
+def test_mailbox_defaults_follow_the_global_configuration_directory(tmp_path, monkeypatch):
+    monkeypatch.delenv('CO_LARK_HOME', raising=False)
+    monkeypatch.setenv('AGENT_CONFIG_PATH', str(tmp_path / 'global'))
+    assert default_home('lark') == (tmp_path / 'global' / 'lark').resolve()

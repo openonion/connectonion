@@ -90,6 +90,7 @@ co feishu receive --no-start -t 0       # claim with a fresh visibility timestam
 co feishu done MESSAGE_ID              # finish durably without sending a reply
 ```
 
+The default directory follows `$AGENT_CONFIG_PATH`, normally `~/.co`.
 A second application gets its own directory: `CO_FEISHU_HOME=~/.co/feishu-ops co feishu listen`.
 
 ## The verbs

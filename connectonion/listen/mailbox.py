@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from ..environment import explicit_env_file
+from ..environment import explicit_env_file, global_config_dir
 
 # One hour: a consumer that took a message and has not replied in an hour is
 # assumed dead, and the message goes back to new/ for the next receive().
@@ -159,7 +159,7 @@ def default_home(provider: str) -> Path:
     var is how a second application of the same provider gets its own
     directory, the way GNUPGHOME does."""
     override = os.environ.get(f"CO_{provider.upper()}_HOME")
-    return Path(override).expanduser() if override else Path.home() / ".co" / provider
+    return Path(override).expanduser() if override else global_config_dir() / provider
 
 
 class Mailbox:

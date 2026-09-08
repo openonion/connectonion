@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [json, os, time, uuid, datetime, requests, listen/mailbox.py] and lazily from [lark_oapi] | imported by [listen/__init__.py via provider()] | tested by [tests/unit/test_listen_feishu.py]
   Data flow: run(mailbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → mailbox.deliver() | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
   State/Effects: reads FEISHU_APP_ID/FEISHU_APP_SECRET (LARK_* for Lark) from the environment | one outbound WebSocket that dials out, so no port is opened | caches the tenant token in memory for its lifetime
-  Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, so it returns inside Feishu's three-second acknowledgement window whatever the consumer is doing
+  Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, acknowledgement follows the durable mailbox write; storage failures remain retryable
   Errors: check() returns the missing item and the next action instead of raising | send() raises RuntimeError with Feishu's own code and message, after retrying a rate limit three times | a missing SDK is reported with the pip command
 """
 
@@ -152,7 +152,7 @@ class Feishu:
             mailbox.log(f"bot info failed: {exc}")
 
         def on_message(data) -> None:
-            # Whatever happens in here must not raise. The SDK answers a
+            # Parsing failures must not raise. The SDK answers a
             # raising handler with HTTP 500, and Feishu treats 500 as "not
             # delivered" and sends the same event again for hours. A payload
             # we cannot read is one log line, never a retry storm.
