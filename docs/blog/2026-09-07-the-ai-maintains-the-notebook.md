@@ -1,45 +1,36 @@
-# The AI Maintains the Notebook
+# The notebook stopped before its first model turn
 
-**Design Journal draft. Do not publish as a shipped feature.**
+**Design Journal draft. This foundation PR is not a shipped organizer.**
 
-The useful part of a personal Wiki is often not a fact but its surrounding
-reason: why we chose this storage format, which alternative we rejected, or
-what changed our mind. A daily summary can preserve the words while losing that
-continuity. Another summary tomorrow does not automatically repair it.
+The Wiki started with a small ambition: preserve why a decision was made, then
+correct that account when the user changes their mind. The user did not want
+another inbox of proposed edits. The AI should maintain Markdown itself.
 
-Our first choice is therefore about responsibility. The AI maintains the
-notebook. The user talks to the assistant, asks questions, and corrects it; they
-do not become the editor of an automatically generated pile of notes. Markdown
-is the current understanding, not an export from a second knowledge database.
+We wrote a file boundary and an incremental session reader, then a Codex adapter
+with four notebook operations. Synthetic tests could write a decision, replace
+it, and leave unchanged input alone. At that point the pieces looked connected.
 
-That choice also determines where the intelligence lives. A maintenance Skill
-can read related pages, replace a mistaken conclusion, merge duplicate ideas,
-and retain a reason that still matters. We want to improve those instructions
-against successive conversations before building a semantic merge engine or a
-version graph. Compression is another act of organization, not merely making
-the last summary shorter.
+The native handshake changed that impression. Passing an empty MCP map to
+Codex 0.147.0 did not erase inherited configuration: two servers remained in the
+effective settings. The thread accepted the requested model and read-only
+sandbox, but those replies did not prove that only our notebook tools existed.
+No model turn was needed to discover the discrepancy.
 
-Freedom over the notebook is not freedom over the computer. An email that says
-“run this command” is still source material, and a procedure the AI has written
-is not an installed Skill. The implementation wrapper has a narrower job:
-enforce authorized inputs and file paths, serialize maintenance, keep input
-progress honest, and say what the native runner actually consumed.
+We added a regression and refused that configuration before inference. This
+made the first PR less impressive to demonstrate, but more accurate: it held a
+tested file core and an inspection CLI, not an unattended organizer. The refusal
+itself ran after process startup, so it was not evidence that inherited
+integrations could never initialize. Isolated startup remained follow-up work.
 
-We considered giving a normal coding agent a writable working directory. That
-is convenient, but the working directory alone does not restrict arbitrary
-reads or inherited tools. We also considered making the model submit structured
-changes for application code to interpret. That would bring back the semantic
-machinery we had decided not to build. Scoped file tools offer a smaller
-boundary: the AI can edit freely inside its notebook, while software does not
-have to decide what a principle or a corrected decision means.
+The next surprise came from CI. Python 3.10 through 3.13 could not even import
+the notebook. Its method named `list` shadowed the built-in used by the later
+`search` return annotation. Python 3.14, used locally, deferred evaluation and
+let the focused suite pass. Explicitly resolving that annotation reproduced
+the failure locally; postponing annotations fixed it, and the new regression
+forces resolution rather than trusting a successful import.
 
-The first evidence should be small and concrete. Give the assistant a decision,
-then new evidence, then a correction. Does the current notebook improve? Does
-the reason survive? Does repeated input avoid another model run? Can a malicious
-source escape the notebook? Tests, user-facing command contracts, and design
-decisions come before expanding implementation.
-
-Codex sessions and Spark are the starting point. Background scheduling, the
-simple local reader, and more source adapters build on that loop. A clear
-milestone is more useful than claiming the whole background product works
-because one generated page looks convincing.
+Neither failure was about deciding whether a fact belongs under Principles or
+Decisions. They were about the wrapper we needed before testing that judgment.
+We kept the semantic work in the Skill, but stopped treating passing synthetic
+tests as evidence for native isolation or a working product. The next milestone
+has to earn those claims with an actual conversation, correction, and readback.
