@@ -49,9 +49,14 @@ Add the bot to a group, @ it, and it is listening.
 ├── new/             messages nobody has taken yet, one file each
 │   └── 1756808267-om_9f8e
 ├── cur/             taken but not yet replied; back to new/ after an hour
+├── bad/             files that were in new/ but are not messages (a zero-byte file from a full disk); one log line each
 ├── log              the tool's own log: connected, reconnecting, send failed
-└── listen.lock      pid of the running listener
+└── listen.lock      held by the running listener (a kernel lock; the pid inside is for you)
 ```
+
+Only files named `<arrival>-<id>` are the tool's. Anything else that lands in
+`new/` (`.DS_Store`, an editor's swap file, a note) is left alone, never
+claimed, never swept, never deleted.
 
 The file in `new/` and the line in `inbox.jsonl` are the same bytes:
 
@@ -143,8 +148,13 @@ co feishu serve -- ./answer.sh
 `serve` runs the command with the message JSON on stdin and these variables:
 `CO_PROVIDER`, `CO_CHAT`, `CO_THREAD`, `CO_SENDER`, `CO_MSG_ID`, and
 `CO_CHAT_DIR` (a per-chat directory the command may keep its own state in).
-Non-empty stdout is sent back as the reply; empty stdout or a non-zero exit
-sends nothing and is noted in `log`.
+Non-empty stdout is sent back as the reply and the message is done. Empty
+stdout with exit 0 is the command choosing silence: also done, noted in
+`log`. A non-zero exit, or a reply Feishu refused, sends nothing and leaves
+the message taken: it comes back to `new/` in an hour, the same as a
+consumer that died, so a transient failure is retried and a question is
+never silently consumed. A command that cannot be run at all (`./answer.sh`
+without its exec bit) is refused with exit 2 before any message is taken.
 
 ## What the tool does for you
 
@@ -159,6 +169,19 @@ sends nothing and is noted in `log`.
 - Reconnects on its own and writes each attempt to `log`.
 - Retries a rate-limited send three times with backoff. Feishu allows five
   messages per second per group, shared with every bot in that group.
+- Fetches a new tenant token when Feishu says the cached one is no longer
+  good, so rotating the app secret in the console does not leave `serve`
+  failing every reply until the old token's two hours are up.
+- Keeps one listener per directory with a lock the kernel holds: a listener
+  killed with SIGKILL, or a reboot, holds nothing, so the next `receive`
+  starts a fresh one instead of waiting on a pid that is gone.
+- Treats a redelivery as the recovery it is. If the log line was written but
+  the queue file was not (a crash between the two), the redelivered message
+  is queued, not dropped as a duplicate; only a message that is queued,
+  taken or answered is a duplicate.
+- Makes `reply --again` a real second post. Feishu holds a reply key to one
+  post per hour; a retry of the same text reuses it and is dropped, `--again`
+  uses a fresh key and lands.
 
 ## The free edition's API quota
 
