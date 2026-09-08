@@ -43,27 +43,45 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Release candidate: 1.8.3 (prepared, not published)
+## Release candidate: 1.8.4a1 (preview, prepared for publication)
 
-Google authorization belongs on the user's computer. One `co auth google`
-requests the supported Gmail, Drive, Calendar and YouTube scopes by default;
-`--scopes` restricts that request. Tokens and actual granted scopes stay in
-local credential files. The backend exchanges tokens transiently and does not
-add Google credential columns or migrate users' data. Upgrade the CLI before
-using the new backend flow; older server-owned credential endpoints return 410.
+All ConnectOnion-managed env settings default to the global configuration file,
+independent of cwd. A root `--env-file PATH` explicitly selects project settings;
+provider credential records preserve their account and source through refresh.
+Plain `co init` initializes the global setup; explicit project creation remains.
 
-The four command groups are `co gmail`, `co gdrive`, `co gcalendar` and
-`co youtube`, documented together in `co-google`. Gmail adds draft attachments;
-Calendar and YouTube writes require explicit confirmation after preview.
-Automated fixtures do not count as real-account acceptance: consent and the
-four read-only production checks remain a publication gate. TikTok and new
-messaging adapters are deferred until after 1.8.5. Do not create a release tag
-or advertise this candidate as published until the remaining gates pass.
+Gmail adds account-bound frozen listings, bounded mailbox JSON and attachment
+operations, and exact-content draft review with durable uncertain-send recovery.
+Drive binary/native exports and managed links retain provider-backed source
+records through draft edits. Synology implements the agreed 20-command core with
+explicit profiles, HTTPS, bounded inspection/transfers and durable copy/move tasks.
+Control Center adds immutable bundles, fresh review, retained approved revisions,
+manual/periodic/event updates and the scoped browser bridge.
 
-## Current Version: 1.8.3
+The paired SDK `@connectonion/react@0.4.4-rc.2` is published. This Core version is
+prepared as an opt-in preview for installed-artifact acceptance. The owner
+authorized publishing the preview first and continuing local acceptance afterward.
+Final 1.8.4 still needs the outstanding live journeys. See the
+[release readiness record](docs/acceptance/1.8.4-release-readiness.md) for exact
+checks and outstanding live-account/NAS and PR review gates. Hosting acceptance
+uses a local GCS emulator at the operator's request; no cloud bucket or production
+hosting service was provisioned. Do not tag or advertise Core 1.8.4 as published
+until its required acceptance and review gates are complete.
+
+## Current Version: 1.8.4a1
 
 ### Version History
-- 1.8.3 (**prepared, not published — Google tools with local credentials:**
+- 1.8.4a1 (**opt-in preview of 1.8.4:** owner-authorized preview publication before
+  the final live Gmail/Drive and physical NAS journeys. Runtime/platform checks,
+  local hosting, browser and installed-artifact checks pass. Stable stays 1.8.3;
+  the preview is not Latest and requires an explicit version pin or --pre.)
+- 1.8.4 (**prepared, not published — global settings and reviewed operations:**
+  unify explicit env selection and credential ownership; add frozen Gmail
+  listings, mailbox/attachment JSON and content-bound draft sending; complete
+  the Synology command core and coordinated Control Center runtime/bridge.
+  Includes agent identity diagnostics and optional subagent registry cleanup.
+  TikTok, new messaging, mail scheduling and personal Wiki remain outside scope.)
+- 1.8.3 (**Google tools with local credentials, published 6 September 2026:**
   unify Gmail, Drive, Calendar and YouTube authorization and command discovery;
   add Gmail draft attachments, Calendar CLI and preview-confirmed YouTube
   uploads/metadata updates. Preserve local token ownership, refresh rotation
