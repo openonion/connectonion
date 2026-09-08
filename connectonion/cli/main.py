@@ -480,18 +480,21 @@ app.add_typer(env_app, name="env")
 
 
 @env_app.callback(invoke_without_command=True)
-def env_callback(ctx: typer.Context):
+def env_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
     """Show, set and remove settings in the selected env file."""
     if ctx.invoked_subcommand is None:
         from .commands.env_commands import handle_env_show
-        handle_env_show(reveal=False)
+        handle_env_show(reveal=False, json_output=json_output)
+    elif json_output:
+        raise typer.BadParameter("Put --json on bare co env or after env show.")
 
 
 @env_app.command("show")
-def env_show(reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full values instead of masked secrets")):
-    """List every setting with its value (secrets masked) and where it wins or loses."""
+def env_show(reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full values"),
+             json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
+    """List setting sources; all values stay hidden unless --reveal is explicit."""
     from .commands.env_commands import handle_env_show
-    handle_env_show(reveal=reveal)
+    handle_env_show(reveal=reveal, json_output=json_output)
 
 
 @env_app.command("path")

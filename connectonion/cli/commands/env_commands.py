@@ -2,19 +2,23 @@
 Purpose: `co env` — show, read, set and remove settings in the selected env file, and explain a broken one
 LLM-Note:
   Dependencies: imports from [re, pathlib, typer, rich, environment, env_file, command_tips] | imported by [cli/main.py via handle_env_*] | tested by [tests/unit/test_co_env.py]
-  Data flow: handle_env_show() → selected_env_file() + read_env_file() → one row per setting with a masked value and its source (file / process override / ignored provider record) | handle_env_get(key) → process value, else file value, printed bare for $(...) | handle_env_set(key, value) → name/record checks → env_file.upsert_env() (lock, atomic replace, 0600) | handle_env_unset(key) → upsert_env(remove=...) — a provider record field removes the whole record
-  State/Effects: reads and writes only the selected env file (global ~/.co/keys.env unless --env-file was given) | never rewrites a file that fails to parse | never prints a secret unless --reveal | never touches os.environ
+  Data flow: handle_env_show() → selected_env_file() + read_env_file() → one row per setting with a masked value and its source (file / process override / ignored provider record) | handle_env_get(key) → whole provider record, or process value then file for other keys, printed bare for $(...) | handle_env_set(key, value) → name/record checks → env_file.upsert_env() (lock, atomic replace, 0600) | handle_env_unset(key) → upsert_env(remove=...) — a provider record field removes the whole record
+  State/Effects: reads and writes only the selected env file (global ~/.co/keys.env unless --env-file was given) | never rewrites a file that fails to parse | overview hides all values unless --reveal; get explicitly prints one effective value | never touches os.environ
   Integration: the one command that still runs when the selected file is broken — every other command exits 2 and names it | tips keep the --env-file selector through command_tips.print_tip
   Performance: one file read per command; no network
   Errors: exit 2 for a bad name, a protected key (AGENT_CONFIG_PATH, provider record fields), a missing explicitly selected file, or a file that does not parse | exit 1 when `get`/`unset` names a setting that is not there | every failure names the next command
 """
 
 import re
+import json
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
+
+from ... import environment
 
 from ...environment import (
     PROVIDER_PREFIXES,
@@ -35,10 +39,6 @@ console = Console()
 # line the next read refuses, and `co env` is the command that fixes those.
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-# A value is masked when its name says it is a secret. Names are the only
-# signal available: an API key and a model name are both opaque strings.
-_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSPHRASE", "PHRASE", "CREDENTIAL", "PRIVATE")
-
 _PROVIDER_AUTH = {"GOOGLE": "co auth google", "MICROSOFT": "co auth microsoft"}
 _PROVIDER_LABEL = {"GOOGLE": "Google", "MICROSOFT": "Microsoft"}
 
@@ -46,18 +46,6 @@ _PROVIDER_LABEL = {"GOOGLE": "Google", "MICROSOFT": "Microsoft"}
 def _provider_of(key: str) -> str | None:
     """The provider whose account record this field belongs to, if any."""
     return next((prefix for prefix in PROVIDER_PREFIXES if key in provider_keys(prefix)), None)
-
-
-def _is_secret(key: str) -> bool:
-    upper = key.upper()
-    return any(marker in upper for marker in _SECRET_MARKERS)
-
-
-def _mask(value: str) -> str:
-    """A fixed-width mask; the prefix identifies which key it is, not what it is."""
-    if len(value) <= 10:
-        return "*" * 8
-    return f"{value[:6]}…{'*' * 8}"
 
 
 def _file_label() -> str:
@@ -90,10 +78,45 @@ def _writable_file() -> Path:
     return path
 
 
-def handle_env_show(reveal: bool = False) -> None:
+_PROCESS_PREFIXES = ('CO_', 'CONNECTONION_', 'OPENONION_', 'OPENAI_', 'ANTHROPIC_',
+                     'GEMINI_', 'GOOGLE_', 'MICROSOFT_')
+
+
+def environment_overview() -> dict:
+    """Describe the selected file and relevant process overrides without values."""
+    path = environment.selected_env_file()
+    values = environment.read_env_file(path, required=environment.explicit_env_file() is not None)
+    process = environment.process_environment()
+    blocked = {key for provider in environment.PROVIDER_PREFIXES
+               if any(key in process for key in environment.provider_keys(provider))
+               for key in environment.provider_keys(provider)}
+    names = set(values) | {key for key in process
+                           if key.startswith(_PROCESS_PREFIXES) or key == 'AGENT_CONFIG_PATH'}
+    rows = []
+    for key in sorted(names):
+        source = ('process' if key in process else 'ignored: process provider record'
+                  if key in blocked else 'file')
+        rows.append({'name':key, 'source':source, 'value':'[redacted]',
+                     'overrides_file':key in process and key in values})
+    return {'schema_version':1, 'mode':'explicit' if environment.explicit_env_file() else 'global',
+            'file':str(path), 'exists':path.is_file(), 'variables':rows,
+            'next_command':environment.selected_command('co status') if path.is_file() else 'co init'}
+
+
+
+def handle_env_show(reveal: bool = False, json_output: bool = False) -> None:
     """Every setting in the selected file, where it wins or loses, and what to run next."""
     path = selected_env_file()
     error = selection_error()
+    if json_output:
+        if reveal:
+            print(json.dumps({'schema_version':1,'ok':False,'error':'JSON values are always redacted; use show --reveal separately.'}))
+            raise typer.Exit(2)
+        if error is not None:
+            print(json.dumps({'schema_version':1,'ok':False,'error':str(error)}))
+            raise typer.Exit(2)
+        print(json.dumps(environment_overview()))
+        return
     print(f"Env file: {display_path(path)} ({_file_label()})")
     if error is not None:
         if error.line is not None:
@@ -109,33 +132,19 @@ def handle_env_show(reveal: bool = False) -> None:
 
     values = read_env_file(path)
     inherited = process_environment()
-    blocked = {prefix for prefix in PROVIDER_PREFIXES
-               if any(key in inherited for key in provider_keys(prefix))}
-    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
-    table.add_column("SETTING")
-    table.add_column("VALUE")
-    table.add_column("SOURCE")
-    for key, value in values.items():
-        shown = value if reveal or not _is_secret(key) else _mask(value)
-        provider = _provider_of(key)
-        if key in inherited and inherited[key] != value:
-            source = "process overrides file"
-        elif provider in blocked:
-            source = f"file, ignored: the process supplies the {_PROVIDER_LABEL[provider]} record"
-        else:
-            source = "file"
-        table.add_row(key, shown, source)
-    for prefix in sorted(blocked):
-        for key in provider_keys(prefix):
-            if key in inherited and key not in values:
-                shown = inherited[key] if reveal or not _is_secret(key) else _mask(inherited[key])
-                table.add_row(key, shown, "process")
-    if values or blocked:
+    overview = environment_overview()
+    table = Table('SETTING', 'VALUE', 'SOURCE', box=None, pad_edge=False)
+    for row in overview['variables']:
+        key = row['name']
+        source = row['source'] + (' (overrides file)' if row['overrides_file'] else '')
+        value = inherited[key] if row['source'] == 'process' else values.get(key, '')
+        table.add_row(Text(key), Text(value if reveal else '[redacted]'), Text(source))
+    if overview['variables']:
         console.print(table)
     else:
-        print("(no settings yet)")
-    if not reveal and any(_is_secret(key) for key in values):
-        print("Secrets are masked; add --reveal to see them. Keep --reveal out of shared logs.")
+        print('(no settings yet)')
+    if not reveal:
+        print('All values are hidden; use show --reveal for full values. Keep revealed output out of shared logs.')
     print_tip("Next: co env set <KEY> <value>")
 
 
@@ -151,6 +160,15 @@ def handle_env_get(key: str) -> None:
     if error is not None:
         print(str(error))
         raise typer.Exit(2)
+    provider = _provider_of(key)
+    if provider is not None:
+        from ...provider_credentials import resolve_provider_credentials
+        record = resolve_provider_credentials(provider.lower())
+        if key in record.values:
+            print(record.values[key])
+            return
+        _fail(f"{key} is absent from the selected {provider.title()} record ({record.source}). "
+              f"Other account records are not merged. Next: {record.auth_command}", 1)
     inherited = process_environment()
     if key in inherited:
         print(inherited[key])

@@ -51,7 +51,7 @@ class TestShow:
         result = run(["env"], home)
         assert result.exit_code == 0, result.output
         assert "keys.env" in result.output
-        assert "MODEL" in result.output and "co/gemini-3.7-flash" in result.output
+        assert "MODEL" in result.output and "co/gemini-3.7-flash" not in result.output
         assert "sk-secret-1234567890abcdef" not in result.output
         assert "Next: co env set" in result.output
 
@@ -264,3 +264,45 @@ def test_doctor_actions_all_name_a_command():
     from connectonion.cli.commands.doctor_commands import CREDENTIAL_ACTIONS
     for credential, action in CREDENTIAL_ACTIONS.items():
         assert action.startswith("co "), f"{credential}: {action!r} names no command"
+
+
+@pytest.mark.parametrize('key', ['SMTP_PASS','DATABASE_URL','CUSTOM_VALUE','MODEL'])
+def test_overview_hides_all_values_until_explicit_reveal(home, keys_env, key):
+    keys_env.write_text(f'{key}=synthetic-sensitive-value\n')
+    result=run(['env'],home)
+    assert result.exit_code == 0
+    assert 'synthetic-sensitive-value' not in result.output
+    assert '[redacted]' in result.output
+    assert 'synthetic-sensitive-value' in run(['env','show','--reveal'],home).output
+
+
+@pytest.mark.parametrize('provider', ['GOOGLE','MICROSOFT'])
+def test_get_never_merges_a_file_field_into_a_process_account(home, keys_env, provider):
+    keys_env.write_text(f'{provider}_REFRESH_TOKEN=account-a-refresh\n')
+    result=run(['env','get',f'{provider}_REFRESH_TOKEN'],home,
+               environ={f'{provider}_ACCESS_TOKEN':'account-b-access'})
+    assert result.exit_code == 1
+    assert 'account-a-refresh' not in result.output
+    assert 'process' in result.output
+    assert f'co auth {provider.lower()}' in result.output
+
+
+def test_json_overview_includes_process_only_keys_and_no_values(home, keys_env):
+    import json
+    result=run(['env','--json'],home,environ={'OPENAI_API_KEY':'process-secret'})
+    assert result.exit_code == 0,result.output
+    data=json.loads(result.stdout)
+    rows={row['name']:row for row in data['variables']}
+    assert rows['OPENAI_API_KEY']['source'] == 'process'
+    assert all(row['value']=='[redacted]' for row in rows.values())
+    assert 'process-secret' not in result.stdout
+
+
+def test_json_overview_marks_whole_record_exclusion(home, keys_env):
+    import json
+    keys_env.write_text('GOOGLE_REFRESH_TOKEN=file-refresh\n')
+    result=run(['env','show','--json'],home,environ={'GOOGLE_ACCESS_TOKEN':'process-token'})
+    assert result.exit_code == 0,result.output
+    data=json.loads(result.stdout)
+    row=next(r for r in data['variables'] if r['name']=='GOOGLE_REFRESH_TOKEN')
+    assert row['source']=='ignored: process provider record'

@@ -119,3 +119,5 @@ sources. Default diagnostics show source/state, never token values. Keep
 incomplete record, names the source it read and points at `co env` before its
 `Next: co auth …` line. This document describes the implementation branch, not
 a published 1.8.4.
+
+The environment overview hides all values by default; `co env --json` exposes the same redacted sources for scripts. `co env get` follows whole-record provider selection rather than filling missing account fields from another source.

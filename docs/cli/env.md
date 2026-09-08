@@ -6,7 +6,8 @@ global `~/.co/keys.env` by default, or the file named by `co --env-file PATH`
 and it never touches your shell's variables.
 
 ```bash
-co env                              # every setting, secrets masked, with its source
+co env                              # every setting, all values hidden, with its source
+co env --json                       # redacted sources as JSON
 co env show --reveal                # the same with full values (keep out of shared logs)
 co env path                         # the selected file's path, bare, for $(co env path)
 co env get OPENAI_API_KEY           # one value, bare, as a command would see it
@@ -20,10 +21,10 @@ co --env-file ./project.env env     # the same commands on a project file
 ```
 Env file: ~/.co/keys.env (global)
 SETTING             VALUE               SOURCE
-OPENONION_API_KEY   eyJhbG…********     file
-MODEL               co/gemini-3.7-flash process overrides file
-GOOGLE_EMAIL        me@example.test     file, ignored: the process supplies the Google record
-Secrets are masked; add --reveal to see them. Keep --reveal out of shared logs.
+OPENONION_API_KEY    [redacted]          file
+MODEL               [redacted]          process (overrides file)
+GOOGLE_EMAIL        [redacted]          ignored: process provider record
+All values are hidden; use show --reveal for full values.
 Next: co env set <KEY> <value>
 ```
 
@@ -31,9 +32,13 @@ Next: co env set <KEY> <value>
   shell exports the same name with a different value, and process values win.
   `ignored` marks a provider record the file holds while the shell supplies
   another one; records are used whole, never merged (see #1444).
-- Values are masked when the name says secret: `KEY`, `TOKEN`, `SECRET`,
-  `PASSWORD`, `PHRASE`, `CREDENTIAL`, `PRIVATE`. An email or a model name shows
-  in full.
+- Every value is `[redacted]` by default, including custom names, passwords and
+  URLs that contain credentials. `show --reveal` explicitly displays full values.
+- `co env --json` and `co env show --json` expose redacted provenance, including
+  process-only provider/ConnectOnion settings. JSON cannot be combined with `--reveal`.
+- `get` explicitly prints one effective value. Google/Microsoft fields come
+  from the same whole record as provider commands. A missing field in a process
+  record does not fall back to another account in the file; it exits 1.
 - The file is read as-is; nothing is loaded into the process.
 
 ## `set` and `unset` rules

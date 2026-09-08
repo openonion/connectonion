@@ -7,16 +7,16 @@ description: See, set, remove and repair settings in the env file a `co` invocat
 
 **Always read the output, not just the exit code.** `co env path` and
 `co env get` print a bare value and no tip, so they compose with `$(...)`;
-every other `co env` command ends with one `Next:` line.
+other human-output commands end with one `Next:` line. JSON output contains its next command as a field.
 
 ## Which command
 
 | You want to | Run |
 | --- | --- |
-| See which file is in use and what it holds (secrets masked) | `co env` |
+| See which file is in use and what it holds (all values hidden) | `co env` |
 | See full values (never paste into shared logs) | `co env show --reveal` |
 | The file's path, for a script | `co env path` |
-| One value as a command would see it (process wins, then file) | `co env get KEY` |
+| One value as a command would see it (whole provider record, otherwise process then file) | `co env get KEY` |
 | Save a setting, creating the file if needed | `co env set KEY VALUE` |
 | Remove a setting | `co env unset KEY` |
 | Connect a Google / Microsoft account | `co auth google` / `co auth microsoft` — not `co env set` |
@@ -34,7 +34,7 @@ co --env-file ./project.env env set MODEL co/gemini-3.7-flash
 
 ## Gotchas that change a result
 
-- **SOURCE column.** `process overrides file` means the shell exports the same
+- **SOURCE column.** `process (overrides file)` means the shell exports the same
   name; the file's value is not what commands see. `set` still saves it and
   prints the `unset KEY` you need in the shell.
 - **Provider records are all-or-nothing.** `set` refuses the five `GOOGLE_*`
@@ -56,3 +56,5 @@ co --env-file ./project.env env set MODEL co/gemini-3.7-flash
 | 0 | done; or the global file does not exist yet | `co env set <KEY> <value>` · `co env get KEY` · `co init` |
 | 1 | `get`/`unset` of a setting that is not there | `co env set KEY <value>` · `co env` |
 | 2 | bad name · `AGENT_CONFIG_PATH` · provider record field · missing `--env-file` target · file does not parse | `co env set <KEY> <value>` · shell `export …` · `co auth google|microsoft` · `co --env-file … env set …` · `co env` |
+
+`co env --json` and `co env show --json` return redacted provenance. JSON values are always hidden. Default human output also hides every value, including custom names and credential-bearing URLs; only `show --reveal` displays them. `get` explicitly returns one effective value and respects whole Google/Microsoft records: it never fills a missing process field from another account in the file.
