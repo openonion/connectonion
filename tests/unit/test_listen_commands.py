@@ -242,3 +242,23 @@ def test_done_forgets_a_taken_message_so_it_does_not_come_back(box, fake, capsys
 
     assert list(box.cur.iterdir()) == []
     assert box.release_stale(max_age=0) == 0
+
+
+def test_listen_reports_a_refused_connection_in_one_line_and_exits_1(box, fake, capsys):
+    # Invalid credentials made the SDK raise ClientException("app_id is
+    # invalid") straight through Typer as a full traceback. The operator needs
+    # the platform's sentence, the exit code, and a released lock; not a stack.
+    def refuse(mailbox, *, raw=False):
+        raise RuntimeError("1000040346: app_id is invalid")
+
+    fake.run = refuse
+
+    with pytest.raises(SystemExit) as exit_:
+        listen_commands.handle_listen("feishu")
+
+    assert exit_.value.code == 1
+    err = capsys.readouterr().err
+    assert "app_id is invalid" in err
+    assert "Traceback" not in err
+    assert "listener stopped" in box.logfile.read_text()
+    assert box.listener_pid() is None, "the lock is released for the next listener"

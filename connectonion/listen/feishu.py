@@ -59,6 +59,10 @@ class Feishu:
             raise ValueError(f"domain must be feishu or lark, not {domain!r}")
         self.name = domain
         self.base = DOMAINS[domain]
+        # What the error messages call the platform. A `co lark` user who
+        # reads "Feishu refused the credentials" goes looking in the wrong
+        # console.
+        self.brand = "Lark" if domain == "lark" else "Feishu"
         self.env_prefix = domain.upper()
         self.app_id = os.environ.get(f"{self.env_prefix}_APP_ID", "")
         self.app_secret = os.environ.get(f"{self.env_prefix}_APP_SECRET", "")
@@ -117,11 +121,29 @@ class Feishu:
         try:
             info = self.bot_info()
             mailbox.log(f"connected as {info.get('name') or self.app_id}")
+        except RuntimeError as exc:
+            # Feishu answered and said no: wrong app_id, wrong secret, app not
+            # published. Dialling the WebSocket with the same pair cannot
+            # succeed, and the SDK would retry it every two minutes forever,
+            # each attempt a "connect failed" line that hides the real reason.
+            mailbox.log(f"bot info failed: {exc}")
+            raise
         except Exception as exc:
+            # No answer at all (DNS, proxy, a flaky link): the long connection
+            # has its own reconnect and may well get through; only the
+            # own-@mention check runs without the bot's open_id until then.
             mailbox.log(f"bot info failed: {exc}")
 
         def on_message(data) -> None:
-            message = self.to_message(data)
+            # Whatever happens in here must not raise. The SDK answers a
+            # raising handler with HTTP 500, and Feishu treats 500 as "not
+            # delivered" and sends the same event again for hours. A payload
+            # we cannot read is one log line, never a retry storm.
+            try:
+                message = self.to_message(data)
+            except Exception as exc:
+                mailbox.log(f"event not understood ({type(exc).__name__}: {exc}); skipped")
+                return
             if message is None:
                 return
             if raw:
@@ -129,6 +151,8 @@ class Feishu:
                     message.raw = _raw_of(data)
                 except Exception as exc:
                     mailbox.log(f"raw payload of {message.id} not kept: {exc}")
+            # deliver() is left to raise on a full or unwritable disk: that
+            # is the one case where "not delivered, send it again" is true.
             if mailbox.deliver(message, raw=raw):
                 mailbox.log(f"received {message.id} chat={message.chat} sender={message.sender}")
             else:
@@ -222,7 +246,7 @@ class Feishu:
         )
         body = response.json()
         if body.get("code") != 0:
-            raise RuntimeError(f"Feishu refused the credentials: {body.get('code')} {body.get('msg')}")
+            raise RuntimeError(f"{self.brand} refused the credentials: {body.get('code')} {body.get('msg')}")
         self._token = body["tenant_access_token"]
         # Refresh a minute early; Feishu's own expiry is two hours.
         self._token_expires_at = time.time() + int(body.get("expire", 7200)) - 60
@@ -233,7 +257,7 @@ class Feishu:
 
     def _get(self, path: str) -> dict:
         response = requests.get(f"{self.base}{path}", headers=self._headers(), timeout=15)
-        return _data(response)
+        return _data(response, self.brand)
 
     def _post(self, path: str, body: dict) -> dict:
         delay = 1.0
@@ -248,8 +272,8 @@ class Feishu:
                 time.sleep(delay)
                 delay *= 2
                 continue
-            return _data(response)
-        raise RuntimeError("Feishu rate-limited this chat three times in a row; try again later")
+            return _data(response, self.brand)
+        raise RuntimeError(f"{self.brand} rate-limited this chat three times in a row; try again later")
 
 
 def _code(response) -> Optional[int]:
@@ -259,13 +283,13 @@ def _code(response) -> Optional[int]:
         return None
 
 
-def _data(response) -> dict:
+def _data(response, brand: str = "Feishu") -> dict:
     try:
         body = response.json()
     except ValueError:
-        raise RuntimeError(f"Feishu returned HTTP {response.status_code} without JSON")
+        raise RuntimeError(f"{brand} returned HTTP {response.status_code} without JSON")
     if body.get("code") != 0:
-        raise RuntimeError(f"Feishu error {body.get('code')}: {body.get('msg')}")
+        raise RuntimeError(f"{brand} error {body.get('code')}: {body.get('msg')}")
     # Most endpoints wrap the payload in `data`; /bot/v3/info puts `bot` at the
     # top level beside code and msg. Accept both.
     data = body.get("data")

@@ -87,6 +87,15 @@ def handle_listen(name: str, raw: bool = False) -> None:
         p.run(mailbox, raw=raw)
     except KeyboardInterrupt:
         mailbox.log("stopped by Ctrl-C")
+    except Exception as exc:
+        # The platform's own sentence ("app_id is invalid"), once, and exit 1.
+        # A forty-line traceback through Typer told the operator nothing the
+        # sentence does not, and `receive` reads this log to say why its
+        # background listener died.
+        mailbox.log(f"listen failed: {exc}")
+        errors.print(str(exc), style="red")
+        errors.print(f"details: {mailbox.logfile}", style="dim")
+        sys.exit(1)
     finally:
         stop.set()
         mailbox.log("listener stopped")

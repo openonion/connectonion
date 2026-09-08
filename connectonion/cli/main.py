@@ -121,6 +121,7 @@ def _show_help():
     console.print("  [green]youtube[/green]           Video metadata and preview-first uploads (co auth google)")
     console.print("  [green]telegram[/green]          Send a message from your Telegram bot")
     console.print("  [green]feishu[/green]            Feishu bot as a mailbox: listen, receive, send, reply")
+    console.print("  [green]lark[/green]              Same as feishu, against Lark (global) with LARK_* credentials")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
@@ -969,7 +970,7 @@ def telegram_send(
 
 
 # Mailbox providers: feishu, lark. One directory per provider under ~/.co/,
-# the same eight verbs on each. The tool knows nothing about agents; anything
+# the same nine verbs on each. The tool knows nothing about agents; anything
 # that can read a file consumes it (DD-063).
 def _mailbox_group(name: str, help_text: str) -> typer.Typer:
     group = _typer_app(help=help_text)

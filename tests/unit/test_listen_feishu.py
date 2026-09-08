@@ -290,3 +290,77 @@ def test_a_raw_payload_that_cannot_be_marshalled_is_logged_not_dropped_silently(
 
     assert len(box.unread()) == 1, "the message still arrives"
     assert "raw payload of om_9f8e not kept: not serialisable" in box.logfile.read_text()
+
+
+def _fake_sdk(monkeypatch, start):
+    """A lark_oapi whose ws.Client.start() is `start(handler)`."""
+    from types import SimpleNamespace as NS
+
+    class FakeWs:
+        started = []
+
+        def __init__(self, *a, event_handler=None, **k):
+            self.handler = event_handler
+            self.on_reconnecting = self.on_reconnected = None
+
+        def start(self):
+            FakeWs.started.append(self)
+            start(self.handler)
+
+    class Builder:
+        def register_p2_im_message_receive_v1(self, fn):
+            self.fn = fn
+            return self
+
+        def build(self):
+            return self.fn
+
+    fake_sdk = NS(ws=NS(Client=FakeWs), LogLevel=NS(WARNING=1), JSON=json,
+                  EventDispatcherHandler=NS(builder=lambda a, b: Builder()))
+    monkeypatch.setitem(sys.modules, "lark_oapi", fake_sdk)
+    return FakeWs
+
+
+def test_an_event_the_adapter_cannot_read_is_logged_once_and_the_next_one_still_arrives(creds, monkeypatch, tmp_path):
+    # The SDK answers Feishu with HTTP 500 when the handler raises, and Feishu
+    # then redelivers the same event for hours. A payload we cannot parse is
+    # one log line, not a retry storm; the connection stays up for the next.
+    from types import SimpleNamespace as NS
+
+    from connectonion.listen.mailbox import Mailbox
+
+    broken = NS(event=NS(message=NS(chat_id="oc_a1b2"), sender=NS(sender_type="user")))  # no message_id
+
+    def start(handler):
+        handler(broken)
+        handler(event(text='{"text":"hi"}', chat_type="p2p"))
+
+    _fake_sdk(monkeypatch, start)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
+        {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
+    box = Mailbox("feishu", home=tmp_path / "feishu")
+
+    Feishu().run(box)
+
+    assert len(box.unread()) == 1, "the good event still arrives after the bad one"
+    assert "event not understood" in box.logfile.read_text()
+
+
+def test_refused_credentials_stop_before_the_connection_is_opened(creds, monkeypatch, tmp_path):
+    # Feishu said no to the app_id/app_secret pair. Dialling the WebSocket with
+    # the same pair cannot succeed, and the SDK's retry loop would hide the
+    # refusal behind "connect failed" lines forever.
+    from connectonion.listen.mailbox import Mailbox
+
+    ws = _fake_sdk(monkeypatch, lambda handler: None)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 10003, "msg": "invalid param"}))
+    box = Mailbox("feishu", home=tmp_path / "feishu")
+
+    with pytest.raises(RuntimeError, match="refused the credentials"):
+        Feishu().run(box)
+
+    assert ws.started == [], "no connection attempted"
+    assert "refused the credentials" in box.logfile.read_text()

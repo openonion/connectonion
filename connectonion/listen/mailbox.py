@@ -298,12 +298,15 @@ class Mailbox:
         if pid is not None:
             return pid
         argv = [sys.executable, "-m", "connectonion.cli.main", self.provider, "listen"]
-        kwargs = {"stdin": subprocess.DEVNULL, "stdout": self.logfile.open("ab"), "stderr": subprocess.STDOUT}
+        kwargs = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT}
         if os.name == "posix":
             kwargs["start_new_session"] = True
         else:  # pragma: no cover - Windows only
             kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0)
-        process = subprocess.Popen(argv, **kwargs)
+        # The child inherits the descriptor; our copy is closed at once so a
+        # long-lived `serve` does not hold one open log handle per restart.
+        with self.logfile.open("ab") as log_handle:
+            process = subprocess.Popen(argv, stdout=log_handle, **kwargs)
         # Wait for the child to take the lock, for it to exit, or for a few
         # seconds of interpreter start-up, whichever comes first.
         deadline = time.monotonic() + 5.0
