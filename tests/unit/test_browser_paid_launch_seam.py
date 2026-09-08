@@ -151,6 +151,7 @@ def test_paid_launch_failure_never_hot_swaps_to_system(monkeypatch):
     assert browser.browser is None
     assert browser.playwright is None
     assert playwright.stopped == 1
+    browser.close()
 
 
 def test_a_retried_launch_does_not_buy_a_second_interval(monkeypatch):
@@ -183,6 +184,7 @@ def test_a_retried_launch_does_not_buy_a_second_interval(monkeypatch):
 
     assert len(keys) == 3
     assert len(set(keys)) == 1, f"each retry bought its own interval: {keys}"
+    browser.close()
 
 
 def test_a_deliberate_close_starts_a_new_billing_interval(monkeypatch):

@@ -193,3 +193,8 @@ and writes use global `keys.env`. Keep process credentials separate from loaded
 file values and resolve provider fields as whole account records. Test fresh
 processes from root, nested and unrelated directories, including a project-only
 non-OAuth variable that must stay absent by default.
+
+A configuration failure names its source and `co env`, the command that shows
+the selected file and runs even when that file is broken: "not connected in
+~/.co/keys.env … Run co env …" then `Next: co auth google`. A tip that says
+"set X in keys.env" names no command; write `co env set X <value>`.

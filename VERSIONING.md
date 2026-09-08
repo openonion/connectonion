@@ -43,7 +43,22 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Release candidate: 1.8.4a2 (preview, prepared for publication)
+## Stable release: 1.8.4
+
+This release promotes the reviewed global configuration, Gmail and Synology work,
+and includes `co env`, Outlook credential diagnostics and calendar commands.
+The four final fix PRs (#1467–#1470) passed their checks before merging.
+The combined suite passed 8,666 tests with 21 skipped and 79.79% coverage;
+11 installed-wheel tests passed. Real Gmail/Drive and one physical NAS were
+exercised, including browser password, expiry and revocation checks.
+Microsoft request contracts have mocked coverage; no live Microsoft tenant was
+used. Control Center hosting remains a separately deployed companion service.
+See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
+
+The planned 1.8.4b1 was not published separately; its reviewed changes are included
+in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
+
+## Release candidate: 1.8.4a2 (preview, published)
 
 This preview fixes Gmail send-receipt recovery when Google rewrites Message-ID.
 Reviewed MIME carries a provider-preserved attempt marker; recovery requires a
@@ -51,16 +66,21 @@ unique match within one bounded, complete metadata page and never blindly resend
 The real installed-wheel Gmail/Drive journey passed, including simulated lost
 receipt recovery, mailbox operations and private collision-safe downloads.
 
-Core regression: 8,568 passed, 22 skipped and 184 live tests excluded. Local
+Core regression: 8,568 passed, 21 skipped and 184 live tests excluded. Local
 browser flows, loopback storage and six configured provider reads passed.
 Physical NAS acceptance still needs a reachable profile and disposable directory.
 Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.4a2
+## Current Version: 1.8.4
 
 ### Version History
+- 1.8.4 (**stable — explicit configuration and reviewed operations:** `co env`
+  safely inspects and edits settings; Gmail preserves reviewed content and recovers
+  uncertain sends; Synology verifies sharing settings and supports durable file
+  operations; Outlook names credential failures and exposes previewed calendar
+  writes. Background task shutdown reaps its process tree and output reader.)
 - 1.8.4a2 (**preview recovery fix:** Gmail-preserved attempt markers recover a
   lost send receipt despite rewritten Message-ID; bounded unique lookup remains
   fail-closed. Full real Gmail/Drive acceptance passed; physical NAS pending.)
@@ -68,12 +88,6 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
   the final live Gmail/Drive and physical NAS journeys. Runtime/platform checks,
   local hosting, browser and installed-artifact checks pass. Stable stays 1.8.3;
   the preview is not Latest and requires an explicit version pin or --pre.)
-- 1.8.4 (**prepared, not published — global settings and reviewed operations:**
-  unify explicit env selection and credential ownership; add frozen Gmail
-  listings, mailbox/attachment JSON and content-bound draft sending; complete
-  the Synology command core and coordinated Control Center runtime/bridge.
-  Includes agent identity diagnostics and optional subagent registry cleanup.
-  TikTok, new messaging, mail scheduling and personal Wiki remain outside scope.)
 - 1.8.3 (**Google tools with local credentials, published 6 September 2026:**
   unify Gmail, Drive, Calendar and YouTube authorization and command discovery;
   add Gmail draft attachments, Calendar CLI and preview-confirmed YouTube

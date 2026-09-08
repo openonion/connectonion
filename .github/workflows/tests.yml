@@ -36,6 +36,11 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # The whole offline suite takes about a minute in parallel. A job still
+    # running at fifteen is hung; the per-test timeout in pytest.ini has
+    # already named the culprit, and this is the backstop for a hang outside
+    # any test (collection, a fixture that never yields, an atexit hook).
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -61,16 +66,28 @@ jobs:
 
       - name: Run all tests
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          # A fork PR gets no repository secrets, so this expands to an empty
-          # string — and an empty key reads as "not authenticated", which makes
-          # the auth CLI bail before it reaches the code these tests exercise.
-          # Unset would be fine; empty is not. Fall back to a placeholder.
-          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY || 'test-key' }}
+          # This job runs only offline tests, and tests/conftest.py refuses any
+          # connection that leaves the machine — so no production credential
+          # belongs in this process. A fixed non-secret value keeps the auth
+          # CLI on its authenticated code path (empty reads as "not logged in").
+          OPENONION_API_KEY: test-key
+          # Coverage is measured on one interpreter: the report is the same on
+          # all four and tracing slows the run. The gate is a floor at today's
+          # number so a change cannot lower it unnoticed. Raise it as the
+          # number goes up; never lower it to make a PR pass.
+          COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=term-missing:skip-covered --cov-report=xml --cov-fail-under=78' || '' }}
         run: |
-          pytest tests/ -v --tb=short -m "not slow and not real_api and not network"
+          pytest tests/ -n auto --dist loadfile --tb=short \
+            -m "not slow and not real_api and not network" \
+            $COVERAGE_ARGS
+
+      - name: Upload the coverage report
+        if: matrix.python-version == '3.12' && always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
   # The Remote Browser gateway is a security boundary built directly on each
   # platform's asyncio/TCP implementation. Keep its small focused suite on every

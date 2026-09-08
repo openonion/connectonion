@@ -8,22 +8,23 @@ ConnectOnion has two release channels:
 Preview releases never replace the stable recommendation. Install one with
 `--pre` or pin its exact version.
 
-## Current release work
+## Current release
 
-Version **1.8.3** brings Gmail, Drive, Calendar and YouTube together through
-local Google authorization, with supported scopes by default and an optional
-`--scopes` restriction. It adds Gmail draft attachments and Calendar/YouTube
-commands with explicit confirmation for their writes. YouTube previews print
-the complete command for the approved plan. See [Google integration](integrations/google.md)
-for commands, permissions and the upgrade path.
+Stable **1.8.4** brings explicit global configuration, `co env`, reviewed Gmail
+operations, verified Synology sharing and Outlook calendar commands. See
+[1.8.4 release notes](releases/1.8.4.md) for migration and acceptance limits.
 
-The release candidate passed real-account read-only checks for all four services
-on 2026-09-07 using an existing local grant. Uploads and other mutations have
-isolated regression coverage; no production write is claimed as release evidence.
-PyPI and the GitHub Release are produced by the immutable-tag release workflow.
-TikTok and new messaging adapters are deferred until after 1.8.5.
-The sections below describe historical 1.7 preview work, not current
-installation recommendations.
+```bash
+python -m pip install --upgrade connectonion==1.8.4
+co --version
+co env
+```
+
+No newer preview is currently recommended. The published 1.8.4a1 and 1.8.4a2
+previews are historical; the planned b1 was folded into the stable release.
+The tag workflow builds and verifies the public package before documentation
+is deployed. Google authorization from 1.8.3 is retained. TikTok and new messaging
+adapters remain deferred. The sections below are historical notes.
 
 ## Historical 1.7 preview work
 

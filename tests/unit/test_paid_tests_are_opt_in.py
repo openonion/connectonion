@@ -32,6 +32,10 @@ def _collect(*args: str) -> int:
          '-p', 'no:cacheprovider', *args],
         cwd=REPO, capture_output=True, text=True, timeout=600,
     )
+    # With -q pytest says "no tests collected (144 deselected)" rather than
+    # printing a zero.
+    if re.search(r'no tests collected', result.stdout):
+        return 0
     match = re.search(r'(\d+)/(\d+) tests collected|(\d+) tests collected',
                       result.stdout)
     if match:

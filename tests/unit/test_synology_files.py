@@ -94,3 +94,32 @@ def test_mkdir_dry_run_plans_missing_directories_without_writes(nas):
     result = nas.mkdir('/home/docs/new/empty', parents=True, dry_run=True)
     assert result['create'] == ['/home/docs/new','/home/docs/new/empty']
     nas._request.assert_not_called()
+
+
+@pytest.mark.parametrize('entry', [
+    {'path':'/other/private','isdir':False},
+    {'path':'/home/sub/a','isdir':False},
+])
+def test_listing_refuses_provider_rows_outside_the_requested_directory(nas, entry):
+    nas._request.return_value={'total':1,'files':[entry]}
+    with pytest.raises(SynologyError) as error:
+        nas.list_page('/home')
+    assert error.value.code=='path_escape'
+
+
+def test_completed_search_does_not_publish_snapshot_if_cleanup_fails(nas):
+    nas._request.side_effect=[{'taskid':'task'}, {'finished':True,'total':0,'files':[]},
+                             SynologyError('Lost cleanup response','network_error')]
+    with pytest.raises(SynologyError) as error:
+        nas.search_page('missing','/home',poll_interval=0)
+    assert error.value.code=='cleanup_unconfirmed'
+    assert nas._request.call_args.args[1]=='clean'
+
+
+def test_search_preserves_primary_error_when_cleanup_also_fails(nas):
+    original=SynologyError('Search failed','permission_denied')
+    nas._request.side_effect=[{'taskid':'task'},original,SynologyError('Lost cleanup','network_error')]
+    with pytest.raises(SynologyError) as error:
+        nas.search_page('a','/home',poll_interval=0)
+    assert error.value is original
+    assert error.value.cleanup_error=='network_error'

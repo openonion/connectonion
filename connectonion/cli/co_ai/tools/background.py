@@ -16,6 +16,7 @@ Architecture:
 """
 
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -40,6 +41,7 @@ class BackgroundTask:
     status: TaskStatus = TaskStatus.RUNNING
     start_time: float = field(default_factory=time.time)
     end_time: Optional[float] = None
+    reader: Optional[threading.Thread] = None
 
 
 # Global task registry
@@ -52,23 +54,59 @@ def _reset_for_testing():
     """Reset state for testing. Not for production use."""
     global _tasks, _task_counter
     with _lock:
-        for task in _tasks.values():
-            if task.status == TaskStatus.RUNNING:
-                task.process.terminate()
+        tasks = list(_tasks.values())
+    for task in tasks:
+        if task.status == TaskStatus.RUNNING:
+            _stop_task(task)
+        elif task.reader:
+            task.reader.join(timeout=2)
+        if task.reader and task.reader.is_alive():
+            raise RuntimeError(f'Background reader did not stop: {task.id}')
+    with _lock:
         _tasks.clear()
         _task_counter = 0
 
 
-def _read_output(task: BackgroundTask):
-    """Read output from process in background thread."""
-    for line in iter(task.process.stdout.readline, ""):
-        if not line:
-            break
-        task.output.append(line.rstrip())
+def _signal_tree(task: BackgroundTask, force: bool = False):
+    if os.name == 'nt':
+        if task.process.poll() is None:
+            subprocess.run(['taskkill','/PID',str(task.process.pid),'/T','/F'],
+                           capture_output=True, timeout=5, check=True)
+        return
+    try:
+        os.killpg(task.process.pid, signal.SIGKILL if force else signal.SIGTERM)
+    except ProcessLookupError:
+        return  # The owned process group already exited.
 
-    task.process.wait()
-    task.end_time = time.time()
-    task.status = TaskStatus.COMPLETED if task.process.returncode == 0 else TaskStatus.FAILED
+
+def _stop_task(task: BackgroundTask):
+    # shell=True creates a shell plus children; killing only the shell leaves
+    # the child holding stdout open and the reader blocked indefinitely.
+    _signal_tree(task)
+    try:
+        task.process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        _signal_tree(task, force=True)
+        task.process.wait(timeout=2)
+    if task.reader:
+        task.reader.join(timeout=2)
+        if task.reader.is_alive():
+            _signal_tree(task, force=True)
+            task.reader.join(timeout=2)
+        if task.reader.is_alive():
+            raise RuntimeError(f'Background reader did not stop: {task.id}')
+
+
+def _read_output(task: BackgroundTask):
+    """Drain output, reap the process, and close its pipe before finishing."""
+    try:
+        for line in iter(task.process.stdout.readline, ''):
+            task.output.append(line.rstrip())
+        task.process.wait()
+    finally:
+        task.process.stdout.close()
+        task.end_time = time.time()
+        task.status = TaskStatus.COMPLETED if task.process.returncode == 0 else TaskStatus.FAILED
 
 
 def run_background(command: str, description: str = "") -> str:
@@ -98,6 +136,7 @@ def run_background(command: str, description: str = "") -> str:
     process = subprocess.Popen(
         command,
         shell=True,
+        start_new_session=os.name != "nt",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -120,6 +159,7 @@ def run_background(command: str, description: str = "") -> str:
 
     # Start output reader thread
     thread = threading.Thread(target=_read_output, args=(task,), daemon=True)
+    task.reader = thread
     thread.start()
 
     desc = f" ({description})" if description else ""
@@ -189,7 +229,7 @@ def kill_task(task_id: str) -> str:
     if task.status != TaskStatus.RUNNING:
         return f"Task '{task_id}' is not running (status: {task.status.value})"
 
-    task.process.terminate()
+    _stop_task(task)
     task.status = TaskStatus.FAILED
     task.end_time = time.time()
 

@@ -128,6 +128,8 @@ def emit(operation: str, result=None, error=None, *, options: dict | None = None
         next_step=next_command(operation,result or {},options)
     elif error['code'] in {'auth_required','auth_failed','otp_required','otp_rejected','not_configured'}:
         next_step=shlex.join(['co','syno','login']+(['--name',options['nas']] if options.get('nas') else []))
+    elif operation=='share create' and error['code'] in {'submission_unknown','share_verification_failed'}:
+        next_step=shlex.join(['co','syno']+(['--nas',options['nas']] if options.get('nas') else [])+['share','list'])
     elif error['code'] in {'stale_cursor','listing_required','invalid_reference'}:
         next_step=shlex.join(['co','syno']+(['--nas',options['nas']] if options.get('nas') else [])+['ls'])
     else:

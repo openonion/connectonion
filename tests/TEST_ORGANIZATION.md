@@ -27,7 +27,7 @@ tests/
 
 ## Markers
 
-Auto-applied by folder in `tests/conftest.py`:
+Auto-applied by folder in `tests/conftest.py` (`pytest_collection_modifyitems`); no per-folder conftest needed:
 
 | Folder | Markers added |
 |---|---|
@@ -54,13 +54,16 @@ Does the test exercise ONE source file with all deps mocked?
 ## Running
 
 ```bash
-pytest                              # default: unit + e2e (no real_api, no network)
-pytest -m unit                      # only unit
-pytest -m e2e                       # all e2e (cli + real_api + offline)
-pytest -m cli                       # only e2e/cli
-pytest -m real_api                  # only e2e/real_api (needs API keys)
-pytest tests/unit/test_agent.py     # single file
+make test                           # default: unit + offline e2e, all cores
+pytest tests/unit/test_agent.py     # single file, in-process
+pytest -m "unit and not real_api and not network"   # a -m REPLACES the default, spell it out
+make test-e2e                       # our own system end to end
+make test-real                      # only e2e/real_api (needs API keys, costs money)
 ```
+
+`pytest.ini` is the only pytest configuration; there is no `[tool.pytest]`
+in pyproject and no tox. What every test is held to (no network, no leaked
+threads, isolated HOME, ...) is listed in [README.md](./README.md).
 
 ## Naming Conventions
 
