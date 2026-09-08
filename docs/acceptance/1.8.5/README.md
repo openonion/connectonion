@@ -23,12 +23,20 @@ The proposed first publication is 1.8.5a1 after review and the release gates in
 - Public `lark-oapi==1.7.3` wheel inspected: domain/log_level support and reconnect
   observer attributes are present. SHA-256:
   `c91f00087b7977dc9059ab492e8fe435e1a873863dca1d4e660d2be5b801e4cd`.
-- No live messages were sent, no existing automation was stopped, and the user's
+- The local unit/wheel suites sent no live messages. The separate live run below
+  used synthetic markers; no existing automation was stopped, and the user's
   installed stable package remains 1.8.4.
 
-## Real-channel gate — pending configuration
+## Real-channel result — reconnect gap remains blocked
 
-Use an owner-designated test bot and group. Keep its app ID/secret in the local
+An owner-designated Lark bot and group were tested on 8 September 2026.
+Configuration was reused from the existing CLI credential store in memory.
+See [the sanitized live report](lark-live-2026-09-08.md). Normal receive, atomic
+claim, completion, outbound replies and one-shot serve passed. The listener
+reconnected, but a message sent during the gap was not recovered in the observed
+window. This release gate remains open.
+
+For a repeat run, keep the app ID/secret in the local
 credential store; do not paste them into this record or commit them. Create a
 new private mailbox directory for the test. First confirm there is no existing
 WebSocket listener competing for that same application; coordinate any temporary
