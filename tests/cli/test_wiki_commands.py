@@ -6,6 +6,7 @@ import sys
 
 import pytest
 import yaml
+from rich.text import Text
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
@@ -73,7 +74,8 @@ def test_missing_record_is_nonzero_and_names_a_real_recovery_command(tmp_path):
 def test_usage_error_names_help(tmp_path):
     result = invoke(tmp_path, "no-such-command")
     assert result.exit_code == 2
-    assert "--help" in result.output
+    # Rich can insert style boundaries inside an option in a colored terminal.
+    assert "--help" in Text.from_ansi(result.output).plain
 
 
 def test_read_commands_do_not_invoke_a_provider(tmp_path, monkeypatch):
