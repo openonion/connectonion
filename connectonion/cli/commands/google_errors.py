@@ -24,7 +24,9 @@ def google_errors(next_command: str):
             from ...provider_credentials import ProviderCredentialError
             from ...credentials import AmbientCredentialError
             from .gmail_listings import ListingError
+            from .gmail_draft_review import DraftReviewError
 
+            from ...useful_tools.gmail_draft_mime import DraftFormatError
             recovery = next_command
             try:
                 return handler(*args, **kwargs)
@@ -36,6 +38,12 @@ def google_errors(next_command: str):
                 recovery = "co auth"
             except ListingError as exc:
                 cause = str(exc)
+            except DraftReviewError as exc:
+                cause = str(exc)
+                recovery = exc.next_command or 'co gmail draft list'
+            except DraftFormatError as exc:
+                cause = str(exc)
+                recovery = 'co gmail draft list'
             except json.JSONDecodeError:
                 cause = "Saved listing numbers are unreadable; refresh the listing."
             except HttpError as exc:

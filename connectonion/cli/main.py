@@ -1114,11 +1114,12 @@ def gmail_draft_attach(
     source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
     drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
     link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
+    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Drive listing token required for a Drive row number"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Stage a local/Drive file, or append a Drive link, without sending."""
     from .commands.gmail_commands import handle_gmail_draft_attach
-    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link, listing=listing)
+    handle_gmail_draft_attach(draft_id, source, drive=drive, link=link, listing=listing, drive_listing=drive_listing)
 
 
 @gmail_draft_app.command("remove")
@@ -1138,11 +1139,13 @@ def gmail_draft_replace(
     attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
     source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
     drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
+    link: bool = typer.Option(False, "--link", help="Replace with a managed Drive link; requires --drive"),
+    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Drive listing token required for a Drive row number"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Atomically replace one staged attachment without sending."""
     from .commands.gmail_commands import handle_gmail_draft_replace
-    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive, listing=listing)
+    handle_gmail_draft_replace(draft_id, attachment, source, drive=drive, link=link, listing=listing, drive_listing=drive_listing)
 
 
 @gmail_draft_app.command("preview", cls=MailboxCommand)
@@ -1159,14 +1162,36 @@ def gmail_draft_preview(
     handle_gmail_draft_preview(draft_id, listing=listing)
 
 
-@gmail_draft_app.command("send")
+@gmail_draft_app.command("review", cls=MailboxCommand)
+def gmail_draft_review(
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row with --listing"),
+    listing: Optional[str] = typer.Option(None, "--listing"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """Review the complete outgoing content and produce its confirmation token."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.review", draft_id=draft_id, listing=listing, json_output=True)
+    from .commands.gmail_commands import handle_gmail_draft_review
+    handle_gmail_draft_review(draft_id, listing=listing)
+
+
+@gmail_draft_app.command("send", cls=MailboxCommand)
 def gmail_draft_send(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    confirm: Optional[str] = typer.Option(None, "--confirm", help="Token from draft review; required without a real TTY"),
+    json_output: bool = typer.Option(False, "--json"),
 ):
-    """Preview a draft and send it only after interactive confirmation."""
+    """Send reviewed MIME; require a token or default-No interactive confirmation."""
+    if json_output:
+        from .commands.gmail_mailbox_commands import handle_mailbox
+        return handle_mailbox("draft.send", draft_id=draft_id, listing=listing, confirm=confirm, json_output=True)
     from .commands.gmail_commands import handle_gmail_draft_send
-    handle_gmail_draft_send(draft_id, listing=listing)
+    if confirm is None:
+        handle_gmail_draft_send(draft_id, listing=listing)
+    else:
+        handle_gmail_draft_send(draft_id, listing=listing, confirm=confirm)
 
 
 register_mailbox_commands(gmail_app, _OneSuggestion)
@@ -1205,14 +1230,29 @@ def gdrive_search(
     handle_gdrive_search(query, last=last)
 
 
+from .commands.gmail_mailbox_registration import DriveInfoCommand
+
+
+@gdrive_app.command("info", cls=DriveInfoCommand)
+def gdrive_info(
+    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
+    json_output: bool = typer.Option(False, "--json", help="Versioned inspection result"),
+):
+    """Inspect metadata and export format without downloading or changing sharing."""
+    from .commands.gdrive_commands import handle_gdrive_info
+    handle_gdrive_info(file_id, listing=listing, json_output=json_output)
+
+
 @gdrive_app.command("get")
 def gdrive_get(
-    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
     dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
 ):
     """Download a file (Google Docs/Sheets/Slides are exported)."""
     from .commands.gdrive_commands import handle_gdrive_get
-    handle_gdrive_get(file_id, dest=dest)
+    handle_gdrive_get(file_id, dest=dest, listing=listing)
 
 
 @gdrive_app.command("put")
@@ -1227,11 +1267,12 @@ def gdrive_put(
 
 @gdrive_app.command("rm")
 def gdrive_rm(
-    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
 ):
     """Move a file to the Drive trash (recoverable)."""
     from .commands.gdrive_commands import handle_gdrive_rm
-    handle_gdrive_rm(file_id)
+    handle_gdrive_rm(file_id, listing=listing)
 
 
 _YOUTUBE_AUTH_HELP = (

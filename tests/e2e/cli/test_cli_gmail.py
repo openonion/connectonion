@@ -188,7 +188,7 @@ def test_gmail_draft_attach_routes_drive_link():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", "3", drive=True, link=True, listing=None)
+    handler.assert_called_once_with("2", "3", drive=True, link=True, listing=None, drive_listing=None)
 
 
 def test_gmail_draft_remove_routes_attachment_number():
@@ -206,7 +206,7 @@ def test_gmail_draft_replace_routes_drive_source():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", 1, "drive-file", drive=True, listing=None)
+    handler.assert_called_once_with("2", 1, "drive-file", drive=True, link=False, listing=None, drive_listing=None)
 
 
 def test_gmail_draft_preview_routes_id():

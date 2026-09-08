@@ -345,18 +345,24 @@ def _print_draft_preview(draft: dict, tip: bool = True) -> None:
     console.print("\n--- Body ---", markup=False)
     console.print(draft["body"] or "(empty body)", markup=False, highlight=False)
     console.print("\n--- Attachments ---", markup=False)
-    if draft["attachments"]:
-        for i, item in enumerate(draft["attachments"], 1):
+    items = draft.get("items", draft["attachments"])
+    if items:
+        for i, item in enumerate(items, 1):
             console.print(
                 f"{i}. {item['name']} ({item['type']}, {item['size']} bytes)",
                 markup=False,
                 highlight=False,
             )
-        console.print(f"Total: {draft['attachment_size']} bytes", markup=False)
+            if item.get("source"):
+                console.print(f"   Source: {item['source']}", markup=False)
+            for key in ("drive_file_id", "link", "export_type", "sharing"):
+                if item.get(key):
+                    console.print(f"   {key}: {item[key]}", markup=False)
+        console.print(f"Total file bytes: {draft['attachment_size']}", markup=False)
     else:
         console.print("(none)", markup=False)
     if tip:
-        print_tip(f"\nSend with confirmation: [bold]co gmail draft send {draft['id']}[/bold]\n")
+        print_tip(f"\nReview before sending: [bold]co gmail draft review {draft['id']}[/bold]\n")
 
 
 def _draft_id_or_exit(gmail, draft_id: str, listing: str | None = None) -> str:
@@ -394,9 +400,23 @@ def handle_gmail_draft_create(to: str, subject: str, message: str, cc: str = Non
     print_tip(f"Attach a local file: [bold]co gmail draft attach {draft['id']} <path>[/bold]\n")
 
 
+def _matching_drive(gmail):
+    from .gdrive_commands import _gdrive
+    drive = _gdrive()
+    if drive.get_account_email().casefold() != gmail.get_account_email().casefold():
+        from ...provider_credentials import ProviderCredentialError
+        raise ProviderCredentialError("account_changed", "Drive and Gmail accounts differ; reconnect the selected Google account.", "co auth google")
+    return drive
+
+
+def _drive_source(item: dict) -> dict:
+    return {"source":"drive_attachment", "drive_file_id":item["id"],
+            **{key:item[key] for key in ("link", "export_type", "original_type") if item.get(key)}}
+
+
 @google_errors("co gmail draft list")
 def handle_gmail_draft_attach(draft_id: str, source: str, drive: bool = False,
-                              link: bool = False, *, listing: str | None = None):
+                              link: bool = False, *, listing: str | None = None, drive_listing: str | None = None):
     if link and not drive:
         console.print("\n❌ [bold red]--link requires --drive.[/bold red]")
         print_tip(f"Retry with: [bold]co gmail draft attach {draft_id} <Drive file # or id> --drive --link[/bold]\n")
@@ -405,33 +425,33 @@ def handle_gmail_draft_attach(draft_id: str, source: str, drive: bool = False,
     gmail = _gmail(require_draft_write=True)
     resolved = _draft_id_or_exit(gmail, draft_id, listing)
     if drive:
-        from .gdrive_commands import _gdrive, _resolve_file_id
-        from ...useful_tools.gmail import GMAIL_ATTACHMENT_LIMIT
+        from .gdrive_commands import _resolve_file_id
 
-        file_id = _resolve_file_id(source)
+        drive_client = _matching_drive(gmail)
+        file_id = _resolve_file_id(source, drive_client, drive_listing)
         if not file_id:
             console.print(f"\n❌ [bold red]No Drive file #{source} in your last listing.[/bold red]")
             print_tip("List Drive files: [bold]co gdrive[/bold]\n")
             raise typer.Exit(1)
-        drive_client = _gdrive()
         if link:
-            item = _draft_call(lambda: drive_client._get_file(file_id), "co gdrive")
+            item = _draft_call(lambda: drive_client.get_info(file_id), "co gdrive")
             if not item["link"]:
                 console.print("\n❌ [bold red]Drive returned no web link for this file.[/bold red]")
                 print_tip(f"Attach its bytes: [bold]co gmail draft attach {draft_id} {source} --drive[/bold]\n")
                 raise typer.Exit(1)
             updated = _draft_call(
-                lambda: gmail.add_draft_link(resolved, item["name"], item["link"]),
+                lambda: gmail._add_managed_draft_link(resolved, item),
                 f"co gmail draft attach {draft_id} {source} --drive --link",
             )
         else:
+            budget = gmail._draft_attachment_budget(resolved)
             item = _draft_call(
-                lambda: drive_client._read_file(file_id, max_bytes=GMAIL_ATTACHMENT_LIMIT),
+                lambda: drive_client._read_file(file_id, max_bytes=budget),
                 f"co gmail draft attach {draft_id} {source} --drive",
             )
             updated = _draft_call(
                 lambda: gmail._add_draft_attachment(
-                    resolved, item["name"], item["type"], item["data"]
+                    resolved, item["name"], item["type"], item["data"], source=_drive_source(item)
                 ),
                 f"co gmail draft attach {draft_id} {source} --drive",
             )
@@ -460,27 +480,32 @@ def handle_gmail_draft_remove(draft_id: str, attachment: int, *, listing: str | 
 
 @google_errors("co gmail draft list")
 def handle_gmail_draft_replace(draft_id: str, attachment: int, source: str,
-                               drive: bool = False, *, listing: str | None = None):
+                               drive: bool = False, link: bool = False, *, listing: str | None = None, drive_listing: str | None = None):
+    if link and not drive:
+        console.print("Error: --link requires --drive.")
+        print_tip("Next: co gmail draft replace --help")
+        raise typer.Exit(1)
     gmail = _gmail(require_draft_write=True)
     resolved = _draft_id_or_exit(gmail, draft_id, listing)
     if drive:
-        from .gdrive_commands import _gdrive, _resolve_file_id
-        from ...useful_tools.gmail import GMAIL_ATTACHMENT_LIMIT
+        from .gdrive_commands import _resolve_file_id
 
-        file_id = _resolve_file_id(source)
+        drive_client = _matching_drive(gmail)
+        file_id = _resolve_file_id(source, drive_client, drive_listing)
         if not file_id:
             console.print(f"\n❌ [bold red]No Drive file #{source} in your last listing.[/bold red]")
             print_tip("List Drive files: [bold]co gdrive[/bold]\n")
             raise typer.Exit(1)
+        budget = gmail._draft_attachment_budget(resolved, replacing=attachment) if not link else 0
         item = _draft_call(
-            lambda: _gdrive()._read_file(file_id, max_bytes=GMAIL_ATTACHMENT_LIMIT),
-            f"co gmail draft replace {draft_id} {attachment} {source} --drive",
+            lambda: drive_client.get_info(file_id) if link else drive_client._read_file(file_id, max_bytes=budget),
+            f"co gdrive info {file_id}",
         )
         updated = _draft_call(
-            lambda: gmail._replace_draft_attachment(
-                resolved, attachment, item["name"], item["type"], item["data"]
+            lambda: gmail._replace_draft_link(resolved, attachment, item) if link else gmail._replace_draft_attachment(
+                resolved, attachment, item["name"], item["type"], item["data"], source=_drive_source(item)
             ),
-            f"co gmail draft preview {resolved}",
+            f"co gmail draft review {resolved}",
         )
     else:
         updated = _draft_call(
@@ -499,20 +524,49 @@ def handle_gmail_draft_preview(draft_id: str, *, listing: str | None = None):
     _print_draft_preview(draft)
 
 
-@google_errors("co gmail sent")
-def handle_gmail_draft_send(draft_id: str, *, listing: str | None = None):
-    gmail = _gmail(require_draft_write=True)
+def _print_review(review, *, tip: bool = True) -> None:
+    manifest = review.manifest
+    _print_draft_preview(manifest, tip=False)
+    print(f"Account: {manifest['account']}\nFrom: {manifest['from']}")
+    print(f"Body SHA-256: {manifest['body_sha256']}")
+    print(f"MIME bytes: {manifest['mime_size']} / {manifest['mime_limit']}; encoded bytes: {manifest['encoded_size']}")
+    print(f"Attachment limit: {manifest['attachment_limit']} bytes")
+    for warning in manifest['warnings']:
+        print(f'Warning: {warning}')
+    print(f'Review token: {review.token}')
+    if tip:
+        import shlex
+        print_tip(f'Next: co gmail draft send {shlex.quote(manifest["id"])} --confirm {review.token}')
+
+
+@google_errors("co gmail draft list")
+def handle_gmail_draft_review(draft_id: str, *, listing: str | None = None):
+    from .gmail_draft_review import prepare_review
+    gmail = _gmail()
     resolved = _draft_id_or_exit(gmail, draft_id, listing)
-    draft = _draft_call(lambda: gmail.get_draft(resolved), "co gmail draft list")
-    _print_draft_preview(draft, tip=False)
-    try:
-        confirmed = typer.confirm("\nSend this Gmail draft now?", default=False)
-    except (typer.Abort, KeyboardInterrupt, EOFError):
-        confirmed = False
-    if not confirmed:
-        console.print("\n[yellow]Not sent; the Gmail draft was kept.[/yellow]")
-        print_tip(f"Preview again: [bold]co gmail draft preview {resolved}[/bold]\n")
-        raise typer.Exit(1)
-    sent = _draft_call(lambda: gmail._send_draft(resolved), f"co gmail draft send {resolved}")
+    _print_review(prepare_review(gmail, resolved))
+
+
+@google_errors("co gmail sent")
+def handle_gmail_draft_send(draft_id: str, *, listing: str | None = None, confirm: str | None = None):
+    from .gmail_draft_review import prepare_review, send_reviewed, DraftReviewError
+    gmail = _gmail()
+    resolved = _draft_id_or_exit(gmail, draft_id, listing)
+    if confirm is None:
+        review = prepare_review(gmail, resolved)
+        _print_review(review, tip=False)
+        if not console.is_terminal or not sys.stdin.isatty():
+            raise DraftReviewError('confirmation_required', 'Not sent. Non-interactive send requires a reviewed --confirm token.',
+                                   f'co gmail draft review {resolved}')
+        try:
+            confirmed = typer.confirm("\nSend exactly this reviewed Gmail message?", default=False)
+        except (typer.Abort, KeyboardInterrupt, EOFError):
+            confirmed = False
+        if not confirmed:
+            console.print("\n[yellow]Not sent; the Gmail draft was kept.[/yellow]")
+            print_tip(f"Review again: co gmail draft review {resolved}")
+            raise typer.Exit(1)
+        confirm = review.token
+    sent = send_reviewed(gmail, resolved, confirm)
     console.print(f"\n[green]✓ Sent[/green] Gmail message {sent.get('id', '')}")
     print_tip("List sent mail: [bold]co gmail sent[/bold]\n")

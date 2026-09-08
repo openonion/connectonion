@@ -360,7 +360,7 @@ class TestReadFileForAttachment:
             "type": "application/pdf",
             "size": 4,
             "link": "https://drive.google.com/file/d/file-1/view",
-            "data": b"%PDF",
+            "data": b"%PDF", "original_type":"application/pdf", "export_type":None,
         }
         service.files.return_value.get_media.assert_called_once()
 
@@ -465,3 +465,27 @@ class TestUploadAndDelete:
 
         service.files.return_value.delete.assert_not_called()
         assert service.files.return_value.update.call_args.kwargs["body"] == {"trashed": True}
+
+@pytest.mark.parametrize('resources,reason', [
+    ([file_resource(id='a', shortcutDetails={'targetId':'b'}), file_resource(id='b', shortcutDetails={'targetId':'a'})], 'cycle'),
+    ([file_resource(trashed=True)], 'trash'),
+    ([file_resource(shortcutDetails={})], 'target'),
+])
+def test_metadata_rejects_unusable_targets_without_unbounded_recursion(resources, reason):
+    service = MagicMock()
+    service.files().get().execute.side_effect = resources
+    with patch.dict(os.environ, ENV, clear=False):
+        with pytest.raises(ValueError, match=reason):
+            drive_with_service(service)._get_meta('a')
+    assert service.files().get().execute.call_count <= 2
+
+
+def test_info_reports_unknown_native_size_and_export_without_download():
+    service = MagicMock()
+    service.files().get().execute.return_value = file_resource(size=None, mimeType='application/vnd.google-apps.document')
+    with patch.dict(os.environ, ENV, clear=False):
+        info = drive_with_service(service).get_info('file-1')
+    assert info['raw_size'] is None
+    assert info['export_type'] == 'text/markdown'
+    assert info['export_size'] is None
+    service.files().export_media.assert_not_called()

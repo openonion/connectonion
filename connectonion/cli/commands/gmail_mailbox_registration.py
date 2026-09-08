@@ -19,17 +19,19 @@ def handle_mailbox(*args, **kwargs):
     return run(*args, **kwargs)
 
 
-def usage_error(message: str, command: str, json_output: bool) -> None:
+def usage_error(message: str, command: str, json_output: bool, provider: str = 'gmail') -> None:
     if not json_output:
         raise typer.BadParameter(message)
-    print(json.dumps({'schema_version':1, 'provider':'gmail', 'operation':command,
+    print(json.dumps({'schema_version':1, 'provider':provider, 'operation':command,
         'account':None, 'status':'error', 'complete':False, 'data':None,
         'error':{'code':'usage_error', 'message':message},
-        'next_command':selected_command(f'co gmail {command} --help')}))
+        'next_command':selected_command(f'co {provider} {command} --help')}))
     raise typer.Exit(2)
 
 
 class MailboxCommand(TyperCommand):
+    provider = 'gmail'
+
     def make_context(self, info_name, args, parent=None, **extra):
         json_output = '--json' in args
         try:
@@ -37,10 +39,14 @@ class MailboxCommand(TyperCommand):
         except click.ClickException:
             if json_output:
                 # Do not echo arbitrary argument values or provider material.
-                prefix = parent.command_path.split('gmail', 1)[-1].strip() if parent else ''
+                prefix = parent.command_path.split(self.provider, 1)[-1].strip() if parent else ''
                 command = f'{prefix} {info_name}'.strip()
-                usage_error('Invalid or missing command arguments.', command, True)
+                usage_error('Invalid or missing command arguments.', command, True, self.provider)
             raise
+
+
+class DriveInfoCommand(MailboxCommand):
+    provider = 'gdrive'
 
 
 def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
