@@ -1,6 +1,9 @@
 version: v1.8.4a2
-no_visual_change: >-
-  This update changes Gmail send headers and receipt recovery, plus acceptance
-  diagnostics. CLI commands, arguments and rendered UI are unchanged from a1.
-  Current desktop/mobile Control Center evidence remains recorded in
-  docs/acceptance/1.8.4-live-followup/ at source f5c20128.
+images:
+- file: cli-help.svg
+  alt: The first co screen shows global setup, project selection and command help.
+  caption: Run co init for global setup or co init ./ for an explicit project.
+  scenario: Account-free rendering of the actual CLI help function, with no credentials loaded.
+  viewport: 100-column terminal
+  commit: 8f920091c926b23215aa779dfd5d9b96d8f6be37
+  source_run: tests/unit/test_the_first_screen_is_honest.py
