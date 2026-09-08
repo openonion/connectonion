@@ -15,7 +15,13 @@ is gone, and a fact you invent becomes a page.
 A coding session arrives as the user's messages only: what they asked for,
 decided, corrected. The assistant's replies were execution — code, counts,
 "noted" — and are not in the batch; do not infer them. Mail arrives with both
-sides, because the other side is a person.
+sides, because the other side is a person, and **grouped by person**: every
+mail between the user and one `correspondent`, oldest first, before the next
+correspondent begins. So a person's whole history with the user is in front of
+you at once — write their block from all of it: the timeline end to end, the
+way they write as it shows across every mail, the user's way with them across
+every reply. A correspondent with more mail than one batch continues in the
+next; write what is here and the maintainer extends the page.
 
 Your reply *is* the notes. No preamble, no closing remarks, no questions. If the
 batch holds nothing worth keeping, reply with exactly `Nothing worth keeping.`

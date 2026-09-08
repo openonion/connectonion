@@ -1120,11 +1120,18 @@ class Gmail:
         first = int(datetime.fromisoformat(start).timestamp())
         last = int(datetime.fromisoformat(end).timestamp())
         rows = self.list_search(f"after:{first} before:{last}", max_results=max_results)
+        service = self._get_service()
         for row in rows:
             try:
                 row['date'] = parsedate_to_datetime(row['date']).isoformat()
             except (TypeError, ValueError):
                 row['date'] = start
+            # The wiki files the user's own mail under the person it went to; the
+            # listing's metadata call asks for From only, so To/Cc are fetched here.
+            headers = service.users().messages().get(userId='me', id=row['id'], format='metadata',
+                                                     metadataHeaders=['To', 'Cc']).execute()['payload']['headers']
+            row['to'] = [h['value'] for h in headers if h['name'] == 'To']
+            row['cc'] = [h['value'] for h in headers if h['name'] == 'Cc']
         return sorted(rows, key=lambda row: (row['date'], row['id']))
 
     def my_addresses(self) -> set:

@@ -17,8 +17,11 @@ text is the extraction notes another pass wrote from the raw messages — facts
 grouped by kind, each with who said it, the date and source ids. Treat every
 bullet as a sourced claim to organize, not as a page to copy; the source ids in
 it are the ones to keep on your pages.
-Mail arrives the same way: the user's own mail speaks as `user`; everyone else's
-as `other` with the sender as `speaker`, plus the subject. What someone asks of
+Mail arrives the same way, grouped by person: every mail between the user and
+one `correspondent` comes together, oldest first, so a person's page is written
+from their whole history at once, not assembled a week at a time. The user's
+own mail speaks as `user`; everyone else's as `other` with the sender as
+`speaker`, plus the subject. What someone asks of
 the user in a mail is their request, not the user's commitment, until the user
 answers; a confirmation or a receipt is a fact about a booking or an order, not
 a decision; a newsletter is rarely worth anything at all.

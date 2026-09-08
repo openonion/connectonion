@@ -1,4 +1,5 @@
-"""Mail is a source like a transcript: oldest first, one cursor, bodies read only for the batch."""
+"""Mail is a source worked one correspondent at a time: the listing is scanned forward once
+into a per-person queue, and a batch is whole people, oldest first, bodies read only then."""
 
 from datetime import datetime, timezone
 
@@ -6,6 +7,8 @@ import pytest
 
 from connectonion.wiki.files import WikiError
 from connectonion.wiki.mail import collect_mail
+
+NOW = datetime(2026, 9, 7, tzinfo=timezone.utc)
 
 
 class FakeMail:
@@ -21,16 +24,17 @@ class FakeMail:
 
     def list_between(self, start, end, max_results):
         rows = [m for m in self.messages if start <= m["date"] < end]
-        return [{k: m[k] for k in ("id", "from", "subject", "date")} for m in rows[:max_results]]
+        return [{k: m[k] for k in ("id", "from", "to", "subject", "date")} for m in rows[:max_results]]
 
     def get_email_body(self, email_id):
         self.bodies_read.append(email_id)
         m = next(m for m in self.messages if m["id"] == email_id)
-        return f"From: {m['from']}\nTo: {self.me}\nSubject: {m['subject']}\nDate: {m['date']}\n\n--- Email Body ---\n\n{m['body']}"
+        return (f"From: {m['from']}\nTo: {', '.join(m['to'])}\nSubject: {m['subject']}\nDate: {m['date']}\n\n"
+                f"--- Email Body ---\n\n{m['body']}")
 
 
-def mail(i, date, sender="alice@example.com", subject="Aurora", body="Let's use Markdown."):
-    return {"id": f"m{i}", "from": sender, "subject": subject, "date": date, "body": body}
+def mail(i, date, sender="alice@example.com", subject="Aurora", body="Let's use Markdown.", to=("me@example.com",)):
+    return {"id": f"m{i}", "from": sender, "to": list(to), "subject": subject, "date": date, "body": body}
 
 
 def subscription(**overrides):
@@ -38,54 +42,106 @@ def subscription(**overrides):
             "enabled": True, "consented": True, "exclude_automated": True, **overrides}
 
 
-def test_oldest_mail_first_with_a_cursor_that_never_repeats(tmp_path):
-    client = FakeMail([mail(1, "2026-09-03T10:00:00+00:00"), mail(2, "2026-09-02T09:00:00+00:00"),
-                       mail(3, "2026-09-05T08:00:00+00:00", sender="me@example.com", body="Agreed, Markdown.")])
-    first = collect_mail(subscription(), {}, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["reference"] for i in first.items] == ["outlook:m2", "outlook:m1"]
-    assert all(len(i["source"]) == len("outlook:") + 12 for i in first.items)  # short, readable ids
+def references(batch):
+    return [item["reference"] for item in batch.items]
+
+
+def test_mail_is_worked_one_correspondent_at_a_time_oldest_person_first():
+    """Alice wrote first, so all of Alice comes before any of Bob, even though Bob's
+    mail is older than Alice's second one; Carol does not fit and waits whole."""
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00"),
+                       mail(2, "2026-09-03T09:00:00+00:00", sender="bob@example.com", subject="Beacon"),
+                       mail(3, "2026-09-04T09:00:00+00:00"),
+                       mail(4, "2026-09-05T09:00:00+00:00", sender="carol@example.com", subject="Coffee"),
+                       mail(5, "2026-09-06T09:00:00+00:00", sender="carol@example.com", subject="Coffee")])
+    first = collect_mail(subscription(), {}, 4, 100000, client, now=NOW)
+    assert references(first) == ["outlook:m1", "outlook:m3", "outlook:m2"]
+    assert [i["correspondent"] for i in first.items] == ["alice@example.com"] * 2 + ["bob@example.com"]
     assert first.items[0]["role"] == "other" and first.items[0]["speaker"] == "alice@example.com"
     assert "Subject: Aurora" in first.items[0]["text"] and "Markdown" in first.items[0]["text"]
-    assert first.progress["cursor"] == "2026-09-03T10:00:00+00:00"
-    second = collect_mail(subscription(), first.progress, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["reference"] for i in second.items] == ["outlook:m3"]
-    assert second.items[0]["role"] == "user"  # the user's own mail speaks as the user
-    assert sorted(client.bodies_read) == ["m1", "m2", "m3"]  # each body read exactly once
-    third = collect_mail(subscription(), second.progress, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert third.items == []
+    assert all(len(i["source"]) == len("outlook:") + 12 for i in first.items)  # short, readable ids
+    assert client.bodies_read == ["m1", "m3", "m2"]  # Carol's bodies are not fetched until her turn
+    second = collect_mail(subscription(), first.progress, 4, 100000, client, now=NOW)
+    assert references(second) == ["outlook:m4", "outlook:m5"]
+    third = collect_mail(subscription(), second.progress, 4, 100000, client, now=NOW)
+    assert third.items == [] and sorted(client.bodies_read) == ["m1", "m2", "m3", "m4", "m5"]
 
 
-def test_same_second_mails_are_not_lost_or_repeated(tmp_path):
+def test_the_users_own_mail_is_filed_under_the_person_it_went_to():
+    """A sent mail's correspondent is its recipient; Exchange lists the owner's own sent
+    mail under a legacy DN rather than an address, and that is still the user."""
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00"),
+                       mail(2, "2026-09-02T10:00:00+00:00", sender="me@example.com", to=("alice@example.com",),
+                            body="Agreed, Markdown."),
+                       mail(3, "2026-09-02T11:00:00+00:00", sender="/o=first organization/cn=recipients/cn=0003",
+                            to=("bob@example.com", "me@example.com"), subject="Beacon", body="Sent from Outlook.")])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW)
+    by_id = {i["reference"]: i for i in batch.items}
+    assert by_id["outlook:m2"]["role"] == "user" and by_id["outlook:m2"]["correspondent"] == "alice@example.com"
+    assert by_id["outlook:m3"]["role"] == "user" and by_id["outlook:m3"]["correspondent"] == "bob@example.com"
+    assert references(batch) == ["outlook:m1", "outlook:m2", "outlook:m3"]
+
+
+def test_a_correspondent_larger_than_a_batch_is_sliced_oldest_first():
+    """A person is split across batches only when they alone are more than a batch;
+    otherwise the batch closes and they get the next one whole."""
+    client = FakeMail([mail(i, f"2026-09-0{i}T09:00:00+00:00") for i in range(1, 6)]
+                      + [mail(9, "2026-09-01T08:00:00+00:00", sender="bob@example.com")])
+    first = collect_mail(subscription(), {}, 2, 100000, client, now=NOW)
+    assert references(first) == ["outlook:m9"]  # Bob is whole; Alice does not fit beside him
+    second = collect_mail(subscription(), first.progress, 2, 100000, client, now=NOW)
+    assert references(second) == ["outlook:m1", "outlook:m2"]  # Alice alone exceeds a batch: oldest slice
+    third = collect_mail(subscription(), second.progress, 2, 100000, client, now=NOW)
+    assert references(third) == ["outlook:m3", "outlook:m4"]
+    fourth = collect_mail(subscription(), third.progress, 2, 100000, client, now=NOW)
+    assert references(fourth) == ["outlook:m5"]
+
+
+def test_new_mail_after_a_sync_joins_its_correspondent_next_time():
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00")])
+    first = collect_mail(subscription(), {}, 10, 100000, client, now=datetime(2026, 9, 3, tzinfo=timezone.utc))
+    assert references(first) == ["outlook:m1"]
+    client.messages.append(mail(2, "2026-09-04T09:00:00+00:00", body="Second thoughts."))
+    client.messages.append(mail(3, "2026-09-04T10:00:00+00:00", sender="bob@example.com"))
+    second = collect_mail(subscription(), first.progress, 10, 100000, client, now=NOW)
+    assert references(second) == ["outlook:m2", "outlook:m3"]
+    assert second.items[0]["correspondent"] == "alice@example.com"
+    assert sorted(client.bodies_read) == ["m1", "m2", "m3"]  # nothing is fetched twice
+
+
+def test_same_second_mails_are_not_lost_or_repeated():
     same = "2026-09-02T09:00:00+00:00"
     client = FakeMail([mail(1, same), mail(2, same), mail(3, same)])
-    first = collect_mail(subscription(), {}, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    second = collect_mail(subscription(), first.progress, 2, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert sorted(i["reference"] for i in first.items + second.items) == ["outlook:m1", "outlook:m2", "outlook:m3"]
+    first = collect_mail(subscription(), {}, 2, 100000, client, now=NOW)
+    second = collect_mail(subscription(), first.progress, 2, 100000, client, now=NOW)
+    assert sorted(references(first) + references(second)) == ["outlook:m1", "outlook:m2", "outlook:m3"]
 
 
 def test_automated_senders_are_skipped_unless_asked_for():
     client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", sender="no-reply@airbnb.com", subject="Reservation"),
                        mail(2, "2026-09-02T10:00:00+00:00", sender="notification@github.com"),
-                       mail(3, "2026-09-02T11:00:00+00:00", sender="bob@example.com")])
-    batch = collect_mail(subscription(), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["reference"] for i in batch.items] == ["outlook:m3"]
+                       mail(3, "2026-09-02T11:00:00+00:00", sender="bob@example.com"),
+                       mail(4, "2026-09-02T12:00:00+00:00", sender="automated@airbnb.com"),
+                       mail(5, "2026-09-02T13:00:00+00:00", sender="weshine@substack.com"),
+                       mail(6, "2026-09-02T14:00:00+00:00", sender="sfvibe@mail.beehiiv.com")])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW)
+    assert references(batch) == ["outlook:m3"]
     assert client.bodies_read == ["m3"]  # skipped mail is never fetched
-    everything = collect_mail(subscription(exclude_automated=False), {}, 10, 100000, client,
-                              now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert len(everything.items) == 3
+    everything = collect_mail(subscription(exclude_automated=False), {}, 10, 100000, client, now=NOW)
+    assert len(everything.items) == 6
 
 
 def test_lookback_and_body_limit_are_honoured():
     client = FakeMail([mail(1, "2026-08-01T09:00:00+00:00"), mail(2, "2026-09-02T09:00:00+00:00", body="x" * 5000)])
-    batch = collect_mail(subscription(), {}, 10, 1500, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
-    assert [i["reference"] for i in batch.items] == ["outlook:m2"]  # August is before `since`
+    batch = collect_mail(subscription(), {}, 10, 1500, client, now=NOW)
+    assert references(batch) == ["outlook:m2"]  # August is before `since`
     assert "truncated" in batch.items[0]["text"] and len(batch.items[0]["text"]) < 1500
 
 
 def test_unconsented_mail_is_never_listed():
     client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00")])
     with pytest.raises(WikiError):
-        collect_mail(subscription(consented=False), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
+        collect_mail(subscription(consented=False), {}, 10, 100000, client, now=NOW)
     assert client.bodies_read == []
 
 
@@ -99,7 +155,7 @@ def test_quoted_reply_chains_are_cut_off():
     assert strip_quoted(outlook).strip() == "Agreed."
     assert strip_quoted("No quote here.") == "No quote here."
     client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", body=body)])
-    batch = collect_mail(subscription(), {}, 10, 100000, client, now=datetime(2026, 9, 7, tzinfo=timezone.utc))
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW)
     assert "Can we do Friday" not in batch.items[0]["text"] and "Friday works" in batch.items[0]["text"]
 
 

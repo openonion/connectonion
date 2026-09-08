@@ -352,7 +352,7 @@ def test_claude_code_is_a_real_default_source(tmp_path, monkeypatch):
     assert subscriptions(root)["claude-code"]["consented"] is True
 
 
-def test_outlook_source_flows_through_sync_with_its_own_cursor(tmp_path, monkeypatch):
+def test_outlook_source_flows_through_sync_with_its_own_progress(tmp_path, monkeypatch):
     from connectonion.wiki.service import subscriptions, toggle_source
     from tests.unit.test_wiki_mail import FakeMail, mail
     monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: tmp_path / "codex")
@@ -374,7 +374,9 @@ def test_outlook_source_flows_through_sync_with_its_own_cursor(tmp_path, monkeyp
         return {"usage": None, "changed": []}
     assert run_sync(root, runner=runner)["outcome"] == "completed"
     assert [i["reference"] for i in seen] == ["outlook:m1"] and seen[0]["role"] == "other"
-    assert read_json(state_path(root, "progress.json"), {})["outlook"]["cursor"] == "2026-09-02T09:00:00+00:00"
+    assert seen[0]["correspondent"] == "alice@example.com"
+    outlook = read_json(state_path(root, "progress.json"), {})["outlook"]
+    assert outlook["scanned_until"] == "2026-09-02T09:00:00+00:00" and outlook["pending"] == {}
     assert run_sync(root, runner=runner)["outcome"] == "no_change"
 
 

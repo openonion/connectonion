@@ -975,10 +975,16 @@ class Outlook:
             "$filter": f"receivedDateTime ge {start} and receivedDateTime lt {end}",
             "$orderby": "receivedDateTime asc",
             "$top": max_results,
-            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         result = self._request("GET", "/me/messages", params=params)
-        return self._email_dicts(result.get('value', []))
+        rows = self._email_dicts(result.get('value', []))
+        # The wiki files the user's own mail under the person it went to, which the
+        # from-address cannot say; recipients are only on this listing.
+        for row, msg in zip(rows, result.get('value', [])):
+            row['to'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', [])]
+            row['cc'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('ccRecipients', [])]
+        return rows
 
     def my_addresses(self) -> set:
         """The addresses that count as the user's own, lower-cased."""
