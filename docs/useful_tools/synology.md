@@ -1,78 +1,52 @@
-# Synology Tool
+# Synology tool
 
-Give an agent File Station access to a Synology NAS — list, search, download,
-upload, and share files.
-
-```python
-from connectonion import Agent, Synology
-
-agent = Agent("nas-assistant", tools=[Synology()])
-agent.input("Find last month's invoices and download them to ~/Downloads")
-```
-
-## Setup
-
-```bash
-co syno login
-```
-
-Saves `SYNOLOGY_URL`, `SYNOLOGY_ACCOUNT`, `SYNOLOGY_PASSWORD` and
-`SYNOLOGY_SID` to `~/.co/keys.env`. `Synology()` reads them from the
-environment; you can also pass them directly:
+`Synology()` uses the selected global NAS profile created by verified
+`co syno login`. `Synology(nas="office")` selects another profile. It does not
+silently import old `SYNOLOGY_*` env fields. Explicit SDK URL/account/password
+arguments form an ephemeral connection and never inherit a saved SID.
 
 ```python
-Synology(url="https://nas.local:5001", account="aaron", password="…")
+from connectonion import Synology
+
+nas = Synology(nas="home", timeout=60)
+page = nas.list_page("/home/docs", limit=20)
+record = nas.info("/home/docs/report.pdf")
+result = nas.download("/home/docs/report.pdf", "./Downloads/")
 ```
 
-## Methods
+Public operations receive one waiting budget per call, shared by their nested
+requests. Synchronous SNMP inspection in an async application must run in a
+worker thread. The CLI uses one fixed budget per invocation.
 
-| Method | Does |
-|---|---|
-| `list_files(path=None, last=20)` | Shared folders, or one folder's contents |
-| `search_files(query, path="/", last=20)` | Find files by name |
-| `download(path, dest=".")` | Fetch a file to disk |
-| `upload(local_path, path, overwrite=False)` | Send a file to a NAS folder |
-| `share(path)` | Create a public sharing link, returns the URL |
+| Method | Result |
+| --- | --- |
+| `connectivity()` | Verified File Station hostname/access and client request timing |
+| `status()` | Aggregate checks with explicit partial coverage |
+| `network_status()` | Client connectivity and source-labeled NAS interfaces |
+| `storage_status()` / `storage_disks()` | Available SNMPv3 capacity/status/disk indicators |
+| `service_list(running=False)` | Actual SSH service enumeration |
+| `list_page(path="/", limit=20, cursor=None, sort="name", order="asc")` | Live page, cursor and frozen listing ID |
+| `list_files(path=None, last=20)` | First live page as a list |
+| `info(path)` | One complete NAS path |
+| `search_page(query, path, glob=False, kind="all", limit=20, cursor=None)` | Completed and cleaned search snapshot |
+| `search_files(query, path, last=20)` | First search page as a list |
+| `download(path, dest=".", recursive=False, overwrite=False, skip_existing=False, dry_run=False)` | Transfer plan and completed/skipped/failed evidence |
+| `upload(local_path, path, overwrite=False, recursive=False, skip_existing=False, dry_run=False)` | Transfer into an existing NAS directory |
+| `mkdir(path, parents=False, dry_run=False)` | Ordinary directory plan/completions |
+| `copy(source, destination, recursive=False, overwrite=False, dry_run=False)` | Durable copy workflow |
+| `move(source, destination, overwrite=False, dry_run=False)` | Durable move/rename workflow |
+| `operation_status(identifier, wait=False)` | Observe the same task; never submit new writes |
+| `share_create(path, expires=None, no_expiry=False, password=None, dry_run=False)` | Explicitly restricted link creation |
+| `share_list(limit=20, cursor=None, show_url=False)` | Link inventory; URLs opt in |
+| `share_revoke(identifier, dry_run=False)` | Revoke only the selected link |
+| `logout()` | Clear local auth, retain settings and report remote invalidation |
 
-`list_files()` and `search_files()` return dicts:
+The Python API assumes the caller already authorized a write; human confirmation
+is a CLI concern. SDK `share(path, expires=..., no_expiry=...)` remains a URL-returning
+convenience but now requires an explicit expiry choice. `list_sharing_links`
+defaults to masking URLs. Transfer methods now return structured evidence rather
+than confirmation strings.
 
-```python
-{"path": "/home/a.txt", "name": "a.txt", "type": "file", "size": 1024, "modified": 1700000000}
-```
-
-Paths start with a shared folder (`/home/photos`), not a volume
-(`/volume1/home/photos`).
-
-## Sessions
-
-DSM session ids expire after 7 days, and a duplicate login elsewhere ends them
-sooner. The tool detects both and re-authenticates transparently, so an agent
-never sees a session error.
-
-## Connecting
-
-`resolve_quickconnect(server_id)` turns a QuickConnect ID into base-URL
-candidates ordered LAN → DDNS → relay, and `pick_reachable(candidates)` returns
-the first that answers. The relay always works but is throttled by Synology, so
-it is the last resort rather than the default.
-
-Both are module-level functions, usable independently:
-
-```python
-from connectonion.useful_tools.synology import resolve_quickconnect, pick_reachable
-
-url = pick_reachable(resolve_quickconnect("mynas"))
-```
-
-## No delete
-
-`SYNO.FileStation.Delete` is permanent — DSM's recycle bin is a share-level
-filesystem convention, not an API feature. The tool does not expose delete, so
-an agent cannot irreversibly destroy NAS files.
-
-## TLS
-
-DSM ships a self-signed certificate by default, so certificate verification is
-off for NAS connections. Traffic is still HTTPS.
-
-See the [CLI docs](../cli/synology.md) for the `co syno` commands.
+See the [CLI guide](../cli/synology.md) for profiles, adapter onboarding,
+path/race boundaries, migration changes, pending operations and the live
+acceptance limitation.

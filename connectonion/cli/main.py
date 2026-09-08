@@ -39,51 +39,7 @@ from ..core.usage import DEFAULT_MODEL
 console = Console()
 
 
-class _OneSuggestion(typer.core.TyperGroup):
-    """Answer a mistyped command once (#714).
-
-        $ co skil
-        No such command 'skil'. Did you mean 'skills'? Did you mean 'skills'?
-
-    Two layers each append one: Click builds the message with its own suggestion
-    and Typer's resolve_command adds a second to whatever Click produced. It read
-    that way at every level, including the nested `co outlook contact` group.
-
-    The two arrive by different routes, which is why this does not just switch a
-    layer off. Click 8.4's NoSuchCommand keeps `possibilities` and appends the
-    clause when the message is *rendered*:
-
-        def format_message(self):
-            if not self.possibilities:
-                return self.message
-            return f"{self.message} {_format_possibilities(self.possibilities)}"
-
-    while Typer writes its own copy into `.message` beforehand. So the fix is to
-    drop the text copy exactly when the exception is going to render one of its
-    own, and to leave it alone when it is not.
-
-    Which layer speaks is not stable: turning Typer's `suggest_commands` off
-    fixed this on typer 0.20 and left plain `No such command 'skil'.` on 0.27,
-    where Typer's is the only clause because Click gets no possibilities.
-    pyproject asks for `typer>=0.20.0`, so a user has either.
-    """
-
-    def resolve_command(self, ctx, args):
-        try:
-            return super().resolve_command(ctx, args)
-        except Exception as error:
-            # Not `except click.UsageError`: typer 0.27 vendors its own Click
-            # (typer._click), so the exception it raises is a different class from
-            # the installed click's and the handler would silently never run —
-            # inert in exactly the version where CI runs. Catching broadly is safe
-            # because this always re-raises and only touches an object carrying
-            # both of the attributes it is about to use.
-            if getattr(error, "possibilities", None) and hasattr(error, "message"):
-                error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
-            raise
-
-
-_SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
+from .typer_groups import _OneSuggestion
 
 
 def _typer_app(**kwargs) -> typer.Typer:
@@ -1278,8 +1234,6 @@ def gdrive_rm(
     handle_gdrive_rm(file_id)
 
 
-# Synology command group. `co syno` (no args) lists your shared folders.
-# Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
 _YOUTUBE_AUTH_HELP = (
     "Connect once with co auth google, then use the saved Google login like co gmail. "
     "Tokens refresh automatically through the existing Google OAuth broker. "
@@ -1355,76 +1309,8 @@ from .commands.gcalendar_commands import gcalendar_app
 gcalendar_app.info.cls = _OneSuggestion
 app.add_typer(gcalendar_app, name="gcalendar")
 
-syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
+from .commands.synology_cli import syno_app
 app.add_typer(syno_app, name="syno")
-
-
-@syno_app.callback(invoke_without_command=True)
-def syno_callback(ctx: typer.Context):
-    """With no subcommand, list your NAS shared folders."""
-    if ctx.invoked_subcommand is None:
-        from .commands.synology_commands import handle_syno_list
-        handle_syno_list()
-
-
-@syno_app.command("login")
-def syno_login(
-    url: str = typer.Option(None, "--url", help="Connect directly, e.g. https://nas.local:5001 (skips QuickConnect)"),
-):
-    """Connect your NAS by QuickConnect ID, or directly with --url."""
-    from .commands.synology_commands import handle_syno_login
-    handle_syno_login(url=url)
-
-
-@syno_app.command("ls")
-def syno_ls(
-    path: str = typer.Argument(None, help="Folder path, e.g. /home/photos. Omit to list shared folders."),
-    last: int = typer.Option(20, "--last", "-n", help="How many entries to show"),
-):
-    """List shared folders, or the contents of one folder."""
-    from .commands.synology_commands import handle_syno_list
-    handle_syno_list(path=path, last=last)
-
-
-@syno_app.command("search")
-def syno_search(
-    query: str = typer.Argument(..., help="Text or glob to look for in file names"),
-    path: str = typer.Option("/", "--in", help="Folder to search under"),
-    last: int = typer.Option(20, "--last", "-n", help="How many matches to show"),
-):
-    """Search the NAS by file name."""
-    from .commands.synology_commands import handle_syno_search
-    handle_syno_search(query, path=path, last=last)
-
-
-@syno_app.command("get")
-def syno_get(
-    ref: str = typer.Argument(..., help="File # from the last listing, or a full NAS path"),
-    dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
-):
-    """Download a file from the NAS."""
-    from .commands.synology_commands import handle_syno_get
-    handle_syno_get(ref, dest=dest)
-
-
-@syno_app.command("put")
-def syno_put(
-    local_path: str = typer.Argument(..., help="Local file to upload"),
-    path: str = typer.Argument(..., help="Destination NAS folder, e.g. /home/photos"),
-    overwrite: bool = typer.Option(False, "--overwrite", help="Replace an existing file of the same name"),
-):
-    """Upload a local file to the NAS."""
-    from .commands.synology_commands import handle_syno_put
-    handle_syno_put(local_path, path, overwrite=overwrite)
-
-
-@syno_app.command("share")
-def syno_share(
-    ref: str = typer.Argument(..., help="File # from the last listing, or a full NAS path"),
-):
-    """Create a public sharing link for a file or folder."""
-    from .commands.synology_commands import handle_syno_share
-    handle_syno_share(ref)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.

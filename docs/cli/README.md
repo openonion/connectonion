@@ -329,33 +329,27 @@ tokens and granted scopes remain local. See [Google auth](../integrations/google
 
 ---
 
-#### `co syno` - Synology NAS Files
+#### `co syno` - Synology NAS
 
-Your NAS from the terminal. Requires `co syno login` once (QuickConnect ID or
-`--url`; saved as `SYNOLOGY_*` in `~/.co/keys.env`).
+Verified profiles, source-labeled inspections, ordinary file operations and
+explicit sharing-link controls. All twenty core leaves support `--json`,
+`--nas`, `--non-interactive` and `--timeout`.
 
-**Basic usage:**
 ```bash
-co syno                                # your shared folders
-co syno ls /home/photos                # inside one
-co syno search invoice --in /home      # find by name
-co syno get 3 --to ~/Downloads         # download #3 from the listing
-co syno put report.pdf /home/docs      # upload
+co syno login --name home --url https://nas.example:5001 --username alice
+co syno status --json
+co syno ls /home/docs --json
+co syno search invoice --in /home/docs --json
+co syno download /home/docs/report.pdf --to ./Downloads/
+co syno upload ./report.pdf /home/docs
+co syno share list --json
 ```
 
-**Subcommands:**
-
-- `co syno login` - connect by QuickConnect ID, or directly with `--url`
-- `co syno` / `co syno ls [path]` - shared folders, or one folder (`--last/-n`)
-- `co syno search <query>` - find by file name (`--in` to scope)
-- `co syno get <#>` - download (`--to`)
-- `co syno put <path> <nas-folder>` - upload (`--overwrite`)
-- `co syno share <#>` - create a public sharing link
-
-There is deliberately no `co syno rm` — File Station's delete API is permanent,
-so unlike `co gdrive rm` it could not be made recoverable.
-
-See [synology.md](synology.md) for details.
+Legacy env-only NAS credentials require verified login. Numeric migration
+references require the exact `--listing` ID; downloads and uploads never
+overwrite by default. Optional monitoring requires explicit SNMPv3/SSH setup.
+Real NAS acceptance is pending. See [synology.md](synology.md) for the complete
+command inventory, adapter sources and migration behavior.
 
 ---
 
