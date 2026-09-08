@@ -36,9 +36,11 @@ def default_config() -> dict:
             # items_per_batch is the most the maintainer reads raw. A sync gathers up
             # to extract_items_per_batch; a batch larger than items_per_batch is first
             # digested by the tool-less wiki-extract pass and the maintainer reads that.
+            # 40, not 150: one turn digesting 79 mails came back as 18 bullets, and a
+            # person's page is only as full as the notes handed to the maintainer.
             "limits": {"runner_calls_per_day": 6, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 600,
-                       "extract_items_per_batch": 150, "extract_chars_per_batch": 300000}}
+                       "extract_items_per_batch": 40, "extract_chars_per_batch": 300000}}
 
 
 def validate(config: dict) -> dict:

@@ -83,8 +83,41 @@ in a real 60-day run):
 ## How to write a note
 
 One bullet per fact, grouped under the headings above (only the headings you
-use). Each bullet says the fact, who said it (`user`, `assistant`, or the
-sender), the date, and the source ids it comes from, like this:
+use). Every message that is not noise yields at least one bullet; a batch of
+eighty mails yields eighty or more. Each bullet says the fact, who said it
+(`user`, `assistant`, or the sender), the date, and the source ids it comes
+from.
+
+**People are written as a block per person, with these five sub-bullets,
+each present when the batch supports it.** This is the shape the person's
+page will take; a sub-bullet you leave out cannot appear there.
+
+```
+## People
+- **Vern Chan** — vern.chan@unsw.edu.au
+  - Role: UNSW Global Program Manager, UNSW Founders + Office of Global
+    Affairs, L1 Hilmer Building, Kensington. Known through UNSW Founders.
+  - History:
+    - 2026-07-10 — introduced the user to Julia Lustig (Concord Visa) after
+      the user's US visa refusal in May; same hour, invited the user to be a
+      startup partner for Summer 2027 CDEV3000/6000, WIL agreement due 17 Jul.
+      (outlook:ec65e5ff6168, outlook:cf96dea34535)
+    - 2026-07-21 — handed the user to Helena (contract) and Natalie (dates);
+      asked 2 or 3 teams. The user replied: one team of 4–6, sessions 3–5 pm,
+      Kensington or CBD. (outlook:59f218fbda83, outlook:aa6d5f8d4dfc)
+  - How they write: opens "Hi Aaron," / "Dear Aaron,"; signs "Thank you," or
+    "Thanks and with warm regards,"; short operational mails with a "Next
+    steps:" list; copies colleagues and asks to keep them in the loop; an
+    occasional 😊. Quote: "Thank you for participating and being frank at
+    this early planning stage. We're trying to make things work for both
+    sides." (2026-07-21)
+  - How the user writes to them: "Hi Vern," then one paragraph per topic —
+    "On capacity: … On timing: … On location: …" — direct about limits ("two
+    or three teams would stretch me too thin").
+  - Open: WIL agreement with Helena; 3–5 pm slot to confirm with Natalie.
+```
+
+Other headings keep the one-line bullet form:
 
 ```
 ## Decisions

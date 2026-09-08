@@ -434,7 +434,7 @@ def test_older_config_without_extraction_limits_still_loads(tmp_path):
     for key in ("extract_items_per_batch", "extract_chars_per_batch"):
         config["limits"].pop(key)
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(config))
-    assert read_config(tmp_path)["limits"]["extract_items_per_batch"] == 150
+    assert read_config(tmp_path)["limits"]["extract_items_per_batch"] == 40
 
 
 def test_run_record_breaks_usage_down_by_stage_source_and_size(tmp_path, monkeypatch):
