@@ -34,8 +34,10 @@ def snapshot(root: Path) -> dict:
     records = []
     for record in notebook.list():
         text = notebook.read(record)
+        updated = datetime.fromtimestamp(notebook.path(record).stat().st_mtime, timezone.utc)
         records.append({"path": record, "category": record.split("/")[0],
-                        "title": _title(record, text), "text": text})
+                        "title": _title(record, text), "text": text,
+                        "updated": updated.isoformat(timespec="seconds")})
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "status": status(root), "subscriptions": subscriptions(root),
