@@ -105,6 +105,10 @@ def _print_human(result):
         print(payload["session_id"])
     for session in payload.get("sessions", []):
         print(f"{session['session_id']}\t{session['status']}")
+    # The remote already names what to do next; --json callers got it as
+    # next_actions, and human callers were the only ones who did not.
+    for action in result.get("next_actions", []):
+        print(f"Next: {action}", file=sys.stderr)
 
 
 def _invalid_argument(message):
