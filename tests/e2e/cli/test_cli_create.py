@@ -353,7 +353,7 @@ class TestCliCreate:
                                                 '--yes', '--template', 'co-ai'])
             assert result.exit_code == 0
 
-            config = yaml.safe_load(open("perm-agent/.co/host.yaml"))
+            config = yaml.safe_load(Path("perm-agent/.co/host.yaml").read_text())
             permissions = config.get("permissions", {})
             assert permissions.get("read", {}).get("allowed") is True
             assert permissions.get("glob", {}).get("allowed") is True

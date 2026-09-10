@@ -295,27 +295,26 @@ class TestProviders:
 
 
 class TestInput:
-    """Tests for Input class (if importable)."""
+    """The input widget is importable under its real name.
+
+    This used to import `SmartInput` inside a try/except that skipped on
+    ImportError. No such class exists — the widget is `Input` — so the test
+    skipped on every run since it was written and would have gone on skipping
+    through any breakage of the real module. A required import that fails is
+    a failure.
+    """
 
     def test_input_import(self):
-        """Test Input can be imported."""
-        try:
-            from connectonion.tui.input import SmartInput
-            assert SmartInput is not None
-        except ImportError:
-            pytest.skip("SmartInput not available")
+        from connectonion.tui.input import Input
+        assert callable(Input)
 
 
 class TestPick:
-    """Tests for Pick class (if importable)."""
+    """Same story: the picker is the function `pick`, never a class `Pick`."""
 
     def test_pick_import(self):
-        """Test Pick can be imported."""
-        try:
-            from connectonion.tui.pick import Pick
-            assert Pick is not None
-        except ImportError:
-            pytest.skip("Pick not available")
+        from connectonion.tui.pick import pick
+        assert callable(pick)
 
 
 class TestTriggerAutoComplete:
