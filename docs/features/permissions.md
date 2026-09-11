@@ -9,9 +9,10 @@ the human approval hook:
 
 - workspace reads and reversible workspace edits are allowed;
 - focused test, lint, type-check, and build commands are allowed;
-- read-only shell commands (`head`, `grep`, `wc`, `ls`, `sed` without `-i`, ...)
-  on workspace paths with no output redirect are allowed, alone or as pipe
-  segments beside a granted command (#1481);
+- read-only shell commands (`head`, `tail`, `grep`, `wc`, `ls`, `cut`, `jq`, ...)
+  on workspace paths are allowed, alone or as pipe segments beside a granted
+  command; nothing that takes a program text is read-only, so `sed` and `awk`
+  still ask (#1481);
 - deletions and credential access are denied, including reads of key material
   by path or name (`.ssh/`, `.co/keys/`, `id_rsa`, `*.pem`, ...) wherever it sits;
 - deployment, publishing, external communication, payments, outside-workspace

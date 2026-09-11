@@ -156,15 +156,22 @@ In Auto, a shell command whose every segment only reads, filters or prints
 runs without a dialog — and, unattended, without being denied:
 
 ```
-head tail cat less more grep egrep fgrep rg wc ls sed awk sort uniq cut tr
+head tail cat less more grep egrep fgrep rg wc ls sort uniq cut tr
 basename dirname jq echo printf pwd cd true test [ which file stat diff
 date whoami hostname uname
 ```
 
-Two things take a command back out of this list: a path argument that
-resolves outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`,
-`cd ..`) asks, the same way the read *tools* ask for outside-workspace reads;
-and `sed -i` / `--in-place` asks, because it rewrites the file.
+`sed` and `awk` are deliberately **not** on it. They take a program, and a
+program is code: `awk 'BEGIN{system("rm -rf /")}'` reads like an inspection
+and is arbitrary execution, and GNU `sed`'s `e` flag is the same. A rule that
+kept them while excluding their execution constructs would be a parser in a
+security path. Both ask, as they did before 1.8.5, including their innocent
+shapes — whose job `head`, `tail`, `cut` and `read_file(limit=, offset=)`
+already do. Nothing else on the list takes a program text.
+
+One thing takes a listed command back out: a path argument that resolves
+outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`, `cd ..`) asks,
+the same way the read *tools* ask for outside-workspace reads.
 
 Credentials are denied before any of this applies, and not only by token
 (`.env`, `secret`, `credential`): key material is recognised by where it lives

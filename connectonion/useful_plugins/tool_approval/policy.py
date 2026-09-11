@@ -59,11 +59,19 @@ _SENSITIVE_COMMANDS = {
 # deliberately not widened here.
 _READ_ONLY_COMMANDS = {
     "head", "tail", "cat", "less", "more", "grep", "egrep", "fgrep", "rg",
-    "wc", "ls", "sed", "awk", "sort", "uniq", "cut", "tr", "basename",
+    "wc", "ls", "sort", "uniq", "cut", "tr", "basename",
     "dirname", "jq", "echo", "printf", "pwd", "cd", "true", "test", "[",
     "which", "file", "stat", "diff", "date", "whoami", "hostname", "uname",
 }
-_SED_IN_PLACE_FLAGS = ("-i", "--in-place")
+# `sed` and `awk` are deliberately absent. They take a *program*, and a
+# program is code: `awk 'BEGIN{system("rm -rf /")}'` reads like an inspection
+# and is arbitrary execution, as does `sed 's/a/b/e'` on GNU. Any rule that
+# tried to keep them while excluding their execution constructs would be a
+# parser in a security path, written by the person it has to outsmart. The
+# inspection they are reached for has cover: `head`, `tail`, `cut`, `sort`,
+# `uniq`, `wc`, `jq` and `grep` are on the list, `read_file` takes `limit`
+# and `offset`, and the agent has `grep` and `glob` tools. Both still ask,
+# which is what they did before 1.8.5 as well.
 # Key material, recognised by where it lives and what it is called rather than
 # by substring: `keys.md` is documentation and `monkey.txt` is a file. Reading
 # any of this is a credential read wherever it sits, so the workspace rule is
@@ -98,8 +106,7 @@ def _is_key_material(word: str) -> bool:
 # leaving the workspace makes every later relative path a path outside it.
 _PATH_READING_COMMANDS = {
     "head", "tail", "cat", "less", "more", "grep", "egrep", "fgrep", "rg",
-    "wc", "ls", "sed", "awk", "sort", "uniq", "cut", "jq", "file", "stat",
-    "diff", "cd",
+    "wc", "ls", "sort", "uniq", "cut", "jq", "file", "stat", "diff", "cd",
 }
 
 
@@ -269,8 +276,6 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
     if focused:
         return decision("verification", "allow", "focused test, lint, or build command", "workspace")
     if first in _READ_ONLY_COMMANDS:
-        if first == "sed" and any(w.startswith(_SED_IN_PLACE_FLAGS) for w in words[1:]):
-            return decision("workspace_edit", "ask", "sed -i rewrites files; use the edit tool", "call", requires_human=True)
         if root is not None and first in _PATH_READING_COMMANDS and _reads_outside_workspace(words, root):
             return decision("read_outside_workspace", "ask", "reading outside the workspace requires approval", "call", requires_human=True)
         return decision("read", "allow", "read-only command", "workspace")

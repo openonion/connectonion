@@ -406,8 +406,6 @@ READ_ONLY_COMMANDS = [
     "rg --count foo",
     "wc -l notes.txt",
     "ls -la",
-    "sed -n 1,10p notes.txt",
-    "awk '{print $1}' notes.txt",
     "sort notes.txt | uniq -c | cut -d' ' -f1",
     "basename /tmp/x.txt",
     "jq .name package.json",
@@ -434,8 +432,9 @@ def test_headless_auto_allows_read_only_commands(tmp_path, monkeypatch, command)
 @pytest.mark.parametrize(
     "command",
     [
-        "sed -i s/a/b/ notes.txt",            # in-place edit writes the file
-        "sed --in-place s/a/b/ notes.txt",
+        "sed -n 1,10p notes.txt",             # sed takes a program: not read-only
+        "sed -i s/a/b/ notes.txt",
+        "awk '{print $1}' notes.txt",         # nor is awk
         "echo secret >> ~/.bashrc",           # a redirect outside the workspace
         "echo x > ../outside.txt",
         "echo 'Bash(*)' > .co/host.yaml",     # a redirect into a control file
@@ -673,3 +672,30 @@ def test_ordinary_files_still_reach_the_read_and_write_tools(tmp_path, monkeypat
     check_approval(instance)
 
     assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
+
+
+def test_the_read_only_list_is_not_a_way_to_run_arbitrary_code(tmp_path, monkeypatch):
+    """Nothing that takes a program text is read-only.
+
+    `awk 'BEGIN{system("rm -rf /")}'` reads like an inspection and is
+    arbitrary execution; GNU `sed`'s `e` flag is the same. Keeping them while
+    excluding their execution constructs would need a parser in a security
+    path, so both ask — including their innocent shapes, whose job `head`,
+    `cut` and `read_file(limit=, offset=)` already do.
+    """
+    monkeypatch.chdir(tmp_path)
+    for command in [
+        "awk 'BEGIN{system(\"rm -rf /\")}'",   # arbitrary execution
+        "awk -f script.awk data.txt",          # runs a program file
+        "awk '{print $1}' notes.txt",           # the innocent shape, same rule
+        "sed 's/a/b/e' notes.txt",             # GNU sed's e flag executes
+        "sed -n 1,10p notes.txt",              # the innocent shape, same rule
+        "find . -exec rm {} +",
+        "xargs -I{} rm {}",
+        "env sh -c 'rm -rf /'",
+    ]:
+        instance = agent(io=False)
+        instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+        apply_auto_approve_policy(instance)
+        result = instance.current_session["pending_tool"]["approval_policy"]
+        assert result["decision"] == "deny", (command, result)

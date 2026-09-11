@@ -162,6 +162,27 @@ The shell rule and the tool rule disagreed. `cat server.pem` was denied;
 the only reason nothing leaked is that the model happened to have better
 manners than the policy. Both now refuse key material by the same rule.
 
-Four of the five bugs in this change were found by running the thing rather
-than by reading it. The fifth was found by a test — the one I wrote to run
-the thing.
+Then the third, and this one I had already written down. The pull request
+said, under "least confident about": *`awk` can call `system()` and GNU `sed`
+has an `e` flag, neither of which this checks.* Having written the sentence,
+I ran it:
+
+```
+awk 'BEGIN{system("rm -rf /")}'   →  allow
+```
+
+There is no clever fix. Keeping `awk` and `sed` on a read-only list while
+excluding the ways they execute means writing a parser for two languages, in
+a security path, and being right about it — against an adversary who is
+prompt injection and has all day. The honest line is the one the category
+already implies: a command that takes a *program* is not a command that
+reads. Both come off the list. They ask, which is what they did before any
+of this, and the inspection they get reached for is covered by `head`,
+`tail`, `cut`, `jq` and `read_file(limit=, offset=)`.
+
+That widening was the one thing in this change that made the system less
+safe than 1.8.4, and it lasted about an hour, because I wrote down what I was
+unsure about instead of hoping nobody asked.
+
+Five of the six bugs here were found by running the thing rather than by
+reading it. The sixth was found by a test — the one I wrote to run the thing.
