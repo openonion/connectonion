@@ -406,7 +406,7 @@ class TestCliInit:
             result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
-            config = yaml.safe_load(open(".co/host.yaml"))
+            config = yaml.safe_load(Path(".co/host.yaml").read_text())
             permissions = config.get("permissions", {})
 
             # Check key permissions from template
@@ -422,7 +422,7 @@ class TestCliInit:
             result = self.runner.invoke(cli, ['init', './'])
             assert result.exit_code == 0
 
-            config = yaml.safe_load(open(".co/host.yaml"))
+            config = yaml.safe_load(Path(".co/host.yaml").read_text())
             assert "relay_url" not in config
 
     def test_init_copies_all_docs_to_co_docs(self):

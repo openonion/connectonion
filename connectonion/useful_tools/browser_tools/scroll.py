@@ -153,14 +153,16 @@ def _screenshots_different(
 
         from PIL import Image
 
-        img1 = Image.open(os.path.join(base_dir, file1)).convert('RGB')
-        img2 = Image.open(os.path.join(base_dir, file2)).convert('RGB')
+        with Image.open(os.path.join(base_dir, file1)) as opened1, \
+                Image.open(os.path.join(base_dir, file2)) as opened2:
+            img1 = opened1.convert('RGB')
+            img2 = opened2.convert('RGB')
 
-        diff = sum(
-            abs(a - b)
-            for p1, p2 in zip(img1.getdata(), img2.getdata())
-            for a, b in zip(p1, p2)
-        )
+        # Raw RGB bytes, one per channel: the same per-channel sum as the
+        # old per-pixel loop, without `Image.getdata`, which Pillow removes
+        # in 14 (2027-10-15) and which every run had been warning about
+        # under a blanket DeprecationWarning ignore.
+        diff = sum(abs(a - b) for a, b in zip(img1.tobytes(), img2.tobytes()))
         threshold = img1.size[0] * img1.size[1] * 3 * 0.01  # 1%
         return diff > threshold
     except Exception:

@@ -765,9 +765,12 @@ async def test_gateway_refusals_do_not_retain_parser_dns_or_body_payloads():
     body_reader = asyncio.StreamReader()
     body_reader.feed_data(b"secret-partial-body")
     body_reader.feed_eof()
-    _, sink = await asyncio.open_connection(sock=socket.socketpair()[0])
+    ours, theirs = socket.socketpair()
+    _, sink = await asyncio.open_connection(sock=ours)
     with pytest.raises(GatewayRefusal) as body_refusal:
         await gateway._stream_body(body_reader, sink, 100)
+    sink.close()
+    theirs.close()
     sink.close()
     assert body_refusal.value.__context__ is None
     assert "secret-partial" not in repr(body_refusal.value)

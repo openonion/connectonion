@@ -138,12 +138,26 @@ class TestCliInit:
                 assert '__pycache__' in content
 
 
+def _installed_co():
+    """The `co` console script that belongs to the interpreter running the tests.
+
+    Not `shutil.which('co')`: on a developer machine PATH can find a `co` from
+    some other interpreter (a stale user-site install, another venv), and then
+    this test fails with `No module named connectonion` while CI — where the
+    only `co` is the one just installed — passes. The installation this test
+    claims to check is the one beside `sys.executable`.
+    """
+    import sys
+    return shutil.which('co', path=str(Path(sys.executable).parent))
+
+
 def _co_cli_works():
-    """Check if 'co --version' actually runs successfully."""
+    """Check if the installed 'co --version' actually runs successfully."""
     import subprocess
-    if shutil.which('co') is None:
+    co = _installed_co()
+    if co is None:
         return False
-    result = subprocess.run(['co', '--version'], capture_output=True, text=True)
+    result = subprocess.run([co, '--version'], capture_output=True, text=True)
     return result.returncode == 0
 
 
@@ -157,7 +171,7 @@ class TestCliCommands:
     def test_co_command_works(self):
         """Test that 'co' command is available after installation."""
         import subprocess
-        result = subprocess.run(['co', '--version'], capture_output=True, text=True)
+        result = subprocess.run([_installed_co(), '--version'], capture_output=True, text=True)
         assert result.returncode == 0
         # Check for version in output (not specific version number)
         assert any(c.isdigit() for c in result.stdout)

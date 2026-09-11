@@ -20,6 +20,14 @@ from connectonion.core.usage import TokenUsage
 
 @pytest.fixture(autouse=True)
 def _mock_llm(monkeypatch):
+    """Stub only the model. Tool execution runs the real Agent → ToolExecutor path.
+
+    An earlier version of this fixture also replaced `_execute_and_record_tools`
+    with a fake that fired before_each_tool / on_error / after_each_tool /
+    after_tools by hand. Every test below then passed no matter what the real
+    executor emitted, or in what order — the fake was asserting on itself
+    (#210). Now a dropped or reordered event in tool_executor.py fails here.
+    """
     class FakeLLM:
         model = "test-model"
 
@@ -33,31 +41,6 @@ def _mock_llm(monkeypatch):
             return LLMResponse(content="mock", tool_calls=tool_calls, raw_response=None, usage=TokenUsage())
 
     monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *args, **kwargs: FakeLLM())
-
-    def fake_exec(self, tool_calls):
-        for tc in tool_calls:
-            self._invoke_events('before_each_tool')
-            is_error = tc.name == 'failing_tool'
-            result_text = f"Results for {tc.arguments.get('query', '')}" if not is_error else 'Error executing tool'
-            status = 'error' if is_error else 'success'
-            trace_entry = {
-                'id': self._next_trace_id(),
-                'type': 'tool_result',
-                'name': tc.name,
-                'args': tc.arguments,
-                'status': status,
-                'result': result_text,
-                'ts': 0,
-            }
-            if is_error:
-                trace_entry['error'] = 'Intentional failure'
-            self.current_session['trace'].append(trace_entry)
-            if is_error:
-                self._invoke_events('on_error')
-            self._invoke_events('after_each_tool')
-        self._invoke_events('after_tools')
-
-    monkeypatch.setattr("connectonion.core.agent.Agent._execute_and_record_tools", fake_exec)
 
 
 def search(query: str) -> str:
