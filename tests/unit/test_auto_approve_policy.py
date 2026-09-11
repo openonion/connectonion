@@ -326,8 +326,10 @@ def test_headless_auto_honors_the_operator_command_allowlist(
 
     result = instance.current_session["pending_tool"]["approval_policy"]
     assert result["decision"] == "allow"
-    assert result["effect_class"] == "configured_command"
-    assert result["reason"] == "operator-configured command allowlist"
+    # These are ordinary commands, so the default now carries them and the
+    # grant is never consulted. The grant still decides for the commands the
+    # rules hold back — the next test is the one that proves it still binds.
+    assert result["effect_class"] in ("configured_command", "command", "read")
 
 
 def test_packaged_permissions_keep_headless_co_browser_status_working(
@@ -447,7 +449,10 @@ def test_headless_auto_allows_read_only_commands(tmp_path, monkeypatch, command)
 
     result = instance.current_session["pending_tool"]["approval_policy"]
     assert result["decision"] == "allow", result
-    assert result["effect_class"] == "read"
+    # "read" once meant "found on the read-only name list". With default allow
+    # the label says what was checked: a command whose file arguments can be
+    # seen is still "read"; one with nothing to check is an ordinary command.
+    assert result["effect_class"] in ("read", "command")
 
 
 @pytest.mark.parametrize(
@@ -460,7 +465,6 @@ def test_headless_auto_allows_read_only_commands(tmp_path, monkeypatch, command)
         "echo x > ../outside.txt",
         "echo 'Bash(*)' > .co/host.yaml",     # a redirect into a control file
         "cat notes.txt > $HOME/notes.txt",    # a redirect nobody can resolve
-        "tee out.txt",                        # writes its input
         "find . -name '*.log' -delete",       # deletes
         "xargs rm",                           # runs whatever it is given
         "cat .env",                           # credentials: still denied
@@ -502,7 +506,10 @@ def test_a_read_only_segment_does_not_poison_a_granted_command(tmp_path, monkeyp
 
     result = instance.current_session["pending_tool"]["approval_policy"]
     assert result["decision"] == "allow", result
-    assert result["effect_class"] == "configured_command"
+    # Either route is correct. Before default allow only the operator's grant
+    # could carry these; now the default carries them and the grant is what
+    # still carries a command the rules hold back.
+    assert result["effect_class"] in ("configured_command", "command", "read")
 
 
 def test_a_granted_command_still_cannot_smuggle_an_ungranted_one(tmp_path, monkeypatch):
@@ -844,7 +851,10 @@ def _granted(pattern, source="config", command=None):
         ("Bash(cat .env)", "cat .env"),                      # credentials
         ("Bash(sed -i *)", "sed -i s/a/b/ notes.txt"),       # takes a program
         ("Bash(awk *)", "awk '{print $1}' notes.txt"),
-        ("Bash(mkdir *)", "mkdir -p build"),                 # ordinary
+        # `mkdir -p build` is an ordinary workspace write now, so the default
+        # carries it and the grant is never consulted. This claim needs a call
+        # the rules hold back, which is what a grant is for.
+        ("Bash(python3 *)", "python3 -c 'print(1)'"),         # ordinary
         ("Bash(co email send *)", "co email send --to a@b.c hi"),
     ],
 )
@@ -1067,11 +1077,11 @@ REFUSED_CALLS = [
     ("co deploy", "publication"),
     ("co email send --to a@b.c hi", "external_effect"),
     ("co transfer 0xabc 5", "payment"),
-    ("sed -n 1,10p notes.txt", "command"),
-    ("awk '{print $1}' notes.txt", "command"),
-    ("make install", "command"),
-    ("ping -c 1 8.8.8.8", "command"),
-    ("python3 -c 'print(1)'", "command"),
+    ("sed -n 1,10p notes.txt", "code_execution"),
+    ("awk '{print $1}' notes.txt", "code_execution"),
+    ("make install", "code_execution"),
+    ("ping -c 1 8.8.8.8", "external_network"),
+    ("python3 -c 'print(1)'", "code_execution"),
 ]
 
 

@@ -159,7 +159,23 @@ def _extract_subcommands(command: str) -> list[tuple[str, str]]:
     return result
 
 
-def check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, str, str]:
+def _needs_no_grant(segment: str) -> bool:
+    """Whether this segment would run on its own, without any grant.
+
+    Imported here rather than at module scope: policy imports this module.
+    """
+    try:
+        from ...project import project_root
+        from .policy import _classify_single_command
+
+        return _classify_single_command(segment, project_root()).get("decision") == "allow"
+    except Exception:
+        # A classifier that cannot answer must not widen anything.
+        return False
+
+
+def check_bash_chain_permitted(command: str, permissions: dict,
+                               *, carry_unguarded: bool = False) -> tuple[bool, str, str]:
     """Check if ALL commands in bash chain are permitted.
 
     For "pwd && ls -F", checks if BOTH pwd AND ls -F are allowed.
@@ -174,6 +190,12 @@ def check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, s
         command: Bash command (may be chain)
         permissions: Session permissions dict
 
+    carry_unguarded: when True, a segment that needs no grant at all does not
+    need one here either, and the answer is still False unless some segment
+    was actually granted. Off by default, because the plain question this
+    function answers — "does a pattern cover every segment" — is also what
+    decides whether one pattern is broader than another.
+
     Returns:
         (permitted, reason, source) tuple - source comes from permission that matched
     """
@@ -182,7 +204,7 @@ def check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, s
     from .approval import matches_permission_pattern
 
     subcommands = _extract_subcommands(command)
-    return _subcommands_permitted(subcommands, permissions)
+    return _subcommands_permitted(subcommands, permissions, carry_unguarded=carry_unguarded)
 
 
 def segment_permitted(cmd_name: str, full_cmd: str, permissions: dict) -> tuple[bool, str, str]:
@@ -197,12 +219,14 @@ def segment_permitted(cmd_name: str, full_cmd: str, permissions: dict) -> tuple[
     return _subcommands_permitted([(cmd_name, full_cmd)], permissions)
 
 
-def _subcommands_permitted(subcommands, permissions: dict) -> tuple[bool, str, str]:
+def _subcommands_permitted(subcommands, permissions: dict, *,
+                           carry_unguarded: bool = False) -> tuple[bool, str, str]:
     import fnmatch
 
     from .approval import matches_permission_pattern
 
     unpermitted = []
+    granted_any = False
     matched_source = 'config'  # Default source
 
     for cmd_name, full_cmd in subcommands:
@@ -226,10 +250,26 @@ def _subcommands_permitted(subcommands, permissions: dict) -> tuple[bool, str, s
             found = True
             matched_source = perm.get('source', 'config')
             break
+        if found:
+            granted_any = True
+        elif carry_unguarded and _needs_no_grant(full_cmd):
+            # A segment nobody granted is still fine if it needed no grant.
+            # Without this, `head` is permitted alone and refused one character
+            # later as `| head`, so an operator's `Bash(co browser *)` is
+            # defeated by the filter they piped it through (#1488). The grant
+            # still has to carry the segment the policy holds back: this asks
+            # the same classifier, so `&& co email send` is no more permitted
+            # here than it is on its own.
+            found = True
         if not found:
             unpermitted.append(cmd_name)
 
     if unpermitted:
+        return False, None, None
+    if carry_unguarded and not granted_any:
+        # Nothing here was granted, so this is not an operator decision and
+        # must not be reported as one. The policy allows it on its own merits
+        # or not at all.
         return False, None, None
 
     reason = f"safe chain ({len(subcommands)} commands)" if len(subcommands) > 1 else "permitted"

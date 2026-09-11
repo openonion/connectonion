@@ -511,7 +511,7 @@ def check_approval(agent: 'Agent') -> None:
             # This prevents sneaking in dangerous commands via chaining
             if tool_name == 'bash' and 'command' in tool_args:
                 # Check if ALL commands in chain are permitted
-                permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions)
+                permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions, carry_unguarded=True)
                 if permitted:
                     if getattr(getattr(agent, 'logger', None), 'console', None):
                         _log_permission_granted(agent, 'bash', tool_args, source, reason)
@@ -880,7 +880,7 @@ def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tup
     # prefix-match the whole chain string ("co status && rm -rf /") and wrongly
     # permit the dangerous half. Per-subcommand matching is the only safe check.
     if tool_name == 'bash' and 'command' in tool_args:
-        permitted, reason, _ = check_bash_chain_permitted(tool_args['command'], permissions)
+        permitted, reason, _ = check_bash_chain_permitted(tool_args['command'], permissions, carry_unguarded=True)
         return (True, reason or "permitted") if permitted else (False, "command not in the permission whitelist")
 
     for pattern, perm in permissions.items():
