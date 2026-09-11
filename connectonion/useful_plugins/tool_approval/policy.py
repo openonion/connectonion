@@ -523,8 +523,11 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             f"{result['reason']}; no approval channel is available",
             result["scope"],
         )
-        result["remedy"] = grant_remedy(
-            pending.get("name"), pending.get("arguments") or {}, result["effect_class"]
+    if result["decision"] == "deny":
+        # Every refusal the policy makes, not only the headless ones: a deny
+        # for deletion or credentials used to arrive as a bare sentence too.
+        result["reminder"] = refusal_reminder(
+            pending.get("name"), pending.get("arguments") or {}, result
         )
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
@@ -551,7 +554,16 @@ _VALUE_LOOKING = ("-", "/", "~", ".")
 # little as possible. `rm -rf build` gets `Bash(rm -rf build)`, not
 # `Bash(rm *)`: the wildcard would also cover `rm -rf /`, and a nudge in a
 # refusal message is a nudge toward exactly what it says.
-_SUGGEST_EXACTLY = {"deletion", "credentials", "payment", "authorization_control"}
+_SUGGEST_EXACTLY = {
+    "deletion", "credentials", "payment", "authorization_control",
+    # A path-based refusal is about the path, not the verb: `Bash(cat *)`
+    # cannot allow `cat /etc/shadow`, because a wildcard is only honoured for
+    # the effect its own text names and `cat` alone is an ordinary read. The
+    # exact command is the only pattern that actually works — and a remedy
+    # that does not work is worse than none, because it gets widened until
+    # something does.
+    "read_outside_workspace", "write_outside_workspace",
+}
 
 
 def suggested_grant_pattern(tool_name: str, args: dict, effect_class: str | None = None) -> str:
@@ -586,15 +598,11 @@ def suggested_grant_pattern(tool_name: str, args: dict, effect_class: str | None
 def grant_remedy(tool_name: str, args: dict, effect_class: str | None = None) -> str:
     """How to allow this call next time, in the two places that work."""
     pattern = suggested_grant_pattern(tool_name, args, effect_class)
-    if pattern.startswith("Bash("):
-        yaml_key = f'"{pattern}"'
-    else:
-        yaml_key = f'"{pattern}"'
     return (
         f"Nothing has granted this. To allow it — including unattended — write it down once:\n"
         f"  • in .co/host.yaml:\n"
         f"      permissions:\n"
-        f"        {yaml_key}:\n"
+        f'        "{pattern}":\n'
         f"          allowed: true\n"
         f"          source: config\n"
         f"          reason: why you want this\n"
@@ -602,9 +610,191 @@ def grant_remedy(tool_name: str, args: dict, effect_class: str | None = None) ->
         f"            type: never\n"
         f"  • or in the skill that needs it, in its SKILL.md frontmatter:\n"
         f"      tools:\n"
-        f"        - \"{pattern}\"\n"
+        f'        - "{pattern}"\n'
         f"A grant written in either place runs the call without asking again. "
         f"Narrow the pattern if it is broader than you meant."
+    )
+
+
+# What each refusal means in plain words, and what to try instead of it. The
+# second half is the part that matters: a refusal an agent cannot act on gets
+# retried until the iteration budget runs out, or worked around by widening
+# something. Both look like the policy working.
+_WHY_AND_INSTEAD = {
+    "read": (
+        "the file is outside this workspace, or its path comes from a variable "
+        "or a substitution so the policy cannot tell where it points",
+        "Read something inside the workspace, or spell the path out literally. "
+        "If you genuinely need a file from elsewhere, say which file and why — "
+        "do not try another spelling of the same path.",
+    ),
+    "read_outside_workspace": (
+        "the file is outside this workspace, or its path comes from a variable "
+        "or a substitution so the policy cannot tell where it points",
+        "Read something inside the workspace, or spell the path out literally. "
+        "If you genuinely need a file from elsewhere, say which file and why — "
+        "do not try another spelling of the same path.",
+    ),
+    "credentials": (
+        "it reads credentials or key material — an .env file, a private key, "
+        "an ssh or cloud credential directory, the agent's own signing key",
+        "You almost never need a secret's contents to do the work. Say what you "
+        "were going to use it for; the answer is usually a command that reads it "
+        "itself, or a value the operator can put in the environment.",
+    ),
+    "deletion": (
+        "it deletes or truncates, which is not reversible",
+        "Move what you want gone into a scratch directory inside the workspace "
+        "instead, or ask before removing anything. If the deletion is the point "
+        "of the task, name exactly what is to be deleted and get it granted.",
+    ),
+    "write_outside_workspace": (
+        "it writes outside this workspace",
+        "Write inside the workspace. If the file has to land elsewhere, produce "
+        "it in the workspace and say where it should be copied to.",
+    ),
+    "authorization_control": (
+        "it names a file that decides what this agent may do — host.yaml, "
+        "schedule.yaml, admins.txt, or the keys directory",
+        "No grant unlocks these; only a person editing the file by hand. Stop "
+        "and say which line you believe needs to change and why, and let the "
+        "operator make the change.",
+    ),
+    "external_network": (
+        "it leaves this machine",
+        "Use a read-only tool on something already local, or a fetch tool if one "
+        "is available to you. If the request has to go out, say where and why.",
+    ),
+    "publication": (
+        "it publishes, deploys or pushes — other people see the result and it "
+        "cannot be taken back",
+        "Prepare the change and stop there. Report what is ready and let a person "
+        "decide when it goes out.",
+    ),
+    "external_effect": (
+        "it has an effect outside this machine that someone will notice — mail "
+        "sent, a message posted, a server created or destroyed",
+        "Draft it and stop. Show what you would send or create, and let a person "
+        "decide. For a scheduled job that must do this every run, the grant "
+        "belongs in the skill (see above).",
+    ),
+    "payment": (
+        "it moves money or credit",
+        "Never retry this. Report what it would cost and what for, and stop.",
+    ),
+    "workspace_edit": (
+        "the edit target is missing, ambiguous, or the command rewrites a file "
+        "in place",
+        "Use the write or edit tool with an explicit path — it is reversible and "
+        "the policy allows it inside the workspace.",
+    ),
+    "command": (
+        "nothing classifies it as verification or as read-only, and nothing has "
+        "granted it. `sed` and `awk` land here on purpose: they take a program, "
+        "so they are execution, not reading",
+        "For inspecting a file or output, `head`, `tail`, `cat`, `grep`, `wc`, "
+        "`cut`, `sort`, `uniq` and `jq` all run without a grant, and "
+        "`read_file(limit=, offset=)` is better than any of them. For anything "
+        "else, name the goal rather than trying a different command that does "
+        "the same thing.",
+    ),
+    "unknown": (
+        "the tool is not one the policy knows, so it never runs silently",
+        "Use a tool that is already available to you. If this one is genuinely "
+        "needed, say which and why.",
+    ),
+    "task_control": (
+        "stopping a running task needs a person",
+        "Report what is running and why you think it should stop.",
+    ),
+}
+
+def _suggestion_would_work(tool_name: str, args: dict, effect_class: str, pattern: str) -> bool:
+    """Would pasting this pattern actually allow the call?
+
+    Asked rather than assumed, because two of my first answers were wrong in
+    the same way and a list of "grantable effect classes" would have been
+    wrong again. `Bash(cat *)` cannot allow `cat /etc/shadow` — a wildcard is
+    honoured only for the effect its own text names. `Bash(echo x >
+    ../outside.txt)` cannot allow that redirect either, because the parser
+    strips redirects out of the text a pattern is matched against, so no
+    pattern can express "may write to this path". A remedy that does not work
+    is worse than none: it gets widened until something does.
+    """
+    from types import SimpleNamespace
+
+    from .approval import _refuse_control_file
+
+    # The control-file gate runs before the policy verdict is read, so no
+    # grant can lift it. The probe has to ask in the same order the real path
+    # does — it said a `write` grant would allow writing host.yaml, because
+    # it only asked the half of the path that grants operate on.
+    if _refuse_control_file(tool_name, args):
+        return False
+
+    grant = {pattern: {
+        "allowed": True,
+        "source": "config",
+        "reason": "checking this suggestion is true",
+        **({"when": {"command": pattern[5:-1]}} if pattern.startswith("Bash(") else {}),
+        "expires": {"type": "never"},
+    }}
+    probe = SimpleNamespace(
+        current_session={"messages": [], "trace": [], "permissions": grant, "mode": AUTO},
+        io=None, storage=None, logger=None,
+    )
+    pending = {"name": tool_name, "arguments": args, "id": "suggestion-probe"}
+    try:
+        granted = _explicitly_granted(probe, pending, dict(policy_for=effect_class, effect_class=effect_class))
+    except Exception:
+        return False
+    return bool(granted) and granted.get("decision") == "allow"
+
+
+def refusal_reminder(tool_name: str, args: dict, policy: dict) -> str:
+    """Why it was refused, how to allow it next time, and a nudge to re-think.
+
+    A refusal used to be a sentence naming a policy: "command is outside the
+    focused verification allowlist". An agent reading that has nothing to do
+    with it but try again, and trying again is guaranteed to fail because the
+    policy is deterministic — so the iteration budget drains and the run ends
+    with nothing done and no explanation anyone can act on. That is what
+    happened to a scheduled job at 28 of 300 iterations.
+
+    The human-rejection paths in this module have carried guidance like this
+    for a long time. The policy's own refusals did not.
+    """
+    effect = policy.get("effect_class", "command")
+    why, instead = _WHY_AND_INSTEAD.get(
+        effect,
+        (policy.get("reason", "the policy refused it"),
+         "Name what you were trying to achieve and find another way to it."),
+    )
+    pattern = suggested_grant_pattern(tool_name, args, effect)
+    if _suggestion_would_work(tool_name, args, effect, pattern):
+        remedy = "\n\nHOW TO ALLOW IT NEXT TIME\n" + grant_remedy(tool_name, args, effect)
+    else:
+        remedy = (
+            "\n\nTHERE IS NO GRANT FOR THIS\n"
+            "No permission pattern expresses it, so only a person changing the "
+            "call or the file by hand can allow it. Do not go looking for a "
+            "pattern that works; there is not one."
+        )
+    return (
+        "<system-reminder>\n"
+        f"REFUSED: {tool_name} — {policy.get('reason', 'policy refused the call')}\n"
+        f"\nWHY\nThis was refused because {why}. The decision is deterministic: "
+        "the identical call will be refused again, every time."
+        f"{remedy}"
+        "\n\nBEFORE YOU DO ANYTHING ELSE — re-think, do not repeat\n"
+        "1. What were you actually trying to achieve? Name the goal, not the command.\n"
+        f"2. {instead}\n"
+        "3. If you cannot get there without this exact call, stop and tell the "
+        "user the line above and what it is for. That is a useful answer; a "
+        "retry loop is not.\n"
+        "Do not retry this call, and do not reach for a different spelling of "
+        "it. Both burn the run.\n"
+        "</system-reminder>"
     )
 
 
