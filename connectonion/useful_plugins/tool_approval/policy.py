@@ -97,6 +97,10 @@ _PATH_WRITING_COMMANDS = {
     "chmod", "chown", "chgrp", "dd",
 }
 
+# Build tools whose input is a file of commands. A narrowed verification run
+# is allowed above; anything else they are asked to do runs that file.
+_CONFIG_EXECUTING_COMMANDS = {"make", "cargo", "go", "npm", "pnpm", "yarn", "bun", "gradle", "mvn"}
+
 # Wrappers that run their next word: `uv run python -c` is `python -c`.
 _COMMAND_RUNNERS = {"uv", "poetry", "pipx", "npx", "bunx", "pdm", "rye", "hatch", "nix-shell"}
 
@@ -369,6 +373,15 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         )
     if focused:
         return decision("verification", "allow", "focused test, lint, or build command", "workspace")
+    if first in _CONFIG_EXECUTING_COMMANDS:
+        # It got here, so it is not one of the verification runs narrowed
+        # above. What is left runs whatever the Makefile, build.rs or
+        # package.json script says, which is a program this policy cannot
+        # read — the same reason `bash` and `awk` ask.
+        return decision(
+            "code_execution", "ask",
+            "the command runs a project script this policy cannot read", "call",
+            requires_human=True)
     if first in _CODE_EXECUTING_COMMANDS or executing in _CODE_EXECUTING_COMMANDS:
         return decision(
             "code_execution", "ask",
