@@ -101,7 +101,11 @@ def handle_email_inbox(
     if not emails:
         scope = "unread " if unread else ""
         where = f" at {address}" if address else ""
-        console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails{where}\n")
+        console.print(f"\n[cyan]Inbox:[/cyan] no {scope}emails{where}")
+        if unread:
+            console.print("[dim]Including read ones:[/dim] [bold]co email inbox[/bold]\n")
+        else:
+            console.print('[dim]Send one:[/dim] [bold]co email send <to> "<subject>" "<body>"[/bold]\n')
         return
 
     # The To column earns its width only when the page actually spans more than
@@ -176,7 +180,8 @@ def handle_email_sent(last: int = 10, to: str = None):
 
     if not emails:
         scope = f" to {to}" if to else ""
-        console.print(f"\n[cyan]Sent:[/cyan] no emails{scope}\n")
+        console.print(f"\n[cyan]Sent:[/cyan] no emails{scope}")
+        console.print('[dim]Send one:[/dim] [bold]co email send <to> "<subject>" "<body>"[/bold]\n')
         return
 
     table = Table(title="📤 Sent", show_header=True, header_style="bold cyan")
@@ -407,6 +412,7 @@ def handle_email_share(
         console.print()
         _print_shares_table("📤 Shared by you", data.get("granted_by_me", []), "grantee_public_key")
         _print_shares_table("📥 Shared with you", data.get("granted_to_me", []), "owner_public_key")
+        console.print("[dim]Grant access:[/dim] [bold]co email share <address> --with <who> --can send,read[/bold]\n")
         return
 
     if not address or not with_ or not can:
@@ -478,7 +484,8 @@ def handle_email_name(name: str, buy: bool = False):
         raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
-    console.print(f"  Your address: [cyan]{data['email']}[/cyan]\n")
+    console.print(f"  Your address: [cyan]{data['email']}[/cyan]")
+    console.print(f'[dim]Send from it:[/dim] [bold]co email send <to> "<subject>" "<body>" --from {data["email"]}[/bold]\n')
 
 
 def handle_email_upgrade(

@@ -387,7 +387,7 @@ def handle_outlook_contact_search(query: str, last: int = 25):
     if not contacts:
         console.print(
             f"\n[cyan]Contact search:[/cyan] no contacts matching "
-            f"[bold]{query}[/bold]\n"
+            f"[bold]{query}[/bold]"
         )
         print_tip("Next: co outlook contact list -n 100")
         return

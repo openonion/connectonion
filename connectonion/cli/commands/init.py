@@ -374,6 +374,9 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Resources
     console.print()
     print_resources()
+    # Last line names a command: the reader with only this output is often
+    # an agent, and the resources block above ends on a URL.
+    console.print("[dim]Deploy it when it works:[/dim] [bold]co deploy[/bold]\n")
 
     # Clean up temporary project directory if created for authentication
     if temp_project_dir and temp_project_dir.exists():

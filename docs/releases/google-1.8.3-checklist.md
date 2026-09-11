@@ -58,7 +58,9 @@ the immutable-tag workflow publishes and verifies 1.8.3.
 No real send, draft mutation, upload, event creation or delete was authorized
 for acceptance. These paths use isolated regression fixtures, not an assertion
 that production writes were exercised. TikTok and new messaging adapters are
-outside this release and deferred until after 1.8.5.
+outside this release. (At the time this read "deferred until after 1.8.5";
+on 2026-09-08 the messaging adapters were scheduled into 1.8.5 and 1.8.6
+instead, see #1462 and #1463. TikTok remains deferred.)
 
 ## Final CLI audit correction — 2026-09-07
 

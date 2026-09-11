@@ -269,6 +269,7 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
         console.print("[dim]Secrets are masked. Use [bold]co keys --reveal[/bold] to show full values.[/dim]")
     else:
         console.print("[yellow]⚠ Secrets shown in full. Do not share these values.[/yellow]")
+        console.print("[dim]The account behind them:[/dim] [bold]co status[/bold]")
     console.print()
 
 
@@ -355,4 +356,4 @@ def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
         console.print()
     else:
         console.print("[dim]Each line goes in ~/.ssh/authorized_keys on that server only.[/dim]")
-        console.print("[dim]Use [bold]--write[/bold] to cache the private halves under ~/.co/ssh/.[/dim]\n")
+        console.print("[dim]Cache the private halves under ~/.co/ssh/:[/dim] [bold]co keys --ssh --write[/bold]\n")
