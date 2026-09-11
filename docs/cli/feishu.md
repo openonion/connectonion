@@ -11,18 +11,43 @@ OpenOnion credential, and nothing billed.
 
 ## Setup
 
-1. Create a self-built application at <https://open.feishu.cn/app> (Lark:
-   <https://open.larksuite.com/app>). Enable the **bot** capability.
+```bash
+pip install lark-oapi
+co auth feishu
+```
+
+`co auth feishu` prints a QR code and a link. Scan it with Feishu or Lark,
+approve, and the application exists — in your own tenant, owned by you — with
+its credentials written to `~/.co/keys.env`. There is no developer console to
+visit and nothing to copy. It starts on Feishu and moves to Lark by itself if
+that is where your tenant lives, so there is nothing to choose first either.
+
+Then add the bot to a group and @ it, or send it a direct message.
+
+```bash
+co feishu check                  # says what is missing, if anything
+```
+
+`check` exits 3 and names the missing item.
+
+<details>
+<summary>Using an application you already have</summary>
+
+`co auth feishu` always creates a new application, because Feishu has no API
+that lists the ones you own. To use an existing one, configure it by hand:
+
+1. At <https://open.feishu.cn/app> (Lark: <https://open.larksuite.com/app>),
+   enable the **bot** capability.
 2. Under *Permissions* add `im:message.group_at_msg:readonly` (group messages
    that @ the bot) and `im:message:send_as_bot` (reply). Add
    `im:message.p2p_msg:readonly` if people will message the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
    `im.message.receive_v1`. No request URL is needed.
-4. Publish the application to your tenant, then put its credentials in your
-   global credential file:
+4. Publish it to your tenant, then write its credentials into
+   `~/.co/keys.env` with an editor — `co env set` refuses these two names,
+   because a hand-typed app secret came from somewhere it cannot check:
 
    ```dotenv
-   # ~/.co/keys.env
    FEISHU_APP_ID=cli_xxx
    FEISHU_APP_SECRET=xxx
    # Lark uses its own pair
@@ -30,15 +55,7 @@ OpenOnion credential, and nothing billed.
    LARK_APP_SECRET=yyy
    ```
 
-5. Install the SDK and check:
-
-   ```bash
-   pip install lark-oapi
-   co feishu check
-   ```
-
-`check` exits 3 and names the missing item if anything above is incomplete.
-Add the bot to a group, @ it, and it is listening.
+</details>
 
 ## The directory
 
