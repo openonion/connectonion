@@ -184,5 +184,56 @@ That widening was the one thing in this change that made the system less
 safe than 1.8.4, and it lasted about an hour, because I wrote down what I was
 unsure about instead of hoping nobody asked.
 
-Five of the six bugs here were found by running the thing rather than by
-reading it. The sixth was found by a test — the one I wrote to run the thing.
+## The sweep
+
+At that point the pattern was obvious enough to industrialise. I wrote out
+twenty-six things an attacker would try — `cd /etc && cat passwd`,
+exfiltration through the granted browser command, `tee`, `cp`, `dd`, `ln -s`,
+`sh -c`, `perl -e`, `python3 -c`, a read-only first segment carrying a payload
+after `&&` — and printed the verdict for each.
+
+Twenty-five refused. The twenty-sixth was `make install`.
+
+That one predates all of this: 1.8.4 allowed `make install`, bare `make`, and
+`make -C /etc all`, all classified as "focused test, lint, or build command".
+`cargo` had been narrowed to `test`/`check`/`clippy`/`build`, `go` to `test`,
+the package runners to targets naming test or lint or build. `make` was the
+one nobody got to. It now needs a named verification target and no `-C` or
+`-f` pointing it somewhere else.
+
+It is worth being precise about what that fixes, because it would be easy to
+oversell. The focused-verification category is an execution surface on
+purpose: an agent that may write a test and run it may run whatever that test
+runs, and no amount of target-name checking changes that. What the narrowing
+removes is the commands in that category that were never verification —
+`make install` writes outside the workspace by convention, and that is a
+different claim from "run my tests".
+
+One more came out of the same sweep, which I had thought was already covered:
+
+```
+cat $(cat which_file.txt)   →  allow
+```
+
+The outside-workspace check looks at arguments that look like paths. That one
+does not look like a path; it looks like a substitution, and it reads whatever
+the file names. Two neighbouring cases had been refused and I had taken that
+as the rule holding — `head $(echo /etc/shadow)` because bashlex splits the
+word and the tail starts with a slash, `cat ${SECRET_PATH}` because the word
+happens to contain "secret". Luck, twice, in a security path. A file argument
+containing `$(`, a backtick or `$name` now asks; a bare `$` still means
+end-of-line, so `grep 'foo$' notes.txt` is untouched.
+
+## The tally
+
+Six defects, one of them the reported bug and five found while fixing it,
+plus two pre-existing holes in code the fix sat next to. Of the eight, one
+was found by a test. The other seven were found by running the thing: an
+agent doing a real job, the real CLI in a throwaway directory, and a list of
+what an attacker would try with the verdicts printed beside it.
+
+The suite is not what found them, and it was never going to be — it had sixty
+green tests on this exact policy while production was failing. What the suite
+does is hold them. Every one of the eight now has a test that was red before
+the fix, so the next person to widen this policy gets told which specific
+thing they broke, by name, in about forty seconds.
