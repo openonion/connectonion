@@ -1,6 +1,6 @@
-"""Unit tests for the Feishu/Lark mailbox provider.
+"""Unit tests for the Feishu/Lark inbox provider.
 
-LLM-Note: Tests for connectonion.listen.feishu
+LLM-Note: Tests for connectonion.inbox.feishu
 
 What it tests:
 - An im.message.receive_v1 event becomes the seven-field Message, mentions readable, our own @ detected
@@ -9,7 +9,7 @@ What it tests:
 - check() names the missing credential and the pip command, without a live account
 
 Components under test:
-- Module: connectonion/listen/feishu.py
+- Module: connectonion/inbox/feishu.py
 """
 
 import json
@@ -18,8 +18,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from connectonion.listen import feishu as feishu_module
-from connectonion.listen.feishu import Feishu
+from connectonion.inbox import feishu as feishu_module
+from connectonion.inbox.feishu import Feishu
 
 
 @pytest.fixture
@@ -254,7 +254,7 @@ def test_bot_info_reads_the_top_level_shape_feishu_actually_returns(creds, monke
 def test_a_raw_payload_that_cannot_be_marshalled_is_logged_not_dropped_silently(creds, monkeypatch, tmp_path):
     from types import SimpleNamespace as NS
 
-    from connectonion.listen.mailbox import Mailbox
+    from connectonion.inbox.store import Inbox
 
     class FakeWs:
         def __init__(self, *a, event_handler=None, **k):
@@ -284,7 +284,7 @@ def test_a_raw_payload_that_cannot_be_marshalled_is_logged_not_dropped_silently(
         {"code": 0, "tenant_access_token": "t", "expire": 7200}))
     monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
         {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
-    box = Mailbox("feishu", home=tmp_path / "feishu")
+    box = Inbox("feishu", home=tmp_path / "feishu")
 
     Feishu().run(box, raw=True)
 
@@ -327,7 +327,7 @@ def test_an_event_the_adapter_cannot_read_is_logged_once_and_the_next_one_still_
     # one log line, not a retry storm; the connection stays up for the next.
     from types import SimpleNamespace as NS
 
-    from connectonion.listen.mailbox import Mailbox
+    from connectonion.inbox.store import Inbox
 
     broken = NS(event=NS(message=NS(chat_id="oc_a1b2"), sender=NS(sender_type="user")))  # no message_id
 
@@ -340,7 +340,7 @@ def test_an_event_the_adapter_cannot_read_is_logged_once_and_the_next_one_still_
         {"code": 0, "tenant_access_token": "t", "expire": 7200}))
     monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
         {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
-    box = Mailbox("feishu", home=tmp_path / "feishu")
+    box = Inbox("feishu", home=tmp_path / "feishu")
 
     Feishu().run(box)
 
@@ -352,12 +352,12 @@ def test_refused_credentials_stop_before_the_connection_is_opened(creds, monkeyp
     # Feishu said no to the app_id/app_secret pair. Dialling the WebSocket with
     # the same pair cannot succeed, and the SDK's retry loop would hide the
     # refusal behind "connect failed" lines forever.
-    from connectonion.listen.mailbox import Mailbox
+    from connectonion.inbox.store import Inbox
 
     ws = _fake_sdk(monkeypatch, lambda handler: None)
     monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
         {"code": 10003, "msg": "invalid param"}))
-    box = Mailbox("feishu", home=tmp_path / "feishu")
+    box = Inbox("feishu", home=tmp_path / "feishu")
 
     with pytest.raises(RuntimeError, match="refused the credentials"):
         Feishu().run(box)
@@ -379,13 +379,13 @@ def test_a_gateway_page_on_bot_info_is_not_a_refusal_and_the_connection_is_still
     # Only "Feishu answered and said no to these credentials" stops the
     # listener. A 502 page, a rate limit, or a quota error on the bot-info
     # call is transient: the long connection has its own reconnect.
-    from connectonion.listen.mailbox import Mailbox
+    from connectonion.inbox.store import Inbox
 
     ws = _fake_sdk(monkeypatch, lambda handler: None)
     monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
         {"code": 0, "tenant_access_token": "t", "expire": 7200}))
     monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: HtmlPage())
-    box = Mailbox("feishu", home=tmp_path / "feishu")
+    box = Inbox("feishu", home=tmp_path / "feishu")
 
     Feishu().run(box)
 

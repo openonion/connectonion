@@ -1,7 +1,7 @@
 """Reconcile known conversations after a listener restart or connection gap.
 
 History is a second delivery path, not a replacement for the WebSocket. Every
-record goes through the same durable mailbox deduplication. The checkpoint only
+record goes through the same durable inbox deduplication. The checkpoint only
 advances after all pages succeed. No chat discovery or old-history import occurs.
 """
 import json
@@ -11,15 +11,15 @@ import time
 from types import SimpleNamespace as NS
 from urllib.parse import urlencode
 
-from .mailbox import _sync_directory
+from .store import _sync_directory
 
 
 class HistoryRecovery:
-    """One worker owned by the single listener for this mailbox directory."""
+    """One worker owned by the single listener for this inbox directory."""
 
-    def __init__(self, provider, mailbox, *, started_at=None, raw=False):
-        self.provider, self.mailbox, self.raw = provider, mailbox, raw
-        self.state = mailbox.root / 'recovery.json'
+    def __init__(self, provider, inbox, *, started_at=None, raw=False):
+        self.provider, self.inbox, self.raw = provider, inbox, raw
+        self.state = inbox.root / 'recovery.json'
         self.guard = threading.RLock()
         self.chat_types = {}
         if self.state.exists():
@@ -48,23 +48,23 @@ class HistoryRecovery:
                 self._write_state(self.through)
 
     def _write_state(self, through):
-        temp = self.mailbox.tmp / 'recovery.json'
+        temp = self.inbox.tmp / 'recovery.json'
         with temp.open('w') as handle:
             json.dump({'since': self.since, 'through': through, 'chat_types': self.chat_types}, handle)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp, self.state)
-        _sync_directory(self.mailbox.root)
+        _sync_directory(self.inbox.root)
         self.through = through
 
     def _containers(self):
         containers = {}
-        if self.mailbox.inbox.exists():
-            for line in self.mailbox.inbox.read_text().splitlines():
+        if self.inbox.received.exists():
+            for line in self.inbox.received.read_text().splitlines():
                 try:
                     row = json.loads(line)
                 except ValueError:
-                    continue  # A torn journal tail is handled by mailbox recovery.
+                    continue  # A torn journal tail is handled by inbox recovery.
                 if row.get('chat'):
                     containers[('chat', row['chat'])] = row['chat']
                     if row.get('thread'):
@@ -137,10 +137,10 @@ class HistoryRecovery:
                     containers[('thread', row['thread_id'])] = chat
                 message = self._message(row, chat)
                 if message and int(row['create_time']) / 1000 <= until:
-                    count += self.mailbox.deliver(message, raw=self.raw)
+                    count += self.inbox.deliver(message, raw=self.raw)
         self._save(until)
-        (self.mailbox.root / 'recovery-error.txt').unlink(missing_ok=True)
-        self.mailbox.log(f'history recovery complete: {count} new message(s)')
+        (self.inbox.root / 'recovery-error.txt').unlink(missing_ok=True)
+        self.inbox.log(f'history recovery complete: {count} new message(s)')
         return count
 
     def start(self):
@@ -161,8 +161,8 @@ class HistoryRecovery:
             try:
                 self.reconcile()
             except Exception as exc:
-                (self.mailbox.root / 'recovery-error.txt').write_text(str(exc))
-                self.mailbox.log(f'history recovery incomplete; checkpoint retained: {exc}. '
+                (self.inbox.root / 'recovery-error.txt').write_text(str(exc))
+                self.inbox.log(f'history recovery incomplete; checkpoint retained: {exc}. '
                                  'Check bot history permissions and network; retrying in 60 seconds')
                 if not self.stopped.wait(60):
                     self.pending.set()

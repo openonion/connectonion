@@ -300,12 +300,12 @@ def test_installed_mailbox_receive_and_completion_need_no_provider_connection(in
     home = tmp_path / 'home'
     home.mkdir()
     env = dict(_runtime_env(), HOME=str(home), USERPROFILE=str(home), AGENT_CONFIG_PATH=str(config))
-    env.pop('CO_LARK_HOME', None)
+    env.pop('CO_INBOX_HOME', None)
     for key in ('LARK_APP_ID', 'LARK_APP_SECRET'):
         env.pop(key, None)
     seed = (
-        'from connectonion.listen import Mailbox, Message; '
-        'box=Mailbox("lark"); '
+        'from connectonion.inbox import Inbox, Message; '
+        'box=Inbox("lark"); '
         'm=Message(id="synthetic-185",chat="test-chat",sender="test-sender",text="fixture",at="2026-09-08T00:00:00Z"); '
         'print(box.deliver(m))'
     )

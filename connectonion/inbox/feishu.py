@@ -1,10 +1,10 @@
 """
-Purpose: Feishu and Lark as a mailbox — the official SDK's long connection writes files, replies go out through the REST API
+Purpose: Feishu and Lark as an inbox — the official SDK's long connection writes files, replies go out through the REST API
 LLM-Note:
-  Dependencies: imports from [json, os, time, uuid, datetime, requests, listen/mailbox.py] and lazily from [lark_oapi] | imported by [listen/__init__.py via provider()] | tested by [tests/unit/test_listen_feishu.py]
-  Data flow: run(mailbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → mailbox.deliver() | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
+  Dependencies: imports from [json, os, time, uuid, datetime, requests, inbox/store.py] and lazily from [lark_oapi] | imported by [inbox/__init__.py via provider()] | tested by [tests/unit/test_inbox_feishu.py]
+  Data flow: run(inbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → inbox.deliver() | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
   State/Effects: reads FEISHU_APP_ID/FEISHU_APP_SECRET (LARK_* for Lark) from the environment | one outbound WebSocket that dials out, so no port is opened | caches the tenant token in memory for its lifetime
-  Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, acknowledgement follows the durable mailbox write; storage failures remain retryable
+  Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, acknowledgement follows the durable inbox write; storage failures remain retryable
   Errors: check() returns the missing item and the next action instead of raising | send() raises RuntimeError with Feishu's own code and message, after retrying a rate limit three times | a missing SDK is reported with the pip command
 """
 
@@ -17,7 +17,7 @@ from typing import Optional
 
 import requests
 
-from .mailbox import Mailbox, Message, iso_utc
+from .store import Inbox, Message, iso_utc
 from .recovery import HistoryRecovery
 
 DOMAINS = {
@@ -131,18 +131,18 @@ class Feishu:
 
     # ---- inbound -----------------------------------------------------------
 
-    def run(self, mailbox: Mailbox, *, raw: bool = False) -> None:
+    def run(self, inbox: Inbox, *, raw: bool = False) -> None:
         """Hold the long connection and write every message. Blocks."""
         lark = _sdk()
         try:
             info = self.bot_info()
-            mailbox.log(f"connected as {info.get('name') or self.app_id}")
+            inbox.log(f"connected as {info.get('name') or self.app_id}")
         except CredentialsRefused as exc:
             # Feishu answered and said no: wrong app_id, wrong secret, app not
             # published. Dialling the WebSocket with the same pair cannot
             # succeed, and the SDK would retry it every two minutes forever,
             # each attempt a "connect failed" line that hides the real reason.
-            mailbox.log(f"bot info failed: {exc}")
+            inbox.log(f"bot info failed: {exc}")
             raise
         except Exception as exc:
             # Anything else is a bad minute, not a bad key: a 502 page from
@@ -150,9 +150,9 @@ class Feishu:
             # long connection has its own reconnect and may well get
             # through; only the own-@mention check runs without the bot's
             # open_id until then.
-            mailbox.log(f"bot info failed: {exc}")
+            inbox.log(f"bot info failed: {exc}")
 
-        recovery = HistoryRecovery(self, mailbox, raw=raw)
+        recovery = HistoryRecovery(self, inbox, raw=raw)
 
         def on_message(data) -> None:
             # Parsing failures must not raise. The SDK answers a
@@ -162,7 +162,7 @@ class Feishu:
             try:
                 message = self.to_message(data)
             except Exception as exc:
-                mailbox.log(f"event not understood ({type(exc).__name__}: {exc}); skipped")
+                inbox.log(f"event not understood ({type(exc).__name__}: {exc}); skipped")
                 return
             if message is None:
                 return
@@ -171,13 +171,13 @@ class Feishu:
                 try:
                     message.raw = _raw_of(data)
                 except Exception as exc:
-                    mailbox.log(f"raw payload of {message.id} not kept: {exc}")
+                    inbox.log(f"raw payload of {message.id} not kept: {exc}")
             # deliver() is left to raise on a full or unwritable disk: that
             # is the one case where "not delivered, send it again" is true.
-            if mailbox.deliver(message, raw=raw):
-                mailbox.log(f"received {message.id} chat={message.chat} sender={message.sender}")
+            if inbox.deliver(message, raw=raw):
+                inbox.log(f"received {message.id} chat={message.chat} sender={message.sender}")
             else:
-                mailbox.log(f"duplicate {message.id} dropped")
+                inbox.log(f"duplicate {message.id} dropped")
 
         handler = (
             lark.EventDispatcherHandler.builder("", "")
@@ -191,9 +191,9 @@ class Feishu:
             domain=self.base,
             log_level=lark.LogLevel.WARNING,
         )
-        client.on_reconnecting = lambda: mailbox.log("reconnecting")
+        client.on_reconnecting = lambda: inbox.log("reconnecting")
         def reconnected():
-            mailbox.log("reconnected; reconciling known conversation history")
+            inbox.log("reconnected; reconciling known conversation history")
             recovery.request()
 
         client.on_reconnected = reconnected

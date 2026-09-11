@@ -1,12 +1,12 @@
 """
 Purpose: One directory per chat platform where every inbound message becomes a file any program can consume
 LLM-Note:
-  Dependencies: imports from [dataclasses, json, os, re, subprocess, sys, time, pathlib, environment.py, cli/browser_agent/transport.py (the singleton lock)] | imported by [listen/feishu.py, cli/commands/listen_commands.py] | tested by [tests/unit/test_listen_mailbox.py]
-  Data flow: provider → Mailbox.deliver(Message) → one line appended to inbox.jsonl + one file in new/ | consumer → Mailbox.receive() → rename new/X → cur/X → Message | reply → Mailbox.record_sent() → one line in outbox.jsonl, cur/X removed
-  State/Effects: creates ~/.co/<provider>/ (or $CO_<PROVIDER>_HOME) mode 0700 with inbox.jsonl, outbox.jsonl, tmp/, new/, cur/, bad/, log, listen.lock | every write is an append or an atomic rename | inbox.jsonl is never rewritten or truncated
-  Integration: exposes Message, Mailbox | the directory is the interface: `ls new/` is the unread count, `tail -f inbox.jsonl` is a live view, `mv new/X cur/X` is a claim | receive() starts a listener when none is running, the gpg-agent convention
+  Dependencies: imports from [dataclasses, json, os, re, subprocess, sys, time, pathlib, environment.py, cli/browser_agent/transport.py (the singleton lock)] | imported by [inbox/feishu.py, inbox/consumer.py, cli/commands/listen_commands.py] | tested by [tests/unit/test_inbox_store.py]
+  Data flow: provider → Inbox.deliver(Message) → one line appended to received.jsonl + one file in new/ | consumer → Inbox.receive() → rename new/X → cur/X → Message | reply → Inbox.record_sent() → one line in sent.jsonl, cur/X removed
+  State/Effects: creates ~/.co/inbox/<provider>/ (or $CO_INBOX_HOME/<provider>) mode 0700 with received.jsonl, sent.jsonl, done.jsonl, tmp/, new/, cur/, bad/, log, listen.lock | every write is an append or an atomic rename | received.jsonl is never rewritten or truncated
+  Integration: exposes Message, Inbox | the directory is the interface: `ls new/` is the unread count, `tail -f received.jsonl` is a live view, `mv new/X cur/X` is a claim | receive() starts a listener when none is running, the gpg-agent convention
   Performance: deliver() is two small writes; receive() polls new/ four times a second; lookup() and already_replied() scan a JSONL file linearly, which is fine for the sizes one bot sees
-  Errors: a torn last line in inbox.jsonl is skipped, never raised | a rename lost to another consumer moves on to the next file | a queue file that is not a message is set aside in bad/ with a log line | the listener lock is held by the kernel, so a dead listener holds nothing
+  Errors: a torn last line in received.jsonl is skipped, never raised | a rename lost to another consumer moves on to the next file | a queue file that is not a message is set aside in bad/ with a log line | the listener lock is held by the kernel, so a dead listener holds nothing
 
 Messages stay inspectable as files. Built-in mutations use a short kernel lock
 because the visibility timestamp, rename and completion record must agree. A
@@ -65,7 +65,7 @@ def _safe(message_id: str) -> str:
 
 @contextmanager
 def _locked(path: Path):
-    """Coordinate short mailbox mutations across threads and CLI processes."""
+    """Coordinate short inbox mutations across threads and CLI processes."""
     from ..cli.browser_agent.transport import acquire_singleton_lock
 
     deadline = time.monotonic() + 30
@@ -74,7 +74,7 @@ def _locked(path: Path):
         if handle is not None:
             break
         if time.monotonic() >= deadline:
-            raise TimeoutError("Mailbox is busy; retry after the active operation completes")
+            raise TimeoutError("Inbox is busy; retry after the active operation completes")
         time.sleep(0.01)
     try:
         yield
@@ -141,7 +141,7 @@ class Message:
         if not isinstance(record, dict) or any(
             not isinstance(record.get(key), str) or not record[key] for key in ("id", "chat")
         ):
-            raise ValueError("A mailbox message needs nonempty string id and chat fields")
+            raise ValueError("A inbox message needs nonempty string id and chat fields")
         return cls(
             id=str(record["id"]),
             chat=str(record["chat"]),
@@ -154,22 +154,33 @@ class Message:
         )
 
 
+def inbox_root() -> Path:
+    """~/.co/inbox, unless $CO_INBOX_HOME points elsewhere.
+
+    One root for every channel, so a consumer watches `inbox/*/new/` instead
+    of a list of directories it has to be told about, and `ls ~/.co/inbox`
+    answers "which channels does this machine listen to". The env var moves
+    the whole root, the way GNUPGHOME moves GnuPG's, which is what a second
+    set of applications needs: moving one provider and not the others only
+    ever produced a half-configured machine.
+    """
+    override = os.environ.get("CO_INBOX_HOME")
+    return Path(override).expanduser() if override else global_config_dir() / "inbox"
+
+
 def default_home(provider: str) -> Path:
-    """~/.co/<provider>, unless $CO_<PROVIDER>_HOME points elsewhere. The env
-    var is how a second application of the same provider gets its own
-    directory, the way GNUPGHOME does."""
-    override = os.environ.get(f"CO_{provider.upper()}_HOME")
-    return Path(override).expanduser() if override else global_config_dir() / provider
+    """The directory for one provider under the shared root."""
+    return inbox_root() / provider
 
 
-class Mailbox:
+class Inbox:
     """The directory. See the module docstring for why it is one."""
 
     def __init__(self, provider: str, home: Optional[Path] = None):
         self.provider = provider
         self.root = Path(home) if home else default_home(provider)
-        self.inbox = self.root / "inbox.jsonl"
-        self.outbox = self.root / "outbox.jsonl"
+        self.received = self.root / "received.jsonl"
+        self.sent = self.root / "sent.jsonl"
         self.completed = self.root / "done.jsonl"
         self.tmp = self.root / "tmp"
         self.new = self.root / "new"
@@ -202,7 +213,7 @@ class Mailbox:
         delivery, Feishu's redelivery in practice, is the recovery: the
         queue file is written and the log is left as it is.
         """
-        self._seen = self._ids_in(self.inbox)
+        self._seen = self._ids_in(self.received)
         if message.id in self._ids_in(self.completed):
             return False
         if message.id in self._seen:
@@ -213,7 +224,7 @@ class Mailbox:
                 message = original
             self.log(f"re-queued {message.id}: logged earlier but never queued")
         else:
-            self._append(self.inbox, message.to_json(raw=raw))
+            self._append(self.received, message.to_json(raw=raw))
             self._seen.add(message.id)
         name = f"{int(time.time() * 1000)}-{_safe(message.id)}"
         staging = self.tmp / name
@@ -342,10 +353,10 @@ class Mailbox:
             "ok": error is None,
             "error": error,
         }
-        self._append(self.outbox, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
     def already_replied(self, message_id: str) -> bool:
-        for record in self._records(self.outbox):
+        for record in self._records(self.sent):
             if record.get("reply_to") == message_id and record.get("ok"):
                 return True
         return False
@@ -354,7 +365,7 @@ class Mailbox:
         """The message with this id, from the log. Lets `reply ID` find the
         chat and thread so an agent only has to carry one string."""
         found = None
-        for record in self._records(self.inbox):
+        for record in self._records(self.received):
             if record.get("id") == message_id and "chat" in record:
                 found = Message.from_dict(record)
         return found
@@ -426,15 +437,15 @@ class Mailbox:
         if pid is not None:
             return pid
         # The child is a fresh `co`: it reads ~/.co/keys.env on its own, and
-        # a CO_<PROVIDER>_HOME there would send it to a different directory
-        # than the one waiting for it. Pin the directory, and pass on the
-        # --env-file the parent was started with for the same reason.
+        # a CO_INBOX_HOME there would send it to a different directory than
+        # the one waiting for it. Pin the root, and pass on the --env-file
+        # the parent was started with for the same reason.
         argv = [sys.executable, "-m", "connectonion.cli.main"]
         env_file = explicit_env_file()
         if env_file is not None:
             argv += ["--env-file", str(env_file)]
         argv += [self.provider, "listen"]
-        env = dict(os.environ, **{f"CO_{self.provider.upper()}_HOME": str(self.root)})
+        env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent))
         kwargs = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT, "env": env}
         if os.name == "posix":
             kwargs["start_new_session"] = True

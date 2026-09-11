@@ -1053,15 +1053,15 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Mailbox providers: feishu, lark. One directory per provider under ~/.co/,
-# the same nine verbs on each. The tool knows nothing about agents; anything
-# that can read a file consumes it (DD-063).
-def _mailbox_group(name: str, help_text: str) -> typer.Typer:
+# Inbox providers: feishu, lark. One directory per provider under
+# ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
+# agents; anything that can read a file consumes it (DD-063).
+def _inbox_group(name: str, help_text: str) -> typer.Typer:
     group = _typer_app(help=help_text)
 
     @group.command("listen")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
-        """Hold the connection; write every message to the mailbox. Ctrl-C stops."""
+        """Hold the connection; write every message to the inbox. Ctrl-C stops."""
         from .commands.listen_commands import handle_listen
         handle_listen(name, raw=raw)
 
@@ -1130,8 +1130,8 @@ def _mailbox_group(name: str, help_text: str) -> typer.Typer:
     return group
 
 
-app.add_typer(_mailbox_group("feishu", "Feishu bot as a mailbox: listen, receive, send, reply."), name="feishu")
-app.add_typer(_mailbox_group("lark", "Lark (global Feishu) bot as a mailbox: listen, receive, send, reply."), name="lark")
+app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
+app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.

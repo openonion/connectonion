@@ -4,9 +4,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from connectonion.listen.mailbox import Mailbox, Message
-from connectonion.listen.feishu import Feishu
-from connectonion.listen.recovery import HistoryRecovery
+from connectonion.inbox.store import Inbox, Message
+from connectonion.inbox.feishu import Feishu
+from connectonion.inbox.recovery import HistoryRecovery
 
 
 def history(identifier, *, sender_type='user', mentions=None):
@@ -17,7 +17,7 @@ def history(identifier, *, sender_type='user', mentions=None):
 
 
 def setup(tmp_path):
-    box = Mailbox('lark', home=tmp_path)
+    box = Inbox('lark', home=tmp_path)
     box.deliver(Message('seed', 'chat', 'user', 'seed', '1970-01-01T00:01:40Z'))
     bot = Feishu('lark')
     bot._bot_open_id = 'bot'

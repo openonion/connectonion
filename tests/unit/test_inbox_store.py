@@ -1,6 +1,6 @@
-"""Unit tests for the mailbox directory behind `co <provider> listen`.
+"""Unit tests for the inbox directory behind `co <provider> listen`.
 
-LLM-Note: Tests for connectonion.listen.mailbox
+LLM-Note: Tests for connectonion.inbox.store
 
 What it tests:
 - A delivered message is one log line and one queue file; a duplicate id is neither
@@ -10,7 +10,7 @@ What it tests:
 - The listener lock ignores a dead pid and receive() starts a listener when none runs
 
 Components under test:
-- Module: connectonion/listen/mailbox.py
+- Module: connectonion/listen/inbox.py
 """
 
 import json
@@ -21,12 +21,12 @@ import time
 
 import pytest
 
-from connectonion.listen import mailbox as mailbox_module
-from connectonion.listen.mailbox import Mailbox, Message, default_home
+from connectonion.inbox import store as store_module
+from connectonion.inbox.store import Inbox, Message, default_home, inbox_root
 
 
 def make(tmp_path):
-    return Mailbox("feishu", home=tmp_path / "feishu")
+    return Inbox("feishu", home=tmp_path / "feishu")
 
 
 def msg(i="om_1", chat="oc_a", text="hello", **kw):
@@ -38,7 +38,7 @@ def test_a_delivered_message_is_one_log_line_and_one_queue_file(tmp_path):
 
     assert box.deliver(msg()) is True
 
-    lines = box.inbox.read_text().splitlines()
+    lines = box.received.read_text().splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0])["text"] == "hello"
     assert len(box.unread()) == 1
@@ -52,7 +52,7 @@ def test_a_duplicate_id_is_dropped_even_after_a_restart(tmp_path):
     fresh = make(tmp_path)  # a new process reads the log to know what it has seen
     assert fresh.deliver(msg(text="redelivered")) is False
 
-    assert len(box.inbox.read_text().splitlines()) == 1
+    assert len(box.received.read_text().splitlines()) == 1
     assert len(box.unread()) == 1
 
 
@@ -60,11 +60,11 @@ def test_raw_payload_is_logged_only_when_asked_and_never_queued(tmp_path):
     box = make(tmp_path)
     box.deliver(msg(raw={"secret": "group title"}), raw=True)
 
-    assert "group title" in box.inbox.read_text()
+    assert "group title" in box.received.read_text()
     assert "group title" not in box.unread()[0].read_text()
 
     box.deliver(msg(i="om_2", raw={"secret": "x"}))  # raw=False by default
-    assert box.inbox.read_text().count("secret") == 1
+    assert box.received.read_text().count("secret") == 1
 
 
 def test_receive_takes_the_oldest_and_moves_it_to_cur(tmp_path):
@@ -155,7 +155,7 @@ def test_done_forgets_a_taken_message(tmp_path):
 def test_lookup_finds_a_message_by_id_and_skips_a_torn_line(tmp_path):
     box = make(tmp_path)
     box.deliver(msg(i="om_a", chat="oc_1", thread="om_root"))
-    with box.inbox.open("a") as handle:
+    with box.received.open("a") as handle:
         handle.write('{"id": "om_torn", "chat": "oc_')  # crashed mid-write
 
     found = box.lookup("om_a")
@@ -166,7 +166,7 @@ def test_lookup_finds_a_message_by_id_and_skips_a_torn_line(tmp_path):
     assert box.lookup("om_missing") is None
 
 
-def test_outbox_records_replies_so_a_second_reply_can_be_refused(tmp_path):
+def test_sent_log_records_replies_so_a_second_reply_can_be_refused(tmp_path):
     box = make(tmp_path)
 
     box.record_sent(chat="oc_1", text="failed once", reply_to="om_a", error="rate limited")
@@ -175,7 +175,7 @@ def test_outbox_records_replies_so_a_second_reply_can_be_refused(tmp_path):
     box.record_sent(chat="oc_1", text="done", reply_to="om_a", provider_id="om_reply")
     assert box.already_replied("om_a") is True
 
-    records = [json.loads(line) for line in box.outbox.read_text().splitlines()]
+    records = [json.loads(line) for line in box.sent.read_text().splitlines()]
     assert [r["ok"] for r in records] == [False, True]
 
 
@@ -209,8 +209,8 @@ def test_ensure_listener_starts_one_only_when_none_is_running(tmp_path, monkeypa
         box.lock.write_text("4242\n")  # what the child does once it is up
         return FakeProcess()
 
-    monkeypatch.setattr(mailbox_module.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(mailbox_module, "_held", lambda path: True)  # whoever wrote the file holds it
+    monkeypatch.setattr(store_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(store_module, "_held", lambda path: True)  # whoever wrote the file holds it
 
     assert box.ensure_listener() == 4242
     assert spawned[0][-2:] == ["feishu", "listen"]
@@ -222,11 +222,16 @@ def test_ensure_listener_starts_one_only_when_none_is_running(tmp_path, monkeypa
 
 
 def test_default_home_is_under_dot_co_unless_overridden(monkeypatch, tmp_path):
-    monkeypatch.delenv("CO_FEISHU_HOME", raising=False)
-    assert default_home("feishu") == mailbox_module.Path.home() / ".co" / "feishu"
+    # One root for every channel: a consumer watches inbox/*/new/ rather than
+    # a list of directories somebody has to keep in sync.
+    monkeypatch.delenv("CO_INBOX_HOME", raising=False)
+    assert default_home("feishu") == store_module.Path.home() / ".co" / "inbox" / "feishu"
 
-    monkeypatch.setenv("CO_FEISHU_HOME", str(tmp_path / "ops-bot"))
-    assert default_home("feishu") == tmp_path / "ops-bot"
+    # The override moves the whole root, not one provider: moving one and
+    # leaving the others only ever produced a half-configured machine.
+    monkeypatch.setenv("CO_INBOX_HOME", str(tmp_path / "ops-bot"))
+    assert default_home("feishu") == tmp_path / "ops-bot" / "feishu"
+    assert inbox_root() == tmp_path / "ops-bot"
 
 
 def test_message_json_has_the_same_seven_keys_in_order(tmp_path):
@@ -254,8 +259,8 @@ def test_a_listener_that_dies_at_once_is_reported_not_waited_for(tmp_path, monke
         def poll(self):
             return 3
 
-    monkeypatch.setattr(mailbox_module.subprocess, "Popen", lambda argv, **kw: DeadProcess())
-    monkeypatch.setattr(mailbox_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(store_module.subprocess, "Popen", lambda argv, **kw: DeadProcess())
+    monkeypatch.setattr(store_module.time, "sleep", lambda s: None)
 
     assert box.ensure_listener() is None
     assert "listener exited at once with 3" in box.logfile.read_text()
@@ -290,8 +295,8 @@ def test_two_receives_in_the_same_instant_get_one_listener(tmp_path, monkeypatch
             box.lock.write_text("5000\n")  # A's child took the lock meanwhile
             return 1
 
-    monkeypatch.setattr(mailbox_module.subprocess, "Popen", lambda argv, **kw: LostTheRace())
-    monkeypatch.setattr(mailbox_module, "_held", lambda path: True)
+    monkeypatch.setattr(store_module.subprocess, "Popen", lambda argv, **kw: LostTheRace())
+    monkeypatch.setattr(store_module, "_held", lambda path: True)
 
     assert box.ensure_listener() == 5000
 
@@ -339,7 +344,7 @@ def test_a_redelivery_after_a_crash_between_log_and_queue_is_queued_not_dropped(
 
     assert box.deliver(msg(i="om_c")) is True, "the redelivery recreates the queue file"
     assert len(box.unread()) == 1
-    assert sum(1 for _ in box._records(box.inbox)) == 1, "the log is not appended twice"
+    assert sum(1 for _ in box._records(box.received)) == 1, "the log is not appended twice"
 
     assert box.deliver(msg(i="om_c")) is False, "queued: a duplicate"
     box.receive(0)
@@ -369,14 +374,14 @@ def test_junk_in_new_is_skipped_and_a_torn_queue_file_is_set_aside(tmp_path):
 
 def test_lookup_skips_a_log_line_that_is_not_a_whole_message(tmp_path):
     box = make(tmp_path)
-    box._append(box.inbox, '{"id":"om_z","text":"no chat"}')
+    box._append(box.received, '{"id":"om_z","text":"no chat"}')
 
     assert box.lookup("om_z") is None
 
 
 def test_ensure_listener_pins_the_directory_and_forwards_the_env_file(tmp_path, monkeypatch):
     # The child is a fresh `co`, so it loads ~/.co/keys.env on its own. A
-    # CO_FEISHU_HOME there, or a --env-file the parent was started with, sent
+    # CO_INBOX_HOME there, or a --env-file the parent was started with, sent
     # the child to a different directory than the one waiting for it.
     box = make(tmp_path)
     seen = {}
@@ -393,12 +398,12 @@ def test_ensure_listener_pins_the_directory_and_forwards_the_env_file(tmp_path, 
         box.lock.write_text("4321\n")
         return Running()
 
-    monkeypatch.setattr(mailbox_module.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(mailbox_module, "_held", lambda path: True)
-    monkeypatch.setattr(mailbox_module, "explicit_env_file", lambda: tmp_path / "app.env")
+    monkeypatch.setattr(store_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(store_module, "_held", lambda path: True)
+    monkeypatch.setattr(store_module, "explicit_env_file", lambda: tmp_path / "app.env")
 
     assert box.ensure_listener() == 4321
-    assert seen["env"]["CO_FEISHU_HOME"] == str(box.root)
+    assert seen["env"]["CO_INBOX_HOME"] == str(box.root.parent)
     assert seen["argv"][3:5] == ["--env-file", str(tmp_path / "app.env")]
     assert seen["argv"][-2:] == ["feishu", "listen"]
 
@@ -437,7 +442,7 @@ def test_recovery_uses_the_original_logged_message(tmp_path):
 
 def test_torn_log_tail_does_not_swallow_the_next_message(tmp_path):
     box = make(tmp_path)
-    box.inbox.write_text('{"id":"torn')
+    box.received.write_text('{"id":"torn')
     box.deliver(msg())
     assert make(tmp_path).lookup('om_1').text == 'hello'
 
@@ -453,7 +458,7 @@ def test_releasing_listener_keeps_the_same_lock_inode(tmp_path):
 
 
 def test_different_unsafe_ids_cannot_share_a_queue_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(mailbox_module.time, 'time', lambda: 1)
+    monkeypatch.setattr(store_module.time, 'time', lambda: 1)
     box = make(tmp_path)
     box.deliver(msg(i='unsafe/a'))
     box.deliver(msg(i='unsafe?a'))
@@ -498,6 +503,6 @@ def test_sweep_cannot_reclaim_a_message_between_rename_and_claim_timestamp(tmp_p
 
 
 def test_mailbox_defaults_follow_the_global_configuration_directory(tmp_path, monkeypatch):
-    monkeypatch.delenv('CO_LARK_HOME', raising=False)
+    monkeypatch.delenv('CO_INBOX_HOME', raising=False)
     monkeypatch.setenv('AGENT_CONFIG_PATH', str(tmp_path / 'global'))
-    assert default_home('lark') == (tmp_path / 'global' / 'lark').resolve()
+    assert default_home('lark') == (tmp_path / 'global' / 'inbox' / 'lark').resolve()

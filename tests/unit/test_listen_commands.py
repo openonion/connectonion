@@ -1,4 +1,4 @@
-"""Unit tests for the mailbox verbs behind `co feishu ...`.
+"""Unit tests for the inbox verbs behind `co feishu ...`.
 
 LLM-Note: Tests for connectonion.cli.commands.listen_commands
 
@@ -20,7 +20,7 @@ import sys
 import pytest
 
 from connectonion.cli.commands import listen_commands
-from connectonion.listen import Mailbox, Message
+from connectonion.inbox import Inbox, Message
 
 
 class FakeProvider:
@@ -41,8 +41,8 @@ class FakeProvider:
 
 @pytest.fixture
 def box(tmp_path, monkeypatch):
-    monkeypatch.setenv("CO_FEISHU_HOME", str(tmp_path / "feishu"))
-    return Mailbox("feishu")
+    monkeypatch.setenv("CO_INBOX_HOME", str(tmp_path / "inbox"))
+    return Inbox("feishu")
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_receive_exits_124_when_nothing_arrives(box, fake):
 
 def test_receive_starts_a_listener_unless_told_not_to(box, fake, monkeypatch):
     started = []
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: started.append(self.provider) or 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: started.append(self.provider) or 1)
     deliver(box)
 
     listen_commands.handle_receive("feishu", timeout=0)
@@ -90,7 +90,7 @@ def test_send_takes_text_from_stdin_records_it_and_prints_the_id(box, fake, monk
 
     assert fake.sent == [("oc_a", "all green", None)]
     assert capsys.readouterr().out.strip() == "om_sent1"
-    record = json.loads(box.outbox.read_text())
+    record = json.loads(box.sent.read_text())
     assert record["ok"] is True and record["id"] == "om_sent1" and record["chat"] == "oc_a"
 
 
@@ -117,7 +117,7 @@ def test_a_refused_send_is_recorded_and_exits_1(box, fake, monkeypatch, capsys):
 
     assert exit_.value.code == 1
     assert "230002" in capsys.readouterr().err
-    assert json.loads(box.outbox.read_text())["ok"] is False
+    assert json.loads(box.sent.read_text())["ok"] is False
 
 
 def test_reply_finds_the_chat_from_the_log_and_forgets_the_taken_message(box, fake, capsys):
@@ -155,7 +155,7 @@ def test_reply_to_an_unknown_id_exits_1(box, fake, capsys):
 
 
 def test_serve_pipes_the_message_through_a_command_and_replies_with_its_stdout(box, fake, monkeypatch):
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_s", chat="oc_s", text="what is 2+2")
     command = [sys.executable, "-c",
                "import json,os,sys; m=json.load(sys.stdin); "
@@ -176,7 +176,7 @@ def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypa
     # A command that exits non-zero did not answer: the message stays taken
     # and comes back in an hour, as the docs promise. Empty stdout with exit
     # 0 is the command choosing silence: done. Both are one log line.
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_f")
     listen_commands.handle_serve("feishu", [sys.executable, "-c", "import sys; sys.exit(3)"], once=True)
     deliver(box, i="om_g")
@@ -190,7 +190,7 @@ def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypa
 
 
 def test_serve_keeps_a_message_whose_reply_the_platform_refused(box, fake, monkeypatch):
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
 
     def refuse(chat, text, *, reply_to=None):
         raise RuntimeError("Feishu error 99991400: too many requests")
@@ -207,7 +207,7 @@ def test_serve_keeps_a_message_whose_reply_the_platform_refused(box, fake, monke
 def test_serve_refuses_a_command_it_cannot_run_before_taking_a_message(box, fake, monkeypatch, capsys):
     # A typo in the command used to claim the message into cur/ and then
     # traceback, stranding one message per restart.
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_n")
 
     with pytest.raises(SystemExit) as exit_:
@@ -232,7 +232,7 @@ def test_listen_exits_3_before_taking_the_lock_when_the_sdk_is_missing(box, fake
 def test_a_listener_that_died_is_reported_with_its_reason_inline(box, fake, monkeypatch, capsys):
     # "see the log" sent an agent to a file it may not read; the reason is
     # three lines, so print them.
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: None)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: None)
     box.log("The Feishu SDK is not installed. Run: pip install lark-oapi")
     box.log("listener exited at once with 3; see the lines above")
 
@@ -286,7 +286,7 @@ def test_every_verb_that_talks_to_the_platform_exits_3_when_unconfigured(box, mo
 
 
 def test_receive_exits_1_when_the_listener_could_not_start(box, fake, monkeypatch, capsys):
-    monkeypatch.setattr(Mailbox, "ensure_listener", lambda self: None)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: None)
 
     with pytest.raises(SystemExit) as exit_:
         listen_commands.handle_receive("feishu", timeout=0)
@@ -310,7 +310,7 @@ def test_listen_reports_a_refused_connection_in_one_line_and_exits_1(box, fake, 
     # Invalid credentials made the SDK raise ClientException("app_id is
     # invalid") straight through Typer as a full traceback. The operator needs
     # the platform's sentence, the exit code, and a released lock; not a stack.
-    def refuse(mailbox, *, raw=False):
+    def refuse(inbox, *, raw=False):
         raise RuntimeError("1000040346: app_id is invalid")
 
     fake.run = refuse
