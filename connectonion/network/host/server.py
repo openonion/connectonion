@@ -71,6 +71,7 @@ from .http_router import (
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
+from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, start_cleanup_job
 from .session.mode import HostPermissionPolicy
@@ -1228,6 +1229,16 @@ def host(
     )
     on_startup = _both(on_startup, sched_startup)
     on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first
+
+    # Channels are a third ingress, beside the socket and the clock, and they
+    # arrive through the same input_handler: a message from a group lands in
+    # session_results.jsonl beside the interactive turns. The listener that
+    # fills the directory is still its own process (DD-063 and #1478).
+    inbox_startup, inbox_shutdown = create_inbox_lifespan(
+        co_dir, create_agent, storage, result_ttl, console=Console())
+    on_startup = _both(on_startup, inbox_startup)
+    on_shutdown = _both(inbox_shutdown, on_shutdown)
+
     on_startup = _both(on_startup, cleanup_startup)
     on_shutdown = _both(cleanup_shutdown, on_shutdown)
 
