@@ -273,7 +273,53 @@ A third-party skill installed with `co copy` can declare whatever `tools:` it
 likes, and those grants are honoured. That is the same trust you extend by
 installing it; read a skill's frontmatter before you install it.
 
-### A refusal names the line to write
+### Every refusal says why, how, and think again
+
+A refused call comes back with a `<system-reminder>` in three parts. The
+human-rejection paths in this plugin have carried guidance like this for a
+long time; the policy's own refusals did not, and an agent reading "command is
+outside the focused verification allowlist" has nothing to do with it but try
+again — which is guaranteed to fail, because the decision is deterministic. A
+scheduled job drained its iteration budget that way and ended with nothing
+done.
+
+```
+<system-reminder>
+REFUSED: bash — reading outside the workspace requires approval; …
+
+WHY
+This was refused because the file is outside this workspace, or its path comes
+from a variable or a substitution so the policy cannot tell where it points.
+The decision is deterministic: the identical call will be refused again,
+every time.
+
+HOW TO ALLOW IT NEXT TIME
+  • in .co/host.yaml: "Bash(cat /etc/hosts)" …
+  • or in the skill that needs it: tools: ["Bash(cat /etc/hosts)"]
+
+BEFORE YOU DO ANYTHING ELSE — re-think, do not repeat
+1. What were you actually trying to achieve? Name the goal, not the command.
+2. Read something inside the workspace, or spell the path out literally. …
+3. If you cannot get there without this exact call, stop and tell the user
+   the line above and what it is for. That is a useful answer; a retry loop
+   is not.
+Do not retry this call, and do not reach for a different spelling of it.
+</system-reminder>
+```
+
+Part 2 is per effect class and says what to try *instead* — for a credential,
+that you almost never need a secret's contents; for a `sed`/`awk` refusal, that
+`head`, `cut` and `read_file(limit=, offset=)` do the reading job without a
+grant; for a publication, that preparing the change and stopping is the answer.
+
+**The suggested grant is checked against the grant path before it is printed.**
+Some refusals cannot be lifted by any pattern — a control file, or a redirect
+outside the workspace, because the parser strips redirects out of the text a
+pattern is matched against. Those say `THERE IS NO GRANT FOR THIS` rather than
+naming a line that would not work. A remedy that does not work is worse than
+none: it gets widened until something does.
+
+### The grant line itself
 
 Without a grant, an unattended refusal used to name a policy — "command is
 outside the focused verification allowlist" — and leave the operator to work

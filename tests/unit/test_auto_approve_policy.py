@@ -1022,10 +1022,10 @@ def test_an_unattended_refusal_names_the_line_to_write(tmp_path, monkeypatch):
 
     policy = instance.current_session["pending_tool"]["approval_policy"]
     assert policy["decision"] == "deny"
-    remedy = policy["remedy"]
-    assert "Bash(co email send *)" in remedy
-    assert ".co/host.yaml" in remedy
-    assert "SKILL.md frontmatter" in remedy
+    reminder = policy["reminder"]
+    assert "Bash(co email send *)" in reminder
+    assert ".co/host.yaml" in reminder
+    assert "SKILL.md frontmatter" in reminder
 
     # And the model reads it, because it is in the error it gets back.
     with pytest.raises(ValueError) as refusal:
@@ -1047,4 +1047,118 @@ def test_a_granted_call_carries_no_remedy(tmp_path, monkeypatch):
 
     policy = instance.current_session["pending_tool"]["approval_policy"]
     assert policy["decision"] == "allow"
-    assert "remedy" not in policy
+    assert "reminder" not in policy
+
+
+# ---------------------------------------------------------------------------
+# The remedy has to be true. A refusal that prints a grant line the operator
+# pastes, and which then does not allow the call, is worse than printing
+# nothing: they widen it, and widen it again, until something works.
+# ---------------------------------------------------------------------------
+
+REFUSED_CALLS = [
+    ("cat /etc/shadow", "read_outside_workspace"),
+    ("head ../notes.txt", "read_outside_workspace"),
+    ("cat .env", "credentials"),
+    ("cat server.pem", "credentials"),
+    ("rm -rf build", "deletion"),
+    ("curl https://example.com", "external_network"),
+    ("git push origin main", "publication"),
+    ("co deploy", "publication"),
+    ("co email send --to a@b.c hi", "external_effect"),
+    ("co transfer 0xabc 5", "payment"),
+    ("sed -n 1,10p notes.txt", "command"),
+    ("awk '{print $1}' notes.txt", "command"),
+    ("make install", "command"),
+    ("ping -c 1 8.8.8.8", "command"),
+    ("python3 -c 'print(1)'", "command"),
+]
+
+
+@pytest.mark.parametrize(("command", "expected_effect"), REFUSED_CALLS)
+def test_the_grant_the_refusal_suggests_actually_allows_the_call(
+    tmp_path, monkeypatch, command, expected_effect
+):
+    """Paste the suggested line into host.yaml and the same call must run.
+
+    Written because the first version suggested `Bash(cat *)` for
+    `cat /etc/shadow` — a pattern that cannot allow it, because a wildcard is
+    only honoured for the effect its own text names and `cat` alone is an
+    ordinary read. The remedy was a lie in a message whose whole purpose is
+    to be copied.
+    """
+    from connectonion.useful_plugins.tool_approval.policy import suggested_grant_pattern
+
+    monkeypatch.chdir(tmp_path)
+
+    # 1. refused, with the effect this test claims
+    refused = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
+    refused.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+    apply_auto_approve_policy(refused)
+    policy = refused.current_session["pending_tool"]["approval_policy"]
+    assert policy["decision"] == "deny", (command, policy)
+    assert policy["effect_class"] == expected_effect, (command, policy["effect_class"])
+
+    # 2. the refusal tells the agent the line to write
+    pattern = suggested_grant_pattern("bash", {"command": command}, expected_effect)
+    assert pattern in policy["reminder"], (command, pattern)
+
+    # 3. and with exactly that line in place, the identical call runs
+    granted = agent(io=False, permissions={
+        **load_permission_patterns(tmp_path / ".co"),
+        **_granted(pattern),
+    })
+    granted.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+    apply_auto_approve_policy(granted)
+    check_approval(granted)
+    after = granted.current_session["pending_tool"]["approval_policy"]
+    assert after["decision"] == "allow", (command, pattern, after)
+
+
+@pytest.mark.parametrize(
+    ("tool", "args"),
+    [
+        ("write", {"path": ".co/host.yaml", "content": "permissions: {}"}),
+        ("bash", {"command": "echo x > ../outside.txt"}),
+        ("bash", {"command": "echo 'Bash(*)' > .co/host.yaml"}),
+    ],
+)
+def test_a_refusal_no_pattern_can_lift_says_so_instead_of_inventing_one(tmp_path, monkeypatch, tool, args):
+    """Some refusals have no grant at all, and the reminder must not pretend.
+
+    The redirect cases are the interesting ones: the parser strips redirects
+    out of the text a pattern is matched against, so no pattern can express
+    "may write to this path". The reminder checks its own suggestion against
+    the grant path before printing it.
+    """
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": tool, "arguments": args}
+
+    apply_auto_approve_policy(instance)
+
+    policy = instance.current_session["pending_tool"]["approval_policy"]
+    assert policy["decision"] == "deny"
+    assert "HOW TO ALLOW IT NEXT TIME" not in policy["reminder"]
+    assert "THERE IS NO GRANT FOR THIS" in policy["reminder"]
+
+
+@pytest.mark.parametrize(("command", "effect"), REFUSED_CALLS)
+def test_every_refusal_says_why_how_and_to_re_think(tmp_path, monkeypatch, command, effect):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    reminder = instance.current_session["pending_tool"]["approval_policy"]["reminder"]
+
+    assert reminder.startswith("<system-reminder>")
+    assert "WHY" in reminder
+    assert "HOW TO ALLOW IT NEXT TIME" in reminder
+    assert "re-think, do not repeat" in reminder
+    assert "Do not retry this call" in reminder
+
+    # And the model receives it as the tool result, not only in the audit record.
+    with pytest.raises(ValueError) as refusal:
+        check_approval(instance)
+    assert "<system-reminder>" in str(refusal.value)
