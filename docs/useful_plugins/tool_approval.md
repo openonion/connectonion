@@ -169,9 +169,13 @@ security path. Both ask, as they did before 1.8.5, including their innocent
 shapes — whose job `head`, `tail`, `cut` and `read_file(limit=, offset=)`
 already do. Nothing else on the list takes a program text.
 
-One thing takes a listed command back out: a path argument that resolves
+Two things take a listed command back out. A path argument that resolves
 outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`, `cd ..`) asks,
-the same way the read *tools* ask for outside-workspace reads.
+the same way the read *tools* ask for outside-workspace reads. And a file
+argument the policy cannot resolve asks: `cat $(cat which_file.txt)` reads
+whatever that file names and `head $HOME/x` whatever `HOME` is, so neither is
+a checked read. A bare `$` is end-of-line, not a variable, so
+`grep 'foo$' notes.txt` is unaffected.
 
 Credentials are denied before any of this applies, and not only by token
 (`.env`, `secret`, `credential`): key material is recognised by where it lives

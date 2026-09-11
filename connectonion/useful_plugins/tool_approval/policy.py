@@ -225,6 +225,22 @@ def _command_words(command: str) -> list[str]:
         return []
 
 
+_UNRESOLVABLE = re.compile(r"\$[A-Za-z_{(]|`")
+
+
+def _reads_an_unresolvable_path(words: list[str]) -> bool:
+    """True if a file argument comes from a substitution or a variable.
+
+    `cat $(cat which_file.txt)` is a read of whatever that file names, and
+    `head $HOME/.ssh/id_rsa` of whatever HOME is. Neither can be checked
+    against the workspace, so neither is a checked read. Two of these passed
+    before this rule, by luck: one word happened to split across the
+    substitution, another happened to contain "secret". `grep 'foo$' f` is
+    not affected — a bare `$` names nothing.
+    """
+    return any(_UNRESOLVABLE.search(word) for word in words[1:] if not word.startswith("-"))
+
+
 def _reads_outside_workspace(words: list[str], root: Path) -> bool:
     """A path-looking argument that resolves outside the workspace.
 
@@ -276,6 +292,8 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
     if focused:
         return decision("verification", "allow", "focused test, lint, or build command", "workspace")
     if first in _READ_ONLY_COMMANDS:
+        if first in _PATH_READING_COMMANDS and _reads_an_unresolvable_path(words):
+            return decision("read_outside_workspace", "ask", "the file to read depends on the environment", "call", requires_human=True)
         if root is not None and first in _PATH_READING_COMMANDS and _reads_outside_workspace(words, root):
             return decision("read_outside_workspace", "ask", "reading outside the workspace requires approval", "call", requires_human=True)
         return decision("read", "allow", "read-only command", "workspace")

@@ -699,3 +699,50 @@ def test_the_read_only_list_is_not_a_way_to_run_arbitrary_code(tmp_path, monkeyp
         apply_auto_approve_policy(instance)
         result = instance.current_session["pending_tool"]["approval_policy"]
         assert result["decision"] == "deny", (command, result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "head $(echo /etc/shadow)",      # the path arrives from a substitution
+        "cat `echo /etc/passwd`",
+        "head $HOME/.ssh/id_rsa",        # and from the environment
+        "cat ${SECRET_PATH}",
+        "cat $(cat which_file.txt)",
+    ],
+)
+def test_a_path_the_policy_cannot_resolve_is_not_a_workspace_path(tmp_path, monkeypatch, command):
+    """A read-only command whose target comes from a substitution or a variable
+    is not a read the policy has checked.
+
+    `cat $(cat which_file.txt)` reads whatever that file names. Two of these
+    were refused before the rule existed, but by luck: one word happened to
+    split across the substitution and another happened to contain "secret".
+    """
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "grep 'foo$' notes.txt",       # a bare $ is end-of-line, not a variable
+        "grep -c '$' notes.txt",
+        "echo $HOME",                  # echo reads no file
+        "head -3 notes.txt",
+    ],
+)
+def test_a_bare_dollar_is_not_a_variable(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
