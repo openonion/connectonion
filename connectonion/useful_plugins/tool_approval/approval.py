@@ -303,6 +303,21 @@ def _get_batch_remaining(agent: 'Agent', current_tool_id: str) -> list:
     return []
 
 
+def _log_permission_granted(agent: 'Agent', tool_name: str, tool_args: dict, source: str, reason: str) -> None:
+    """Show a grant on the console when there is one.
+
+    A `quiet=True` agent has a logger whose `console` is None, and that is the
+    shape every unattended run takes. Six call sites reached
+    `agent.logger.console.log_permission_granted(...)` directly, so in a quiet
+    agent every auto-approved tool call died with AttributeError — the
+    approval said yes and the tool still failed. Found by the Rust e2e, not by
+    the sixty unit tests, none of which built a real quiet Agent.
+    """
+    console = getattr(getattr(agent, 'logger', None), 'console', None)
+    if console is not None:
+        console.log_permission_granted(tool_name, tool_args, source, reason)
+
+
 def _log(agent: 'Agent', message: str, style: str = None) -> None:
     """Log message via agent's logger if available.
 
@@ -423,7 +438,7 @@ def check_approval(agent: 'Agent') -> None:
         )
         if direct_tool == tool_name and tool_name in {'codex', 'claude_code'}:
             if getattr(getattr(agent, 'logger', None), 'console', None):
-                agent.logger.console.log_permission_granted(
+                _log_permission_granted(agent, 
                     tool_name,
                     tool_args,
                     'host',
@@ -456,7 +471,7 @@ def check_approval(agent: 'Agent') -> None:
                 )
             if verdict == 'allow':
                 if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
-                    agent.logger.console.log_permission_granted(
+                    _log_permission_granted(agent, 
                         tool_name, tool_args, 'policy', policy.get('reason', 'auto-approved')
                     )
                 return
@@ -490,7 +505,7 @@ def check_approval(agent: 'Agent') -> None:
                 permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions)
                 if permitted:
                     if getattr(getattr(agent, 'logger', None), 'console', None):
-                        agent.logger.console.log_permission_granted('bash', tool_args, source, reason)
+                        _log_permission_granted(agent, 'bash', tool_args, source, reason)
                     return
 
             # Check each permission in the dict
@@ -519,7 +534,7 @@ def check_approval(agent: 'Agent') -> None:
                     reason = perm.get('reason', 'unknown')
                     source = perm.get('source', 'config')
                     if getattr(getattr(agent, 'logger', None), 'console', None):
-                        agent.logger.console.log_permission_granted(tool_name, tool_args, source, reason)
+                        _log_permission_granted(agent, tool_name, tool_args, source, reason)
                     return
 
     # =================================================================
@@ -533,7 +548,7 @@ def check_approval(agent: 'Agent') -> None:
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
         if getattr(getattr(agent, 'logger', None), 'console', None):
-            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'full_access mode')
+            _log_permission_granted(agent, tool_name, tool_args, 'mode', 'full_access mode')
         return
 
     # reject_hard was set by a previous tool in this batch — reject remaining
@@ -559,7 +574,7 @@ def check_approval(agent: 'Agent') -> None:
     if mode == AUTO:
         if tool_name in FILE_EDIT_TOOLS:
             if getattr(getattr(agent, 'logger', None), 'console', None):
-                agent.logger.console.log_permission_granted(
+                _log_permission_granted(agent, 
                     tool_name, tool_args, 'mode', AUTO
                 )
             return

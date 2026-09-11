@@ -8,7 +8,7 @@ human decision.
 | Mode | Behaviour |
 |---|---|
 | `read-only` | Manual approval for every effectful live-IO call not explicitly permitted |
-| `auto` | Auto-approves reversible workspace work and focused verification; asks or denies higher-impact calls |
+| `auto` | Auto-approves reversible workspace work, focused verification, and read-only commands on workspace paths; asks or denies higher-impact calls |
 | `full-access` | Explicit bounded approval bypass under the Host launch ceiling |
 
 No aliases are accepted or translated. Unknown stored values become Auto.
@@ -149,6 +149,78 @@ write, edit, multi_edit
 run_background, kill_task
 send_email, post, delete, remove
 ```
+
+### Focused Verification (Auto)
+
+Test, lint, type-check and build commands run without a dialog. This category
+is an execution surface by design — an agent that may write a test and run it
+may run whatever that test runs — so what the narrowing does is keep out the
+commands in it that are not verification at all. `cargo` is limited to
+`test`/`check`/`clippy`/`build`, `go` to `test`, the package runners to
+targets naming test/lint/build/check/typecheck, and `make` to a named
+verification target with no `-C`/`-f` redirecting it elsewhere: `make test`
+runs, `make install`, bare `make` and `make -C /etc all` ask.
+
+### Read-Only Commands (Auto)
+
+In Auto, a shell command whose every segment only reads, filters or prints
+runs without a dialog — and, unattended, without being denied:
+
+```
+head tail cat less more grep egrep fgrep rg wc ls sort uniq cut tr
+basename dirname jq echo printf pwd cd true test [ which file stat diff
+date whoami hostname uname
+```
+
+`sed` and `awk` are deliberately **not** on it. They take a program, and a
+program is code: `awk 'BEGIN{system("rm -rf /")}'` reads like an inspection
+and is arbitrary execution, and GNU `sed`'s `e` flag is the same. A rule that
+kept them while excluding their execution constructs would be a parser in a
+security path. Both ask, as they did before 1.8.5, including their innocent
+shapes — whose job `head`, `tail`, `cut` and `read_file(limit=, offset=)`
+already do. Nothing else on the list takes a program text.
+
+Two things take a listed command back out. A path argument that resolves
+outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`, `cd ..`) asks,
+the same way the read *tools* ask for outside-workspace reads. And a file
+argument the policy cannot resolve asks: `cat $(cat which_file.txt)` reads
+whatever that file names and `head $HOME/x` whatever `HOME` is, so neither is
+a checked read. A bare `$` is end-of-line, not a variable, so
+`grep 'foo$' notes.txt` is unaffected.
+
+Credentials are denied before any of this applies, and not only by token
+(`.env`, `secret`, `credential`): key material is recognised by where it lives
+and what it is called — anything under `.ssh`, `.gnupg`, `.aws`, `.azure`,
+`.kube`, `.docker` or a `keys` directory (which includes the agent's own
+`.co/keys/`), the usual filenames (`id_rsa`, `id_ed25519`, `authorized_keys`,
+`.npmrc`, `.netrc`, `.git-credentials`, `.pypirc`, `keys.env`), and the usual
+suffixes (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`, `.ppk`). A read
+of key material is a credential read wherever it sits, so this does not depend
+on the workspace rule — the workspace is sometimes the home directory, keys
+get committed, and `.co/keys/` is under the project root. Matching is on path
+components and suffixes, so `keys.md` and `monkey.txt` are ordinary files.
+
+The read, write, edit and delete *tools* hold the same line: `read_file`,
+`glob`, `write`, `edit` and the rest refuse key material by the same rule.
+They have to — a gate one tool wide is a detour, and a model asked for
+`cat server.pem` will simply reach for `read_file` instead.
+
+An output redirect (`> out`, `>> log`, `2> err`) is a file write and is held
+to the write tool's rules: inside the workspace it is a reversible edit and
+allowed (`echo x > notes.txt`, `cat << 'EOF' > src/main.rs ... EOF` — models
+reach for both instead of the write tool); a control file is denied; a target
+outside the workspace is denied; a target that depends on the environment
+(`> $HOME/x`) cannot be resolved and asks. `2>&1` is not a write. A heredoc
+is classified by its first line — the body is data to that command — so
+`bash << EOF` still asks, because `bash` is not read-only.
+
+The same list decides which pipe segments ride along on an operator grant in
+an unattended run. `co browser ... get_text | head -40` is the granted browser
+command plus a filter on its output, so it runs; `co browser status && co email
+send ...` is still an email send nobody authorized, so it does not (#1481).
+
+This is the Auto policy for the agent's own calls. The remote-EXEC whitelist
+in `host.yaml` is a separate gate and is not widened by it.
 
 ### Unknown Tools
 
