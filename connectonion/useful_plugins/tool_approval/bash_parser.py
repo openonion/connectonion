@@ -182,6 +182,26 @@ def check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, s
     from .approval import matches_permission_pattern
 
     subcommands = _extract_subcommands(command)
+    return _subcommands_permitted(subcommands, permissions)
+
+
+def segment_permitted(cmd_name: str, full_cmd: str, permissions: dict) -> tuple[bool, str, str]:
+    """Whether one already-extracted segment matches a standing grant.
+
+    Callers that have split a chain themselves must not re-parse a segment's
+    text: `_extract_subcommands` returns it with quotes removed, so feeding
+    `awk BEGIN{system("x")}` back to a parser raises — and a caller that
+    swallowed the error would read "no grant" from what is really "I cannot
+    tell", which is a refusal nobody wrote down. Match the text instead.
+    """
+    return _subcommands_permitted([(cmd_name, full_cmd)], permissions)
+
+
+def _subcommands_permitted(subcommands, permissions: dict) -> tuple[bool, str, str]:
+    import fnmatch
+
+    from .approval import matches_permission_pattern
+
     unpermitted = []
     matched_source = 'config'  # Default source
 

@@ -20,11 +20,25 @@ co --version
 co env
 ```
 
-No newer preview is currently recommended. The published 1.8.4a1 and 1.8.4a2
-previews are historical; the planned b1 was folded into the stable release.
-The tag workflow builds and verifies the public package before documentation
-is deployed. Google authorization from 1.8.3 is retained. TikTok and new messaging
-adapters remain deferred. The sections below are historical notes.
+## Current preview
+
+Preview **1.8.5a1** fixes a refusal that stopped unattended agents: in Auto
+only eleven test/build commands auto-approved, so a scheduled run died on
+`co browser … get_text | head -40`. Read-only commands now run; `sed` and
+`awk` deliberately still ask, because they take a program. It is a preview
+because it widens a security default. See
+[1.8.5a1 release notes](releases/1.8.5a1.md).
+
+```bash
+python -m pip install --pre connectonion==1.8.5a1
+co --version
+```
+
+The published 1.8.4a1 and 1.8.4a2 previews are historical; the planned 1.8.4b1
+was folded into the stable release. The tag workflow builds and verifies the
+public package before documentation is deployed. Google authorization from
+1.8.3 is retained. The Feishu/Lark mailbox lands when its no-loss reconnect
+gate passes; TikTok remains deferred. The sections below are historical notes.
 
 ## Historical 1.7 preview work
 

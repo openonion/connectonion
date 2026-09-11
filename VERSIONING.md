@@ -58,7 +58,50 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.4a2 (preview, published)
+## Release candidate: 1.8.5a1 (preview, published)
+
+An unattended agent could not run `head`. In Auto only eleven test/build
+commands auto-approved, so a scheduled run died on
+`co browser … get_text | head -40` — the granted browser command, refused
+because of the filter on its output (#1481). Read-only commands now run;
+`sed` and `awk` deliberately do not, because they take a program and a
+program is code. A shell redirect is held to the write tool's rule, and key
+material is refused by path, name and suffix wherever it sits, by shell
+command and by tool alike.
+
+The other half of the same complaint is fixed here too: a grant somebody wrote
+down was being ignored. `Bash(curl *)` in an operator's own `host.yaml` was
+refused unattended and asked every time with a person present, and a skill's
+declared `tools:` bought nothing at all — eight of nine hand-written grants
+were ignored on 1.8.4. An explicit grant now runs the call for any effect
+class, while a wildcard is honoured only for the effect its own text names,
+and the 78 grants that ship in the template are marked as such so they keep
+their old narrow reading. A refusal also names the line to write now, in both
+places that work, because a refusal nobody can act on gets worked around
+rather than fixed.
+
+This is a preview because it widens a security default, and a widened default
+earns a round of real use before everyone gets it on upgrade. Exercising it
+found seven further defects, six of them by running the thing rather than
+reading it: a `quiet=True` agent — every unattended run — crashed on every
+auto-approved call; the policy decision never reached the run trace;
+`read_file` allowed what `cat` refused; `cat << EOF > file` was unparseable
+and therefore refused; `awk 'BEGIN{system(...)}'` was allowed, which the pull
+request had itself named as its least-confident point; `cat $(cat which_file.txt)` was
+an unchecked read; and an adversarial sweep refused twenty-five of
+twenty-six bypasses, the twenty-sixth being `make install`, which 1.8.4 had
+allowed as focused verification and which is now narrowed.
+
+Offline suite: 8,805 passed, 21 skipped, on Python 3.10–3.13. Verified through
+the real `co ai` unattended, not only the harness: the failing production
+command works, a `.pem` read is refused by policy, and `awk` with `system()`
+is refused. The Feishu/Lark mailbox planned for this line is not in this
+preview; its no-loss reconnect gate is open (#1462).
+
+Stable remains 1.8.4. This is not Latest and needs `--pre` or an exact pin.
+See [1.8.5a1 notes](docs/releases/1.8.5a1.md).
+
+## Superseded candidate: 1.8.4a2 (preview, published)
 
 This preview fixes Gmail send-receipt recovery when Google rewrites Message-ID.
 Reviewed MIME carries a provider-preserved attempt marker; recovery requires a
@@ -73,9 +116,34 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.4
+## Current Version: 1.8.5a1
 
 ### Version History
+- 1.8.5a1 (**opt-in preview: an unattended agent can read its own output.** In
+  Auto only eleven test/build commands auto-approved, so everything else asked
+  — and with nobody to ask, asking is refusing. A scheduled run died on
+  `co browser … get_text | head -40`: the granted browser command, refused for
+  the filter on its output, 28 iterations into 300, no comments posted, no
+  report written (#1481). Read-only commands now run, alone or as segments
+  beside a granted command, while every other segment still needs its own
+  grant. `sed` and `awk` are deliberately not on that list: they take a
+  program, and `awk 'BEGIN{system(...)}'` reads like an inspection. A shell
+  redirect is held to the write tool's rule — inside the workspace it is a
+  reversible edit, a control file or an outside path is denied — and a heredoc
+  is classified by its first line, so `cat << EOF > src/main.rs` works and
+  `bash << EOF` still asks. Key material is refused by path component,
+  filename and suffix wherever it sits, by shell and by tool, because the
+  workspace boundary does not protect a committed key or the agent's own
+  `.co/keys/`. An explicit grant — `host.yaml`, a skill's `tools:`, a human's
+  session approval — now runs the call for any effect class instead of being
+  discarded, and `co`'s strong verbs classify by verb so a wildcard over `co`
+  cannot reach them. A refusal carries the exact grant that would allow the
+  call, in `.co/host.yaml` or a skill's `tools:`, so an agent that gets
+  refused says what to add instead of going quiet. Three defects in 1.8.4 came out of exercising it: a `quiet=True`
+  agent crashed on every auto-approved call, the policy decision never reached
+  the run trace, and `read_file` allowed what `cat` refused. Carries the second
+  wave of test-suite work (#1474) and the Control Center layout fix (#1482).
+  Stable stays 1.8.4; this is not Latest and needs `--pre` or an exact pin.)
 - 1.8.4 (**stable — explicit configuration and reviewed operations:** `co env`
   safely inspects and edits settings; Gmail preserves reviewed content and recovers
   uncertain sends; Synology verifies sharing settings and supports durable file

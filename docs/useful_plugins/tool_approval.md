@@ -234,12 +234,95 @@ same Host-advertised modes.
 
 Auto-approve safe commands permanently via `host.yaml` configuration. Config permissions never expire and apply to all sessions.
 
-In a headless one-shot run, a matching operator-configured `Bash(...)` rule can
-approve an ordinary command even though no dialog exists. Auto continues to
-deny destructive, credential, publication, deployment, external-effect, and
-unknown calls. For compatibility, the shipped broad `Bash(co *)` rule is
-narrowed at this boundary to `co status` and `co browser ...`; commands such as
-`co deploy`, `co publish`, and `co email send` do not inherit silent authority.
+### An explicit grant is an approval already given
+
+A grant somebody wrote down on purpose runs the call, with or without a person
+present, for any effect class:
+
+| source | who wrote it | scope |
+|---|---|---|
+| `config` | the operator, in `.co/host.yaml` — a control file the agent may not write | until removed |
+| `skill` | a skill author, in its `tools:` frontmatter | that turn |
+| `user` | a human answering a dialog | that session |
+| `template` | nobody; it ships with the product | ordinary commands only |
+
+So `Bash(curl *)` in your own `host.yaml` fetches URLs unattended and stops
+asking you every time, `Bash(rm -rf build)` cleans your build directory, and a
+skill that declares `Bash(mkdir *)` can make directories. Before 1.8.5 none of
+those worked: an explicit grant was discarded for every effect class except an
+unclassified command, so eight of nine hand-written grants were ignored and a
+skill's declaration bought nothing at all (#1481).
+
+Two things still cannot happen.
+
+**A wildcard is honoured only for the effect its own text names.**
+`Bash(curl *)` classifies as external network and so does the command it
+matches, so the operator plainly meant network access. `Bash(git *)` is an
+ordinary command while `git push origin main` publishes, so the wildcard does
+not carry it — `Bash(git push *)` does. An exact pattern always names its own
+effect.
+
+**The shipped defaults are not your grant.** The template's 78 `Bash(...)`
+entries load as `source: template` and buy only what they always did. The
+broad `Bash(co *)` reaches `co status` and `co browser ...`, and nothing else:
+`co` is a multiplexer, and its strong verbs are classified by verb — `co email
+send` is an external effect, `co transfer` a payment, `co keys` a credential —
+so a wildcard over `co` cannot reach them however it is written.
+
+A third-party skill installed with `co copy` can declare whatever `tools:` it
+likes, and those grants are honoured. That is the same trust you extend by
+installing it; read a skill's frontmatter before you install it.
+
+### A refusal names the line to write
+
+Without a grant, an unattended refusal used to name a policy — "command is
+outside the focused verification allowlist" — and leave the operator to work
+out the syntax, the file and the right breadth. It now carries the remedy, so
+the agent can relay it and the operator can read it in the log:
+
+```
+Tool 'bash' denied by connectonion.auto: sending mail requires human approval;
+no approval channel is available
+
+Nothing has granted this. To allow it — including unattended — write it down once:
+  • in .co/host.yaml:
+      permissions:
+        "Bash(co email send *)":
+          allowed: true
+          source: config
+          reason: why you want this
+          expires:
+            type: never
+  • or in the skill that needs it, in its SKILL.md frontmatter:
+      tools:
+        - "Bash(co email send *)"
+```
+
+The suggested pattern errs narrow: it is the leading verb words, stopping at
+the first argument-looking one and capped at three, so `co email send --to …`
+suggests `Bash(co email send *)` rather than `Bash(co *)`. For a deletion, a
+credential or a payment it names the command exactly — `rm -rf build` suggests
+`Bash(rm -rf build)`, because `Bash(rm *)` would also cover `rm -rf /` and a
+suggestion is a nudge toward whatever it prints.
+
+### Unattended pipelines
+
+For a scheduled run, put the grant in the skill that needs it. `tools:` in the
+SKILL.md frontmatter is scoped to the turn the skill runs in, which is the
+whole of a one-shot `co ai "/my-skill"`, and it keeps the declaration next to
+the procedure that depends on it:
+
+```yaml
+---
+name: daily-digest
+description: Email me what happened today.
+tools:
+  - "Bash(co email send *)"
+---
+```
+
+`.co/host.yaml` is the other place, for grants that outlive any one skill.
+Either way it is written down once and the pipeline stops stopping.
 
 ### Configuration
 
