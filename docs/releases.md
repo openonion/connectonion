@@ -22,25 +22,26 @@ co env
 
 ## Current preview
 
-Preview **1.8.5a2** stops keeping a list of safe command names. An ordinary
-command runs; what holds one back is a category of consequence — it destroys
-files, reaches credentials, writes outside the workspace, leaves the machine,
-or runs a program the policy cannot read. A filter no longer needs a grant of
-its own, so `Bash(co browser *)` is not defeated by `| head -40`. It is a
-preview because it widens a security default. See
-[1.8.5a2 release notes](releases/1.8.5a2.md); `1.8.5a1` answered the same
-issue with a longer allowlist and is superseded.
+Beta **1.8.5b1** completes 1.8.5: the Feishu and Lark inbox, the consumers that
+answer from it, and the permission work from the two alphas. `co auth feishu`
+creates the application by scanning a QR instead of eleven console steps;
+`co <provider> listen` writes every message into `~/.co/inbox/<provider>/`, and
+`co ai` answers the channels named in `~/.co/host.yaml` with no flags at all.
+The surface is complete and frozen. It is a beta rather than stable because the
+no-loss-across-a-reconnect gate has not passed: the repair is offline-tested and
+has not been run against a real group. See
+[1.8.5b1 release notes](releases/1.8.5b1.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5a2
+python -m pip install --pre connectonion==1.8.5b1
 co --version
 ```
 
-The published 1.8.4a1 and 1.8.4a2 previews are historical; the planned 1.8.4b1
-was folded into the stable release. The tag workflow builds and verifies the
-public package before documentation is deployed. Google authorization from
-1.8.3 is retained. The Feishu/Lark mailbox lands when its no-loss reconnect
-gate passes; TikTok remains deferred. The sections below are historical notes.
+The 1.8.5a1 and 1.8.5a2 previews are superseded; 1.8.4a1 and 1.8.4a2 are
+historical, and the planned 1.8.4b1 was folded into the stable release. The tag
+workflow builds and verifies the public package before documentation is
+deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
+The sections below are historical notes.
 
 ## Historical 1.7 preview work
 
