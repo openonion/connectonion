@@ -182,6 +182,7 @@ class Inbox:
         self.received = self.root / "received.jsonl"
         self.sent = self.root / "sent.jsonl"
         self.completed = self.root / "done.jsonl"
+        self.handouts = self.root / "attempts.jsonl"
         self.tmp = self.root / "tmp"
         self.new = self.root / "new"
         self.cur = self.root / "cur"
@@ -272,7 +273,13 @@ class Inbox:
             os.utime(target, None)
         except FileNotFoundError:
             return None
-        return self._read_queue_file(target)
+        message = self._read_queue_file(target)
+        if message is not None:
+            # Record the handout before returning it: a consumer that dies
+            # while working must still have this attempt counted, or a message
+            # that kills consumers is immortal.
+            self._append(self.handouts, json.dumps({"id": message.id, "at": _now_iso()}))
+        return message
 
     def _read_queue_file(self, path: Path) -> Optional[Message]:
         try:
@@ -308,6 +315,37 @@ class Inbox:
                 # leading "-", so a suffix test would let 123.55 delete -123.55.
                 if path.name.split("-", 1)[1:] == [wanted]:
                     path.unlink(missing_ok=True)
+
+    @_serialized
+    def renew(self, message_id: str) -> bool:
+        """Say a taken message is still being worked on. Returns False if it
+        is no longer taken, which is how a consumer learns the sweep took it
+        back while it was thinking.
+
+        The stale window measures silence, not work. Touching the file turns
+        it from "how long may an answer take" — a guess, and wrong for the one
+        message that matters — into "how long since we last heard from whoever
+        took this", which needs no guess.
+        """
+        wanted = _safe(message_id)
+        for path in self.cur.iterdir():
+            if path.name.split("-", 1)[1:] == [wanted]:
+                try:
+                    os.utime(path, None)
+                    return True
+                except FileNotFoundError:
+                    return False
+        return False
+
+    def attempts(self, message_id: str) -> int:
+        """How many times this message has been handed to a consumer.
+
+        Counted durably, because the point of counting is to survive the
+        crash that caused the retry: a count in memory resets exactly when a
+        message is about to be handed out for the fourth time.
+        """
+        return sum(1 for record in self._records(self.handouts)
+                   if record.get("id") == message_id)
 
     def _queued(self, message_id: str) -> bool:
         wanted = _safe(message_id)
@@ -477,6 +515,16 @@ class Inbox:
         return None
 
     # ---- internals ----------------------------------------------------------
+
+    def serve(self, handler, **options) -> None:
+        """Hand every message to `handler`, one lane per conversation.
+
+        See inbox/consumer.py for the contract. Imported there and not here so
+        that reading a directory never costs a thread module.
+        """
+        from .consumer import serve as run
+
+        return run(self, handler, **options)
 
     @staticmethod
     def _append(path: Path, line: str) -> None:

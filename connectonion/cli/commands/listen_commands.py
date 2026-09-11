@@ -1,10 +1,10 @@
 """
 Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | serve`
 LLM-Note:
-  Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, listen/] | imported by [cli/main.py via _mailbox_group()] | tested by [tests/unit/test_listen_commands.py]
-  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_serve → receive → subprocess(stdin=message) → reply(stdout)
+  Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
+  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_serve → Inbox.serve(handler) → subprocess(stdin=message) → reply(stdout)
   State/Effects: everything durable lives in the inbox directory | listen holds listen.lock and returns stale cur/ files every minute | receive and serve start a background listener when none runs
-  Integration: one set of handlers for every provider name in listen.PROVIDERS; main.py registers the same nine commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
+  Integration: one set of handlers for every provider name in inbox.PROVIDERS; main.py registers the same nine commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
 """
 
@@ -228,7 +228,7 @@ def handle_log(name: str, follow: bool = False) -> None:
             time.sleep(0.5)
 
 
-def handle_serve(name: str, command: List[str], once: bool = False) -> None:
+def handle_serve(name: str, command: List[str], once: bool = False, workers: int = 1) -> None:
     """For each message: run COMMAND with the message on stdin, send its
     stdout back as the reply. Empty stdout or a non-zero exit sends nothing."""
     p = _configured(name)
@@ -240,42 +240,44 @@ def handle_serve(name: str, command: List[str], once: bool = False) -> None:
         errors.print(f"cannot run {command[0] if command else '(no command)'}: not found or not executable", style="red")
         sys.exit(2)
     _listener_or_exit(inbox)
+
+    def answer(message) -> None:
+        env = dict(
+            os.environ,
+            CO_PROVIDER=name,
+            CO_CHAT=message.chat,
+            CO_THREAD=message.thread or "",
+            CO_SENDER=message.sender,
+            CO_MSG_ID=message.id,
+            CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
+        )
+        os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
+        run = subprocess.run(command, input=message.to_json() + "\n",
+                             capture_output=True, text=True, env=env)
+        # Returning finishes the message; raising leaves it in cur/ for the
+        # sweep to offer again in an hour. So a command that failed, or a
+        # reply the platform refused, raises: completing it here turned every
+        # transient failure into an unanswered question. A command that exited
+        # 0 with nothing to say returns, because silence is an answer.
+        if run.returncode != 0:
+            raise RuntimeError(
+                f"command exited {run.returncode}: {run.stderr.strip()[:500]}")
+        if not run.stdout.strip():
+            inbox.log(f"serve: nothing to say for {message.id}")
+            return
+        reply = run.stdout.rstrip("\n")
+        try:
+            sent = p.send(message.chat, reply, reply_to=message.id)
+        except Exception as exc:
+            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, error=str(exc))
+            raise RuntimeError(f"reply failed: {exc}") from exc
+        inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
+
     try:
-        while True:
-            message = _receive(inbox, None, watch=True)
-            env = dict(
-                os.environ,
-                CO_PROVIDER=name,
-                CO_CHAT=message.chat,
-                CO_THREAD=message.thread or "",
-                CO_SENDER=message.sender,
-                CO_MSG_ID=message.id,
-                CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
-            )
-            os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
-            run = subprocess.run(command, input=message.to_json() + "\n", capture_output=True, text=True, env=env)
-            # Only an answer that went out, or a command that chose silence
-            # (exit 0, nothing on stdout), finishes a message. A command that
-            # failed, or a reply Feishu refused, leaves it in cur/: the sweep
-            # brings it back in an hour, which is the promise the directory
-            # makes. Consuming it here turned every transient failure into
-            # an unanswered question.
-            if run.returncode != 0:
-                inbox.log(f"serve: command exited {run.returncode} for {message.id}: {run.stderr.strip()[:500]}")
-            elif not run.stdout.strip():
-                inbox.log(f"serve: nothing to say for {message.id}")
-                inbox.done(message.id)
-            else:
-                reply = run.stdout.rstrip("\n")
-                try:
-                    sent = p.send(message.chat, reply, reply_to=message.id)
-                except Exception as exc:
-                    inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, error=str(exc))
-                    inbox.log(f"serve: reply to {message.id} failed: {exc}")
-                else:
-                    inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
-                    inbox.done(message.id)
-            if once:
-                return
+        # workers=1: a shell command written for this has always run one at a
+        # time, and some of them are not safe to run twice at once. The lanes
+        # still give it ordering, lease renewal and the give-up rule; anyone
+        # who wants the parallelism asks for it with --workers.
+        inbox.serve(answer, workers=workers, once=once)
     except KeyboardInterrupt:
         return

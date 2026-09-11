@@ -1122,10 +1122,12 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
     def _serve(
         command: List[str] = typer.Argument(..., help="Command run per message: message on stdin, reply on stdout"),
         once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
+        workers: int = typer.Option(1, "--workers", min=1,
+                                    help="Conversations to answer at once (default 1, one after another)"),
     ):
         """Loop: receive, run COMMAND with the message on stdin, reply with its stdout."""
         from .commands.listen_commands import handle_serve
-        handle_serve(name, command, once=once)
+        handle_serve(name, command, once=once, workers=workers)
 
     return group
 

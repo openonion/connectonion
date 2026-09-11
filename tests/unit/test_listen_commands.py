@@ -184,7 +184,9 @@ def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypa
 
     assert fake.sent == []
     log = box.logfile.read_text()
-    assert "exited 3 for om_f" in log
+    # The loop names the message and why it is coming back; the handler
+    # supplies the reason. One line, not two.
+    assert "om_f not finished" in log and "command exited 3" in log
     assert "nothing to say for om_g" in log
     assert _taken(box) == ["om_f"], "the failed one waits for the sweep; the silent one is done"
 
@@ -201,7 +203,8 @@ def test_serve_keeps_a_message_whose_reply_the_platform_refused(box, fake, monke
     listen_commands.handle_serve("feishu", [sys.executable, "-c", "print('answer')"], once=True)
 
     assert _taken(box) == ["om_r"], "not consumed by a refusal it can retry later"
-    assert "reply to om_r failed" in box.logfile.read_text()
+    assert "om_r not finished" in box.logfile.read_text()
+    assert "reply failed" in box.logfile.read_text()
 
 
 def test_serve_refuses_a_command_it_cannot_run_before_taking_a_message(box, fake, monkeypatch, capsys):
