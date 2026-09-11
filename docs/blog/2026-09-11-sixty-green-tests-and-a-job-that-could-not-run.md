@@ -224,16 +224,76 @@ happens to contain "secret". Luck, twice, in a security path. A file argument
 containing `$(`, a backtick or `$name` now asks; a bare `$` still means
 end-of-line, so `grep 'foo$' notes.txt` is untouched.
 
+## The other half of the complaint
+
+Then the owner asked the question I should have asked myself at the start.
+
+*If the user's command explicitly allows it, or a skill allows it, shouldn't it
+just run? Isn't auto-approval the same as the user having said yes?*
+
+I went to check rather than answer. Nine grants, written by hand into a
+project's own `.co/host.yaml` — `Bash(curl *)`, `Bash(rm -rf build)`,
+`Bash(git push *)`, `Bash(co deploy)`, `Bash(cat .env)`, `send_email`, and
+three more. Unattended, eight of the nine were refused. With a person present,
+they did not auto-approve either: they opened the dialog, every time, for a
+thing the operator had already written down. And a skill that declares
+`Bash(mkdir *)` in its frontmatter got nothing at all — the identical grant ran
+as `source: config` and was refused as `source: skill`.
+
+The reason was a comment I had read a dozen times without seeing it. When the
+policy says "ask a human", the approval code throws away every grant that did
+not come from a human in this session, because a broad `Bash(co *)` must not
+silently imply `co deploy`. The concern is real. The correction was aimed at
+the source of the grant, when the thing that actually differs is its breadth.
+
+There was a second reason, and it is the more interesting one: the code could
+not tell an operator's grant from a shipped default, because all 78 entries in
+the shipped template declare `source: config` too. That is why `Bash(co *)`
+needed a hardcoded exception listing `co status` and `co browser`. Nobody could
+write the general rule, because the information the general rule needs was not
+recorded.
+
+So the template's entries are now stamped `template` at load time, and the
+question "who said this" has an answer. An explicit grant — operator file,
+skill frontmatter, human dialog — runs the call, any effect class, attended or
+not. A wildcard is honoured only for the effect its own text classifies to, so
+`Bash(git *)` does not carry `git push` and `Bash(git push *)` does. And the
+hardcoded `co` exception is gone, replaced by classifying `co`'s strong verbs
+as what they are: `co email send` is an external effect, `co transfer` a
+payment, `co keys` a credential. A wildcard over a multiplexer cannot reach
+them however it is written.
+
+One more bug fell out of building that, and it is worth naming because of how
+it looked. My first version checked each pipe segment by handing its text back
+to the chain checker, which re-parses. Segment text arrives with its quotes
+already removed, so `awk BEGIN{system("x")}` does not re-parse, bashlex raised,
+and my `except Exception: return None` turned that into "no grant" — a refusal.
+I noticed because a granted `awk '{print $1}'` was allowed while a granted
+`awk 'BEGIN{system(...)}'` was denied, and I could not explain the difference.
+The denial was the safe answer, which is exactly why it was dangerous: a
+swallowed parse error refuses whatever it cannot read, including grants the
+operator did write, and it looks like security working.
+
 ## The tally
 
-Six defects, one of them the reported bug and five found while fixing it,
-plus two pre-existing holes in code the fix sat next to. Of the eight, one
-was found by a test. The other seven were found by running the thing: an
-agent doing a real job, the real CLI in a throwaway directory, and a list of
-what an attacker would try with the verdicts printed beside it.
+Ten defects. One was the reported bug. Five came out of fixing it, two were
+pre-existing holes in the code it sat next to, one was the ignored-grant
+behaviour the owner asked about, and one I introduced and caught because its
+output had a difference I could not explain.
+
+Of the ten, one was found by a test. The other nine were found by running the
+thing: an agent doing a real job, the real CLI in a throwaway directory, a
+list of what an attacker would try with the verdicts printed beside it, and
+nine grants written into a host.yaml by hand to see which ones the product
+actually honoured.
 
 The suite is not what found them, and it was never going to be — it had sixty
 green tests on this exact policy while production was failing. What the suite
-does is hold them. Every one of the eight now has a test that was red before
-the fix, so the next person to widen this policy gets told which specific
-thing they broke, by name, in about forty seconds.
+does is hold them. Every one of the ten now has a test that was red before the
+fix, so the next person to change this policy gets told which specific thing
+they broke, by name, in about forty seconds.
+
+The question that found the last three was not a clever one. It was *does this
+actually do what we say it does* — asked about the thing in front of me, out
+loud, and then answered by running it instead of by reading the code that was
+supposed to make it true.

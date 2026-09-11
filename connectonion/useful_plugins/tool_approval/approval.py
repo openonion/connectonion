@@ -749,7 +749,20 @@ def load_permission_patterns(co_dir=None) -> dict:
             template_config = yaml.safe_load(f) or {}
         template_permissions = template_config.get('permissions')
         if template_permissions and isinstance(template_permissions, dict):
-            permissions.update(_convert_permission_patterns(template_permissions))
+            # Stamp the shipped defaults as `template`, whatever the file says.
+            # They declare `source: config`, which made them indistinguishable
+            # from a grant the operator wrote by hand — so the policy could not
+            # honour "I explicitly allowed this" without also honouring 78
+            # entries that shipped with the product. That is why the broad
+            # `Bash(co *)` needed a hardcoded narrowing. Now the question "who
+            # said this" has an answer.
+            for pattern, perm in _convert_permission_patterns(template_permissions).items():
+                # Only the shipped `config` entries are restamped. The `safe`
+                # ones name built-in read-only tools, which is a different
+                # statement and is already handled by effect class.
+                if perm.get('source') == 'config':
+                    perm = {**perm, 'source': 'template'}
+                permissions[pattern] = perm
 
     co_dir = Path(co_dir) if co_dir else project_co_dir()
     host_yaml = co_dir / 'host.yaml'

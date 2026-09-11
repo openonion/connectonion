@@ -445,7 +445,9 @@ class Console:
             tool_display = self._format_tool_display(tool_name, tool_args, max_width=35)
 
         # Format source with color and location
-        if source == 'config':
+        if source == 'template':
+            source_display = f"[{DIM_COLOR}]shipped default[/{DIM_COLOR}]"
+        elif source == 'config':
             source_display = f"[{BRAND_COLOR}]config[/{BRAND_COLOR}]"
         elif source == 'user':
             source_display = f"[{SUCCESS_COLOR}]user[/{SUCCESS_COLOR}] [{DIM_COLOR}](session)[/{DIM_COLOR}]"

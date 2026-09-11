@@ -234,12 +234,44 @@ same Host-advertised modes.
 
 Auto-approve safe commands permanently via `host.yaml` configuration. Config permissions never expire and apply to all sessions.
 
-In a headless one-shot run, a matching operator-configured `Bash(...)` rule can
-approve an ordinary command even though no dialog exists. Auto continues to
-deny destructive, credential, publication, deployment, external-effect, and
-unknown calls. For compatibility, the shipped broad `Bash(co *)` rule is
-narrowed at this boundary to `co status` and `co browser ...`; commands such as
-`co deploy`, `co publish`, and `co email send` do not inherit silent authority.
+### An explicit grant is an approval already given
+
+A grant somebody wrote down on purpose runs the call, with or without a person
+present, for any effect class:
+
+| source | who wrote it | scope |
+|---|---|---|
+| `config` | the operator, in `.co/host.yaml` — a control file the agent may not write | until removed |
+| `skill` | a skill author, in its `tools:` frontmatter | that turn |
+| `user` | a human answering a dialog | that session |
+| `template` | nobody; it ships with the product | ordinary commands only |
+
+So `Bash(curl *)` in your own `host.yaml` fetches URLs unattended and stops
+asking you every time, `Bash(rm -rf build)` cleans your build directory, and a
+skill that declares `Bash(mkdir *)` can make directories. Before 1.8.5 none of
+those worked: an explicit grant was discarded for every effect class except an
+unclassified command, so eight of nine hand-written grants were ignored and a
+skill's declaration bought nothing at all (#1481).
+
+Two things still cannot happen.
+
+**A wildcard is honoured only for the effect its own text names.**
+`Bash(curl *)` classifies as external network and so does the command it
+matches, so the operator plainly meant network access. `Bash(git *)` is an
+ordinary command while `git push origin main` publishes, so the wildcard does
+not carry it — `Bash(git push *)` does. An exact pattern always names its own
+effect.
+
+**The shipped defaults are not your grant.** The template's 78 `Bash(...)`
+entries load as `source: template` and buy only what they always did. The
+broad `Bash(co *)` reaches `co status` and `co browser ...`, and nothing else:
+`co` is a multiplexer, and its strong verbs are classified by verb — `co email
+send` is an external effect, `co transfer` a payment, `co keys` a credential —
+so a wildcard over `co` cannot reach them however it is written.
+
+A third-party skill installed with `co copy` can declare whatever `tools:` it
+likes, and those grants are honoured. That is the same trust you extend by
+installing it; read a skill's frontmatter before you install it.
 
 ### Configuration
 

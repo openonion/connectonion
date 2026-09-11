@@ -15,7 +15,8 @@ from typing import TYPE_CHECKING
 from ...core.events import before_each_tool
 from ...core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_id, mode_of, set_mode
 from ...project import project_root
-from .bash_parser import _extract_subcommands, check_bash_chain_permitted
+from .approval import matches_permission_pattern
+from .bash_parser import _extract_subcommands, check_bash_chain_permitted, segment_permitted
 
 if TYPE_CHECKING:
     from ...core.agent import Agent
@@ -58,6 +59,19 @@ _DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "shred", "truncate", "del", "erase", "fo
 _EXTERNAL_COMMANDS = {"curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail"}
 _SENSITIVE_COMMANDS = {
     "env", "printenv", "security", "keychain", "gcloud", "aws", "az",
+}
+# Our own CLI is a multiplexer: `co status` and `co email send` are the same
+# binary and nothing like the same power. Classifying the second by its verb
+# is what stops a wildcard over `co` from reaching it — and it is the reason
+# `Bash(co *)` needed a hardcoded exception before. The keys are the first two
+# words; a one-word key covers every subcommand of it.
+_CO_SUBCOMMAND_EFFECTS = {
+    "email": ("external_effect", "ask", "sending mail requires human approval"),
+    "transfer": ("payment", "ask", "moving credit requires human approval"),
+    "server": ("external_effect", "ask", "creating or destroying a server requires human approval"),
+    "keys": ("credentials", "deny", "credential access is never auto-approved"),
+    "auth": ("credentials", "ask", "changing an account login requires human approval"),
+    "reset": ("deletion", "ask", "resetting a project requires human approval"),
 }
 # Commands that read, filter or print and do nothing else. They run unattended
 # in Auto, on workspace paths, with no output redirect. Before this list only
@@ -285,6 +299,11 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         return decision("publication", "ask", "publishing and deployment require human approval", "call", requires_human=True)
     if first in _EXTERNAL_COMMANDS:
         return decision("external_network", "ask", "external network access requires human approval", "call", requires_human=True)
+    if first == "co" and len(words) > 1:
+        effect = _CO_SUBCOMMAND_EFFECTS.get(words[1].lower())
+        if effect:
+            effect_class, verdict, reason = effect
+            return decision(effect_class, verdict, reason, "call", requires_human=(verdict == "ask"))
     if first in _SENSITIVE_COMMANDS or any(
         ".env" in token or "credential" in token or "secret" in token for token in lowered
     ) or any(_is_key_material(word) for word in words[1:] if not word.startswith("-")):
@@ -493,41 +512,71 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             "call",
             requires_human=bool(agent.io),
         )
+    if result["decision"] in ("ask", "deny"):
+        granted = _explicitly_granted(agent, pending, result)
+        if granted is not None:
+            result = granted
     if not agent.io and result["decision"] == "ask":
-        configured = _headless_configured_command(agent, pending, result)
-        if configured is not None:
-            result = configured
-        else:
-            result = decision(
-                result["effect_class"],
-                "deny",
-                f"{result['reason']}; no approval channel is available",
-                result["scope"],
-            )
+        result = decision(
+            result["effect_class"],
+            "deny",
+            f"{result['reason']}; no approval channel is available",
+            result["scope"],
+        )
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
     return result
 
 
-def _headless_configured_command(
+# Grants that somebody wrote down on purpose: the operator's own host.yaml,
+# a skill's `tools:` frontmatter (declared by its author, not chosen by the
+# model at runtime), and a human's in-session approval. Each of these is a
+# person saying "yes, this" before the call happened, which is what an
+# approval is — so the policy honours them instead of asking again.
+#
+# `template` is deliberately absent. Those 78 entries ship with the product
+# and nobody chose them for this project, so they still buy only what they
+# always did: an ordinary command, never a stronger effect.
+_EXPLICIT_SOURCES = frozenset({"config", "skill", "user"})
+_TEMPLATE_SOURCES = frozenset({"template", "safe"})
+
+
+def _explicitly_granted(
     agent: "Agent", pending: dict, result: dict
 ) -> dict | None:
-    """Honor an operator's standing command grant without weakening Auto.
+    """An explicit grant is an approval already given. Honour it.
 
-    Only ordinary commands reach this path. Publication, deployment, network,
-    credential, deletion, and unknown effects keep their stronger verdict even
-    when a broad legacy pattern such as ``Bash(co *)`` happens to match.
+    Before this, a grant the operator wrote by hand was discarded for every
+    effect class except an unclassified command: `Bash(curl *)` in your own
+    `host.yaml` was refused unattended and asked *every time* with a person
+    present, and a skill's declared `tools:` bought nothing at all. Measured
+    on 1.8.4: nine hand-written grants, eight ignored.
+
+    What still cannot happen is a *broad* pattern stretching to a stronger
+    power than it names. The shipped `Bash(co *)` must not imply `co deploy`
+    or `co email send`, which is why template grants keep their old, narrow
+    reading and why an explicit wildcard is only honoured for the effect its
+    own text classifies to.
     """
-    if result.get("effect_class") != "command" or pending.get("name") != "bash":
-        return None
+    if pending.get("name") != "bash":
+        return _explicitly_granted_tool(agent, pending, result)
     permissions = agent.current_session.get("permissions")
     if not isinstance(permissions, dict):
         return None
-    configured = {
+    explicit = {
         pattern: permission
         for pattern, permission in permissions.items()
-        if isinstance(permission, dict) and permission.get("source") == "config"
+        if isinstance(permission, dict) and permission.get("source") in _EXPLICIT_SOURCES
     }
+    configured = dict(explicit)
+    if result.get("effect_class") == "command":
+        # An ordinary command is what the shipped defaults have always
+        # covered, so they join in for this class only.
+        configured.update({
+            pattern: permission
+            for pattern, permission in permissions.items()
+            if isinstance(permission, dict) and permission.get("source") in _TEMPLATE_SOURCES
+        })
     # A read-only segment needs no grant: `co browser ... | head -40` is the
     # granted browser command plus a filter on its output. Every other segment
     # must match a standing grant, so `co browser status && co email send ...`
@@ -537,24 +586,30 @@ def _headless_configured_command(
         root = project_root().resolve()
         segments = _extract_subcommands(command)
         needs_grant = [
-            full for _, full in segments
+            (name, full) for name, full in segments
             if _classify_single_command(full, root).get("effect_class") != "read"
         ]
         if _redirect_targets(command):
-            needs_grant = [full for _, full in segments]
-        # The shipped historical Bash(co *) grant is broader than its "safe CLI"
-        # description. Preserve the unattended browser/status compatibility
-        # users relied on without silently authorizing email, account, server,
-        # or payment commands. Operators can still name a narrower command.
-        broad_co = configured.pop("Bash(co *)", None)
-        if broad_co is not None and needs_grant and all(
-            full == "co status" or full.startswith("co browser ")
-            for full in needs_grant
-        ):
-            configured["Bash(co *)"] = broad_co
-        for full in needs_grant:
-            permitted, _, _ = check_bash_chain_permitted(full, configured)
+            needs_grant = list(segments)
+        # The shipped `Bash(co *)` is broader than its "safe CLI" description:
+        # `co` is a multiplexer, so the wildcard covers email, servers and
+        # payments as well as the browser. Keep the compatibility operators
+        # relied on — `co status` and `co browser ...` — and nothing else.
+        # An operator who wants more names it themselves.
+        if configured.get("Bash(co *)", {}).get("source") in _TEMPLATE_SOURCES:
+            if not (needs_grant and all(
+                full == "co status" or full.startswith("co browser ")
+                for _, full in needs_grant
+            )):
+                configured.pop("Bash(co *)", None)
+        for name, full in needs_grant:
+            # `segment_permitted`, not the chain checker: the segment text has
+            # had its quotes removed by the parser, so re-parsing it can raise
+            # on a command that is perfectly valid as written.
+            permitted, _, _ = segment_permitted(name, full, configured)
             if not permitted:
+                return None
+            if not _grant_names_this_effect(full, configured, root):
                 return None
     except Exception:
         return None
@@ -562,6 +617,58 @@ def _headless_configured_command(
         "configured_command",
         "allow",
         "operator-configured command allowlist",
+        "call",
+    )
+
+
+def _grant_names_this_effect(command: str, configured: dict, root: Path) -> bool:
+    """A wildcard may not reach a stronger effect than its own text names.
+
+    `Bash(curl *)` classifies as external network, and so does the command it
+    matches, so the operator plainly meant network access. `Bash(git *)` is an
+    ordinary command while `git push origin main` is a publication, so the
+    wildcard does not carry it — `Bash(git push *)` does. An exact pattern
+    always names its own effect and always passes.
+    """
+    wanted = _classify_single_command(command, root).get("effect_class")
+    for pattern, permission in configured.items():
+        if not (pattern.startswith("Bash(") and pattern.endswith(")")):
+            continue
+        if not matches_permission_pattern("bash", {"command": command}, pattern):
+            continue
+        text = pattern[5:-1]
+        if "*" not in text:
+            return True          # named exactly, nothing to stretch
+        literal = text.split("*", 1)[0].strip()
+        if not literal:
+            return True          # `Bash(*)` — the operator asked for everything
+        if _classify_single_command(literal, root).get("effect_class") == wanted:
+            return True
+    return False
+
+
+def _explicitly_granted_tool(
+    agent: "Agent", pending: dict, result: dict
+) -> dict | None:
+    """The same rule for a non-bash tool, whose pattern is its name.
+
+    `send_email` in an operator's host.yaml, or in a skill's `tools:`, is the
+    operator saying this agent may send mail. It was being discarded along
+    with everything else.
+    """
+    permissions = agent.current_session.get("permissions")
+    if not isinstance(permissions, dict):
+        return None
+    name = str(pending.get("name", ""))
+    permission = permissions.get(name)
+    if not isinstance(permission, dict) or not permission.get("allowed"):
+        return None
+    if permission.get("source") not in _EXPLICIT_SOURCES:
+        return None
+    return decision(
+        "configured_tool",
+        "allow",
+        f"explicitly granted ({permission.get('source')})",
         "call",
     )
 

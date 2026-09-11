@@ -193,12 +193,6 @@ def test_auto_honors_only_the_exact_co_ai_managed_delegation_grant(
     [
         {
             "allowed": True,
-            "source": "config",
-            "reason": "managed delegation owns inner approval",
-            "expires": {"type": "never"},
-        },
-        {
-            "allowed": True,
             "source": "safe",
             "reason": "arbitrary safe grant",
             "expires": {"type": "never"},
@@ -220,6 +214,28 @@ def test_auto_does_not_treat_near_match_claude_grants_as_managed_delegation(
 
     assert result["decision"] == "ask"
     assert instance.io.sent[0]["type"] == "approval_needed"
+
+
+def test_an_operators_own_grant_for_a_delegate_is_not_managed_delegation():
+    """An explicit host.yaml grant runs the tool, but by its own authority.
+
+    The distinction matters for the audit line: managed delegation means
+    "co ai injected this and the inner agent owns approval", while a config
+    grant means "the operator wrote this down". Both allow; they are not the
+    same statement, and only the exact runtime grant may claim the first.
+    """
+    instance = agent(permissions={"claude_code": {
+        "allowed": True,
+        "source": "config",
+        "reason": "managed delegation owns inner approval",   # near-match wording
+        "expires": {"type": "never"},
+    }})
+
+    result = call(instance, "claude_code", {"prompt": "inspect", "cwd": "."})
+
+    assert result["decision"] == "allow"
+    assert result["effect_class"] == "configured_tool"
+    assert instance.io.sent == []
 
 
 def test_read_only_mode_keeps_the_manual_approval_contract():
@@ -336,7 +352,12 @@ def test_packaged_permissions_keep_headless_co_browser_status_working(
     [
         ("co deploy", "publication"),
         ("co publish", "publication"),
-        ("co email send --to a@example.com hi", "command"),
+        # `co` is a multiplexer, so its strong verbs classify by verb now:
+        # that, not a hardcoded exception, is what keeps `Bash(co *)` off them.
+        ("co email send --to a@example.com hi", "external_effect"),
+        ("co transfer 0xabc 5", "payment"),
+        ("co server destroy prod", "external_effect"),
+        ("co keys --reveal", "credentials"),
     ],
 )
 def test_headless_broad_co_grant_cannot_authorize_stronger_effects(
@@ -790,3 +811,150 @@ def test_make_is_not_a_way_to_run_anything(tmp_path, monkeypatch, command):
     apply_auto_approve_policy(instance)
 
     assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"
+
+
+# ---------------------------------------------------------------------------
+# An explicit grant is an approval already given.
+#
+# Measured on 1.8.4: nine grants written by hand into the operator's own
+# host.yaml, eight of them ignored. `Bash(curl *)` was denied unattended and
+# asked *every single time* with a person present. A skill's declared `tools:`
+# bought nothing at all — the same `Bash(mkdir *)` ran as `source: config` and
+# was refused as `source: skill`.
+# ---------------------------------------------------------------------------
+
+def _granted(pattern, source="config", command=None):
+    return {pattern: {
+        "allowed": True,
+        "source": source,
+        "reason": f"written by the {source}",
+        **({"when": {"command": pattern[5:-1]}} if pattern.startswith("Bash(") else {}),
+        "expires": {"type": "turn_end" if source == "skill" else "never"},
+    }}
+
+
+@pytest.mark.parametrize("source", ["config", "skill"])
+@pytest.mark.parametrize(
+    ("pattern", "command"),
+    [
+        ("Bash(curl *)", "curl https://example.com"),        # external network
+        ("Bash(rm -rf build)", "rm -rf build"),              # destructive
+        ("Bash(git push *)", "git push origin main"),        # publication
+        ("Bash(co deploy)", "co deploy"),                    # publication
+        ("Bash(cat .env)", "cat .env"),                      # credentials
+        ("Bash(sed -i *)", "sed -i s/a/b/ notes.txt"),       # takes a program
+        ("Bash(awk *)", "awk '{print $1}' notes.txt"),
+        ("Bash(mkdir *)", "mkdir -p build"),                 # ordinary
+        ("Bash(co email send *)", "co email send --to a@b.c hi"),
+    ],
+)
+def test_an_explicit_grant_runs_unattended_whatever_the_effect(
+    tmp_path, monkeypatch, source, pattern, command
+):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=_granted(pattern, source))
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", (pattern, command, result)
+    assert result["effect_class"] == "configured_command"
+
+
+@pytest.mark.parametrize("source", ["config", "skill"])
+def test_an_explicit_grant_does_not_ask_again_with_a_person_present(tmp_path, monkeypatch, source):
+    """You wrote the grant. Being asked every time is the bug (#1481)."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(permissions=_granted("Bash(curl *)", source))
+
+    result = call(instance, "bash", {"command": "curl https://example.com"})
+
+    assert result["decision"] == "allow", result
+    assert instance.io.sent == [], "a dialog was shown for a call the operator had already allowed"
+
+
+@pytest.mark.parametrize("source", ["config", "skill"])
+def test_an_explicit_grant_covers_a_non_bash_tool_too(tmp_path, monkeypatch, source):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=_granted("send_email", source))
+    instance.current_session["pending_tool"] = {"name": "send_email", "arguments": {"to": "a@b.c"}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
+    assert result["effect_class"] == "configured_tool"
+
+
+@pytest.mark.parametrize(
+    ("pattern", "command"),
+    [
+        ("Bash(git *)", "git push origin main"),      # git is ordinary, push publishes
+        ("Bash(co *)", "co deploy"),
+        ("Bash(co *)", "co email send --to a@b.c hi"),
+        ("Bash(co *)", "co keys --reveal"),
+        ("Bash(ls *)", "rm -rf build"),               # does not match at all
+    ],
+)
+def test_a_wildcard_cannot_reach_a_stronger_effect_than_it_names(tmp_path, monkeypatch, pattern, command):
+    """`Bash(curl *)` plainly means network. `Bash(git *)` does not plainly
+    mean "push", and `Bash(co *)` does not mean "send mail as me" — `co` is a
+    multiplexer whose verbs have nothing like the same power. A wildcard is
+    honoured for the effect its own text classifies to, and no further; the
+    operator who wants more names it, as `Bash(git push *)` does above."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=_granted(pattern))
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"
+
+
+def test_the_shipped_defaults_are_not_an_operators_grant(tmp_path, monkeypatch):
+    """78 entries ship in the template declaring `source: config`, which made
+    them indistinguishable from something the operator wrote — the reason the
+    broad `Bash(co *)` needed a hardcoded exception. They load as `template`
+    now and still buy exactly what they did: `co status`, `co browser ...`."""
+    monkeypatch.chdir(tmp_path)
+    shipped = load_permission_patterns(tmp_path / ".co")
+    assert shipped["Bash(co *)"]["source"] == "template"
+
+    for command, expected in [
+        ("co status", "allow"),
+        ("co browser status", "allow"),
+        ("co deploy", "deny"),
+        ("co email send --to a@b.c hi", "deny"),
+        ("co keys --reveal", "deny"),
+    ]:
+        instance = agent(io=False, permissions=dict(shipped))
+        instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+        apply_auto_approve_policy(instance)
+        got = instance.current_session["pending_tool"]["approval_policy"]["decision"]
+        assert got == expected, (command, got)
+
+
+def test_a_quoted_program_does_not_read_as_ungranted(tmp_path, monkeypatch):
+    """The grant check must not re-parse a segment's text.
+
+    `_extract_subcommands` returns segments with quotes removed, so feeding
+    `awk BEGIN{system("x")}` back to bashlex raises — and the first version of
+    this code swallowed that into "no grant". It happened to deny something
+    dangerous, which is how a swallowed error hides: the same path denies a
+    grant the operator did write, for a command whose text simply does not
+    re-parse.
+    """
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=_granted("Bash(awk *)"))
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": 'awk \'BEGIN{system("echo hi")}\''},
+    }
+
+    apply_auto_approve_policy(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
