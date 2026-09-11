@@ -178,6 +178,11 @@ on the workspace rule — the workspace is sometimes the home directory, keys
 get committed, and `.co/keys/` is under the project root. Matching is on path
 components and suffixes, so `keys.md` and `monkey.txt` are ordinary files.
 
+The read, write, edit and delete *tools* hold the same line: `read_file`,
+`glob`, `write`, `edit` and the rest refuse key material by the same rule.
+They have to — a gate one tool wide is a detour, and a model asked for
+`cat server.pem` will simply reach for `read_file` instead.
+
 An output redirect (`> out`, `>> log`, `2> err`) is a file write and is held
 to the write tool's rules: inside the workspace it is a reversible edit and
 allowed (`echo x > notes.txt`, `cat << 'EOF' > src/main.rs ... EOF` — models

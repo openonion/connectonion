@@ -389,6 +389,15 @@ def evaluate_auto_approve(tool_name: str, args: dict, root: Path | None = None) 
     """Classify one exact Auto-profile tool call without side effects."""
     root = (root or project_root()).resolve()
     name = str(tool_name).lower()
+    # Before anything else: the tools hold the same line the shell commands do.
+    # `cat server.pem` was denied while `read_file("server.pem")` was allowed,
+    # so a model asked for the first simply reached for the second — measured
+    # through the real `co ai`, which printed "policy read-only workspace
+    # operation" for a private key. A gate one tool wide is a detour.
+    if name in READ_TOOLS | WORKSPACE_EDIT_TOOLS | DELETE_TOOLS:
+        raw = next((args.get(key) for key in ("file_path", "path", "target", "filename", "pattern") if args.get(key)), None)
+        if raw is not None and _is_key_material(str(raw)):
+            return decision("credentials", "deny", "credential access is never auto-approved", "call")
     if name in READ_TOOLS:
         path = _workspace_path(args)
         if path is not None and not _inside_workspace(path, root):

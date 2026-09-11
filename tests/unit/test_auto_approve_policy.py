@@ -618,3 +618,58 @@ def test_the_key_rule_does_not_swallow_ordinary_files(tmp_path, monkeypatch, com
     check_approval(instance)
 
     assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    ("name", "path"),
+    [
+        ("read_file", "server.pem"),
+        ("read", ".ssh/id_rsa"),
+        ("read_file", ".ssh/id_ed25519"),
+        ("read_file", "deploy.key"),
+        ("read_file", ".netrc"),
+        ("read_file", ".git-credentials"),
+        ("glob", ".ssh/*"),
+        ("write", ".ssh/authorized_keys"),
+        ("edit", "server.pem"),
+        ("multi_edit", ".aws/credentials"),
+    ],
+)
+def test_the_read_and_write_tools_hold_the_same_line_on_key_material(tmp_path, monkeypatch, name, path):
+    """`cat server.pem` was denied while `read_file("server.pem")` was allowed.
+
+    Found by running the fixed code through the real `co ai`: asked for
+    `cat server.pem | head -2`, the model reached for `read_file` instead, and
+    the console printed "policy read-only workspace operation". The shell rule
+    and the tool rule have to agree, or the gate is a detour.
+    """
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": name, "arguments": {"path": path}}
+
+    apply_auto_approve_policy(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "deny", result
+    assert result["effect_class"] == "credentials", result
+
+
+@pytest.mark.parametrize(
+    ("name", "path"),
+    [
+        ("read_file", "keys.md"),
+        ("read_file", "notes.txt"),
+        ("write", "src/main.rs"),
+        ("edit", "monkey.py"),
+        ("glob", "src/*.rs"),
+    ],
+)
+def test_ordinary_files_still_reach_the_read_and_write_tools(tmp_path, monkeypatch, name, path):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": name, "arguments": {"path": path}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"

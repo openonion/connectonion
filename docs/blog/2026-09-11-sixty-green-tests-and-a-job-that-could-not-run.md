@@ -149,3 +149,19 @@ substrings, so `keys.md` is still documentation. Ten tests, red first.
 That one was not found by a test. It was found by writing down what the
 answers ought to be, running them, and looking at the column that did not
 match. The tests then made it permanent.
+
+And then the same method found the next one. With the key rule in, I ran the
+whole thing through the real `co ai` — no scripted model, no fixture, the
+actual CLI in a temp project — and asked it for `cat server.pem | head -2`.
+The model declined, politely, on its own initiative. But the transcript above
+its refusal showed it had first called `read_file` on the same file, and the
+console had printed `policy read-only workspace operation` beside it.
+
+The shell rule and the tool rule disagreed. `cat server.pem` was denied;
+`read_file("server.pem")` was allowed. A gate one tool wide is a detour, and
+the only reason nothing leaked is that the model happened to have better
+manners than the policy. Both now refuse key material by the same rule.
+
+Four of the five bugs in this change were found by running the thing rather
+than by reading it. The fifth was found by a test — the one I wrote to run
+the thing.
