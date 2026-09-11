@@ -43,6 +43,16 @@ _FOCUSED_COMMANDS = {
     "pytest", "ruff", "mypy", "pyright", "eslint", "tsc", "vitest",
     "jest", "cargo", "go", "make",
 }
+# This category is an execution surface by design: an agent that may write a
+# test and run it may run anything the test runs. What the narrowing below is
+# for is the commands in it that are not verification at all — `make install`
+# writes outside the workspace by convention, and 1.8.4 allowed it, along with
+# bare `make` and `make -C /etc all`. `cargo`, `go` and the package runners
+# were already narrowed this way; `make` was the one left open.
+_MAKE_VERIFICATION_TARGETS = {
+    "test", "tests", "check", "checks", "lint", "typecheck", "fmt", "format",
+    "build", "coverage", "cov", "ci", "verify", "audit",
+}
 _PACKAGE_RUNNERS = {"npm", "pnpm", "yarn", "bun"}
 _DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "shred", "truncate", "del", "erase", "format"}
 _EXTERNAL_COMMANDS = {"curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail"}
@@ -289,6 +299,16 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         focused = len(words) > 1 and words[1] in {"test", "check", "clippy", "build"}
     if first == "go":
         focused = len(words) > 1 and words[1] == "test"
+    if first == "make":
+        # A named verification target, and nothing that redirects make
+        # somewhere else. Bare `make` runs whatever the default target is.
+        targets = [w for w in words[1:] if not w.startswith("-")]
+        flags = [w for w in words[1:] if w.startswith("-")]
+        focused = (
+            bool(targets)
+            and all(t in _MAKE_VERIFICATION_TARGETS for t in targets)
+            and not any(f.startswith(("-C", "--directory", "-f", "--file", "--makefile")) for f in flags)
+        )
     if focused:
         return decision("verification", "allow", "focused test, lint, or build command", "workspace")
     if first in _READ_ONLY_COMMANDS:

@@ -746,3 +746,47 @@ def test_a_bare_dollar_is_not_a_variable(tmp_path, monkeypatch, command):
     check_approval(instance)
 
     assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["make test", "make check", "make lint", "make build", "make coverage"],
+)
+def test_make_still_runs_a_named_verification_target(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
+    assert result["effect_class"] == "verification"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "make install",              # not verification; writes outside by convention
+        "make",                      # the default target is whatever the file says
+        "make -C /etc all",          # make, pointed somewhere else
+        "make -f /tmp/evil.mk test", # make, given another program
+        "make test install",         # one verification target does not carry the rest
+    ],
+)
+def test_make_is_not_a_way_to_run_anything(tmp_path, monkeypatch, command):
+    """1.8.4 allowed all of these under "focused test, lint, or build command".
+
+    `cargo`, `go` and the package runners were already narrowed to their
+    verification subcommands; `make` was the one left open. Found by an
+    adversarial sweep of the shipped policy before publishing 1.8.5a1, not by
+    a test.
+    """
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"

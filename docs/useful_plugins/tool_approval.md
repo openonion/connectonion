@@ -150,6 +150,17 @@ run_background, kill_task
 send_email, post, delete, remove
 ```
 
+### Focused Verification (Auto)
+
+Test, lint, type-check and build commands run without a dialog. This category
+is an execution surface by design — an agent that may write a test and run it
+may run whatever that test runs — so what the narrowing does is keep out the
+commands in it that are not verification at all. `cargo` is limited to
+`test`/`check`/`clippy`/`build`, `go` to `test`, the package runners to
+targets naming test/lint/build/check/typecheck, and `make` to a named
+verification target with no `-C`/`-f` redirecting it elsewhere: `make test`
+runs, `make install`, bare `make` and `make -C /etc all` ask.
+
 ### Read-Only Commands (Auto)
 
 In Auto, a shell command whose every segment only reads, filters or prints
