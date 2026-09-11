@@ -33,6 +33,12 @@ READ_TOOLS = {
     "screenshot", "load_guide",
 }
 WORKFLOW_TOOLS = {"task", "ask_user", "skill", "todo_list"}
+# Classes whose every method is planning with no side effect. Matched on the
+# owner because the method names cannot be: TodoList registers `add`, `start`,
+# `complete`, `update`, `list`, `remove` and `clear`, and `remove` is in
+# DELETE_TOOLS while `list` is in READ_TOOLS. `todo_list` was in WORKFLOW_TOOLS
+# and is never a tool name, so 438 `add` calls were denied in six days (#1447).
+WORKFLOW_TOOL_CLASSES = {"TodoList"}
 WORKSPACE_EDIT_TOOLS = {"write", "edit", "multi_edit"}
 DELETE_TOOLS = {"delete", "remove", "unlink", "rmdir", "delete_file"}
 EXTERNAL_EFFECT_TOOLS = {
@@ -57,6 +63,43 @@ _MAKE_VERIFICATION_TARGETS = {
 _PACKAGE_RUNNERS = {"npm", "pnpm", "yarn", "bun"}
 _DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "shred", "truncate", "del", "erase", "format"}
 _EXTERNAL_COMMANDS = {"curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail"}
+# Commands whose argument is a *program*. `bash << EOF … EOF`, `python3 -c`,
+# `awk 'BEGIN{system("rm -rf /")}'` and GNU `sed 's/a/b/e'` all run text that
+# no rule here can inspect, so allowing them by name would allow everything
+# through one of them. These ask; a person can still say yes.
+#
+# This is the line default-allow actually draws. It is not "which command
+# names are safe" — that list can never be finished, and an unattended job
+# dies on the first tool nobody thought of. It is "can this command execute
+# something we cannot see".
+_CODE_EXECUTING_COMMANDS = {
+    "bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh",
+    "python", "python2", "python3", "node", "deno", "bun", "ruby", "perl",
+    "php", "lua", "Rscript", "osascript", "eval", "exec", "source",
+    "awk", "gawk", "mawk", "nawk", "sed", "xargs", "env",
+}
+# Subcommands that send something to somebody. Under default allow these are
+# the other half of the line: `co email send`, `co feishu send`, `gh pr create`
+# and `git push` are not dangerous to this machine, they are visible to other
+# people, and an unattended agent must not be the one deciding to be seen.
+# Checked in the first few words, where a subcommand lives, so that a file
+# called `send.py` in an argument does not trip it.
+_OUTWARD_SUBCOMMANDS = {
+    "send", "reply", "post", "publish", "deploy", "release", "push",
+    "transfer", "pay", "invite", "announce", "broadcast", "comment", "merge",
+}
+
+# Commands that write a file named in their arguments rather than through a
+# redirect, so `_redirect_targets` never sees them. They are held to the write
+# tool's rule: inside the workspace is a reversible edit, outside is not.
+_PATH_WRITING_COMMANDS = {
+    "tee", "cp", "mv", "ln", "install", "touch", "mkdir", "truncate",
+    "chmod", "chown", "chgrp", "dd",
+}
+
+# Wrappers that run their next word: `uv run python -c` is `python -c`.
+_COMMAND_RUNNERS = {"uv", "poetry", "pipx", "npx", "bunx", "pdm", "rye", "hatch", "nix-shell"}
+
 _SENSITIVE_COMMANDS = {
     "env", "printenv", "security", "keychain", "gcloud", "aws", "az",
 }
@@ -81,21 +124,6 @@ _CO_SUBCOMMAND_EFFECTS = {
 # clean iterations (#1481). This is the Auto *policy* for the agent's own
 # calls; the remote-EXEC whitelist in host.yaml is a different gate and is
 # deliberately not widened here.
-_READ_ONLY_COMMANDS = {
-    "head", "tail", "cat", "less", "more", "grep", "egrep", "fgrep", "rg",
-    "wc", "ls", "sort", "uniq", "cut", "tr", "basename",
-    "dirname", "jq", "echo", "printf", "pwd", "cd", "true", "test", "[",
-    "which", "file", "stat", "diff", "date", "whoami", "hostname", "uname",
-}
-# `sed` and `awk` are deliberately absent. They take a *program*, and a
-# program is code: `awk 'BEGIN{system("rm -rf /")}'` reads like an inspection
-# and is arbitrary execution, as does `sed 's/a/b/e'` on GNU. Any rule that
-# tried to keep them while excluding their execution constructs would be a
-# parser in a security path, written by the person it has to outsmart. The
-# inspection they are reached for has cover: `head`, `tail`, `cut`, `sort`,
-# `uniq`, `wc`, `jq` and `grep` are on the list, `read_file` takes `limit`
-# and `offset`, and the agent has `grep` and `glob` tools. Both still ask,
-# which is what they did before 1.8.5 as well.
 # Key material, recognised by where it lives and what it is called rather than
 # by substring: `keys.md` is documentation and `monkey.txt` is a file. Reading
 # any of this is a credential read wherever it sits, so the workspace rule is
@@ -297,6 +325,8 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         return decision("deletion", "deny", "destructive command requires an explicit safer workflow", "call")
     if any(token in lowered for token in ("publish", "deploy", "release", "push")):
         return decision("publication", "ask", "publishing and deployment require human approval", "call", requires_human=True)
+    if any(word.lower() in _OUTWARD_SUBCOMMANDS for word in words[1:4]):
+        return decision("external_effect", "ask", "sending something to other people requires human approval", "call", requires_human=True)
     if first in _EXTERNAL_COMMANDS:
         return decision("external_network", "ask", "external network access requires human approval", "call", requires_human=True)
     if first == "co" and len(words) > 1:
@@ -308,6 +338,15 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         ".env" in token or "credential" in token or "secret" in token for token in lowered
     ) or any(_is_key_material(word) for word in words[1:] if not word.startswith("-")):
         return decision("credentials", "deny", "credential access is never auto-approved", "call")
+
+    # The runner's own name says nothing; what it runs does.
+    executing = first
+    if first in _COMMAND_RUNNERS:
+        after = [word for word in words[1:] if not word.startswith("-")]
+        if after and after[0] == "run":
+            after = after[1:]
+        if after:
+            executing = Path(after[0]).name.lower()
 
     focused = first in _FOCUSED_COMMANDS
     focused = focused or (first in {"python", "python3"} and words[1:3] == ["-m", "pytest"])
@@ -330,13 +369,48 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         )
     if focused:
         return decision("verification", "allow", "focused test, lint, or build command", "workspace")
-    if first in _READ_ONLY_COMMANDS:
-        if first in _PATH_READING_COMMANDS and _reads_an_unresolvable_path(words):
+    if first in _CODE_EXECUTING_COMMANDS or executing in _CODE_EXECUTING_COMMANDS:
+        return decision(
+            "code_execution", "ask",
+            "the command runs a program this policy cannot read", "call",
+            requires_human=True)
+    if first == "find" and any(flag in lowered for flag in ("-delete", "-exec", "-execdir", "-ok")):
+        # A deletion and an execution hiding in a flag. `find` itself is a
+        # search; these two arguments make it something else.
+        return decision("command", "ask", "find is deleting or executing, not searching", "call", requires_human=True)
+    if first in _PATH_WRITING_COMMANDS:
+        from .approval import _is_control_file
+
+        for word in words[1:]:
+            if word.startswith("-"):
+                continue
+            if "$" in word or "`" in word:
+                return decision("command", "ask", "the file to write depends on the environment", "call", requires_human=True)
+            target = Path(word).expanduser()
+            resolved = (target if target.is_absolute() else (root or Path.cwd()) / target).resolve(strict=False)
+            if _is_control_file(str(resolved)):
+                return decision("authorization_control", "deny", "agents cannot rewrite authorization control files", "call")
+            if root is not None and not _inside_workspace(resolved, root):
+                return decision("write_outside_workspace", "deny", "writes outside the workspace are not auto-approved", "call")
+        return decision("workspace_edit", "allow", "file written inside the workspace", "workspace")
+    if first in _PATH_READING_COMMANDS:
+        if _reads_an_unresolvable_path(words):
             return decision("read_outside_workspace", "ask", "the file to read depends on the environment", "call", requires_human=True)
-        if root is not None and first in _PATH_READING_COMMANDS and _reads_outside_workspace(words, root):
+        if root is not None and _reads_outside_workspace(words, root):
             return decision("read_outside_workspace", "ask", "reading outside the workspace requires approval", "call", requires_human=True)
         return decision("read", "allow", "read-only command", "workspace")
-    return decision("command", "ask", "command is outside the focused verification and read-only allowlists", "call", requires_human=True)
+    # Everything the rules above did not name runs. #1481 asked for this and
+    # the enumerated alternative cannot get there: a list of safe command
+    # names is a list somebody has to extend for every tool anyone installs,
+    # and until they do, an unattended job dies on `xargs`.
+    #
+    # The lines that hold are the ones checked before this point, and this
+    # change moves none of them: destructive commands, external network,
+    # credentials and key material, publication, anything that executes a
+    # program we cannot read, writes outside the workspace, authorization
+    # control files, and reads outside the workspace for the commands whose
+    # file arguments can be seen.
+    return decision("command", "allow", "ordinary command, allowed by default", "workspace")
 
 
 def _redirect_targets(command: str) -> list[str]:
@@ -428,8 +502,8 @@ def _classify_command(command: str, root: Path | None = None) -> dict:
         # Every write target is a reversible workspace file: the read-only
         # segments feeding it are now a workspace edit, and are allowed as one.
         results = [
-            decision("workspace_edit", "allow", "read-only command writing a workspace file", "workspace")
-            if item["effect_class"] == "read" else item
+            decision("workspace_edit", "allow", "command writing a workspace file", "workspace")
+            if item["effect_class"] in ("read", "command") else item
             for item in results
         ]
     denied = next((item for item in results if item["decision"] == "deny"), None)
@@ -444,7 +518,14 @@ def _classify_command(command: str, root: Path | None = None) -> dict:
         return decision("read", "allow", f"read-only command chain ({count})", "workspace")
     if effects == {"workspace_edit"}:
         return decision("workspace_edit", "allow", f"workspace file written by a read-only chain ({count})", "workspace")
-    return decision("verification", "allow", f"focused verification chain ({count})", "workspace")
+    if "verification" in effects and effects <= {"verification", "read", "command"}:
+        # `cd x && cargo build | tail -20` is a verification run with filters
+        # around it. The filters are what it is piped through, not what it is.
+        return decision("verification", "allow", f"focused verification chain ({count})", "workspace")
+    # Mixed or ordinary. Named for what it is: a chain that reached here has
+    # passed every deny and ask rule, so the reason should not claim it was
+    # recognised as a test command when it was simply not refused.
+    return decision("command", "allow", f"ordinary command chain ({count}), allowed by default", "workspace")
 
 
 def evaluate_auto_approve(tool_name: str, args: dict, root: Path | None = None) -> dict:
@@ -488,6 +569,24 @@ def evaluate_auto_approve(tool_name: str, args: dict, root: Path | None = None) 
     return decision("unknown", "ask", "unknown tools never run silently", "call", requires_human=True)
 
 
+def _owned_by_workflow_class(agent: "Agent", tool_name) -> bool:
+    """Whether this call is a method of a planning tool the agent holds.
+
+    Asked of the agent rather than of the name, because the names collide with
+    tools that must keep their stronger verdict — a tool genuinely called
+    `remove` is still a deletion.
+    """
+    registry = getattr(agent, "tools", None)
+    if registry is None or not tool_name:
+        return False
+    try:
+        tool = registry.get(str(tool_name))
+    except Exception:
+        return False
+    owner = getattr(tool, "__self__", None)
+    return owner is not None and type(owner).__name__ in WORKFLOW_TOOL_CLASSES
+
+
 def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
     """Return a deterministic decision for any ordinary Auto session."""
     if ensure_approval_mode(agent) != AUTO:
@@ -498,6 +597,13 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
                 "managed_delegation",
                 "allow",
                 MANAGED_DELEGATION_REASON,
+                "session",
+            )
+        elif _owned_by_workflow_class(agent, pending.get("name")):
+            result = decision(
+                "workflow",
+                "allow",
+                "built-in planning tool with no side effects",
                 "session",
             )
         else:

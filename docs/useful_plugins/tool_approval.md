@@ -8,7 +8,7 @@ human decision.
 | Mode | Behaviour |
 |---|---|
 | `read-only` | Manual approval for every effectful live-IO call not explicitly permitted |
-| `auto` | Auto-approves reversible workspace work, focused verification, and read-only commands on workspace paths; asks or denies higher-impact calls |
+| `auto` | Runs ordinary local commands; asks or denies the ones that leave the machine, execute unreadable input, touch credentials, or write outside the workspace |
 | `full-access` | Explicit bounded approval bypass under the Host launch ceiling |
 
 No aliases are accepted or translated. Unknown stored values become Auto.
@@ -212,15 +212,49 @@ reach for both instead of the write tool); a control file is denied; a target
 outside the workspace is denied; a target that depends on the environment
 (`> $HOME/x`) cannot be resolved and asks. `2>&1` is not a write. A heredoc
 is classified by its first line — the body is data to that command — so
-`bash << EOF` still asks, because `bash` is not read-only.
+`bash << EOF` still asks, because `bash` runs whatever the body says.
 
-The same list decides which pipe segments ride along on an operator grant in
-an unattended run. `co browser ... get_text | head -40` is the granted browser
-command plus a filter on its output, so it runs; `co browser status && co email
-send ...` is still an email send nobody authorized, so it does not (#1481).
+### A command runs unless a rule holds it back
+
+A command nobody thought of runs. There is no list of safe command names to be
+on, because that list can never be finished — an unattended job dies on the
+first tool nobody added, which is how a seven-times-a-day round died at
+iteration sixteen on `head -40` (#1481).
+
+What holds a command back, all checked before the default applies:
+
+| rule | example | verdict |
+|---|---|---|
+| destroys files | `rm -rf build`, `shred x` | deny |
+| credentials or key material | `env`, `aws s3 ls`, `cat ~/.ssh/id_rsa` | deny |
+| writes outside the workspace | `echo x > ../out`, `cp f /etc/x` | deny |
+| rewrites an authorization control file | `> .co/host.yaml` | deny |
+| leaves the machine | `curl`, `ssh`, `git push`, `co email send`, `co feishu send` | ask |
+| runs a program this policy cannot read | `bash << EOF`, `python3 -c`, `awk`, `sed`, `uv run python -c` | ask |
+| deletes or executes through a flag | `find . -delete`, `find . -exec` | ask |
+| reads outside the workspace | `cat /etc/passwd` | ask |
+| cannot be parsed | `echo 'unclosed` | ask |
+
+A chain is only as permitted as its worst link: `ls && rm -rf build` is denied.
+`co browser status && co email send ...` is still an email send nobody
+authorized, so it asks, and in an unattended run that is a refusal.
+
+One known gap, recorded rather than guessed at: `gh pr create` is allowed.
+`create` is too generic to add to the outward list — `co create my-agent` is
+local work — and a pull request is a reversible proposal in the operator's own
+repository.
 
 This is the Auto policy for the agent's own calls. The remote-EXEC whitelist
 in `host.yaml` is a separate gate and is not widened by it.
+
+### Planning tools
+
+A class whose every method is planning with no side effect is recognised by
+what owns the call, not by its name. `TodoList` registers `add`, `start`,
+`complete`, `update`, `list`, `remove` and `clear`; matching those names would
+be wrong in both directions, since `remove` is a deletion and `list` is a read
+for every other tool. Before this, `todo_list` sat in the workflow list and was
+never a tool name, so 438 `add` calls were refused in six days (#1447).
 
 ### Unknown Tools
 

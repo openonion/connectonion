@@ -111,12 +111,12 @@ HOST_YAML = {
 
 # What the model does, in order, and which rule the test expects to carry it.
 STEPS = [
-    ("bash", {"command": "mkdir -p greeter/src", "description": "project layout"}, "configured_command"),
+    ("bash", {"command": "mkdir -p greeter/src", "description": "project layout"}, "workspace_edit"),
     ("write", {"path": "greeter/Cargo.toml", "content": CARGO_TOML}, "workspace_edit"),
     ("write", {"path": "greeter/src/main.rs", "content": MAIN_RS}, "workspace_edit"),
     ("bash", {"command": "cd greeter && cargo build --quiet 2>&1 | tail -20", "description": "build", "timeout": 300}, "verification"),
     ("bash", {"command": "cd greeter && cargo test --quiet 2>&1 | tail -20", "description": "test", "timeout": 300}, "verification"),
-    ("bash", {"command": "cd greeter && ./target/debug/greeter --name Aaron | head -1", "description": "run it"}, "configured_command"),
+    ("bash", {"command": "cd greeter && ./target/debug/greeter --name Aaron | head -1", "description": "run it"}, "command"),
     ("bash", {"command": "wc -l greeter/src/main.rs && ls greeter/target/debug | grep -c '^greeter$'", "description": "inspect"}, "read"),
 ]
 
@@ -200,14 +200,23 @@ def test_an_unattended_agent_builds_tests_and_runs_a_rust_cli(project, rust_tool
     assert result == "Built greeter, its test passes, and it greets Aaron."
 
 
-def test_the_two_grants_are_the_only_two_the_job_needs(project, rust_toolchain_env):
-    """Take the grants away and exactly the two granted steps are refused.
+def test_the_job_needs_no_grant_at_all(project, rust_toolchain_env):
+    """Take every grant away and the whole job still runs.
 
     This is the test that would have caught #1481 in reverse: it pins down
     that the built-in policy, not an operator grant, carries the file writes,
     the cargo runs and every pipe filter. If a future policy change made
     `| tail -20` need a grant again, this fails at the build step, not in
     production at iteration sixteen.
+
+    It used to expect two refusals — `mkdir` and running the binary the job
+    just built — which were carried by an operator grant rather than by the
+    policy. Needing a standing `Bash(co *)` to make a directory was the shape
+    of the problem, not a boundary worth keeping: with the default flipped
+    (#1481), an ordinary local command runs and the rules that hold are the
+    ones about leaving the machine, executing unreadable input, credentials
+    and writing outside the workspace. A grant that still binds is covered in
+    tests/unit/test_auto_approve_policy.py.
     """
     (project / ".co" / "host.yaml").write_text(yaml.safe_dump({"name": "rust-builder"}), encoding="utf-8")
     agent = Agent(
@@ -225,4 +234,4 @@ def test_the_two_grants_are_the_only_two_the_job_needs(project, rust_toolchain_e
     calls = [e for e in agent.current_session["trace"] if e.get("type") == "tool_call"]
     decisions = [(s[1].get("command", s[1].get("path")), c["approval_policy"]["decision"]) for s, c in zip(STEPS, calls)]
     denied = [command for command, decision in decisions if decision == "deny"]
-    assert denied == ["mkdir -p greeter/src", "cd greeter && ./target/debug/greeter --name Aaron | head -1"], decisions
+    assert denied == [], decisions
