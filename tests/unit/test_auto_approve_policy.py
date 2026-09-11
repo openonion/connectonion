@@ -561,3 +561,60 @@ def test_a_heredoc_body_that_executes_or_lands_outside_is_not_an_edit(tmp_path, 
     apply_auto_approve_policy(instance)
 
     assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat .ssh/id_rsa",                     # a private key inside the workspace
+        "head -5 .ssh/id_ed25519",
+        "cat .co/keys/agent.key",              # the agent's OWN signing key
+        "grep -r . .co/keys/",
+        "cat server.pem",
+        "cat deploy.key",
+        "cat .ssh/authorized_keys",            # who may log in
+        "cat .npmrc",                          # carries an auth token
+        "cat .git-credentials",
+        "wc -c id_rsa",
+    ],
+)
+def test_key_material_is_never_read_silently_wherever_it_lives(tmp_path, monkeypatch, command):
+    """A private key read is a credential read, workspace or not.
+
+    The outside-workspace rule caught `head ~/.ssh/id_rsa` only because `~`
+    is usually not the project. Where the workspace *is* the home directory —
+    or where a key was committed, or the agent's own `.co/keys/` is under the
+    project root — the read was allowed, because the credential check only
+    looked for `.env`, `secret` and `credential` in the words. Found by
+    verifying #1481 against the shipped permissions rather than by a test.
+    """
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "deny", result
+    assert result["effect_class"] == "credentials", result
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat keys.md",                 # documentation about keys is not a key
+        "grep -n 'key' notes.txt",
+        "head -3 keyboard.md",
+        "cat monkey.txt",
+        "ls .co/skills",
+    ],
+)
+def test_the_key_rule_does_not_swallow_ordinary_files(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "allow"

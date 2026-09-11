@@ -125,3 +125,27 @@ print, not a failure, when the policy was right to refuse. What decides the
 test is whether the job got done with nobody present.
 
 The third run passed in twenty-two seconds.
+
+## One more, found by not trusting the tests
+
+With the suite green I ran the issue's own table by hand — the shipped
+permissions, an agent with `io=None`, sixteen commands, print the verdict
+beside the one I expected. Fifteen matched. `head ~/.ssh/id_rsa` came back
+**allow**.
+
+The outside-workspace rule was supposed to catch it, and normally does,
+because `~` is not the project. In that check HOME *was* the project, which
+is the shape the test suite's own isolation creates — and is also a real
+configuration, and is also what happens when a key gets committed, and is
+always true of the agent's own `.co/keys/agent.key`. The credential check
+only looked for `.env`, `secret` and `credential` in the words. A private key
+matched none of them.
+
+So key material is now recognised by where it lives and what it is called,
+and denied wherever it sits: anything under `.ssh`, `.gnupg`, `.aws`, a `keys`
+directory; the usual filenames; the usual suffixes. On path components, not
+substrings, so `keys.md` is still documentation. Ten tests, red first.
+
+That one was not found by a test. It was found by writing down what the
+answers ought to be, running them, and looking at the column that did not
+match. The tests then made it permanent.

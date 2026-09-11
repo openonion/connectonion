@@ -164,8 +164,19 @@ date whoami hostname uname
 Two things take a command back out of this list: a path argument that
 resolves outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`,
 `cd ..`) asks, the same way the read *tools* ask for outside-workspace reads;
-and `sed -i` / `--in-place` asks, because it rewrites the file. Credential
-tokens (`.env`, `secret`, `credential`) are denied before any of this applies.
+and `sed -i` / `--in-place` asks, because it rewrites the file.
+
+Credentials are denied before any of this applies, and not only by token
+(`.env`, `secret`, `credential`): key material is recognised by where it lives
+and what it is called — anything under `.ssh`, `.gnupg`, `.aws`, `.azure`,
+`.kube`, `.docker` or a `keys` directory (which includes the agent's own
+`.co/keys/`), the usual filenames (`id_rsa`, `id_ed25519`, `authorized_keys`,
+`.npmrc`, `.netrc`, `.git-credentials`, `.pypirc`, `keys.env`), and the usual
+suffixes (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`, `.ppk`). A read
+of key material is a credential read wherever it sits, so this does not depend
+on the workspace rule — the workspace is sometimes the home directory, keys
+get committed, and `.co/keys/` is under the project root. Matching is on path
+components and suffixes, so `keys.md` and `monkey.txt` are ordinary files.
 
 An output redirect (`> out`, `>> log`, `2> err`) is a file write and is held
 to the write tool's rules: inside the workspace it is a reversible edit and

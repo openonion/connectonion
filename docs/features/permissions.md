@@ -12,7 +12,8 @@ the human approval hook:
 - read-only shell commands (`head`, `grep`, `wc`, `ls`, `sed` without `-i`, ...)
   on workspace paths with no output redirect are allowed, alone or as pipe
   segments beside a granted command (#1481);
-- deletions and credential access are denied;
+- deletions and credential access are denied, including reads of key material
+  by path or name (`.ssh/`, `.co/keys/`, `id_rsa`, `*.pem`, ...) wherever it sits;
 - deployment, publishing, external communication, payments, outside-workspace
   reads, and unknown tools ask a person.
 

@@ -64,6 +64,35 @@ _READ_ONLY_COMMANDS = {
     "which", "file", "stat", "diff", "date", "whoami", "hostname", "uname",
 }
 _SED_IN_PLACE_FLAGS = ("-i", "--in-place")
+# Key material, recognised by where it lives and what it is called rather than
+# by substring: `keys.md` is documentation and `monkey.txt` is a file. Reading
+# any of this is a credential read wherever it sits, so the workspace rule is
+# not what protects it — the workspace often *is* the home directory, a key
+# gets committed, and `.co/keys/` holds the agent's own signing key.
+_CREDENTIAL_DIRS = {".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", "keys"}
+_CREDENTIAL_FILES = {
+    "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys",
+    ".npmrc", ".netrc", ".pgpass", ".git-credentials", ".pypirc",
+    "keys.env", "credentials", "service-account.json", "id_rsa.pub",
+}
+_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".ppk")
+
+
+def _is_key_material(word: str) -> bool:
+    """True if this argument names key material."""
+    import os
+
+    normalised = os.path.normpath(word).replace(os.sep, "/").lstrip("/")
+    parts = [part for part in normalised.split("/") if part not in ("", ".", "..")]
+    if not parts:
+        return False
+    name = parts[-1].lower()
+    return (
+        any(part.lower() in _CREDENTIAL_DIRS for part in parts[:-1])
+        or name in _CREDENTIAL_DIRS          # the directory itself, e.g. `ls .co/keys`
+        or name in _CREDENTIAL_FILES
+        or name.endswith(_CREDENTIAL_SUFFIXES)
+    )
 # The read-only commands that open the paths they are given. `basename`,
 # `echo`, `pwd` and friends take strings, not files, and `cd` is here because
 # leaving the workspace makes every later relative path a path outside it.
@@ -225,7 +254,7 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         return decision("external_network", "ask", "external network access requires human approval", "call", requires_human=True)
     if first in _SENSITIVE_COMMANDS or any(
         ".env" in token or "credential" in token or "secret" in token for token in lowered
-    ):
+    ) or any(_is_key_material(word) for word in words[1:] if not word.startswith("-")):
         return decision("credentials", "deny", "credential access is never auto-approved", "call")
 
     focused = first in _FOCUSED_COMMANDS
