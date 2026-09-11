@@ -248,26 +248,96 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
     return decision("command", "ask", "command is outside the focused verification and read-only allowlists", "call", requires_human=True)
 
 
-_OUTPUT_REDIRECT = re.compile(r">(?!&\d)")
+def _redirect_targets(command: str) -> list[str]:
+    """The files a command's output redirects write to.
+
+    `2>&1` duplicates a descriptor and writes nothing; `> >(cmd)` is process
+    substitution, and the inner command is classified on its own by
+    _extract_subcommands. Everything else — `>`, `>>`, `2> file` — is a file
+    being written, which bashlex keeps out of the word list, so this is the
+    one place a write hiding behind a read-only command is seen.
+    """
+    import bashlex
+
+    targets: list[str] = []
+
+    def visit(node):
+        if node.kind == "redirect" and node.type in (">", ">>") and hasattr(node.output, "word"):
+            if not node.output.word.startswith(">("):
+                targets.append(node.output.word)
+        for attr in ("parts", "list"):
+            for child in getattr(node, attr, None) or []:
+                visit(child)
+        for attr in ("command", "output", "input"):
+            child = getattr(node, attr, None)
+            if child is not None and hasattr(child, "kind"):
+                visit(child)
+
+    for node in bashlex.parse(command):
+        visit(node)
+    return targets
 
 
-def _has_output_redirect(command: str) -> bool:
-    """A `>` that points at a file means something is being written, so
-    nothing about the command is read-only — even `head -1 f > out`. `2>&1`
-    and `>&2` only duplicate a descriptor and write nothing new. bashlex keeps
-    redirects out of the word list, so this is the one place they are seen."""
-    return bool(_OUTPUT_REDIRECT.search(command))
+def _redirect_verdict(targets: list[str], root: Path | None) -> dict | None:
+    """A redirect is a file write, and is held to the write tool's rules.
+
+    Inside the workspace it is a reversible edit and allowed — `echo x > f`
+    is what a model reaches for instead of the write tool. A control file is
+    denied, a target outside the workspace is denied, and a target that
+    depends on the environment (`$HOME/...`) cannot be resolved and asks.
+    """
+    from .approval import _is_control_file
+
+    for target in targets:
+        if "$" in target or "`" in target:
+            return decision("command", "ask", "redirect target depends on the environment", "call", requires_human=True)
+        if root is None:
+            return decision("command", "ask", "a redirect writes a file", "call", requires_human=True)
+        path = Path(target).expanduser()
+        resolved = (path if path.is_absolute() else root / path).resolve(strict=False)
+        if _is_control_file(str(resolved)):
+            return decision("authorization_control", "deny", "agents cannot rewrite authorization control files", "call")
+        if not _inside_workspace(resolved, root):
+            return decision("write_outside_workspace", "deny", "writes outside the workspace are not auto-approved", "call")
+    return None
+
+
+_HEREDOC_OPERATOR = re.compile(r"<<-?\s*(['\"]?)(\w+)\1")
+
+
+def _without_heredoc_body(command: str) -> str:
+    """`cat << 'EOF' > f\n...\nEOF` classified by its first line, body dropped.
+
+    bashlex cannot parse a here-document, and an unparseable command asks —
+    which is how a real model's first attempt to write main.rs was refused
+    unattended: models reach for `cat << EOF > file` even when a write tool is
+    offered. The body is data to the command on the first line. For a
+    read-only command that is inert; for anything that executes its input
+    (`bash << EOF`, `python << EOF`) the first word is not read-only and the
+    command asks as before, body or no body.
+    """
+    header, _, _ = command.partition("\n")
+    if not _HEREDOC_OPERATOR.search(header):
+        return command
+    return _HEREDOC_OPERATOR.sub("", header, count=1)
 
 
 def _classify_command(command: str, root: Path | None = None) -> dict:
+    command = _without_heredoc_body(command)
     try:
         subcommands = _extract_subcommands(command)
+        targets = _redirect_targets(command)
     except Exception:
         return decision("command", "ask", "command could not be parsed safely", "call", requires_human=True)
     results = [_classify_single_command(full, root) for _, full in subcommands]
-    if _has_output_redirect(command):
+    if targets:
+        verdict = _redirect_verdict(targets, root)
+        if verdict is not None:
+            return verdict
+        # Every write target is a reversible workspace file: the read-only
+        # segments feeding it are now a workspace edit, and are allowed as one.
         results = [
-            decision("command", "ask", "a read-only command with an output redirect writes a file", "call", requires_human=True)
+            decision("workspace_edit", "allow", "read-only command writing a workspace file", "workspace")
             if item["effect_class"] == "read" else item
             for item in results
         ]
@@ -278,9 +348,12 @@ def _classify_command(command: str, root: Path | None = None) -> dict:
     if asked:
         return asked
     effects = {item["effect_class"] for item in results}
+    count = f"{len(results)} command{'s' if len(results) != 1 else ''}"
     if effects == {"read"}:
-        return decision("read", "allow", f"read-only command chain ({len(results)} command{'s' if len(results) != 1 else ''})", "workspace")
-    return decision("verification", "allow", f"focused verification chain ({len(results)} command{'s' if len(results) != 1 else ''})", "workspace")
+        return decision("read", "allow", f"read-only command chain ({count})", "workspace")
+    if effects == {"workspace_edit"}:
+        return decision("workspace_edit", "allow", f"workspace file written by a read-only chain ({count})", "workspace")
+    return decision("verification", "allow", f"focused verification chain ({count})", "workspace")
 
 
 def evaluate_auto_approve(tool_name: str, args: dict, root: Path | None = None) -> dict:
@@ -378,7 +451,7 @@ def _headless_configured_command(
     # granted browser command plus a filter on its output. Every other segment
     # must match a standing grant, so `co browser status && co email send ...`
     # is still an email send nobody authorized (#1481).
-    command = str((pending.get("arguments") or {}).get("command", ""))
+    command = _without_heredoc_body(str((pending.get("arguments") or {}).get("command", "")))
     try:
         root = project_root().resolve()
         segments = _extract_subcommands(command)
@@ -386,7 +459,7 @@ def _headless_configured_command(
             full for _, full in segments
             if _classify_single_command(full, root).get("effect_class") != "read"
         ]
-        if _has_output_redirect(command):
+        if _redirect_targets(command):
             needs_grant = [full for _, full in segments]
         # The shipped historical Bash(co *) grant is broader than its "safe CLI"
         # description. Preserve the unattended browser/status compatibility
@@ -425,8 +498,13 @@ def record_approval_policy(agent: "Agent", pending: dict) -> None:
     result = pending.get("approval_policy")
     if not isinstance(result, dict):
         return
+    # The executor records the call id as `tool_id` (`id` is the trace
+    # sequence number). This compared against `id`, so in a real Agent the
+    # decision never reached the trace — the audit record every "UI-safe
+    # decision" test asserted on existed only in tests whose pending tool had
+    # no id at all. Found by the Rust e2e.
     tool_id = pending.get("id")
     for entry in reversed(agent.current_session.get("trace", [])):
-        if entry.get("type") == "tool_call" and (not tool_id or entry.get("id") == tool_id):
+        if entry.get("type") == "tool_call" and (not tool_id or entry.get("tool_id") == tool_id):
             entry["approval_policy"] = dict(result)
             return

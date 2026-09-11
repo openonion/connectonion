@@ -436,8 +436,10 @@ def test_headless_auto_allows_read_only_commands(tmp_path, monkeypatch, command)
     [
         "sed -i s/a/b/ notes.txt",            # in-place edit writes the file
         "sed --in-place s/a/b/ notes.txt",
-        "head -1 notes.txt > out.txt",        # a redirect writes wherever it points
-        "echo secret >> ~/.bashrc",
+        "echo secret >> ~/.bashrc",           # a redirect outside the workspace
+        "echo x > ../outside.txt",
+        "echo 'Bash(*)' > .co/host.yaml",     # a redirect into a control file
+        "cat notes.txt > $HOME/notes.txt",    # a redirect nobody can resolve
         "tee out.txt",                        # writes its input
         "find . -name '*.log' -delete",       # deletes
         "xargs rm",                           # runs whatever it is given
@@ -453,7 +455,9 @@ def test_read_only_names_do_not_cover_writes_or_credentials(tmp_path, monkeypatc
 
     result = instance.current_session["pending_tool"]["approval_policy"]
     assert result["decision"] == "deny", result   # headless: nothing to ask
-    with pytest.raises(ValueError, match=f"denied by {POLICY_ID}"):
+    # The control-file case is refused one step earlier, by name, before the
+    # policy verdict is even read; either refusal is the right answer.
+    with pytest.raises(ValueError, match=f"denied by {POLICY_ID}|names a file that decides"):
         check_approval(instance)
 
 
@@ -490,6 +494,69 @@ def test_a_granted_command_still_cannot_smuggle_an_ungranted_one(tmp_path, monke
         "name": "bash",
         "arguments": {"command": "co browser status && co email send --to a@example.com hi"},
     }
+
+    apply_auto_approve_policy(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo hi > notes.txt",
+        "head -1 notes.txt > out.txt",
+        "printf '%s\\n' a b >> list.txt",
+        "cargo test --quiet > test-output.txt 2>&1",
+        "sort notes.txt | uniq > uniq.txt",
+    ],
+)
+def test_a_redirect_into_the_workspace_is_a_reversible_edit(tmp_path, monkeypatch, command):
+    """`echo x > file` is what a model reaches for instead of the write tool, and
+    it is held to the write tool's rule: inside the workspace it is allowed."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
+    assert result["effect_class"] in {"workspace_edit", "verification"}, result
+
+
+HEREDOC_WRITE = "cat << 'EOF' > greeter/src/main.rs\nfn main() {\n    println!(\"hi\");\n}\nEOF"
+
+
+def test_a_heredoc_into_a_workspace_file_is_a_reversible_edit(tmp_path, monkeypatch):
+    """A real model's first move, unattended, was `cat << 'EOF' > src/main.rs`.
+    bashlex cannot parse a here-document, so it was refused as unparseable.
+    The body is data; the first line is what runs."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": HEREDOC_WRITE}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
+    assert result["effect_class"] == "workspace_edit"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat << 'EOF' > ../outside.rs\nfn main() {}\nEOF",     # outside the workspace
+        "cat << 'EOF' > .co/host.yaml\npermissions: {}\nEOF",  # a control file
+        "bash << 'EOF'\nrm -rf /\nEOF",                        # the body executes
+        "python3 << 'EOF'\nprint(1)\nEOF",
+    ],
+)
+def test_a_heredoc_body_that_executes_or_lands_outside_is_not_an_edit(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
 
     apply_auto_approve_policy(instance)
 

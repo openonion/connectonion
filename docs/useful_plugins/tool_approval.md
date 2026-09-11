@@ -161,13 +161,20 @@ basename dirname jq echo printf pwd cd true test [ which file stat diff
 date whoami hostname uname
 ```
 
-Three things take a command back out of this list: a path argument that
+Two things take a command back out of this list: a path argument that
 resolves outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`,
 `cd ..`) asks, the same way the read *tools* ask for outside-workspace reads;
-`sed -i` / `--in-place` asks, because it rewrites the file; and any output
-redirect that points at a file (`> out`, `>> log`, `2> err`) turns the whole
-chain into a write and it asks. `2>&1` is not a write. Credential tokens
-(`.env`, `secret`, `credential`) are denied before any of this applies.
+and `sed -i` / `--in-place` asks, because it rewrites the file. Credential
+tokens (`.env`, `secret`, `credential`) are denied before any of this applies.
+
+An output redirect (`> out`, `>> log`, `2> err`) is a file write and is held
+to the write tool's rules: inside the workspace it is a reversible edit and
+allowed (`echo x > notes.txt`, `cat << 'EOF' > src/main.rs ... EOF` — models
+reach for both instead of the write tool); a control file is denied; a target
+outside the workspace is denied; a target that depends on the environment
+(`> $HOME/x`) cannot be resolved and asks. `2>&1` is not a write. A heredoc
+is classified by its first line — the body is data to that command — so
+`bash << EOF` still asks, because `bash` is not read-only.
 
 The same list decides which pipe segments ride along on an operator grant in
 an unattended run. `co browser ... get_text | head -40` is the granted browser
