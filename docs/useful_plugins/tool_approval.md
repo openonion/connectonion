@@ -8,7 +8,7 @@ human decision.
 | Mode | Behaviour |
 |---|---|
 | `read-only` | Manual approval for every effectful live-IO call not explicitly permitted |
-| `auto` | Auto-approves reversible workspace work and focused verification; asks or denies higher-impact calls |
+| `auto` | Auto-approves reversible workspace work, focused verification, and read-only commands on workspace paths; asks or denies higher-impact calls |
 | `full-access` | Explicit bounded approval bypass under the Host launch ceiling |
 
 No aliases are accepted or translated. Unknown stored values become Auto.
@@ -149,6 +149,33 @@ write, edit, multi_edit
 run_background, kill_task
 send_email, post, delete, remove
 ```
+
+### Read-Only Commands (Auto)
+
+In Auto, a shell command whose every segment only reads, filters or prints
+runs without a dialog — and, unattended, without being denied:
+
+```
+head tail cat less more grep egrep fgrep rg wc ls sed awk sort uniq cut tr
+basename dirname jq echo printf pwd cd true test [ which file stat diff
+date whoami hostname uname
+```
+
+Three things take a command back out of this list: a path argument that
+resolves outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`,
+`cd ..`) asks, the same way the read *tools* ask for outside-workspace reads;
+`sed -i` / `--in-place` asks, because it rewrites the file; and any output
+redirect that points at a file (`> out`, `>> log`, `2> err`) turns the whole
+chain into a write and it asks. `2>&1` is not a write. Credential tokens
+(`.env`, `secret`, `credential`) are denied before any of this applies.
+
+The same list decides which pipe segments ride along on an operator grant in
+an unattended run. `co browser ... get_text | head -40` is the granted browser
+command plus a filter on its output, so it runs; `co browser status && co email
+send ...` is still an email send nobody authorized, so it does not (#1481).
+
+This is the Auto policy for the agent's own calls. The remote-EXEC whitelist
+in `host.yaml` is a separate gate and is not widened by it.
 
 ### Unknown Tools
 

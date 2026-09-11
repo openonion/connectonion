@@ -386,3 +386,111 @@ def test_headless_full_access_keeps_the_explicit_bounded_bypass(name, arguments)
     check_approval(instance)
 
     assert "approval_policy" not in instance.current_session["pending_tool"]
+
+
+# ---------------------------------------------------------------------------
+# #1481: read-only commands run unattended, and a read-only pipe segment does
+# not poison a command an operator has already granted.
+#
+# Before this, only eleven test/build tools auto-approved; `head`, `grep`,
+# `wc`, `ls` fell through to "ask", and unattended "ask" is "deny". A 7×/day
+# LinkedIn round died on `co browser ... get_text | head -40` after sixteen
+# clean iterations, posted nothing, and wrote no report.
+# ---------------------------------------------------------------------------
+
+READ_ONLY_COMMANDS = [
+    "head -40 notes.txt",
+    "tail -n 5 log.txt",
+    "cat README.md",
+    "grep -i foo notes.txt",
+    "rg --count foo",
+    "wc -l notes.txt",
+    "ls -la",
+    "sed -n 1,10p notes.txt",
+    "awk '{print $1}' notes.txt",
+    "sort notes.txt | uniq -c | cut -d' ' -f1",
+    "basename /tmp/x.txt",
+    "jq .name package.json",
+    "echo ok",
+    "pwd",
+    "cd src && ls",
+]
+
+
+@pytest.mark.parametrize("command", READ_ONLY_COMMANDS)
+def test_headless_auto_allows_read_only_commands(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
+    assert result["effect_class"] == "read"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed -i s/a/b/ notes.txt",            # in-place edit writes the file
+        "sed --in-place s/a/b/ notes.txt",
+        "head -1 notes.txt > out.txt",        # a redirect writes wherever it points
+        "echo secret >> ~/.bashrc",
+        "tee out.txt",                        # writes its input
+        "find . -name '*.log' -delete",       # deletes
+        "xargs rm",                           # runs whatever it is given
+        "cat .env",                           # credentials: still denied
+    ],
+)
+def test_read_only_names_do_not_cover_writes_or_credentials(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False)
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "deny", result   # headless: nothing to ask
+    with pytest.raises(ValueError, match=f"denied by {POLICY_ID}"):
+        check_approval(instance)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CO_WHO=x co browser -t t get_text | head -40",
+        "CO_WHO=x co browser -t t get_text | grep -i foo",
+        "co browser -t t run_page_script a.js && echo ok",
+        "co browser status 2>&1 | tail -3",
+    ],
+)
+def test_a_read_only_segment_does_not_poison_a_granted_command(tmp_path, monkeypatch, command):
+    """The shipped Bash(co *) grant covered the browser command; the pipe into
+    head is what killed the unattended run (#1481)."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
+    instance.current_session["pending_tool"] = {"name": "bash", "arguments": {"command": command}}
+
+    apply_auto_approve_policy(instance)
+    check_approval(instance)
+
+    result = instance.current_session["pending_tool"]["approval_policy"]
+    assert result["decision"] == "allow", result
+    assert result["effect_class"] == "configured_command"
+
+
+def test_a_granted_command_still_cannot_smuggle_an_ungranted_one(tmp_path, monkeypatch):
+    """Only read-only segments ride along. `co browser ... && co email send` is
+    still an email send."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": "co browser status && co email send --to a@example.com hi"},
+    }
+
+    apply_auto_approve_policy(instance)
+
+    assert instance.current_session["pending_tool"]["approval_policy"]["decision"] == "deny"

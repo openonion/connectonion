@@ -7,6 +7,7 @@ tool call after the Host has selected ``auto``.
 
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,6 +48,29 @@ _DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "shred", "truncate", "del", "erase", "fo
 _EXTERNAL_COMMANDS = {"curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail"}
 _SENSITIVE_COMMANDS = {
     "env", "printenv", "security", "keychain", "gcloud", "aws", "az",
+}
+# Commands that read, filter or print and do nothing else. They run unattended
+# in Auto, on workspace paths, with no output redirect. Before this list only
+# the eleven test/build tools above auto-approved; `head`, `grep`, `wc`, `ls`
+# fell through to "ask", and an unattended "ask" is a "deny" — a 7×/day
+# LinkedIn round died on `co browser ... get_text | head -40` after sixteen
+# clean iterations (#1481). This is the Auto *policy* for the agent's own
+# calls; the remote-EXEC whitelist in host.yaml is a different gate and is
+# deliberately not widened here.
+_READ_ONLY_COMMANDS = {
+    "head", "tail", "cat", "less", "more", "grep", "egrep", "fgrep", "rg",
+    "wc", "ls", "sed", "awk", "sort", "uniq", "cut", "tr", "basename",
+    "dirname", "jq", "echo", "printf", "pwd", "cd", "true", "test", "[",
+    "which", "file", "stat", "diff", "date", "whoami", "hostname", "uname",
+}
+_SED_IN_PLACE_FLAGS = ("-i", "--in-place")
+# The read-only commands that open the paths they are given. `basename`,
+# `echo`, `pwd` and friends take strings, not files, and `cd` is here because
+# leaving the workspace makes every later relative path a path outside it.
+_PATH_READING_COMMANDS = {
+    "head", "tail", "cat", "less", "more", "grep", "egrep", "fgrep", "rg",
+    "wc", "ls", "sed", "awk", "sort", "uniq", "cut", "jq", "file", "stat",
+    "diff", "cd",
 }
 
 
@@ -165,12 +189,33 @@ def _command_words(command: str) -> list[str]:
         return []
 
 
-def _classify_single_command(command: str) -> dict:
+def _reads_outside_workspace(words: list[str], root: Path) -> bool:
+    """A path-looking argument that resolves outside the workspace.
+
+    `head ~/.ssh/id_rsa` and `cat /etc/shadow` are reads, but not workspace
+    reads; the read *tools* already ask for those, and the read *commands*
+    hold the same line. `s/a/b/` also contains a slash and resolves inside the
+    root, which is the right answer for a sed script.
+    """
+    for word in words[1:]:
+        if word.startswith("-") or not (word.startswith(("/", "~", ".")) or "/" in word):
+            continue
+        path = Path(word).expanduser()
+        resolved = (path if path.is_absolute() else root / path).resolve(strict=False)
+        if not _inside_workspace(resolved, root):
+            return True
+    return False
+
+
+def _classify_single_command(command: str, root: Path | None = None) -> dict:
     words = _command_words(command)
     if not words:
         return decision("command", "ask", "command could not be parsed safely", "call", requires_human=True)
 
     lowered = [word.lower() for word in words]
+    # `VAR=value cmd ...` — the command is the first word that is not an assignment.
+    while len(words) > 1 and "=" in words[0] and not words[0].startswith("-"):
+        words, lowered = words[1:], lowered[1:]
     first = Path(words[0]).name.lower()
     if first in _DESTRUCTIVE_COMMANDS:
         return decision("deletion", "deny", "destructive command requires an explicit safer workflow", "call")
@@ -194,21 +239,47 @@ def _classify_single_command(command: str) -> dict:
         focused = len(words) > 1 and words[1] == "test"
     if focused:
         return decision("verification", "allow", "focused test, lint, or build command", "workspace")
-    return decision("command", "ask", "command is outside the focused verification allowlist", "call", requires_human=True)
+    if first in _READ_ONLY_COMMANDS:
+        if first == "sed" and any(w.startswith(_SED_IN_PLACE_FLAGS) for w in words[1:]):
+            return decision("workspace_edit", "ask", "sed -i rewrites files; use the edit tool", "call", requires_human=True)
+        if root is not None and first in _PATH_READING_COMMANDS and _reads_outside_workspace(words, root):
+            return decision("read_outside_workspace", "ask", "reading outside the workspace requires approval", "call", requires_human=True)
+        return decision("read", "allow", "read-only command", "workspace")
+    return decision("command", "ask", "command is outside the focused verification and read-only allowlists", "call", requires_human=True)
 
 
-def _classify_command(command: str) -> dict:
+_OUTPUT_REDIRECT = re.compile(r">(?!&\d)")
+
+
+def _has_output_redirect(command: str) -> bool:
+    """A `>` that points at a file means something is being written, so
+    nothing about the command is read-only — even `head -1 f > out`. `2>&1`
+    and `>&2` only duplicate a descriptor and write nothing new. bashlex keeps
+    redirects out of the word list, so this is the one place they are seen."""
+    return bool(_OUTPUT_REDIRECT.search(command))
+
+
+def _classify_command(command: str, root: Path | None = None) -> dict:
     try:
         subcommands = _extract_subcommands(command)
     except Exception:
         return decision("command", "ask", "command could not be parsed safely", "call", requires_human=True)
-    results = [_classify_single_command(full) for _, full in subcommands]
+    results = [_classify_single_command(full, root) for _, full in subcommands]
+    if _has_output_redirect(command):
+        results = [
+            decision("command", "ask", "a read-only command with an output redirect writes a file", "call", requires_human=True)
+            if item["effect_class"] == "read" else item
+            for item in results
+        ]
     denied = next((item for item in results if item["decision"] == "deny"), None)
     if denied:
         return denied
     asked = next((item for item in results if item["decision"] == "ask"), None)
     if asked:
         return asked
+    effects = {item["effect_class"] for item in results}
+    if effects == {"read"}:
+        return decision("read", "allow", f"read-only command chain ({len(results)} command{'s' if len(results) != 1 else ''})", "workspace")
     return decision("verification", "allow", f"focused verification chain ({len(results)} command{'s' if len(results) != 1 else ''})", "workspace")
 
 
@@ -238,7 +309,7 @@ def evaluate_auto_approve(tool_name: str, args: dict, root: Path | None = None) 
     if name in EXTERNAL_EFFECT_TOOLS:
         return decision("external_effect", "ask", "external side effects require human approval", "call", requires_human=True)
     if name in {"bash", "shell", "run", "run_in_dir", "run_background"}:
-        return _classify_command(str(args.get("command", "")))
+        return _classify_command(str(args.get("command", "")), root)
     if name == "kill_task":
         return decision("task_control", "ask", "stopping a running task requires approval", "call", requires_human=True)
     return decision("unknown", "ask", "unknown tools never run silently", "call", requires_human=True)
@@ -303,27 +374,35 @@ def _headless_configured_command(
         for pattern, permission in permissions.items()
         if isinstance(permission, dict) and permission.get("source") == "config"
     }
-    # The shipped historical Bash(co *) grant is broader than its "safe CLI"
-    # description. Preserve the unattended browser/status compatibility users
-    # relied on without silently authorizing email, account, server, or payment
-    # commands. Operators can still name a narrower command explicitly.
-    broad_co = configured.pop("Bash(co *)", None)
-    if broad_co is not None:
-        subcommands = _extract_subcommands(
-            str((pending.get("arguments") or {}).get("command", ""))
-        )
-        if subcommands and all(
+    # A read-only segment needs no grant: `co browser ... | head -40` is the
+    # granted browser command plus a filter on its output. Every other segment
+    # must match a standing grant, so `co browser status && co email send ...`
+    # is still an email send nobody authorized (#1481).
+    command = str((pending.get("arguments") or {}).get("command", ""))
+    try:
+        root = project_root().resolve()
+        segments = _extract_subcommands(command)
+        needs_grant = [
+            full for _, full in segments
+            if _classify_single_command(full, root).get("effect_class") != "read"
+        ]
+        if _has_output_redirect(command):
+            needs_grant = [full for _, full in segments]
+        # The shipped historical Bash(co *) grant is broader than its "safe CLI"
+        # description. Preserve the unattended browser/status compatibility
+        # users relied on without silently authorizing email, account, server,
+        # or payment commands. Operators can still name a narrower command.
+        broad_co = configured.pop("Bash(co *)", None)
+        if broad_co is not None and needs_grant and all(
             full == "co status" or full.startswith("co browser ")
-            for _, full in subcommands
+            for full in needs_grant
         ):
             configured["Bash(co *)"] = broad_co
-    try:
-        permitted, _, _ = check_bash_chain_permitted(
-            str((pending.get("arguments") or {}).get("command", "")), configured
-        )
+        for full in needs_grant:
+            permitted, _, _ = check_bash_chain_permitted(full, configured)
+            if not permitted:
+                return None
     except Exception:
-        return None
-    if not permitted:
         return None
     return decision(
         "configured_command",
