@@ -291,7 +291,8 @@ def handle_server_list() -> bool:
         console.print("[dim]co server add <name> --ssh <target>   to use one from here[/dim]")
         console.print("[dim]co server destroy <name>              to stop paying for one[/dim]")
 
-    console.print(f"\n[dim]{_short(SERVERS_FILE)}[/dim]\n")
+    console.print(f"\n[dim]{_short(SERVERS_FILE)}[/dim]")
+    console.print("[dim]Preflight one:[/dim] [bold]co server check <name from this list>[/bold]\n")
     return True
 
 

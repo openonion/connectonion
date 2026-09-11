@@ -46,5 +46,34 @@ class _OneSuggestion(typer.core.TyperGroup):
                 error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
             raise
 
+    def invoke(self, ctx):
+        """Run the command, then name the next one.
+
+        The one place every command passes through on its way out, so a
+        command cannot ship without a next-step tip by forgetting to print
+        one: commands/command_tips.py holds the table, and a test fails when
+        a registered command is missing from it.
+
+        Only a normal return reaches the tip. `--help`, a usage error and
+        every `raise typer.Exit(...)` leave by exception, so a failed command
+        never gets a "next" that assumes it worked. Nested groups each pass
+        through here; only the group whose invoked child is a leaf prints,
+        so `co gmail draft send` tips once, not three times.
+        """
+        result = super().invoke(ctx)
+        child = self.commands.get(ctx.invoked_subcommand or "")
+        if child is not None and not getattr(child, "commands", None):
+            # Build the path from the context chain rather than
+            # ctx.command_path: the root's name is whatever argv[0] was
+            # (`co`, `connectonion`, or the test runner's), and the table
+            # is keyed on `co`.
+            names, here = [ctx.invoked_subcommand], ctx
+            while here.parent is not None:
+                names.append(here.info_name)
+                here = here.parent
+            from .commands.command_tips import print_next_step
+            print_next_step(" ".join(["co", *reversed(names)]))
+        return result
+
 
 _SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")

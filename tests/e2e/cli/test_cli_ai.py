@@ -33,6 +33,8 @@ def test_ai_forwards_full_access_options():
         resume=None,
         invite_code=None,
         invite_code_file=None,
+        # No flag: the channels in .co/host.yaml decide, which is the normal case.
+        listen=None,
     )
 
 
@@ -56,6 +58,8 @@ def test_ai_forwards_json_and_resume_options():
         resume="session-id",
         invite_code=None,
         invite_code_file=None,
+        # No flag: the channels in .co/host.yaml decide, which is the normal case.
+        listen=None,
     )
 
 

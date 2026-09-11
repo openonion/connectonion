@@ -33,6 +33,7 @@ def handle_ai(
     resume: str = None,
     invite_code: str = None,
     invite_code_file: Path = None,
+    listen: list | None = None,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -48,10 +49,12 @@ def handle_ai(
         resume: Continue a prior one-shot session ID
         invite_code: In-memory invite code for this web-server run
         invite_code_file: File containing this web-server run's invite code
+        listen: Channels to answer, overriding .co/host.yaml; [] answers none
 
     Examples:
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
+        co ai --listen feishu                    # Override host.yaml for one run
     """
     if invite_code is not None and invite_code_file is not None:
         console.print(
@@ -78,6 +81,10 @@ def handle_ai(
     if resume and not json_output:
         console.print("[red]--resume requires --json[/red]")
         raise typer.Exit(2)
+
+    # Before anything that needs a key or a model: a typo in host.yaml should
+    # be answered by the typo, not by whatever fails next.
+    channels = [] if prompt else _channels(listen)
 
     # The web server owns turn-by-turn evaluation separately. ``--eval`` is a
     # one-shot option; attaching it to the long-lived browser agent makes every
@@ -107,6 +114,7 @@ def handle_ai(
     if prompt:
         _handle_plain_one_shot(agent, prompt)
     else:
+        _start_listening(channels, agent_factory, model, max_iterations, full_access_turns)
         from ..co_ai.main import start_server
         start_server(
             agent,
@@ -118,6 +126,47 @@ def handle_ai(
             agent_factory=agent_factory,
             invite_code=runtime_invite_code,
         )
+
+
+def _channels(override):
+    """Which channels to answer, from ~/.co/host.yaml unless a flag overrides.
+
+    ~/.co is where co ai keeps the rest of its configuration and where the
+    inbox directories live: a chat application belongs to a person, not to
+    whichever directory the terminal happens to be in.
+    """
+    from ...inbox.settings import configured_channels
+    from ..co_ai.agent import GLOBAL_CO_DIR
+
+    try:
+        return configured_channels(GLOBAL_CO_DIR, override=override)
+    except ValueError as error:
+        # Starting with no channels would look exactly like starting with
+        # them, right up until somebody wonders why the bot is ignoring them.
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(2)
+
+
+def _start_listening(channels, agent_factory, model, max_iterations, full_access_turns) -> None:
+    """Answer those channels in the background.
+
+    Chat gets an agent of its own rather than the web server's: a message from
+    a group and a question typed in the browser are two conversations, and one
+    Agent object holds one history.
+    """
+    import threading
+
+    if not channels:
+        return
+
+    from ..co_ai.listen import listen as consume
+
+    def build():
+        return agent_factory(model, max_iterations, False, full_access_turns)
+
+    threading.Thread(target=consume, args=(channels, build), daemon=True,
+                     name="co-ai-listen").start()
+    console.print(f"[dim]answering {', '.join(c.provider for c in channels)}[/dim]")
 
 
 def _read_runtime_invite_code(invite_code, invite_code_file) -> str | None:

@@ -39,8 +39,18 @@ console = Console()
 # line the next read refuses, and `co env` is the command that fixes those.
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-_PROVIDER_AUTH = {"GOOGLE": "co auth google", "MICROSOFT": "co auth microsoft"}
-_PROVIDER_LABEL = {"GOOGLE": "Google", "MICROSOFT": "Microsoft"}
+_PROVIDER_AUTH = {"GOOGLE": "co auth google", "MICROSOFT": "co auth microsoft",
+                  "FEISHU": "co auth feishu", "LARK": "co auth lark"}
+_PROVIDER_LABEL = {"GOOGLE": "Google", "MICROSOFT": "Microsoft",
+                   "FEISHU": "Feishu", "LARK": "Lark"}
+
+# An application's credentials are not an OAuth record — two names, not five —
+# so they are listed here rather than in PROVIDER_FIELDS. They are refused for
+# the same reason: one command writes them, and that command can also create
+# the application they belong to.
+_APP_CREDENTIALS = {f"{prefix}_{field}": prefix
+                    for prefix in ("FEISHU", "LARK")
+                    for field in ("APP_ID", "APP_SECRET")}
 
 
 def _provider_of(key: str) -> str | None:
@@ -189,6 +199,12 @@ def handle_env_set(key: str, value: str) -> None:
         _fail("AGENT_CONFIG_PATH chooses which global directory is read, so a file inside it "
               "cannot set it. Export it in your shell instead:\n"
               "  export AGENT_CONFIG_PATH=/path/to/.co\nNext: co env", 2)
+    app_provider = _APP_CREDENTIALS.get(key)
+    if app_provider is not None:
+        auth = _PROVIDER_AUTH[app_provider]
+        _fail(f"{key} is written by {auth}, which also creates the application it belongs to. "
+              f"Feishu has no API that hands out an app secret, so a hand-typed one came from "
+              f"somewhere this command cannot check. Next: {auth}", 2)
     provider = _provider_of(key)
     if provider is not None:
         auth = _PROVIDER_AUTH[provider]

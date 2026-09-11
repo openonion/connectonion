@@ -455,3 +455,5 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
     # Resources
     print_resources()
+    # Last line names a command: the resources block ends on a URL.
+    console.print("[dim]Deploy it when it works:[/dim] [bold]co deploy[/bold]\n")

@@ -43,6 +43,27 @@ The CLI automatically:
 
 ## All Commands
 
+This page walks through the commands in prose. The CLI itself is the register,
+at three levels, each complete at its own level:
+
+```bash
+co                      # every top-level command with a one-line summary
+co commands             # every command and subcommand, one per line — grep it
+co gmail --help         # the options and subcommands of one command
+```
+
+`co commands` is plain text with no colour codes, so `co commands | grep draft`
+finds the draft commands without knowing which group holds them.
+
+Every command ends by naming the next one. Commands whose next step depends on
+what they found print it themselves (`Read one with: co gmail read <#>`); every
+other command gets a `Next: …` line on stderr after it returns, from one table
+in the CLI, so stdout stays the command's data and the line still reaches a
+pipe. A test fails when a registered command has no entry, and every tip's
+command is checked against this register, so a tip never points at a command
+that does not exist. `co --no-tips <command>` drops the line for one run and
+`CO_TIPS=off` for every run; error text is never a tip and is never dropped.
+
 ### Project Commands
 
 #### `co create [name]` - Create New Project
@@ -271,6 +292,20 @@ co telegram send @my_channel "Version 1.7 is ready for review"
 Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
 are involved. The same `send_telegram` function is available as an agent tool.
 See [telegram.md](telegram.md) for setup, credential handling, and errors.
+
+#### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files
+
+```bash
+co feishu listen                      # hold the connection; every message → ~/.co/inbox/feishu/
+co feishu receive                     # next message as one JSON line
+echo "done" | co feishu reply om_9f8e # back to where it was asked
+co feishu serve -- claude -p          # one command per message, stdout is the reply
+co ai                                 # your own agent answers the channels in ~/.co/host.yaml
+```
+
+Uses your own self-built Feishu application over the official long connection:
+no public address, no OpenOnion credential, nothing billed. Anything that can
+read a file can consume the directory. See [feishu.md](feishu.md).
 
 ---
 
@@ -1206,6 +1241,7 @@ See [server.md](server.md).
 | `co server` | Servers you own, and deploy targets | No | ✅ Yes (except `destroy`) |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
+| `co commands` | List every command and subcommand, one per line | No | ✅ Yes |
 | `co browser` | Browser command (local) | No | ✅ Yes |
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |

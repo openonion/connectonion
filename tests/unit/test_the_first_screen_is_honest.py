@@ -1,26 +1,19 @@
-"""Bare `co` prints a hand-written command list under the heading "Commands:".
+"""Bare `co` prints the register, and the register is complete.
 
-It names 16. The CLI registers 24:
+History: the first screen used to be a hand-typed list under "Common
+commands:". It named 16 of 24 — `ai`, `announce`, `call`, `reset`, `server`,
+`setup`, `skills` and `sub` were all real and absent — and the only defence
+was a test that every *listed* name existed, which says nothing about the
+names that were not listed. A hand-typed list has no way to notice the ninth
+omission.
 
-    ai  announce  call  reset  server  setup  skills  sub
-
-are all real and none of them appear. `co ai`, `co call`, `co server`,
-`co skills` and `co sub` are the network story this release is about, and the
-first screen a new user sees does not mention them.
-
-Unlike docs/connectonion.md's template list (#724) or the model lists (#726),
-nothing here promises something that does not exist — `co --help` is generated
-from the real commands and shows all 24. So this is a curation choice, not a
-broken promise, and which of the eight deserve the first screen is a product
-question rather than a bug.
-
-What is fixable without answering that question: say the list is a selection,
-and say where the rest are. And lock the invariant that is true today and is the
-one that would actually hurt — that every name on the first screen is a command
-you can run. That is the failure mode this release has hit four times.
+The list is now read from the Typer app itself, so the property to lock is
+the other direction: every registered top-level command is on the first
+screen, with the summary its own --help carries. Same for the two pointers
+below it, `co commands` and `co <command> --help`, which are how the reader
+gets from this screen to everything else.
 """
 
-import inspect
 import re
 
 import pytest
@@ -28,47 +21,53 @@ import typer.main
 from typer.testing import CliRunner
 
 from connectonion.cli import main as cli_main
+from connectonion.cli.discovery import command_tree
 
 
 runner = CliRunner()
-
-
-def _listed_commands():
-    """The names printed by _show_help, as the user reads them."""
-    return set(re.findall(r"\[green\]([a-z-]+)\[/green\]",
-                          inspect.getsource(cli_main._show_help)))
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _real_commands():
     return set(typer.main.get_command(cli_main.app).commands)
 
 
-class TestEveryNameOnTheFirstScreenIsReal:
-    """The #724 failure mode, applied here before it happens."""
+def _bare_co() -> str:
+    """What bare `co` prints, colour codes removed — Rich still emits them
+    under CliRunner, and `[32mai[0m` is not the word `ai`."""
+    return _ANSI.sub("", runner.invoke(cli_main.app, []).output)
 
-    def test_nothing_is_advertised_that_cannot_be_run(self):
-        phantom = _listed_commands() - _real_commands()
 
-        assert phantom == set(), (
-            f"bare `co` names commands that do not exist: {sorted(phantom)}"
-        )
+@pytest.fixture
+def output():
+    return " ".join(_bare_co().split())
 
-    def test_the_list_is_not_empty(self):
-        assert len(_listed_commands()) > 5
+
+class TestTheFirstScreenIsTheRegister:
+
+    def test_every_registered_command_is_on_it(self, output):
+        missing = [c for c in sorted(_real_commands()) if f" {c} " not in f" {output} "]
+        assert missing == [], f"bare `co` omits registered commands: {missing}"
+
+    def test_each_carries_its_own_summary(self, output):
+        for entry in command_tree(cli_main.app):
+            if entry.path.count(" ") == 1:
+                assert entry.summary in output, (
+                    f"{entry.path} is listed without its --help summary {entry.summary!r}"
+                )
+
+    def test_it_no_longer_calls_itself_a_selection(self, output):
+        assert "Common commands:" not in output
+        assert "Commands:" in output
 
 
 class TestItSaysWhereTheRestAre:
 
-    @pytest.fixture
-    def output(self):
-        return " ".join(runner.invoke(cli_main.app, []).output.split())
+    def test_it_points_at_the_subcommand_list(self, output):
+        assert "co commands" in output
 
-    def test_it_does_not_claim_to_be_the_whole_list(self, output):
-        # "Commands:" reads as all of them while eight are missing.
-        assert "Commands:" not in output or "Common commands:" in output
-
-    def test_it_points_at_the_full_list(self, output):
-        assert "co --help" in output
+    def test_it_points_at_per_command_help(self, output):
+        assert "co <command> --help" in output
 
     def test_the_full_list_really_does_have_them_all(self):
         """The pointer is only honest if --help is complete."""
@@ -81,10 +80,6 @@ class TestItSaysWhereTheRestAre:
 
 class TestTheFirstScreenStillWorks:
 
-    @pytest.fixture
-    def output(self):
-        return " ".join(runner.invoke(cli_main.app, []).output.split())
-
     def test_it_still_leads_with_create(self, output):
         assert "co create" in output
 
@@ -94,9 +89,23 @@ class TestTheFirstScreenStillWorks:
     def test_it_exits_zero(self):
         assert runner.invoke(cli_main.app, []).exit_code == 0
 
+    def test_one_line_per_command_even_when_piped(self):
+        """Rich wraps at 80 columns in a pipe; a wrapped summary reads as two
+        commands. Every non-blank line under Commands: must start with a name."""
+        lines = _bare_co().splitlines()
+        start = lines.index("Commands:") + 1
+        listing = []
+        for line in lines[start:]:
+            if not line.strip():
+                break
+            listing.append(line)
+        assert len(listing) == len(_real_commands())
+        for line in listing:
+            assert line.startswith("  ") and line.split()[0] in _real_commands(), line
+
 
 def test_first_screen_explains_explicit_project_configuration():
-    output = " ".join(runner.invoke(cli_main.app, []).output.split())
+    output = " ".join(_bare_co().split())
     assert "~/.co/keys.env" in output
     assert "co init ./" in output
     assert "co --env-file .env <command>" in output
