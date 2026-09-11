@@ -58,7 +58,18 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5a2 (preview)
+## Release candidate: 1.8.5b1 (beta)
+
+Everything 1.8.5 is meant to contain is in one package: the Feishu and Lark
+inbox (`co feishu listen | receive | send | reply`, `co auth feishu`, the
+Host consumer lifespan and `co ai --listen`), and the permission work from
+the two previews. The surface is complete and frozen; what is missing is
+evidence, not code. The no-loss-across-a-reconnect gate in #1462 has not
+passed — the repair in `inbox/recovery.py` is offline-tested and has not
+been run against a real group — so 1.8.5 stable waits for it.
+See [1.8.5b1 notes](docs/releases/1.8.5b1.md).
+
+### Superseded: 1.8.5a2 (preview, published)
 
 `1.8.5a1` let an unattended agent read its own output by adding thirty
 command names to a list. This preview stops keeping the list: an ordinary
@@ -128,9 +139,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5a2
+## Current Version: 1.8.5b1
 
 ### Version History
+- 1.8.5b1 (**beta: the Feishu and Lark inbox, and the consumers that answer
+  from it.** `co auth feishu` creates the application by QR instead of
+  eleven console steps; `co <provider> listen` writes every message into
+  `~/.co/inbox/<provider>/` and acknowledges within the platform's
+  three-second window; `co ai --listen` and a Host lifespan answer from that
+  directory, one session per conversation, recorded with `via` and the
+  sender. Carries the permission work from 1.8.5a1 and 1.8.5a2. Stable
+  remains 1.8.4: the reconnect-gap gate in #1462 has not passed.)
 - 1.8.5a2 (**opt-in preview: a command runs unless a rule holds it back.**
   `1.8.5a1` answered #1481 with a longer allowlist; this replaces the list.
   Everything it refused is still refused, and three rules the list had been
