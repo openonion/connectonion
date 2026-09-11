@@ -430,9 +430,23 @@ def ai(
     invite_code_file: Optional[Path] = typer.Option(
         None, "--invite-code-file", help="Read this run's invite code from a file"
     ),
+    # Channels are configured in .co/host.yaml, beside `name` and `trust`, so
+    # that `co ai` needs no flags and one file shows every channel at a glance.
+    # These two override that file for one run and nothing else.
+    listen: Optional[str] = typer.Option(
+        None, "--listen", metavar="feishu[,lark]",
+        help="Answer these channels instead of the ones in .co/host.yaml",
+    ),
+    no_listen: bool = typer.Option(
+        False, "--no-listen", help="Do not answer any channel this run"
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
+    if listen and no_listen:
+        raise typer.BadParameter("--listen and --no-listen contradict each other")
+    channels = [] if no_listen else ([c.strip() for c in listen.split(",") if c.strip()]
+                                     if listen else None)
     handle_ai(
         prompt=prompt,
         port=port,
@@ -445,6 +459,7 @@ def ai(
         resume=resume,
         invite_code=invite_code,
         invite_code_file=invite_code_file,
+        listen=channels,
     )
 
 
