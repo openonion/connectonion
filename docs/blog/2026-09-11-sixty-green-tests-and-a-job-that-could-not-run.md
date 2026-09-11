@@ -274,24 +274,60 @@ The denial was the safe answer, which is exactly why it was dangerous: a
 swallowed parse error refuses whatever it cannot read, including grants the
 operator did write, and it looks like security working.
 
+## A refusal you cannot act on
+
+The owner had one more, and it is the one I would have shipped without.
+
+*If it gets refused, there should be something telling the user or the agent
+what to do. And for an unattended pipeline, do I write the permission into the
+skill?*
+
+The answer to the second is yes, and it works — a skill declaring
+`tools: ["Bash(rm -rf scratch)"]` in its frontmatter had that command executed
+by a real unattended run, destructive class and all, scoped to the turn. But
+nothing in the product said so. The refusal said:
+
+```
+command is outside the focused verification and read-only allowlists;
+no approval channel is available
+```
+
+That names a policy. It does not name a file, a syntax, a breadth, or the fact
+that a skill's frontmatter is a place you can put it. An operator reading it
+in a log at 7am has to go and read the source, and what they will actually do
+is widen something until the pipeline runs — or, as happened on the 1.7.0
+upgrade, not notice for days that the daily digest stopped sending.
+
+So a refusal now carries the line to write, in both places that work, with the
+pattern erring narrow — `Bash(co email send *)`, not `Bash(co *)`. The string
+goes back to the model as the tool result, which means the agent relays it. I
+asked a real unattended agent to send an email with no grant in place, and it
+came back with the YAML block and where to put it, unprompted.
+
+That is the smallest of the changes here and probably the one that will save
+the most time, because it is the only one that turns a silent stop into an
+instruction.
+
 ## The tally
 
-Ten defects. One was the reported bug. Five came out of fixing it, two were
+Eleven changes. One was the reported bug. Five came out of fixing it, two were
 pre-existing holes in the code it sat next to, one was the ignored-grant
-behaviour the owner asked about, and one I introduced and caught because its
-output had a difference I could not explain.
+behaviour the owner asked about, one I introduced and caught because its
+output had a difference I could not explain, and the last was a refusal that
+told nobody how to fix it.
 
-Of the ten, one was found by a test. The other nine were found by running the
+Of the eleven, one was found by a test. The rest were found by running the
 thing: an agent doing a real job, the real CLI in a throwaway directory, a
-list of what an attacker would try with the verdicts printed beside it, and
-nine grants written into a host.yaml by hand to see which ones the product
-actually honoured.
+list of what an attacker would try with the verdicts printed beside it, nine
+grants written into a host.yaml by hand to see which ones the product actually
+honoured, and a skill with one line of frontmatter to see whether the answer
+we would have given was true.
 
 The suite is not what found them, and it was never going to be — it had sixty
 green tests on this exact policy while production was failing. What the suite
-does is hold them. Every one of the ten now has a test that was red before the
-fix, so the next person to change this policy gets told which specific thing
-they broke, by name, in about forty seconds.
+does is hold them. Every one of the eleven now has a test that was red before
+the fix, so the next person to change this policy gets told which specific
+thing they broke, by name, in about forty seconds.
 
 The question that found the last three was not a clever one. It was *does this
 actually do what we say it does* — asked about the thing in front of me, out

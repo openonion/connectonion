@@ -958,3 +958,76 @@ def test_a_quoted_program_does_not_read_as_ungranted(tmp_path, monkeypatch):
 
     result = instance.current_session["pending_tool"]["approval_policy"]
     assert result["decision"] == "allow", result
+
+
+# ---------------------------------------------------------------------------
+# A refusal says how to fix it.
+#
+# "command is outside the focused verification allowlist" tells an operator
+# nothing about what to write, where. The daily digest stopped sending on the
+# 1.7.0 upgrade and nobody learned why for days, because the refusal named a
+# policy instead of a remedy.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("co email send --to a@b.c hi", "Bash(co email send *)"),   # not Bash(co *)
+        ("curl https://example.com", "Bash(curl *)"),
+        ("rm -rf build", "Bash(rm *)"),
+        ("git push origin main", "Bash(git push origin *)"),
+        ("CO_WHO=x co browser get_text", "Bash(co browser get_text *)"),
+        ("sed -i s/a/b/ notes.txt", "Bash(sed *)"),
+        ("ping -c 1 8.8.8.8", "Bash(ping *)"),
+    ],
+)
+def test_the_suggested_grant_names_the_verb_not_the_binary(command, expected):
+    from connectonion.useful_plugins.tool_approval.policy import suggested_grant_pattern
+
+    assert suggested_grant_pattern("bash", {"command": command}) == expected
+
+
+def test_a_non_bash_tool_is_suggested_by_its_name():
+    from connectonion.useful_plugins.tool_approval.policy import suggested_grant_pattern
+
+    assert suggested_grant_pattern("send_email", {"to": "a@b.c"}) == "send_email"
+
+
+def test_an_unattended_refusal_names_the_line_to_write(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": "co email send --to aaron@example.com digest"},
+    }
+
+    apply_auto_approve_policy(instance)
+
+    policy = instance.current_session["pending_tool"]["approval_policy"]
+    assert policy["decision"] == "deny"
+    remedy = policy["remedy"]
+    assert "Bash(co email send *)" in remedy
+    assert ".co/host.yaml" in remedy
+    assert "SKILL.md frontmatter" in remedy
+
+    # And the model reads it, because it is in the error it gets back.
+    with pytest.raises(ValueError) as refusal:
+        check_approval(instance)
+    assert "Bash(co email send *)" in str(refusal.value)
+    assert "tools:" in str(refusal.value)
+
+
+def test_a_granted_call_carries_no_remedy(tmp_path, monkeypatch):
+    """Nothing to fix, nothing to say."""
+    monkeypatch.chdir(tmp_path)
+    instance = agent(io=False, permissions=_granted("Bash(co email send *)"))
+    instance.current_session["pending_tool"] = {
+        "name": "bash",
+        "arguments": {"command": "co email send --to a@b.c hi"},
+    }
+
+    apply_auto_approve_policy(instance)
+
+    policy = instance.current_session["pending_tool"]["approval_policy"]
+    assert policy["decision"] == "allow"
+    assert "remedy" not in policy

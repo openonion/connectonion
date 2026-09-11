@@ -523,6 +523,7 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             f"{result['reason']}; no approval channel is available",
             result["scope"],
         )
+        result["remedy"] = grant_remedy(pending.get("name"), pending.get("arguments") or {})
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
     return result
@@ -539,6 +540,57 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
 # always did: an ordinary command, never a stronger effect.
 _EXPLICIT_SOURCES = frozenset({"config", "skill", "user"})
 _TEMPLATE_SOURCES = frozenset({"template", "safe"})
+
+
+_VALUE_LOOKING = ("-", "/", "~", ".")
+
+
+def suggested_grant_pattern(tool_name: str, args: dict) -> str:
+    """The permission pattern that would allow this exact call.
+
+    A refusal that only says "no grant allows this" leaves the operator to
+    work out the syntax, the file and the right breadth from a policy name.
+    This names the line to write. It is a suggestion, so it errs narrow: the
+    leading verb words, stopping at the first argument-looking one, capped at
+    three — `co email send --to a@b.c` becomes `Bash(co email send *)`, not
+    `Bash(co *)`.
+    """
+    if str(tool_name).lower() not in {"bash", "shell", "run", "run_in_dir", "run_background"}:
+        return str(tool_name)
+    words = _command_words(str((args or {}).get("command", "")))
+    while len(words) > 1 and "=" in words[0] and not words[0].startswith("-"):
+        words = words[1:]          # VAR=value cmd ...
+    verb = []
+    for word in words[:3]:
+        if verb and (word.startswith(_VALUE_LOOKING) or any(c in word for c in "@=:")):
+            break
+        verb.append(word)
+    return f"Bash({' '.join(verb)} *)" if verb else str(tool_name)
+
+
+def grant_remedy(tool_name: str, args: dict) -> str:
+    """How to allow this call next time, in the two places that work."""
+    pattern = suggested_grant_pattern(tool_name, args)
+    if pattern.startswith("Bash("):
+        yaml_key = f'"{pattern}"'
+    else:
+        yaml_key = f'"{pattern}"'
+    return (
+        f"Nothing has granted this. To allow it — including unattended — write it down once:\n"
+        f"  • in .co/host.yaml:\n"
+        f"      permissions:\n"
+        f"        {yaml_key}:\n"
+        f"          allowed: true\n"
+        f"          source: config\n"
+        f"          reason: why you want this\n"
+        f"          expires:\n"
+        f"            type: never\n"
+        f"  • or in the skill that needs it, in its SKILL.md frontmatter:\n"
+        f"      tools:\n"
+        f"        - \"{pattern}\"\n"
+        f"A grant written in either place runs the call without asking again. "
+        f"Narrow the pattern if it is broader than you meant."
+    )
 
 
 def _explicitly_granted(

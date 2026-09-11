@@ -76,7 +76,9 @@ declared `tools:` bought nothing at all — eight of nine hand-written grants
 were ignored on 1.8.4. An explicit grant now runs the call for any effect
 class, while a wildcard is honoured only for the effect its own text names,
 and the 78 grants that ship in the template are marked as such so they keep
-their old narrow reading.
+their old narrow reading. A refusal also names the line to write now, in both
+places that work, because a refusal nobody can act on gets worked around
+rather than fixed.
 
 This is a preview because it widens a security default, and a widened default
 earns a round of real use before everyone gets it on upgrade. Exercising it
@@ -90,7 +92,7 @@ an unchecked read; and an adversarial sweep refused twenty-five of
 twenty-six bypasses, the twenty-sixth being `make install`, which 1.8.4 had
 allowed as focused verification and which is now narrowed.
 
-Offline suite: 8,763 passed, 21 skipped, on Python 3.10–3.13. Verified through
+Offline suite: 8,802 passed, 21 skipped, on Python 3.10–3.13. Verified through
 the real `co ai` unattended, not only the harness: the failing production
 command works, a `.pem` read is refused by policy, and `awk` with `system()`
 is refused. The Feishu/Lark mailbox planned for this line is not in this
@@ -135,7 +137,9 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
   `.co/keys/`. An explicit grant — `host.yaml`, a skill's `tools:`, a human's
   session approval — now runs the call for any effect class instead of being
   discarded, and `co`'s strong verbs classify by verb so a wildcard over `co`
-  cannot reach them. Three defects in 1.8.4 came out of exercising it: a `quiet=True`
+  cannot reach them. A refusal carries the exact grant that would allow the
+  call, in `.co/host.yaml` or a skill's `tools:`, so an agent that gets
+  refused says what to add instead of going quiet. Three defects in 1.8.4 came out of exercising it: a `quiet=True`
   agent crashed on every auto-approved call, the policy decision never reached
   the run trace, and `read_file` allowed what `cat` refused. Carries the second
   wave of test-suite work (#1474) and the Control Center layout fix (#1482).

@@ -273,6 +273,54 @@ A third-party skill installed with `co copy` can declare whatever `tools:` it
 likes, and those grants are honoured. That is the same trust you extend by
 installing it; read a skill's frontmatter before you install it.
 
+### A refusal names the line to write
+
+Without a grant, an unattended refusal used to name a policy — "command is
+outside the focused verification allowlist" — and leave the operator to work
+out the syntax, the file and the right breadth. It now carries the remedy, so
+the agent can relay it and the operator can read it in the log:
+
+```
+Tool 'bash' denied by connectonion.auto: sending mail requires human approval;
+no approval channel is available
+
+Nothing has granted this. To allow it — including unattended — write it down once:
+  • in .co/host.yaml:
+      permissions:
+        "Bash(co email send *)":
+          allowed: true
+          source: config
+          reason: why you want this
+          expires:
+            type: never
+  • or in the skill that needs it, in its SKILL.md frontmatter:
+      tools:
+        - "Bash(co email send *)"
+```
+
+The suggested pattern errs narrow: it is the leading verb words, stopping at
+the first argument-looking one and capped at three, so `co email send --to …`
+suggests `Bash(co email send *)` rather than `Bash(co *)`.
+
+### Unattended pipelines
+
+For a scheduled run, put the grant in the skill that needs it. `tools:` in the
+SKILL.md frontmatter is scoped to the turn the skill runs in, which is the
+whole of a one-shot `co ai "/my-skill"`, and it keeps the declaration next to
+the procedure that depends on it:
+
+```yaml
+---
+name: daily-digest
+description: Email me what happened today.
+tools:
+  - "Bash(co email send *)"
+---
+```
+
+`.co/host.yaml` is the other place, for grants that outlive any one skill.
+Either way it is written down once and the pipeline stops stopping.
+
 ### Configuration
 
 Add permissions to `.co/host.yaml`:

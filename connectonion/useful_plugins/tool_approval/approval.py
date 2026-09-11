@@ -465,10 +465,19 @@ def check_approval(agent: 'Agent') -> None:
         if policy:
             verdict = policy.get('decision')
             if verdict == 'deny':
-                raise ValueError(
+                message = (
                     f"Tool '{tool_name}' denied by {policy.get('policy_id')}: "
                     f"{policy.get('reason', 'policy denied the call')}"
                 )
+                # A refusal that does not say how to fix it gets worked around
+                # rather than fixed: the daily digest simply stopped sending
+                # and nobody learned why for days. The model reads this string
+                # as the tool result, so it can tell the operator the line to
+                # add, and the operator reads it in the log.
+                remedy = policy.get('remedy')
+                if remedy:
+                    message = f"{message}\n\n{remedy}"
+                raise ValueError(message)
             if verdict == 'allow':
                 if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
                     _log_permission_granted(agent, 
