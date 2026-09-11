@@ -523,7 +523,9 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             f"{result['reason']}; no approval channel is available",
             result["scope"],
         )
-        result["remedy"] = grant_remedy(pending.get("name"), pending.get("arguments") or {})
+        result["remedy"] = grant_remedy(
+            pending.get("name"), pending.get("arguments") or {}, result["effect_class"]
+        )
     pending["approval_policy"] = result
     record_approval_policy(agent, pending)
     return result
@@ -545,21 +547,34 @@ _TEMPLATE_SOURCES = frozenset({"template", "safe"})
 _VALUE_LOOKING = ("-", "/", "~", ".")
 
 
-def suggested_grant_pattern(tool_name: str, args: dict) -> str:
+# Effects where a suggestion the operator pastes without reading should buy as
+# little as possible. `rm -rf build` gets `Bash(rm -rf build)`, not
+# `Bash(rm *)`: the wildcard would also cover `rm -rf /`, and a nudge in a
+# refusal message is a nudge toward exactly what it says.
+_SUGGEST_EXACTLY = {"deletion", "credentials", "payment", "authorization_control"}
+
+
+def suggested_grant_pattern(tool_name: str, args: dict, effect_class: str | None = None) -> str:
     """The permission pattern that would allow this exact call.
 
     A refusal that only says "no grant allows this" leaves the operator to
     work out the syntax, the file and the right breadth from a policy name.
-    This names the line to write. It is a suggestion, so it errs narrow: the
-    leading verb words, stopping at the first argument-looking one, capped at
-    three — `co email send --to a@b.c` becomes `Bash(co email send *)`, not
-    `Bash(co *)`.
+    This names the line to write, erring narrow: the leading verb words,
+    stopping at the first argument-looking one, capped at three — so
+    `co email send --to a@b.c` becomes `Bash(co email send *)`, not
+    `Bash(co *)`. For a deletion, a credential or a payment it errs narrower
+    still and names the command exactly.
     """
     if str(tool_name).lower() not in {"bash", "shell", "run", "run_in_dir", "run_background"}:
         return str(tool_name)
-    words = _command_words(str((args or {}).get("command", "")))
+    command = str((args or {}).get("command", "")).strip()
+    words = _command_words(command)
     while len(words) > 1 and "=" in words[0] and not words[0].startswith("-"):
         words = words[1:]          # VAR=value cmd ...
+    if not words:
+        return str(tool_name)
+    if effect_class in _SUGGEST_EXACTLY:
+        return f"Bash({' '.join(words)})"
     verb = []
     for word in words[:3]:
         if verb and (word.startswith(_VALUE_LOOKING) or any(c in word for c in "@=:")):
@@ -568,9 +583,9 @@ def suggested_grant_pattern(tool_name: str, args: dict) -> str:
     return f"Bash({' '.join(verb)} *)" if verb else str(tool_name)
 
 
-def grant_remedy(tool_name: str, args: dict) -> str:
+def grant_remedy(tool_name: str, args: dict, effect_class: str | None = None) -> str:
     """How to allow this call next time, in the two places that work."""
-    pattern = suggested_grant_pattern(tool_name, args)
+    pattern = suggested_grant_pattern(tool_name, args, effect_class)
     if pattern.startswith("Bash("):
         yaml_key = f'"{pattern}"'
     else:

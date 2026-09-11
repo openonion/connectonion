@@ -974,7 +974,6 @@ def test_a_quoted_program_does_not_read_as_ungranted(tmp_path, monkeypatch):
     [
         ("co email send --to a@b.c hi", "Bash(co email send *)"),   # not Bash(co *)
         ("curl https://example.com", "Bash(curl *)"),
-        ("rm -rf build", "Bash(rm *)"),
         ("git push origin main", "Bash(git push origin *)"),
         ("CO_WHO=x co browser get_text", "Bash(co browser get_text *)"),
         ("sed -i s/a/b/ notes.txt", "Bash(sed *)"),
@@ -985,6 +984,24 @@ def test_the_suggested_grant_names_the_verb_not_the_binary(command, expected):
     from connectonion.useful_plugins.tool_approval.policy import suggested_grant_pattern
 
     assert suggested_grant_pattern("bash", {"command": command}) == expected
+
+
+@pytest.mark.parametrize(
+    ("command", "effect", "expected"),
+    [
+        ("rm -rf build", "deletion", "Bash(rm -rf build)"),
+        ("cat .env", "credentials", "Bash(cat .env)"),
+        ("co transfer 0xabc 5", "payment", "Bash(co transfer 0xabc 5)"),
+        ("curl https://example.com", "external_network", "Bash(curl *)"),
+    ],
+)
+def test_a_dangerous_effect_is_suggested_exactly_not_as_a_wildcard(command, effect, expected):
+    """The remedy is a nudge toward whatever it prints, and an operator in a
+    hurry pastes it. `Bash(rm *)` would also cover `rm -rf /`, so a deletion,
+    a credential or a payment gets named exactly."""
+    from connectonion.useful_plugins.tool_approval.policy import suggested_grant_pattern
+
+    assert suggested_grant_pattern("bash", {"command": command}, effect) == expected
 
 
 def test_a_non_bash_tool_is_suggested_by_its_name():

@@ -300,7 +300,10 @@ Nothing has granted this. To allow it — including unattended — write it down
 
 The suggested pattern errs narrow: it is the leading verb words, stopping at
 the first argument-looking one and capped at three, so `co email send --to …`
-suggests `Bash(co email send *)` rather than `Bash(co *)`.
+suggests `Bash(co email send *)` rather than `Bash(co *)`. For a deletion, a
+credential or a payment it names the command exactly — `rm -rf build` suggests
+`Bash(rm -rf build)`, because `Bash(rm *)` would also cover `rm -rf /` and a
+suggestion is a nudge toward whatever it prints.
 
 ### Unattended pipelines
 

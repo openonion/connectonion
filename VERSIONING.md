@@ -92,7 +92,7 @@ an unchecked read; and an adversarial sweep refused twenty-five of
 twenty-six bypasses, the twenty-sixth being `make install`, which 1.8.4 had
 allowed as focused verification and which is now narrowed.
 
-Offline suite: 8,802 passed, 21 skipped, on Python 3.10–3.13. Verified through
+Offline suite: 8,805 passed, 21 skipped, on Python 3.10–3.13. Verified through
 the real `co ai` unattended, not only the harness: the failing production
 command works, a `.pem` read is refused by policy, and `awk` with `system()`
 is refused. The Feishu/Lark mailbox planned for this line is not in this
