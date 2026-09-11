@@ -22,15 +22,17 @@ co env
 
 ## Current preview
 
-Preview **1.8.5a1** fixes a refusal that stopped unattended agents: in Auto
-only eleven test/build commands auto-approved, so a scheduled run died on
-`co browser … get_text | head -40`. Read-only commands now run; `sed` and
-`awk` deliberately still ask, because they take a program. It is a preview
-because it widens a security default. See
-[1.8.5a1 release notes](releases/1.8.5a1.md).
+Preview **1.8.5a2** stops keeping a list of safe command names. An ordinary
+command runs; what holds one back is a category of consequence — it destroys
+files, reaches credentials, writes outside the workspace, leaves the machine,
+or runs a program the policy cannot read. A filter no longer needs a grant of
+its own, so `Bash(co browser *)` is not defeated by `| head -40`. It is a
+preview because it widens a security default. See
+[1.8.5a2 release notes](releases/1.8.5a2.md); `1.8.5a1` answered the same
+issue with a longer allowlist and is superseded.
 
 ```bash
-python -m pip install --pre connectonion==1.8.5a1
+python -m pip install --pre connectonion==1.8.5a2
 co --version
 ```
 

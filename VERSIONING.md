@@ -58,7 +58,19 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5a1 (preview, published)
+## Release candidate: 1.8.5a2 (preview)
+
+`1.8.5a1` let an unattended agent read its own output by adding thirty
+command names to a list. This preview stops keeping the list: an ordinary
+command runs, and what holds one back is a category of consequence —
+destroys files, reaches credentials, writes outside the workspace, leaves
+the machine, runs a program the policy cannot read. A filter no longer
+needs a grant of its own, so `Bash(co browser *)` is not defeated by
+`| head -40` (#1488), and a planning tool is recognised by what owns it
+rather than by method names that collide with delete and read tools
+(#1447). See [1.8.5a2 notes](docs/releases/1.8.5a2.md).
+
+### Superseded: 1.8.5a1 (preview, published)
 
 An unattended agent could not run `head`. In Auto only eleven test/build
 commands auto-approved, so a scheduled run died on
@@ -116,9 +128,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5a1
+## Current Version: 1.8.5a2
 
 ### Version History
+- 1.8.5a2 (**opt-in preview: a command runs unless a rule holds it back.**
+  `1.8.5a1` answered #1481 with a longer allowlist; this replaces the list.
+  Everything it refused is still refused, and three rules the list had been
+  enforcing by omission are written down: a command whose argument is a
+  program asks, a command that sends something to somebody asks, and a
+  command that writes through its arguments gets the workspace check. Also
+  fixes #1488, a grant defeated by the filter it was piped through, and
+  #1447, 438 refused TodoList calls in six days. Stable remains 1.8.4;
+  the Feishu inbox is not in this preview.)
 - 1.8.5a1 (**opt-in preview: an unattended agent can read its own output.** In
   Auto only eleven test/build commands auto-approved, so everything else asked
   — and with nobody to ask, asking is refusing. A scheduled run died on
