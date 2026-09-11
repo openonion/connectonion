@@ -22,15 +22,18 @@ co env
 
 ## Current preview
 
-Preview **1.8.5a1** fixes a refusal that stopped unattended agents: in Auto
-only eleven test/build commands auto-approved, so a scheduled run died on
-`co browser … get_text | head -40`. Read-only commands now run; `sed` and
-`awk` deliberately still ask, because they take a program. It is a preview
-because it widens a security default. See
-[1.8.5a1 release notes](releases/1.8.5a1.md).
+Preview **1.8.5a2** makes a refusal actionable: it says why, the exact
+permission line that would allow it and where to put it, and to re-think
+rather than retry — and it checks that line works before printing it. It
+carries 1.8.5a1, which fixed the refusal that stopped unattended agents (in
+Auto only eleven test/build commands auto-approved, so a scheduled run died on
+`co browser … get_text | head -40`). Read-only commands run; `sed` and `awk`
+deliberately still ask, because they take a program. These are previews
+because they change a security default. See
+[1.8.5a2](releases/1.8.5a2.md) and [1.8.5a1](releases/1.8.5a1.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5a1
+python -m pip install --pre connectonion==1.8.5a2
 co --version
 ```
 

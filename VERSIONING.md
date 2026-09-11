@@ -58,7 +58,38 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5a1 (preview, published)
+## Release candidate: 1.8.5a2 (preview, published)
+
+Every refusal the policy makes now says why, how to allow it next time, and
+to re-think rather than retry. 1.8.5a1 fixed what the policy decides; this
+fixes what it says when it decides no. An agent handed "command is outside the
+focused verification allowlist" has one move available — try again — and
+trying again cannot work, because the decision is a static lookup. That is how
+the incident behind #1481 reached 28 of 300 iterations: one refusal and 272
+retries of it.
+
+The suggested grant is verified against the real grant path before it is
+printed, in the order the live call asks — control-file gate first, then the
+grant check. Two of the first suggestions were untrue: `Bash(cat *)` cannot
+allow `cat /etc/shadow`, because a wildcard is honoured only for the effect
+its own text names, and no pattern at all can allow `echo x > ../outside.txt`,
+because redirects are stripped from the text patterns match against. Those now
+say there is no grant rather than naming a line that would not work — a wrong
+remedy gets widened until something works, which walks the operator toward
+turning the policy off. A test pastes the suggested pattern for sixteen
+refused calls and asserts the identical call then runs; that test found both.
+
+blog-gate's story check also stopped reading a provider 503 as a failing post.
+It retries, then warns and passes: an ignored gate protects nothing.
+
+Offline suite: 8,844 passed, 21 skipped. Verified on a real unattended run —
+asked to read a file outside the workspace, the agent made one attempt, took
+the reminder, did not retry, and told the operator why.
+
+Stable remains 1.8.4. This is not Latest and needs `--pre` or an exact pin.
+See [1.8.5a2 notes](docs/releases/1.8.5a2.md).
+
+## Superseded candidate: 1.8.5a1 (preview, published)
 
 An unattended agent could not run `head`. In Auto only eleven test/build
 commands auto-approved, so a scheduled run died on
@@ -116,9 +147,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5a1
+## Current Version: 1.8.5a2
 
 ### Version History
+- 1.8.5a2 (**opt-in preview: a refusal you can act on.** Every refusal the
+  policy makes carries why it was refused, the exact permission line that would
+  allow it next time and the two places it can go, and a prompt to re-think
+  rather than repeat — including what to try instead, per effect class. 1.8.5a1
+  fixed what the policy decides; an agent handed the old one-sentence refusal
+  could only retry, and retrying a deterministic lookup drains the run. The
+  suggested grant is checked against the real grant path before it is printed,
+  so a refusal no pattern can lift says so instead of naming a line that would
+  not work. blog-gate's story check no longer reads a provider 503 as a failing
+  post. Stable stays 1.8.4; this needs `--pre` or an exact pin.)
 - 1.8.5a1 (**opt-in preview: an unattended agent can read its own output.** In
   Auto only eleven test/build commands auto-approved, so everything else asked
   — and with nobody to ask, asking is refusing. A scheduled run died on
