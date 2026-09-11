@@ -91,12 +91,21 @@
   .now strong { display: block; font-size: 15px; }
   .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
 
-  .quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  /* One action per row. At the pane width this page is written for the three
+     columns already collapsed; at desktop width they did not, and the card there
+     is about 460px — roughly 150px per action, which wrapped the names and cut
+     every description mid-word, an ellipsis landing wherever the pixels ran out.
+     A row fits the name and two readable lines under it at every width this page
+     is served at. */
+  .quick { display: grid; gap: 6px; align-content: start; }
   .quick .skill {
-    min-height: 72px; padding: 12px 30px 12px 12px;
+    min-height: 62px; padding: 11px 32px 11px 13px;
     border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
   }
-  .quick .skill::after { right: 13px; }
+  .quick .skill::after { right: 14px; }
+  .quick .skill .desc {
+    white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
 
   .skill {
     position: relative; display: flex; flex-direction: column; justify-content: center;
@@ -113,8 +122,8 @@
   .skill:active { background: var(--cc-accent-soft); }
   .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
   .skill .desc {
-    min-width: 0; max-width: 100%; margin-top: 2px; color: var(--cc-muted); font-size: 12px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0; max-width: 100%; margin-top: 3px; color: var(--cc-muted); font-size: 12px;
+    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .skill .desc:empty { display: none; }
 
@@ -168,12 +177,17 @@
 
   @media (min-width: 640px) {
     .masthead { grid-template-columns: 1fr auto; align-items: end; }
-    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+    /* Two columns only when there are two cards. An Agent that has published
+       nothing renders no Quick actions card, and the second column stayed
+       declared: the Workspace note sat at 40% width beside an empty half. Day
+       zero is exactly when an Agent has no published skills, so that was the
+       first thing `co host` showed most people. */
+    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; }
+    .overview:not(:has(.quick)) { grid-template-columns: 1fr; }
     .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
   }
   @media (max-width: 520px) {
     body { padding-inline: 10px; }
-    .quick { grid-template-columns: 1fr; }
     .quick .skill { min-height: 56px; }
     .act { align-items: flex-start; flex-direction: column; gap: 1px; }
     .act .what { white-space: normal; }
