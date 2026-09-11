@@ -43,9 +43,9 @@ Add the bot to a group, @ it, and it is listening.
 ## The directory
 
 ```text
-~/.co/feishu/
-├── inbox.jsonl      every message received, one JSON line, appended, never deleted
-├── outbox.jsonl     every message sent, and every send that failed
+~/.co/inbox/feishu/
+├── received.jsonl   every message received, one JSON line, appended, never deleted
+├── sent.jsonl       every message sent, and every send that failed
 ├── done.jsonl       durable completion IDs, including messages handled without replying
 ├── queue.lock       short kernel lock for queue mutations (never delete lock files)
 ├── new/             messages nobody has taken yet, one file each
@@ -67,7 +67,7 @@ Only files named `<arrival>-<id>` are the tool's. Anything else that lands in
 `new/` (`.DS_Store`, an editor's swap file, a note) is left alone, never
 claimed, never swept, never deleted.
 
-The file in `new/` and the line in `inbox.jsonl` are the same bytes:
+The file in `new/` and the line in `received.jsonl` are the same bytes:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
@@ -83,15 +83,17 @@ a prompt by accident.
 You do not need the commands below to consume it:
 
 ```bash
-ls ~/.co/feishu/new/                      # how many are waiting
-tail -f ~/.co/feishu/inbox.jsonl          # watch live
-grep on_7c6d ~/.co/feishu/inbox.jsonl | jq -r .text
+ls ~/.co/inbox/feishu/new/                # how many are waiting
+tail -f ~/.co/inbox/feishu/received.jsonl # watch live
+grep on_7c6d ~/.co/inbox/feishu/received.jsonl | jq -r .text
 co feishu receive --no-start -t 0       # claim with a fresh visibility timestamp
 co feishu done MESSAGE_ID              # finish durably without sending a reply
 ```
 
 The default directory follows `$AGENT_CONFIG_PATH`, normally `~/.co`.
-A second application gets its own directory: `CO_FEISHU_HOME=~/.co/feishu-ops co feishu listen`.
+A second set of applications gets its own root: `CO_INBOX_HOME=~/.co/inbox-ops co feishu listen`.
+The variable moves the whole root rather than one channel, because moving one
+and leaving the others only ever produced a half-configured machine.
 
 ## The verbs
 
@@ -105,8 +107,8 @@ co feishu reply om_9f8e "fixed"                     # back to the chat and threa
 co feishu done om_9f8e           # took it, decided not to answer; do not bring it back
 co feishu check                  # credentials, connectivity, listener, unread; exit 3 on a problem
 co feishu ls                     # unread: id, chat, sender, text
-co feishu log -f                 # inbox.jsonl, following
-co feishu listen --raw           # also keep Feishu's own payload on each inbox.jsonl line
+co feishu log -f                 # the tool's log, following
+co feishu listen --raw           # also keep Feishu's own payload on each received.jsonl line
 co feishu receive --no-start     # wait for a message but never start a listener (a cron job, a test)
 co feishu serve -- ./answer.sh   # the loop: receive, run the command, reply with its stdout
 ```
@@ -134,14 +136,52 @@ connection: a pair Feishu has just rejected cannot connect, and the SDK's
 own retry would otherwise hide the refusal behind `connect failed` lines
 every two minutes.
 
-`reply ID` needs only the id: chat and thread are read from `inbox.jsonl`. It
+`reply ID` needs only the id: chat and thread are read from `received.jsonl`. It
 refuses to answer the same message twice unless you pass `--again`, so a loop
 that re-runs cannot double-post. A taken message that is neither replied to
 nor marked `done` comes back to `new/` after an hour, on the assumption that
 its consumer died; `done` is how a consumer says it chose silence. `send` and `reply` print the id Feishu gave
 the new message and exit 1 with Feishu's own reason if it was refused.
 
-## Any agent, two lines
+## Your own agent, no flags
+
+Say which channels the agent answers in `~/.co/host.yaml`, beside the name and
+the trust level it already keeps there:
+
+```yaml
+name: oo
+trust: open
+listen:
+  feishu:
+    chats: [oc_a1b2]      # absent or empty = every group the bot is in
+    mention_only: true    # a group needs an @; a direct message is already one
+  lark: {}
+```
+
+Then start it the way you always did:
+
+```bash
+co ai                     # answers the channels in the file
+co server                 # so does a deployed Host
+```
+
+The command line is for overriding that file for one run, not for configuring
+it: `co ai --listen lark` answers only Lark this time, `co ai --no-listen`
+answers nothing. A channel named on the command line still takes its options
+from the file. An unknown channel, or a `host.yaml` that does not parse, stops
+the start and says which — an agent nobody can reach otherwise looks exactly
+like a working one.
+
+Each conversation keeps its own session, so a follow-up remembers the question
+it follows, and two threads of one group do not read as non-sequiturs to each
+other. On a Host the turn is recorded in `.co/session_results.jsonl` beside the
+interactive ones, carrying `via: feishu` and the sender.
+
+In 1.8.5 anyone who can address the bot can command it. A self-built
+application is scoped to your tenant and to the groups the bot was invited to,
+so that is your company, not the internet. Sender allowlists arrive in 1.9.
+
+## Any other agent, two lines
 
 ```bash
 m=$(co feishu receive)                       # {"id":"om_9f8e","chat":"oc_a1b2","text":"...",...}
@@ -166,6 +206,19 @@ the message taken: it comes back to `new/` in an hour, the same as a
 consumer that died, so a transient failure is retried and a question is
 never silently consumed. A command that cannot be run at all (`./answer.sh`
 without its exec bit) is refused with exit 2 before any message is taken.
+
+`serve` runs one command at a time, because commands written for it have
+always run alone and some are not safe to run twice at once. `--workers N`
+answers N conversations at once; messages within one conversation stay in
+order whatever N is.
+
+While a command is running, `serve` keeps saying so, so the hour is measured
+from the last sign of life rather than from when the message was taken. A
+command that takes ninety minutes is not interrupted; one whose process died
+is offered to the next consumer as before. A message that has been handed out
+four times without ever finishing is completed with a `gave up` line in the
+log: something about that one breaks whoever takes it, and handing it out
+again just breaks the next consumer too, every hour, forever.
 
 ## What the tool does for you
 
@@ -220,7 +273,7 @@ the whole month in a week.
 
 `co lark` is the same tool with three differences: the domain is
 `open.larksuite.com`, the credentials are `LARK_APP_ID` and `LARK_APP_SECRET`,
-and the directory is `~/.co/lark/` (or `$CO_LARK_HOME`). Every verb, flag,
+and the directory is `~/.co/inbox/lark/`. Every verb, flag,
 file and exit code above is identical. A tenant on Feishu and a tenant on Lark
 are two applications with two directories; nothing is shared between them.
 Error messages name the platform you are talking to, so a `co lark` user is
@@ -279,9 +332,9 @@ polling automation should be stopped merely to run a synthetic test.
 ## Recovering a disconnected listener
 
 The candidate reconciles history on startup and after an SDK reconnect. It uses
-only conversations already recorded in this mailbox; it does not discover or
+only conversations already recorded in this inbox; it does not discover or
 import every chat the bot can access. The first run starts a new history boundary
-at the listener's start time. Preserve `recovery.json` with the mailbox when
+at the listener's start time. Preserve `recovery.json` with the inbox when
 restarting: deleting it discards that recovery boundary.
 
 Every history page passes through the same message-ID deduplication and durable
@@ -295,7 +348,7 @@ Recovery requires the bot's message-history read permissions and access to each
 known conversation. Group recovery admits only messages that mention this bot;
 it does not turn unrelated group discussion into agent work. Known direct chats
 retain their direct-message semantics. Known threads and threads discovered in
-history are paginated separately. Messages in conversations the mailbox has never
+history are paginated separately. Messages in conversations the inbox has never
 seen, deleted messages, and history the provider no longer exposes cannot be
 promised recoverable. These limits also apply to `co feishu`.
 

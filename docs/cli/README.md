@@ -296,10 +296,11 @@ See [telegram.md](telegram.md) for setup, credential handling, and errors.
 #### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files
 
 ```bash
-co feishu listen                      # hold the connection; every message → ~/.co/feishu/
+co feishu listen                      # hold the connection; every message → ~/.co/inbox/feishu/
 co feishu receive                     # next message as one JSON line
 echo "done" | co feishu reply om_9f8e # back to where it was asked
 co feishu serve -- claude -p          # one command per message, stdout is the reply
+co ai                                 # your own agent answers the channels in ~/.co/host.yaml
 ```
 
 Uses your own self-built Feishu application over the official long connection:
