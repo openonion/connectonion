@@ -851,7 +851,10 @@ def _granted(pattern, source="config", command=None):
         ("Bash(cat .env)", "cat .env"),                      # credentials
         ("Bash(sed -i *)", "sed -i s/a/b/ notes.txt"),       # takes a program
         ("Bash(awk *)", "awk '{print $1}' notes.txt"),
-        ("Bash(mkdir *)", "mkdir -p build"),                 # ordinary
+        # `mkdir -p build` is an ordinary workspace write now, so the default
+        # carries it and the grant is never consulted. This claim needs a call
+        # the rules hold back, which is what a grant is for.
+        ("Bash(python3 *)", "python3 -c 'print(1)'"),         # ordinary
         ("Bash(co email send *)", "co email send --to a@b.c hi"),
     ],
 )
@@ -1074,11 +1077,11 @@ REFUSED_CALLS = [
     ("co deploy", "publication"),
     ("co email send --to a@b.c hi", "external_effect"),
     ("co transfer 0xabc 5", "payment"),
-    ("sed -n 1,10p notes.txt", "command"),
-    ("awk '{print $1}' notes.txt", "command"),
-    ("make install", "command"),
-    ("ping -c 1 8.8.8.8", "command"),
-    ("python3 -c 'print(1)'", "command"),
+    ("sed -n 1,10p notes.txt", "code_execution"),
+    ("awk '{print $1}' notes.txt", "code_execution"),
+    ("make install", "code_execution"),
+    ("ping -c 1 8.8.8.8", "external_network"),
+    ("python3 -c 'print(1)'", "code_execution"),
 ]
 
 

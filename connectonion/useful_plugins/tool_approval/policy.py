@@ -62,7 +62,13 @@ _MAKE_VERIFICATION_TARGETS = {
 }
 _PACKAGE_RUNNERS = {"npm", "pnpm", "yarn", "bun"}
 _DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "shred", "truncate", "del", "erase", "format"}
-_EXTERNAL_COMMANDS = {"curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail"}
+_EXTERNAL_COMMANDS = {
+    "curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail",
+    # These reached the network too and were refused only because nothing had
+    # named them. Under default allow, "nobody listed it" stops being a reason.
+    "ping", "ping6", "nc", "netcat", "telnet", "ftp", "sftp", "dig", "nslookup",
+    "traceroute", "whois", "http", "httpie", "aria2c",
+}
 # Commands whose argument is a *program*. `bash << EOF … EOF`, `python3 -c`,
 # `awk 'BEGIN{system("rm -rf /")}'` and GNU `sed 's/a/b/e'` all run text that
 # no rule here can inspect, so allowing them by name would allow everything
@@ -329,8 +335,6 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         return decision("deletion", "deny", "destructive command requires an explicit safer workflow", "call")
     if any(token in lowered for token in ("publish", "deploy", "release", "push")):
         return decision("publication", "ask", "publishing and deployment require human approval", "call", requires_human=True)
-    if any(word.lower() in _OUTWARD_SUBCOMMANDS for word in words[1:4]):
-        return decision("external_effect", "ask", "sending something to other people requires human approval", "call", requires_human=True)
     if first in _EXTERNAL_COMMANDS:
         return decision("external_network", "ask", "external network access requires human approval", "call", requires_human=True)
     if first == "co" and len(words) > 1:
@@ -338,6 +342,8 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
         if effect:
             effect_class, verdict, reason = effect
             return decision(effect_class, verdict, reason, "call", requires_human=(verdict == "ask"))
+    if any(word.lower() in _OUTWARD_SUBCOMMANDS for word in words[1:4]):
+        return decision("external_effect", "ask", "sending something to other people requires human approval", "call", requires_human=True)
     if first in _SENSITIVE_COMMANDS or any(
         ".env" in token or "credential" in token or "secret" in token for token in lowered
     ) or any(_is_key_material(word) for word in words[1:] if not word.startswith("-")):
