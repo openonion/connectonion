@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: reads and locally refreshes MICROSOFT_* OAuth tokens | persists rotated tokens to user keys.env and an existing project .env | makes HTTP calls to Microsoft Graph API | can create/update/delete events, create Teams meetings
   Integration: exposes MicrosoftCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_teams_meeting(), get_upcoming_meetings(), find_free_slots(), check_availability() | used as agent tool via Agent(tools=[MicrosoftCalendar()])
   Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
-  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display
+  Errors: raises ValueError if OAuth not configured | Graph 401/403 and other non-2xx responses raise ProviderCredentialError with a status code and a next command, never the response body | returns error strings for display | driven from the terminal by cli/commands/outlook_calendar_commands.py (`co outlook calendar`)
 
 Microsoft Calendar tool for managing calendar events via Microsoft Graph API.
 
@@ -43,13 +43,16 @@ Example:
 """
 
 import os
-from datetime import datetime, timedelta
+import shlex
+from urllib.parse import urlsplit
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
 
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
+from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
 
 class MicrosoftCalendar:
@@ -57,14 +60,27 @@ class MicrosoftCalendar:
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
+    @property
+    def _credentials(self):
+        if not hasattr(self, "_credential_record"):
+            self._credential_record = resolve_provider_credentials("microsoft")
+        return self._credential_record
+
+    @_credentials.setter
+    def _credentials(self, value):
+        self._credential_record = value
+
     def __init__(self):
         """Initialize Microsoft Calendar tool.
 
         Validates that Microsoft OAuth is configured with Calendar scopes.
         Raises ValueError if credentials are missing.
         """
-        scopes = os.getenv("MICROSOFT_SCOPES", "")
-        if not scopes or "Calendars" not in scopes:
+        self._credentials = resolve_provider_credentials("microsoft")
+        scopes = self._credentials.get("SCOPES") or ""
+        if not scopes:
+            self._credentials.require_configured()
+        if scopes and "Calendars" not in scopes:
             raise ValueError(
                 "Missing Microsoft Calendar scopes.\n"
                 f"Current scopes: {scopes}\n"
@@ -74,79 +90,20 @@ class MicrosoftCalendar:
 
         self._access_token = None
 
+    _parse_token_expiry = staticmethod(token_expiry)
+
     def _get_access_token(self) -> str:
-        """Get Microsoft access token (with auto-refresh)."""
-        access_token = os.getenv("MICROSOFT_ACCESS_TOKEN")
-        refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
-        expires_at_str = os.getenv("MICROSOFT_TOKEN_EXPIRES_AT")
-
-        if not access_token or not refresh_token:
-            raise ValueError(
-                "Microsoft OAuth credentials not found.\n"
-                "Run: co auth microsoft"
-            )
-
-        # Check if token is expired or about to expire (within 5 minutes)
-        if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
-
-            if now >= expires_at - timedelta(minutes=5):
-                access_token = self._refresh_via_backend(refresh_token)
-                self._access_token = None
-
-        if self._access_token:
-            return self._access_token
-
-        self._access_token = access_token
-        return self._access_token
+        # Mail and Calendar must classify expiry and partial records identically.
+        from .outlook import Outlook
+        return Outlook._get_access_token(self)
 
     def _refresh_via_backend(self, refresh_token: str) -> str:
-        """Refresh access token via backend API."""
-        selected_backend = backend_url()
+        from ..provider_credentials import ProviderCredentialError
         api_key = require_ambient_api_key()
-
-        response = httpx.post(
-            f"{selected_backend}/api/v1/oauth/microsoft/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"refresh_token": refresh_token}
-        )
-
-        if response.status_code != 200:
-            raise ValueError(
-                f"Microsoft session expired and refresh failed ({response.status_code}).\n"
-                "Reconnect with: co auth microsoft"
-            )
-
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-        new_refresh_token = data.get("refresh_token") or refresh_token
-
-        os.environ["MICROSOFT_ACCESS_TOKEN"] = new_access_token
-        os.environ["MICROSOFT_TOKEN_EXPIRES_AT"] = expires_at
-        os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
-
-        from ..cli.commands.project_cmd_lib import upsert_env
-        rotated = {
-            "MICROSOFT_ACCESS_TOKEN": new_access_token,
-            "MICROSOFT_TOKEN_EXPIRES_AT": expires_at,
-            "MICROSOFT_REFRESH_TOKEN": new_refresh_token,
-        }
-        keys_env = Path(
-            os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))
-        ) / "keys.env"
-        keys_env.parent.mkdir(parents=True, exist_ok=True)
-        upsert_env(keys_env, rotated)
-
-        local_env = Path(".env")
-        if (
-            local_env.exists()
-            and "MICROSOFT_ACCESS_TOKEN=" in local_env.read_text(encoding="utf-8")
-        ):
-            upsert_env(local_env, rotated)
-
-        return new_access_token
+        if refresh_token and refresh_token != self._credentials.get("REFRESH_TOKEN"):
+            raise ProviderCredentialError("record_changed", "Refresh token differs from the selected account.", "co status")
+        return refresh_credentials(self._credentials, backend=backend_url(),
+                                   api_key=api_key, post=httpx.post)
 
     def _request(self, method: str, endpoint: str, **kwargs) -> dict:
         """Make authenticated request to Microsoft Graph API."""
@@ -160,15 +117,24 @@ class MicrosoftCalendar:
         response = httpx.request(method, url, headers=headers, **kwargs)
 
         if response.status_code == 401:
-            refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
+            refresh_token = self._credentials.get("REFRESH_TOKEN")
             if refresh_token:
                 self._access_token = None
                 token = self._refresh_via_backend(refresh_token)
                 headers["Authorization"] = f"Bearer {token}"
                 response = httpx.request(method, url, headers=headers, **kwargs)
 
+        if response.status_code in (401, 403):
+            from ..provider_credentials import ProviderCredentialError
+            raise ProviderCredentialError("permission_denied" if response.status_code == 403 else "reauth_required",
+                "Microsoft permission denied." if response.status_code == 403 else "Microsoft authorization expired.",
+                self._credentials.auth_command)
         if response.status_code not in [200, 201, 202, 204]:
-            raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
+            # Same shape as Outlook: the status is the diagnosis, the body is
+            # tenant text that must not reach a terminal or an agent transcript.
+            from ..provider_credentials import ProviderCredentialError
+            raise ProviderCredentialError("provider_unavailable",
+                f"Microsoft Graph API error (HTTP {response.status_code}).", "co outlook calendar list")
 
         if response.status_code == 204:
             return {}
@@ -180,7 +146,21 @@ class MicrosoftCalendar:
         return dt.strftime('%Y-%m-%d %I:%M %p')
 
     def _parse_time(self, time_str: str) -> datetime:
-        """Parse time string to datetime object."""
+        """Parse a time as naive UTC: offsets are converted, naive means UTC.
+
+        Every event is sent to Graph with timeZone "UTC", so a value carrying
+        its own offset ("2026-09-10T20:00:00+10:00") has to be converted before
+        it is stripped — passing it through unconverted would book the meeting
+        ten hours late. Same contract as GoogleCalendar.
+        """
+        try:
+            parsed = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed.replace(microsecond=0)
         for fmt in ['%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M']:
             try:
                 return datetime.strptime(time_str, fmt)
@@ -286,7 +266,7 @@ class MicrosoftCalendar:
         """
         endpoint = f"/me/calendar/events/{event_id}"
         params = {
-            "$select": "subject,start,end,body,location,attendees,onlineMeetingUrl"
+            "$select": "subject,start,end,body,location,attendees,onlineMeeting,onlineMeetingUrl"
         }
 
         event = self._request("GET", endpoint, params=params)
@@ -304,7 +284,7 @@ class MicrosoftCalendar:
             status = a.get('status', {}).get('response', 'none')
             attendee_list.append(f"{email} ({status})")
 
-        meeting_url = event.get('onlineMeetingUrl', 'No meeting link')
+        meeting_url = self._meeting_url(event) or 'No meeting link'
 
         output = [
             f"Event: {subject}",
@@ -420,9 +400,37 @@ class MicrosoftCalendar:
 
         created_event = self._request("POST", "/me/calendar/events", json=event)
 
-        meeting_url = created_event.get('onlineMeeting', {}).get('joinUrl', '') or created_event.get('onlineMeetingUrl', 'No meeting link')
+        meeting_url = self._meeting_url(created_event)
+        if not meeting_url:
+            from ..provider_credentials import ProviderCredentialError
+            event_id = created_event.get('id')
+            if isinstance(event_id, str) and event_id and not any(ord(c)<32 for c in event_id):
+                raise ProviderCredentialError('meeting_link_unconfirmed',
+                    f'Event created (ID: {event_id}), but its Teams link is not confirmed. '
+                    'Inspect this event; do not repeat creation.',
+                    shlex.join(['co','outlook','calendar','read',event_id]))
+            raise ProviderCredentialError('creation_unconfirmed',
+                'Microsoft accepted the request but returned no confirmed Teams link or usable event ID. '
+                'Inspect the calendar before retrying creation.', 'co outlook calendar list')
 
         return f"Teams meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nTeams link: {meeting_url}\nEvent ID: {created_event['id']}"
+
+    @staticmethod
+    def _meeting_url(event: dict) -> str | None:
+        """Only a usable HTTPS link confirms the requested meeting outcome."""
+        meeting = event.get('onlineMeeting')
+        candidates = [meeting.get('joinUrl') if isinstance(meeting, dict) else None,
+                      event.get('onlineMeetingUrl')]
+        for value in candidates:
+            if not isinstance(value, str) or any(c.isspace() for c in value):
+                continue
+            try:
+                parsed = urlsplit(value)
+            except ValueError:
+                continue
+            if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
+                return value
+        return None
 
     def update_event(self, event_id: str, title: str = None, start_time: str = None,
                      end_time: str = None, description: str = None,

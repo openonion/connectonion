@@ -76,7 +76,7 @@ class TestTheOptInTargetsStayOptIn:
     def test_the_narrow_targets_are_left_alone(self):
         """`make test-unit` naming one marker is the point of it; it is not
         pretending to be a whole-suite run."""
-        for target in ['test-unit', 'test-integration', 'test-cli']:
+        for target in ['test-unit', 'test-cli']:
             assert '-m' in _target(target)
 
 

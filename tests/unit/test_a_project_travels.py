@@ -41,24 +41,19 @@ class TestTheDefaultIsEnough:
     """Removing the variable is only safe because every reader already has the
     right fallback — and they must keep having it."""
 
-    @pytest.mark.parametrize("tool", [
-        "gmail", "outlook", "gdrive", "synology",
-        "google_calendar", "microsoft_calendar",
-    ])
-    def test_every_tool_falls_back_to_the_local_home(self, tool):
-        source = (Path(__file__).parent.parent.parent /
-                  "connectonion" / "useful_tools" / f"{tool}.py").read_text()
-
-        assert 'getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")' in source
-
-    def test_the_fallback_resolves_on_this_machine(self, monkeypatch):
+    @pytest.mark.parametrize("provider", ["google", "microsoft"])
+    def test_credentials_follow_the_machine_home(self, provider, monkeypatch):
+        from connectonion.environment import provider_keys, global_config_dir
+        from connectonion.provider_credentials import resolve_provider_credentials
         monkeypatch.delenv("AGENT_CONFIG_PATH", raising=False)
-
-        resolved = Path(os.getenv("AGENT_CONFIG_PATH",
-                                  os.path.expanduser("~/.co"))) / "keys.env"
-
-        assert str(resolved).endswith(".co/keys.env")
-        assert "/Users/" not in str(resolved) or resolved.is_absolute()
+        for key in provider_keys(provider):
+            monkeypatch.delenv(key, raising=False)
+        config = global_config_dir()
+        config.mkdir(parents=True, exist_ok=True)
+        (config / "keys.env").write_text(f"{provider.upper()}_ACCESS_TOKEN=local-token\n")
+        record = resolve_provider_credentials(provider)
+        assert record.path == Path.home() / ".co" / "keys.env"
+        assert record.get("ACCESS_TOKEN") == "local-token"
 
 
 class TestTheDeployStillSetsIt:

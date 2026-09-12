@@ -1,0 +1,48 @@
+version: v1.8.4a1
+images:
+- file: control-center-desktop.png
+  alt: Full app actions appear in the shared conversation while the approved app stays
+    visible.
+  caption: Full app actions appear in the shared conversation while the approved app
+    stays visible.
+  scenario: Synthetic invoice app over the local production O Chat build and published
+    SDK rc.2; no live account data.
+  viewport: 1280x720 desktop
+  commit: 5ed55728d6e972118776c94b78c172b6e001d3d6
+  source_run: https://github.com/openonion/oo-chat/actions/runs/34121978502
+- file: control-center-mobile.png
+  alt: The full app and review controls fit a 375-pixel mobile viewport.
+  caption: The full app and review controls fit a 375-pixel mobile viewport.
+  scenario: Synthetic invoice app over the local production O Chat build and published
+    SDK rc.2; no live account data.
+  viewport: 375x812 mobile
+  commit: 5ed55728d6e972118776c94b78c172b6e001d3d6
+  source_run: https://github.com/openonion/oo-chat/actions/runs/34121978502
+- file: control-center-review-blocked.png
+  alt: A blocked update reports its finding and preserves the previously approved
+    app.
+  caption: A blocked update reports its finding and preserves the previously approved
+    app.
+  scenario: Synthetic invoice app over the local production O Chat build and published
+    SDK rc.2; no live account data.
+  viewport: 1280x720 desktop
+  commit: 5ed55728d6e972118776c94b78c172b6e001d3d6
+  source_run: https://github.com/openonion/oo-chat/actions/runs/34121978502
+- file: cli-before.svg
+  alt: Released 1.8.3 exposes the earlier draft and Synology command surfaces.
+  caption: Released 1.8.3 exposes the earlier draft and Synology command surfaces.
+  scenario: Account-free --version and Gmail draft/Synology --help from the installed
+    1.8.3 wheel in an unrelated temporary directory.
+  viewport: 100-column terminal
+  commit: 21cdf590cb699b7ebcfc89cd9a85050393625b38
+  source_run: scripts/capture_184_release_cli.py
+- file: cli-after.svg
+  alt: The installed 1.8.4a1 preview adds content-bound draft review and the complete
+    Synology command groups.
+  caption: The installed 1.8.4a1 preview adds content-bound draft review and the complete
+    Synology command groups.
+  scenario: Account-free --version and Gmail draft/Synology --help from the installed
+    1.8.4a1 wheel in an unrelated temporary directory.
+  viewport: 100-column terminal
+  commit: 4f72d7ff98b8f2f2cc569fbc488244b758d7eb8a
+  source_run: scripts/capture_184_release_cli.py

@@ -303,6 +303,21 @@ def _get_batch_remaining(agent: 'Agent', current_tool_id: str) -> list:
     return []
 
 
+def _log_permission_granted(agent: 'Agent', tool_name: str, tool_args: dict, source: str, reason: str) -> None:
+    """Show a grant on the console when there is one.
+
+    A `quiet=True` agent has a logger whose `console` is None, and that is the
+    shape every unattended run takes. Six call sites reached
+    `agent.logger.console.log_permission_granted(...)` directly, so in a quiet
+    agent every auto-approved tool call died with AttributeError — the
+    approval said yes and the tool still failed. Found by the Rust e2e, not by
+    the sixty unit tests, none of which built a real quiet Agent.
+    """
+    console = getattr(getattr(agent, 'logger', None), 'console', None)
+    if console is not None:
+        console.log_permission_granted(tool_name, tool_args, source, reason)
+
+
 def _log(agent: 'Agent', message: str, style: str = None) -> None:
     """Log message via agent's logger if available.
 
@@ -423,7 +438,7 @@ def check_approval(agent: 'Agent') -> None:
         )
         if direct_tool == tool_name and tool_name in {'codex', 'claude_code'}:
             if getattr(getattr(agent, 'logger', None), 'console', None):
-                agent.logger.console.log_permission_granted(
+                _log_permission_granted(agent, 
                     tool_name,
                     tool_args,
                     'host',
@@ -450,13 +465,22 @@ def check_approval(agent: 'Agent') -> None:
         if policy:
             verdict = policy.get('decision')
             if verdict == 'deny':
-                raise ValueError(
+                message = (
                     f"Tool '{tool_name}' denied by {policy.get('policy_id')}: "
                     f"{policy.get('reason', 'policy denied the call')}"
                 )
+                # A refusal that does not say how to fix it gets worked around
+                # rather than fixed: the daily digest simply stopped sending
+                # and nobody learned why for days. The model reads this string
+                # as the tool result, so it can tell the operator the line to
+                # add, and the operator reads it in the log.
+                reminder = policy.get('reminder')
+                if reminder:
+                    message = f"{message}\n\n{reminder}"
+                raise ValueError(message)
             if verdict == 'allow':
                 if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
-                    agent.logger.console.log_permission_granted(
+                    _log_permission_granted(agent, 
                         tool_name, tool_args, 'policy', policy.get('reason', 'auto-approved')
                     )
                 return
@@ -487,10 +511,10 @@ def check_approval(agent: 'Agent') -> None:
             # This prevents sneaking in dangerous commands via chaining
             if tool_name == 'bash' and 'command' in tool_args:
                 # Check if ALL commands in chain are permitted
-                permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions)
+                permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions, carry_unguarded=True)
                 if permitted:
                     if getattr(getattr(agent, 'logger', None), 'console', None):
-                        agent.logger.console.log_permission_granted('bash', tool_args, source, reason)
+                        _log_permission_granted(agent, 'bash', tool_args, source, reason)
                     return
 
             # Check each permission in the dict
@@ -519,7 +543,7 @@ def check_approval(agent: 'Agent') -> None:
                     reason = perm.get('reason', 'unknown')
                     source = perm.get('source', 'config')
                     if getattr(getattr(agent, 'logger', None), 'console', None):
-                        agent.logger.console.log_permission_granted(tool_name, tool_args, source, reason)
+                        _log_permission_granted(agent, tool_name, tool_args, source, reason)
                     return
 
     # =================================================================
@@ -533,7 +557,7 @@ def check_approval(agent: 'Agent') -> None:
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
         if getattr(getattr(agent, 'logger', None), 'console', None):
-            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'full_access mode')
+            _log_permission_granted(agent, tool_name, tool_args, 'mode', 'full_access mode')
         return
 
     # reject_hard was set by a previous tool in this batch — reject remaining
@@ -559,7 +583,7 @@ def check_approval(agent: 'Agent') -> None:
     if mode == AUTO:
         if tool_name in FILE_EDIT_TOOLS:
             if getattr(getattr(agent, 'logger', None), 'console', None):
-                agent.logger.console.log_permission_granted(
+                _log_permission_granted(agent, 
                     tool_name, tool_args, 'mode', AUTO
                 )
             return
@@ -734,7 +758,20 @@ def load_permission_patterns(co_dir=None) -> dict:
             template_config = yaml.safe_load(f) or {}
         template_permissions = template_config.get('permissions')
         if template_permissions and isinstance(template_permissions, dict):
-            permissions.update(_convert_permission_patterns(template_permissions))
+            # Stamp the shipped defaults as `template`, whatever the file says.
+            # They declare `source: config`, which made them indistinguishable
+            # from a grant the operator wrote by hand — so the policy could not
+            # honour "I explicitly allowed this" without also honouring 78
+            # entries that shipped with the product. That is why the broad
+            # `Bash(co *)` needed a hardcoded narrowing. Now the question "who
+            # said this" has an answer.
+            for pattern, perm in _convert_permission_patterns(template_permissions).items():
+                # Only the shipped `config` entries are restamped. The `safe`
+                # ones name built-in read-only tools, which is a different
+                # statement and is already handled by effect class.
+                if perm.get('source') == 'config':
+                    perm = {**perm, 'source': 'template'}
+                permissions[pattern] = perm
 
     co_dir = Path(co_dir) if co_dir else project_co_dir()
     host_yaml = co_dir / 'host.yaml'
@@ -843,7 +880,7 @@ def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tup
     # prefix-match the whole chain string ("co status && rm -rf /") and wrongly
     # permit the dangerous half. Per-subcommand matching is the only safe check.
     if tool_name == 'bash' and 'command' in tool_args:
-        permitted, reason, _ = check_bash_chain_permitted(tool_args['command'], permissions)
+        permitted, reason, _ = check_bash_chain_permitted(tool_args['command'], permissions, carry_unguarded=True)
         return (True, reason or "permitted") if permitted else (False, "command not in the permission whitelist")
 
     for pattern, perm in permissions.items():

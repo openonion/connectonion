@@ -65,6 +65,27 @@ def plain(text):
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
+from connectonion.cli.commands.gmail_listings import save_listing, ListingError
+
+
+def mail_mock():
+    client = MagicMock()
+    client.get_account_email.return_value = 'one@example.test'
+    client._draft_attachment_budget.return_value = 25_000_000
+    return client
+
+
+def cached_rows(path):
+    files = list((path.parent / 'gmail-listings').glob('*.json'))
+    data = json.loads(max(files, key=lambda p: p.stat().st_mtime_ns).read_text())
+    return {str(i): value for i, value in enumerate(data['ids'], 1)}
+
+
+def freeze(gmail, ids, family='messages'):
+    return save_listing(gmail_commands.INBOX_CACHE.parent / 'gmail-listings',
+                        gmail.get_account_email(), family, ids)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_cache(tmp_path, monkeypatch):
     """Never touch the real ~/.co/gmail_last_inbox.json."""
@@ -167,7 +188,7 @@ class TestHandleGmailInbox:
     """Inbox listing renders a table and caches the numbering."""
 
     def test_empty_inbox_message(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -177,18 +198,18 @@ class TestHandleGmailInbox:
 
     def test_empty_inbox_clears_numbers(self, capsys):
         """An empty listing must not retain older rows."""
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_inbox(last=10, unread=True)
 
-        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {}
+        assert cached_rows(gmail_commands.INBOX_CACHE) == {}
         assert "no unread emails" in capsys.readouterr().out
 
     def test_table_and_cache(self, monkeypatch, capsys):
         monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=True, width=120))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = sample_emails(3)
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -197,11 +218,11 @@ class TestHandleGmailInbox:
         output = capsys.readouterr().out
         assert "Subject 1" in output
         assert "co gmail read" in output
-        cached = json.loads(gmail_commands.INBOX_CACHE.read_text())
+        cached = cached_rows(gmail_commands.INBOX_CACHE)
         assert cached == {"1": "msg-1", "2": "msg-2", "3": "msg-3"}
 
     def test_flags_reach_the_tool(self):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -214,7 +235,7 @@ class TestHandleGmailInbox:
         monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=True, width=120))
         emails = sample_emails(2)
         emails[0]["date"] = "Unknown"
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = emails
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -227,7 +248,7 @@ class TestHandleGmailInbox:
     def test_piped_output_carries_full_ids(self, monkeypatch, capsys):
         """Scripts and agents must get untruncated ids, not a numbered table."""
         monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=False, width=120))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = sample_emails(2)
         gmail._format_dicts.return_value = "ID: msg-1\nID: msg-2"
 
@@ -239,71 +260,42 @@ class TestHandleGmailInbox:
 
     def test_piped_output_still_caches_numbering(self, monkeypatch, capsys):
         monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=False, width=120))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = sample_emails(2)
         gmail._format_dicts.return_value = "listing"
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_inbox(last=2)
 
-        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {"1": "msg-1", "2": "msg-2"}
+        assert cached_rows(gmail_commands.INBOX_CACHE) == {"1": "msg-1", "2": "msg-2"}
 
 
 class TestResolveEmailId:
-    """Short numbers mean the last listing shown."""
-
-    def write_cache(self, mapping):
-        gmail_commands.INBOX_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        gmail_commands.INBOX_CACHE.write_text(json.dumps(mapping))
-
-    def test_number_resolves_through_cache(self):
-        self.write_cache({"1": "msg-a", "2": "msg-b"})
-
-        gmail = MagicMock()
-        assert _resolve_email_id(gmail, "2") == "msg-b"
+    def test_number_resolves_only_through_its_frozen_listing(self):
+        gmail = mail_mock()
+        token = freeze(gmail, ['msg-a', 'msg-b'])
+        assert _resolve_email_id(gmail, '2', token) == 'msg-b'
         gmail.list_inbox.assert_not_called()
 
-    def test_full_id_passes_through(self):
-        gmail = MagicMock()
-        assert _resolve_email_id(gmail, "18f2c9d0a1b2c3d4") == "18f2c9d0a1b2c3d4"
+    @pytest.mark.parametrize('value', ['18f2c9d0a1b2c3d4', '12345', '２'])
+    def test_full_id_bypasses_cache_and_account_request(self, value):
+        gmail = mail_mock()
+        assert _resolve_email_id(gmail, value) == value
+        gmail.get_account_email.assert_not_called()
         gmail.list_inbox.assert_not_called()
 
-    def test_long_numeric_id_passes_through(self):
-        """Gmail ids can be all digits — 5+ digits is an id, not a listing number."""
-        gmail = MagicMock()
-        assert _resolve_email_id(gmail, "12345") == "12345"
+    @pytest.mark.parametrize('value', ['0', '1', '7'])
+    def test_bare_numbers_never_fetch_a_new_inbox(self, value):
+        gmail = mail_mock()
+        with pytest.raises(ListingError, match='--listing'):
+            _resolve_email_id(gmail, value)
         gmail.list_inbox.assert_not_called()
 
-    def test_number_missing_from_cache_returns_empty(self):
-        """Refetching a differently numbered list would open the wrong email."""
-        self.write_cache({"1": "msg-a"})
-
-        gmail = MagicMock()
-        assert _resolve_email_id(gmail, "7") == ""
-        gmail.list_inbox.assert_not_called()
-
-    def test_number_falls_back_to_list_inbox_without_cache(self):
-        """First run of the session: no listing yet, so fetch one."""
-        gmail = MagicMock()
-        gmail.list_inbox.return_value = sample_emails(3)
-
-        assert _resolve_email_id(gmail, "2") == "msg-2"
-
-    def test_number_beyond_inbox_returns_empty(self):
-        gmail = MagicMock()
-        gmail.list_inbox.return_value = sample_emails(1)
-
-        assert _resolve_email_id(gmail, "5") == ""
-
-    def test_zero_returns_empty_without_fetching(self):
-        gmail = MagicMock()
-        assert _resolve_email_id(gmail, "0") == ""
-        gmail.list_inbox.assert_not_called()
-
-    def test_non_ascii_digits_are_not_listing_numbers(self):
-        """Full-width digits can't index a listing; treat them as an id."""
-        gmail = MagicMock()
-        assert _resolve_email_id(gmail, "２") == "２"
+    def test_a_row_outside_the_listing_fails(self):
+        gmail = mail_mock()
+        token = freeze(gmail, ['msg-a'])
+        with pytest.raises(ListingError):
+            _resolve_email_id(gmail, '7', token)
         gmail.list_inbox.assert_not_called()
 
 
@@ -311,21 +303,21 @@ class TestHandleGmailRead:
     """Read is non-destructive unless both the flag and scope allow mutation."""
 
     def _gmail_mock(self):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.get_email_body.return_value = (
             "From: alice@example.com\nSubject: Hello\n--- Email Body ---\nThe body text"
         )
         return gmail
 
     def test_unresolvable_number_exits_with_hint(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_inbox.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             with pytest.raises(typer.Exit):
                 handle_gmail_read("4")
 
-        assert "No email #4" in plain(capsys.readouterr().out)
+        assert "requires --listing" in plain(capsys.readouterr().out)
         gmail.get_email_body.assert_not_called()
 
     def test_prints_header_and_body(self, capsys):
@@ -356,7 +348,9 @@ class TestHandleGmailRead:
 
         with patch.dict(os.environ, READONLY_ENV, clear=False):
             with patch.object(gmail_commands, "_gmail", return_value=gmail):
-                handle_gmail_read("18f2c9d0a1b2c3d4", mark_read=True)
+                with pytest.raises(typer.Exit) as exc:
+                    handle_gmail_read("18f2c9d0a1b2c3d4", mark_read=True)
+                assert exc.value.exit_code == 1
 
         gmail.mark_read.assert_not_called()
         output = plain(capsys.readouterr().out)
@@ -380,7 +374,7 @@ class TestHandleGmailRead:
 
         with patch.dict(os.environ, READONLY_ENV, clear=False):
             with patch.object(gmail_commands, "_gmail", return_value=gmail):
-                handle_gmail_read("2")
+                handle_gmail_read("2", listing=freeze(gmail, ["msg-a", "msg-b"]))
 
         gmail.get_email_body.assert_called_once_with("msg-b")
 
@@ -390,10 +384,10 @@ class TestHandleGmailReply:
     def test_replies_to_cached_number(self, capsys):
         gmail_commands.INBOX_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gmail_commands.INBOX_CACHE.write_text(json.dumps({"1": "msg-a"}))
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
-            handle_gmail_reply("1", "Sounds good")
+            handle_gmail_reply("1", "Sounds good", listing=freeze(gmail, ["msg-a"]))
 
         gmail.reply.assert_called_once_with("msg-a", "Sounds good")
         assert "Replied" in plain(capsys.readouterr().out)
@@ -402,30 +396,30 @@ class TestHandleGmailReply:
         gmail_commands.INBOX_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gmail_commands.INBOX_CACHE.write_text(json.dumps({"1": "msg-a"}))
         monkeypatch.setattr(sys, "stdin", io.StringIO("Body from stdin\nline two\n"))
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
-            handle_gmail_reply("1", "-")
+            handle_gmail_reply("1", "-", listing=freeze(gmail, ["msg-a"]))
 
         gmail.reply.assert_called_once_with("msg-a", "Body from stdin\nline two\n")
 
     def test_unresolvable_number_does_not_reply(self, capsys):
         gmail_commands.INBOX_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gmail_commands.INBOX_CACHE.write_text(json.dumps({"1": "msg-a"}))
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             with pytest.raises(typer.Exit):
                 handle_gmail_reply("9", "Sounds good")
 
         gmail.reply.assert_not_called()
-        assert "No email #9" in plain(capsys.readouterr().out)
+        assert "requires --listing" in plain(capsys.readouterr().out)
 
 
 class TestHandleGmailSendAndSearch:
 
     def test_send_reports_recipient(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.dict(os.environ, CONNECTED_ENV, clear=False):
             with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -438,7 +432,7 @@ class TestHandleGmailSendAndSearch:
         assert "Sent" in output
 
     def test_send_passes_cc_and_bcc(self):
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_send("bob@example.com", "Hi", "hello",
@@ -450,7 +444,7 @@ class TestHandleGmailSendAndSearch:
 
     def test_send_reads_stdin_body(self, monkeypatch, capsys):
         monkeypatch.setattr(sys, "stdin", io.StringIO("piped body"))
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_send("bob@example.com", "Hi", "-")
@@ -468,7 +462,7 @@ class TestHandleGmailSendAndSearch:
         mock_cls.assert_not_called()
 
     def test_search_empty_result(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_search.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -478,51 +472,45 @@ class TestHandleGmailSendAndSearch:
         assert "no emails matching" in capsys.readouterr().out
 
     def test_search_empty_result_clears_numbers(self):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_search.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_search("invoice", last=5)
 
-        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {}
+        assert cached_rows(gmail_commands.INBOX_CACHE) == {}
 
     def test_search_results_share_the_inbox_numbering_contract(self, monkeypatch, capsys):
         """`co gmail read <#>` after a search must open the search hit."""
         monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=True, width=120))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_search.return_value = sample_emails(2)
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_search("invoice", last=2)
 
-        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {"1": "msg-1", "2": "msg-2"}
+        assert cached_rows(gmail_commands.INBOX_CACHE) == {"1": "msg-1", "2": "msg-2"}
         assert "Subject 1" in capsys.readouterr().out
 
 
 class TestHandleGmailSent:
-
     def test_prints_sent_listing(self, capsys):
-        gmail = MagicMock()
-        gmail.get_sent_emails.return_value = "Found 1 email(s):\n\n1.  From: me@example.com"
-
-        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
-            with patch.object(gmail_commands, "_gmail", return_value=gmail):
-                handle_gmail_sent(last=5)
-
-        gmail.get_sent_emails.assert_called_once_with(max_results=5)
-        assert "me@example.com" in capsys.readouterr().out
-
-    def test_sent_does_not_disturb_the_read_numbering(self, capsys):
-        """Only inbox and search define what `read <#>` means."""
-        gmail_commands.INBOX_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        gmail_commands.INBOX_CACHE.write_text(json.dumps({"1": "msg-a"}))
-        gmail = MagicMock()
-        gmail.get_sent_emails.return_value = "Found 0 email(s):"
-
-        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+        gmail = mail_mock()
+        gmail.list_search.return_value = sample_emails(1)
+        gmail._format_dicts.return_value = '1. From: me@example.com ID: sent-a'
+        with patch.object(gmail_commands, '_gmail', return_value=gmail):
             handle_gmail_sent(last=5)
+        gmail.list_search.assert_called_once_with('in:sent', max_results=5)
+        assert 'me@example.com' in capsys.readouterr().out
 
-        assert json.loads(gmail_commands.INBOX_CACHE.read_text()) == {"1": "msg-a"}
+    def test_sent_preserves_the_explicit_inbox_listing(self, capsys):
+        gmail = mail_mock()
+        inbox = freeze(gmail, ['inbox-a'])
+        gmail.list_search.return_value = sample_emails(1)
+        with patch.object(gmail_commands, '_gmail', return_value=gmail):
+            handle_gmail_sent(last=5)
+        assert _resolve_email_id(gmail, '1', inbox) == 'inbox-a'
+        assert cached_rows(gmail_commands.INBOX_CACHE) == {'1': 'msg-1'}
 
 
 class TestGmailSendAttachmentChecks:
@@ -530,7 +518,7 @@ class TestGmailSendAttachmentChecks:
     traceback after megabytes have been base64-encoded."""
 
     def test_a_missing_file_is_refused_before_the_api_is_touched(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             with pytest.raises(typer.Exit):
@@ -545,7 +533,7 @@ class TestGmailSendAttachmentChecks:
         is over Graph's limit and well under Gmail's."""
         big = tmp_path / "deck.pdf"
         big.write_bytes(b"x" * 5_000_000)
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_send("bob@example.com", "Hi", "hello", attachments=[str(big)])
@@ -556,7 +544,7 @@ class TestGmailSendAttachmentChecks:
     def test_over_gmails_own_limit_is_refused(self, tmp_path, capsys):
         huge = tmp_path / "video.mov"
         huge.write_bytes(b"x" * 26_000_000)
-        gmail = MagicMock()
+        gmail = mail_mock()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             with pytest.raises(typer.Exit):
@@ -583,12 +571,27 @@ def sample_draft(**overrides):
     return draft
 
 
+@pytest.fixture
+def reviewed_cli(monkeypatch):
+    from types import SimpleNamespace
+    from connectonion.cli.commands import gmail_draft_review as review_module
+    manifest = sample_draft(account='one@example.test', **{'from':'one@example.test'},
+        body_sha256='digest', mime_size=100, mime_limit=35_000_000, encoded_size=136,
+        attachment_limit=25_000_000, warnings=[])
+    review = SimpleNamespace(manifest=manifest, token='a'*64, raw='frozen', thread_id=None)
+    monkeypatch.setattr(review_module, 'prepare_review', lambda *args:review)
+    monkeypatch.setattr(review_module, 'send_reviewed', lambda client,id,token:client._send_draft(id, raw='frozen', thread_id=None))
+    monkeypatch.setattr(gmail_commands, 'console', Console(force_terminal=True, width=120))
+    monkeypatch.setattr(sys, 'stdin', MagicMock(isatty=lambda:True))
+    return review
+
+
 class TestGmailDraftCommands:
     """The CLI is a staged workflow and every result prints one next command."""
 
     def test_list_piped_caches_numbers_and_keeps_preview_tip(self, monkeypatch, capsys):
         monkeypatch.setattr(gmail_commands, "console", Console(force_terminal=False, width=120))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_drafts.return_value = [{
             "id": "draft-1", "to": "r@example.com", "subject": "Report", "attachments": 1,
         }]
@@ -599,11 +602,11 @@ class TestGmailDraftCommands:
         output = plain(capsys.readouterr().out)
         assert "1.\tr@example.com" in output
         assert "draft-1" in output
-        assert "co gmail draft preview <# from this listing>" in output
-        assert json.loads(gmail_commands.DRAFT_CACHE.read_text()) == {"1": "draft-1"}
+        assert "co gmail draft preview draft-1" in output
+        assert cached_rows(gmail_commands.DRAFT_CACHE) == {"1": "draft-1"}
 
     def test_empty_list_points_to_create(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_drafts.return_value = []
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -614,15 +617,16 @@ class TestGmailDraftCommands:
     def test_empty_list_invalidates_previous_numbers(self):
         gmail_commands.DRAFT_CACHE.parent.mkdir(parents=True, exist_ok=True)
         gmail_commands.DRAFT_CACHE.write_text(json.dumps({"1": "old-draft"}))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_drafts.return_value = []
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             handle_gmail_draft_list()
-        assert gmail_commands._resolve_draft_id("1") == ""
+        with pytest.raises(ListingError, match="--listing"):
+            gmail_commands._resolve_draft_id(gmail, "1")
 
     @pytest.mark.parametrize("interruption", [typer.Abort, KeyboardInterrupt, EOFError])
-    def test_interrupted_confirmation_keeps_draft_and_prints_tip(self, interruption, capsys):
-        gmail = MagicMock()
+    def test_interrupted_confirmation_keeps_draft_and_prints_tip(self, interruption, capsys, reviewed_cli):
+        gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
             with patch.object(typer, "confirm", side_effect=interruption):
@@ -630,10 +634,10 @@ class TestGmailDraftCommands:
                     gmail_commands.handle_gmail_draft_send("draft-1")
         assert exc.value.exit_code == 1
         gmail._send_draft.assert_not_called()
-        assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
+        assert "co gmail draft review draft-1" in plain(capsys.readouterr().out)
 
     def test_create_stays_unsent_and_points_to_attach(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.create_draft.return_value = sample_draft()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -645,7 +649,7 @@ class TestGmailDraftCommands:
 
     def test_create_reads_body_from_stdin(self, monkeypatch):
         monkeypatch.setattr(sys, "stdin", io.StringIO("Piped body"))
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.create_draft.return_value = sample_draft()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -654,7 +658,7 @@ class TestGmailDraftCommands:
         assert gmail.create_draft.call_args.args[2] == "Piped body"
 
     def test_attach_local_stages_and_points_to_preview(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.add_draft_attachment.return_value = sample_draft()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -665,11 +669,12 @@ class TestGmailDraftCommands:
         assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
 
     def test_attach_drive_file_reads_bytes_without_writing_local_file(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail._add_draft_attachment.return_value = sample_draft()
         drive = MagicMock()
+        drive.get_account_email.return_value = 'one@example.test'
         drive._read_file.return_value = {
-            "name": "Budget.csv", "type": "text/csv", "data": b"a,b",
+            "id":"drive-file", "name": "Budget.csv", "type": "text/csv", "data": b"a,b",
         }
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -678,15 +683,16 @@ class TestGmailDraftCommands:
 
         drive._read_file.assert_called_once()
         gmail._add_draft_attachment.assert_called_once_with(
-            "draft-1", "Budget.csv", "text/csv", b"a,b"
+            "draft-1", "Budget.csv", "text/csv", b"a,b", source={"source":"drive_attachment", "drive_file_id":"drive-file"}
         )
         assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
 
     def test_attach_drive_link_does_not_download_or_change_sharing(self, capsys):
-        gmail = MagicMock()
-        gmail.add_draft_link.return_value = sample_draft(attachments=[], attachment_size=0)
+        gmail = mail_mock()
+        gmail._add_managed_draft_link.return_value = sample_draft(attachments=[], attachment_size=0)
         drive = MagicMock()
-        drive._get_file.return_value = {
+        drive.get_account_email.return_value = 'one@example.test'
+        drive.get_info.return_value = {
             "name": "Budget", "link": "https://drive.google.com/file/d/1/view",
         }
 
@@ -695,9 +701,7 @@ class TestGmailDraftCommands:
                 handle_gmail_draft_attach("draft-1", "drive-file", drive=True, link=True)
 
         drive._read_file.assert_not_called()
-        gmail.add_draft_link.assert_called_once_with(
-            "draft-1", "Budget", "https://drive.google.com/file/d/1/view"
-        )
+        gmail._add_managed_draft_link.assert_called_once_with("draft-1", drive.get_info.return_value)
         assert "Drive link added" in plain(capsys.readouterr().out)
 
     def test_link_without_drive_is_a_fix_it_error(self, capsys):
@@ -709,7 +713,7 @@ class TestGmailDraftCommands:
         assert "co gmail draft attach draft-1" in output
 
     def test_remove_points_back_to_preview(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.remove_draft_attachment.return_value = sample_draft(attachments=[], attachment_size=0)
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -719,7 +723,7 @@ class TestGmailDraftCommands:
         assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
 
     def test_replace_with_local_file_points_back_to_preview(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.replace_draft_attachment.return_value = sample_draft()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -729,7 +733,7 @@ class TestGmailDraftCommands:
         assert "co gmail draft preview draft-1" in plain(capsys.readouterr().out)
 
     def test_preview_prints_exact_body_manifest_and_send_tip(self, capsys):
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -738,10 +742,10 @@ class TestGmailDraftCommands:
         output = plain(capsys.readouterr().out)
         assert "Exact body" in output
         assert "report.pdf (application/pdf, 4 bytes)" in output
-        assert "co gmail draft send draft-1" in output
+        assert "co gmail draft review draft-1" in output
 
-    def test_send_decline_keeps_draft_and_exits_nonzero(self, capsys):
-        gmail = MagicMock()
+    def test_send_decline_keeps_draft_and_exits_nonzero(self, capsys, reviewed_cli):
+        gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
 
         with patch.object(gmail_commands, "_gmail", return_value=gmail):
@@ -753,10 +757,10 @@ class TestGmailDraftCommands:
         gmail._send_draft.assert_not_called()
         output = plain(capsys.readouterr().out)
         assert "Not sent" in output
-        assert "co gmail draft preview draft-1" in output
+        assert "co gmail draft review draft-1" in output
 
-    def test_send_confirms_after_preview_and_points_to_sent(self, capsys):
-        gmail = MagicMock()
+    def test_send_confirms_after_preview_and_points_to_sent(self, capsys, reviewed_cli):
+        gmail = mail_mock()
         gmail.get_draft.return_value = sample_draft()
         gmail._send_draft.return_value = {"id": "message-1"}
 
@@ -766,7 +770,7 @@ class TestGmailDraftCommands:
 
         output = plain(capsys.readouterr().out)
         assert "Exact body" in output
-        gmail._send_draft.assert_called_once_with("draft-1")
+        gmail._send_draft.assert_called_once_with("draft-1", raw='frozen', thread_id=None)
         assert "co gmail sent" in output
 
     def test_unknown_cached_number_points_to_list(self, capsys):
@@ -783,7 +787,7 @@ class TestGmailDraftCommands:
         from googleapiclient.errors import HttpError
 
         response = MagicMock(status=403, reason="Forbidden")
-        gmail = MagicMock()
+        gmail = mail_mock()
         gmail.list_drafts.side_effect = HttpError(
             response, b'{"access_token":"must-not-appear"}'
         )

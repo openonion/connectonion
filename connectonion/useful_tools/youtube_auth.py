@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 
 from ..backend import backend_url
 from ..credentials import require_ambient_api_key
-from ..project import project_root
+from ..provider_credentials import (resolve_provider_credentials, refresh_credentials,
+                                    token_expiry, ProviderCredentialError)
 from .creator_plan import CreatorError
 
 AUTH_COMMAND = "co auth google"
@@ -26,63 +26,34 @@ class YouTubeGoogleAuth:
     """Refresh through oo-api; Google client secrets stay on the backend."""
 
     def __init__(self):
-        load_dotenv(project_root() / ".env")
-        load_dotenv(Path(os.getenv("AGENT_CONFIG_PATH", str(Path.home() / ".co"))) / "keys.env")
-        if not os.getenv("GOOGLE_ACCESS_TOKEN"):
-            raise CreatorError("auth_required", f"Connect Google with YouTube access: {AUTH_COMMAND}")
+        self._credentials = resolve_provider_credentials("google")
+        try:
+            self._credentials.require_configured()
+        except ProviderCredentialError as error:
+            raise CreatorError(error.code, str(error)) from None
 
     def require_scope(self, operation: str) -> None:
-        granted = {scope.removeprefix("https://www.googleapis.com/auth/")
-                   for scope in re.split(r"[,\s]+", os.getenv("GOOGLE_SCOPES", ""))}
-        if not granted.intersection(SCOPES[operation]):
-            raise CreatorError("auth_required", f"Google needs YouTube {operation} permission. Run: {AUTH_COMMAND}")
+        granted = self._credentials.scopes
+        # Missing metadata does not prove a denied grant. The API decides.
+        if granted and not granted.intersection(SCOPES[operation]):
+            raise CreatorError("auth_required", f"Google needs YouTube {operation} permission. Run: {self._credentials.auth_command}")
 
     def refresh(self, request=None, scopes=None):
-        """google-auth callback, also used before constructing the first service."""
-        # Resolve the same account-bound broker key as Gmail before any request.
-        api_key = require_ambient_api_key()
-        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-        if not refresh_token:
-            raise CreatorError("auth_required", f"Local Google refresh token missing. Run: {AUTH_COMMAND}")
         try:
-            response = httpx.post(
-                f"{backend_url()}/api/v1/oauth/google/refresh",
-                headers={"Authorization": f"Bearer {api_key}"}, timeout=15.0,
-                json={"refresh_token": refresh_token},
-            )
-        except httpx.HTTPError:
-            raise CreatorError("auth_unavailable", "Cannot reach the Google authorization service. Try again later.") from None
-        if response.status_code in {401, 404}:
-            raise CreatorError("auth_required", f"Google authorization expired or was revoked. Run: {AUTH_COMMAND}")
-        if response.status_code != 200:
-            raise CreatorError("auth_unavailable", "The Google authorization service could not refresh this login.")
-        try:
-            data = response.json()
-            token, expires_at = data["access_token"], data["expires_at"]
-            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            if expiry.tzinfo:
-                expiry = expiry.astimezone(timezone.utc).replace(tzinfo=None)
-            if not isinstance(token, str) or not token or expiry <= datetime.now(timezone.utc).replace(tzinfo=None):
-                raise ValueError
-            values = {"GOOGLE_ACCESS_TOKEN": token, "GOOGLE_TOKEN_EXPIRES_AT": expires_at}
-            for field, variable in [("refresh_token", "GOOGLE_REFRESH_TOKEN"), ("scopes", "GOOGLE_SCOPES")]:
-                if field in data:
-                    if not isinstance(data[field], str):
-                        raise ValueError
-                    values[variable] = data[field]
-        except (ValueError, TypeError, KeyError, AttributeError):
-            raise CreatorError("auth_unavailable", "The Google authorization service returned invalid credentials.") from None
-
-        from ..cli.commands.project_cmd_lib import upsert_env
-        env_file = Path(os.getenv("AGENT_CONFIG_PATH", str(Path.home() / ".co"))) / "keys.env"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        upsert_env(env_file, values)
-        env_file.chmod(0o600)
-        os.environ.update(values)
-        return token, expiry
+            token = refresh_credentials(self._credentials, backend=backend_url(),
+                                        api_key=require_ambient_api_key(), post=httpx.post)
+        except ProviderCredentialError as error:
+            raise CreatorError(error.code, str(error)) from None
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        return token, expiry.replace(tzinfo=None) if expiry else None
 
     def credentials(self) -> Credentials:
         self.require_scope("read")
-        token, expiry = self.refresh()
+        token = self._credentials.get("ACCESS_TOKEN")
+        expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))
+        if self._credentials.get("REFRESH_TOKEN") or not token or (expiry and expiry <= datetime.now(timezone.utc)):
+            token, expiry = self.refresh()
+        elif expiry:
+            expiry = expiry.replace(tzinfo=None)
         self.require_scope("read")
         return Credentials(token=token, expiry=expiry, refresh_handler=self.refresh)

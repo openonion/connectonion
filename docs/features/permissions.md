@@ -9,7 +9,16 @@ the human approval hook:
 
 - workspace reads and reversible workspace edits are allowed;
 - focused test, lint, type-check, and build commands are allowed;
-- deletions and credential access are denied;
+- read-only shell commands (`head`, `tail`, `grep`, `wc`, `ls`, `cut`, `jq`, ...)
+  on workspace paths are allowed, alone or as pipe segments beside a granted
+  command; nothing that takes a program text is read-only, so `sed` and `awk`
+  still ask (#1481);
+- an explicit grant — the operator's `host.yaml`, a skill's `tools:`, or a
+  human's session approval — runs the call for any effect class, and stops
+  asking every time; a wildcard is honoured only for the effect its own text
+  names, and the shipped template defaults are not an operator's grant (#1481);
+- deletions and credential access are denied, including reads of key material
+  by path or name (`.ssh/`, `.co/keys/`, `id_rsa`, `*.pem`, ...) wherever it sits;
 - deployment, publishing, external communication, payments, outside-workspace
   reads, and unknown tools ask a person.
 

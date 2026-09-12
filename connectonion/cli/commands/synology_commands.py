@@ -1,191 +1,251 @@
-"""
-Purpose: CLI surface for the user's Synology NAS — log in, browse, search, download, upload, and share File Station files from the terminal
-LLM-Note:
-  Dependencies: imports from [json, os, pathlib, typer, questionary, dotenv, rich.console, rich.table, ...useful_tools.synology] | imported by [cli/main.py via handle_syno_*()] | hits the NAS through the Synology tool
-  Data flow: _syno() loads SYNOLOGY_* from .env / ~/.co/keys.env → Synology() instance | ls/search: list_files()/search_files() → numbered Rich table (tab-separated with full paths when piped) → saves {#: path} to ~/.co/syno_last_list.json | get/share: resolve short numbers via that cache → download()/share()
-  State/Effects: login writes SYNOLOGY_URL/ACCOUNT/PASSWORD/SID to ~/.co/keys.env | writes ~/.co/syno_last_list.json (last listing's # → path map) | get downloads local files | put uploads to the NAS
-  Integration: exposes handle_syno_login(), handle_syno_list(), handle_syno_search(), handle_syno_get(), handle_syno_put(), handle_syno_share() for cli/main.py | presentation mirrors gdrive_commands.py | NAS logic lives in useful_tools/synology.py
-  Errors: guarded failures print a hint and exit 1 (typer.Exit) — not logged in, unresolvable file #, missing upload path | ValueError from the Synology tool carries decoded DSM error text
-"""
+"""Synology command execution, prompts and result envelopes."""
 
+import getpass
 import json
-import os
 from pathlib import Path
+import shlex
+import sys
+import time
 
 import typer
-from rich.console import Console
-from rich.table import Table
+try:
+    import typer._click as click
+    from typer._click.globals import get_current_context
+except ImportError:
+    import click
+    from click import get_current_context
 
-console = Console()
 
-LIST_CACHE = Path.home() / ".co" / "syno_last_list.json"
+def current_options() -> dict:
+    ctx=get_current_context()
+    while ctx is not None:
+        if isinstance(ctx.obj,dict) and '_synology' in ctx.obj:
+            return ctx.obj['_synology']
+        ctx=ctx.parent
+    return {'nas':None,'json':False,'non_interactive':False,'timeout':60}
 
 
-def _syno():
-    """Load SYNOLOGY_* credentials from .env files and return a Synology instance. Exits 1 with a hint if not connected."""
-    from dotenv import load_dotenv
-    from ...project import project_root
+def interactive(options: dict) -> bool:
+    return not (options['json'] or options['non_interactive']) and sys.stdin.isatty() and sys.stderr.isatty()
 
-    for env_path in [project_root() / ".env", Path.home() / ".co" / "keys.env"]:
-        if env_path.is_file():
-            load_dotenv(env_path)
 
-    if not os.getenv("SYNOLOGY_URL"):
-        console.print("\n❌ [bold red]Synology NAS not connected[/bold red]")
-        console.print("\n[cyan]Connect your NAS first:[/cyan]")
-        console.print("  [bold]co syno login[/bold]     Log in with your QuickConnect ID\n")
-        raise typer.Exit(1)
+def prompt_secret(label: str) -> str:
+    return getpass.getpass(label+': ')
 
+
+def _error(code: str, message: str):
+    from ...useful_tools.synology_transport import SynologyError
+    raise SynologyError(message,code)
+
+
+def _require_interaction(options: dict) -> None:
+    if not interactive(options):
+        _error('interaction_required','This option requires an interactive terminal; use the documented stdin option where supported.')
+
+
+def _password(options: dict, label: str, *, stdin: bool = False, prompt: bool = False) -> str | None:
+    if stdin and prompt:
+        _error('invalid_input','Choose the password prompt or password-stdin, not both.')
+    if stdin:
+        value=sys.stdin.readline(65537)
+        if len(value)>65536 or not value.rstrip('\r\n'):
+            _error('invalid_input','Password stdin must supply one nonempty line of at most 65536 characters.')
+        return value.rstrip('\r\n')
+    if prompt:
+        _require_interaction(options)
+        return prompt_secret(label)
+    return None
+
+
+def _confirm(options: dict, description: str, yes: bool, dry_run: bool) -> None:
+    if yes or dry_run:
+        return
+    if not interactive(options):
+        _error('confirmation_required','This change requires --yes when no interactive confirmation is available.')
+    if not typer.confirm(description,default=False,err=True):
+        _error('declined','The change was declined.')
+
+
+def _syno(options: dict | None = None, *, dry_run: bool = False):
+    from ...environment import load_environment
+    load_environment()
+    options=options or current_options()
     from ...useful_tools.synology import Synology
-    return Synology()
+    client=Synology(nas=options['nas'],timeout=options['timeout'],dry_run=dry_run,
+                    otp_callback=(lambda:prompt_secret('DSM one-time password')) if interactive(options) and not dry_run else None)
+    client._fixed_budget=True
+    return client
 
 
-def _size(count: int) -> str:
-    """Render a byte count as B/KB/MB/GB; '-' for folders."""
-    if not count:
-        return "-"
-    size = float(count)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{size:.0f}{unit}" if unit == "B" else f"{size:.1f}{unit}"
-        size /= 1024
-
-
-def _when(timestamp: int) -> str:
-    """Render a File Station mtime (unix seconds) as 'Jul 26 14:30' in local time."""
-    from datetime import datetime
-
-    if not timestamp:
-        return ""
-    return datetime.fromtimestamp(timestamp).strftime("%b %d %H:%M")
-
-
-def _print_listing(files: list, title: str):
-    """Render files as a numbered table (or tab-separated rows with full paths when piped) and cache the numbering."""
-    LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    LIST_CACHE.write_text(json.dumps({str(i): f["path"] for i, f in enumerate(files, 1)}), encoding="utf-8")
-
-    if not console.is_terminal:
-        # Scripts and agents get full paths, never a truncated column. Plain
-        # print, not console.print: Rich expands \t into spaces, which silently
-        # turns tab-separated output into something cut -f can't read.
-        for item in files:
-            print(f"{item['name']}\t{item['type']}\t{item['size']}\t{item['path']}")
-        return
-
-    table = Table(title=title, show_header=True, header_style="bold cyan")
-    table.add_column("#", justify="right")
-    table.add_column("Name", overflow="ellipsis", no_wrap=True)
-    table.add_column("Kind", max_width=6, no_wrap=True)
-    table.add_column("Size", justify="right")
-    table.add_column("Modified")
-
-    for i, item in enumerate(files, 1):
-        table.add_row(str(i), item["name"], item["type"], _size(item["size"]), _when(item["modified"]))
-
-    console.print()
-    console.print(table)
-    console.print("\n[dim]Download one with:[/dim] [bold]co syno get <#>[/bold]\n")
-
-
-def handle_syno_login(url: str = None):
-    """Connect a Synology NAS, by QuickConnect ID or a direct URL, and save the session."""
-    import questionary
-
-    from ...useful_tools.synology import Synology, pick_reachable, resolve_quickconnect, save_credentials
-
-    if url:
-        base = url.rstrip("/")
+def next_command(operation: str, result: dict, options: dict) -> str:
+    prefix=['co','syno']
+    if options.get('nas'):
+        prefix+=['--nas',options['nas']]
+    if result.get('status')=='continuation_required' and result.get('resume'):
+        request=result['resume']; words=['move' if request['move'] else 'copy',request['source'],request['destination']]
+        if request['recursive'] and not request['move']:
+            words+=['--recursive']
+        if request['overwrite']:
+            words+=['--overwrite']
+    elif result.get('operation_id') and result.get('status')=='operation_pending':
+        words=['status','--operation',result['operation_id'],'--wait']
+    elif result.get('next_cursor'):
+        # Repeated query parameters must match. The caller supplies the original
+        # argument list rather than inferring a path/query from returned rows.
+        words=result.pop('_page_command')+['--cursor',result['next_cursor']]
+    elif operation in {'ls','search'} and result.get('items'):
+        item=result['items'][0]
+        words=['ls' if item['type']=='dir' else 'info',item['path']]
+    elif operation in {'share create','share revoke'}:
+        words=['share','list']
+    elif operation in {'copy','move'} and result.get('status')=='complete':
+        words=['info',result['destination']]
+    elif operation=='mkdir' and result.get('path') and not result.get('dry_run'):
+        words=['ls',result['path']]
+    elif operation=='info' and result.get('path'):
+        words=['ls' if result.get('type')=='dir' else 'download',result['path']]
+    elif operation=='upload' and result.get('completed'):
+        words=['info',result['completed'][-1]['path']]
+    elif operation=='login':
+        words=['status']
+    elif operation=='nas use':
+        prefix=['co','syno','--nas',result['default']]
+        words=['status']
+    elif operation=='nas list' and result.get('default'):
+        prefix=['co','syno','--nas',result['default']]
+        words=['status']
+    elif operation in {'logout','nas list'}:
+        words=['login']
     else:
-        quickconnect_id = questionary.text("QuickConnect ID (Control Panel → External Access):").ask()
-        if not quickconnect_id:
-            raise typer.Exit(1)
-
-        console.print("\n[dim]Resolving…[/dim]")
-        candidates = resolve_quickconnect(quickconnect_id.strip())
-        console.print(f"[dim]Found {len(candidates)} address(es), probing fastest first…[/dim]")
-        base = pick_reachable(candidates)
-
-    console.print(f"[green]✓[/green] Reached [bold]{base}[/bold]\n")
-
-    account = questionary.text("DSM username:").ask()
-    password = questionary.password("DSM password:").ask()
-    if not account or not password:
-        raise typer.Exit(1)
-
-    save_credentials(url=base, account=account, password=password)
-
-    # Logging in now both validates the credentials and caches the sid, so the
-    # first real command doesn't fail on a typo made minutes earlier.
-    Synology(url=base, account=account, password=password)._login()
-
-    console.print(f"\n[green]✓ Connected[/green] as [bold]{account}[/bold]")
-    console.print("\n[dim]Try:[/dim] [bold]co syno[/bold]\n")
+        words=['ls']
+    return shlex.join(prefix+words)
 
 
-def handle_syno_list(path: str = None, last: int = 20):
-    """List shared folders, or the contents of one folder, as a numbered table."""
-    nas = _syno()
-    files = nas.list_files(path=path, last=last)
-    if not files:
-        console.print(f"\n[cyan]Synology:[/cyan] nothing in {path or 'your shared folders'}\n")
+def emit(operation: str, result=None, error=None, *, options: dict | None = None, exit_code: int = 0) -> None:
+    options=options or current_options()
+    result=result if isinstance(result,dict) else {'items':result} if result is not None else None
+    if error is None:
+        next_step=next_command(operation,result or {},options)
+    elif error['code'] in {'auth_required','auth_failed','otp_required','otp_rejected','not_configured'}:
+        next_step=shlex.join(['co','syno','login']+(['--name',options['nas']] if options.get('nas') else []))
+    elif operation=='share create' and error['code'] in {'submission_unknown','share_verification_failed'}:
+        next_step=shlex.join(['co','syno']+(['--nas',options['nas']] if options.get('nas') else [])+['share','list'])
+    elif error['code'] in {'stale_cursor','listing_required','invalid_reference'}:
+        next_step=shlex.join(['co','syno']+(['--nas',options['nas']] if options.get('nas') else [])+['ls'])
+    else:
+        next_step=shlex.join(['co','syno',*operation.split(),'--help'])
+    if result:
+        result.pop('_page_command',None)
+    envelope={'schema_version':1,'provider':'synology','nas':options.get('nas'),'command':'co syno '+operation,
+              'ok':error is None and exit_code==0,'status':'success' if exit_code==0 else 'partial' if result else 'error',
+              'complete':exit_code==0,'data':result,'error':error,'next_command':next_step}
+    if options['json']:
+        print(json.dumps(envelope,separators=(',',':'),ensure_ascii=False))
+    else:
+        if result is not None:
+            print(json.dumps(result,indent=2,ensure_ascii=False))
+        if error:
+            print(error['message'],file=sys.stderr)
+        print('Next: '+next_step,file=sys.stderr)
+    if exit_code:
+        raise typer.Exit(exit_code)
+
+
+def execute(operation: str, action) -> None:
+    from ...useful_tools.synology_profiles import ProfileError
+    options=current_options()
+    try:
+        result=action(options)
+    except ProfileError as error:
+        usage=error.code in {'invalid_input','interaction_required','invalid_path','invalid_profile'}
+        emit(operation,error={'code':error.code,'message':str(error)},exit_code=2 if usage else 1)
         return
-    _print_listing(files, f"📁 NAS — {path or 'shared folders'}")
-
-
-def handle_syno_search(query: str, path: str = "/", last: int = 20):
-    """Search the NAS by file name, numbered like the listing."""
-    nas = _syno()
-    files = nas.search_files(query, path=path, last=last)
-    if not files:
-        console.print(f"\n[cyan]NAS search:[/cyan] no files matching [bold]{query}[/bold]\n")
+    except KeyboardInterrupt:
+        emit(operation,error={'code':'interrupted','message':'Interrupted; inspect remote state before repeating a write.'},exit_code=130)
         return
-    _print_listing(files, f"🔎 NAS — {query}")
+    except OSError:
+        emit(operation,error={'code':'local_io_error','message':'A local file or credential-store operation failed.'},exit_code=1)
+        return
+    partial=result.get('status') in {'partial','operation_pending','submission_unknown','task_unavailable',
+                                     'operation_failed','continuation_required'} or result.get('completeness')=='partial'
+    emit(operation,result,exit_code=1 if partial else 0)
 
 
-def _resolve_path(ref: str) -> str:
-    """Turn a listing number into a NAS path; full paths pass through."""
-    cached = json.loads(LIST_CACHE.read_text(encoding="utf-8")) if LIST_CACHE.exists() else {}
-    if ref in cached:
-        return cached[ref]
+def handle_login(options: dict, *, name, url, quickconnect, username, password_stdin,
+                 ca_cert, credential_store, monitoring, snmp_secrets_file) -> dict:
+    from ...useful_tools.synology import Synology, pick_reachable, resolve_quickconnect
+    from ...useful_tools.synology_profiles import ProfileStore, read_private_json, validate_settings
+    if url and quickconnect:
+        _error('invalid_input','Choose URL or QuickConnect ID.')
+    if options.get('nas') and name and name!=options['nas']:
+        _error('invalid_input','--name and --nas select different profiles.')
+    name=name or options.get('nas') or 'home'
+    if not url and not quickconnect:
+        _require_interaction(options)
+        target=typer.prompt('QuickConnect ID or HTTPS NAS URL',err=True).strip()
+        if '://' in target:
+            url=target
+        else:
+            quickconnect=target
+    if not username:
+        _require_interaction(options)
+        username=typer.prompt('DSM username',err=True)
+    deadline=time.monotonic()+options["timeout"]
+    if quickconnect:
+        candidates=resolve_quickconnect(quickconnect,timeout=min(15,options["timeout"]))
+        url=pick_reachable(candidates,timeout=max(.001,deadline-time.monotonic()),ca_cert=ca_cert)
+    password=_password(options,'DSM password',stdin=password_stdin,prompt=not password_stdin)
+    settings={'url':url,'account':username,'ca_cert':ca_cert}
+    secret={'password':password}
+    if monitoring:
+        try:
+            content=Path(monitoring).expanduser().read_bytes()
+            if len(content)>65536:
+                raise ValueError
+            config=json.loads(content)
+            if not isinstance(config,dict) or set(config)-{'snmp','ssh'}:
+                raise ValueError
+            settings.update(config)
+        except (ValueError,OSError):
+            _error('invalid_input','Monitoring config must be a bounded JSON object with only snmp/ssh settings and no secrets.')
+    settings=validate_settings(settings)
+    if snmp_secrets_file:
+        if not settings.get('snmp'):
+            _error('invalid_input','SNMP secret input requires explicit SNMP settings in --monitoring.')
+        provided=read_private_json(Path(snmp_secrets_file).expanduser(),limit=65536)
+        if set(provided)!={'snmp_auth','snmp_priv'} or not all(isinstance(v,str) and v for v in provided.values()):
+            _error('invalid_input','SNMP secret file requires only nonempty snmp_auth and snmp_priv values.')
+        secret.update(provided)
+    elif settings.get('snmp'):
+        _require_interaction(options)
+        secret.update(snmp_auth=prompt_secret('SNMPv3 authentication key'),snmp_priv=prompt_secret('SNMPv3 privacy key'))
+    client=Synology(url,username,password,ca_cert=ca_cert,timeout=max(.001,deadline-time.monotonic()),
+                    otp_callback=(lambda:prompt_secret('DSM one-time password')) if interactive(options) else None)
+    # No state publication occurs before authenticated File Station access.
+    connection=client.connectivity()
+    secret['sid']=client.sid
+    profile=ProfileStore().save(name,settings,secret,storage=credential_store)
+    return {'profile':name,'url':profile['url'],'account':username,'credential_store':credential_store,
+            'verified':connection,'monitoring':list(key for key in ('snmp','ssh') if settings.get(key)),
+            'cleanup_warning':profile.get('cleanup_warning')}
 
-    if ref.isascii() and ref.isdigit() and len(ref) < 5:
-        # A short number means "row N of what you just showed me" — refetching a
-        # differently ordered listing would silently act on the wrong file.
-        return ""
-    return ref
 
-
-def handle_syno_get(ref: str, dest: str = "."):
-    """Download a file from the NAS. Accepts the listing # or a full path."""
-    nas = _syno()
-    path = _resolve_path(ref)
-    if not path:
-        console.print(f"\n[yellow]No file #{ref} in your last listing — run co syno to refresh.[/yellow]\n")
-        raise typer.Exit(1)
-
-    console.print(f"\n[dim]Downloading {path}…[/dim]")
-    console.print(nas.download(path, dest=dest).replace("Downloaded to", "[green]✓ Downloaded[/green]"))
-    console.print()
-
-
-def handle_syno_put(local_path: str, path: str, overwrite: bool = False):
-    """Upload a local file to a NAS folder."""
-    if not Path(local_path).expanduser().is_file():
-        console.print(f"\n❌ [bold red]File not found:[/bold red] {local_path}\n")
-        raise typer.Exit(1)
-
-    nas = _syno()
-    console.print(f"\n[green]✓ {nas.upload(local_path, path, overwrite=overwrite)}[/green]\n")
-
-
-def handle_syno_share(ref: str):
-    """Create a public sharing link. Accepts the listing # or a full path."""
-    nas = _syno()
-    path = _resolve_path(ref)
-    if not path:
-        console.print(f"\n[yellow]No file #{ref} in your last listing — run co syno to refresh.[/yellow]\n")
-        raise typer.Exit(1)
-
-    console.print(f"\n[green]✓ Sharing link[/green] for [bold]{path}[/bold]")
-    console.print(f"  {nas.share(path)}\n")
+def handle_share_create(options, path, *, expires, no_expiry, password, password_stdin, yes, dry_run, listing=None):
+    if expires and no_expiry:
+        _error('invalid_input','Choose an expiry date or no-expiry.')
+    if not expires and not no_expiry:
+        if dry_run or not interactive(options):
+            _error('invalid_input','Choose --expires YYYY-MM-DD or --no-expiry.')
+        choice=typer.prompt('NAS-local expiry date (YYYY-MM-DD), or type none',err=True)
+        no_expiry=choice=='none'; expires=None if no_expiry else choice
+    if password and password_stdin:
+        _error('invalid_input','Choose password prompt or password-stdin.')
+    secret=None if dry_run else _password(options,'Sharing password',stdin=password_stdin,prompt=password)
+    _confirm(options,'Create this sharing link?',yes,dry_run)
+    client=_syno(options,dry_run=dry_run)
+    path=client.state.resolve(path,listing)
+    result=client.share_create(path,expires=expires,no_expiry=no_expiry,password=secret,dry_run=dry_run)
+    if dry_run and (password or password_stdin):
+        result['protected']=True
+        result['password_validation']='deferred; dry-run does not read secrets'
+    return result

@@ -457,7 +457,7 @@ def last_run(state: dict, name: str) -> Optional[datetime]:
 
 
 def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
-                             console=None):
+                             console=None, extra_tick=None):
     """Start and stop the tick alongside the ASGI app.
 
     Returns (on_startup, on_shutdown), the same pair shape the relay uses, so
@@ -509,7 +509,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
     async def tick_once(now: Optional[datetime] = None) -> None:
         now = now or datetime.now(timezone.utc)
         entries = load_entries(co_dir)
-        if not entries:
+        if not entries and extra_tick is None:
             return
 
         holder = _tick_lock(co_dir)
@@ -520,6 +520,8 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
             return
         try:
             await _run_due(entries, now)
+            if extra_tick is not None:
+                await extra_tick(now)
             _compact_sessions()
         finally:
             _release_tick_lock(holder)
@@ -609,7 +611,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         # not due yet — and that is what a working schedule looks like too.
         for problem in problems:
             _say(f"[yellow]{problem}[/yellow]")
-        if not entries:
+        if not entries and extra_tick is None:
             return          # nothing scheduled: no task, no noise
         _say(f"{len(entries)} scheduled")
         task["handle"] = asyncio.create_task(loop())

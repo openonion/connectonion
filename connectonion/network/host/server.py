@@ -71,6 +71,7 @@ from .http_router import (
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
+from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, start_cleanup_job
 from .session.mode import HostPermissionPolicy
@@ -299,6 +300,7 @@ def _create_route_handlers(
     replay_check=None,
     mode_policy: HostPermissionPolicy | None = None,
     remote_browser_service=None,
+    project_dir=None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -322,6 +324,22 @@ def _create_route_handlers(
         from .auth import signature_already_used
         replay_check = signature_already_used
 
+    controller = None
+    if config.get('control_center'):
+        from .control_center.controller import controller_from_config
+        base_factory = create_agent
+        controller = controller_from_config(config['control_center'],
+            project_dir or project_root(), agent_metadata['address'], base_factory)
+        create_agent = lambda: controller.attach(base_factory())
+
+    def notify_result(result, prompt):
+        if controller is not None:
+            try:
+                controller.completed_turn(result, prompt)
+            except (ValueError, RuntimeError, OSError) as exc:
+                Console().print(f'[yellow]Control Center event was not queued: {type(exc).__name__}[/yellow]')
+        return result
+
     def requester_for(requester_address):
         if not requester_address:
             return None
@@ -337,11 +355,11 @@ def _create_route_handlers(
         validate_files(files, config)
         validate_images(images, config)
         requester = requester_for(requester_address)
-        return input_handler(
+        return notify_result(input_handler(
             create_agent, storage, prompt, result_ttl, session, connection,
             images, files, requester=requester, mode_policy=mode_policy,
             is_admin=bool(requester and requester["level"] == "admin"),
-        )
+        ), prompt)
 
     def handle_ws_input(storage, prompt, connection, session=None, images=None,
                         files=None, requester_address=None):
@@ -353,10 +371,10 @@ def _create_route_handlers(
         # .co/admins.txt, which is a separate question, and conflating them
         # would have refused the owner as loudly as everyone else.
         requester = requester_for(requester_address)
-        return input_handler(create_agent, storage, prompt, result_ttl, session,
+        return notify_result(input_handler(create_agent, storage, prompt, result_ttl, session,
                              connection, images, files, requester=requester,
                              mode_policy=mode_policy,
-                             is_admin=bool(requester and requester["level"] == "admin"))
+                             is_admin=bool(requester and requester["level"] == "admin")), prompt)
 
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
     handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent)
@@ -394,6 +412,7 @@ def _create_route_handlers(
         return admin_logs_handler(create_agent().logger.log_file_path)
 
     return {
+        "control_center": controller,
         "input": handle_input,
         "session": session_handler,
         "sessions": sessions_handler,
@@ -706,6 +725,27 @@ def _invite_line(trust_config) -> str | None:
                 f"Add it to {env_file}, or run `co init ./` to mint one.")
     return None
 
+
+
+def _create_cleanup_lifespan(registry):
+    """Start the session-registry cleanup thread with the app, stop it with the app.
+
+    Starting it in create_app() itself meant every construction of the app —
+    each test, each import-time probe — left a thread behind that nothing
+    could stop. The lifespan is the only place that knows when the app is
+    actually serving, so the thread lives exactly that long.
+    """
+    job = None
+
+    async def on_startup():
+        nonlocal job
+        job = start_cleanup_job(registry)
+
+    async def on_shutdown():
+        if job is not None:
+            job.stop()
+
+    return on_startup, on_shutdown
 
 def _both(first, second):
     """Run two lifespan callbacks as one, in order.
@@ -1106,7 +1146,7 @@ def host(
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
-    start_cleanup_job(registry)  # Start background cleanup
+    cleanup_startup, cleanup_shutdown = _create_cleanup_lifespan(registry)
 
     # Create TrustAgent instance - the single interface for all trust operations
     # Users can subclass TrustAgent to customize (e.g., database-backed admin storage)
@@ -1137,6 +1177,7 @@ def host(
         exec_permissions, replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
         remote_browser_service=remote_browser_service,
+        project_dir=co_dir.parent,
     )
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
@@ -1184,9 +1225,22 @@ def host(
     # networking question.
     sched_startup, sched_shutdown = create_schedule_lifespan(
         co_dir, create_agent, storage, result_ttl, console=Console(),
+        extra_tick=(route_handlers['control_center'].tick if route_handlers['control_center'] else None),
     )
     on_startup = _both(on_startup, sched_startup)
     on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first
+
+    # Channels are a third ingress, beside the socket and the clock, and they
+    # arrive through the same input_handler: a message from a group lands in
+    # session_results.jsonl beside the interactive turns. The listener that
+    # fills the directory is still its own process (DD-063 and #1478).
+    inbox_startup, inbox_shutdown = create_inbox_lifespan(
+        co_dir, create_agent, storage, result_ttl, console=Console())
+    on_startup = _both(on_startup, inbox_startup)
+    on_shutdown = _both(inbox_shutdown, on_shutdown)
+
+    on_startup = _both(on_startup, cleanup_startup)
+    on_shutdown = _both(cleanup_shutdown, on_shutdown)
 
     app = asgi_create_app(
         route_handlers=route_handlers,
@@ -1215,7 +1269,7 @@ def host(
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
-def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None, http=None):
+def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None, http=None, control_center=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
     Each request calls create_agent() to get a fresh Agent instance.
@@ -1242,7 +1296,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
-    start_cleanup_job(registry)
+    cleanup_startup, cleanup_shutdown = _create_cleanup_lifespan(registry)
 
     # Extract metadata once at startup. `name` is host.yaml's, when the caller
     # has read it — host() does; a bare ASGI caller may not, and then the
@@ -1277,14 +1331,23 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     )
     route_handlers = _create_route_handlers(
         create_agent, agent_metadata, result_ttl, trust_agent,
-        DEFAULT_FILE_LIMITS, load_permission_patterns(),
+        {**DEFAULT_FILE_LIMITS, 'control_center': control_center}, load_permission_patterns(),
         replay_store.already_used,
         mode_policy=_host_mode_policy(sample),
         remote_browser_service=remote_browser_service,
+        project_dir=replay_dir.parent,
     )
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
     )
+    if route_handlers['control_center'] is not None:
+        sched_startup, sched_shutdown = create_schedule_lifespan(
+            replay_dir, create_agent, storage, result_ttl,
+            extra_tick=route_handlers['control_center'].tick)
+        balance_startup = _both(balance_startup, sched_startup)
+        balance_shutdown = _both(sched_shutdown, balance_shutdown)
+    balance_startup = _both(balance_startup, cleanup_startup)
+    balance_shutdown = _both(cleanup_shutdown, balance_shutdown)
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

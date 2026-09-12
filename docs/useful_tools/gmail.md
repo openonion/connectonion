@@ -91,8 +91,8 @@ Your agent can now read and manage Gmail.
 ### Drafts
 
 Draft methods edit provider-native Gmail drafts and never send them. The
-terminal's separate `co gmail draft send` command performs the final preview
-and confirmation; draft sending is intentionally not exposed as a public agent
+terminal's `co gmail draft review` and `send --confirm` commands bind the final
+send to reviewed content; draft sending is intentionally not exposed as a public agent
 method.
 
 **`list_drafts(last=20)`**
@@ -112,7 +112,7 @@ method.
 - Append a link to a plain-text body; this does not change sharing permissions
 
 **`remove_draft_attachment(draft_id, attachment)`**
-- Remove the one-based attachment number from `get_draft()`
+- Remove the current one-based item number from `get_draft()["items"]` (files then managed links)
 
 **`replace_draft_attachment(draft_id, attachment, path)`**
 - Replace one attachment with a local project file in one draft update
@@ -203,9 +203,9 @@ co gmail send bob@example.com "Hi" "Body text"
 co gmail search "from:alice@example.com is:unread"
 co gmail draft create bob@example.com "Report" "Please review."
 co gmail draft list               # choose the matching row; create prints an ID
-co gmail draft attach 1 report.pdf
-co gmail draft preview 1
-co gmail draft send 1          # previews and asks; there is no --yes
+co gmail draft attach <draft-id> report.pdf
+co gmail draft review <draft-id> --json
+co gmail draft send <draft-id> --confirm <review-token> --json
 ```
 
 ## See Also
@@ -219,3 +219,10 @@ co gmail draft send 1          # previews and asks; there is no --yes
 **Missing gmail.readonly scope**: Run `co auth google`
 
 **Credentials not found**: Run `co auth google`
+
+In the 1.8.4 candidate, `get_draft()` adds an `items` source manifest while
+preserving file-only `attachments`. Local files are tagged as local; existing
+untagged files are external. The CLI records Drive exports and managed links
+inside provider MIME. The older `add_draft_link(name, url)` remains an ordinary
+body append and does not claim verified Drive provenance. No draft send method
+is exposed as an agent tool. See [draft review behavior](../cli/gmail.md).

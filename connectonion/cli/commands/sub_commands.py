@@ -363,6 +363,7 @@ def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
         for tool, n in installed.items():
             console.print(f"  {tool}: installed {n} skill(s)")
         console.print("\n[yellow]→ Restart your coding agent to load the new skills.[/yellow]")
+        console.print("[dim]Everything you follow:[/dim] [bold]co sub list[/bold]")
     elif not results:
         console.print("  [dim]No coding agents detected — bodies mirrored but not installed.[/dim]")
     else:
@@ -396,7 +397,8 @@ def handle_sub_list() -> None:
 
     console.print()
     console.print(table)
-    console.print(f"\n[dim]Stored in: {SUBS_LIST}[/dim]\n")
+    console.print(f"\n[dim]Stored in: {SUBS_LIST}[/dim]")
+    console.print("[dim]Pull a publisher's latest skills:[/dim] [bold]co sub sync <alias from this list>[/bold]\n")
 
 
 def handle_sub_remove(target: str) -> None:

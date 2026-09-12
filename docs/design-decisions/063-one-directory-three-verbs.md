@@ -49,6 +49,12 @@ seconds, retries, and documents a message id to dedupe on. Maildir solved
 "many writers, many readers, no locks, crash-safe" for mail in 1995 with a
 directory and `rename(2)`.
 
+> **Names changed after this was written.** The package is
+> `connectonion/inbox/`, the class is `Inbox`, the directory is
+> `~/.co/inbox/<provider>/` with `received.jsonl` and `sent.jsonl` inside, and
+> one `CO_INBOX_HOME` moves the whole root. The decision below is unchanged;
+> only its spelling is. See the addendum at the end (#1478).
+
 ## Decision
 
 ### The tool turns messages into files. Consumers come by themselves.
@@ -141,7 +147,7 @@ titles and link previews never reach a prompt by accident.
 ```text
 co ai --listen feishu,telegram     the project's agent; co ai decides where its input comes from
 claude  ←mcp←  co feishu mcp       Claude Code channel push; Codex polls receive
-co feishu serve -- claude -p       one claude per message
+co feishu consume -- claude -p       one claude per message
 while m=$(co feishu receive); …    any shell
 tail -f ~/.co/feishu/inbox.jsonl   any observer
 ```
@@ -220,3 +226,52 @@ Verbs are identical everywhere. Differences hide inside opaque ids and in
   API only.
 - **A generic listener framework**: seven providers, zero implementations.
   Same verbs, same directory layout, five small modules.
+
+## Addendum, 10 September 2026 (#1478)
+
+Three amendments, all before `1.8.5a1`, because the release plan freezes this
+layout at 1.8.5.
+
+**The queue is called `inbox`, under one root.** `mailbox` was already taken in
+this repository — `useful_tools/gmail_mailbox.py`, `MailboxError`, `co email` —
+so the queue borrowed a word that meant something else, and every reader had to
+work out which one a line meant. `inbox` is what this repository already calls
+messages received, in `co email inbox` and `co sms inbox`. The package is
+`connectonion/inbox/`, the class is `Inbox`, and the directory is
+`~/.co/inbox/<provider>/`: one root, so a consumer watches `inbox/*/new/`
+instead of a list of directories somebody has to keep in sync, and `ls` answers
+which channels a machine listens to. `CO_INBOX_HOME` moves the root; the
+per-provider variables are gone, because moving one channel and leaving the
+others only ever produced a half-configured machine. Inside, `inbox.jsonl` is
+`received.jsonl` and `outbox.jsonl` is `sent.jsonl`: a directory called inbox
+cannot hold a file called inbox, and an inbox does not hold an outbox. The
+verbs are unchanged — `listen` is the action, `inbox` is the place.
+
+**A lease, and a limit.** The original design's hour was a guess at how long an
+answer takes, and a consumer slower than the guess had its message taken away
+mid-sentence and answered twice. A consumer now says it is still working, so
+the hour measures silence rather than work and the sweep only reclaims from
+consumers that really died. And a message handed out four times without ever
+finishing is completed with a `gave up` line: the visibility timeout was
+protecting against a dead consumer, and against a message that kills consumers
+it was an infinite loop with an hourly period.
+
+**The Host is a consumer.** This decision rejected shape one — the SDK
+connection, the dedup and the staging living inside the Host — and that stands:
+the platform waits about three seconds and does not hold the connection for the
+reply, so a queue has to sit between receipt and processing, and the Host has
+none; and receipt has to survive a Host restart, so the two have different
+lifetimes. What it did not reject, and what the Consequences section was read as
+forbidding, is the Host *reading* the directory. The list of consumers above
+says the tool knows none of them, and the Host is one of them. It now composes a
+lifespan beside the relay's and the schedule's, arriving at the same
+`input_handler`, so a message from a group is recorded in
+`session_results.jsonl` beside the interactive turns instead of being the one
+kind of work nobody can inspect. `co ai` runs the same loop locally.
+
+This closes the gap the decision left open by design: every question about what
+a message may do was pushed to "whatever consumes the directory", and for a
+year nothing did. In 1.8.5 the answer is open — anyone who can address the bot
+can command the Agent, which for a self-built application means one tenant and
+the groups the bot was invited to. The requester is recorded from the first
+release so the allowlist in #1479 needs no migration.

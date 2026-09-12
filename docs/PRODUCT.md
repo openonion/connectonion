@@ -110,7 +110,7 @@ answer to "do I have to buy into all of this?" is that you do not.
 | `co gmail` | inbox, read, reply, send, sent, search (`cli/main.py:498-569`) |
 | `co outlook` | mail plus contacts, deferred and scheduled send |
 | `co gdrive` | list, search, get, put, rm |
-| `co syno` | a Synology NAS: login, ls, search, get, put, share |
+| `co syno` | a Synology NAS: read-only status/list/search/share audit plus get, put, and public-link creation |
 | `co email` | the agent's **own** mailbox — see the limit below |
 | `co call <addr> <cmd>` | run one command on a *remote* agent, no LLM in the loop, gated by that agent's whitelist (`cli/commands/call_commands.py:51-135`) |
 | `co copy <name>` | vendor any built-in into your project to edit: 16 tools, 13 plugins, 10 TUI components, trust policies, skills (`cli/commands/copy_commands.py:20-104`) |
@@ -334,13 +334,17 @@ Worth saying out loud on any page that sells to a business:
   /sessions /new /resume /undo /redo` are defined and imported nowhere — issue #965.
   Working slash commands are skill names.
 - `cli/co_ai/sessions.py` and its SQLite store are reachable only from those commands.
-- `cli/co_ai/agents/registry.py` duplicates the explore and plan subagents; the running
-  agent uses `useful_plugins/builtin_agents/` — issue #966.
 - `create_app()` advertises `sha256(agent.name)` as the agent address — a fake
   unrelated to the Ed25519 key, inconsistent with `host()`.
 - `@expose` has a design document and no implementation.
 - `logger.load_messages()` has no callers, so "replay a past run" is a data format,
   not a feature. `co eval` is the real replay path.
+- `co feishu listen / receive / send / reply` (`cli/commands/listen_commands.py`,
+  `inbox/`), and the consumers that answer with an agent (`co ai --listen`, the
+  Host's inbox lifespan), are wired and unit-tested but have not passed the live
+  acceptance run in #1310 against a real Feishu group: the no-loss-during-a-gap
+  gate failed on 8 September and the repair has not been re-tested live. Until
+  it has, this is a preview, not a claim.
 
 ### One security finding, not a marketing note
 

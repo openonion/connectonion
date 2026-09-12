@@ -150,9 +150,17 @@ class SignatureReplayStore:
 
     def _connect(self):
         database = sqlite3.connect(self.path, timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
-        database.execute(
-            f"PRAGMA busy_timeout = {int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}"
-        )
+        try:
+            database.execute(
+                f"PRAGMA busy_timeout = {int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}"
+            )
+        except sqlite3.Error:
+            # The caller never receives this connection, so nothing else can
+            # close it. A ledger that is a directory, or unreadable, raised
+            # here and left the handle to the garbage collector — which the
+            # test suite reported as `ResourceWarning: unclosed database`.
+            database.close()
+            raise
         return database
 
     def _expires_at(self, data: dict, seen_at: float) -> float:

@@ -8,7 +8,7 @@ human decision.
 | Mode | Behaviour |
 |---|---|
 | `read-only` | Manual approval for every effectful live-IO call not explicitly permitted |
-| `auto` | Auto-approves reversible workspace work and focused verification; asks or denies higher-impact calls |
+| `auto` | Runs ordinary local commands; asks or denies the ones that leave the machine, execute unreadable input, touch credentials, or write outside the workspace |
 | `full-access` | Explicit bounded approval bypass under the Host launch ceiling |
 
 No aliases are accepted or translated. Unknown stored values become Auto.
@@ -150,6 +150,112 @@ run_background, kill_task
 send_email, post, delete, remove
 ```
 
+### Focused Verification (Auto)
+
+Test, lint, type-check and build commands run without a dialog. This category
+is an execution surface by design — an agent that may write a test and run it
+may run whatever that test runs — so what the narrowing does is keep out the
+commands in it that are not verification at all. `cargo` is limited to
+`test`/`check`/`clippy`/`build`, `go` to `test`, the package runners to
+targets naming test/lint/build/check/typecheck, and `make` to a named
+verification target with no `-C`/`-f` redirecting it elsewhere: `make test`
+runs, `make install`, bare `make` and `make -C /etc all` ask.
+
+### Read-Only Commands (Auto)
+
+In Auto, a shell command whose every segment only reads, filters or prints
+runs without a dialog — and, unattended, without being denied:
+
+```
+head tail cat less more grep egrep fgrep rg wc ls sort uniq cut tr
+basename dirname jq echo printf pwd cd true test [ which file stat diff
+date whoami hostname uname
+```
+
+`sed` and `awk` are deliberately **not** on it. They take a program, and a
+program is code: `awk 'BEGIN{system("rm -rf /")}'` reads like an inspection
+and is arbitrary execution, and GNU `sed`'s `e` flag is the same. A rule that
+kept them while excluding their execution constructs would be a parser in a
+security path. Both ask, as they did before 1.8.5, including their innocent
+shapes — whose job `head`, `tail`, `cut` and `read_file(limit=, offset=)`
+already do. Nothing else on the list takes a program text.
+
+Two things take a listed command back out. A path argument that resolves
+outside the workspace (`cat /etc/hosts`, `head ~/.ssh/id_rsa`, `cd ..`) asks,
+the same way the read *tools* ask for outside-workspace reads. And a file
+argument the policy cannot resolve asks: `cat $(cat which_file.txt)` reads
+whatever that file names and `head $HOME/x` whatever `HOME` is, so neither is
+a checked read. A bare `$` is end-of-line, not a variable, so
+`grep 'foo$' notes.txt` is unaffected.
+
+Credentials are denied before any of this applies, and not only by token
+(`.env`, `secret`, `credential`): key material is recognised by where it lives
+and what it is called — anything under `.ssh`, `.gnupg`, `.aws`, `.azure`,
+`.kube`, `.docker` or a `keys` directory (which includes the agent's own
+`.co/keys/`), the usual filenames (`id_rsa`, `id_ed25519`, `authorized_keys`,
+`.npmrc`, `.netrc`, `.git-credentials`, `.pypirc`, `keys.env`), and the usual
+suffixes (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`, `.ppk`). A read
+of key material is a credential read wherever it sits, so this does not depend
+on the workspace rule — the workspace is sometimes the home directory, keys
+get committed, and `.co/keys/` is under the project root. Matching is on path
+components and suffixes, so `keys.md` and `monkey.txt` are ordinary files.
+
+The read, write, edit and delete *tools* hold the same line: `read_file`,
+`glob`, `write`, `edit` and the rest refuse key material by the same rule.
+They have to — a gate one tool wide is a detour, and a model asked for
+`cat server.pem` will simply reach for `read_file` instead.
+
+An output redirect (`> out`, `>> log`, `2> err`) is a file write and is held
+to the write tool's rules: inside the workspace it is a reversible edit and
+allowed (`echo x > notes.txt`, `cat << 'EOF' > src/main.rs ... EOF` — models
+reach for both instead of the write tool); a control file is denied; a target
+outside the workspace is denied; a target that depends on the environment
+(`> $HOME/x`) cannot be resolved and asks. `2>&1` is not a write. A heredoc
+is classified by its first line — the body is data to that command — so
+`bash << EOF` still asks, because `bash` runs whatever the body says.
+
+### A command runs unless a rule holds it back
+
+A command nobody thought of runs. There is no list of safe command names to be
+on, because that list can never be finished — an unattended job dies on the
+first tool nobody added, which is how a seven-times-a-day round died at
+iteration sixteen on `head -40` (#1481).
+
+What holds a command back, all checked before the default applies:
+
+| rule | example | verdict |
+|---|---|---|
+| destroys files | `rm -rf build`, `shred x` | deny |
+| credentials or key material | `env`, `aws s3 ls`, `cat ~/.ssh/id_rsa` | deny |
+| writes outside the workspace | `echo x > ../out`, `cp f /etc/x` | deny |
+| rewrites an authorization control file | `> .co/host.yaml` | deny |
+| leaves the machine | `curl`, `ssh`, `git push`, `co email send`, `co feishu send` | ask |
+| runs a program this policy cannot read | `bash << EOF`, `python3 -c`, `awk`, `sed`, `uv run python -c` | ask |
+| deletes or executes through a flag | `find . -delete`, `find . -exec` | ask |
+| reads outside the workspace | `cat /etc/passwd` | ask |
+| cannot be parsed | `echo 'unclosed` | ask |
+
+A chain is only as permitted as its worst link: `ls && rm -rf build` is denied.
+`co browser status && co email send ...` is still an email send nobody
+authorized, so it asks, and in an unattended run that is a refusal.
+
+One known gap, recorded rather than guessed at: `gh pr create` is allowed.
+`create` is too generic to add to the outward list — `co create my-agent` is
+local work — and a pull request is a reversible proposal in the operator's own
+repository.
+
+This is the Auto policy for the agent's own calls. The remote-EXEC whitelist
+in `host.yaml` is a separate gate and is not widened by it.
+
+### Planning tools
+
+A class whose every method is planning with no side effect is recognised by
+what owns the call, not by its name. `TodoList` registers `add`, `start`,
+`complete`, `update`, `list`, `remove` and `clear`; matching those names would
+be wrong in both directions, since `remove` is a deletion and `list` is a read
+for every other tool. Before this, `todo_list` sat in the workflow list and was
+never a tool name, so 438 `add` calls were refused in six days (#1447).
+
 ### Unknown Tools
 
 Unknown and dynamically registered tools are never silently allowed. In Auto,
@@ -162,12 +268,141 @@ same Host-advertised modes.
 
 Auto-approve safe commands permanently via `host.yaml` configuration. Config permissions never expire and apply to all sessions.
 
-In a headless one-shot run, a matching operator-configured `Bash(...)` rule can
-approve an ordinary command even though no dialog exists. Auto continues to
-deny destructive, credential, publication, deployment, external-effect, and
-unknown calls. For compatibility, the shipped broad `Bash(co *)` rule is
-narrowed at this boundary to `co status` and `co browser ...`; commands such as
-`co deploy`, `co publish`, and `co email send` do not inherit silent authority.
+### An explicit grant is an approval already given
+
+A grant somebody wrote down on purpose runs the call, with or without a person
+present, for any effect class:
+
+| source | who wrote it | scope |
+|---|---|---|
+| `config` | the operator, in `.co/host.yaml` — a control file the agent may not write | until removed |
+| `skill` | a skill author, in its `tools:` frontmatter | that turn |
+| `user` | a human answering a dialog | that session |
+| `template` | nobody; it ships with the product | ordinary commands only |
+
+So `Bash(curl *)` in your own `host.yaml` fetches URLs unattended and stops
+asking you every time, `Bash(rm -rf build)` cleans your build directory, and a
+skill that declares `Bash(mkdir *)` can make directories. Before 1.8.5 none of
+those worked: an explicit grant was discarded for every effect class except an
+unclassified command, so eight of nine hand-written grants were ignored and a
+skill's declaration bought nothing at all (#1481).
+
+Two things still cannot happen.
+
+**A wildcard is honoured only for the effect its own text names.**
+`Bash(curl *)` classifies as external network and so does the command it
+matches, so the operator plainly meant network access. `Bash(git *)` is an
+ordinary command while `git push origin main` publishes, so the wildcard does
+not carry it — `Bash(git push *)` does. An exact pattern always names its own
+effect.
+
+**The shipped defaults are not your grant.** The template's 78 `Bash(...)`
+entries load as `source: template` and buy only what they always did. The
+broad `Bash(co *)` reaches `co status` and `co browser ...`, and nothing else:
+`co` is a multiplexer, and its strong verbs are classified by verb — `co email
+send` is an external effect, `co transfer` a payment, `co keys` a credential —
+so a wildcard over `co` cannot reach them however it is written.
+
+A third-party skill installed with `co copy` can declare whatever `tools:` it
+likes, and those grants are honoured. That is the same trust you extend by
+installing it; read a skill's frontmatter before you install it.
+
+### Every refusal says why, how, and think again
+
+A refused call comes back with a `<system-reminder>` in three parts. The
+human-rejection paths in this plugin have carried guidance like this for a
+long time; the policy's own refusals did not, and an agent reading "command is
+outside the focused verification allowlist" has nothing to do with it but try
+again — which is guaranteed to fail, because the decision is deterministic. A
+scheduled job drained its iteration budget that way and ended with nothing
+done.
+
+```
+<system-reminder>
+REFUSED: bash — reading outside the workspace requires approval; …
+
+WHY
+This was refused because the file is outside this workspace, or its path comes
+from a variable or a substitution so the policy cannot tell where it points.
+The decision is deterministic: the identical call will be refused again,
+every time.
+
+HOW TO ALLOW IT NEXT TIME
+  • in .co/host.yaml: "Bash(cat /etc/hosts)" …
+  • or in the skill that needs it: tools: ["Bash(cat /etc/hosts)"]
+
+BEFORE YOU DO ANYTHING ELSE — re-think, do not repeat
+1. What were you actually trying to achieve? Name the goal, not the command.
+2. Read something inside the workspace, or spell the path out literally. …
+3. If you cannot get there without this exact call, stop and tell the user
+   the line above and what it is for. That is a useful answer; a retry loop
+   is not.
+Do not retry this call, and do not reach for a different spelling of it.
+</system-reminder>
+```
+
+Part 2 is per effect class and says what to try *instead* — for a credential,
+that you almost never need a secret's contents; for a `sed`/`awk` refusal, that
+`head`, `cut` and `read_file(limit=, offset=)` do the reading job without a
+grant; for a publication, that preparing the change and stopping is the answer.
+
+**The suggested grant is checked against the grant path before it is printed.**
+Some refusals cannot be lifted by any pattern — a control file, or a redirect
+outside the workspace, because the parser strips redirects out of the text a
+pattern is matched against. Those say `THERE IS NO GRANT FOR THIS` rather than
+naming a line that would not work. A remedy that does not work is worse than
+none: it gets widened until something does.
+
+### The grant line itself
+
+Without a grant, an unattended refusal used to name a policy — "command is
+outside the focused verification allowlist" — and leave the operator to work
+out the syntax, the file and the right breadth. It now carries the remedy, so
+the agent can relay it and the operator can read it in the log:
+
+```
+Tool 'bash' denied by connectonion.auto: sending mail requires human approval;
+no approval channel is available
+
+Nothing has granted this. To allow it — including unattended — write it down once:
+  • in .co/host.yaml:
+      permissions:
+        "Bash(co email send *)":
+          allowed: true
+          source: config
+          reason: why you want this
+          expires:
+            type: never
+  • or in the skill that needs it, in its SKILL.md frontmatter:
+      tools:
+        - "Bash(co email send *)"
+```
+
+The suggested pattern errs narrow: it is the leading verb words, stopping at
+the first argument-looking one and capped at three, so `co email send --to …`
+suggests `Bash(co email send *)` rather than `Bash(co *)`. For a deletion, a
+credential or a payment it names the command exactly — `rm -rf build` suggests
+`Bash(rm -rf build)`, because `Bash(rm *)` would also cover `rm -rf /` and a
+suggestion is a nudge toward whatever it prints.
+
+### Unattended pipelines
+
+For a scheduled run, put the grant in the skill that needs it. `tools:` in the
+SKILL.md frontmatter is scoped to the turn the skill runs in, which is the
+whole of a one-shot `co ai "/my-skill"`, and it keeps the declaration next to
+the procedure that depends on it:
+
+```yaml
+---
+name: daily-digest
+description: Email me what happened today.
+tools:
+  - "Bash(co email send *)"
+---
+```
+
+`.co/host.yaml` is the other place, for grants that outlive any one skill.
+Either way it is written down once and the pipeline stops stopping.
 
 ### Configuration
 

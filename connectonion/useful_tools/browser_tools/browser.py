@@ -118,9 +118,7 @@ def _runs_on_browser_thread(method):
                 self._ensure_page(key)        # this session gets / keeps its own tab
             return method(self, *args, **kwargs)
 
-        if threading.current_thread() is self._executor_thread:
-            return run()
-        return self._executor.submit(run).result()
+        return self._run_on_browser_thread(run)
 
     return wrapper
 
@@ -528,8 +526,37 @@ class BrowserAutomation:
         self.screenshots_dir = str(SCREENSHOTS_DIR)
         self.last_screenshot_path = None  # file path of the most recent screenshot
         # All public methods run on this one thread (see _public_methods_run_on_browser_thread).
+        self._executor = None
+        self._executor_thread = None
+        self._start_worker()
+
+    def _start_worker(self) -> None:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
         self._executor_thread = self._executor.submit(threading.current_thread).result()
+
+    def _run_on_browser_thread(self, run):
+        """Run `run` on the browser's one worker thread and return its result.
+
+        A closed browser has retired its worker (see _retire_worker); the next
+        call starts a fresh one, so close-then-reopen keeps working.
+        """
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        if self._executor is None:
+            self._start_worker()
+        return self._executor.submit(run).result()
+
+    def _retire_worker(self) -> None:
+        """Let the worker thread exit once its current task is done.
+
+        Without this every instance kept a non-daemon thread alive for as long
+        as the object lived — and it lived as long as the cyclic GC felt like
+        it, since the instance is full of reference cycles. `close()` retires
+        the worker; the test suite's thread guard is what noticed.
+        """
+        executor, self._executor, self._executor_thread = self._executor, None, None
+        if executor is not None:
+            executor.shutdown(wait=False)
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
@@ -539,9 +566,7 @@ class BrowserAutomation:
             self._session_binding.key = key
             return self._browser_is_usable_on_browser_thread()
 
-        if threading.current_thread() is self._executor_thread:
-            return run()
-        return self._executor.submit(run).result()
+        return self._run_on_browser_thread(run)
 
     def _browser_is_usable_on_browser_thread(self) -> bool:
         """Check browser usability on Playwright's owning thread."""
@@ -605,9 +630,7 @@ class BrowserAutomation:
                 return False
             return True
 
-        if threading.current_thread() is self._executor_thread:
-            return run()
-        return self._executor.submit(run).result()
+        return self._run_on_browser_thread(run)
 
     def _launch_failed(self) -> bool:
         """True when a launch started Playwright but no browser context came up.
@@ -2289,7 +2312,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         if key is not None:
             err = self._release_tab(key)
             return f"close tab failed: {err}" if err else "Closed this session's browser tab."
-        return self._teardown()
+        result = self._teardown()
+        self._retire_worker()   # we are on the worker; it exits after this call returns
+        return result
 
     def _teardown(self) -> str:
         """Tear the whole shared browser/context down and clear state. Underscore-prefixed so

@@ -65,6 +65,141 @@ async def test_connect_accepts_legacy_client_without_protocol_descriptor():
 
 
 @pytest.mark.asyncio
+async def test_connect_negotiates_session_sync_without_upgrading_legacy_commands():
+    from connectonion.network.host.ws_router.connect import establish_connection
+
+    sent = []
+    storage = Mock(); storage.get.return_value = None
+    registry = Mock(); registry.get.return_value = None
+    conn = {}
+    await establish_connection(
+        {
+            "payload": {
+                "extensions": {"session-sync": ["0.1"]},
+                "to": "0xhost",
+            },
+        },
+        "0xvisitor",
+        AsyncMock(side_effect=sent.append),
+        conn,
+        storage,
+        registry,
+    )
+
+    assert conn["signed_commands"] is False
+    assert conn["session_sync"] is True
+    assert sent[0]["protocol"]["extensions"] == {"session-sync": "0.1"}
+
+
+@pytest.mark.asyncio
+async def test_session_index_connection_does_not_create_a_blank_chat():
+    from connectonion.network.host.ws_router.connect import establish_connection
+
+    sent = []
+    storage = Mock()
+    registry = Mock()
+    conn = {}
+    await establish_connection(
+        {
+            "payload": {
+                "extensions": {"session-sync": ["0.1"]},
+                "session_sync_only": 1,
+                "to": "0xhost",
+            },
+        },
+        "0xvisitor",
+        AsyncMock(side_effect=sent.append),
+        conn,
+        storage,
+        registry,
+        {"session_modes": Mock()},
+    )
+
+    assert sent == [{
+        "type": "CONNECTED",
+        "status": "index",
+        "protocol": {
+            "name": "oip",
+            "version": "0.1",
+            "min_version": "0.1",
+            "max_version": "0.1",
+            "websocket_path": "/ws",
+            "extensions": {"session-sync": "0.1"},
+        },
+    }]
+    assert conn["session_id"] is None
+    assert conn["session_sync_only"] is True
+    storage.get.assert_not_called()
+    registry.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_session_index_connection_ignores_relay_routing_session_id():
+    """The relay's route id is transport metadata, not a chat to resume."""
+    from connectonion.network.host.ws_router.connect import establish_connection
+
+    sent = []
+    storage = Mock()
+    registry = Mock()
+    conn = {"transport": "relay"}
+    await establish_connection(
+        {
+            "session_id": "relay-route-id",
+            "payload": {
+                "extensions": {"session-sync": ["0.1"]},
+                "session_sync_only": 1,
+                "to": "0xhost",
+            },
+        },
+        "0xvisitor",
+        AsyncMock(side_effect=sent.append),
+        conn,
+        storage,
+        registry,
+    )
+
+    assert sent[0]["type"] == "CONNECTED"
+    assert sent[0]["status"] == "index"
+    assert conn["session_id"] is None
+    storage.get.assert_not_called()
+    registry.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_session_index_connection_rejects_direct_chat_session_id():
+    """A direct client still cannot turn an index socket into a chat socket."""
+    from connectonion.network.host.ws_router.connect import establish_connection
+
+    sent = []
+    storage = Mock()
+    registry = Mock()
+    await establish_connection(
+        {
+            "session_id": "client-chat-id",
+            "payload": {
+                "extensions": {"session-sync": ["0.1"]},
+                "session_sync_only": 1,
+                "to": "0xhost",
+            },
+        },
+        "0xvisitor",
+        AsyncMock(side_effect=sent.append),
+        {"transport": "direct"},
+        storage,
+        registry,
+    )
+
+    assert sent == [{
+        "type": "ERROR",
+        "code": "invalid_request",
+        "message": "session_sync_only cannot resume a chat session",
+        "retryable": False,
+    }]
+    storage.get.assert_not_called()
+    registry.get.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_connect_rejects_unsupported_oip_once_without_creating_session():
     from connectonion.network.host.ws_router.connect import establish_connection
     sent = []

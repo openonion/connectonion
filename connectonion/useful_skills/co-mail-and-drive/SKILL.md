@@ -1,7 +1,18 @@
 ---
 name: co-mail-and-drive
-description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, or a file in Drive.
+description: Read and send mail from the user's own Gmail or Outlook account, safely stage Gmail draft attachments, send from the agent's own address, manage Outlook contacts and the Outlook calendar, and work with Google Drive files — with `co gmail`, `co outlook`, `co email`, and `co gdrive`. Use when the user asks about their inbox, an email or draft they want to prepare, an attachment, a contact, a meeting on their Outlook calendar, or a file in Drive.
 ---
+
+## Environment selection in the 1.8.4 implementation
+
+Global `keys.env` is the default for every setting and account. To use a project
+file, put `--env-file` before the command: `co --env-file /absolute/path/.env gmail
+inbox`. Auth and refresh use that selected file. No project env loads implicitly;
+process overrides remain explicit and provider fields are kept as whole records.
+`co env` (same selector) shows which file is in use, what it holds and which
+values the shell overrides — run it first when a command says "not connected in
+<file>". See `docs/cli/environment.md` for migration and error recovery.
+
 
 # co gmail / co outlook / co email / co gdrive
 
@@ -19,6 +30,7 @@ the `co email` exception). The output still carries the recovery step; read it.
 | `co outlook` | the user's **personal Outlook** | same, on the Microsoft account |
 | `co email` | the **agent's own** address (`*@mail.openonion.ai`) | "send from the agent", "what did the agent receive" |
 | `co gdrive` | the user's **Google Drive** | "my files", "that doc" |
+| `co outlook calendar` | the user's **Outlook calendar** | "my meetings", "am I free", "book a Teams call" (Google: `co gcalendar`) |
 
 When both mail accounts are connected and the request is ambiguous, ask which one
 rather than guessing. Sending from the wrong identity is not undoable.
@@ -28,7 +40,7 @@ rather than guessing. Sending from the wrong identity is not undoable.
 ```bash
 co gmail                     # bare command = inbox, 10 most recent
 co gmail inbox -n 25 -u      # last 25, unread only
-co gmail read 3              # open #3 from the last listing
+co gmail read 3 --listing <listing-id>              # token from the displayed listing
 co gmail search "from:alice@example.com is:unread"   # -n to widen
 co gmail sent -n 20
 ```
@@ -46,15 +58,16 @@ co outlook sent -n 20
 Gmail search takes full Gmail query syntax (`from:`, `subject:`, `after:2026/07/01`,
 `is:unread`). Outlook search is plain text over subject and body.
 
-`co gmail read` preserves unread state by default. `co gmail read 3 --mark-read`
-marks it read only when the token carries `gmail.modify`; otherwise it prints
-a reauthorization hint. Repeat what the output says, don't assume.
+`co gmail read` preserves unread state by default. `co gmail read 3 --listing <listing-id> --mark-read`
+requires `gmail.modify` or the full-mail grant. A known read-only grant exits
+1; unknown local scope metadata lets the provider decide. Read the output and
+do not describe a failed mark-read action as completed.
 
 ## Send and reply
 
 For Gmail attachments, or whenever a person should review the final message,
 use the provider-native draft workflow. Only the last command can send, and it
-always previews and asks for interactive confirmation:
+requires either a current review token or a real terminal's default-No confirmation:
 
 | Intent | Command |
 |---|---|
@@ -66,46 +79,65 @@ always previews and asks for interactive confirmation:
 | Remove a staged file | `co gmail draft remove <draft> <attachment#>` |
 | Replace a staged file | `co gmail draft replace <draft> <attachment#> <source> [--drive]` |
 | Inspect recipients, body, and manifest | `co gmail draft preview <draft>` |
-| Preview, confirm, and send | `co gmail draft send <draft>` |
+| Review exact content and obtain a token | `co gmail draft review <draft> --json` |
+| Send that approved content | `co gmail draft send <draft> --confirm <review-token> --json` |
 
 ```bash
 co gmail draft list
 co gmail draft create bob@example.com "Subject" "Body text"
 co gmail draft list           # create prints an ID; it does not assign row 1
-co gmail draft attach 1 report.pdf
+co gmail draft attach <draft-id> report.pdf
 co gdrive list
-co gmail draft attach 1 3 --drive
-co gmail draft attach 1 3 --drive --link
-co gmail draft remove 1 2
-co gmail draft replace 1 1 corrected.pdf
-co gmail draft preview 1
-co gmail draft send 1
+co gmail draft attach <draft-id> 3 --drive --drive-listing <Drive-listing-id>
+co gmail draft attach <draft-id> 3 --drive --drive-listing <Drive-listing-id> --link
+co gmail draft remove <draft-id> 2
+co gmail draft replace <draft-id> 1 corrected.pdf
+co gmail draft preview <draft-id>
+co gmail draft review <draft-id> --json
+co gmail draft send <draft-id> --confirm <review-token> --json
 ```
 
-`draft create`, `attach`, `remove`, `replace`, and `preview` never send. `draft
-send` has no `--yes` or other confirmation bypass. A declined confirmation
-leaves the draft intact and exits `1`. EOF or interruption at the confirmation
-prompt does the same and prints the preview command again.
+`draft create`, `attach`, `remove`, `replace`, `preview`, and `review` never
+send. Show the review to the user before sending. `--confirm` binds approval to
+the account, draft, thread and current MIME content; it is not a blanket `--yes`.
+Without a token, send requires a real terminal and defaults to No. Piped input
+cannot approve. Declining, EOF or interruption leaves the draft intact, exits
+1, and prints the review command. A stale token requires a new review.
 
-A Gmail draft number comes from the immediately preceding `co gmail draft
-list`, cached separately at `~/.co/gmail_last_drafts.json`. Attachment numbers
-come from the current `draft preview`. Drive file numbers still come from the
-immediately preceding `co gdrive` listing. Re-list before acting rather than
-carrying numbers across listings.
-An empty draft listing clears its old numbers. After creating a draft, use the
-ID printed by `create`, or list again before choosing a row number.
+Send submits the reviewed MIME in the same request that consumes the draft.
+A concurrent Gmail edit cannot substitute different outgoing content, but may
+be discarded when Gmail consumes that draft. Avoid editing it during send.
+An uncertain result is recorded before submission; repeat attempts inspect a
+unique Message-ID in sent mail and never blindly submit again. Keep the global
+`gmail-send-attempts/` records when investigating an uncertain result.
+
+Gmail message and draft row numbers require `--listing <listing-id>` from
+the corresponding listing. Tokens bind to the provider-confirmed account and
+expire after 15 minutes; only the newest 128 are retained. Full IDs work without
+tokens. Other listings never retarget an older row. Bare numbers and legacy
+last-listing caches are rejected. Attachment numbers come from the current
+`draft preview`; Drive file numbers require `--drive-listing <Drive-listing-id>` when passed to
+Gmail attach/replace, or `--listing <listing-id>` with Drive get/info/rm.
+After creating a draft, prefer its printed full ID.
 
 `--drive` attaches bytes without making a local copy. Native Docs, Sheets,
 Slides, and Drawings are exported using the same formats as `co gdrive get`.
 `--drive --link` appends the web URL but does not grant the recipient access or
-change Drive sharing.
+change Drive sharing. Managed link source records live inside the Gmail draft,
+survive restart, and are stripped from outgoing MIME. Ordinary body URLs are
+never managed items. `co gmail draft replace <draft> <item#> <Drive-file-id>
+--drive --link` can replace a file or link in one update. Preview/review numbers
+cover files first, then links; use the current manifest after every edit.
+Review shows source, export type, byte count, link access warnings, and duplicate
+names. Unknown Drive sizes remain unknown. The limits are 25,000,000 decoded
+file bytes and 35,000,000 final MIME bytes (decimal MB).
 
 Each success and guarded failure prints a literal next command. Read it even
 when output is piped; it is part of the CLI contract.
 
 ```bash
 co gmail send bob@example.com "Subject" "Body text"
-co gmail reply 3 "Sounds good, see you then."
+co gmail reply 18f2c9d0a1b2c3d4 "Sounds good, see you then."
 co gmail send bob@example.com "Report" - < body.md      # '-' body reads stdin
 co gmail send bob@example.com "Invoice" "Attached." --cc a@x.com --attach invoice.pdf
 ```
@@ -114,7 +146,16 @@ co gmail send bob@example.com "Invoice" "Attached." --cc a@x.com --attach invoic
 `co outlook send`. Attachments are checked before the send: a missing file or a set
 over the size limit (Gmail 25MB, Outlook 3MB) exits `1` without sending.
 
-Outlook additionally schedules:
+`co outlook reply` takes `--cc` / `--bcc` too, and the reply stays in its thread —
+before 1.8.4b1 copying a third person meant a fresh `send` with "RE:" in the
+subject, which the recipient saw as a new conversation:
+
+```bash
+co outlook reply 3 "Looping in Sam" --cc sam@example.com
+```
+
+Outlook additionally schedules. A scheduled send or reply ends with the cancel
+path; run it as printed rather than looking for a separate command:
 
 ```bash
 co outlook send bob@example.com "Nudge" "Following up" --at +2h    # +30m, +2h, or 2026-07-06T15:30:00Z
@@ -124,7 +165,52 @@ co outlook cancel 1           # pull one back before it goes
 ```
 
 Outlook can also save an email's attachments: `co outlook download 3 --to ~/Downloads`.
-Gmail has no download command — there is no way to save a Gmail attachment from this CLI.
+
+## Gmail mailbox actions and incoming attachments (1.8.4 candidate)
+
+```bash
+co gmail mark <message-id> --read
+co gmail mark <message-id> --unread
+co gmail archive <message-id>
+co gmail star <message-id>
+co gmail star <message-id> --remove
+co gmail label list --json
+co gmail label add <message-id> <label-name-or-id>
+co gmail label remove <message-id> <label-name-or-id>
+co gmail attachments <message-id> --json
+co gmail download <message-id> --all --to ~/Downloads --json
+co gmail download <message-id> --attachment <attachment-id> --to ~/Downloads --json
+co gmail unanswered --within-days 30 --last 20 --json
+```
+
+Message numbers also work with their explicit `--listing` token. Mark requires
+exactly one of `--read`/`--unread`; download requires exactly one of `--all` or
+`--attachment ID`. Modify operations need `gmail.modify` or the full-mail grant;
+reads/downloads need Gmail read access. Missing local scopes let the API decide.
+Unanswered scans one page of up to `--last` threads whose latest non-draft
+message is incoming; user-started threads are included. `--exclude-automated`
+opts into header-based filtering. Support/billing/invoice senders are included
+by default. The result is a page, never an exact total of replies owed.
+
+Inbox, sent, search, read, draft list/preview/review/send and every new mailbox leaf accept
+`--json`. Bare `co gmail --json` is inbox JSON. Put the flag after a subcommand
+when using one. Schema 1 includes `provider`, `account`, `operation`, `status`,
+`complete`, `data`, `error`, and a literal `next_command`; stdout is one JSON
+document. Exit 0 is success, 1 is operational/partial failure, 2 is usage error.
+Normal new-command hints go to stderr. Check per-file results on partial exit.
+
+List JSON includes `data.next_cursor`, `truncated`, and labeled estimates.
+Continue with `--cursor` while repeating the same query/filter/limit. Cursors
+bind account and arguments for 15 minutes; changed/expired cursors require a
+fresh listing. Messages/drafts allow 1–500 items; unanswered scans 1–100 threads
+and can return fewer matches. A changing live mailbox is not a frozen snapshot.
+
+Incoming attachment IDs cover nested named files and explicit inline parts.
+Use the exact ID, including a `part:` prefix when printed. Downloads require an
+existing directory, preserve existing files, and suffix duplicate names. Limits
+are 25 MB per file, 100 MB per invocation and 100 parts. Successful files remain
+on partial failure; inspect each path/hash/error before retrying. These commands
+do not send mail or change Drive sharing.
 
 **Never send on the user's behalf without showing them the exact text and final
 attachment manifest first.** Prefer `co gmail draft`; print its preview and wait
@@ -138,31 +224,49 @@ co outlook contact list -n 50
 co outlook contact search yifei
 ```
 
+## Outlook calendar
+
+Same Microsoft account, needs the `Calendars` scope (`co auth microsoft` grants
+it). Event IDs are stable IDs, not row numbers. Reads run at once; every write
+previews by default and prints the exact `--yes` command that performs it.
+
+```bash
+co outlook calendar                               # bare = upcoming events
+co outlook calendar list --days 14 -n 50
+co outlook calendar today
+co outlook calendar read <event-id>               # ID from the listing
+co outlook calendar meetings --days 7             # events that have attendees
+co outlook calendar free 2026-09-10 --minutes 30  # 09:00–17:00 UTC, your calendar only
+co outlook calendar create "Standup" 2026-09-10T09:00:00+10:00 2026-09-10T09:15:00+10:00 --attendees a@x.com
+co outlook calendar teams "Design review" 2026-09-10T10:00:00Z 2026-09-10T11:00:00Z --attendees a@x.com,b@x.com
+co outlook calendar update <event-id> --title "Moved" --start 2026-09-11T10:00:00Z
+co outlook calendar delete <event-id>
+```
+
+Times: an ISO offset is converted to UTC; a naive time means UTC. `update`
+preserves omitted fields. `free` reads only this calendar, not attendees'.
+The preview shows arguments, not proof of account access: after an uncertain
+write, run `co outlook calendar list` before retrying.
+
 ## Drive files
 
 ```bash
 co gdrive                          # bare command = 20 most recently modified
 co gdrive list                     # explicit form of the same listing
 co gdrive search report -n 50
-co gdrive get 3 --to ~/Downloads   # download row 3
+co gdrive info <full-file-id> --json # metadata, unknown sizes and export format; no download
+co gdrive get 3 --listing <listing-id> --to ~/Downloads   # download row 3
 co gdrive put report.pdf --name "Q3 report.pdf"
-co gdrive rm 3                     # move to trash (recoverable)
+co gdrive rm 3 --listing <listing-id>                     # move to trash (recoverable)
 ```
 
 ## The two gotchas that make you report something false
 
-**1. Numbers mean your last listing.** `read 3` / `get 3` / `draft preview 3`
-resolve against the
-numbering of the listing you just printed, cached in `~/.co/gmail_last_inbox.json`,
-`~/.co/gmail_last_drafts.json`, `~/.co/outlook_last_inbox.json`, and
-`~/.co/gdrive_last_list.json`. List again and the numbers move. Two consequences:
-
-- Never carry a number across two listings — re-list, then act.
-- Gmail `inbox`/`search`, Gmail `draft list`, and Drive `list`/`search` each
-  refresh their own numbering, including clearing it on an empty result. `sent` does
-  **not**: after `co gmail sent`, `read 1` still opens row 1 of the older inbox listing.
-- A number that isn't in the cache gets `No email #N in your last listing` and exit
-  `1` rather than a silently wrong email. Re-list and retry.
+**1. Gmail numbers require a frozen listing token.** Use full IDs where
+possible. Inbox, search, sent, and draft lists each print a token; pass it as
+`--listing <listing-id>` when using a row. Wrong accounts, expired/evicted or
+corrupt listings fail with exit 1 and require relisting. Do not retry a bare
+number or silently select a different row. Drive uses the same frozen-token rule; Outlook retains last-listing numbering.
 
 **2. Piping changes the output — and you are always piping.** In a terminal these
 commands print a Rich table with truncated columns and a next-step tip. Piped, they
@@ -175,8 +279,7 @@ co outlook contact list | cut -f2   # name<TAB>email<TAB>id
 ```
 
 Never parse a truncated table column; take IDs from the piped output. The piped
-form keeps the "Read one with: co gmail read <#>" tip (#1011) — the row numbers
-are still what `read` wants.
+form keeps the next-command tip and uses the full first Gmail ID.
 
 Two more, for Drive specifically:
 
@@ -241,8 +344,8 @@ For Gmail and Drive, these are the concrete recovery routes:
 
 | Result | Next command |
 |---|---|
-| Gmail listing succeeded | `co gmail read <# from this listing>` |
-| Drive listing succeeded | `co gdrive get <# from column 5 when piped>` |
+| Gmail listing succeeded | `co gmail read <full-message-id>` |
+| Drive listing succeeded | `co gdrive get <full-file-id>` |
 | Empty Gmail inbox | `co gmail search <query>` |
 | Empty Gmail search | `co gmail inbox` |
 | Empty Drive listing | `co gdrive search <name prefix>` |
@@ -253,7 +356,24 @@ For Gmail and Drive, these are the concrete recovery routes:
 | Drive connection or local I/O failure (exit 1) | `co gdrive list` |
 | Missing upload path (exit 1) | `co gdrive put <path to an existing file>` |
 | Missing Gmail read argument (exit 2) | `co gmail read --help` |
+| Stale draft review (exit 1) | `co gmail draft review <draft-id> --json` |
+| Uncertain draft delivery (exit 1) | `co gmail sent --json` |
+| Missing Drive info argument (exit 2) | `co gdrive info --help` |
 | Missing Drive get argument (exit 2) | `co gdrive get --help` |
+
+For Outlook, mail and calendar share one credential layer, and the next command
+names the layer that actually failed (#1313):
+
+| Result | Next command |
+|---|---|
+| Outlook send or reply succeeded | `co outlook sent` |
+| Scheduled send or reply succeeded | `co outlook scheduled`, then `co outlook cancel <#>` to pull it back |
+| No `OPENONION_API_KEY`, or oo-api rejected it during a token refresh (exit 1) | `co auth` — not `co auth microsoft`; the Microsoft grant is fine |
+| Microsoft revoked the refresh token, or the record has no refresh token (exit 1) | `co auth microsoft` |
+| Microsoft `<scope>` permission missing (exit 1) | `co auth microsoft` (re-consent; a refresh cannot widen scopes) |
+| Graph returned an error status (exit 1; body never printed) | `co outlook inbox` / `co outlook calendar list` |
+| Calendar write preview (exit 0, `No changes made.`) | the printed `co outlook calendar <op> … --yes` |
+| `update` with no fields (exit 2) | `co outlook calendar update --help` |
 
 A connection failure does not prove a write failed: inspect the provider state
 before repeating a send, reply, upload, or draft creation. Provider error bodies
@@ -265,12 +385,13 @@ The printed messages carry the current recovery step — trust them over this ta
 When a command says the account is not connected:
 
 ```
-❌ Google account not connected     → co auth google
+❌ Google account not connected in <file> → co env shows that file; then co auth google
 ❌ Gmail permission missing         → co auth google      (re-consent)
 ❌ Gmail draft permission missing   → co auth google      (re-consent)
 ❌ Google Drive permission missing  → co auth google      (re-consent)
 ❌ Microsoft account not connected  → co auth microsoft
-❌ Microsoft <scope> permission missing → co auth microsoft
+❌ Microsoft <scope> permission missing → co auth microsoft   (Mail, Contacts.ReadWrite, Calendars)
+Error: OpenOnion authentication failed while refreshing provider access. → co auth
 ❌ No API key found (co email)      → co auth
 ```
 
@@ -284,7 +405,9 @@ it themselves**, do not try to drive that flow.
 - [ ] Right mailbox chosen (asked, if both were connected)
 - [ ] Exact text shown to the user before any send
 - [ ] Final Gmail attachment manifest shown before any draft send
-- [ ] Numbers used from the listing printed immediately before the action
+- [ ] Gmail and Drive numbers paired with their listing token; Outlook numbers from the latest listing
 - [ ] IDs taken from piped output, never from a truncated table column
 - [ ] `--from` address taken from `co email addresses`, never guessed
 - [ ] Empty search reported as "no match", not as "does not exist"
+
+If Teams creation returns an event without a usable meeting link, the command exits 1 and retains the event ID. Follow `co outlook calendar read EVENT_ID` to inspect that event; do not repeat creation. A missing event ID requires listing the calendar before another write.

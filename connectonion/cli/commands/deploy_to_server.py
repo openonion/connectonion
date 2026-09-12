@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from dotenv import dotenv_values
 from rich.console import Console
 
 from .env_inheritance import is_operator_identity
@@ -255,6 +254,7 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
     """
     environment = f"Environment=PATH={SRV}/{agent}/.venv/bin:/usr/local/sbin:" \
                   f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+    environment += f"Environment=AGENT_CONFIG_PATH={SRV}/{agent}/.co\n"
     if hostname:
         environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
     if port:
@@ -803,9 +803,9 @@ def _sync_env(target: str, agent: str, project_dir: Path,
     service user — cannot read it back out, and `--delete` cannot overwrite a
     key that was rotated on the server.
     """
-    env_path = project_dir / ".env"
+    from ...environment import deployment_environment
     env_vars = _env_for_server(
-        dotenv_values(env_path) if env_path.exists() else {},
+        deployment_environment(),
         agent, agent_account)
 
     # A newline inside a value would end the KEY=VALUE line and turn the rest
@@ -1214,10 +1214,11 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     if hostname:
         console.print(f"  [cyan]https://{hostname}[/cyan] "
                       f"[dim]— the certificate lands within a minute of first boot[/dim]")
-    console.print(f"[dim]  logs:  co server ssh {server} 'journalctl -u {agent} -f'[/dim]")
     console.print(f"[dim]  state: {SRV}/{agent}/.co/  — untouched by deploys[/dim]")
     if deployer_address:
         console.print(f"[dim]  admin: {deployer_address[:16]}…  (your key)[/dim]")
+    # The command goes last: it is the line a reader acts on.
+    console.print(f"[dim]  logs:  co server ssh {server} 'journalctl -u {agent} -f'[/dim]")
     console.print()
     return True
 

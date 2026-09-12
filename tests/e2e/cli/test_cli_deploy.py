@@ -147,14 +147,14 @@ class TestCliDeploy:
             )
             mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running"})
 
-            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
-                self.runner.invoke(cli, ['deploy'])
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token", "AGENT_ADDRESS": "process-agent-address"}):
+                self.runner.invoke(cli, ['--env-file', str(Path('.env').resolve()), 'deploy'])
 
             secrets = json.loads(mock_post.call_args.kwargs["data"]["secrets"])
             assert secrets["AGENT_CONFIG_PATH"] == "/app/.co"
             assert "/Users/somedev" not in json.dumps(secrets)   # no host path leak
-            assert secrets["OPENONION_API_KEY"].startswith("eyJ")  # auth key preserved
-            assert secrets["AGENT_ADDRESS"].startswith("0xcd92")   # identity preserved
+            assert secrets["OPENONION_API_KEY"] == "test-token"  # auth key preserved
+            assert secrets["AGENT_ADDRESS"] == "process-agent-address"   # identity preserved
 
     def test_deploy_fetches_logs_after_success(self):
         """Test that deploy fetches and displays container logs after deployment.
@@ -483,7 +483,10 @@ class TestDeploySkillsPackaging:
             result = runner.invoke(cli, ['deploy', '--name', 'other-name'])
             assert "--name only applies to template deploys" in result.output
 
-    def test_skills_flag_takes_multiple_paths(self, tmp_path):
+    def test_skills_flag_takes_multiple_paths(self, tmp_path, monkeypatch):
+        from rich.console import Console
+        from connectonion.cli.commands import deploy_commands
+        monkeypatch.setattr(deploy_commands, "console", Console(width=30))
         runner = ArgparseCliRunner()
         with runner.isolated_filesystem():
             from connectonion.cli.main import cli
@@ -500,7 +503,7 @@ class TestDeploySkillsPackaging:
                 '--skills', str(first),
                 '--skills', str(tmp_path / 'missing-skill'),
             ])
-            assert "missing-skill" in result.output
+            assert str(tmp_path / "missing-skill") in result.output
             assert "Skills path not found" in result.output
 
     def test_missing_skills_path_errors_clearly(self):

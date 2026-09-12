@@ -1,47 +1,69 @@
-"""Pytest configuration and shared fixtures for ConnectOnion tests."""
+"""Pytest configuration and shared fixtures for ConnectOnion tests.
 
-"""
 LLM-Note: Global pytest configuration and shared test fixtures
 
-What it tests:
-- pytest_configure: Registers custom test markers (slow, integration, unit, benchmark, e2e_online)
-- pytest_addoption: CLI options for relay URL configuration
-- pytest_collection_modifyitems: Auto-marks tests by folder path, skips real_api tests if API keys missing
+Module level: FORCE_COLOR & co. are stripped so output matches CI.
 
-Shared fixtures provided:
-- temp_dir: Temporary directory for test isolation
-- mock_openai_client: Mock OpenAI client with default responses
-- mock_llm: MockLLM instance with standard response
-- sample_tools: Standard test tools (calculator, current_time, read_file)
-- test_agent: Pre-configured test agent with mocked LLM
-- sample_behavior_records: Example behavior data for testing
-- sample_openai_responses: Mock API response payloads
-- test_files: Pre-created test files (normal, empty, large, unicode)
-- relay_url: Default relay server URL for network tests
-- openai_api_key: Test API key fixture
+Policy fixtures (autouse, apply to every test):
+- _isolate_selected_environment: no provider selection leaks between tests
+- _never_touch_the_real_home: HOME and ~/.co are a fresh tmp dir per test
+- _restore_excepthook: sys.excepthook installed by a test does not outlive it
+- _no_network: any test in the default run that opens a non-loopback socket fails
+- _no_leaked_threads: a test that leaves a thread running fails in teardown
+- _retire_legacy_browser_workers: legacy browser worker threads are retired after each test
+- _forget_seen_signatures: CONNECT replay memory is cleared between tests
+- _no_stray_project_above_the_test: a stray .co/ above cwd is a failure, not a wrong answer
 
-Components under test:
-- connectonion.Agent
-- connectonion.core.llm (LLMResponse, ToolCall, OpenAILLM)
-- tests.utils.mock_helpers.MockLLM
+Shared fixtures:
+- temp_dir, mock_llm, sample_tools, test_agent, test_files, relay_url
+- default_backend_url: for tests about backend URL resolution itself
+
+Markers are auto-applied by folder in pytest_collection_modifyitems; see
+tests/TEST_ORGANIZATION.md.
 """
 
-import pytest
+import os
+import socket
+import sys
 import tempfile
 import shutil
-import json
+import threading
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+
+import pytest
+
+# Strip the colour-forcing variables a developer's shell may carry, *before*
+# connectonion is imported: its module-level Rich consoles read FORCE_COLOR
+# once, at construction. Dozens of tests assert on the plain text a command
+# prints; CI has none of these set, so Rich sees a pipe and emits no escape
+# codes there. A shell with FORCE_COLOR=3 (Claude Code sets it) made 43 of
+# those tests fail locally while CI stayed green — the worst kind of
+# disagreement, because the local run looks like the broken one. Subprocesses
+# inherit os.environ, so this covers `co` invoked as a child too.
+for _name in ("FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR", "COLORTERM", "NO_COLOR", "PY_COLORS"):
+    os.environ.pop(_name, None)
+
 from connectonion import Agent
-# No need to import tools - they're just functions
-from connectonion.core.llm import LLMResponse, ToolCall, OpenAILLM
+from connectonion.core.llm import LLMResponse
 from connectonion.core.usage import TokenUsage
 from tests.utils.mock_helpers import MockLLM
-import os
-from dotenv import load_dotenv
 
-# Load .env file for API keys
-load_dotenv()
+
+@pytest.fixture(autouse=True)
+def _isolate_selected_environment(request, monkeypatch):
+    """Auth/refresh and CLI selection cannot leak process state to another test."""
+    if request.node.get_closest_marker("real_api"):
+        yield
+        return
+    from unittest.mock import patch
+    from connectonion import environment
+    monkeypatch.setattr(environment, "_loaded", dict(environment._loaded))
+    monkeypatch.setattr(environment, "_selected", None)
+    with patch.dict(os.environ):
+        for provider in environment.PROVIDER_PREFIXES:
+            for key in environment.provider_keys(provider):
+                os.environ.pop(key, None)
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -73,8 +95,168 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))       # Windows
-    monkeypatch.setenv("AGENT_CONFIG_PATH", str(home / ".co"))
+    # Clear inherited routing; the isolated HOME is the default. Tests that
+    # exercise a custom global directory select it explicitly.
+    monkeypatch.delenv("AGENT_CONFIG_PATH", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+
+
+
+@pytest.fixture(autouse=True)
+def _restore_excepthook():
+    """`auto_debug_exception()` installs a global sys.excepthook and nothing
+    removes it. Left in place, every later uncaught exception in the run would
+    try to build a debug Agent and call an LLM."""
+    saved = sys.excepthook
+    yield
+    sys.excepthook = saved
+
+
+_OFFLINE_EXEMPT_MARKERS = ("real_api", "network", "deploy", "provider_cli", "e2e_online", "public_cross_repo")
+_LOOPBACK_HOSTS = {"", "localhost", "127.0.0.1", "::1", "0.0.0.0", "::"}
+
+
+def _is_loopback(address) -> bool:
+    host = address[0] if isinstance(address, tuple) else address
+    if isinstance(host, bytes):
+        host = host.decode(errors="replace")
+    if not isinstance(host, str):
+        return True
+    return host in _LOOPBACK_HOSTS or host.startswith("127.") or host.endswith(".localhost")
+
+
+@pytest.fixture(autouse=True)
+def _no_network(request, monkeypatch):
+    """A test in the default run must not reach the network.
+
+    Tests that need it say so with a marker (network, real_api, deploy, ...)
+    and are deselected by default. Everything else is supposed to be offline,
+    but nothing enforced that: a unit test that mocked the console and forgot
+    the LLM built a real Agent and called the API with the key "test-key", and
+    CI sat on it for the full 300s timeout (2026-09-08, main).
+
+    Two things happen on a violation. The connect raises ConnectionRefusedError
+    right away, which is what the code under test would see on a machine with
+    no network, so nothing hangs. And the test fails in teardown naming the
+    host, even if the code under test swallowed the error — a silent fallback
+    is exactly the kind of thing this exists to surface.
+    """
+    if any(request.node.get_closest_marker(m) for m in _OFFLINE_EXEMPT_MARKERS):
+        yield
+        return
+
+    # Point every backend client at a port nothing listens on. 57 tests were
+    # reaching production through the default URL on every run — `co init`,
+    # `co doctor`, host startup — and passing only because the fallback for a
+    # backend that answers 401 to "test-key" happens to look like the fallback
+    # for no backend at all. A test that wants a backend answer mocks it.
+    monkeypatch.setenv("CONNECTONION_BACKEND_URL", "http://127.0.0.1:9")
+
+    attempts = []
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def _refuse(sock, address):
+        if sock.family in (socket.AF_INET, socket.AF_INET6) and not _is_loopback(address):
+            attempts.append(address)
+            raise ConnectionRefusedError(
+                f"tests/conftest.py refused a network connection to {address!r}: "
+                "this test is not marked network/real_api, so it must not leave the machine"
+            )
+
+    def connect(sock, address):
+        _refuse(sock, address)
+        return real_connect(sock, address)
+
+    def connect_ex(sock, address):
+        _refuse(sock, address)
+        return real_connect_ex(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
+    yield
+    if attempts:
+        hosts = sorted({f"{a[0]}:{a[1]}" if isinstance(a, tuple) and len(a) > 1 else str(a) for a in attempts})
+        pytest.fail(
+            f"this test tried to reach the network ({', '.join(hosts)}). "
+            "Mock the client, or mark the test `network`/`real_api` if leaving the machine is the point."
+        )
+
+
+# Threads that outlive a test by design and cannot be ended from one:
+# - pool workers that executors keep around between tasks (idle, owned by the
+#   pool, no API to retire one)
+# - the process-wide event loop that runs async tools (started once, lazily,
+#   by connectonion.core.tool_executor; shared by every later async tool call)
+_LONG_LIVED_THREAD_PREFIXES = ("ThreadPoolExecutor-", "asyncio_", "connectonion-async-tools")
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_threads(request):
+    """A test that leaves a thread running fails, in teardown, by name.
+
+    Measured before this existed: four modules left 39 `registry-cleanup`
+    threads behind, one per create_app(). Nothing failed. Later in the same
+    run a test patched time.sleep to a no-op, the 39 spun flat out, and the
+    main thread starved until the 300s timeout — seven red runs on main in
+    two weeks, none of them from the test that was blamed (#1246).
+
+    A thread that has not finished by the end of the test gets a short grace
+    (workers that are wrapping up), then the test fails naming it. The fix is
+    always in the test or the code it exercises: stop what you start.
+    """
+    before = {t.ident for t in threading.enumerate()}
+    yield
+    fresh = [t for t in threading.enumerate() if t.ident not in before]
+    for t in fresh:
+        if t.is_alive():
+            t.join(timeout=0.5)
+    leaked = [t for t in fresh if t.is_alive() and not t.name.startswith(_LONG_LIVED_THREAD_PREFIXES)]
+    if leaked:
+        names = ", ".join(f"{t.name} (daemon={t.daemon})" for t in leaked)
+        pytest.fail(
+            f"this test left {len(leaked)} thread(s) running: {names}. "
+            "Stop or join them before the test ends."
+        )
+
+
+@pytest.fixture(autouse=True)
+def _retire_legacy_browser_workers(monkeypatch):
+    """Every LegacyBrowserAutomation built during a test has its worker retired after it.
+
+    The legacy class starts a worker thread in __init__ and only `close()`
+    retires it. Tests build it with fake pages and never close, and whether
+    the worker exited before the thread guard looked depended on when the
+    cyclic GC happened to free the instance — a guard that fails on GC timing
+    is a flaky guard. Tracking the instances makes it deterministic.
+    """
+    from connectonion.useful_tools.browser_tools.browser import LegacyBrowserAutomation
+
+    made = []
+    original_init = LegacyBrowserAutomation.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        made.append(self)
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(LegacyBrowserAutomation, "__init__", tracking_init)
+    yield
+    for browser in made:
+        browser._retire_worker()
+
+
+@pytest.fixture
+def default_backend_url(monkeypatch):
+    """Undo the dead-port redirect for a test that is *about* URL resolution.
+
+    Returns the production origin so the test can assert against it without
+    spelling it out. Every request is still mocked or refused by _no_network;
+    only the string changes.
+    """
+    from connectonion.backend import DEFAULT_BACKEND_URL
+    monkeypatch.delenv("CONNECTONION_BACKEND_URL", raising=False)
+    return DEFAULT_BACKEND_URL
 
 
 @pytest.fixture
@@ -84,20 +266,6 @@ def temp_dir():
     yield temp_dir
     shutil.rmtree(temp_dir)
 
-
-@pytest.fixture
-def mock_openai_client():
-    """Create a mock OpenAI client for testing."""
-    mock_client = MagicMock()
-    
-    # Default successful response
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Test response"
-    mock_response.choices[0].message.tool_calls = None
-    
-    mock_client.chat.completions.create.return_value = mock_response
-    return mock_client
 
 
 @pytest.fixture
@@ -114,6 +282,7 @@ def mock_llm():
 
 
 # Tool functions for testing
+
 def calculator(expression: str) -> str:
     """Perform mathematical calculations."""
     try:
@@ -152,81 +321,6 @@ def test_agent(temp_dir, mock_llm, sample_tools):
     return agent
 
 
-@pytest.fixture
-def sample_behavior_records():
-    """Sample behavior records for testing."""
-    return [
-        {
-            "timestamp": "2025-07-28T10:00:00.000000",
-            "task": "Calculate 2 + 2",
-            "tool_calls": [
-                {
-                    "name": "calculator",
-                    "arguments": {"expression": "2 + 2"},
-                    "call_id": "call_123",
-                    "result": "Result: 4",
-                    "status": "success"
-                }
-            ],
-            "result": "The answer is 4",
-            "duration_seconds": 1.5
-        },
-        {
-            "timestamp": "2025-07-28T10:01:00.000000",
-            "task": "What time is it?",
-            "tool_calls": [
-                {
-                    "name": "current_time",
-                    "arguments": {},
-                    "call_id": "call_456",
-                    "result": "2025-07-28 10:01:00",
-                    "status": "success"
-                }
-            ],
-            "result": "Current time is 10:01 AM",
-            "duration_seconds": 0.8
-        }
-    ]
-
-
-@pytest.fixture
-def sample_openai_responses():
-    """Sample OpenAI API responses for testing."""
-    return {
-        "simple_text": {
-            "id": "chatcmpl-123",
-            "object": "chat.completion",
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "Hello! I'm a helpful assistant."
-                },
-                "finish_reason": "stop"
-            }]
-        },
-        "tool_calling": {
-            "id": "chatcmpl-456", 
-            "object": "chat.completion",
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [{
-                        "id": "call_abc123",
-                        "type": "function",
-                        "function": {
-                            "name": "calculator",
-                            "arguments": '{"expression": "2 + 2"}'
-                        }
-                    }]
-                },
-                "finish_reason": "tool_calls"
-            }]
-        }
-    }
-
 
 @pytest.fixture
 def test_files(temp_dir):
@@ -257,69 +351,16 @@ def test_files(temp_dir):
     return files
 
 
-@pytest.fixture
-def openai_api_key():
-    """Provide test API key."""
-    return "sk-test-key-for-testing-only"
 
-
-# Load environment variables from tests/.env
-env_file = Path(__file__).parent / ".env"
-if env_file.exists():
-    load_dotenv(env_file)
-else:
-    print("\n⚠️  Warning: tests/.env not found!")
-    print("   Some tests may fail without API keys.")
-    print("   Copy tests/.env.example to tests/.env and add your API keys.\n")
-
-
-# Network test fixtures
 @pytest.fixture
 def relay_url():
     """
     Default relay URL for network tests.
 
-    Uses production relay server by default.
-    Override with --relay-url flag or RELAY_URL env var.
+    Uses the production relay server by default; override with RELAY_URL.
     """
     return os.getenv("RELAY_URL", "wss://oo.openonion.ai")
 
-
-@pytest.fixture
-def local_relay_url():
-    """Local relay URL for development/testing."""
-    return "ws://localhost:8000"
-
-
-@pytest.fixture
-def relay_url_from_cli(request):
-    """Get relay URL from command line or use default."""
-    if request.config.getoption("--use-local-relay"):
-        return "ws://localhost:8000"
-    return request.config.getoption("--relay-url")
-
-
-# Test markers and CLI options
-def pytest_configure(config):
-    """Configure custom pytest markers."""
-    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
-    config.addinivalue_line("markers", "unit: marks tests as unit tests")
-    config.addinivalue_line("markers", "e2e_online: marks real API end-to-end tests")
-
-
-def pytest_addoption(parser):
-    """Add custom command line options."""
-    parser.addoption(
-        "--relay-url",
-        action="store",
-        default="wss://oo.openonion.ai",
-        help="Relay server URL for network tests"
-    )
-    parser.addoption(
-        "--use-local-relay",
-        action="store_true",
-        help="Use local relay server (ws://localhost:8000)"
-    )
 
 
 def _needs_environment_api_key(item):

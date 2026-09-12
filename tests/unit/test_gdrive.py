@@ -73,7 +73,7 @@ class TestGDriveInit:
             from connectonion.useful_tools.gdrive import GDrive
             with pytest.raises(ValueError) as exc:
                 GDrive()._get_service()
-            assert "credentials not found" in str(exc.value)
+            assert "Google account not connected" in str(exc.value)
 
     @pytest.mark.real_refresh
     @patch("connectonion.useful_tools.gdrive.build")
@@ -86,7 +86,7 @@ class TestGDriveInit:
         with patch.dict(os.environ, ENV, clear=False):
             GDrive()._get_service()
 
-        assert calls == ["test-refresh"]
+        assert calls == [None]
         assert mock_build.call_args.kwargs["credentials"].token == "fresh"
 
     @pytest.mark.real_refresh
@@ -94,13 +94,15 @@ class TestGDriveInit:
         from connectonion.useful_tools.gdrive import GDrive
 
         monkeypatch.setenv("OPENONION_API_KEY", "opaque-api-key")
+        monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "local-refresh-secret")
         response = MagicMock(status_code=502, text="provider-refresh-secret")
 
         with patch("httpx.post", return_value=response):
             with pytest.raises(ValueError) as error:
                 GDrive.__new__(GDrive)._refresh_via_backend("local-refresh-secret")
 
-        assert str(error.value) == "Failed to refresh Google authorization via backend"
+        assert "HTTP 502" in str(error.value)
+        assert error.value.code == "provider_unavailable"
         assert "provider-refresh-secret" not in str(error.value)
         assert "local-refresh-secret" not in str(error.value)
 
@@ -358,7 +360,7 @@ class TestReadFileForAttachment:
             "type": "application/pdf",
             "size": 4,
             "link": "https://drive.google.com/file/d/file-1/view",
-            "data": b"%PDF",
+            "data": b"%PDF", "original_type":"application/pdf", "export_type":None,
         }
         service.files.return_value.get_media.assert_called_once()
 
@@ -463,3 +465,27 @@ class TestUploadAndDelete:
 
         service.files.return_value.delete.assert_not_called()
         assert service.files.return_value.update.call_args.kwargs["body"] == {"trashed": True}
+
+@pytest.mark.parametrize('resources,reason', [
+    ([file_resource(id='a', shortcutDetails={'targetId':'b'}), file_resource(id='b', shortcutDetails={'targetId':'a'})], 'cycle'),
+    ([file_resource(trashed=True)], 'trash'),
+    ([file_resource(shortcutDetails={})], 'target'),
+])
+def test_metadata_rejects_unusable_targets_without_unbounded_recursion(resources, reason):
+    service = MagicMock()
+    service.files().get().execute.side_effect = resources
+    with patch.dict(os.environ, ENV, clear=False):
+        with pytest.raises(ValueError, match=reason):
+            drive_with_service(service)._get_meta('a')
+    assert service.files().get().execute.call_count <= 2
+
+
+def test_info_reports_unknown_native_size_and_export_without_download():
+    service = MagicMock()
+    service.files().get().execute.return_value = file_resource(size=None, mimeType='application/vnd.google-apps.document')
+    with patch.dict(os.environ, ENV, clear=False):
+        info = drive_with_service(service).get_info('file-1')
+    assert info['raw_size'] is None
+    assert info['export_type'] == 'text/markdown'
+    assert info['export_size'] is None
+    service.files().export_media.assert_not_called()

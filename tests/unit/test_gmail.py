@@ -184,12 +184,13 @@ class TestGmailGetService:
 
         with pytest.raises(ValueError) as exc_info:
             gmail._get_service()
-        assert "OPENONION_API_KEY not found" in str(exc_info.value)
+        assert "Google account not connected" in str(exc_info.value)
 
     @pytest.mark.real_refresh
     @patch.dict(os.environ, {
         "GOOGLE_SCOPES": "gmail.readonly gmail.send",
         "OPENONION_API_KEY": "api-key",
+        "GOOGLE_REFRESH_TOKEN": "test-local-refresh",
         "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
     }, clear=True)
     @patch('connectonion.useful_tools.gmail.build')
@@ -219,11 +220,17 @@ class TestGmailGetService:
 
         monkeypatch.setenv("OPENONION_API_KEY", "api-key")
         monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
+        from connectonion import environment
+        for key in environment.provider_keys("google"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(environment, "_loaded", {})
+        (tmp_path / "keys.env").write_text("GOOGLE_REFRESH_TOKEN=stale-local-token\n")
+        environment.load_environment()
         response = Mock(status_code=200)
         response.json.return_value = {
             "access_token": "fresh-access",
             "refresh_token": "rotated-refresh",
-            "expires_at": "2026-08-08T12:00:00+00:00",
+            "expires_at": "2099-08-08T12:00:00+00:00",
         }
 
         with patch("httpx.post", return_value=response) as post:
@@ -243,6 +250,7 @@ class TestGmailGetService:
         from connectonion.useful_tools.gmail import Gmail
 
         monkeypatch.setenv("OPENONION_API_KEY", "api-key")
+        monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "test-local-refresh")
         response = Mock(status_code=401)
         response.json.return_value = {
             "detail": {"error": "reauth_required"},
@@ -1747,8 +1755,8 @@ class TestGmailDraftAttachments:
         service = MagicMock()
         service.users().drafts().send().execute.return_value = {"id": "message-1"}
 
-        result = self._gmail(service)._send_draft("draft-1")
+        result = self._gmail(service)._send_draft("draft-1", raw='reviewed-raw')
 
         assert result == {"id": "message-1"}
-        assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1"}
+        assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1", "message": {"raw": "reviewed-raw"}}
         service.users().messages().send.assert_not_called()

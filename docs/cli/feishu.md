@@ -1,0 +1,389 @@
+# Feishu and Lark CLI (`co feishu`, `co lark`)
+
+Turn a Feishu bot into a directory of files. Every message someone sends the
+bot becomes one line in a log and one file in a queue; anything that can read
+a file can answer it. `co lark` is the same tool against Lark (Feishu outside
+China) with its own credentials.
+
+This calls Feishu directly through the official SDK's long connection. It
+dials out, so it runs on a laptop behind NAT with no public address, no
+OpenOnion credential, and nothing billed.
+
+## Setup
+
+```bash
+pip install lark-oapi
+co auth feishu
+```
+
+`co auth feishu` prints a QR code and a link. Scan it with Feishu or Lark,
+approve, and the application exists — in your own tenant, owned by you — with
+its credentials written to `~/.co/keys.env`.
+
+**Already have a bot?** `co auth feishu --app-id cli_…` authorizes that one
+instead of creating a new one, so it keeps the groups it is already in and the
+permissions already granted to it — which is usually what you want, since a new
+application is in no group at all. If `lark-cli` is installed, `co auth feishu`
+lists the application ids it has configured so you can copy one. It reads only
+the ids: the secret beside them is a keychain reference, and copying that into
+a plaintext file would be a downgrade (#1497). There is no developer console to
+visit and nothing to copy. It starts on Feishu and moves to Lark by itself if
+that is where your tenant lives, so there is nothing to choose first either.
+
+Then add the bot to a group and @ it, or send it a direct message.
+
+```bash
+co feishu check                  # says what is missing, if anything
+```
+
+`check` exits 3 and names the missing item.
+
+<details>
+<summary>Using an application you already have</summary>
+
+`co auth feishu` always creates a new application, because Feishu has no API
+that lists the ones you own. To use an existing one, configure it by hand:
+
+1. At <https://open.feishu.cn/app> (Lark: <https://open.larksuite.com/app>),
+   enable the **bot** capability.
+2. Under *Permissions* add `im:message.group_at_msg:readonly` (group messages
+   that @ the bot) and `im:message:send_as_bot` (reply). Add
+   `im:message.p2p_msg:readonly` if people will message the bot directly.
+3. Under *Events*, choose **long connection** and subscribe to
+   `im.message.receive_v1`. No request URL is needed.
+4. Publish it to your tenant, then write its credentials into
+   `~/.co/keys.env` with an editor — `co env set` refuses these two names,
+   because a hand-typed app secret came from somewhere it cannot check:
+
+   ```dotenv
+   FEISHU_APP_ID=cli_xxx
+   FEISHU_APP_SECRET=xxx
+   # Lark uses its own pair
+   LARK_APP_ID=cli_yyy
+   LARK_APP_SECRET=yyy
+   ```
+
+</details>
+
+## The directory
+
+```text
+~/.co/inbox/feishu/
+├── received.jsonl   every message received, one JSON line, appended, never deleted
+├── sent.jsonl       every message sent, and every send that failed
+├── done.jsonl       durable completion IDs, including messages handled without replying
+├── queue.lock       short kernel lock for queue mutations (never delete lock files)
+├── new/             messages nobody has taken yet, one file each
+│   └── 1756808267-om_9f8e
+├── cur/             taken but not yet replied; back to new/ after an hour
+├── bad/             files that were in new/ but are not messages (a zero-byte file from a full disk); one log line each
+├── log              the tool's own log: connected, reconnecting, send failed
+└── listen.lock      held by the running listener (a kernel lock; the pid inside is for you)
+```
+
+Built-in receive, completion and stale recovery coordinate with the same short
+kernel lock. The claim timestamp and rename cannot be separated by the sweep.
+Completion is flushed to `done.jsonl` before queue removal, so a redelivery does
+not resurrect a message whose consumer deliberately chose silence. This records
+completion without pretending a reply was sent. Lock files stay in place; the
+kernel releases ownership when a process exits.
+
+Only files named `<arrival>-<id>` are the tool's. Anything else that lands in
+`new/` (`.DS_Store`, an editor's swap file, a note) is left alone, never
+claimed, never swept, never deleted.
+
+The file in `new/` and the line in `received.jsonl` are the same bytes:
+
+```json
+{"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
+ "text":"@OpsAgent look at today's failed deploys","mentioned":true,"at":"2026-09-02T10:31:07Z"}
+```
+
+`chat` is where it came from; reply there and the answer lands beside the
+question. `sender` is the person's `union_id`. `mentioned` is whether the bot
+was @'d (always true in a direct message). Nothing else from Feishu is kept
+unless you start `listen --raw`, so group titles and contact cards never reach
+a prompt by accident.
+
+You do not need the commands below to consume it:
+
+```bash
+ls ~/.co/inbox/feishu/new/                # how many are waiting
+tail -f ~/.co/inbox/feishu/received.jsonl # watch live
+grep on_7c6d ~/.co/inbox/feishu/received.jsonl | jq -r .text
+co feishu receive --no-start -t 0       # claim with a fresh visibility timestamp
+co feishu done MESSAGE_ID              # finish durably without sending a reply
+```
+
+The default directory follows `$AGENT_CONFIG_PATH`, normally `~/.co`.
+A second set of applications gets its own root: `CO_INBOX_HOME=~/.co/inbox-ops co feishu listen`.
+The variable moves the whole root rather than one channel, because moving one
+and leaving the others only ever produced a half-configured machine.
+
+## The verbs
+
+```bash
+co feishu listen                 # hold the connection, write the directory; Ctrl-C stops
+co feishu receive                # block until a message arrives, take it, print it as one JSON line
+co feishu receive -t 300         # give up after 5 minutes (exit 124, like timeout(1)); -t 0 looks once
+co feishu send oc_a1b2 "all green"
+echo "all green" | co feishu send oc_a1b2          # text from stdin, like mail
+co feishu reply om_9f8e "fixed"                     # back to the chat and thread that message came from
+co feishu done om_9f8e           # took it, decided not to answer; do not bring it back
+co feishu check                  # credentials, connectivity, listener, unread; exit 3 on a problem
+co feishu ls                     # unread: id, chat, sender, text
+co feishu log -f                 # the tool's log, following
+co feishu listen --raw           # also keep Feishu's own payload on each received.jsonl line
+co feishu receive --no-start     # wait for a message but never start a listener (a cron job, a test)
+co feishu consume -- ./answer.sh   # the loop: receive, run the command, reply with its stdout
+```
+
+`receive` starts a background `listen` if none is running, so there is no
+daemon to remember; if that listener dies within a second (no SDK, bad
+credentials) `receive` exits 1 and points at `log`. `listen` in the foreground is for watching it work and
+for a service manager; one listener per directory. A second `listen` on the
+same directory says `already listening (pid N)` and exits 1.
+
+Exit codes, the same on every verb:
+
+| exit | meaning | what to do |
+|---|---|---|
+| 0 | done | |
+| 1 | the platform or the listener refused; its own sentence is on stderr | read it; `log` has the same line |
+| 2 | usage: unknown flag, nothing to send | `--help` |
+| 3 | not configured: a credential, the SDK, or the bot capability is missing | `check` names the item |
+| 124 | `receive -t N` saw nothing in N seconds | the same as `timeout(1)` |
+
+`listen` never prints a traceback. When Feishu refuses the credentials it
+writes one line (`Feishu refused the credentials: 10003 invalid param`),
+points at `log`, releases the lock and exits 1, without dialling the long
+connection: a pair Feishu has just rejected cannot connect, and the SDK's
+own retry would otherwise hide the refusal behind `connect failed` lines
+every two minutes.
+
+`reply ID` needs only the id: chat and thread are read from `received.jsonl`. It
+refuses to answer the same message twice unless you pass `--again`, so a loop
+that re-runs cannot double-post. A taken message that is neither replied to
+nor marked `done` comes back to `new/` after an hour, on the assumption that
+its consumer died; `done` is how a consumer says it chose silence. `send` and `reply` print the id Feishu gave
+the new message and exit 1 with Feishu's own reason if it was refused.
+
+## Your own agent, no flags
+
+Say which channels the agent answers in `~/.co/host.yaml`, beside the name and
+the trust level it already keeps there:
+
+```yaml
+name: oo
+trust: open
+listen:
+  feishu:
+    chats: [oc_a1b2]      # absent or empty = every group the bot is in
+    mention_only: true    # a group needs an @; a direct message is already one
+  lark: {}
+```
+
+Then start it the way you always did:
+
+```bash
+co ai                     # answers the channels in the file
+co server                 # so does a deployed Host
+```
+
+The command line is for overriding that file for one run, not for configuring
+it: `co ai --listen lark` answers only Lark this time, `co ai --no-listen`
+answers nothing. A channel named on the command line still takes its options
+from the file. An unknown channel, or a `host.yaml` that does not parse, stops
+the start and says which — an agent nobody can reach otherwise looks exactly
+like a working one.
+
+Each conversation keeps its own session, so a follow-up remembers the question
+it follows, and two threads of one group do not read as non-sequiturs to each
+other. On a Host the turn is recorded in `.co/session_results.jsonl` beside the
+interactive ones, carrying `via: feishu` and the sender.
+
+In 1.8.5 anyone who can address the bot can command it. A self-built
+application is scoped to your tenant and to the groups the bot was invited to,
+so that is your company, not the internet. Sender allowlists arrive in 1.9.
+
+## Any other agent, two lines
+
+```bash
+m=$(co feishu receive)                       # {"id":"om_9f8e","chat":"oc_a1b2","text":"...",...}
+echo "done, all green" | co feishu reply om_9f8e
+```
+
+Or let the tool run the loop for you:
+
+```bash
+co feishu consume -- claude -p                 # one claude per message; its stdout is the reply
+co feishu consume -- codex exec -
+co feishu consume -- ./answer.sh
+```
+
+`consume` runs the command with the message JSON on stdin and these variables:
+`CO_PROVIDER`, `CO_CHAT`, `CO_THREAD`, `CO_SENDER`, `CO_MSG_ID`, and
+`CO_CHAT_DIR` (a per-chat directory the command may keep its own state in).
+Non-empty stdout is sent back as the reply and the message is done. Empty
+stdout with exit 0 is the command choosing silence: also done, noted in
+`log`. A non-zero exit, or a reply Feishu refused, sends nothing and leaves
+the message taken: it comes back to `new/` in an hour, the same as a
+consumer that died, so a transient failure is retried and a question is
+never silently consumed. A command that cannot be run at all (`./answer.sh`
+without its exec bit) is refused with exit 2 before any message is taken.
+
+`consume` was called `serve` in 1.8.5b1 and the old name is gone, not aliased —
+this project does not ship hidden commands, and `serve` was public for a few
+hours in one opt-in beta. It was renamed because nothing here serves
+anything — it takes messages off a queue and hands each to a command, which is
+what this design calls a consumer throughout, and what `lark-cli event consume`
+calls it too. A verb another agent can guess is worth more than one it has to
+be told.
+
+`consume` runs one command at a time, because commands written for it have
+always run alone and some are not safe to run twice at once. `--workers N`
+answers N conversations at once; messages within one conversation stay in
+order whatever N is.
+
+While a command is running, `consume` keeps saying so, so the hour is measured
+from the last sign of life rather than from when the message was taken. A
+command that takes ninety minutes is not interrupted; one whose process died
+is offered to the next consumer as before. A message that has been handed out
+four times without ever finishing is completed with a `gave up` line in the
+log: something about that one breaks whoever takes it, and handing it out
+again just breaks the next consumer too, every hour, forever.
+
+## What the tool does for you
+
+- Acknowledges Feishu within its three-second window by doing nothing in the
+  handler but writing the two files; the agent runs elsewhere.
+- Writes the log line and the queue file before acknowledging, so a crash
+  after the acknowledgement loses nothing.
+- Drops redelivered messages by id, against the log, so a duplicate is dropped
+  after a restart too.
+- Returns a taken-but-unanswered message to `new/` after an hour, so a
+  consumer that died mid-task does not make it vanish.
+- Reconnects on its own and writes each attempt to `log`.
+- Retries a rate-limited send three times with backoff. Feishu allows five
+  messages per second per group, shared with every bot in that group.
+- Fetches a new tenant token when Feishu says the cached one is no longer
+  good, so rotating the app secret in the console does not leave `consume`
+  failing every reply until the old token's two hours are up.
+- Keeps one listener per directory with a lock the kernel holds: a listener
+  killed with SIGKILL, or a reboot, holds nothing, so the next `receive`
+  starts a fresh one instead of waiting on a pid that is gone.
+- Treats a redelivery as the recovery it is. If the log line was written but
+  the queue file was not (a crash between the two), the redelivered message
+  is queued, not dropped as a duplicate; only a message that is queued,
+  taken or answered is a duplicate.
+- Makes `reply --again` a real second post. Feishu holds a reply key to one
+  post per hour; a retry of the same text reuses it and is dropped, `--again`
+  uses a fresh key and lands.
+
+## The free edition's API quota
+
+Feishu's free edition (基础免费版) caps **all self-built apps in a tenant,
+together, at 10,000 counted API calls a month** since November 2024, and
+refuses counted calls for the rest of the month once it is spent (error
+`99991403`). Paid editions lift it. Feishu raised the free cap to 1,000,000
+in June 2026 as a limited-time change; the admin console (管理后台 > 费用中心
+> 权益数据) shows the number that applies to you today.
+
+What this tool spends, per Feishu's own list of what counts:
+
+| call | counted? | when |
+|---|---|---|
+| receiving a message over the long connection | no (event subscription) | every message |
+| `tenant_access_token` | no (authentication) | every process, at most once |
+| `bot/v3/info` | yes | once per `listen` start and per `check` |
+| `messages/{id}/reply`, `messages` (send) | yes | once per `reply` or `send` |
+
+So 10,000 a month is 10,000 replies, and listening costs nothing. Do not poll
+`check` on a timer: a bot that probed itself every minute is how others burnt
+the whole month in a week.
+
+## Lark
+
+`co lark` is the same tool with three differences: the domain is
+`open.larksuite.com`, the credentials are `LARK_APP_ID` and `LARK_APP_SECRET`,
+and the directory is `~/.co/inbox/lark/`. Every verb, flag,
+file and exit code above is identical. A tenant on Feishu and a tenant on Lark
+are two applications with two directories; nothing is shared between them.
+Error messages name the platform you are talking to, so a `co lark` user is
+never sent to the Feishu console.
+
+## Keeping it running
+
+`receive` and `consume` restart a listener that died, so a consumer loop is
+enough for most setups. To hold the connection whether or not anything is
+consuming, run `listen` under the service manager you already have. On macOS:
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.openonion.co-feishu-listen.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>ai.openonion.co-feishu-listen</string>
+  <key>ProgramArguments</key><array><string>/usr/local/bin/co</string><string>feishu</string><string>listen</string></array>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/tmp/co-feishu-listen.err</string>
+</dict></plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.openonion.co-feishu-listen.plist
+```
+
+On Linux the equivalent is a `systemd --user` unit with `Restart=always`.
+Either way the process reads `~/.co/keys.env` itself, so the unit carries no
+secrets. The listener writes nothing to stdout; its life is in `log`.
+
+## What it does not do
+
+It does not decide who may command an agent. Feishu's `group_at_msg` scope
+already limits what reaches the bot to messages that @ it; anything finer,
+such as an allowlist of senders, belongs to whatever consumes the directory.
+It does not carry images, files or cards (a non-text message arrives as its
+type in brackets, `[image]`), and it does not stream partial replies.
+
+Messages are plain text on disk in a directory only you can read. The log
+grows; rotate it with `logrotate` like any other.
+
+## 1.8.5 integration acceptance
+
+The implementation is being integrated on top of stable 1.8.4. Synthetic tests
+cover durable completion after silence, redelivery after a partial write, torn
+JSONL tails, unsafe ID collisions, and a stale sweep racing the claim timestamp.
+An unread malformed file is quarantined by both receive and ls; valid messages
+remain available. Queue/log writes are flushed before delivery returns.
+
+Real channel delivery and provider behavior during a network gap remain separate
+acceptance gates. Local concurrency tests do not establish that Feishu retains
+events throughout an arbitrarily long disconnection. No existing listener or
+polling automation should be stopped merely to run a synthetic test.
+
+## Recovering a disconnected listener
+
+The candidate reconciles history on startup and after an SDK reconnect. It uses
+only conversations already recorded in this inbox; it does not discover or
+import every chat the bot can access. The first run starts a new history boundary
+at the listener's start time. Preserve `recovery.json` with the inbox when
+restarting: deleting it discards that recovery boundary.
+
+Every history page passes through the same message-ID deduplication and durable
+completion records as WebSocket events. A successful pass advances the checkpoint;
+a failed page, denied permission, or storage failure leaves it unchanged and is
+retried after 60 seconds. `co lark check` reports an outstanding recovery failure.
+This work runs outside the WebSocket callback so fetching history does not delay
+live-event acknowledgements.
+
+Recovery requires the bot's message-history read permissions and access to each
+known conversation. Group recovery admits only messages that mention this bot;
+it does not turn unrelated group discussion into agent work. Known direct chats
+retain their direct-message semantics. Known threads and threads discovered in
+history are paginated separately. Messages in conversations the inbox has never
+seen, deleted messages, and history the provider no longer exposes cannot be
+promised recoverable. These limits also apply to `co feishu`.
+
+This repair is awaiting a repeat of the live gap test. The earlier observed loss
+remains an open release gate until that run passes.

@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import atexit
 import contextlib
+from contextlib import closing
 import inspect
 import json
 import os
@@ -1454,15 +1455,18 @@ class BrowserDaemon:
     def _bind_posix(self):
         """Raw AF_UNIX bind with the original stale-vs-busy probe (unchanged)."""
         if os.path.exists(self.sock_path):
-            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            try:
-                probe.connect(self.sock_path)
-                probe.close()
-                sys.exit(0)  # another daemon already serving
-            except OSError:
-                if _owner_alive(self.sock_path):
-                    sys.exit(0)  # owner alive, backlog full — busy, not stale
-                os.unlink(self.sock_path)  # stale socket
+            # The probe is closed on every path, refused included: a refused
+            # connect used to leave the socket to the garbage collector, which
+            # the test suite reported as `ResourceWarning: unclosed socket`.
+            with closing(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)) as probe:
+                try:
+                    probe.connect(self.sock_path)
+                except OSError:
+                    if _owner_alive(self.sock_path):
+                        sys.exit(0)  # owner alive, backlog full — busy, not stale
+                    os.unlink(self.sock_path)  # stale socket
+                else:
+                    sys.exit(0)  # another daemon already serving
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
         Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")

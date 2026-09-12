@@ -8,22 +8,43 @@ ConnectOnion has two release channels:
 Preview releases never replace the stable recommendation. Install one with
 `--pre` or pin its exact version.
 
-## Current release work
+## Current release
 
-Version **1.8.3** brings Gmail, Drive, Calendar and YouTube together through
-local Google authorization, with supported scopes by default and an optional
-`--scopes` restriction. It adds Gmail draft attachments and Calendar/YouTube
-commands with explicit confirmation for their writes. YouTube previews print
-the complete command for the approved plan. See [Google integration](integrations/google.md)
-for commands, permissions and the upgrade path.
+Stable **1.8.4** brings explicit global configuration, `co env`, reviewed Gmail
+operations, verified Synology sharing and Outlook calendar commands. See
+[1.8.4 release notes](releases/1.8.4.md) for migration and acceptance limits.
 
-The release candidate passed real-account read-only checks for all four services
-on 2026-09-07 using an existing local grant. Uploads and other mutations have
-isolated regression coverage; no production write is claimed as release evidence.
-PyPI and the GitHub Release are produced by the immutable-tag release workflow.
-TikTok and new messaging adapters are deferred until after 1.8.5.
-The sections below describe historical 1.7 preview work, not current
-installation recommendations.
+```bash
+python -m pip install --upgrade connectonion==1.8.4
+co --version
+co env
+```
+
+## Current preview
+
+Beta **1.8.5b2** adds the settings `b1` made you repeat. `co browser config`
+gives the browser engine a default, so `--engine` is an override rather than
+the only way in, and the paid engine is called `wtf` — its product name — where
+the flag used to say `onion`. `co <provider> serve` is now `consume`, and
+`co auth feishu --app-id` authorizes a bot already in your groups instead of
+creating one that is in none. Every exit on the inbox surface names a command
+to run next.
+
+It is a beta because the no-loss-across-a-reconnect gate has not passed: the
+repair is offline-tested and has not been run against a real group. The release
+notes list what else to decide before putting it on a machine other people use.
+See [1.8.5b2 release notes](releases/1.8.5b2.md).
+
+```bash
+python -m pip install --pre connectonion==1.8.5b2
+co --version
+```
+
+The 1.8.5a1, 1.8.5a2 and 1.8.5b1 previews are superseded; 1.8.4a1 and 1.8.4a2
+are historical, and the planned 1.8.4b1 was folded into the stable release. The
+tag workflow builds and verifies the public package before documentation is
+deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
+The sections below are historical notes.
 
 ## Historical 1.7 preview work
 

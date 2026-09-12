@@ -43,27 +43,177 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Release candidate: 1.8.3 (prepared, not published)
+## Stable release: 1.8.4
 
-Google authorization belongs on the user's computer. One `co auth google`
-requests the supported Gmail, Drive, Calendar and YouTube scopes by default;
-`--scopes` restricts that request. Tokens and actual granted scopes stay in
-local credential files. The backend exchanges tokens transiently and does not
-add Google credential columns or migrate users' data. Upgrade the CLI before
-using the new backend flow; older server-owned credential endpoints return 410.
+This release promotes the reviewed global configuration, Gmail and Synology work,
+and includes `co env`, Outlook credential diagnostics and calendar commands.
+The four final fix PRs (#1467–#1470) passed their checks before merging.
+The combined suite passed 8,666 tests with 21 skipped and 79.79% coverage;
+11 installed-wheel tests passed. Real Gmail/Drive and one physical NAS were
+exercised, including browser password, expiry and revocation checks.
+Microsoft request contracts have mocked coverage; no live Microsoft tenant was
+used. Control Center hosting remains a separately deployed companion service.
+See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 
-The four command groups are `co gmail`, `co gdrive`, `co gcalendar` and
-`co youtube`, documented together in `co-google`. Gmail adds draft attachments;
-Calendar and YouTube writes require explicit confirmation after preview.
-Automated fixtures do not count as real-account acceptance: consent and the
-four read-only production checks remain a publication gate. TikTok and new
-messaging adapters are deferred until after 1.8.5. Do not create a release tag
-or advertise this candidate as published until the remaining gates pass.
+The planned 1.8.4b1 was not published separately; its reviewed changes are included
+in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Current Version: 1.8.3
+## Release candidate: 1.8.5b2 (beta)
+
+Four things `b1` made you type or guess: `co browser config` sets a default
+engine so `--engine` is an override rather than the only way in; the paid
+engine is called `wtf`, its product name; `serve` is `consume`; and
+`co auth feishu --app-id` authorizes a bot you already have. Every exit on
+the inbox surface now names a command to run next, and a `co-inbox` skill
+ships with a test that diffs it against `--help`. Stable remains 1.8.4: the
+reconnect-gap gate in #1462 has not passed.
+See [1.8.5b2 notes](docs/releases/1.8.5b2.md).
+
+### Superseded: 1.8.5b1 (beta, published)
+
+Everything 1.8.5 is meant to contain is in one package: the Feishu and Lark
+inbox (`co feishu listen | receive | send | reply`, `co auth feishu`, the
+Host consumer lifespan and `co ai --listen`), and the permission work from
+the two previews. The surface is complete and frozen; what is missing is
+evidence, not code. The no-loss-across-a-reconnect gate in #1462 has not
+passed — the repair in `inbox/recovery.py` is offline-tested and has not
+been run against a real group — so 1.8.5 stable waits for it.
+See [1.8.5b1 notes](docs/releases/1.8.5b1.md).
+
+### Superseded: 1.8.5a2 (preview, published)
+
+`1.8.5a1` let an unattended agent read its own output by adding thirty
+command names to a list. This preview stops keeping the list: an ordinary
+command runs, and what holds one back is a category of consequence —
+destroys files, reaches credentials, writes outside the workspace, leaves
+the machine, runs a program the policy cannot read. A filter no longer
+needs a grant of its own, so `Bash(co browser *)` is not defeated by
+`| head -40` (#1488), and a planning tool is recognised by what owns it
+rather than by method names that collide with delete and read tools
+(#1447). See [1.8.5a2 notes](docs/releases/1.8.5a2.md).
+
+### Superseded: 1.8.5a1 (preview, published)
+
+An unattended agent could not run `head`. In Auto only eleven test/build
+commands auto-approved, so a scheduled run died on
+`co browser … get_text | head -40` — the granted browser command, refused
+because of the filter on its output (#1481). Read-only commands now run;
+`sed` and `awk` deliberately do not, because they take a program and a
+program is code. A shell redirect is held to the write tool's rule, and key
+material is refused by path, name and suffix wherever it sits, by shell
+command and by tool alike.
+
+The other half of the same complaint is fixed here too: a grant somebody wrote
+down was being ignored. `Bash(curl *)` in an operator's own `host.yaml` was
+refused unattended and asked every time with a person present, and a skill's
+declared `tools:` bought nothing at all — eight of nine hand-written grants
+were ignored on 1.8.4. An explicit grant now runs the call for any effect
+class, while a wildcard is honoured only for the effect its own text names,
+and the 78 grants that ship in the template are marked as such so they keep
+their old narrow reading. A refusal also names the line to write now, in both
+places that work, because a refusal nobody can act on gets worked around
+rather than fixed.
+
+This is a preview because it widens a security default, and a widened default
+earns a round of real use before everyone gets it on upgrade. Exercising it
+found seven further defects, six of them by running the thing rather than
+reading it: a `quiet=True` agent — every unattended run — crashed on every
+auto-approved call; the policy decision never reached the run trace;
+`read_file` allowed what `cat` refused; `cat << EOF > file` was unparseable
+and therefore refused; `awk 'BEGIN{system(...)}'` was allowed, which the pull
+request had itself named as its least-confident point; `cat $(cat which_file.txt)` was
+an unchecked read; and an adversarial sweep refused twenty-five of
+twenty-six bypasses, the twenty-sixth being `make install`, which 1.8.4 had
+allowed as focused verification and which is now narrowed.
+
+Offline suite: 8,805 passed, 21 skipped, on Python 3.10–3.13. Verified through
+the real `co ai` unattended, not only the harness: the failing production
+command works, a `.pem` read is refused by policy, and `awk` with `system()`
+is refused. The Feishu/Lark mailbox planned for this line is not in this
+preview; its no-loss reconnect gate is open (#1462).
+
+Stable remains 1.8.4. This is not Latest and needs `--pre` or an exact pin.
+See [1.8.5a1 notes](docs/releases/1.8.5a1.md).
+
+## Superseded candidate: 1.8.4a2 (preview, published)
+
+This preview fixes Gmail send-receipt recovery when Google rewrites Message-ID.
+Reviewed MIME carries a provider-preserved attempt marker; recovery requires a
+unique match within one bounded, complete metadata page and never blindly resends.
+The real installed-wheel Gmail/Drive journey passed, including simulated lost
+receipt recovery, mailbox operations and private collision-safe downloads.
+
+Core regression: 8,568 passed, 21 skipped and 184 live tests excluded. Local
+browser flows, loopback storage and six configured provider reads passed.
+Physical NAS acceptance still needs a reachable profile and disposable directory.
+Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
+See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
+[local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
+
+## Current Version: 1.8.5b2
 
 ### Version History
-- 1.8.3 (**prepared, not published — Google tools with local credentials:**
+- 1.8.5b2 (**beta: the settings b1 made you repeat.** `co browser config`
+  gives the browser engine a default so `--engine` becomes an override; the
+  paid engine is `wtf`, not `onion`; `co <provider> serve` is `consume`;
+  `co auth feishu --app-id` reuses a bot already in your groups. Every exit
+  on the inbox surface names a command, and a co-inbox skill ships with a
+  two-way parity test. Stable remains 1.8.4.)
+- 1.8.5b1 (**beta: the Feishu and Lark inbox, and the consumers that answer
+  from it.** `co auth feishu` creates the application by QR instead of
+  eleven console steps; `co <provider> listen` writes every message into
+  `~/.co/inbox/<provider>/` and acknowledges within the platform's
+  three-second window; `co ai --listen` and a Host lifespan answer from that
+  directory, one session per conversation, recorded with `via` and the
+  sender. Carries the permission work from 1.8.5a1 and 1.8.5a2. Stable
+  remains 1.8.4: the reconnect-gap gate in #1462 has not passed.)
+- 1.8.5a2 (**opt-in preview: a command runs unless a rule holds it back.**
+  `1.8.5a1` answered #1481 with a longer allowlist; this replaces the list.
+  Everything it refused is still refused, and three rules the list had been
+  enforcing by omission are written down: a command whose argument is a
+  program asks, a command that sends something to somebody asks, and a
+  command that writes through its arguments gets the workspace check. Also
+  fixes #1488, a grant defeated by the filter it was piped through, and
+  #1447, 438 refused TodoList calls in six days. Stable remains 1.8.4;
+  the Feishu inbox is not in this preview.)
+- 1.8.5a1 (**opt-in preview: an unattended agent can read its own output.** In
+  Auto only eleven test/build commands auto-approved, so everything else asked
+  — and with nobody to ask, asking is refusing. A scheduled run died on
+  `co browser … get_text | head -40`: the granted browser command, refused for
+  the filter on its output, 28 iterations into 300, no comments posted, no
+  report written (#1481). Read-only commands now run, alone or as segments
+  beside a granted command, while every other segment still needs its own
+  grant. `sed` and `awk` are deliberately not on that list: they take a
+  program, and `awk 'BEGIN{system(...)}'` reads like an inspection. A shell
+  redirect is held to the write tool's rule — inside the workspace it is a
+  reversible edit, a control file or an outside path is denied — and a heredoc
+  is classified by its first line, so `cat << EOF > src/main.rs` works and
+  `bash << EOF` still asks. Key material is refused by path component,
+  filename and suffix wherever it sits, by shell and by tool, because the
+  workspace boundary does not protect a committed key or the agent's own
+  `.co/keys/`. An explicit grant — `host.yaml`, a skill's `tools:`, a human's
+  session approval — now runs the call for any effect class instead of being
+  discarded, and `co`'s strong verbs classify by verb so a wildcard over `co`
+  cannot reach them. A refusal carries the exact grant that would allow the
+  call, in `.co/host.yaml` or a skill's `tools:`, so an agent that gets
+  refused says what to add instead of going quiet. Three defects in 1.8.4 came out of exercising it: a `quiet=True`
+  agent crashed on every auto-approved call, the policy decision never reached
+  the run trace, and `read_file` allowed what `cat` refused. Carries the second
+  wave of test-suite work (#1474) and the Control Center layout fix (#1482).
+  Stable stays 1.8.4; this is not Latest and needs `--pre` or an exact pin.)
+- 1.8.4 (**stable — explicit configuration and reviewed operations:** `co env`
+  safely inspects and edits settings; Gmail preserves reviewed content and recovers
+  uncertain sends; Synology verifies sharing settings and supports durable file
+  operations; Outlook names credential failures and exposes previewed calendar
+  writes. Background task shutdown reaps its process tree and output reader.)
+- 1.8.4a2 (**preview recovery fix:** Gmail-preserved attempt markers recover a
+  lost send receipt despite rewritten Message-ID; bounded unique lookup remains
+  fail-closed. Full real Gmail/Drive acceptance passed; physical NAS pending.)
+- 1.8.4a1 (**opt-in preview of 1.8.4:** owner-authorized preview publication before
+  the final live Gmail/Drive and physical NAS journeys. Runtime/platform checks,
+  local hosting, browser and installed-artifact checks pass. Stable stays 1.8.3;
+  the preview is not Latest and requires an explicit version pin or --pre.)
+- 1.8.3 (**Google tools with local credentials, published 6 September 2026:**
   unify Gmail, Drive, Calendar and YouTube authorization and command discovery;
   add Gmail draft attachments, Calendar CLI and preview-confirmed YouTube
   uploads/metadata updates. Preserve local token ownership, refresh rotation
@@ -267,6 +417,14 @@ path. Recovery must preserve the reviewed tag and artifacts and be implemented
 as a separate reviewed workflow change, not an ad hoc second registry writer.
 
 ### Stable patches move forward
+
+A forward-port tracker is required for patch PRs targeting a maintenance branch
+such as `release/1.7` or `release/1.8`. A patch number alone does not create that
+obligation: PRs targeting the repository's default branch, or feature branches
+stacked toward it, already deliver to the newest line. Those PRs use `N/A —
+mainline work` in the template's tracking field. All PRs still name a proposed
+target version and estimated release window. A change targeting a maintenance
+branch keeps its tracker open until the applicable higher lines have evidence.
 
 A stable patch fixes the oldest supported line first; it must not make the
 newest testable line older in behaviour. Once `X.Y.Z` with `Z > 0` is public,

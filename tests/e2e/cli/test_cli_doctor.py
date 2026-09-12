@@ -203,7 +203,7 @@ class TestHandleDoctorConnectivity:
     @patch('connectonion.cli.commands.doctor_commands.shutil.which')
     @patch('connectonion.cli.commands.doctor_commands.requests.post')
     @patch('connectonion.cli.commands.doctor_commands.requests.get')
-    def test_doctor_checks_backend_health(self, mock_get, mock_post, mock_which, mock_console):
+    def test_doctor_checks_backend_health(self, mock_get, mock_post, mock_which, mock_console, default_backend_url):
         """Test that doctor checks backend health endpoint."""
         mock_which.return_value = '/usr/local/bin/co'
         mock_get.return_value.status_code = 200

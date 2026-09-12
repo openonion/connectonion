@@ -322,13 +322,19 @@ def claim_host_prompt(
             session = policy.normalized(session, is_admin=is_admin)
 
         now = time.time()
+        metadata = dict(current.metadata) if current is not None else {}
+        if not metadata.get("title") and prompt.strip():
+            metadata["title"] = " ".join(prompt.split())[:120]
+        # Sending a new turn makes an archived conversation active again.
+        metadata["archived_at"] = None
         return Session(
             session_id=session_id,
             status="running",
             prompt=prompt,
             session=session,
-            created=now,
+            created=(current.created if current and current.created else now),
             expires=now + result_ttl,
+            metadata=metadata,
         )
 
     return storage.atomic_update(session_id, claim), server_newer

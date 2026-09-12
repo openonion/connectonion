@@ -100,9 +100,11 @@ TRUST = {
 
 # Registry of copyable skills (directories with SKILL.md, copied to .co/skills/)
 SKILLS = {
+    "agent-identity": "agent-identity",
     "browser-workflow-skill-builder": "browser-workflow-skill-builder",
     "co-browser": "co-browser",
     "co-mail-and-drive": "co-mail-and-drive",
+    "co-synology": "co-synology",
     "commit": "commit",
     "install-connectonion": "install-connectonion",
     "oo": "oo",
@@ -220,6 +222,7 @@ def copy_file(source: Path, dest_dir: Path, force: bool):
 
     shutil.copy2(source, dest)
     console.print(f"[green]✓ Copied: {dest}[/green]")
+    console.print("[dim]Everything else you can copy:[/dim] [bold]co copy --list[/bold]")
 
 
 def copy_directory(source: Path, dest_dir: Path, force: bool):

@@ -1033,3 +1033,41 @@ class TestPollInterrupt:
         poll_interrupt(agent)
 
         assert 'stop_signal' not in agent.current_session
+
+
+def test_a_quiet_agent_can_have_a_tool_auto_approved(tmp_path, monkeypatch):
+    """`quiet=True` is the shape of every unattended run, and it had no console.
+
+    Six places in check_approval() reached `agent.logger.console.log_permission_granted`
+    directly. With `quiet=True` the logger's console is None, so every
+    auto-approved call raised AttributeError *after* the policy said yes: the
+    tool result read "Error: 'NoneType' object has no attribute
+    'log_permission_granted'" and the agent carried on as if the tool had
+    failed. None of the decision-table tests built a real quiet Agent; the
+    Rust e2e did, on its first step.
+    """
+    from connectonion import Agent
+    from connectonion.useful_plugins.tool_approval import tool_approval
+    from connectonion.useful_tools.file_tools import write
+    from tests.utils.mock_helpers import LLMResponseBuilder, MockLLM
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".co").mkdir()
+    llm = MockLLM(responses=[
+        LLMResponseBuilder.tool_call_response("write", {"path": "note.txt", "content": "hi"}, call_id="call_1"),
+        LLMResponseBuilder.text_response("written"),
+    ])
+    agent = Agent("quiet-writer", llm=llm, tools=[write], plugins=[tool_approval], log=False, quiet=True)
+
+    assert agent.input("write a note") == "written"
+
+    trace = agent.current_session["trace"]
+    result = next(e for e in trace if e.get("type") == "tool_result")
+    assert result["status"] == "success", result
+    assert (tmp_path / "note.txt").read_text() == "hi"
+    # And the decision is on the trace where the audit reads it: the executor
+    # records the call id as `tool_id`, which the recorder used to compare
+    # against the trace sequence `id`, so it never landed.
+    call = next(e for e in trace if e.get("type") == "tool_call")
+    assert call["approval_policy"]["decision"] == "allow"
+    assert call["approval_policy"]["effect_class"] == "workspace_edit"

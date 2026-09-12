@@ -39,7 +39,7 @@ class TestOutlookInit:
             from connectonion.useful_tools.outlook import Outlook
             with pytest.raises(ValueError) as exc_info:
                 Outlook()
-            assert "Missing Microsoft Mail scopes" in str(exc_info.value)
+            assert "Microsoft account not connected" in str(exc_info.value)
             assert "co auth microsoft" in str(exc_info.value)
 
     def test_outlook_init_with_valid_scopes(self):
@@ -75,7 +75,7 @@ class TestOutlookTokenManagement:
             outlook = Outlook()
             with pytest.raises(ValueError) as exc_info:
                 outlook._get_access_token()
-            assert "credentials not found" in str(exc_info.value)
+            assert "account not connected" in str(exc_info.value)
 
     def test_get_access_token_returns_valid_token(self):
         """A token with a future expiry does not depend on the broker."""
@@ -168,7 +168,7 @@ class TestOutlookTokenManagement:
 
     @pytest.mark.real_refresh
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_refresh_persists_rotated_refresh_token(self, mock_httpx, tmp_path):
+    def test_process_refresh_keeps_rotated_refresh_token_in_memory(self, mock_httpx, tmp_path):
         """An expired token refreshes and saves the rotated token to keys.env."""
         keys_env = tmp_path / "keys.env"
         keys_env.write_text(
@@ -201,8 +201,8 @@ class TestOutlookTokenManagement:
             assert os.environ["MICROSOFT_REFRESH_TOKEN"] == "rotated-refresh"
 
         saved = keys_env.read_text()
-        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in saved
-        assert "MICROSOFT_ACCESS_TOKEN=new-access" in saved
+        assert "MICROSOFT_REFRESH_TOKEN=old-refresh" in saved
+        assert "MICROSOFT_ACCESS_TOKEN=old-access" in saved
 
     @pytest.mark.real_refresh
     @patch('connectonion.useful_tools.outlook.httpx')
@@ -235,8 +235,8 @@ class TestOutlookTokenManagement:
 
     @pytest.mark.real_refresh
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_refresh_updates_project_env_holding_the_tokens(self, mock_httpx, tmp_path, monkeypatch):
-        """A project .env is loaded first and never overridden — it must rotate too."""
+    def test_refresh_preserves_unselected_project_env_holding_tokens(self, mock_httpx, tmp_path, monkeypatch):
+        """A project file stays untouched without --env-file, even for the same account."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".env").write_text(
             "MICROSOFT_ACCESS_TOKEN=old-access\n"
@@ -266,8 +266,8 @@ class TestOutlookTokenManagement:
             assert Outlook()._get_access_token() == "new-access"
 
         saved = (tmp_path / ".env").read_text()
-        assert "MICROSOFT_ACCESS_TOKEN=new-access" in saved
-        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in saved
+        assert "MICROSOFT_ACCESS_TOKEN=old-access" in saved
+        assert "MICROSOFT_REFRESH_TOKEN=old-refresh" in saved
 
     @pytest.mark.real_refresh
     @patch('connectonion.useful_tools.outlook.httpx')
@@ -328,6 +328,7 @@ class TestOutlookTokenManagement:
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "OPENONION_API_KEY": "invalid-openonion-key",
+            "MICROSOFT_REFRESH_TOKEN": "microsoft-refresh-token",
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             with pytest.raises(ValueError) as exc_info:
@@ -353,6 +354,7 @@ class TestOutlookTokenManagement:
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "OPENONION_API_KEY": "valid-openonion-key",
+            "MICROSOFT_REFRESH_TOKEN": "revoked-refresh-token",
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             with pytest.raises(ValueError) as exc_info:
@@ -366,7 +368,7 @@ class TestOutlookTokenManagement:
 
     @pytest.mark.real_refresh
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_other_microsoft_refresh_failure_points_to_microsoft_auth(self, mock_httpx):
+    def test_other_microsoft_refresh_failure_does_not_claim_revocation(self, mock_httpx):
         """A non-auth broker failure still identifies the Microsoft session."""
         response = MagicMock(status_code=400)
         response.json.return_value = {"detail": "invalid_grant"}
@@ -375,14 +377,15 @@ class TestOutlookTokenManagement:
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
             "OPENONION_API_KEY": "valid-openonion-key",
+            "MICROSOFT_REFRESH_TOKEN": "revoked-refresh-token",
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             with pytest.raises(ValueError) as exc_info:
                 Outlook()._refresh_via_backend("revoked-refresh-token")
 
         message = str(exc_info.value)
-        assert "Microsoft session expired" in message
-        assert "co auth microsoft" in message
+        assert "Authorization service could not refresh" in message
+        assert "co status" in message
         assert "valid-openonion-key" not in message
         assert "revoked-refresh-token" not in message
 
@@ -1162,8 +1165,9 @@ class TestOutlookReplyPositionalCompatibility:
         from connectonion.useful_tools.outlook import Outlook
 
         params = inspect.signature(Outlook.reply).parameters
-        assert list(params) == ["self", "email_id", "body", "send_at", "attachments"]
-        assert params["attachments"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc"]
+        for name in ("attachments", "cc", "bcc"):
+            assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class TestOutlookActions:

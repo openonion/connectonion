@@ -1,7 +1,7 @@
 """
 Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwards one command to the persistent browser daemon, and serves self-describing help.
 LLM-Note:
-  Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send | lazy: browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Dependencies: imports from [sys, shlex, browser_agent.client.send | lazy: command_tips.rotating_tip for the success tip, browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
   State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
@@ -11,7 +11,6 @@ LLM-Note:
 
 import shlex
 import sys
-from pathlib import Path
 
 from ..browser_agent.client import send
 
@@ -19,7 +18,8 @@ USAGE = (
     "co browser — drive one persistent browser from the shell\n"
     "\n"
     "  co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)\n"
-    "  co browser --engine onion <function> [args]   pay for the WTF Browser (default: system Chrome)\n"
+    "  co browser --engine wtf <function> [args]     pay for the WTF Browser (default: system Chrome)\n"
+    "  co browser config wtf                     make the WTF Browser this machine's default\n"
     '  co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar\n'
     '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
@@ -49,19 +49,14 @@ TIPS = [
     'Let the AI do it:  co browser do "log in and download my invoices"',
     "List every function you can call directly:  co browser help",
     "Run without a visible window:  co browser --headless <function>",
-    "The browser stays open between commands — one shared session until close.",
+    "The browser stays open between commands, one shared session, until you run:  co browser close",
 ]
 
 
 def _next_tip():
-    """Rotate through TIPS so each run teaches something new; index persists in ~/.co.
-    A garbled state file (e.g. two commands racing the write) resets to the first tip."""
-    state = Path.home() / ".co" / ".browser_tip"
-    raw = state.read_text(encoding="utf-8").strip() if state.exists() else ""
-    idx = int(raw) if raw.isdigit() else 0
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(str((idx + 1) % len(TIPS)), encoding="utf-8")
-    return TIPS[idx % len(TIPS)]
+    """Rotate through TIPS so each run teaches something new; cursor at ~/.co/.browser_tip."""
+    from .command_tips import rotating_tip
+    return rotating_tip("browser", TIPS)
 
 
 def _extract_tab(args):
@@ -92,8 +87,13 @@ def _extract_tab(args):
 
 def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> int:
     """Forward a browser command to the daemon, or print help. Returns the process exit code."""
+    # `wtf` is what a person types and what effective_mode() returns; `onion`
+    # is what the daemon protocol calls the same engine. Translated here, at
+    # the one boundary between the two, rather than in either of them.
+    if engine_mode == "wtf":
+        engine_mode = "onion"
     if engine_mode not in ("auto", "system", "onion"):
-        print("--engine must be one of: auto, system, onion", file=sys.stderr)
+        print("--engine must be one of: auto, system, wtf", file=sys.stderr)
         return 2
     if not args:
         print(USAGE, file=sys.stderr)
@@ -115,6 +115,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             print(f"Onionwright {result.version} is already installed.")
         else:
             print(f"Installed Onionwright {result.version} from the signed OpenOnion release.")
+        print("Use it:  co browser --engine wtf <function> [args]", file=sys.stderr)
         return 0
     tab, args = _extract_tab(args)
     if args is None:
@@ -126,6 +127,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
     if args[0] in ("help", "--list", "list"):  # after -t extraction: `-t x help` is still help
         from ..browser_agent.daemon import list_functions
         print(USAGE + "\n\nFunctions:\n" + list_functions())
+        print("\nRun one directly:  co browser <function> [args]", file=sys.stderr)
         return 0
     if args[-1] == "--stdin":
         if args[0] not in ("fill_text_by_selector", "type_text_by_selector", "keyboard_type"):
@@ -136,6 +138,12 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             return 2
         args = [*args[:-1], sys.stdin.read()]
     code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
-    if code == 0 and sys.stdout.isatty():
-        print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)
+    from .command_tips import tips_enabled
+    if code == 0 and tips_enabled():
+        # Not gated on a terminal: an agent captures stdout, and it is the
+        # reader this tip exists for. stderr keeps stdout pure data.
+        tip = f"💡 {_next_tip()}"
+        if sys.stderr.isatty():
+            tip = f"\033[2m{tip}\033[0m"
+        print(f"\n{tip}", file=sys.stderr)
     return code

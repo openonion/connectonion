@@ -1,0 +1,33 @@
+{
+  "files": {
+    "assets/app.js": "Y29uc29sZS5sb2coInJlYWR5Iik=",
+    "index.html": "PHNjcmlwdCBzcmM9ImFzc2V0cy9hcHAuanMiPjwvc2NyaXB0Pg==",
+    "module.wasm": "AGFzbQEAAAA="
+  },
+  "manifest": {
+    "capabilities": [],
+    "entry": "index.html",
+    "files": [
+      {
+        "bytes": 20,
+        "media_type": "text/javascript",
+        "path": "assets/app.js",
+        "sha256": "d0cdd9f3b2abe7e108c92d491bde54e376d952f752ce3918b1a3e8bd4ff0bdf0"
+      },
+      {
+        "bytes": 37,
+        "media_type": "text/html",
+        "path": "index.html",
+        "sha256": "3ae05ad0e10282922e131f6fa44e02119c0576543df468c1770b39f93cba5cef"
+      },
+      {
+        "bytes": 8,
+        "media_type": "application/wasm",
+        "path": "module.wasm",
+        "sha256": "93a44bbb96c751218e4c00d479e4c14358122a389acca16205b1e4d0dc5f9476"
+      }
+    ],
+    "schema": "connectonion.control-bundle/1"
+  },
+  "revision": "sha256:56b1815785abfc2d5170225aa613d5fa22d3260326e01a3a3cc54703b91f868b"
+}

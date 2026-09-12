@@ -21,9 +21,29 @@ def google_errors(next_command: str):
             from httplib2 import HttpLib2Error
             from requests import RequestException
 
+            from ...provider_credentials import ProviderCredentialError
+            from ...credentials import AmbientCredentialError
+            from .gmail_listings import ListingError
+            from .gmail_draft_review import DraftReviewError
+
+            from ...useful_tools.gmail_draft_mime import DraftFormatError
             recovery = next_command
             try:
                 return handler(*args, **kwargs)
+            except ProviderCredentialError as exc:
+                cause = str(exc).split("\nNext:", 1)[0]
+                recovery = exc.next_command
+            except AmbientCredentialError as exc:
+                cause = str(exc)
+                recovery = "co auth"
+            except ListingError as exc:
+                cause = str(exc)
+            except DraftReviewError as exc:
+                cause = str(exc)
+                recovery = exc.next_command or 'co gmail draft list'
+            except DraftFormatError as exc:
+                cause = str(exc)
+                recovery = 'co gmail draft list'
             except json.JSONDecodeError:
                 cause = "Saved listing numbers are unreadable; refresh the listing."
             except HttpError as exc:
@@ -38,7 +58,9 @@ def google_errors(next_command: str):
                 cause = "Local I/O or Google connection failed. A write may have completed; inspect state before retrying."
             except ValueError:
                 cause = "Invalid input or unsupported file. Check the command arguments."
-            Console().print(f"Error: {cause}\nNext: {recovery}", markup=False, highlight=False)
+            from ...environment import selected_command
+            recovery = selected_command(recovery)
+            Console().print(f"Error: {cause}\nNext: {recovery}", markup=False, highlight=False, soft_wrap=True)
             raise typer.Exit(1)
         return guarded
     return decorate

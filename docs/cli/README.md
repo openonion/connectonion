@@ -43,6 +43,27 @@ The CLI automatically:
 
 ## All Commands
 
+This page walks through the commands in prose. The CLI itself is the register,
+at three levels, each complete at its own level:
+
+```bash
+co                      # every top-level command with a one-line summary
+co commands             # every command and subcommand, one per line — grep it
+co gmail --help         # the options and subcommands of one command
+```
+
+`co commands` is plain text with no colour codes, so `co commands | grep draft`
+finds the draft commands without knowing which group holds them.
+
+Every command ends by naming the next one. Commands whose next step depends on
+what they found print it themselves (`Read one with: co gmail read <#>`); every
+other command gets a `Next: …` line on stderr after it returns, from one table
+in the CLI, so stdout stays the command's data and the line still reaches a
+pipe. A test fails when a registered command has no entry, and every tip's
+command is checked against this register, so a tip never points at a command
+that does not exist. `co --no-tips <command>` drops the line for one run and
+`CO_TIPS=off` for every run; error text is never a tip and is never dropped.
+
 ### Project Commands
 
 #### `co create [name]` - Create New Project
@@ -92,6 +113,7 @@ my-agent/
 ├── .env                     # API keys (from ~/.co/keys.env)
 ├── .co/
 │   ├── host.yaml            # Project config
+│   ├── control-center/      # Editable full Web app
 │   └── docs/                # Framework docs
 ├── co-vibecoding-principles-docs-contexts-all-in-one.md
 └── .gitignore               # Safe defaults
@@ -130,6 +152,7 @@ co init ./                      # Safe - preserves existing files
 - ✅ **Preserves** existing files and `.env`
 - ✅ **Appends** only missing API keys
 - ✅ **Updates** `.co/docs/` to latest
+- ✅ **Adds once** `.co/control-center/` and never overwrites your website
 - ✅ **Skips** existing files (like `agent.py`)
 
 **Options:**
@@ -270,6 +293,20 @@ Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
 are involved. The same `send_telegram` function is available as an agent tool.
 See [telegram.md](telegram.md) for setup, credential handling, and errors.
 
+#### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files
+
+```bash
+co feishu listen                      # hold the connection; every message → ~/.co/inbox/feishu/
+co feishu receive                     # next message as one JSON line
+echo "done" | co feishu reply om_9f8e # back to where it was asked
+co feishu consume -- claude -p          # one command per message, stdout is the reply
+co ai                                 # your own agent answers the channels in ~/.co/host.yaml
+```
+
+Uses your own self-built Feishu application over the official long connection:
+no public address, no OpenOnion credential, nothing billed. Anything that can
+read a file can consume the directory. See [feishu.md](feishu.md).
+
 ---
 
 #### `co gmail` - Send & Read Gmail
@@ -295,7 +332,7 @@ saved as `GOOGLE_*` in `.env` / `~/.co/keys.env`).
 ```bash
 co gdrive                             # 20 most recently modified files
 co gdrive search report                # find by name (word prefixes)
-co gdrive get 3 --to ~/Downloads       # download #3 from the listing
+co gdrive get 3 --listing <listing-id> --to ~/Downloads       # download #3 from the listing
 co gdrive put report.pdf               # upload
 ```
 
@@ -312,6 +349,7 @@ The CLI wraps the same `Gmail` tool your agents use. See
 [gmail.md](gmail.md) for details.
 - `co gdrive` / `co gdrive list` - recent files (`--last/-n`)
 - `co gdrive search <query>` - find by file name
+- `co gdrive info <full-file-id> --json` - read-only metadata and export format
 - `co gdrive get <#>` - download (`--to`); Docs/Sheets/Slides are exported to md/csv/pdf
 - `co gdrive put <path>` - upload (`--name`)
 - `co gdrive rm <#>` - move to trash (recoverable)
@@ -329,33 +367,27 @@ tokens and granted scopes remain local. See [Google auth](../integrations/google
 
 ---
 
-#### `co syno` - Synology NAS Files
+#### `co syno` - Synology NAS
 
-Your NAS from the terminal. Requires `co syno login` once (QuickConnect ID or
-`--url`; saved as `SYNOLOGY_*` in `~/.co/keys.env`).
+Verified profiles, source-labeled inspections, ordinary file operations and
+explicit sharing-link controls. All twenty core leaves support `--json`,
+`--nas`, `--non-interactive` and `--timeout`.
 
-**Basic usage:**
 ```bash
-co syno                                # your shared folders
-co syno ls /home/photos                # inside one
-co syno search invoice --in /home      # find by name
-co syno get 3 --to ~/Downloads         # download #3 from the listing
-co syno put report.pdf /home/docs      # upload
+co syno login --name home --url https://nas.example:5001 --username alice
+co syno status --json
+co syno ls /home/docs --json
+co syno search invoice --in /home/docs --json
+co syno download /home/docs/report.pdf --to ./Downloads/
+co syno upload ./report.pdf /home/docs
+co syno share list --json
 ```
 
-**Subcommands:**
-
-- `co syno login` - connect by QuickConnect ID, or directly with `--url`
-- `co syno` / `co syno ls [path]` - shared folders, or one folder (`--last/-n`)
-- `co syno search <query>` - find by file name (`--in` to scope)
-- `co syno get <#>` - download (`--to`)
-- `co syno put <path> <nas-folder>` - upload (`--overwrite`)
-- `co syno share <#>` - create a public sharing link
-
-There is deliberately no `co syno rm` — File Station's delete API is permanent,
-so unlike `co gdrive rm` it could not be made recoverable.
-
-See [synology.md](synology.md) for details.
+Legacy env-only NAS credentials require verified login. Numeric migration
+references require the exact `--listing` ID; downloads and uploads never
+overwrite by default. Optional monitoring requires explicit SNMPv3/SSH setup.
+Real NAS acceptance is pending. See [synology.md](synology.md) for the complete
+command inventory, adapter sources and migration behavior.
 
 ---
 
@@ -391,6 +423,26 @@ The CLI wraps the same `Outlook` tool your agents use. See
 [outlook.md](outlook.md) for details.
 
 ---
+
+#### `co env` - See, Set and Repair the Selected Env File
+
+Works on global `~/.co/keys.env`, or on the file chosen with `co --env-file PATH`.
+
+```bash
+co env                              # every setting, secrets masked, with its source
+co env get MODEL                    # one value, bare, for $(...)
+co env set OPENAI_API_KEY sk-...    # save one setting (creates the file if needed)
+co env unset OPENAI_API_KEY         # remove one setting
+co env path                         # the selected file's path
+co --env-file ./project.env env     # the same on a project file
+```
+
+- Secrets (`*KEY*`, `*TOKEN*`, `*SECRET*`, …) are masked; `co env show --reveal` prints them.
+- `GOOGLE_*` / `MICROSOFT_*` account fields are refused by `set` and removed as a whole record by `unset`; use `co auth google` / `co auth microsoft` to connect an account.
+- `AGENT_CONFIG_PATH` cannot live in the file it selects; `export` it in your shell.
+- When the file has a broken line, every other `co` command exits 2 and says `Next: co env`; `co env` names the line to fix (never its contents).
+
+Full reference: [env.md](env.md).
 
 #### `co status` - Check Credentials, Account, and Deployments
 
@@ -1189,6 +1241,7 @@ See [server.md](server.md).
 | `co server` | Servers you own, and deploy targets | No | ✅ Yes (except `destroy`) |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
+| `co commands` | List every command and subcommand, one per line | No | ✅ Yes |
 | `co browser` | Browser command (local) | No | ✅ Yes |
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
@@ -1202,3 +1255,7 @@ See [server.md](server.md).
 - [Interactive Debugging](../debug/auto_debug.md) - `@xray` debugger
 - [Trust System](../features/trust.md) - Multi-agent trust
 - [Getting Started](../quickstart.md) - Full tutorial
+
+The 1.8.4 Gmail candidate adds `co gmail draft review <draft-id> --json` and
+`co gmail draft send <draft-id> --confirm <review-token> --json`. See
+[gmail.md](gmail.md) for the MIME-bound send and uncertain-outcome contract.
