@@ -534,6 +534,36 @@ class TestLoggerIntegration:
         assert "Error" in error_output or "✗" in error_output
         assert "Something went wrong" in error_output
 
+    def test_rejected_tool_logs_the_attempted_call(self):
+        """A before-tool refusal still completes the pending tool log."""
+        def bash(command: str) -> str:
+            return command
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(bash))
+        agent = FakeAgent()
+
+        def reject(_event_type: str) -> None:
+            raise ValueError("Tool 'bash' denied by connectonion.auto")
+
+        agent._invoke_events = reject
+        logger = Mock()
+
+        trace = execute_single_tool(
+            tool_name="bash",
+            tool_args={"command": "co browser get_text | head -40"},
+            tool_id="call_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+
+        assert trace["status"] == "error"
+        logger.log_tool_result.assert_called_once()
+        args, kwargs = logger.log_tool_result.call_args
+        assert args[0] == "Tool 'bash' denied by connectonion.auto"
+        assert kwargs == {"success": False}
+
     def test_error_includes_schema_info(self):
         """Error result includes tool schema so LLM can fix the call."""
         def write_file(path: str, content: str) -> str:
