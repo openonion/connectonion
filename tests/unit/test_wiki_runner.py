@@ -174,3 +174,35 @@ def test_shell_is_on_but_the_sandbox_is_read_only_and_writes_still_go_through_wi
         verify_native_config({"mcp_servers": {}, "features": {
             "shell_tool": True, "unified_exec": True, "hooks": True, "plugins": False, "apps": False,
             "multi_agent": False, "view_image": False, "code_mode_host": True}})
+
+
+def test_login_is_proved_by_the_stored_credential_not_by_account_read(tmp_path, monkeypatch):
+    """Codex 0.147.0 answers `account/read` with `{"account": null, "requiresOpenaiAuth": true}`
+    for a login that works: measured 2026-09-12, when the same login's rate-limit meters
+    read fine and a full maintenance turn completed and wrote its page. Gating the run on
+    that field stopped every batch with "run codex login", which was not the problem -- and
+    it stopped it *after* the extraction pass had already been paid for."""
+    import json
+
+    from connectonion.wiki.runner import verify_login
+    home = tmp_path / ".codex"
+    home.mkdir()
+    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "OPENAI_API_KEY": None,
+                                                "tokens": {"access_token": "x", "refresh_token": "y"}}))
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    assert verify_login() == "chatgpt"
+
+
+def test_api_key_billing_is_refused_before_any_model_turn(tmp_path, monkeypatch):
+    """The wiki is for a subscription, not a metered key: a batch is millions of tokens."""
+    import json
+
+    from connectonion.wiki.runner import preflight, verify_login
+    home = tmp_path / ".codex"
+    home.mkdir()
+    (home / "auth.json").write_text(json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-live"}))
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    with pytest.raises(WikiError, match="API billing"):
+        verify_login()
+    with pytest.raises(WikiError, match="API billing"):  # preflight is what runs before a paid pass
+        preflight()

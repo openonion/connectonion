@@ -111,16 +111,41 @@ def preflight() -> dict:
     must exit nonzero with the fix, and it must not burn one of the day's
     attempts -- six such failures would lock the real fix out until tomorrow.
     """
-    real = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
-    if not (real / "auth.json").is_file():
-        raise WikiError("Codex login not found; run `codex login` before Wiki maintenance")
+    billing = verify_login()
     executable = shutil.which("codex")
     if not executable:
         raise WikiError("Codex CLI is missing; install Codex and authenticate before running Wiki")
     result = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=10)
     if result.returncode or not re.fullmatch(r"codex-cli 0\.147\.\d+\s*", result.stdout):
         raise WikiError("This experimental Wiki adapter requires Codex CLI 0.147.x")
-    return {"codex": executable, "version": result.stdout.strip()}
+    return {"codex": executable, "version": result.stdout.strip(), "billing": billing}
+
+
+def verify_login() -> str:
+    """Which way the Codex login bills, read from the credential Codex itself stores.
+
+    Not from `account/read`: on 0.147.0 that answers `{"account": null,
+    "requiresOpenaiAuth": true}` for a login that works -- measured 2026-09-12,
+    when the same login's rate-limit meters read fine and a maintenance turn
+    completed and wrote its page. Gating on it stopped every batch with "run
+    codex login", after the extraction pass had already been paid for. auth.json
+    is where `codex login` records what it did, so it is the honest signal, it
+    costs no round trip, and it can be checked in preflight before any pass.
+    """
+    real = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
+    auth = real / "auth.json"
+    if not auth.is_file():
+        raise WikiError("Codex login not found; run `codex login` before Wiki maintenance")
+    try:
+        stored = json.loads(auth.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise WikiError("Codex login file is unreadable; run `codex login` again") from None
+    mode = (stored.get("auth_mode") or "").lower()
+    if mode == "chatgpt" or (not mode and stored.get("tokens")):
+        return "chatgpt"
+    # A batch is millions of tokens: on a metered key that is a bill, not a subscription.
+    raise WikiError("Wiki runs on your Codex ChatGPT subscription; this login uses API billing. "
+                    "Run `codex login` and choose Sign in with ChatGPT")
 
 
 def read_rate_limits() -> dict:
@@ -325,9 +350,12 @@ def run_codex(notebook: Notebook, items: list[dict], config: dict) -> dict:
             server.initialize()
             effective = server.request("config/read", {"includeLayers": False}, timeout=30)
             verify_native_config(effective.get("config", {}))
-            account = server.request("account/read", {"refreshToken": True}, timeout=30)
-            if (account.get("account") or {}).get("type") != "chatgpt":
-                raise WikiError("Wiki requires your Codex ChatGPT login; API billing is not enabled")
+            # An account the server does report must still be the subscription; one it
+            # does not report is not evidence of anything (see verify_login).
+            account = (server.request("account/read", {"refreshToken": True}, timeout=30).get("account") or {})
+            if account.get("type") not in (None, "chatgpt"):
+                raise WikiError("Wiki runs on your Codex ChatGPT subscription; this login uses API billing. "
+                                "Run `codex login` and choose Sign in with ChatGPT")
             response = server.request("thread/start", thread_parameters(directory, config), timeout=30)
             if (response.get("model") != config["model"] or response.get("modelProvider") != "openai"
                     or response.get("instructionSources") or response.get("approvalPolicy") != "never"
