@@ -49,6 +49,12 @@ seconds, retries, and documents a message id to dedupe on. Maildir solved
 "many writers, many readers, no locks, crash-safe" for mail in 1995 with a
 directory and `rename(2)`.
 
+> **Names changed after this was written.** The package is
+> `connectonion/inbox/`, the class is `Inbox`, the directory is
+> `~/.co/inbox/<provider>/` with `received.jsonl` and `sent.jsonl` inside, and
+> one `CO_INBOX_HOME` moves the whole root. The decision below is unchanged;
+> only its spelling is. See the addendum at the end (#1478).
+
 ## Decision
 
 ### The tool turns messages into files. Consumers come by themselves.

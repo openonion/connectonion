@@ -96,7 +96,7 @@ See [videos.insert](https://developers.google.com/youtube/v3/docs/videos/insert)
 
 No search, analytics, captions, comments, playlist editing, deletion, scheduling
 or media download ships here. TikTok is excluded from this Google-only release
-and deferred until after 1.8.5.
+and remains deferred; see #1426 and the preview in #1439.
 
 Exit 0 means a read/preview/write result; exit 1 means an operational failure
 with a sanitized cause and next command; exit 2 is a Typer usage error. Preview
