@@ -49,10 +49,24 @@ except ImportError:
 
 
 class PaidSessionEndedError(RuntimeError):
-    """A paid session ended upstream; its browser must not keep serving."""
+    """A paid session ended upstream; its browser must not keep serving.
+
+    The reason alone ("browser_exited") reads as a diagnostic to a human and as
+    a dead end to an agent, which is what it was in #1510: the tabs are gone
+    with the session, so the next command fails on the missing tab instead, and
+    nothing in either message says how to get back to work. Name the way out.
+    """
 
     def __init__(self, reason: str):
-        super().__init__(f"paid browser session ended: {reason}")
+        super().__init__(
+            f"paid browser session ended: {reason}\n\n"
+            f"The session is over and its tabs went with it. Start a new one:\n"
+            f"  co browser close\n"
+            f"  co browser tab open <name> --for \"<what you are doing>\"\n\n"
+            f"If this task does not need anti-detection, the free engine keeps "
+            f"your logins and costs nothing:\n"
+            f"  co browser --engine system tab open <name> --for \"<what you are doing>\""
+        )
         self.reason = reason
 
 

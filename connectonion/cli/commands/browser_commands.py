@@ -3,7 +3,7 @@ Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwar
 LLM-Note:
   Dependencies: imports from [sys, shlex, browser_agent.client.send | lazy: command_tips.rotating_tip for the success tip, browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
-  State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
+  State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | a session-starting verb on the paid engine prints a billing notice to STDERR BEFORE the command is sent | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
   Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
@@ -51,6 +51,11 @@ TIPS = [
     "Run without a visible window:  co browser --headless <function>",
     "The browser stays open between commands, one shared session, until you run:  co browser close",
 ]
+
+
+def _starts_a_session(args: list) -> bool:
+    """True for the verbs that open a browser, i.e. that begin a paid interval."""
+    return args[0] in ("newtab", "open_browser") or args[:2] == ["tab", "open"]
 
 
 def _next_tip():
@@ -137,6 +142,17 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             print("--stdin needs piped or redirected text", file=sys.stderr)
             return 2
         args = [*args[:-1], sys.stdin.read()]
+    if engine_mode == "onion" and _starts_a_session(args):
+        # Before the spend, not in the receipt. The Airbnb round of 2026-09-12
+        # ran an authenticated host dashboard on the paid engine for 40 minutes,
+        # then finished the same work on the free one with the logins intact —
+        # nothing anywhere had said which engine was about to bill (#1510).
+        print(
+            "⏱  The WTF Browser bills for the session this starts.\n"
+            "   A site you are already logged into rarely needs it:  "
+            "co browser --engine system <verb>",
+            file=sys.stderr,
+        )
     code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
     from .command_tips import tips_enabled
     if code == 0 and tips_enabled():
