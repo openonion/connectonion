@@ -180,3 +180,24 @@ def test_signature_link_noise_is_dropped():
     assert "bookwithme" not in cleaned and "typeform" not in cleaned
     assert "Vern Chan" in cleaned and "Book a time" in cleaned
     assert strip_noise("see https://example.com/docs for details") == "see https://example.com/docs for details"
+
+
+def test_one_correspondent_can_be_pulled_on_its_own():
+    """"Sync my mail with Vern" is the most natural thing to ask for and there was no
+    way to say it. The queue is already per person, so the ask is a filter on whose
+    turn it is -- and everyone else keeps their place for the next pass."""
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00"),
+                       mail(2, "2026-09-03T09:00:00+00:00", sender="bob@example.com", subject="Beacon"),
+                       mail(3, "2026-09-04T09:00:00+00:00")])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="alice@example.com")
+    assert references(batch) == ["outlook:m1", "outlook:m3"]
+    assert client.bodies_read == ["m1", "m3"]  # Bob's body is never fetched
+    rest = collect_mail(subscription(), batch.progress, 10, 100000, client, now=NOW)
+    assert references(rest) == ["outlook:m2"]  # Bob was not consumed, only passed over
+
+
+def test_a_correspondent_can_be_named_by_part_of_their_address():
+    client = FakeMail([mail(1, "2026-09-02T09:00:00+00:00", sender="Vern Chan <vern.chan@unsw.edu.au>")])
+    batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="vern")
+    assert references(batch) == ["outlook:m1"]
+    assert collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="nobody").items == []

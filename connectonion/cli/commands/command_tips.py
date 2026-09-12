@@ -118,6 +118,10 @@ NEXT = {
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
     "co gmail *": HANDLER,
+    # Every wiki command already ends by naming one next command, chosen from what
+    # it found: `list` points at the first page, `search` at the first hit, a failed
+    # `show` back at the category. A static line here would contradict that.
+    "co wiki *": HANDLER,
     "co outlook inbox": HANDLER,
     "co outlook read": HANDLER,
     "co outlook reply": HANDLER,  # 1.8.4 already emits a contextual next step

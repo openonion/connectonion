@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from .config import prepare, read_config, validate
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
 from .mail import collect_mail
-from .source import KINDS, collect, pending_metadata
+from .source import KINDS, collect, pending_metadata, timestamp
 
 MAIL_KINDS = ("gmail", "outlook")
 
@@ -118,6 +118,52 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", si
         sources[name]["enabled"] = enabled
         write_json(state_path(root, "subscriptions.json"), sources)
     return name
+
+
+WINDOW = re.compile(r"(\d+)\s*([dwmy])", re.IGNORECASE)
+WINDOW_DAYS = {"d": 1, "w": 7, "m": 30, "y": 365}
+
+
+def window_days(value: str, kind: str) -> int:
+    """`3d`, `2w`, `6m`, `1y` as a number of days, within the cap for this kind."""
+    match = WINDOW.fullmatch((value or "").strip())
+    if not match:
+        raise WikiError("A window looks like 7d, 3w, 6m or 1y")
+    days = int(match.group(1)) * WINDOW_DAYS[match.group(2).lower()]
+    cap = MAX_LOOKBACK_DAYS.get(kind, DEFAULT_LOOKBACK_DAYS)
+    if days > cap:
+        raise WikiError(f"How far back this source may be read is capped at {cap} days; ask for less")
+    if days < 1:
+        raise WikiError("A window has to be at least one day")
+    return days
+
+
+def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force: bool = False) -> dict:
+    """How far back a source is read, as coverage rather than replacement.
+
+    "At least three days of Claude Code" is what a person asks for, and it is not the
+    same as "only three days": the window is widened when it has to be and a wider one
+    is left alone. Narrowing is the destructive direction -- material between the old
+    edge and the new one is dropped unread, and no cursor brings it back -- so it takes
+    `--only` to mean it and `--force` to accept the loss.
+    """
+    with maintenance_lock(root):
+        sources = subscriptions(root)
+        if name not in sources:
+            raise WikiError("Subscription not found; inspect subscriptions for exact names")
+        days = window_days(value, sources[name].get("kind", name))
+        since = now() - timedelta(days=days)
+        current = sources[name].get("since")
+        covered = current and timestamp(current) <= since
+        if covered and not narrow:
+            return {"subscription": name, "since": current, "days": days, "changed": False,
+                    "note": f"already reads back to {current[:10]}, further than {days} days"}
+        if covered and narrow and not force:
+            raise WikiError(f"Narrowing from {current[:10]} to {days} days drops what lies between, unread "
+                            f"and unrecoverable. Repeat with --force to accept that")
+        sources[name] = {**sources[name], "since": since.isoformat()}
+        write_json(state_path(root, "subscriptions.json"), sources)
+    return {"subscription": name, "since": sources[name]["since"], "days": days, "changed": True}
 
 
 def run_logs(root: Path, run_id: str = "") -> list[dict]:
@@ -301,8 +347,9 @@ def _selected_sources(root: Path, selector: str) -> dict:
             if source.get("enabled") and (source.get("kind") in KINDS or source.get("kind") in MAIL_KINDS)}
 
 
-def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: bool = False,
-             all_pending: bool = False, runner=None, extractor=None, _uncapped: bool = False) -> dict | None:
+def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
+             scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
+             _uncapped: bool = False) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -318,7 +365,8 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
     if all_pending:
         records = []
         while True:
-            record = run_sync(root, source=source, runner=runner, extractor=extractor, _uncapped=True)
+            record = run_sync(root, source=source, with_person=with_person, runner=runner,
+                              extractor=extractor, _uncapped=True)
             if record["outcome"] == "no_change":
                 break
             records.append(record)
@@ -338,7 +386,7 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
         served = worker.get("last_scheduled_slot")
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None
-        record = run_sync(root, source=source, runner=runner, extractor=extractor)
+        record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
         # Any recorded outcome serves the slot; a refusal to start (busy) raised
         # above this line and leaves it owed for the next tick.
         write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})
@@ -359,7 +407,8 @@ def run_sync(root: Path, *, source: str = "", dry_run: bool = False, scheduled: 
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise WikiError("Invalid source progress; preserve it for diagnosis")
-        return _sync_locked(root, selected, progress, config, runner, extractor, uncapped=_uncapped)
+        return _sync_locked(root, selected, progress, config, runner, extractor,
+                            uncapped=_uncapped, with_person=with_person)
 
 
 @contextmanager
@@ -386,7 +435,8 @@ def _terminate_as_interrupt():
         signal.signal(signal.SIGTERM, previous)
 
 
-def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False):
+def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False,
+                 with_person=""):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_codex, tool_specs
 
@@ -405,7 +455,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             break
         if subscription.get("kind") in MAIL_KINDS:
             batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
-                                 remaining, mail_client(subscription["kind"]))
+                                 remaining, mail_client(subscription["kind"]), only=with_person)
+        elif with_person:
+            continue  # a person is a mail concept; a coding session has no correspondent
         else:
             batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         if getattr(batch, "unreadable", False):

@@ -156,6 +156,9 @@ def make_wiki_app(factory):
     @wiki.command("sync")
     def sync_wiki(ctx: typer.Context,
                   source: str = typer.Option("", "--source", help="Only this subscription"),
+                  with_person: str = typer.Option("", "--with", help="Mail only: just this correspondent, named by "
+                                                                     "address or part of one. Everyone else keeps "
+                                                                     "their place in the queue"),
                   dry_run: bool = typer.Option(False, "--dry-run", help="Pending file metadata only; no body reads"),
                   scheduled: bool = typer.Option(False, "--scheduled",
                                                  help="Only if a saved time has come due since the last scheduled "
@@ -168,7 +171,8 @@ def make_wiki_app(factory):
         from ...wiki.service import run_sync
 
         def operation(root):
-            record = run_sync(root, source=source, dry_run=dry_run, scheduled=scheduled, all_pending=all_pending)
+            record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
+                              scheduled=scheduled, all_pending=all_pending)
             if scheduled and record is None:
                 return {"due": False, "ran": False}, ["status"]
             if all_pending:
@@ -186,11 +190,22 @@ def make_wiki_app(factory):
     @wiki.command("subscribe")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook"),
                   project: str = typer.Option("", "--project", help="Codex only: scope to sessions run in this directory"),
-                  since: str = typer.Option("7d", "--since", help="Initial lookback for a new project scope, e.g. 30d")):
+                  since: str = typer.Option("", "--since",
+                                            help="Read back at least this far: 3d, 2w, 6m, 1y. A window already "
+                                                 "wider than this is left alone"),
+                  only: bool = typer.Option(False, "--only",
+                                            help="With --since: read *only* that far back, narrowing the window"),
+                  force: bool = typer.Option(False, "--force", help="Accept dropping unread material when narrowing")):
         """Enable or restore a source; bodies are read only after `start` has been confirmed."""
-        from ...wiki.service import toggle_source
-        _handle(ctx, lambda root: ({"subscription": toggle_source(root, name, True, project=project, since=since),
-                                    "enabled": True}, ["subscriptions"]), ["subscriptions"])
+        from ...wiki.service import set_window, toggle_source
+
+        def operation(root):
+            subscription = toggle_source(root, name, True, project=project, since=since or "7d")
+            result = {"subscription": subscription, "enabled": True}
+            if since and not project:
+                result.update(set_window(root, subscription, since, narrow=only, force=force))
+            return result, ["subscriptions"]
+        _handle(ctx, operation, ["subscriptions"])
 
     @wiki.command("unsubscribe")
     def unsubscribe(ctx: typer.Context, name: str = typer.Argument(..., help="Name from `co wiki subscriptions`")):

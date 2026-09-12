@@ -110,14 +110,25 @@ def _fit_text(text: str, room: int) -> str:
     return text[:keep] + TRUNCATION_NOTE.format(dropped=len(text) - keep)
 
 
-def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: int, client, *, now=None) -> Batch:
+def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: int, client, *,
+                 now=None, only: str = "") -> Batch:
+    """`only` narrows the batch to one correspondent, named by address or part of one.
+
+    "Sync my mail with Vern" is the most natural thing to ask of a notebook and there
+    was no way to say it. Everyone else keeps their place in the queue: this passes
+    over them, it does not consume them.
+    """
     if not subscription.get("enabled") or not subscription.get("consented"):
         raise WikiError("Source is disabled or not yet authorized; run start to confirm access")
     mine = {a.lower() for a in client.my_addresses()}
     end = now or datetime.now(timezone.utc)
     updated = _scan(subscription, progress, client, mine, end)
+    queue = updated["pending"]
+    if only:
+        needle = _address(only) or only.strip().lower()
+        queue = {address: rows for address, rows in queue.items() if needle in address}
     items, used = [], 0
-    for address, rows in _turns(updated["pending"], max_items - len(items)):
+    for address, rows in _turns(queue, max_items - len(items)):
         for row in rows:
             body = client.get_email_body(row["id"])
             head, _, rest = body.partition("--- Email Body ---")

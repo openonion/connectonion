@@ -501,3 +501,32 @@ def test_a_format_that_moved_is_reported_instead_of_looking_like_a_quiet_week(wi
     assert record["outcome"] == "no_change"
     assert record["unrecognised"] == {"codex": 25}
     assert "codex" in record["warning"] and "25" in record["warning"]
+
+
+def test_a_window_is_coverage_not_a_replacement(wiki):
+    """"At least three days of Claude Code" is what a person asks for, and it is not the
+    same as "only three days". `--since` guarantees the window reaches back that far:
+    it widens when it must and leaves a wider one alone. Narrowing is the destructive
+    direction -- everything between the old edge and the new one is dropped unread and
+    no cursor brings it back -- so that one asks first."""
+    from connectonion.wiki.service import set_window, subscriptions
+    root, _ = wiki
+    default = subscriptions(root)["claude-code"]["since"]           # 60 days by default
+    assert set_window(root, "claude-code", "3d")["changed"] is False  # already covered
+    assert subscriptions(root)["claude-code"]["since"] == default
+
+    widened = set_window(root, "outlook", "6m")
+    assert widened["changed"] is True and widened["since"].startswith("2026-03-1")
+
+    with pytest.raises(WikiError, match="180 days"):
+        set_window(root, "codex", "2y")     # coding sessions are capped
+    with pytest.raises(WikiError, match="7d"):
+        set_window(root, "codex", "last tuesday")
+
+
+def test_narrowing_a_window_needs_saying_so_twice(wiki):
+    from connectonion.wiki.service import set_window
+    root, _ = wiki
+    with pytest.raises(WikiError, match="--force"):
+        set_window(root, "codex", "3d", narrow=True)
+    assert set_window(root, "codex", "3d", narrow=True, force=True)["since"].startswith("2026-09-04")
