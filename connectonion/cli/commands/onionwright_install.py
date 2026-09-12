@@ -189,7 +189,33 @@ def _download_wheel(url: str, destination: Path, expected_sha256: str) -> None:
         )
 
 
-def install_onionwright() -> InstallResult:
+def _install_failure_advice(completed, break_system_packages: bool) -> str:
+    """Say why pip refused, and name the command that gets past it.
+
+    An exit code on its own sent a reader looking for a broken download when
+    the actual answer was a policy the OS applies to its own interpreter, and
+    every Homebrew and system Python answers that way. Print what pip said, then
+    the one command that works here — not a suggestion to fix pip.
+    """
+    output = f"{completed.stdout or ''}{completed.stderr or ''}".strip()
+    tail = f"\n\npip said:\n{output}" if output else ""
+    if "externally-managed-environment" in output and not break_system_packages:
+        return (
+            "this Python is externally managed, so pip will not write to it.\n\n"
+            f"  This interpreter:  {sys.executable}\n\n"
+            "Install into it anyway — the right answer when `co` itself lives "
+            "there, because\nOnionwright has to be importable by this same "
+            "interpreter:\n"
+            "  co browser install-onion --break-system-packages\n\n"
+            "Or put both in a virtualenv, where nothing needs the flag:\n"
+            "  python3 -m venv ~/.co/venv\n"
+            "  ~/.co/venv/bin/pip install --pre connectonion"
+            f"{tail}"
+        )
+    return f"pip could not install Onionwright (exit {completed.returncode}).{tail}"
+
+
+def install_onionwright(*, break_system_packages: bool = False) -> InstallResult:
     """Install the current private client into this exact Python environment."""
     current = _installed_version()
     if _is_compatible(current):
@@ -225,17 +251,24 @@ def install_onionwright() -> InstallResult:
             "install",
             "--upgrade",
             "--disable-pip-version-check",
+            *(["--break-system-packages"] if break_system_packages else []),
             str(wheel),
         ]
         try:
-            completed = subprocess.run(command, check=False)
+            # Captured rather than streamed: the wheel is ~70 KB, so there is no
+            # progress worth watching, and the exit code alone cannot tell a
+            # refusal-by-policy from a genuine failure. The output is printed
+            # back on failure, so nothing is hidden.
+            completed = subprocess.run(
+                command, check=False, capture_output=True, text=True
+            )
         except OSError as exc:
             raise OnionwrightInstallError(
                 "Could not start pip in the current Python environment."
             ) from exc
         if completed.returncode != 0:
             raise OnionwrightInstallError(
-                f"pip could not install Onionwright (exit {completed.returncode})."
+                _install_failure_advice(completed, break_system_packages)
             )
 
     installed = _installed_version()

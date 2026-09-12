@@ -94,12 +94,14 @@ def test_signed_wheel_is_verified_before_exact_current_python_pip(monkeypatch):
         lambda url, **kwargs: wheel_response,
     )
 
-    def run(command, check):
+    def run(command, check, capture_output=False, text=False):
         assert check is False
+        # Captured so a policy refusal can be told apart from a real failure.
+        assert capture_output is True and text is True
         wheel_path = command[-1]
         assert installer.Path(wheel_path).read_bytes() == wheel
         pip_calls.append(command)
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(installer.subprocess, "run", run)
 
@@ -230,7 +232,9 @@ def test_cli_install_returns_before_contacting_browser_daemon(monkeypatch, capsy
     monkeypatch.setattr(
         installer,
         "install_onionwright",
-        lambda: installer.InstallResult(version="0.0.14", already_installed=False),
+        lambda **kwargs: installer.InstallResult(
+            version="0.0.14", already_installed=False
+        ),
     )
 
     assert browser_commands.handle_browser(["install-onion"]) == 0
@@ -249,7 +253,7 @@ def test_cli_missing_credentials_fails_before_daemon(monkeypatch, capsys):
     monkeypatch.setattr(
         installer,
         "install_onionwright",
-        lambda: (_ for _ in ()).throw(MissingAmbientAPIKey()),
+        lambda **kwargs: (_ for _ in ()).throw(MissingAmbientAPIKey()),
     )
 
     assert browser_commands.handle_browser(["install-onion"]) == 1
