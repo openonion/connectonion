@@ -58,7 +58,18 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b3 (beta)
+## Release candidate: 1.8.5b4 (beta)
+
+`co browser install-onion` reported `pip could not install Onionwright (exit 1)`
+when pip had in fact declined by policy — PEP 668's externally-managed marker,
+the default on Homebrew and most distro Pythons — and had named the override
+itself. pip's output is now captured so a refusal can be told from a failure,
+printed back either way, and a policy refusal names the interpreter and both
+routes out. `--break-system-packages` is new and opt-in. Stable remains 1.8.4:
+the reconnect-gap gate in #1462 has not passed.
+See [1.8.5b4 notes](docs/releases/1.8.5b4.md).
+
+### Superseded: 1.8.5b3 (beta, published)
 
 Two fixes an unattended agent paid for before we found them. `co browser wait`
 takes seconds while every neighbouring knob is named in milliseconds, so
@@ -162,9 +173,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b3
+## Current Version: 1.8.5b4
 
 ### Version History
+- 1.8.5b4 (**beta: pip declined, and we reported an exit code.**
+  `co browser install-onion` ended on `pip could not install Onionwright
+  (exit 1)` where pip had refused by PEP 668 policy and named the override
+  itself — the ordinary case on Homebrew and distro Pythons, and the documented
+  route to the paid engine. pip's output is captured and printed back; a policy
+  refusal names the interpreter and both ways past it. `--break-system-packages`
+  is opt-in and never re-offered after it was used. Stable remains 1.8.4.)
 - 1.8.5b3 (**beta: two ways a browser could waste an afternoon.** `wait` takes
   seconds while everything around it is named in milliseconds, so `wait 2500`
   held a tab for 41 minutes and every command behind it timed out while
