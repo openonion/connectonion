@@ -23,10 +23,18 @@ runner = CliRunner()
 
 
 def cli_verbs() -> set:
-    result = runner.invoke(app, ["feishu", "--help"])
-    assert result.exit_code == 0, result.output
-    found = set(re.findall(r"^\s*│?\s*([a-z][a-z-]+)\s{2,}", result.output, re.M))
-    return found - {"options", "usage", "commands"}
+    """The registered subcommands, from the command tree.
+
+    Not scraped from rendered `--help`: Rich lays that table out by terminal
+    width, so a regex over it finds nine verbs on a developer's machine and
+    none on a CI runner with no TTY. This test failed exactly that way before
+    it was written this way.
+    """
+    import typer.main
+
+    root = typer.main.get_command(app)
+    group = root.commands["feishu"]
+    return set(group.commands)
 
 
 def skill_verbs() -> set:
@@ -45,11 +53,23 @@ class TestTheyAgree:
         assert invented == [], f"named by the skill, absent from --help: {invented}"
 
     def test_every_co_auth_the_skill_names_exists(self):
+        from connectonion.cli.commands.feishu_auth import handle_feishu_auth  # noqa: F401
+
         text = SKILL.read_text(encoding="utf-8")
         named = set(re.findall(r"co auth ([a-z]+)", text))
+        # `co auth` takes its service as an argument rather than as
+        # subcommands, so the help text is where it is listed. Checked as a
+        # word, not by parsing the layout.
         listed = runner.invoke(app, ["auth", "--help"]).output
         for service in sorted(named):
             assert service in listed, f"skill names `co auth {service}`, which --help omits"
+
+    def test_help_still_shows_them(self):
+        # The tree is the source of truth above; this is the property that
+        # actually matters — an agent reads --help and must see every verb.
+        shown = runner.invoke(app, ["feishu", "--help"]).output
+        missing = sorted(v for v in cli_verbs() if v not in shown)
+        assert missing == [], f"registered but not shown in --help: {missing}"
 
 
 class TestItSaysTheThingsThatMatter:
