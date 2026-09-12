@@ -87,8 +87,11 @@ class Feishu:
         for key in ("APP_ID", "APP_SECRET"):
             if not os.environ.get(f"{self.env_prefix}_{key}"):
                 problems.append(
-                    f"{self.env_prefix}_{key} is not set. Create a self-built application at "
-                    f"{self.base}/app, enable the bot, and put its credentials in ~/.co/keys.env."
+                    f"{self.env_prefix}_{key} is not set. "
+                    f"Next: co auth {self.name} — scan a QR and the application is "
+                    f"created with both values saved. To authorize one you already "
+                    f"have: co auth {self.name} --app-id cli_…  "
+                    f"To build one by hand instead: {self.base}/app"
                 )
         return problems
 
