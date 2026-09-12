@@ -126,16 +126,34 @@ class TestLease:
         inbox = box(tmp_path)
         put(inbox, "m1")
         working, release = threading.Event(), threading.Event()
+        renewals = []
+        real_renew = inbox.renew
+
+        def counted(message_id):
+            result = real_renew(message_id)
+            renewals.append(message_id)
+            return result
+
+        inbox.renew = counted
 
         def handler(message):
             working.set()
-            release.wait(5)
+            release.wait(10)
 
         stop, thread = drain(inbox, handler, lease_seconds=0.05)
-        assert working.wait(5)
-        time.sleep(0.4)
-        # A sweep with a window far shorter than the handler has been running.
-        assert inbox.release_stale(max_age=0.2) == 0, "the lease was not renewed"
+        assert working.wait(10)
+        # Wait for renewals to have demonstrably happened, not for a duration.
+        # A fixed sleep asserts that a background thread was scheduled inside
+        # a wall-clock window, which a loaded CI runner does not promise — this
+        # test failed exactly that way on 3.11 before it was written this way.
+        deadline = time.monotonic() + 10
+        while len(renewals) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(renewals) >= 2, "the lease was never renewed"
+
+        # The claim was made long before the last renewal, so a window that
+        # would have reclaimed it finds nothing: the timestamp moved.
+        assert inbox.release_stale(max_age=0.05) == 0, "the renewal did not move the clock"
         release.set()
         settle(inbox, stop, thread, until=lambda: inbox.completed.exists())
 
