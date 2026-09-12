@@ -8,7 +8,6 @@ LLM-Note:
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
 """
 
-import json
 import os
 import shutil
 import subprocess
@@ -66,7 +65,7 @@ def _listener_or_exit(inbox: Inbox) -> None:
 
 def handle_done(name: str, message_id: str) -> None:
     """Forget a taken message without replying, so it does not come back."""
-    Inbox(name).done(message_id)
+    Inbox(name).done(message_id, by="done")
 
 
 def handle_listen(name: str, raw: bool = False) -> None:
@@ -158,10 +157,10 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     try:
         sent = p.send(chat, body, reply_to=reply_to)
     except Exception as exc:
-        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc))
+        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
         errors.print(str(exc), style="red")
         sys.exit(1)
-    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent)
+    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send")
     print(sent)
 
 
@@ -180,11 +179,13 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     try:
         sent = p.send(original.chat, body, reply_to=message_id, fresh=again)
     except Exception as exc:
-        inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, error=str(exc))
+        inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
+                          error=str(exc), by="reply")
         errors.print(str(exc), style="red")
         sys.exit(1)
-    inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent)
-    inbox.done(message_id)
+    inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent,
+                      by="reply")
+    inbox.done(message_id, by="reply")
     print(sent)
 
 
@@ -217,9 +218,25 @@ def handle_ls(name: str) -> None:
         print(f"{record['id']}\t{record['chat']}\t{record.get('sender', '')}\t{text}")
 
 
+def _handled_lines(inbox: Inbox) -> List[str]:
+    """Who handled the last few messages, for `log`. Descriptive only: a
+    record from before `by` existed shows `-`, and a malformed value never
+    crashes the display."""
+    lines = []
+    for record in inbox.recent_records(inbox.sent, 5):
+        lines.append(f"sent to {record.get('chat') or '-'}"
+                     f" reply_to {record.get('reply_to') or '-'}"
+                     f" by {record.get('by') or '-'}")
+    for record in inbox.recent_records(inbox.completed, 5):
+        lines.append(f"done {record.get('id') or '-'} by {record.get('by') or '-'}")
+    return lines
+
+
 def handle_log(name: str, follow: bool = False) -> None:
     """Every message ever received; -f keeps printing new ones."""
     inbox = Inbox(name)
+    for line in _handled_lines(inbox):
+        print(line)
     inbox.received.touch()
     with inbox.received.open("r", encoding="utf-8") as handle:
         while True:
@@ -245,6 +262,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         errors.print(f"cannot run {command[0] if command else '(no command)'}: not found or not executable", style="red")
         sys.exit(2)
     _listener_or_exit(inbox)
+    consumer = f"consume:{os.path.basename(command[0])}"
 
     def answer(message) -> None:
         env = dict(
@@ -274,15 +292,17 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         try:
             sent = p.send(message.chat, reply, reply_to=message.id)
         except Exception as exc:
-            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, error=str(exc))
+            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
+                              error=str(exc), by=consumer)
             raise RuntimeError(f"reply failed: {exc}") from exc
-        inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
+        inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
+                          provider_id=sent, by=consumer)
 
     try:
         # workers=1: a shell command written for this has always run one at a
         # time, and some of them are not safe to run twice at once. The lanes
         # still give it ordering, lease renewal and the give-up rule; anyone
         # who wants the parallelism asks for it with --workers.
-        inbox.serve(answer, workers=workers, once=once)
+        inbox.serve(answer, workers=workers, once=once, by=consumer)
     except KeyboardInterrupt:
         return
