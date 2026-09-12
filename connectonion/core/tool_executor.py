@@ -533,6 +533,7 @@ def execute_single_tool(
         agent._record_trace(trace_entry)
 
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
+        logger.log_tool_result(str(e), tool_duration, success=False)
         logger.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
 
         # Note: on_error event will fire in execute_and_record_tools after result message added
