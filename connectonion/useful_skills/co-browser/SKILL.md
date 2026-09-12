@@ -236,6 +236,10 @@ command **starts** the daemon (`status` shows `headless=true/false`). To switch:
 - Wrap **direct functions** that might block in `timeout 60 ...`; never `timeout` a `do`.
 - Take the data line with `tail -1` when output includes env banners.
 - Batch related commands in one tool call; never spend a whole call on a bare wait.
+- **`wait` is in seconds** — every other settle knob here is milliseconds
+  (`--wait_ms=2500`), so `wait 2500` looks right and means 41 minutes. It is
+  capped at 60s and refuses anything longer. For a settle longer than a second or
+  two you want a condition, not a sleep: `wait_for_element` / `wait_for_text`.
 - Uploads: try `upload_file_by_selector 'input[type="file"]' <path>` first; if the
   input is hidden behind a button, `upload_file_after_click_by_selector '<button selector>' <path>`.
 
