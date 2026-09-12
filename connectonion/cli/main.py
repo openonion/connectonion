@@ -339,16 +339,33 @@ def commands():
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
     engine: str = typer.Option(
-        "auto",
+        None,
         "--engine",
-        help="Browser engine: system Chrome by default; --engine onion pays for the WTF Browser",
+        help="wtf (the paid WTF Browser), system (free Chrome), or auto. "
+             "Overrides the default from `co browser config`, in both directions.",
     ),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
     use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
+    # `config` is a setting, not a browser verb: it must not reach the daemon
+    # or start anything, so it is answered before the engine is resolved.
+    if args and args[0] == "config":
+        if len(args) > 2:
+            print("usage: co browser config [wtf|system|auto]")
+            raise typer.Exit(2)
+        from .commands.browser_config import handle_browser_config
+        raise typer.Exit(handle_browser_config(args[1] if len(args) > 1 else None))
+
+    from ..useful_tools.browser_tools.engine import effective_mode
     from .commands.browser_commands import handle_browser
-    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=engine))
+    try:
+        mode = effective_mode(engine)
+    except ValueError as error:
+        print(str(error))
+        print("Next: co browser config")
+        raise typer.Exit(2)
+    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=mode))
 
 
 @app.command(

@@ -10,14 +10,26 @@ from packaging.version import InvalidVersion, Version
 
 AUTO = "auto"
 SYSTEM = "system"
+# `wtf` is the product's name. `onion` is what the wire between client and
+# daemon still calls it, because that value is also what remote_egress checks
+# to decide whether a paid session may carry traffic — renaming it needs both
+# sides moving together, which is 1.9 work and invisible from the CLI.
+WTF = "wtf"
 ONION = "onion"
 MODES = (AUTO, SYSTEM, ONION)
+# What a person or an agent may type. `onion` is kept and answered.
+ACCEPTED_MODES = (AUTO, SYSTEM, WTF, ONION)
+ENGINE_SETTING = "CO_BROWSER_ENGINE"
 BROWSER_REVISION = "151.0.7922.222"
 MIN_ONIONWRIGHT_VERSION = "0.0.14"
 
 
 class Reason:
     SYSTEM_REQUESTED = "system_requested"
+    # Told apart on purpose: when a charge is unexpected, the first question
+    # is which invocations were a standing choice rather than a request.
+    WTF_CONFIGURED = "wtf_configured"
+    WTF_READY = "wtf_ready"
     SYSTEM_DEFAULT = "system_default"
     ONION_READY = "onion_ready"
     INVALID_MODE = "invalid_engine_mode"
@@ -25,6 +37,45 @@ class Reason:
     ONIONWRIGHT_INCOMPATIBLE = "onionwright_incompatible"
     LICENSE_UNAVAILABLE = "license_unavailable"
     PREFLIGHT_FAILED = "preflight_failed"
+
+
+def normalize_mode(mode: str) -> str:
+    """The internal name for what someone typed. Raises on anything else."""
+    cleaned = str(mode).strip().lower()
+    if cleaned == ONION:
+        return WTF
+    if cleaned in (AUTO, SYSTEM, WTF):
+        return cleaned
+    raise ValueError(f"engine must be one of: {', '.join(ACCEPTED_MODES)}")
+
+
+def configured_mode() -> str | None:
+    """The default from the selected env file, or None if there is not one.
+
+    A typo returns None rather than raising: a bad value in a config file must
+    not make every browser command fail, and `co browser config` is where a
+    wrong one is diagnosed.
+    """
+    import os
+
+    raw = os.environ.get(ENGINE_SETTING)
+    if not raw:
+        return None
+    try:
+        return normalize_mode(raw)
+    except ValueError:
+        return None
+
+
+def effective_mode(requested: str | None) -> str:
+    """What to run: the flag if given, else the configured default, else auto.
+
+    A flag wins in both directions, so `--engine system` is always a way to
+    not spend money and needs no file edited.
+    """
+    if requested is not None:
+        return normalize_mode(requested)
+    return configured_mode() or AUTO
 
 
 class BrowserEngineError(RuntimeError):

@@ -52,7 +52,9 @@ def test_cli_rejects_unknown_engine_without_contacting_daemon(monkeypatch, capsy
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("contacted daemon")),
     )
     assert browser_commands.handle_browser(["status"], engine_mode="default") == 2
-    assert "auto, system, onion" in capsys.readouterr().err
+    # `wtf` is the paid engine's name now; `onion` still works and is
+    # translated at the daemon boundary, so it is not offered here.
+    assert "auto, system, wtf" in capsys.readouterr().err
 
 
 def test_warm_daemon_refuses_engine_hot_swap():

@@ -18,7 +18,8 @@ USAGE = (
     "co browser — drive one persistent browser from the shell\n"
     "\n"
     "  co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)\n"
-    "  co browser --engine onion <function> [args]   pay for the WTF Browser (default: system Chrome)\n"
+    "  co browser --engine wtf <function> [args]     pay for the WTF Browser (default: system Chrome)\n"
+    "  co browser config wtf                     make the WTF Browser this machine's default\n"
     '  co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar\n'
     '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
@@ -86,8 +87,13 @@ def _extract_tab(args):
 
 def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> int:
     """Forward a browser command to the daemon, or print help. Returns the process exit code."""
+    # `wtf` is what a person types and what effective_mode() returns; `onion`
+    # is what the daemon protocol calls the same engine. Translated here, at
+    # the one boundary between the two, rather than in either of them.
+    if engine_mode == "wtf":
+        engine_mode = "onion"
     if engine_mode not in ("auto", "system", "onion"):
-        print("--engine must be one of: auto, system, onion", file=sys.stderr)
+        print("--engine must be one of: auto, system, wtf", file=sys.stderr)
         return 2
     if not args:
         print(USAGE, file=sys.stderr)
@@ -109,7 +115,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             print(f"Onionwright {result.version} is already installed.")
         else:
             print(f"Installed Onionwright {result.version} from the signed OpenOnion release.")
-        print("Use it:  co browser --engine onion <function> [args]", file=sys.stderr)
+        print("Use it:  co browser --engine wtf <function> [args]", file=sys.stderr)
         return 0
     tab, args = _extract_tab(args)
     if args is None:
