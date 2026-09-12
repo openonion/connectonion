@@ -1,5 +1,6 @@
 """Successive-pass orchestration tested with a synthetic, deterministic runner."""
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -480,3 +481,23 @@ def test_usage_report_aggregates_raw_records_by_stage_source_and_model(tmp_path)
     assert report["by_source"]["outlook"]["items"] == 60
     assert round(report["by_source"]["outlook"]["input_tokens_per_item"]) == round(250000 / 60)
     assert report["by_model"]["gpt-5.6-luna"]["input_tokens_per_1k_chars"] == round(250000 / 120, 1)
+
+
+def test_a_format_that_moved_is_reported_instead_of_looking_like_a_quiet_week(wiki):
+    """Reading only the shape the user types fails closed, and closed is silent: the
+    notebook would keep saying "nothing new" while the person talked all week. A pass
+    that passes over a pile of unfamiliar user-slot messages says which source and how
+    many, and the next command is the one that shows it."""
+    root, sessions = wiki
+    path = sessions / "rollout-a.jsonl"
+    rows = [json.dumps({"type": "session_meta", "payload": {"id": "s1", "cwd": "/work", "originator": "codex_cli_rs"}})]
+    rows += [json.dumps({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item",
+                         "payload": {"type": "message", "role": "user", "id": f"m{i}",
+                                     "shape_we_have_never_seen": True,
+                                     "content": [{"type": "input_text", "text": "Ship it on Friday."}]}})
+             for i in range(25)]
+    path.write_text("\n".join(rows) + "\n")
+    record = run_sync(root, runner=lambda *args: pytest.fail("nothing was read, so nothing to maintain"))
+    assert record["outcome"] == "no_change"
+    assert record["unrecognised"] == {"codex": 25}
+    assert "codex" in record["warning"] and "25" in record["warning"]

@@ -34,10 +34,20 @@ INJECTED_BLOCK = re.compile(
     r"|Caveat: The messages below"
     r"|This session is being continued from a previous conversation"
     r"|Base directory for this skill:)")
-# Codex tags everything it injects into the user turn with this key; a message the
-# person typed carries only `role` and `type`. Structure beats pattern-matching, so
-# this is the first check, and INJECTED_BLOCK above is the belt to its braces.
+# What a typed Codex message looks like, and nothing else is read. Over 30 real days
+# the `role: user` slot holds exactly two shapes: 688 typed messages with these three
+# keys (median 172 characters) and 9,103 injected ones carrying `id` and a metadata
+# passthrough as well (median 3,828). Recognising the injection would be a denylist,
+# and the day its marker is renamed we would silently go back to reading the agent's
+# own transcript; recognising the typed shape means an unfamiliar message is skipped
+# and counted instead. The marker below is still named, so a skip can be reported as
+# expected machinery rather than as a format that moved.
+TYPED_CODEX_KEYS = frozenset({"content", "role", "type"})
 CODEX_INJECTED_KEY = "internal_chat_message_metadata_passthrough"
+# Unfamiliar user-slot messages in one pass before the run says the format moved.
+UNRECOGNISED_ALARM = 20
+SKIPPED = object()     # a user-slot message not read: the client's own machinery, expected
+UNFAMILIAR = object()  # a user-slot message in a shape we do not know: the format moved
 # Nobody types more than this in one message. What exceeds it is a file, a log or a
 # tool result relayed as input (134M characters of it in one machine's 60 days);
 # the head is kept so the maintainer knows what was pasted, the bulk is not.
@@ -55,6 +65,18 @@ CODING_SPEAKERS = ("user",)
 class Batch:
     items: list[dict]
     progress: dict
+    skipped: int = 0        # user-slot messages not read: the client's own machinery
+    unrecognised: int = 0   # of those, ones whose shape we do not know -- the alarm
+
+    @property
+    def unreadable(self) -> bool:
+        """The transcript format has moved far enough that the user may be missing.
+
+        Reading only the typed shape fails closed, which is the safe direction but a
+        silent one: the notebook would go on reporting "nothing new" while the person
+        talked all week. Twenty unfamiliar messages in one pass is not a fluke.
+        """
+        return self.unrecognised >= UNRECOGNISED_ALARM
 
 
 def timestamp(value: str) -> datetime:
@@ -82,15 +104,18 @@ def _codex_message(row: dict, since: datetime) -> dict | None:
     payload = row.get("payload", {})
     if row.get("type") != "response_item" or payload.get("type") != "message":
         return None
-    if payload.get("role") not in CODING_SPEAKERS or CODEX_INJECTED_KEY in payload:
+    if payload.get("role") not in CODING_SPEAKERS:
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
+    if set(payload) != TYPED_CODEX_KEYS:
+        # Known machinery is expected and quiet; an unfamiliar shape is the alarm.
+        return SKIPPED if CODEX_INJECTED_KEY in payload else UNFAMILIAR
     content = payload.get("content", [])
     text = "\n".join(part["text"] for part in content if isinstance(part, dict)
                      and part.get("type") in ("input_text", "output_text")
                      and isinstance(part.get("text"), str))
-    return _spoken(payload["role"], text, row["timestamp"])
+    return _spoken(payload["role"], text, row["timestamp"]) or SKIPPED
 
 
 # ---- Claude Code transcripts: ~/.claude/projects/<encoded cwd>/<session>.jsonl ----
@@ -103,32 +128,38 @@ def _claude_meta(first: dict) -> dict:
 
 def _claude_message(row: dict, since: datetime) -> dict | None:
     role = row.get("type")
-    # A sidechain row is a prompt the assistant wrote for its own subagent ("You are
-    # one finder angle in a code review…"): the assistant's words in the user's slot.
-    if role not in CODING_SPEAKERS or row.get("isMeta") or row.get("isSidechain"):
+    if role not in CODING_SPEAKERS:
         return None
     message = row.get("message")
     if not isinstance(message, dict):
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
+    # `userType` is "external" on every row and says nothing. What separates the two
+    # is: a meta row (a skill body, a caveat, a system reminder), a sidechain row (a
+    # prompt the assistant wrote for its own subagent -- "You are one finder angle in
+    # a code review…"), and the shape of the content.
+    if row.get("isMeta") or row.get("isSidechain"):
+        return SKIPPED
     content = message.get("content")
     if isinstance(content, str):
         text = content
-    elif isinstance(content, list):
-        # Text blocks only: tool_use, tool_result, thinking and images are the
-        # assistant's machinery, not what either of them said. A text block can
-        # still be an injection (a skill body arrives this way), so each block is
-        # checked on its own rather than after being joined into one string.
+    elif isinstance(content, list) and any(isinstance(p, dict) and p.get("type") == "image" for p in content):
+        # A pasted image with a line about it: typed, and the text is the typed part.
         text = "\n".join(part["text"] for part in content if isinstance(part, dict)
-                         and part.get("type") == "text" and isinstance(part.get("text"), str)
-                         and not INJECTED_BLOCK.match(part["text"]))
+                         and part.get("type") == "text" and isinstance(part.get("text"), str))
+    elif isinstance(content, list):
+        # tool_result, documents, and lists of bare text blocks -- which over 30 days
+        # were only the client's own "[Request interrupted by user]" markers.
+        known = {"text", "tool_result", "tool_use", "thinking", "image", "document"}
+        return SKIPPED if {p.get("type") for p in content if isinstance(p, dict)} <= known else UNFAMILIAR
     else:
-        return None
+        return UNFAMILIAR
     item = _spoken(role, text, row["timestamp"])
-    if item:
-        item["cwd"] = row.get("cwd", "")
-        item["session"] = row.get("sessionId")
+    if not item:
+        return SKIPPED  # an injected block or an empty turn, not something typed
+    item["cwd"] = row.get("cwd", "")
+    item["session"] = row.get("sessionId")
     return item
 
 
@@ -224,6 +255,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     parse = KINDS[kind]["message"]
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
+    skipped = unrecognised = 0
     # Oldest session first. The notebook should grow the way the user's understanding
     # did -- later sessions revising earlier pages -- and a backfill that starts at the
     # lookback and walks forward is also the only way to exercise, in a test, what a
@@ -257,6 +289,10 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                         item = parse(row, since) if isinstance(row, dict) else None
                     except (ValueError, UnicodeError, AttributeError, TypeError) as error:
                         raise WikiError("Invalid complete source line; progress was not advanced") from error
+                if item is SKIPPED or item is UNFAMILIAR:
+                    skipped += 1
+                    unrecognised += item is UNFAMILIAR
+                    item = None
                 if item:
                     if subscription.get("project") and kind != "codex" and item.get("cwd") != subscription["project"]:
                         item = None
@@ -268,7 +304,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                     item = _fit(item, max_chars)
                     size = len(json.dumps(item, ensure_ascii=False))
                     if len(result) >= max_items or used + size > max_chars:
-                        return Batch(result, updated)
+                        return Batch(result, updated, skipped, unrecognised)
                     result.append(item)
                     used += size
                 offset += len(line)
@@ -276,4 +312,4 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                 digest.update(line)
                 updated[name] = {"offset": offset, "digest": digest.hexdigest(),
                                  "mtime_ns": stat.st_mtime_ns}
-    return Batch(result, updated)
+    return Batch(result, updated, skipped, unrecognised)

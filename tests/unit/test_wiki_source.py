@@ -290,3 +290,58 @@ def test_claude_code_subagent_prompts_and_skill_bodies_are_not_the_user(tmp_path
     ])
     batch = collect({**subscription(tmp_path), "kind": "claude-code"}, {}, 10, 100000)
     assert [i["text"] for i in batch.items] == ["Keep the release notes short this time."]
+
+
+def test_an_unfamiliar_codex_user_payload_is_not_assumed_to_be_typed(tmp_path):
+    """The allowlist is the whole guarantee, so it must fail closed. Over 30 real days
+    there are exactly two shapes in the `role: user` slot: what the person typed
+    (`content`, `role`, `type`; median 172 chars) and what Codex injected (the same
+    plus `id` and a metadata passthrough; median 3,828 chars). Recognising the
+    injection marker would be a denylist, and the day it is renamed we would silently
+    go back to reading the agent's own transcript. Recognising the typed shape instead
+    means an unfamiliar message is skipped and counted, never read."""
+    path = tmp_path / "2026/09/07/rollout-a.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    def row(payload):
+        return json.dumps({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item", "payload": payload})
+    path.write_text("\n".join([
+        json.dumps({"type": "session_meta", "payload": {"id": "s1", "cwd": "/work/demo", "originator": "codex_cli_rs"}}),
+        row({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Ship it on Friday."}]}),
+        # tomorrow's Codex, with the marker renamed and a field we have never seen
+        row({"type": "message", "role": "user", "id": "m2", "provenance": {"kind": "goal_reinjection"},
+             "content": [{"type": "input_text", "text": "Continue working toward the active thread goal."}]}),
+    ]) + "\n", encoding="utf-8")
+    batch = collect(subscription(tmp_path), {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["Ship it on Friday."]
+    assert batch.skipped == 1 and batch.unrecognised == 1  # skipped, and known to be unfamiliar
+
+
+def test_claude_code_keeps_what_was_typed_and_counts_the_rest(tmp_path):
+    """Typed content is a plain string, or text next to an image the user pasted.
+    A list of bare text blocks is the client's own marker ("[Request interrupted by
+    user]", a skill body) -- 14 of them in 30 days, none of them typed."""
+    file = tmp_path / "-Users-me-projects" / "abc.jsonl"
+    claude_transcript(file, [
+        ("user", "Ship it on Friday.", {}),
+        ("user", [{"type": "image", "source": {}}, {"type": "text", "text": "look at this one"}], {}),
+        ("user", [{"type": "text", "text": "[Request interrupted by user]"}], {}),
+        ("user", [{"type": "tool_result", "tool_use_id": "t1", "content": "42 passed"}], {}),
+    ])
+    batch = collect({**subscription(tmp_path), "kind": "claude-code"}, {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["Ship it on Friday.", "look at this one"]
+    assert batch.skipped == 2 and batch.unrecognised == 0  # both shapes are known machinery
+
+
+def test_a_pass_that_reads_nothing_while_skipping_a_lot_is_not_silent(tmp_path):
+    """Failing closed is only safe if it is loud: if the transcript format moves and
+    the typed shape stops matching, the notebook would quietly stop learning."""
+    path = tmp_path / "2026/09/07/rollout-a.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [json.dumps({"type": "session_meta", "payload": {"id": "s1", "cwd": "/work/demo", "originator": "codex_cli_rs"}})]
+    rows += [json.dumps({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item",
+                         "payload": {"type": "message", "role": "user", "id": f"m{i}", "unknown_future_field": 1,
+                                     "content": [{"type": "input_text", "text": "x" * 100}]}}) for i in range(30)]
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    batch = collect(subscription(tmp_path), {}, 10, 100000)
+    assert batch.items == [] and batch.unrecognised == 30
+    assert batch.unreadable  # the caller says so instead of reporting "nothing new"

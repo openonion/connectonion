@@ -390,7 +390,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_codex, tool_specs
 
-    items, updated, seen, counts = [], dict(progress), set(), {}
+    items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
     # tool-less extraction pass reads it once. A batch that fits items_per_batch
@@ -408,6 +408,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                                  remaining, mail_client(subscription["kind"]))
         else:
             batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
+        if getattr(batch, "unreadable", False):
+            unrecognised[name] = batch.unrecognised
         for item in batch.items:
             if item["source"] not in seen:
                 items.append(item)
@@ -421,6 +423,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
               "extracted": len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a
               # model can be computed later from the records rather than remembered.
+              # Reading only what the user typed fails closed when a client changes its
+              # transcript format, and closed is silent. A pass that passed over a pile
+              # of user-slot messages it did not recognise says so, by source.
+              "unrecognised": unrecognised,
+              "warning": ("; ".join(f"{name}: {count} messages in an unfamiliar format were not read"
+                                    for name, count in unrecognised.items()) or ""),
               "usage_by_stage": {}, "items_by_source": counts,
               "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None}
     path = state_path(root, f"runs/{record['id']}.json")
