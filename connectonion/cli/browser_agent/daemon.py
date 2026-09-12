@@ -2,7 +2,7 @@
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
   Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
-  Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
+  Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check (exempting the verbs that touch no page — close/closetab/status/engine_status/help/`tab ls`/`tab close` — so a mismatched pin is always escapable) → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
   State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
   Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
   Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
@@ -140,6 +140,29 @@ def _key(name):
 
 def _tab_label(key) -> str:
     return "main" if key is None else key
+
+
+def _engine_label(mode: str) -> str:
+    """What a person types for this engine. `onion` is only the wire spelling."""
+    return "wtf" if mode == "onion" else mode
+
+
+# Verbs that neither drive nor create a page: which browser is running does not
+# change what they do, so the engine pin must not gate them. `close` above all —
+# it is the documented way out of a mismatched pin, and guarding it is what made
+# #1510 unrecoverable rather than merely annoying. `tab open` is deliberately NOT
+# here: it allocates a page, and on a paid pin that spends money.
+_ENGINE_AGNOSTIC_VERBS = ("close", "closetab", "status", "engine_status", "help")
+_ENGINE_AGNOSTIC_TAB_SUBCOMMANDS = ("ls", "close")
+
+
+def _engine_agnostic(verb: str, tokens: list) -> bool:
+    if verb in _ENGINE_AGNOSTIC_VERBS:
+        return True
+    if verb != "tab":
+        return False
+    # A bare `tab` prints usage, which no engine can get wrong.
+    return len(tokens) < 2 or tokens[1] in _ENGINE_AGNOSTIC_TAB_SUBCOMMANDS
 
 
 def _owner_alive(sock_path: str) -> bool:
@@ -328,6 +351,78 @@ class BrowserDaemon:
     # the CLI answers it locally.
     READONLY = ("tab", "status", "engine_status", "use", "switch")
 
+    async def _engine_conflict(self, requested_engine: str) -> str | None:
+        """The refusal text when this request cannot use the pinned engine, else None.
+
+        `auto` means "no preference", and the guard used to read it as a
+        conflicting preference — which is why every bare `co browser <verb>`
+        was refused by a daemon someone had once started with --engine wtf
+        (#1501, #1510).  A named engine that differs is a real conflict and
+        still refuses.
+
+        The one case where `auto` must still ask is money.  A *running* paid
+        session is consent already given: while it is up, `auto` rides it and
+        nothing further is charged.  Once it has ended, serving `auto` would
+        silently open a new billing interval, so the caller has to say.
+        """
+        if requested_engine == self.engine_mode:
+            return None
+        if requested_engine != "auto":
+            return self._engine_pin_refusal(requested_engine)
+        if self.engine_mode != "onion":
+            return None
+        if await self._paid_browser_is_live():
+            return None
+        return self._paid_relaunch_refusal()
+
+    async def _paid_browser_is_live(self) -> bool:
+        """Is the paid session this daemon was pinned for still open?"""
+        is_alive = getattr(self.browser, "is_alive", None)
+        if is_alive is None:
+            return False
+        try:
+            result = is_alive()
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception:
+            return False
+        return bool(result)
+
+    def _paid_relaunch_refusal(self) -> str:
+        """A bare command must not restart a paid browser on the caller's behalf."""
+        # Only commands this daemon would actually accept, in this state. The pin
+        # is immutable while the daemon lives, so `--engine system` here would be
+        # refused as a conflict — offering it would be the #1510 circle again.
+        return (
+            "browser daemon is pinned to engine=wtf and its paid session is no "
+            "longer open. Starting it again bills, so a command with no engine "
+            "of its own has to say:\n\n"
+            "Start a new paid session:\n"
+            "  co browser --engine wtf <verb> ...\n\n"
+            "Or close this daemon — the next command then picks its own engine, "
+            "and your logins are still there:\n"
+            "  co browser close"
+        )
+
+    def _engine_pin_refusal(self, requested_engine: str) -> str:
+        """Say which engine is running, and name only commands that would work.
+
+        Every `co browser ...` on this page is admitted by the guard above; a
+        remedy the guard itself rejects sends the reader in a circle with the
+        confidence of an instruction, which is how #1510 became unrecoverable.
+        """
+        pinned = _engine_label(self.engine_mode)
+        return (
+            f"browser daemon is pinned to engine={pinned}; this request asked for "
+            f"engine={_engine_label(requested_engine)}.\n\n"
+            f"Run this command on the engine that is running:\n"
+            f"  co browser --engine {pinned} <verb> ...\n\n"
+            f"Stop repeating the flag — make it this machine's default:\n"
+            f"  co browser config {pinned}\n\n"
+            f"Or start over on the engine you asked for:\n"
+            f"  co browser close"
+        )
+
     def dispatch(self, raw: str) -> tuple:
         """Synchronous test/embedding bridge; production uses ``dispatch_async``.
 
@@ -369,12 +464,11 @@ class BrowserDaemon:
             self._gateway is None or not self._gateway.is_running
         ):
             return False, "EGRESS_GATEWAY_UNAVAILABLE"
-        if requested_engine != self.engine_mode:
-            return 6, (
-                f"browser daemon is pinned to engine={self.engine_mode}; this request asked "
-                f"for engine={requested_engine}. Close it with `co browser close`, then retry."
-            )
         verb = tokens[0]
+        if not _engine_agnostic(verb, tokens):
+            conflict = await self._engine_conflict(requested_engine)
+            if conflict is not None:
+                return 6, conflict
 
         # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
         # command that would DRIVE the tab — read-only/lifecycle verbs may name a tab that

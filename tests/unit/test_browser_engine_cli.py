@@ -75,7 +75,9 @@ def test_warm_daemon_refuses_engine_hot_swap():
     code, message = daemon.dispatch(request)
     assert code == 6
     assert "pinned to engine=system" in message
-    assert "asked for engine=onion" in message
+    # The request carried the wire spelling `onion`; the refusal reports the name
+    # a person types, because the reader's next step is to retype the command.
+    assert "asked for engine=wtf" in message
 
 
 def test_client_probes_warm_daemon_before_explicit_onion_command(monkeypatch):
