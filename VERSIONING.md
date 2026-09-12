@@ -58,7 +58,19 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b2 (beta)
+## Release candidate: 1.8.5b3 (beta)
+
+Two fixes an unattended agent paid for before we found them. `co browser wait`
+takes seconds while every neighbouring knob is named in milliseconds, so
+`wait 2500` meant forty-one minutes holding a tab's lock — capped at 60s and
+refused before the lock. And a daemon pinned to an engine refused every bare
+command, `close` included, while telling you to run `close`: `auto` is no
+preference now, page-less verbs are never gated, and a refusal names only
+commands that daemon would accept. Stable remains 1.8.4: the reconnect-gap gate
+in #1462 has not passed.
+See [1.8.5b3 notes](docs/releases/1.8.5b3.md).
+
+### Superseded: 1.8.5b2 (beta, published)
 
 Four things `b1` made you type or guess: `co browser config` sets a default
 engine so `--engine` is an override rather than the only way in; the paid
@@ -150,9 +162,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b2
+## Current Version: 1.8.5b3
 
 ### Version History
+- 1.8.5b3 (**beta: two ways a browser could waste an afternoon.** `wait` takes
+  seconds while everything around it is named in milliseconds, so `wait 2500`
+  held a tab for 41 minutes and every command behind it timed out while
+  `status` kept answering — capped at 60s and refused before the lock, naming
+  the value you meant. And an engine-pinned daemon refused every bare command
+  including the `close` its own error told you to run: `auto` is no preference
+  now, page-less verbs are never gated, and a refusal names only commands that
+  daemon would accept. A dead paid session names its recovery, and the paid
+  engine says it bills before it spends. Stable remains 1.8.4.)
 - 1.8.5b2 (**beta: the settings b1 made you repeat.** `co browser config`
   gives the browser engine a default so `--engine` becomes an override; the
   paid engine is `wtf`, not `onion`; `co <provider> serve` is `consume`;
