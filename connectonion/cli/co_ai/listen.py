@@ -17,10 +17,10 @@ than corrupting it.
 """
 
 import threading
-from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
-from ...inbox import Inbox, provider as _provider
+from ...inbox import Inbox
+from ...inbox import provider as _provider
 from ...inbox.settings import Channel
 
 
@@ -67,9 +67,11 @@ def _handler(channel: Channel, inbox: Inbox, provider, agent, sessions: dict, gu
         try:
             sent = provider.send(message.chat, reply, reply_to=message.id)
         except Exception as exc:
-            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, error=str(exc))
+            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
+                              error=str(exc), by="co-ai")
             raise RuntimeError(f"reply failed: {exc}") from exc
-        inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
+        inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
+                          provider_id=sent, by="co-ai")
 
     return answer
 
@@ -95,7 +97,7 @@ def listen(channels: Sequence[Channel], agent_factory: Callable, *,
         loops.append(threading.Thread(
             target=inbox.serve, args=(handler,),
             kwargs={"workers": workers, "idle_seconds": idle_seconds,
-                    "should_stop": stop, "once": once},
+                    "should_stop": stop, "once": once, "by": "co-ai"},
             name=f"listen-{channel.provider}", daemon=True))
 
     for loop in loops:
