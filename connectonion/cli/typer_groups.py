@@ -32,7 +32,32 @@ class _OneSuggestion(typer.core.TyperGroup):
     pyproject asks for `typer>=0.20.0`, so a user has either.
     """
 
+    # A verb this CLI used to have. Click's own "did you mean" works on edit
+    # distance, so it offers nothing for `serve` → `consume`: the words share
+    # two letters. Someone who read the 1.8.5b1 notes, or an agent that read
+    # them, would otherwise get "No such command" and no way forward, which is
+    # the failure #1487 exists to stop.
+    RENAMED = {"serve": "consume"}
+
     def resolve_command(self, ctx, args):
+        if args and args[0] in self.RENAMED and args[0] not in self.commands:
+            new = self.RENAMED[args[0]]
+            if new in self.commands:
+                import click
+
+                # Built from the context chain and prefixed with `co`, not
+                # from ctx.command_path: the root's name is whatever argv[0]
+                # was, so that renders "root feishu consume" under a test
+                # runner and "connectonion feishu consume" for anyone who
+                # invoked the other entry point. `invoke` below does the same.
+                names, here = [], ctx
+                while here.parent is not None:
+                    names.append(here.info_name)
+                    here = here.parent
+                path = " ".join(["co", *reversed(names)])
+                raise click.UsageError(
+                    f"`{args[0]}` was renamed to `{new}`. "
+                    f"Next: {path} {new} --help", ctx)
         try:
             return super().resolve_command(ctx, args)
         except Exception as error:

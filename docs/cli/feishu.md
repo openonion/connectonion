@@ -127,7 +127,7 @@ co feishu ls                     # unread: id, chat, sender, text
 co feishu log -f                 # the tool's log, following
 co feishu listen --raw           # also keep Feishu's own payload on each received.jsonl line
 co feishu receive --no-start     # wait for a message but never start a listener (a cron job, a test)
-co feishu serve -- ./answer.sh   # the loop: receive, run the command, reply with its stdout
+co feishu consume -- ./answer.sh   # the loop: receive, run the command, reply with its stdout
 ```
 
 `receive` starts a background `listen` if none is running, so there is no
@@ -208,12 +208,12 @@ echo "done, all green" | co feishu reply om_9f8e
 Or let the tool run the loop for you:
 
 ```bash
-co feishu serve -- claude -p                 # one claude per message; its stdout is the reply
-co feishu serve -- codex exec -
-co feishu serve -- ./answer.sh
+co feishu consume -- claude -p                 # one claude per message; its stdout is the reply
+co feishu consume -- codex exec -
+co feishu consume -- ./answer.sh
 ```
 
-`serve` runs the command with the message JSON on stdin and these variables:
+`consume` runs the command with the message JSON on stdin and these variables:
 `CO_PROVIDER`, `CO_CHAT`, `CO_THREAD`, `CO_SENDER`, `CO_MSG_ID`, and
 `CO_CHAT_DIR` (a per-chat directory the command may keep its own state in).
 Non-empty stdout is sent back as the reply and the message is done. Empty
@@ -224,12 +224,20 @@ consumer that died, so a transient failure is retried and a question is
 never silently consumed. A command that cannot be run at all (`./answer.sh`
 without its exec bit) is refused with exit 2 before any message is taken.
 
-`serve` runs one command at a time, because commands written for it have
+`consume` was called `serve` in 1.8.5b1 and the old name is gone, not aliased —
+this project does not ship hidden commands, and `serve` was public for a few
+hours in one opt-in beta. It was renamed because nothing here serves
+anything — it takes messages off a queue and hands each to a command, which is
+what this design calls a consumer throughout, and what `lark-cli event consume`
+calls it too. A verb another agent can guess is worth more than one it has to
+be told.
+
+`consume` runs one command at a time, because commands written for it have
 always run alone and some are not safe to run twice at once. `--workers N`
 answers N conversations at once; messages within one conversation stay in
 order whatever N is.
 
-While a command is running, `serve` keeps saying so, so the hour is measured
+While a command is running, `consume` keeps saying so, so the hour is measured
 from the last sign of life rather than from when the message was taken. A
 command that takes ninety minutes is not interrupted; one whose process died
 is offered to the next consumer as before. A message that has been handed out
@@ -251,7 +259,7 @@ again just breaks the next consumer too, every hour, forever.
 - Retries a rate-limited send three times with backoff. Feishu allows five
   messages per second per group, shared with every bot in that group.
 - Fetches a new tenant token when Feishu says the cached one is no longer
-  good, so rotating the app secret in the console does not leave `serve`
+  good, so rotating the app secret in the console does not leave `consume`
   failing every reply until the old token's two hours are up.
 - Keeps one listener per directory with a lock the kernel holds: a listener
   killed with SIGKILL, or a reboot, holds nothing, so the next `receive`
@@ -298,7 +306,7 @@ never sent to the Feishu console.
 
 ## Keeping it running
 
-`receive` and `serve` restart a listener that died, so a consumer loop is
+`receive` and `consume` restart a listener that died, so a consumer loop is
 enough for most setups. To hold the connection whether or not anything is
 consuming, run `listen` under the service manager you already have. On macOS:
 

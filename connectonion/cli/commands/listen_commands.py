@@ -1,8 +1,8 @@
 """
-Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | serve`
+Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
-  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_serve → Inbox.serve(handler) → subprocess(stdin=message) → reply(stdout)
+  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → Inbox.serve(handler) → subprocess(stdin=message) → reply(stdout)
   State/Effects: everything durable lives in the inbox directory | listen holds listen.lock and returns stale cur/ files every minute | receive and serve start a background listener when none runs
   Integration: one set of handlers for every provider name in inbox.PROVIDERS; main.py registers the same nine commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
@@ -228,7 +228,7 @@ def handle_log(name: str, follow: bool = False) -> None:
             time.sleep(0.5)
 
 
-def handle_serve(name: str, command: List[str], once: bool = False, workers: int = 1) -> None:
+def handle_consume(name: str, command: List[str], once: bool = False, workers: int = 1) -> None:
     """For each message: run COMMAND with the message on stdin, send its
     stdout back as the reply. Empty stdout or a non-zero exit sends nothing."""
     p = _configured(name)
@@ -263,7 +263,7 @@ def handle_serve(name: str, command: List[str], once: bool = False, workers: int
             raise RuntimeError(
                 f"command exited {run.returncode}: {run.stderr.strip()[:500]}")
         if not run.stdout.strip():
-            inbox.log(f"serve: nothing to say for {message.id}")
+            inbox.log(f"consume: nothing to say for {message.id}")
             return
         reply = run.stdout.rstrip("\n")
         try:

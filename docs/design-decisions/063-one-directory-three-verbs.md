@@ -147,7 +147,7 @@ titles and link previews never reach a prompt by accident.
 ```text
 co ai --listen feishu,telegram     the project's agent; co ai decides where its input comes from
 claude  ←mcp←  co feishu mcp       Claude Code channel push; Codex polls receive
-co feishu serve -- claude -p       one claude per message
+co feishu consume -- claude -p       one claude per message
 while m=$(co feishu receive); …    any shell
 tail -f ~/.co/feishu/inbox.jsonl   any observer
 ```
