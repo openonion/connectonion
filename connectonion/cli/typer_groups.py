@@ -43,8 +43,6 @@ class _OneSuggestion(typer.core.TyperGroup):
         if args and args[0] in self.RENAMED and args[0] not in self.commands:
             new = self.RENAMED[args[0]]
             if new in self.commands:
-                import click
-
                 # Built from the context chain and prefixed with `co`, not
                 # from ctx.command_path: the root's name is whatever argv[0]
                 # was, so that renders "root feishu consume" under a test
@@ -55,9 +53,16 @@ class _OneSuggestion(typer.core.TyperGroup):
                     names.append(here.info_name)
                     here = here.parent
                 path = " ".join(["co", *reversed(names)])
-                raise click.UsageError(
-                    f"`{args[0]}` was renamed to `{new}`. "
-                    f"Next: {path} {new} --help", ctx)
+                # Printed and exited rather than raised: a UsageError raised
+                # from resolve_command is caught by Typer's pretty-exception
+                # handler and rendered as a forty-line traceback, which buries
+                # the one sentence that matters. Measured, not assumed — the
+                # first version of this did exactly that.
+                import sys
+
+                print(f"`{args[0]}` was renamed to `{new}`.", file=sys.stderr)
+                print(f"Next: {path} {new} --help", file=sys.stderr)
+                raise SystemExit(2)
         try:
             return super().resolve_command(ctx, args)
         except Exception as error:
@@ -69,6 +74,31 @@ class _OneSuggestion(typer.core.TyperGroup):
             # both of the attributes it is about to use.
             if getattr(error, "possibilities", None) and hasattr(error, "message"):
                 error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
+            raise
+
+    def main(self, *args, **kwargs):
+        """Add the next command to a usage error, once.
+
+        Click prints a usage error and exits 2 without passing through
+        `invoke`, so the next-step table below never sees it. An agent that
+        mistypes an argument gets "Try --help", which is a flag, not a
+        command it can run — and a wrong invocation is the moment the next
+        command matters most.
+        """
+        try:
+            return super().main(*args, **kwargs)
+        except SystemExit as exiting:
+            if exiting.code == 2:
+                import sys
+
+                # `co`, not argv[0]: the root's name is whatever invoked it,
+                # and for the root group self.name is that same word — so it
+                # is dropped rather than repeated.
+                group = (self.name or "").strip()
+                if group in ("co", "connectonion", "root"):
+                    group = ""
+                path = f"co {group}".strip()
+                print(f"Next: {path} --help", file=sys.stderr)
             raise
 
     def invoke(self, ctx):

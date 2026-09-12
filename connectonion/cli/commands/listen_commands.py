@@ -141,6 +141,11 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
         _listener_or_exit(inbox)
     message = _receive(inbox, timeout, watch=start)
     if message is None:
+        # 124 is the contract, borrowed from timeout(1). Saying so costs one
+        # line on stderr and saves a caller from reading an empty stdout as
+        # "something went wrong" — or worse, as "no messages, ever".
+        errors.print(f"no message within the timeout (exit {EXIT_TIMEOUT}). "
+                     f"Next: co {name} ls", style="dim")
         sys.exit(EXIT_TIMEOUT)
     print(message.to_json())
 
