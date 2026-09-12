@@ -58,7 +58,18 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b1 (beta)
+## Release candidate: 1.8.5b2 (beta)
+
+Four things `b1` made you type or guess: `co browser config` sets a default
+engine so `--engine` is an override rather than the only way in; the paid
+engine is called `wtf`, its product name; `serve` is `consume`; and
+`co auth feishu --app-id` authorizes a bot you already have. Every exit on
+the inbox surface now names a command to run next, and a `co-inbox` skill
+ships with a test that diffs it against `--help`. Stable remains 1.8.4: the
+reconnect-gap gate in #1462 has not passed.
+See [1.8.5b2 notes](docs/releases/1.8.5b2.md).
+
+### Superseded: 1.8.5b1 (beta, published)
 
 Everything 1.8.5 is meant to contain is in one package: the Feishu and Lark
 inbox (`co feishu listen | receive | send | reply`, `co auth feishu`, the
@@ -139,9 +150,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b1
+## Current Version: 1.8.5b2
 
 ### Version History
+- 1.8.5b2 (**beta: the settings b1 made you repeat.** `co browser config`
+  gives the browser engine a default so `--engine` becomes an override; the
+  paid engine is `wtf`, not `onion`; `co <provider> serve` is `consume`;
+  `co auth feishu --app-id` reuses a bot already in your groups. Every exit
+  on the inbox surface names a command, and a co-inbox skill ships with a
+  two-way parity test. Stable remains 1.8.4.)
 - 1.8.5b1 (**beta: the Feishu and Lark inbox, and the consumers that answer
   from it.** `co auth feishu` creates the application by QR instead of
   eleven console steps; `co <provider> listen` writes every message into

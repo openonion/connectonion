@@ -22,24 +22,27 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b1** completes 1.8.5: the Feishu and Lark inbox, the consumers that
-answer from it, and the permission work from the two alphas. `co auth feishu`
-creates the application by scanning a QR instead of eleven console steps;
-`co <provider> listen` writes every message into `~/.co/inbox/<provider>/`, and
-`co ai` answers the channels named in `~/.co/host.yaml` with no flags at all.
-The surface is complete and frozen. It is a beta rather than stable because the
-no-loss-across-a-reconnect gate has not passed: the repair is offline-tested and
-has not been run against a real group. See
-[1.8.5b1 release notes](releases/1.8.5b1.md).
+Beta **1.8.5b2** adds the settings `b1` made you repeat. `co browser config`
+gives the browser engine a default, so `--engine` is an override rather than
+the only way in, and the paid engine is called `wtf` — its product name — where
+the flag used to say `onion`. `co <provider> serve` is now `consume`, and
+`co auth feishu --app-id` authorizes a bot already in your groups instead of
+creating one that is in none. Every exit on the inbox surface names a command
+to run next.
+
+It is a beta because the no-loss-across-a-reconnect gate has not passed: the
+repair is offline-tested and has not been run against a real group. The release
+notes list what else to decide before putting it on a machine other people use.
+See [1.8.5b2 release notes](releases/1.8.5b2.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b1
+python -m pip install --pre connectonion==1.8.5b2
 co --version
 ```
 
-The 1.8.5a1 and 1.8.5a2 previews are superseded; 1.8.4a1 and 1.8.4a2 are
-historical, and the planned 1.8.4b1 was folded into the stable release. The tag
-workflow builds and verifies the public package before documentation is
+The 1.8.5a1, 1.8.5a2 and 1.8.5b1 previews are superseded; 1.8.4a1 and 1.8.4a2
+are historical, and the planned 1.8.4b1 was folded into the stable release. The
+tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
 The sections below are historical notes.
 
