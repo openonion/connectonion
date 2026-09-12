@@ -6,7 +6,8 @@ The proposed first publication is 1.8.5a1 after review and the release gates in
 
 ## Integrated work
 
-- #1398 and #1466: shared mailbox and Feishu/Lark adapter, including prior review fixes.
+- #1398, #1466 and #1472, all now on main via #1491: the shared inbox and the
+  Feishu/Lark adapter, including prior review fixes.
 - #1464: command discovery and next-step tips, reconciled with 1.8.4 env/Outlook commands.
 - #1465: messaging schedule, with stable 1.8.4 publication status retained.
 - Integration repairs: durable completion without a sent reply, original-content
@@ -36,18 +37,31 @@ claim, completion, outbound replies and one-shot serve passed. The listener
 reconnected, but a message sent during the gap was not recovered in the observed
 window. This release gate remains open.
 
-For a repeat run, keep the app ID/secret in the local
-credential store; do not paste them into this record or commit them. Create a
-new private mailbox directory for the test. First confirm there is no existing
-WebSocket listener competing for that same application; coordinate any temporary
+For a repeat run, the credential no longer has to come out of an existing
+store by hand: `co auth feishu` creates an application by QR and writes its
+pair to the selected env file, so the test can use one of its own rather than
+borrowing the application a polling workflow is already using. Either way, do
+not paste the pair into this record or commit it. Create a new private inbox
+root for the test. If you do reuse an existing application, first confirm no
+other WebSocket listener is competing for it, and coordinate any temporary
 pause of the existing polling workflow with its owner.
 
+A fresh application has one thing to check before the run proper: add its bot
+to the test group and @-mention it once. An application created by
+`co auth feishu` opens its long connection and subscribes to
+`im.message.receive_v1`, but whether it is invitable and addressable as a group
+bot is itself untested — `/open-apis/bot/v3/info` answers `20008` on one where
+a console-made bot answers normally.
+
 1. Run `co --env-file TEST_ENV lark check` (or `feishu`) from the candidate.
-2. Run `CO_LARK_HOME=TEST_HOME co --env-file TEST_ENV lark listen` in the foreground.
+2. Run `CO_INBOX_HOME=TEST_HOME co --env-file TEST_ENV lark listen` in the
+   foreground. The provider's directory is created under that root, so the
+   test inbox is `TEST_HOME/lark/`. `CO_LARK_HOME` no longer exists; using it
+   would write to the operator's own `~/.co/inbox/lark/`.
 3. Have the tester post an @-mention containing a unique `co185-acceptance-...`
    marker. Record provider timestamp and arrival time locally; export only the
    synthetic marker, latency and pass/fail, not chat/sender IDs or other messages.
-4. Run two `receive --no-start -t 0` consumers against that mailbox. Only one may
+4. Run two `receive --no-start -t 0` consumers against that inbox. Only one may
    obtain the test message; the other times out with 124. Mark the message done.
 5. Exercise a bounded fault affecting only the test listener's connection, longer
    than its heartbeat. Verify reconnect logs and compare exact marker IDs before,
