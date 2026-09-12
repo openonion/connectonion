@@ -16,19 +16,32 @@ the scanner's tenant and returns its credentials to whoever started the flow.
 The request that begins it carries no client identity, so this is a public
 protocol and not a private channel for the official CLI.
 
-What one scan does not do: it cannot list the applications you already own —
-no such API exists — so this always creates a new one rather than offering a
-choice. Which application it becomes is decided on Feishu's own confirmation
-page, which is the right place for that decision to be made.
+What one scan does not do: no API lists the applications you own, so the
+choice of which application this becomes is made on Feishu's own confirmation
+page. `--app-id` names one up front, which is how you reuse a bot that is
+already in the group with its permissions set instead of creating one that is
+in no group at all.
+
+Where that id comes from, if `lark-cli` is installed: its `config.json` records
+an app id per application in plain text. The *secret* beside it is a keychain
+reference, and this never reads it. Copying a keychain entry into a plaintext
+env file is a downgrade wearing the word "import" (#1497); scanning gets the
+same credential with the platform's consent instead of the operating system's.
 """
 
 import io
+import re
 import sys
+from pathlib import Path
+from typing import Optional
 
 from ...environment import display_path, selected_env_file
 from ...env_file import upsert_env
 
 SDK_MISSING = "The Feishu SDK is not installed. Run: pip install lark-oapi"
+
+# What the platform issues. Checked so a typo fails now rather than on a page.
+_APP_ID = re.compile(r"^cli_[A-Za-z0-9]{8,}$")
 
 # Shown on Feishu's confirmation page, so that a person looking at their list
 # of applications a month from now knows what this one is and who made it.
@@ -47,6 +60,48 @@ def _register_app():
     return register_app
 
 
+def lark_cli_applications() -> list:
+    """Application ids `lark-cli` has configured, from its plaintext config.
+
+    Ids only. `appSecret` there is `{"source": "keychain", "id": …}` and is
+    left alone. A config that is missing, unreadable or not JSON yields
+    nothing: this is a convenience, and a broken one must not stop a scan.
+    """
+    import json
+
+    config = Path.home() / ".lark-cli" / "config.json"
+    try:
+        data = json.loads(config.read_text(encoding="utf-8"))
+        apps = data.get("apps") or []
+    except Exception:
+        return []
+    found = []
+    for app in apps:
+        if not isinstance(app, dict) or not app.get("appId"):
+            continue
+        users = app.get("users") or []
+        user = users[0].get("userName") if users and isinstance(users[0], dict) else None
+        found.append({"app_id": str(app["appId"]),
+                      "brand": str(app.get("brand") or ""),
+                      "user": user})
+    return found
+
+
+def _offer_existing() -> None:
+    """Say that a reusable application is already configured, before creating one."""
+    apps = lark_cli_applications()
+    if not apps:
+        return
+    print(f"lark-cli has {len(apps)} application(s) configured on this machine:")
+    for app in apps:
+        who = f"  ({app['user']})" if app["user"] else ""
+        print(f"  {app['app_id']}  {app['brand']}{who}")
+    print("To authorize one of those instead of creating a new one, and keep the")
+    print("groups and permissions it already has:")
+    print(f"  co auth feishu --app-id {apps[0]['app_id']}")
+    print()
+
+
 def _qr(url: str) -> str:
     import qrcode
 
@@ -59,16 +114,28 @@ def _qr(url: str) -> str:
     return out.getvalue()
 
 
-def handle_feishu_auth(brand: str = "feishu") -> None:
-    """Create the application by scanning, and save what it needs to run."""
+def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> None:
+    """Create the application by scanning, or authorize one you already have."""
+    if app_id is not None:
+        # Checked before the scan: a typo here sends someone to a page that
+        # cannot work, and they find out after waiting for a QR to expire.
+        if not _APP_ID.match(app_id):
+            print(f"{app_id!r} is not an application id. They look like cli_a1b2c3d4e5f6g7h8 "
+                  "and are shown by `co auth feishu` when lark-cli has any configured.")
+            raise SystemExit(2)
     try:
         register_app = _register_app()
     except RuntimeError as error:
         print(str(error))
         raise SystemExit(3)
 
-    print("Creating a Feishu application. Scan this with the Feishu or Lark app,")
-    print("or open the link, and approve it. The application is yours, in your tenant.")
+    if app_id is None:
+        _offer_existing()
+        print("Creating a Feishu application. Scan this with the Feishu or Lark app,")
+        print("or open the link, and approve it. The application is yours, in your tenant.")
+    else:
+        print(f"Authorizing {app_id}. Scan this with the Feishu or Lark app, or open")
+        print("the link, and approve it. Its groups and permissions are unchanged.")
     print()
 
     def show(info) -> None:
@@ -79,11 +146,15 @@ def handle_feishu_auth(brand: str = "feishu") -> None:
         print("Waiting for approval. Ctrl-C to stop.")
 
     try:
-        result = register_app(
-            on_qr_code=show,
-            app_preset=dict(APP_PRESET),
-            source="connectonion",
-        )
+        options = {"source": "connectonion"}
+        if app_id is None:
+            # A preset only pre-fills the creation page, so it is meaningless
+            # — and confusing — when the application already exists and has a
+            # name its owner chose.
+            options["app_preset"] = dict(APP_PRESET)
+        else:
+            options["app_id"] = app_id
+        result = register_app(on_qr_code=show, **options)
     except KeyboardInterrupt:
         print("Stopped. Nothing was saved.")
         raise SystemExit(1)
