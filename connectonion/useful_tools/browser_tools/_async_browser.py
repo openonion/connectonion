@@ -48,6 +48,31 @@ except ImportError:
     ASYNC_BROWSER_AVAILABLE = False
 
 
+# `wait` is the one verb whose argument can buy an unbounded hold on a shared
+# tab, and its unit is guessable: every *other* settle knob in this codebase is
+# named in milliseconds (`wait_ms`, `timeout_ms`), so `wait 2500` reads as 2.5s
+# to a caller and means 41 minutes here. The cap exists to bound that mistake,
+# not to ration waiting — nothing that needs more than a minute of stillness
+# should be a blocking sleep on a tab other agents may be queued behind.
+MAX_WAIT_SECONDS = 60
+
+
+def wait_argument_error(seconds: float) -> ValueError:
+    """Refuse an over-long wait in the terms the caller most likely meant."""
+    guess = (
+        f"  Did you mean `wait {seconds / 1000:g}`?\n"
+        if seconds >= 1000 and seconds / 1000 <= MAX_WAIT_SECONDS
+        else ""
+    )
+    return ValueError(
+        f"wait takes seconds, not milliseconds: {seconds:g} seconds is "
+        f"{seconds / 60:.0f} minutes, over the {MAX_WAIT_SECONDS}s limit.\n"
+        f"{guess}"
+        "  A wait holds the tab, so anything longer belongs in a condition, not a "
+        "sleep:  wait_for_element(<description>)  ·  wait_for_text(<text>)"
+    )
+
+
 class PaidSessionEndedError(RuntimeError):
     """A paid session ended upstream; its browser must not keep serving."""
 
@@ -1897,6 +1922,10 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             return f"Found text: '{text}'"
 
     async def wait(self, seconds: float) -> str:
+        # Before the tab lock, deliberately: the whole cost of #1509 was that a
+        # bad argument was admitted first and only found out 41 minutes later.
+        if seconds > MAX_WAIT_SECONDS:
+            raise wait_argument_error(seconds)
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
