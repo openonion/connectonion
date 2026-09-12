@@ -18,7 +18,15 @@ co auth feishu
 
 `co auth feishu` prints a QR code and a link. Scan it with Feishu or Lark,
 approve, and the application exists — in your own tenant, owned by you — with
-its credentials written to `~/.co/keys.env`. There is no developer console to
+its credentials written to `~/.co/keys.env`.
+
+**Already have a bot?** `co auth feishu --app-id cli_…` authorizes that one
+instead of creating a new one, so it keeps the groups it is already in and the
+permissions already granted to it — which is usually what you want, since a new
+application is in no group at all. If `lark-cli` is installed, `co auth feishu`
+lists the application ids it has configured so you can copy one. It reads only
+the ids: the secret beside them is a keychain reference, and copying that into
+a plaintext file would be a downgrade (#1497). There is no developer console to
 visit and nothing to copy. It starts on Feishu and moves to Lark by itself if
 that is where your tenant lives, so there is nothing to choose first either.
 

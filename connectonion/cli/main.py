@@ -230,10 +230,15 @@ def deploy(
 
 @app.command()
 def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft, feishu, lark"),
-         scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube.")):
+         scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
+         app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
+                                              help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions")):
     """Authenticate with OpenOnion."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
+    if app_id is not None and service not in ("feishu", "lark"):
+        print("--app-id is only supported for Feishu and Lark. Next: co auth feishu --help")
         raise typer.Exit(2)
     if service == "google":
         from .commands.auth_commands import handle_google_auth
@@ -243,7 +248,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
         handle_microsoft_auth()
     elif service in ("feishu", "lark"):
         from .commands.feishu_auth import handle_feishu_auth
-        handle_feishu_auth(brand=service)
+        handle_feishu_auth(brand=service, app_id=app_id)
     else:
         from .commands.auth_commands import handle_auth
         handle_auth()
