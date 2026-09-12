@@ -16,8 +16,8 @@ strict order where a human would notice, and no waiting where they would not.
 
 import queue
 import threading
-import time
 from typing import Callable, Optional
+
 
 # What a conversation is, when the caller does not say. Two threads of one
 # group are two conversations: they are two questions, and the people asking
@@ -60,7 +60,7 @@ class _Lane:
 
 class _Loop:
     def __init__(self, inbox, handler, *, lane_key, workers, lease_seconds,
-                 max_attempts, idle_seconds, should_stop):
+                 max_attempts, idle_seconds, should_stop, by: Optional[str] = None):
         self.inbox = inbox
         self.handler = handler
         self.lane_key = lane_key
@@ -68,6 +68,10 @@ class _Loop:
         self.max_attempts = max_attempts
         self.idle_seconds = idle_seconds
         self.should_stop = should_stop or threading.Event()
+        # Who is handling: a descriptive label for done.jsonl (host, co-ai,
+        # receive, consume:<cmd>), so consumers sharing one directory leave
+        # distinguishable trails. Nothing decides on it.
+        self.by = by
         # The cap is on handlers, not on lanes: a lane costs a sleeping thread,
         # a handler costs a model call.
         self.slots = threading.Semaphore(workers)
@@ -111,7 +115,7 @@ class _Loop:
             # into an unanswered question.
             self.inbox.log(f"{message.id} not finished: {type(error).__name__}: {error}")
         else:
-            self.inbox.done(message.id)
+            self.inbox.done(message.id, by=self.by)
         finally:
             keep_alive.set()
             lease.join(timeout=1)
@@ -146,7 +150,7 @@ class _Loop:
                 # consumer too, every hour, forever.
                 self.inbox.log(
                     f"gave up on {message.id} after {attempts - 1} attempts")
-                self.inbox.done(message.id)
+                self.inbox.done(message.id, by=self.by)
                 continue
             self.dispatch(message)
             if once:
@@ -172,7 +176,8 @@ class _Loop:
 def serve(inbox, handler: Callable, *, lane_key: Optional[Callable] = None,
           workers: int = 4, lease_seconds: float = 300.0, max_attempts: int = 3,
           idle_seconds: float = 600.0, once: bool = False,
-          should_stop: Optional[threading.Event] = None) -> None:
+          should_stop: Optional[threading.Event] = None,
+          by: Optional[str] = None) -> None:
     """Take messages from `inbox` and give them to `handler`, forever.
 
     `handler(message)` owns the outcome. Returning means the message is
@@ -181,9 +186,12 @@ def serve(inbox, handler: Callable, *, lane_key: Optional[Callable] = None,
     for the sweep. That is the whole contract, which is why the same loop can
     drive a subprocess, an Agent, or a Host.
 
+    `by` names this consumer once (host, co-ai, consume:<cmd>) so its
+    done.jsonl records say who handled what. Descriptive only.
+
     Blocks until `should_stop` is set.
     """
     loop = _Loop(inbox, handler, lane_key=lane_key or default_lane, workers=workers,
                  lease_seconds=lease_seconds, max_attempts=max_attempts,
-                 idle_seconds=idle_seconds, should_stop=should_stop)
+                 idle_seconds=idle_seconds, should_stop=should_stop, by=by)
     loop.run(once=once)

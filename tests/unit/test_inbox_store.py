@@ -15,9 +15,9 @@ Components under test:
 
 import json
 import os
-from pathlib import Path
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -506,3 +506,41 @@ def test_mailbox_defaults_follow_the_global_configuration_directory(tmp_path, mo
     monkeypatch.delenv('CO_INBOX_HOME', raising=False)
     monkeypatch.setenv('AGENT_CONFIG_PATH', str(tmp_path / 'global'))
     assert default_home('lark') == (tmp_path / 'global' / 'inbox' / 'lark').resolve()
+
+
+def test_two_consumers_on_one_inbox_leave_distinguishable_records(tmp_path):
+    box = make(tmp_path)
+    box.deliver(msg(i='om_a'))
+    box.deliver(msg(i='om_b'))
+
+    box.serve(lambda message: None, once=True, by='consumer-a')
+    box.serve(lambda message: None, once=True, by='consumer-b')
+
+    done = [json.loads(line) for line in box.completed.read_text().splitlines()]
+    assert [(r['id'], r['by']) for r in done] == [('om_a', 'consumer-a'), ('om_b', 'consumer-b')]
+
+    box.record_sent(chat='oc_a', text='answer a', reply_to='om_a',
+                    provider_id='om_r1', by='consumer-a')
+    box.record_sent(chat='oc_b', text='answer b', reply_to='om_b',
+                    provider_id='om_r2', by='consumer-b')
+    sent = [json.loads(line) for line in box.sent.read_text().splitlines()]
+    assert [(r['reply_to'], r['by']) for r in sent] == [('om_a', 'consumer-a'),
+                                                       ('om_b', 'consumer-b')]
+
+    # A record written before `by` existed still reads, with the key absent.
+    box._append(box.completed, json.dumps({'id': 'om_old', 'at': '2026-01-01T00:00:00Z'}))
+    assert [r.get('by') for r in box._records(box.completed)] == ['consumer-a', 'consumer-b',
+                                                                  None]
+
+
+def test_a_message_handed_out_twice_after_lease_expiry_shows_both_consumers(tmp_path):
+    box = make(tmp_path)
+    box.deliver(msg(i='om_x'))
+
+    assert box.receive(timeout=0).id == 'om_x'  # first consumer takes it
+    box.release_stale(max_age=0)  # its lease expired; the sweep offers it again
+    box.serve(lambda message: None, once=True, by='second')  # second consumer finishes it
+    box.done('om_x', by='first')  # the first consumer finishes late
+
+    bys = [r.get('by') for r in box._records(box.completed) if r.get('id') == 'om_x']
+    assert bys == ['second', 'first']
