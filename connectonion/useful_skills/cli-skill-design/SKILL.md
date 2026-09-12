@@ -147,6 +147,44 @@ co-browser's rule:
 
 and the exit-code table has a row for "exit 0, error text on stdout".
 
+## (c) A flag you repeat is a setting you never configured
+
+**Rule:** anything a caller passes on *every* invocation belongs in
+configuration, and the flag is the override — not the only way in.
+
+`--engine onion` was required on every paid browser call. A person testing the
+paid engine typed it a hundred times a day; an agent had to carry it through
+every call site, which is where it gets dropped, and the failure is silent —
+the free engine runs and reports success, so the thing under test was never
+tested. The flag was not the feature. The missing default was the defect.
+
+Ask it of every flag you add: *would someone pass this every time?* If yes, it
+needs a place to live, and the flag becomes the way to differ from it once.
+Both directions have to work — `--engine system` must beat a configured paid
+default, so there is always a way to not spend money that needs no file edited.
+
+### Where a setting lives
+
+| kind | where | why |
+|---|---|---|
+| one value a command reads | the selected env file, via `co env set` | `co env` already answers "what does this machine hold, and does the shell override it", which is the question someone debugging it asks first |
+| structured, for something long-running | `.co/host.yaml` | the Host has shape — trust, channels, a name — and a block is the honest representation |
+
+A single name is not structure. Do not invent a config file for one string:
+two places to look is how a value gets set in one and read from the other.
+
+Name the setting after the command that reads it (`CO_BROWSER_ENGINE`), and
+give the group a `config` verb that shows the current value **and where it came
+from** — then sets it. Showing the source is the whole point: "wtf, set in
+~/.co/keys.env" and "wtf, set in your shell, which wins over the file" send a
+reader to different places.
+
+When the setting costs money or does anything irreversible, the `config` verb
+says so *before* it writes, and the audit record distinguishes a run that a
+standing setting chose from one a flag asked for. Not as a brake — as
+legibility, because the first question about an unexpected charge is which
+invocations were a standing choice.
+
 ## Progressive disclosure
 
 The skill is read top to bottom by an agent that wants to act now.
@@ -184,6 +222,7 @@ with a failed run.
 - [ ] "Read the output, not just the exit code" stated if any failure exits 0
 - [ ] Gotchas that change a reported result are written down
 - [ ] Nothing documented that was not run
+- [ ] No flag that a caller would pass every time (if there is one, it has a `config` verb and a home)
 
 ## Shared env contract (1.8.4 implementation)
 

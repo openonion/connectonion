@@ -237,7 +237,7 @@ def test_cli_install_returns_before_contacting_browser_daemon(monkeypatch, capsy
     output = capsys.readouterr()
     assert "Installed Onionwright 0.0.14" in output.out
     # stderr carries only the next-step tip — no daemon error, no traceback.
-    assert output.err.strip() == "Use it:  co browser --engine onion <function> [args]"
+    assert output.err.strip() == "Use it:  co browser --engine wtf <function> [args]"
 
 
 def test_cli_missing_credentials_fails_before_daemon(monkeypatch, capsys):
