@@ -189,7 +189,12 @@ def make_wiki_app(factory):
 
     @wiki.command("subscribe")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook"),
-                  project: str = typer.Option("", "--project", help="Codex only: scope to sessions run in this directory"),
+                  project: str = typer.Option("", "--project",
+                                              help="Coding sources: a scope of its own for sessions run in this "
+                                                   "directory"),
+                  about: str = typer.Option("", "--about",
+                                            help="Coding sources: a scope of its own for sessions that mention this, "
+                                                 "whole sessions, whichever directory they ran in"),
                   since: str = typer.Option("", "--since",
                                             help="Read back at least this far: 3d, 2w, 6m, 1y. A window already "
                                                  "wider than this is left alone"),
@@ -200,9 +205,10 @@ def make_wiki_app(factory):
         from ...wiki.service import set_window, toggle_source
 
         def operation(root):
-            subscription = toggle_source(root, name, True, project=project, since=since or "7d")
+            subscription = toggle_source(root, name, True, project=project, about=about,
+                                         since=since or "60d")
             result = {"subscription": subscription, "enabled": True}
-            if since and not project:
+            if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
             return result, ["subscriptions"]
         _handle(ctx, operation, ["subscriptions"])

@@ -97,21 +97,34 @@ def approve_sources(root: Path) -> None:
         write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat()})
 
 
-def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", since: str = "7d") -> str:
-    """Store a choice, not permission to read bodies or run the model."""
+def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", about: str = "",
+                  since: str = "7d") -> str:
+    """Store a choice, not permission to read bodies or run the model.
+
+    A scope -- one directory, or one subject -- is a subscription of its own with its
+    own cursor, so it neither consumes the main source's material nor re-reads its own
+    on every pass. Subject scopes exist because directory scopes cannot do this work on
+    a real machine: 701 of 830 Codex sessions over six months, and 24 of 26 Claude Code
+    ones, ran in the same workspace directory.
+    """
     with maintenance_lock(root):
         sources = subscriptions(root)
-        if project:
-            if name != "codex" or not re.fullmatch(r"[1-9]\d*d", since):
-                raise WikiError("Custom scopes require codex and a lookback such as 60d")
-            days, cap = int(since[:-1]), MAX_LOOKBACK_DAYS["codex"]
-            if days > cap:
-                raise WikiError(f"Lookback for codex sessions is capped at {cap} days; use --since {cap}d or less")
-            project = str(Path(project).expanduser().resolve())
-            name = "codex-" + hashlib.sha256(project.encode()).hexdigest()[:12]
+        if project or about:
+            if name not in KINDS:
+                raise WikiError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
+            days = window_days(since, name)
+            if project:
+                project = str(Path(project).expanduser().resolve())
+                scope = "dir-" + hashlib.sha256(project.encode()).hexdigest()[:12]
+            else:
+                about = " ".join(about.split()).lower()
+                scope = "about-" + re.sub(r"[^a-z0-9]+", "-", about).strip("-")[:40]
+                if not scope.strip("about-"):
+                    raise WikiError("A subject scope needs a word to match, such as --about browser")
+            base, name = name, f"{name}-{scope}"
             if name not in sources:
-                sources[name] = {**sources["codex"], "id": name, "project": project,
-                                 "consented": False,
+                sources[name] = {**sources[base], "id": name, "project": project or None,
+                                 "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
             raise WikiError("Subscription not found; inspect subscriptions for exact names")

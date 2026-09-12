@@ -530,3 +530,40 @@ def test_narrowing_a_window_needs_saying_so_twice(wiki):
     with pytest.raises(WikiError, match="--force"):
         set_window(root, "codex", "3d", narrow=True)
     assert set_window(root, "codex", "3d", narrow=True, force=True)["since"].startswith("2026-09-04")
+
+
+def test_a_scope_is_a_subscription_of_its_own_with_its_own_cursor(wiki):
+    """"Six months of the browser work" is a standing scope, not a one-off filter: it
+    needs its own cursor, or it would either consume the main source's material or be
+    re-read on every pass. Directory scopes already worked this way — for codex only,
+    which is the source where directory means least."""
+    from connectonion.wiki.service import subscriptions, toggle_source
+    root, sessions = wiki
+    rollout(sessions / "rollout-a.jsonl", [("user", "fix the browser build")])
+    rollout(sessions / "rollout-b.jsonl", [("user", "write the Xiaohongshu post")])
+
+    name = toggle_source(root, "codex", True, about="browser", since="6m")
+    approve_sources(root)          # a new scope is a new consent, like any other source
+    scope = subscriptions(root)[name]
+    assert name == "codex-about-browser" and scope["about"] == "browser"
+    assert scope["since"].startswith("2026-03-1")          # six months, within the 180-day cap
+    assert subscriptions(root)["codex"]["since"] != scope["since"]   # the main source is untouched
+
+    seen = []
+    run_sync(root, source=name, runner=lambda notebook, items, config: seen.append(items) or {"usage": None})
+    assert [i["text"] for i in seen[0]] == ["fix the browser build"]
+
+    # the main source still has both sessions waiting: the scope consumed neither
+    rest = []
+    run_sync(root, source="codex", runner=lambda notebook, items, config: rest.append(items) or {"usage": None})
+    assert sorted(i["text"] for i in rest[0]) == ["fix the browser build", "write the Xiaohongshu post"]
+
+
+def test_a_directory_scope_works_for_both_coding_sources(wiki):
+    """It was refused for claude-code for no reason the code could state; collect has
+    filtered claude-code transcripts by directory since they were added."""
+    from connectonion.wiki.service import subscriptions, toggle_source
+    root, _ = wiki
+    name = toggle_source(root, "claude-code", True, project="/work/demo", since="30d")
+    assert subscriptions(root)[name]["project"] == "/work/demo"
+    assert subscriptions(root)[name]["kind"] == "claude-code"

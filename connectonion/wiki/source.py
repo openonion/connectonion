@@ -275,6 +275,12 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                 continue
             if subscription.get("project") and kind == "codex" and meta.get("cwd") != subscription["project"]:
                 continue
+            # A subject scope keeps whole sessions, so its items are held until the
+            # session says whether it is about that subject. Grouping by directory
+            # cannot do this work: 701 of 830 Codex sessions over six months on one
+            # real machine ran in the same workspace directory.
+            about = (subscription.get("about") or "").strip().lower()
+            held, matched = [], not about
             scanned = 0
             while scanned < SCAN_BYTES_PER_PASS:
                 line = source.readline()
@@ -303,13 +309,40 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                                  "project": project})
                     item = _fit(item, max_chars)
                     size = len(json.dumps(item, ensure_ascii=False))
-                    if len(result) >= max_items or used + size > max_chars:
-                        return Batch(result, updated, skipped, unrecognised)
-                    result.append(item)
-                    used += size
+                    if about:
+                        matched = matched or about in item["text"].lower()
+                        held.append((item, size, offset))
+                    else:
+                        if len(result) >= max_items or used + size > max_chars:
+                            return Batch(result, updated, skipped, unrecognised)
+                        result.append(item)
+                        used += size
                 offset += len(line)
                 scanned += len(line)
                 digest.update(line)
                 updated[name] = {"offset": offset, "digest": digest.hexdigest(),
                                  "mtime_ns": stat.st_mtime_ns}
+            if held and matched:
+                for item, size, at in held:
+                    if len(result) >= max_items or used + size > max_chars:
+                        # Stop before this message and leave the file's cursor on it, so
+                        # the rest of the session is the next batch rather than lost.
+                        updated[name] = {**updated[name], "offset": at, "digest": _digest_to(path, at)}
+                        return Batch(result, updated, skipped, unrecognised)
+                    result.append(item)
+                    used += size
     return Batch(result, updated, skipped, unrecognised)
+
+
+def _digest_to(path: Path, offset: int) -> str:
+    """The checkpoint hash of a file's first `offset` bytes, in chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        left = offset
+        while left > 0:
+            chunk = source.read(min(1_000_000, left))
+            if not chunk:
+                break
+            digest.update(chunk)
+            left -= len(chunk)
+    return digest.hexdigest()

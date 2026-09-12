@@ -10,10 +10,13 @@ from connectonion.wiki.files import WikiError
 from connectonion.wiki.source import collect, pending_metadata
 
 
-def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs"):
+def rollout(path, messages, *, project="/work/demo", originator="codex_cli_rs", session=""):
+    # The session id defaults to the file's own name: an item is identified by
+    # kind:session:offset, so two fixtures sharing an id look like one session
+    # written twice and the second is deduplicated away.
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [{"type": "session_meta", "payload": {
-        "id": "session-1", "cwd": project, "originator": originator}}]
+        "id": session or path.stem, "cwd": project, "originator": originator}}]
     for role, text in messages:
         rows.append({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item",
                      "payload": {"type": "message", "role": role,
@@ -345,3 +348,31 @@ def test_a_pass_that_reads_nothing_while_skipping_a_lot_is_not_silent(tmp_path):
     batch = collect(subscription(tmp_path), {}, 10, 100000)
     assert batch.items == [] and batch.unrecognised == 30
     assert batch.unreadable  # the caller says so instead of reporting "nothing new"
+
+
+def test_a_scope_reads_only_sessions_about_its_subject(tmp_path):
+    """Grouping by directory does not work on a real machine: 701 of 830 Codex sessions
+    over six months ran in one workspace directory, and 24 of 26 Claude Code ones. What
+    separates them is what they were about, so a scope can name a subject."""
+    rollout(tmp_path / "2026/09/07/rollout-a.jsonl",
+            [("user", "Ship the browser 1.8 release with the free engine"), ("user", "pls pull")])
+    rollout(tmp_path / "2026/09/07/rollout-b.jsonl",
+            [("user", "Write the Xiaohongshu post about Astra"), ("user", "which one today?")])
+    scoped = collect(subscription(tmp_path, about="browser"), {}, 10, 100000)
+    assert [i["text"] for i in scoped.items] == ["Ship the browser 1.8 release with the free engine", "pls pull"]
+    other = collect(subscription(tmp_path, about="xiaohongshu"), {}, 10, 100000)
+    assert [i["text"] for i in other.items] == ["Write the Xiaohongshu post about Astra", "which one today?"]
+
+
+def test_a_subject_scope_keeps_the_whole_session_not_the_matching_lines(tmp_path):
+    """"pls pull" is not about the browser and is still part of that conversation. The
+    unit is the session: one message names the subject, the session belongs to it."""
+    rollout(tmp_path / "2026/09/07/rollout-a.jsonl",
+            [("user", "morning"), ("user", "now fix the browser build"), ("user", "thanks")])
+    batch = collect(subscription(tmp_path, about="browser"), {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["morning", "now fix the browser build", "thanks"]
+
+
+def test_a_scope_that_matches_nothing_reads_nothing(tmp_path):
+    rollout(tmp_path / "2026/09/07/rollout-a.jsonl", [("user", "Ship the browser release")])
+    assert collect(subscription(tmp_path, about="lanestay"), {}, 10, 100000).items == []
