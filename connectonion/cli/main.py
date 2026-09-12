@@ -1141,16 +1141,20 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_log
         handle_log(name, follow=follow)
 
-    @group.command("serve", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-    def _serve(
+    # `consume`, not `serve`. Nothing here serves anything — it takes messages
+    # off a queue and hands each to a command, which is what DD-063 calls a
+    # consumer throughout, and what `lark-cli event consume` calls it too. A
+    # verb an agent can guess is worth more than one it has to be told.
+    @group.command("consume", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+    def _consume(
         command: List[str] = typer.Argument(..., help="Command run per message: message on stdin, reply on stdout"),
         once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
         workers: int = typer.Option(1, "--workers", min=1,
                                     help="Conversations to answer at once (default 1, one after another)"),
     ):
         """Loop: receive, run COMMAND with the message on stdin, reply with its stdout."""
-        from .commands.listen_commands import handle_serve
-        handle_serve(name, command, once=once, workers=workers)
+        from .commands.listen_commands import handle_consume
+        handle_consume(name, command, once=once, workers=workers)
 
     return group
 

@@ -154,14 +154,14 @@ def test_reply_to_an_unknown_id_exits_1(box, fake, capsys):
     assert fake.sent == []
 
 
-def test_serve_pipes_the_message_through_a_command_and_replies_with_its_stdout(box, fake, monkeypatch):
+def test_consume_pipes_the_message_through_a_command_and_replies_with_its_stdout(box, fake, monkeypatch):
     monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_s", chat="oc_s", text="what is 2+2")
     command = [sys.executable, "-c",
                "import json,os,sys; m=json.load(sys.stdin); "
                "print('you asked', m['text'], 'in', os.environ['CO_CHAT'], 'msg', os.environ['CO_MSG_ID'])"]
 
-    listen_commands.handle_serve("feishu", command, once=True)
+    listen_commands.handle_consume("feishu", command, once=True)
 
     assert fake.sent == [("oc_s", "you asked what is 2+2 in oc_s msg om_s", "om_s")]
     assert list(box.cur.iterdir()) == []
@@ -172,15 +172,15 @@ def _taken(box):
     return sorted(p.name.split("-", 1)[1] for p in box.cur.iterdir())
 
 
-def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypatch):
+def test_consume_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypatch):
     # A command that exits non-zero did not answer: the message stays taken
     # and comes back in an hour, as the docs promise. Empty stdout with exit
     # 0 is the command choosing silence: done. Both are one log line.
     monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_f")
-    listen_commands.handle_serve("feishu", [sys.executable, "-c", "import sys; sys.exit(3)"], once=True)
+    listen_commands.handle_consume("feishu", [sys.executable, "-c", "import sys; sys.exit(3)"], once=True)
     deliver(box, i="om_g")
-    listen_commands.handle_serve("feishu", [sys.executable, "-c", "pass"], once=True)
+    listen_commands.handle_consume("feishu", [sys.executable, "-c", "pass"], once=True)
 
     assert fake.sent == []
     log = box.logfile.read_text()
@@ -191,7 +191,7 @@ def test_serve_sends_nothing_for_a_failing_or_silent_command(box, fake, monkeypa
     assert _taken(box) == ["om_f"], "the failed one waits for the sweep; the silent one is done"
 
 
-def test_serve_keeps_a_message_whose_reply_the_platform_refused(box, fake, monkeypatch):
+def test_consume_keeps_a_message_whose_reply_the_platform_refused(box, fake, monkeypatch):
     monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
 
     def refuse(chat, text, *, reply_to=None):
@@ -200,21 +200,21 @@ def test_serve_keeps_a_message_whose_reply_the_platform_refused(box, fake, monke
     fake.send = refuse
     deliver(box, i="om_r")
 
-    listen_commands.handle_serve("feishu", [sys.executable, "-c", "print('answer')"], once=True)
+    listen_commands.handle_consume("feishu", [sys.executable, "-c", "print('answer')"], once=True)
 
     assert _taken(box) == ["om_r"], "not consumed by a refusal it can retry later"
     assert "om_r not finished" in box.logfile.read_text()
     assert "reply failed" in box.logfile.read_text()
 
 
-def test_serve_refuses_a_command_it_cannot_run_before_taking_a_message(box, fake, monkeypatch, capsys):
+def test_consume_refuses_a_command_it_cannot_run_before_taking_a_message(box, fake, monkeypatch, capsys):
     # A typo in the command used to claim the message into cur/ and then
     # traceback, stranding one message per restart.
     monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
     deliver(box, i="om_n")
 
     with pytest.raises(SystemExit) as exit_:
-        listen_commands.handle_serve("feishu", ["./no-such-answer.sh"], once=True)
+        listen_commands.handle_consume("feishu", ["./no-such-answer.sh"], once=True)
 
     assert exit_.value.code == 2
     assert "no-such-answer.sh" in capsys.readouterr().err
