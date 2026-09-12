@@ -47,7 +47,9 @@ batch holds nothing worth keeping, reply with exactly `Nothing worth keeping.`
 - **People**: this is where a thin notebook fails, so be generous. For each
   person who wrote or was written to: their exact role, organisation and
   location as their signature gives it; contact details (address, phone,
-  booking link) verbatim; how the user knows them; each interaction with its
+  booking link) verbatim; **why they are here** — who approached whom and what
+  each side wants out of it; **what state the relationship is in now**, with
+  its concrete shape (terms, numbers, who owes what); each interaction with its
   date and what each side said or asked; what they want from the user and
   what the user promised them. Then **how they communicate**, observed, with
   evidence: how they open and sign off ("Dear Aaron" / "Thanks and with warm
@@ -110,34 +112,65 @@ eighty mails yields eighty or more. Each bullet says the fact, who said it
 (`user`, `assistant`, or the sender), the date, and the source ids it comes
 from.
 
-**People are written as a block per person, with these five sub-bullets,
-each present when the batch supports it.** This is the shape the person's
-page will take; a sub-bullet you leave out cannot appear there.
+**People are written as a block per person, with these sub-bullets, each
+present when the batch supports it and written as `Unknown` when the batch
+touches the question and has no answer.** This is the shape the person's page
+will take; **a sub-bullet you leave out cannot appear there**, and the page's
+sections are fixed, so a missing sub-bullet becomes a visible `Unknown` on the
+page rather than a section that quietly disappears.
 
 ```
 ## People
-- **Vern Chan** — vern.chan@unsw.edu.au
-  - Role: UNSW Global Program Manager, UNSW Founders + Office of Global
-    Affairs, L1 Hilmer Building, Kensington. Known through UNSW Founders.
+- **Emma (飘啊飘)** — szh526@gmail.com
+  - Contact: email szh526@gmail.com; phone Unknown; signing entity ZEHAO SHEN,
+    ABN 37 387 221 177, 6007/117 Bathurst St, Sydney NSW 2000; Gmail display
+    name "飘啊飘"; Mandarin for operations, English for contract redlines.
+    (outlook:1adf5a91461b)
+  - Who they are: independent Sydney Airbnb host running a multi-property
+    portfolio — 7 property types across 3 buildings as of 2026-07-10.
+    (outlook:9f2c1a4b7e30)
+  - Why they are here: came in as a pricing customer for the user's STR
+    pricing agent (~July 2026); by August the same relationship widened into
+    an online co-hosting collaboration. She wants revenue per property and
+    reads every contract before signing. (outlook:9f2c1a4b7e30,
+    outlook:7c8e2d10a4f5)
+  - Relationship state: pricing client *and* contract counterparty. Agreement
+    signed by both parties 2026-08-07 — 8% of Net Booking Revenue excluding
+    cleaning fees, per-property 90-day review, 14-day removal right. She
+    negotiated hard on liability and exit, then signed the same day.
+    (outlook:4032690ac32e, outlook:92634a3a8c50)
   - History:
-    - 2026-07-10 — introduced the user to Julia Lustig (Concord Visa) after
-      the user's US visa refusal in May; same hour, invited the user to be a
-      startup partner for Summer 2027 CDEV3000/6000, WIL agreement due 17 Jul.
-      (outlook:ec65e5ff6168, outlook:cf96dea34535)
-    - 2026-07-21 — handed the user to Helena (contract) and Natalie (dates);
-      asked 2 or 3 teams. The user replied: one team of 4–6, sessions 3–5 pm,
-      Kensington or CBD. (outlook:59f218fbda83, outlook:aa6d5f8d4dfc)
-  - How they write: opens "Hi Aaron," / "Dear Aaron,"; signs "Thank you," or
-    "Thanks and with warm regards,"; short operational mails with a "Next
-    steps:" list; copies colleagues and asks to keep them in the loop; an
-    occasional 😊. Quote: "Thank you for participating and being frank at
-    this early planning stage. We're trying to make things work for both
-    sides." (2026-07-21)
-  - How the user writes to them: "Hi Vern," then one paragraph per topic —
-    "On capacity: … On timing: … On location: …" — direct about limits ("two
-    or three teams would stretch me too thin").
-  - Open: WIL agreement with Helena; 3–5 pm slot to confirm with Natalie.
+    - 2026-08-06 — the user sent v9 with a sectioned Mandarin explainer; she
+      replied ~1.5h later in English with 7 clause-change requests.
+      (outlook:7c8e2d10a4f5, outlook:bf2cd2898fb3)
+    - 2026-08-07 — the user signed; she returned the signed document 8:43 PM
+      AEST. (outlook:92634a3a8c50)
+  - How they write: register-switching — English for legal matters (numbered,
+    precise, "Regards, Emma"), brief practical Mandarin for operations
+    ("收到"). Itemised, fast, proposes exact contract language.
+    Quote: "Please see attached signed document." (2026-08-07)
+  - How the user writes to them: opens "Emma，你好，", signs "Aaron"; sections
+    long contract mails `== N. 标题 ==` and translates every clause into what
+    it means for her; leads with the reassuring conclusion then the math.
+  - Cadence: near-daily same-day replies through the 2026-08-05→07 sprint, on
+    top of the pricing relationship since ~July 2026.
+  - Open: nothing owed by either side as of 2026-08-07 — contract executed.
+    Next contact is operational (pricing recommendations, onboarding).
+  - Uncertain: property count — 7 confirmed 2026-07-10, other notes say ~12;
+    no phone number anywhere in the batch; whether her redlines were
+    lawyer-drafted is inferred from their precision, not confirmed.
 ```
+
+Two sub-bullets earn their own note here because they are the ones a batch
+usually has evidence for and a summary usually drops:
+
+- **`Open` names who owes whom what, and since when.** "Follow-up status is
+  not recorded" is not an open item; it is a gap dressed up as a finding. If
+  the last message was theirs and the user has not replied in twelve days, say
+  that. If nothing is owed, say so with the date.
+- **`Uncertain` is how a thin person stays honest instead of short.** What the
+  batch touched and could not answer belongs here, as does anything you
+  inferred rather than read.
 
 Other headings keep the one-line bullet form:
 
