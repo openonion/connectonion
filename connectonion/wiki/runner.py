@@ -143,9 +143,11 @@ def verify_login() -> str:
     mode = (stored.get("auth_mode") or "").lower()
     if mode == "chatgpt" or (not mode and stored.get("tokens")):
         return "chatgpt"
-    # A batch is millions of tokens: on a metered key that is a bill, not a subscription.
-    raise WikiError("Wiki runs on your Codex ChatGPT subscription; this login uses API billing. "
-                    "Run `codex login` and choose Sign in with ChatGPT")
+    if mode == "apikey" or stored.get("OPENAI_API_KEY"):
+        # A batch is millions of tokens: on a metered key that is a bill, not a subscription.
+        raise WikiError("Wiki runs on your Codex ChatGPT subscription; this login uses API billing. "
+                        "Run `codex login` and choose Sign in with ChatGPT")
+    raise WikiError("Codex login is incomplete; run `codex login` and choose Sign in with ChatGPT")
 
 
 def read_rate_limits() -> dict:

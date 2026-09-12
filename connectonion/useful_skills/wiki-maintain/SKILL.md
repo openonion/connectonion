@@ -161,6 +161,14 @@ routine work — tests run and their counts, lint, formatting, files edited,
 commands executed, a version bump in passing — no; that is activity, not
 knowledge, and a page of it teaches the next assistant nothing.
 
+From a coding session you are reading the user's own words and nothing else,
+because what they say is what they want. A page about such a session is about
+their intent — what they asked for, what they ruled out, the standard they
+hold the work to — never a snapshot of the repository. A page that opens with
+a commit SHA, a list of changed files, a CI tally or a table of bare issue
+numbers is describing the execution, and it was already stale when it was
+written. Keep the machine detail only inside the user's own condition.
+
 Four things that produced pages in a real 60-day run and should not have:
 
 - **A person from one line.** `people/fuzz.md` = "Expressed definite interest

@@ -51,9 +51,10 @@ def test_missing_login_names_codex_login(consented, tmp_path):
 
 
 def test_missing_codex_binary_names_install(consented, tmp_path):
+    """A real login, so the missing binary is what the message is about."""
     home = tmp_path / "codex-home"
     home.mkdir()
-    (home / "auth.json").write_text("{}")
+    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": "x"}}))
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "CODEX_HOME": str(home),
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     code, payload, stderr = co(consented, "sync", env=env)
@@ -84,15 +85,18 @@ def test_second_sync_while_one_runs_says_busy(consented, tmp_path):
 def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented, tmp_path):
     """Past preflight, a failure is a real attempt: recorded, counted, and exit 1.
 
-    A syntactically present but useless auth.json passes preflight (the file
-    exists, the binary is there) and fails inside the native handshake."""
+    A credential that says it is a ChatGPT login but carries a dead token passes
+    preflight -- the file is there, it names the right billing, the binary is
+    there -- and fails inside the native handshake, which is what an expired
+    login looks like. (An empty `{}` no longer reaches here: preflight now reads
+    the file rather than only checking that it exists.)"""
     import shutil
     codex = shutil.which("codex")
     if not codex:
         pytest.skip("needs the codex binary on PATH")
     home = tmp_path / "codex-home"
     home.mkdir()
-    (home / "auth.json").write_text("{}")
+    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": "dead"}}))
     env = {"PATH": f"{Path(codex).parent}:/usr/bin:/bin", "HOME": str(tmp_path), "CODEX_HOME": str(home),
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     code, payload, stderr = co(consented, "sync", env=env)
@@ -100,4 +104,4 @@ def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented
     assert "failed" in payload["data"].lower() and "run_" in payload["data"], payload
     runs = list((consented / ".state" / "runs").glob("*.json"))
     assert len(runs) == 1 and json.loads(runs[0].read_text())["outcome"] == "failed"
-    assert "{}" not in payload["data"]  # nothing from the credential file is echoed
+    assert "dead" not in payload["data"]  # nothing from the credential file is echoed

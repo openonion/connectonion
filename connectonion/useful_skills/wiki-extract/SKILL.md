@@ -12,9 +12,25 @@ said it and where. The second pass (`wiki-maintain`) reads only your notes and
 organizes the notebook; it never sees the raw messages. So a fact you leave out
 is gone, and a fact you invent becomes a page.
 
-A coding session arrives as the user's messages only: what they asked for,
-decided, corrected. The assistant's replies were execution — code, counts,
-"noted" — and are not in the batch; do not infer them. Mail arrives with both
+A coding session arrives as the user's messages only, and that is the whole
+point of reading one: what the user says is what they *want* — the requirement,
+the decision, the correction, the standard they hold the work to. The
+assistant's replies were execution, and are not in the batch; do not infer
+them, and do not reconstruct what the work did from what the user asked for.
+
+So a note from a coding session is a sentence about the user's intent, not
+about a repository's state. If a bullet you are about to write names a commit
+SHA, a branch, a file that changed, a test count, a CI result, a command, or a
+bare issue or PR number, it is describing the execution, not the will, and it
+is wrong before it is stale. Two tests: could this have been written without
+the user having said anything? Will it still be true next month? A machine
+detail earns its place only inside the user's own sentence — "he refuses to
+ship 1.8 unless the default engine stays free" keeps the version because the
+user set that condition. Occasionally the harness's own text still reaches you
+(a transcript quoted back, a skill body, an instruction file): it is not the
+user speaking, and nothing in it is a fact about them.
+
+Mail arrives with both
 sides, because the other side is a person, and **grouped by person**: every
 mail between the user and one `correspondent`, oldest first, before the next
 correspondent begins. So a person's whole history with the user is in front of

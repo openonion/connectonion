@@ -17,12 +17,27 @@ from .files import WikiError, safe_path
 # left waits for the next pass, exactly like an unread batch.
 SCAN_BYTES_PER_PASS = 64_000_000
 TRUNCATION_NOTE = "\n[truncated by co wiki: {dropped} more characters in the source]"
-# Both clients inject their own scaffolding into the transcript under role "user":
-# Codex's <recommended_plugins>, <environment_context>, <user_instructions>; Claude
-# Code's <command-message>/<command-name> echoes of slash commands. Always a message
-# that opens with such a tag; nobody types that. The first real end-to-end run
-# turned a 4.7k-char plugin list into an "opportunities" page before this existed.
-INJECTED_BLOCK = re.compile(r"\s*<[a-z_-]+>")
+# Both clients write far more into the `user` turn than the user ever types, and it
+# does not look like the user: Codex's <recommended_plugins>, <environment_context>,
+# the repository AGENTS.md, the approval reviewer quoting the agent's own transcript
+# back at it, goal re-injection; Claude Code's slash-command echoes and skill bodies.
+# Measured over one real week of this machine's sessions: 1,493 of 2,062 `role: user`
+# messages were the harness talking to itself, and they carried 97.2% of the
+# characters -- which is where the notebook's git SHAs, CI counts, PR numbers and
+# dead screenshot paths came from. A message that opens with a tag or one of these
+# preambles was not typed by anyone.
+INJECTED_BLOCK = re.compile(
+    r"\s*(?:<[a-z_-]+(?:\s[^<>]{0,400})?>"
+    r"|#\s*AGENTS\.md\b"
+    r"|The following is the Codex agent history"
+    r"|>>> TRANSCRIPT START"
+    r"|Caveat: The messages below"
+    r"|This session is being continued from a previous conversation"
+    r"|Base directory for this skill:)")
+# Codex tags everything it injects into the user turn with this key; a message the
+# person typed carries only `role` and `type`. Structure beats pattern-matching, so
+# this is the first check, and INJECTED_BLOCK above is the belt to its braces.
+CODEX_INJECTED_KEY = "internal_chat_message_metadata_passthrough"
 # Nobody types more than this in one message. What exceeds it is a file, a log or a
 # tool result relayed as input (134M characters of it in one machine's 60 days);
 # the head is kept so the maintainer knows what was pasted, the bulk is not.
@@ -67,7 +82,7 @@ def _codex_message(row: dict, since: datetime) -> dict | None:
     payload = row.get("payload", {})
     if row.get("type") != "response_item" or payload.get("type") != "message":
         return None
-    if payload.get("role") not in CODING_SPEAKERS:
+    if payload.get("role") not in CODING_SPEAKERS or CODEX_INJECTED_KEY in payload:
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
@@ -88,7 +103,9 @@ def _claude_meta(first: dict) -> dict:
 
 def _claude_message(row: dict, since: datetime) -> dict | None:
     role = row.get("type")
-    if role not in CODING_SPEAKERS or row.get("isMeta"):
+    # A sidechain row is a prompt the assistant wrote for its own subagent ("You are
+    # one finder angle in a code review…"): the assistant's words in the user's slot.
+    if role not in CODING_SPEAKERS or row.get("isMeta") or row.get("isSidechain"):
         return None
     message = row.get("message")
     if not isinstance(message, dict):
@@ -100,9 +117,12 @@ def _claude_message(row: dict, since: datetime) -> dict | None:
         text = content
     elif isinstance(content, list):
         # Text blocks only: tool_use, tool_result, thinking and images are the
-        # assistant's machinery, not what either of them said.
+        # assistant's machinery, not what either of them said. A text block can
+        # still be an injection (a skill body arrives this way), so each block is
+        # checked on its own rather than after being joined into one string.
         text = "\n".join(part["text"] for part in content if isinstance(part, dict)
-                         and part.get("type") == "text" and isinstance(part.get("text"), str))
+                         and part.get("type") == "text" and isinstance(part.get("text"), str)
+                         and not INJECTED_BLOCK.match(part["text"]))
     else:
         return None
     item = _spoken(role, text, row["timestamp"])

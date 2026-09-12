@@ -232,3 +232,61 @@ def test_coding_sessions_yield_only_what_the_user_said(tmp_path):
                                ("assistant", [{"type": "text", "text": "Noted: Alice prefers email."}], {})])
     sub = {**subscription(tmp_path / "claude"), "kind": "claude-code"}
     assert [i["role"] for i in collect(sub, {}, 10, 10000).items] == ["user"]
+
+
+def passthrough_rollout(path, rows):
+    """Codex marks everything it injects into the user turn with a metadata passthrough key;
+    a message the human typed carries only `role` and `type`."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps({"type": "session_meta", "payload": {"id": "s1", "cwd": "/work/demo",
+                                                             "originator": "codex_cli_rs"}})]
+    for typed, text in rows:
+        payload = {"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}
+        if not typed:
+            payload = {**payload, "id": "msg_1", "internal_chat_message_metadata_passthrough": {"kind": "x"}}
+        lines.append(json.dumps({"timestamp": "2026-09-07T05:00:00Z", "type": "response_item", "payload": payload}))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_only_what_the_human_typed_survives_the_codex_user_turn(tmp_path):
+    """Measured on a real week: 1,493 of 2,062 `role: user` messages were the harness
+    talking to itself -- AGENTS.md, the approval reviewer feeding the agent's own
+    transcript back in, goal re-injection -- and they were 97.2% of the characters.
+    That is where the git SHAs, CI counts and PR numbers on the notebook's pages came
+    from: not from the user, whose words are the whole point of reading a session."""
+    passthrough_rollout(tmp_path / "2026/09/07/rollout-a.jsonl", [
+        (False, "# AGENTS.md instructions for /Users/me/projects\n\n<INSTRUCTIONS>\nRepository Guidelines"),
+        (False, "The following is the Codex agent history whose request action you are assessing.\n"
+                ">>> TRANSCRIPT START\n[1] shell: git fetch origin main\nHEAD is 89f448e"),
+        (False, '<codex_internal_context source="goal">\nContinue working toward the active thread goal.'),
+        (True, "然后合并吧，因为 push 破的话，远端也有别的来进行操作。"),
+    ])
+    batch = collect(subscription(tmp_path), {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["然后合并吧，因为 push 破的话，远端也有别的来进行操作。"]
+
+
+def test_harness_preambles_are_not_user_words_even_without_the_marker(tmp_path):
+    """Belt and braces: the same texts, with no passthrough key, are still not typed."""
+    rollout(tmp_path / "2026/09/07/rollout-b.jsonl", [
+        ("user", "# AGENTS.md instructions for /Users/me/projects\n\nRepository Guidelines"),
+        ("user", "The following is the Codex agent history added since your last approval assessment."),
+        ("user", '<codex_internal_context source="goal">\nContinue working toward the goal.'),
+        ("user", "<local-command-stdout>Compacted (ctrl+o to see full summary)</local-command-stdout>"),
+        ("user", "This session is being continued from a previous conversation that ran out of context."),
+        ("user", "Ship 1.8.5 with the free engine by default."),
+    ])
+    batch = collect(subscription(tmp_path), {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["Ship 1.8.5 with the free engine by default."]
+
+
+def test_claude_code_subagent_prompts_and_skill_bodies_are_not_the_user(tmp_path):
+    """A sidechain row is a prompt the assistant wrote for its own subagent, and a skill
+    body arrives as a user text block. Neither is the user asking for anything."""
+    file = tmp_path / "-Users-me-projects" / "abc.jsonl"
+    claude_transcript(file, [
+        ("user", "You are one finder angle in a code review. Repo root: /Users/me", {"isSidechain": True}),
+        ("user", [{"type": "text", "text": "Base directory for this skill: /Users/me/.claude/skills/x"}], {}),
+        ("user", "Keep the release notes short this time.", {}),
+    ])
+    batch = collect({**subscription(tmp_path), "kind": "claude-code"}, {}, 10, 100000)
+    assert [i["text"] for i in batch.items] == ["Keep the release notes short this time."]
