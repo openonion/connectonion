@@ -22,25 +22,32 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b2** adds the settings `b1` made you repeat. `co browser config`
-gives the browser engine a default, so `--engine` is an override rather than
-the only way in, and the paid engine is called `wtf` — its product name — where
-the flag used to say `onion`. `co <provider> serve` is now `consume`, and
-`co auth feishu --app-id` authorizes a bot already in your groups instead of
-creating one that is in none. Every exit on the inbox surface names a command
-to run next.
+Beta **1.8.5b3** fixes two ways the browser could waste an afternoon, both
+found by an unattended agent. `co browser wait` takes seconds while every
+neighbouring knob is named in milliseconds, so `wait 2500` meant forty-one
+minutes holding a tab's lock — every command behind it timed out while
+`status` kept answering, so nothing looked broken. It is capped at 60 seconds
+now and refuses before taking the lock, naming the value you meant. And a
+daemon pinned to an engine refused every bare command, `close` included, while
+its own error told you to run `close`: `auto` is no preference now, verbs that
+touch no page are never gated, and a refusal names only commands that daemon
+would accept. A dead paid session names its recovery, and the paid engine says
+it bills before it spends.
+
+It carries everything from `b2`: `co browser config`, the paid engine called
+`wtf`, `consume`, and `co auth feishu --app-id`.
 
 It is a beta because the no-loss-across-a-reconnect gate has not passed: the
 repair is offline-tested and has not been run against a real group. The release
 notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b2 release notes](releases/1.8.5b2.md).
+See [1.8.5b3 release notes](releases/1.8.5b3.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b2
+python -m pip install --pre connectonion==1.8.5b3
 co --version
 ```
 
-The 1.8.5a1, 1.8.5a2 and 1.8.5b1 previews are superseded; 1.8.4a1 and 1.8.4a2
+The 1.8.5a1, 1.8.5a2, 1.8.5b1 and 1.8.5b2 previews are superseded; 1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
