@@ -459,7 +459,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     # A batch is gathered against the extraction budget: large, because the
     # tool-less extraction pass reads it once. A batch that fits items_per_batch
     # is small enough for the maintainer to read directly and skips extraction.
-    maintain_room = limits["input_chars_per_batch"] - len(maintenance_instructions()) - len(json.dumps(tool_specs())) - 1000
+    # The widest source Skill, so the budget holds whichever source this batch is.
+    widest_maintain = max(len(maintenance_instructions(k)) for k in ("", *KINDS, *MAIL_KINDS))
+    maintain_room = limits["input_chars_per_batch"] - widest_maintain - len(json.dumps(tool_specs())) - 1000
     if maintain_room <= 0:
         raise WikiError("Configured input limit is too small for the maintenance Skill")
     # The largest source Skill, so the budget holds whichever source this batch turns out to be.
@@ -536,7 +538,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             record["extract_notes"] = f".state/extracts/{record['id']}.md"
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
-            result = runner(Notebook(root), items, config)
+            result = runner(Notebook(root), items, config, kind=kind)
             record["usage_by_stage"]["maintain"] = result.get("usage")
             for key, value in (result.get("usage") or {}).items():
                 usage[key] = usage.get(key, 0) + value

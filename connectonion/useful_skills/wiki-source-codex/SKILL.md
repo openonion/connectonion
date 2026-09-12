@@ -1,12 +1,14 @@
 ---
-name: wiki-extract-codex
-description: What a batch of Codex CLI sessions is, where the user's own words are in it, and what this source has already taught us. Loaded after wiki-extract when the batch comes from Codex.
+name: wiki-source-codex
+description: Where the user's own words are inside Codex CLI sessions, how that store is laid out, and what this source has already taught us. Loaded alongside whichever stage Skill is running when the material comes from Codex.
 ---
 
-# Extracting from Codex sessions
+# Codex CLI as a source
 
-Read this together with `wiki-extract`, which says what a durable fact is and
-how to write a bullet. This file says only what is true of **this** source.
+Read this together with the stage Skill that loaded it — `wiki-extract`,
+`wiki-maintain` or `wiki-investigate`. That one says what to produce; this one
+says only what is true of **this** source, and is the same whichever stage is
+running.
 
 ## Where the user's words are
 

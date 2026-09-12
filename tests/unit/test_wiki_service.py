@@ -30,7 +30,7 @@ def test_successive_correction_and_no_input_does_not_invoke_runner(wiki):
     messages = [("user", "We choose SQL")]
     calls = []
 
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         calls.append(items)
         content = "# Storage\n" + items[-1]["text"]
         notebook.write("decisions/storage.md", content)
@@ -70,7 +70,7 @@ def test_unsubscribe_survives_approval_and_does_not_erase(wiki):
     approve_sources(root)
     assert subscriptions(root)["codex"]["enabled"] is False
     assert Notebook(root).read("people/alice.md") == "Keep this"
-    assert run_sync(root, runner=lambda *args: pytest.fail("invoked"))["outcome"] == "no_change"
+    assert run_sync(root, runner=lambda *args, **kw: pytest.fail("invoked"))["outcome"] == "no_change"
 
 
 def test_dry_run_has_no_state_or_body_effects(wiki):
@@ -86,7 +86,7 @@ def test_dry_run_has_no_state_or_body_effects(wiki):
 def test_unconsented_start_cannot_infer(tmp_path):
     prepare(tmp_path)
     with pytest.raises(WikiError, match="start"):
-        run_sync(tmp_path, runner=lambda *args: pytest.fail("invoked"))
+        run_sync(tmp_path, runner=lambda *args, **kw: pytest.fail("invoked"))
 
 
 def test_too_small_input_limit_is_not_called_no_change(wiki):
@@ -94,7 +94,7 @@ def test_too_small_input_limit_is_not_called_no_change(wiki):
     rollout(sessions / "rollout-a.jsonl", [("user", "pending")])
     set_config(root, ["limits.input_chars_per_batch", "1"])
     with pytest.raises(WikiError, match="input limit"):
-        run_sync(root, runner=lambda *args: pytest.fail("invoked"))
+        run_sync(root, runner=lambda *args, **kw: pytest.fail("invoked"))
 
 
 def test_budget_failure_does_not_acknowledge_pending_messages(wiki):
@@ -102,18 +102,18 @@ def test_budget_failure_does_not_acknowledge_pending_messages(wiki):
     path = sessions / "rollout-a.jsonl"
     set_config(root, ["limits.runner_calls_per_day", "1"])
     rollout(path, [("user", "first")])
-    run_sync(root, runner=lambda *args: {"usage": None})
+    run_sync(root, runner=lambda *args, **kw: {"usage": None})
     before = state_path(root, "progress.json").read_bytes()
     rollout(path, [("user", "first"), ("user", "second")])
     with pytest.raises(WikiError, match="limit"):
-        run_sync(root, runner=lambda *args: pytest.fail("invoked"))
+        run_sync(root, runner=lambda *args, **kw: pytest.fail("invoked"))
     assert state_path(root, "progress.json").read_bytes() == before
 
 
 def test_interruption_keeps_partial_writes_but_not_checkpoint(wiki):
     root, sessions = wiki
     rollout(sessions / "rollout-a.jsonl", [("user", "keep the rationale")])
-    def interrupted(notebook, *args):
+    def interrupted(notebook, *args, **kw):
         notebook.write("notes/partial.md", "Partial but valid Markdown")
         raise KeyboardInterrupt()
     with pytest.raises(KeyboardInterrupt):
@@ -141,7 +141,7 @@ class FakeScheduler:
 
 
 def _runner_recording(calls):
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         calls.append(items)
         notebook.write("notes/first.md", "# First\n" + items[0]["text"])
         return {"usage": None, "changed": ["notes/first.md"]}
@@ -202,7 +202,7 @@ def test_start_without_a_scheduler_keeps_consent_and_points_to_manual_sync(tmp_p
     root, sessions = tmp_path / "wiki", tmp_path / "sessions"
     monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
     with pytest.raises(WikiError, match="co wiki sync"):
-        start(root, confirm=lambda s: True, scheduler=Unsupported(), runner=lambda *a: pytest.fail("ran"))
+        start(root, confirm=lambda s: True, scheduler=Unsupported(), runner=lambda *a, **kw: pytest.fail("ran"))
     assert state_path(root, "consent.json").is_file()
 
 
@@ -245,7 +245,7 @@ def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch):
             order.append("install")
             return super().install(root, config)
 
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         order.append("batch")
         return {"usage": None, "changed": []}
     start(root, confirm=lambda s: True, scheduler=Ordered(), runner=runner)
@@ -259,7 +259,7 @@ def test_sigterm_during_a_batch_is_recorded_as_interrupted(wiki):
     root, sessions = wiki
     rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
 
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         os.kill(os.getpid(), signal.SIGTERM)
         raise AssertionError("SIGTERM should have interrupted the batch")
     with pytest.raises(KeyboardInterrupt):
@@ -331,7 +331,7 @@ def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(wiki)
     rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
     calls = []
 
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         calls.append(len(items))
         return {"usage": None, "changed": []}
     summary = run_sync(root, all_pending=True, runner=runner)
@@ -370,7 +370,7 @@ def test_outlook_source_flows_through_sync_with_its_own_progress(tmp_path, monke
     approve_sources(root)
     seen = []
 
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         seen.extend(items)
         return {"usage": None, "changed": []}
     assert run_sync(root, runner=runner)["outcome"] == "completed"
@@ -400,7 +400,7 @@ def test_a_large_batch_is_extracted_first_and_the_maintainer_reads_only_the_dige
         seen_by_extractor.append(len(items))
         return {"notes": "## Decisions\n- fact 3 — user, codex:s:0", "usage": {"input_tokens": 100, "output_tokens": 10}}
 
-    def runner(notebook, items, config):
+    def runner(notebook, items, config, kind=""):
         seen_by_runner.extend(items)
         return {"usage": {"input_tokens": 20, "output_tokens": 5}, "changed": []}
     record = run_sync(root, runner=runner, extractor=extractor)
@@ -415,14 +415,14 @@ def test_a_large_batch_is_extracted_first_and_the_maintainer_reads_only_the_dige
 def test_a_small_batch_goes_straight_to_the_maintainer(tmp_path, monkeypatch):
     root = _extract_world(tmp_path, monkeypatch, 3)
     runner_items = []
-    record = run_sync(root, runner=lambda nb, items, cfg: runner_items.extend(items) or {"usage": None, "changed": []},
+    record = run_sync(root, runner=lambda nb, items, cfg, kind="": runner_items.extend(items) or {"usage": None, "changed": []},
                       extractor=lambda items, cfg, kind="": pytest.fail("extraction called for a small batch"))
     assert record["extracted"] is False and len(runner_items) == 3
 
 
 def test_nothing_worth_keeping_skips_the_maintainer(tmp_path, monkeypatch):
     root = _extract_world(tmp_path, monkeypatch, 30)
-    record = run_sync(root, runner=lambda *a: pytest.fail("maintainer called with an empty digest"),
+    record = run_sync(root, runner=lambda *a, **kw: pytest.fail("maintainer called with an empty digest"),
                       extractor=lambda items, cfg, kind="": {"notes": "Nothing worth keeping.", "usage": None})
     assert record["outcome"] == "completed" and record["items"] == 30 and record["changed"] == []
     assert read_json(state_path(root, "progress.json"), {})  # the batch is consumed all the same
@@ -445,7 +445,7 @@ def test_run_record_breaks_usage_down_by_stage_source_and_size(tmp_path, monkeyp
     (how many items each contributed), and how many input characters it carried, so the
     cost of a source or a stage can be computed later from the raw records."""
     root = _extract_world(tmp_path, monkeypatch, 40)
-    record = run_sync(root, runner=lambda nb, items, cfg: {"usage": {"input_tokens": 20, "output_tokens": 5}, "changed": []},
+    record = run_sync(root, runner=lambda nb, items, cfg, kind="": {"usage": {"input_tokens": 20, "output_tokens": 5}, "changed": []},
                       extractor=lambda items, cfg, kind="": {"notes": "## Decisions\n- fact 1 — user, codex:s:0",
                                                     "usage": {"input_tokens": 100, "output_tokens": 10}})
     assert record["usage_by_stage"] == {"extract": {"input_tokens": 100, "output_tokens": 10},
@@ -497,7 +497,7 @@ def test_a_format_that_moved_is_reported_instead_of_looking_like_a_quiet_week(wi
                                      "content": [{"type": "input_text", "text": "Ship it on Friday."}]}})
              for i in range(25)]
     path.write_text("\n".join(rows) + "\n")
-    record = run_sync(root, runner=lambda *args: pytest.fail("nothing was read, so nothing to maintain"))
+    record = run_sync(root, runner=lambda *args, **kw: pytest.fail("nothing was read, so nothing to maintain"))
     assert record["outcome"] == "no_change"
     assert record["unrecognised"] == {"codex": 25}
     assert "codex" in record["warning"] and "25" in record["warning"]
@@ -550,12 +550,12 @@ def test_a_scope_is_a_subscription_of_its_own_with_its_own_cursor(wiki):
     assert subscriptions(root)["codex"]["since"] != scope["since"]   # the main source is untouched
 
     seen = []
-    run_sync(root, source=name, runner=lambda notebook, items, config: seen.append(items) or {"usage": None})
+    run_sync(root, source=name, runner=lambda notebook, items, config, kind="": seen.append(items) or {"usage": None})
     assert [i["text"] for i in seen[0]] == ["fix the browser build"]
 
     # the main source still has both sessions waiting: the scope consumed neither
     rest = []
-    run_sync(root, source="codex", runner=lambda notebook, items, config: rest.append(items) or {"usage": None})
+    run_sync(root, source="codex", runner=lambda notebook, items, config, kind="": rest.append(items) or {"usage": None})
     assert sorted(i["text"] for i in rest[0]) == ["fix the browser build", "write the Xiaohongshu post"]
 
 
@@ -584,7 +584,7 @@ def test_a_batch_is_drawn_from_one_source_and_names_it_to_the_extractor(tmp_path
         seen["prefixes"] = {item["source"].split(":")[0] for item in items}
         return {"notes": "## Decisions\n- one — user, codex:s:0", "usage": None}
 
-    record = run_sync(root, runner=lambda nb, i, c: {"usage": None, "changed": []},
+    record = run_sync(root, runner=lambda nb, i, c, kind="": {"usage": None, "changed": []},
                       extractor=extractor)
     assert record["outcome"] == "completed"
     assert seen["prefixes"] == {"codex"}
