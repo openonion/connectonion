@@ -4,7 +4,7 @@
 import pytest
 
 from connectonion.wiki.config import prepare, read_config, set_config
-from connectonion.wiki.files import Notebook, WikiError, maintenance_lock
+from connectonion.wiki.files import CATEGORIES, Notebook, WikiError, maintenance_lock
 
 
 def test_inspection_does_not_initialize(tmp_path):
@@ -108,3 +108,48 @@ def test_pages_refuse_secret_shaped_content(tmp_path):
         with pytest.raises(WikiError, match="secret"):
             notebook.write("notes/a.md", f"# A\n{secret}\n")
     assert notebook.write("notes/a.md", "# A\nThe API key lives in keys.env, not here.\n")
+
+
+def _person(root, path, body):
+    (root / "people").mkdir(parents=True, exist_ok=True)
+    (root / path).write_text(body, encoding="utf-8")
+
+
+def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
+    """Literal search cannot bridge a changed letter; the roster is what can."""
+    _person(tmp_path, "people/ody-zhou.md", "\n".join([
+        "# Ody Zhou", "", "## Contact",
+        "- Email: zhouodywork@gmail.com",
+        "- Also known as: Ody, Odi, 欧迪, 周泽凯",
+        "- Phone: Unknown",
+        "", "## Who they are",
+        "- OpenOnion partner running business development. [1]",
+    ]))
+    roster = Notebook(tmp_path).people()
+
+    assert len(roster) == 1
+    entry = roster[0]
+    assert entry["path"] == "people/ody-zhou.md" and entry["title"] == "Ody Zhou"
+    # The spelling a coding session would use is here even though it is not in the title.
+    assert "Odi" in entry["aliases"] and "欧迪" in entry["aliases"]
+    assert entry["emails"] == ["zhouodywork@gmail.com"]
+    # The opening line says who they are, not what is missing from their contact card.
+    assert "partner" in entry["summary"].lower()
+    assert "Unknown" not in entry["summary"]
+
+
+def test_an_address_written_inside_prose_is_read_as_an_address_not_the_prose(tmp_path):
+    """A real page wrote "candidate `x@y` (case variant reported)"; splitting on
+    commas handed that whole sentence back as an email."""
+    _person(tmp_path, "people/andrew.md", "\n".join([
+        "# Andrew", "", "## Contact",
+        "- Email: candidate `andrewroth@coastalhomies.com.au` (case variant reported)",
+        "", "## Who they are", "- A lead for outreach. [1]",
+    ]))
+    assert Notebook(tmp_path).people()[0]["emails"] == ["andrewroth@coastalhomies.com.au"]
+
+
+def test_a_notebook_with_no_people_has_an_empty_roster(tmp_path):
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    assert Notebook(tmp_path).people() == []

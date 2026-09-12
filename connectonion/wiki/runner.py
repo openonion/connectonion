@@ -31,6 +31,11 @@ def tool_specs() -> list[dict]:
     category = {"type": "string", "enum": list(CATEGORIES),
                 "description": "One of the notebook's top-level categories; omit to cover all of them."}
     definitions = [
+        ("wiki_people", "Who the notebook already knows: for every person page, its path, title, "
+         "recorded aliases, addresses and opening line. Call this before writing about a person. "
+         "A name in a coding session is often a nickname, a typo, or what dictation heard, so it "
+         "will not always match by spelling; decide from context whether this is someone already "
+         "here.", {}, []),
         ("wiki_list", "List current Markdown record paths, optionally within one category.", {"category": category}, []),
         ("wiki_search", "Find records whose lines contain this text (case-insensitive), optionally within one "
          "category. Use it to find an existing page for a person, project or topic before creating one.",
@@ -58,7 +63,9 @@ class FileTools:
     def call(self, tool: str, args: dict):
         if not isinstance(args, dict):
             raise WikiError("File-tool arguments must be an object")
-        if tool == "wiki_list" and set(args) <= {"category"}:
+        if tool == "wiki_people" and not args:
+            result = self.notebook.people()
+        elif tool == "wiki_list" and set(args) <= {"category"}:
             result = self.notebook.list(args.get("category", ""))
         elif tool == "wiki_search" and {"query"} <= set(args) <= {"query", "category"}:
             result = self.notebook.search(args["query"], args.get("category", ""))[:50]

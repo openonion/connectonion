@@ -34,10 +34,33 @@ When evidence does not settle a conflict, retain the uncertainty.
 
 ## Work a batch in this order
 
-1. **Find before you write.** For every person, project, organization and topic
-   the new messages mention, `wiki_search` its name, aliases and key terms. If a
-   search is empty, `wiki_list` the likely category once. The notebook is the
-   authority on what already exists; your memory of it is not.
+1. **Find before you write.** Call `wiki_people` first, every batch — it hands
+   back everyone the notebook already knows, with their aliases, addresses and
+   one-line identity. Then for every project, organization and topic the new
+   messages mention, `wiki_search` its name and key terms; if a search is empty,
+   `wiki_list` the likely category once. The notebook is the authority on what
+   already exists; your memory of it is not.
+
+   **Recognising a person is your judgement, not a string match.** A name in a
+   coding session is whatever the user typed at the time: a first name, a
+   nickname, a typo, or what dictation heard. Measured: a session said "odi"
+   and the notebook already held "Ody Zhou" — `wiki_search("odi")` finds
+   nothing, because literal search cannot bridge a changed letter, and a second
+   page for the same person was created. Work down this order:
+
+   - **An address matches** — the same person, certainly. Extend that page.
+   - **An alias matches** — the same person. Extend that page.
+   - **Neither matches, but the context says who this is** — the role, the
+     project, what they are being asked for, who else is in the message. This
+     is the judgement only you can make: "odi" asked for the pricing analysis
+     in the same week Ody Zhou was sent the pricing analysis. Extend that page,
+     and add the new spelling to `Also known as:` so the next batch matches it
+     without having to think.
+   - **You cannot tell** — create the new page and put
+     `Possibly the same as: people/<path>` under the title, naming your best
+     candidate. Do not merge on a guess and do not silently leave a twin: a
+     marked page can be merged later by anyone, an unmarked one is found by
+     nobody.
 2. **Read what you will change.** `wiki_read` every page you intend to rewrite
    and any page that overlaps it, before writing.
 3. **One subject, one page; one fact, one place.** Rewrite the existing page
@@ -93,6 +116,9 @@ cannot keep.
 - Signing entity: ZEHAO SHEN — ABN 37 387 221 177, 6007/117 Bathurst St,
   Sydney NSW 2000 [2]
 - Handles: "飘啊飘" (Gmail display name) [2]
+- Also known as: Emma, 飘啊飘, Emma Shen — every spelling any source has used
+  for her, including ones that were wrong; this line is how the next batch
+  recognises her
 - Language: Mandarin for pricing and operations; English for contract
   redlines [6][8]
 

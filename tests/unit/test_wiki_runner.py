@@ -53,7 +53,7 @@ def test_thread_is_ephemeral_and_has_no_execution_environment(tmp_path):
     assert params["model"] == "gpt-5.3-codex-spark"
     assert params["baseInstructions"] == maintenance_instructions()
     assert {t["name"] for t in params["dynamicTools"]} == {
-        "wiki_list", "wiki_search", "wiki_read", "wiki_write", "wiki_delete"}
+        "wiki_people", "wiki_list", "wiki_search", "wiki_read", "wiki_write", "wiki_delete"}
 
 
 def test_usage_notifications_replace_cumulative_counts_not_sum(tmp_path):

@@ -454,6 +454,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     from .runner import maintenance_instructions, run_codex, tool_specs
 
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
+    kind = ""   # the one source this batch is drawn from; see the loop below
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
     # tool-less extraction pass reads it once. A batch that fits items_per_batch
@@ -461,7 +462,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     maintain_room = limits["input_chars_per_batch"] - len(maintenance_instructions()) - len(json.dumps(tool_specs())) - 1000
     if maintain_room <= 0:
         raise WikiError("Configured input limit is too small for the maintenance Skill")
-    remaining = max(limits["extract_chars_per_batch"] - len(extraction_instructions()) - 1000, maintain_room * 2 // 3)
+    # The largest source Skill, so the budget holds whichever source this batch turns out to be.
+    widest = max(len(extraction_instructions(k)) for k in ("", *KINDS, *MAIL_KINDS))
+    remaining = max(limits["extract_chars_per_batch"] - widest - 1000, maintain_room * 2 // 3)
     max_items = limits["extract_items_per_batch"]
     for name, subscription in selected.items():
         if len(items) >= max_items or remaining <= 0:
@@ -482,6 +485,14 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                 counts[name] = counts.get(name, 0) + 1
                 remaining -= len(json.dumps(item, ensure_ascii=False))
         updated[name] = batch.progress
+        # One source per batch. Extraction is read through that source's own
+        # Skill -- where its words hide, how its store is laid out, what it has
+        # taught us -- and a batch mixing mail with coding sessions would have
+        # to be read through both, or through neither. The next batch takes the
+        # next source; nothing is skipped, only separated.
+        if items:
+            kind = subscription.get("kind", name)
+            break
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "model": config["model"], "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
@@ -513,7 +524,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     try:
         usage = {}
         if record["extracted"]:
-            digest = (extractor or run_extract)(items, config)
+            digest = (extractor or run_extract)(items, config, kind)
             usage = dict(digest.get("usage") or {})
             record["usage_by_stage"]["extract"] = digest.get("usage")
             notes = digest["notes"].strip()

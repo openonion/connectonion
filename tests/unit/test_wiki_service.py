@@ -396,7 +396,7 @@ def test_a_large_batch_is_extracted_first_and_the_maintainer_reads_only_the_dige
     root = _extract_world(tmp_path, monkeypatch, 40)
     seen_by_extractor, seen_by_runner = [], []
 
-    def extractor(items, config):
+    def extractor(items, config, kind=""):
         seen_by_extractor.append(len(items))
         return {"notes": "## Decisions\n- fact 3 — user, codex:s:0", "usage": {"input_tokens": 100, "output_tokens": 10}}
 
@@ -416,14 +416,14 @@ def test_a_small_batch_goes_straight_to_the_maintainer(tmp_path, monkeypatch):
     root = _extract_world(tmp_path, monkeypatch, 3)
     runner_items = []
     record = run_sync(root, runner=lambda nb, items, cfg: runner_items.extend(items) or {"usage": None, "changed": []},
-                      extractor=lambda items, cfg: pytest.fail("extraction called for a small batch"))
+                      extractor=lambda items, cfg, kind="": pytest.fail("extraction called for a small batch"))
     assert record["extracted"] is False and len(runner_items) == 3
 
 
 def test_nothing_worth_keeping_skips_the_maintainer(tmp_path, monkeypatch):
     root = _extract_world(tmp_path, monkeypatch, 30)
     record = run_sync(root, runner=lambda *a: pytest.fail("maintainer called with an empty digest"),
-                      extractor=lambda items, cfg: {"notes": "Nothing worth keeping.", "usage": None})
+                      extractor=lambda items, cfg, kind="": {"notes": "Nothing worth keeping.", "usage": None})
     assert record["outcome"] == "completed" and record["items"] == 30 and record["changed"] == []
     assert read_json(state_path(root, "progress.json"), {})  # the batch is consumed all the same
 
@@ -446,7 +446,7 @@ def test_run_record_breaks_usage_down_by_stage_source_and_size(tmp_path, monkeyp
     cost of a source or a stage can be computed later from the raw records."""
     root = _extract_world(tmp_path, monkeypatch, 40)
     record = run_sync(root, runner=lambda nb, items, cfg: {"usage": {"input_tokens": 20, "output_tokens": 5}, "changed": []},
-                      extractor=lambda items, cfg: {"notes": "## Decisions\n- fact 1 — user, codex:s:0",
+                      extractor=lambda items, cfg, kind="": {"notes": "## Decisions\n- fact 1 — user, codex:s:0",
                                                     "usage": {"input_tokens": 100, "output_tokens": 10}})
     assert record["usage_by_stage"] == {"extract": {"input_tokens": 100, "output_tokens": 10},
                                         "maintain": {"input_tokens": 20, "output_tokens": 5}}
@@ -567,3 +567,26 @@ def test_a_directory_scope_works_for_both_coding_sources(wiki):
     name = toggle_source(root, "claude-code", True, project="/work/demo", since="30d")
     assert subscriptions(root)[name]["project"] == "/work/demo"
     assert subscriptions(root)[name]["kind"] == "claude-code"
+
+
+def test_a_batch_is_drawn_from_one_source_and_names_it_to_the_extractor(tmp_path, monkeypatch):
+    """Extraction reads a source's own Skill, so a batch cannot mix two sources.
+
+    Mail and coding sessions hide the user's words in different places and lie
+    differently about which messages are the user's. A batch holding both would
+    have to be read through both Skills, or through neither.
+    """
+    root = _extract_world(tmp_path, monkeypatch, 25)
+    seen = {}
+
+    def extractor(items, config, kind=""):
+        seen["kind"] = kind
+        seen["prefixes"] = {item["source"].split(":")[0] for item in items}
+        return {"notes": "## Decisions\n- one — user, codex:s:0", "usage": None}
+
+    record = run_sync(root, runner=lambda nb, i, c: {"usage": None, "changed": []},
+                      extractor=extractor)
+    assert record["outcome"] == "completed"
+    assert seen["prefixes"] == {"codex"}
+    assert seen["kind"] == "codex"          # named, so the codex Skill is the one loaded
+    assert list(record["items_by_source"]) == ["codex"]

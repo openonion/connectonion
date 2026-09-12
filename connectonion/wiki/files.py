@@ -9,6 +9,15 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
+# Person-page labels the roster reads back. Contact lines are skipped when
+# looking for the opening line: "Phone: Unknown" is not who somebody is.
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+ALIAS_LABELS = ("also known as:", "aka:", "别名:", "别名：")
+EMAIL_LABELS = ("email:", "emails:", "邮箱:", "邮箱：")
+CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
+    "phone:", "company:", "role:", "handles:", "language:", "signing entity:",
+    "电话:", "电话：", "公司:", "公司：")
+
 CATEGORIES = ("people", "projects", "skills", "knowledge", "opportunities",
               "decisions", "principles", "works", "agenda", "notes")
 MAX_NOTE_BYTES = 1_000_000
@@ -131,6 +140,49 @@ class Notebook:
                 if path.is_file():
                     result.append(record)
         return result
+
+    def people(self) -> list[dict]:
+        """Who the notebook already knows, so the maintainer can recognise them again.
+
+        A person is named differently by every source. Mail carries a signature
+        and an address; a coding session carries whatever the user typed in the
+        moment -- a first name, a nickname, a typo, or what dictation heard
+        ("odi" for Ody Zhou, measured 2026-09-12). Literal search cannot bridge
+        that: `search("odi")` does not match "Ody Zhou", so the maintainer
+        concluded, reasonably, that it had met someone new.
+
+        This hands over the roster instead of a search box: title, every
+        recorded alias, every address, and the opening line. Matching an
+        address is certainty; matching an alias is near-certainty; anything
+        else is a judgement the maintainer makes from context, which is the
+        one thing here that needs a model.
+
+        Derived from the pages themselves rather than kept as a second index,
+        because an index drifts from the thing it indexes and nothing tells you
+        when it has.
+        """
+        roster = []
+        for record in self.list("people"):
+            lines = self.read(record).splitlines()
+            title = next((line[2:].strip() for line in lines if line.startswith("# ")), "")
+            aliases, emails, summary = [], [], ""
+            for line in lines[:40]:
+                stripped = line.strip().lstrip("-").strip()
+                low = stripped.casefold()
+                if low.startswith(ALIAS_LABELS):
+                    aliases += [a.strip() for a in stripped.split(":", 1)[1]
+                                .replace("、", ",").split(",") if a.strip()]
+                elif low.startswith(EMAIL_LABELS):
+                    # From the whole line by pattern, not by splitting on commas: a
+                    # page writes "candidate `x@y` (case variant reported)", and
+                    # comma-splitting hands back that prose as an address.
+                    emails += [a.casefold() for a in EMAIL.findall(stripped)]
+                elif not summary and stripped and not stripped.startswith(("#", ">", "|")) \
+                        and not low.startswith(CONTACT_LABELS):
+                    summary = stripped[:160]
+            roster.append({"path": record, "title": title, "aliases": sorted(set(aliases)),
+                           "emails": sorted(set(emails)), "summary": summary})
+        return roster
 
     def read(self, record: str) -> str:
         path = self.path(record)
