@@ -87,6 +87,31 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     return items, coverage
 
 
+def digest_in_chunks(items: list[dict], config: dict, extractor=None) -> tuple[list[dict], dict]:
+    """Oldest first, each chunk within the extract limits, one digest item per chunk."""
+    from .extract import NOTHING, extraction_item, run_extract
+    limits = config["limits"]
+    extractor = extractor or run_extract
+    chunks, current, size = [], [], 0
+    for item in items:
+        n = len(json.dumps(item, ensure_ascii=False))
+        if current and (len(current) >= limits["extract_items_per_batch"] or size + n > limits["extract_chars_per_batch"]):
+            chunks.append(current); current, size = [], 0
+        current.append(item); size += n
+    if current:
+        chunks.append(current)
+    digests, usage = [], {}
+    for chunk in chunks:
+        kinds = {i["source"].split(":")[0] for i in chunk}
+        kind = kinds.pop() if len(kinds) == 1 else ""
+        out = extractor(chunk, config, kind)
+        for key, value in (out.get("usage") or {}).items():
+            usage[key] = usage.get(key, 0) + value
+        if (out.get("notes") or "").strip() != NOTHING:
+            digests.append(extraction_item(out["notes"].strip(), chunk))
+    return digests, usage
+
+
 def fit_to_budget(items: list[dict], coverage: list[str], limit_chars: int) -> list[dict]:
     """Keep the most recent material that fits; say what was left out.
 
@@ -113,7 +138,7 @@ def fit_to_budget(items: list[dict], coverage: list[str], limit_chars: int) -> l
 
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
-                clients: dict, subscriptions: dict, runner=None, progress=None) -> dict:
+                clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -124,7 +149,18 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, tool_specs
     overhead = len(instructions("investigate")) + len(json.dumps(tool_specs())) + len(notebook.read(record)) + 4000
-    items = fit_to_budget(items, coverage, config["limits"]["input_chars_per_batch"] - overhead)
+    room = config["limits"]["input_chars_per_batch"] - overhead
+    gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
+    usage_by_stage = {}
+    if gathered_chars > room:
+        # Too much for one turn. Not "keep the newest and drop the rest": the
+        # oldest mail is where a relationship's terms were set. Digest it in
+        # order, tool-less and cheap, and let the one investigate turn read the
+        # digests -- the same two-pass shape the timeline mode already runs.
+        items, digest_usage = digest_in_chunks(items, config, extractor)
+        usage_by_stage["extract"] = digest_usage
+        coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
+                        f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")
     now = datetime.now(timezone.utc).isoformat()
     prompt_items = [
         {"role": "page", "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
@@ -136,8 +172,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from .runner import run_codex
     runner = runner or run_codex
     result = runner(notebook, prompt_items, config, stage="investigate")
-    searched = [c.split(" (")[0].split(":")[0] for c in coverage]
+    usage_by_stage["investigate"] = result.get("usage")
+    total = {}
+    for stage_usage in usage_by_stage.values():
+        for key, value in (stage_usage or {}).items():
+            total[key] = total.get(key, 0) + value
+    searched = [c.split(" (")[0].split(":")[0] for c in coverage if not c.startswith(("budget", "digest"))]
     notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
-    return {"record": record, "items": len(items), "chars": sum(len(json.dumps(i, ensure_ascii=False)) for i in items),
-            "coverage": coverage, "changed": result.get("changed", []), "usage": result.get("usage"),
-            "report": result.get("report", "")}
+    return {"record": record, "items": len(items), "chars_gathered": gathered_chars,
+            "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
+            "changed": result.get("changed", []), "usage": total or None,
+            "usage_by_stage": usage_by_stage, "report": result.get("report", "")}

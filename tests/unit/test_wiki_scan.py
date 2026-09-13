@@ -106,3 +106,32 @@ def test_material_within_the_limit_is_untouched_and_unremarked():
     items = [{"text": "x", "timestamp": "2026-09-01T00:00:00+00:00"}]
     coverage = []
     assert fit_to_budget(items, coverage, 10_000) == items and coverage == []
+
+
+def test_material_over_the_room_is_digested_in_order_not_dropped():
+    """Ody's investigation kept the newest 107 of 182 and dropped 75 -- the
+    oldest, where the terms of the relationship were set."""
+    from connectonion.wiki.investigate import digest_in_chunks
+    config = {"limits": {"extract_items_per_batch": 3, "extract_chars_per_batch": 10_000}}
+    items = [{"text": f"m{d}", "source": f"outlook:{d}", "timestamp": f"2026-09-{d:02d}T00:00:00+00:00", "project": ""}
+             for d in range(1, 8)]
+    seen = []
+
+    def extractor(chunk, cfg, kind):
+        seen.append(([i["text"] for i in chunk], kind))
+        return {"notes": "## People\n- " + ",".join(i["text"] for i in chunk), "usage": {"input_tokens": 10}}
+
+    digests, usage = digest_in_chunks(items, config, extractor)
+    assert [c for c, _ in seen] == [["m1", "m2", "m3"], ["m4", "m5", "m6"], ["m7"]]   # oldest first, nothing lost
+    assert all(kind == "outlook" for _, kind in seen)                              # single-source chunk names its kind
+    assert len(digests) == 3 and all(d["role"] == "extract" for d in digests)
+    assert usage == {"input_tokens": 30}
+
+
+def test_a_chunk_with_nothing_worth_keeping_yields_no_digest():
+    from connectonion.wiki.investigate import digest_in_chunks
+    from connectonion.wiki.extract import NOTHING
+    config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": 10_000}}
+    items = [{"text": "noise", "source": "gmail:1", "timestamp": "2026-09-01T00:00:00+00:00", "project": ""}]
+    digests, _ = digest_in_chunks(items, config, lambda c, cfg, k: {"notes": NOTHING, "usage": None})
+    assert digests == []
