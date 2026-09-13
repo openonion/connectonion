@@ -18,6 +18,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from .google_errors import google_errors
+from .mail_window import window_listing
 from .command_tips import print_tip
 from .gmail_listings import save_listing, resolve_reference, ListingError
 
@@ -126,10 +127,18 @@ def _print_listing(gmail, emails: list, title: str):
 
 
 @google_errors("co gmail inbox")
-def handle_gmail_inbox(last: int = 10, unread: bool = False):
+def handle_gmail_inbox(last: int = 10, unread: bool = False,
+                      since: str = None, until: str = None, json_output: bool = False):
     """List recent Gmail inbox emails as a numbered table, and remember the numbering for 'read'."""
     gmail = _gmail()
-    emails = gmail.list_inbox(last=last, unread=unread)
+    if since:
+        try:
+            emails = window_listing(gmail, since, until, last)
+        except ValueError as error:
+            console.print(f"[red]{error}[/red]")
+            raise typer.Exit(2) from None
+    else:
+        emails = gmail.list_inbox(last=last, unread=unread)
     if not emails:
         _print_listing(gmail, [], "Gmail")
         scope = "unread " if unread else ""

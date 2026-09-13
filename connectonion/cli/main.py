@@ -1208,13 +1208,23 @@ def gmail_inbox(
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
     json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
     cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
+    since: str = typer.Option(
+        None, "--since", metavar="30d|2026-06-01",
+        help="Everything in a window instead of the last -n. Nd/Nw/Nm/Ny or a date.",
+    ),
+    until: str = typer.Option(None, "--until", help="End of the window; defaults to now"),
 ):
     """List recent inbox emails, numbered for read/reply."""
     if json_output or cursor:
+        if since or until:
+            # Better a refusal than a window silently dropped: the envelope path
+            # pages through a Gmail query and does not take one yet.
+            raise typer.BadParameter("--since/--until do not work with --json yet; "
+                                     "run without --json, or see issue #1521")
         from .commands.gmail_mailbox_commands import handle_mailbox
         return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread, cursor=cursor)
     from .commands.gmail_commands import handle_gmail_inbox
-    handle_gmail_inbox(last=last, unread=unread)
+    handle_gmail_inbox(last=last, unread=unread, since=since, until=until)
 
 
 @gmail_app.command("read", cls=MailboxCommand)
@@ -1645,10 +1655,19 @@ def outlook_send(
 def outlook_inbox(
     last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    since: str = typer.Option(
+        None, "--since", metavar="30d|2026-06-01",
+        help="Everything in a window instead of the last -n. Nd/Nw/Nm/Ny or a date.",
+    ),
+    until: str = typer.Option(None, "--until", help="End of the window; defaults to now"),
+    json_output: bool = typer.Option(
+        False, "--json", help="One JSON array of the provider's own fields, for a caller to parse",
+    ),
 ):
     """List recent emails in your Outlook inbox."""
     from .commands.outlook_commands import handle_outlook_inbox
-    handle_outlook_inbox(last=last, unread=unread)
+    handle_outlook_inbox(last=last, unread=unread, since=since, until=until,
+                         json_output=json_output)
 
 
 @outlook_app.command("read", rich_help_panel="Mail")
