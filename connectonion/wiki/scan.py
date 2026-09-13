@@ -30,6 +30,10 @@ def _display_name(row: dict, address: str) -> str:
     From header returns the user's own display name; a real census filed
     Ody, Dora and the user's private Gmail all under "openonion ai".
     """
+    # The providers split the sender into a bare `from` and a `from_name`; for
+    # mail the correspondent sent, the name is there and nowhere else.
+    if _address(str(row.get("from", ""))) == address and row.get("from_name"):
+        return str(row["from_name"]).strip(' "')
     for header in ([row.get("from", "")] + list(row.get("to") or []) + list(row.get("cc") or [])):
         header = str(header)
         if address in header.lower():

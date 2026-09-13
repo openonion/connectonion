@@ -82,3 +82,10 @@ def test_a_persistent_failure_still_surfaces(monkeypatch):
     import pytest
     with pytest.raises(TimeoutError):
         inv.gather("x", ["x"], days=7, clients={"outlook": Down()}, subscriptions={})
+
+
+def test_a_senders_name_is_read_from_from_name_when_from_is_a_bare_address():
+    """Outlook and Gmail hand back `from` bare and the name beside it; a real
+    census left Tamara, Vern and Wisiani nameless for exactly this reason."""
+    row = {"from": "tamara.berryman@unsw.edu.au", "from_name": "Tamara Berryman", "to": ["me@x.y"], "cc": []}
+    assert _display_name(row, "tamara.berryman@unsw.edu.au") == "Tamara Berryman"
