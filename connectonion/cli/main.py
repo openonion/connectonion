@@ -1734,7 +1734,9 @@ def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many ema
 
 @outlook_app.command("search", rich_help_panel="Mail")
 def outlook_search(
-    query: str = typer.Argument(..., help="Search query (matches subject and body)"),
+    query: str = typer.Argument(..., help="Search query: words match subject and body; "
+                                        "from:<address>, to:<address> and participants:<address> "
+                                        "narrow by who (measured to work on Graph $search)"),
     last: int = typer.Option(10, "--last", "-n", help="How many results to show"),
 ):
     """Search your Outlook emails."""
