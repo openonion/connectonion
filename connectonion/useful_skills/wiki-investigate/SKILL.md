@@ -52,6 +52,10 @@ applies instead:
   one could not.
 - **A handle that produced nothing is a finding**, and belongs in
   `Uncertainties` with what was searched and over what window.
+- **A page titled by a handle takes the person's name once the material gives
+  it.** The map created `# vern.chan` from an address; a signature reading
+  "Vern Chan" makes the title `# Vern Chan`, with `vern.chan` kept in
+  `Also known as:`. The title is what the user will search for.
 
 ## Read across sources before writing anything
 
@@ -123,6 +127,11 @@ left the web holds. Take **only** these, and only where they read `Unknown`:
 co browser go_to "https://<domain>"       # the site itself, first
 co browser get_text                        # read it; do not guess from the URL
 ```
+
+`co browser` is a shell command and it is the browser here: run it the way you
+run any other command. Do not reach for a computer-use or `cua_repl` plugin
+even if your environment offers one — on this runner it answers "No browser
+is available", and that answer is about the plugin, not about the web.
 
 One site, one read, one fact. **Do not open LinkedIn** — a run of automated
 profile views got the account flagged and force-logged-out on 2026-08-23.

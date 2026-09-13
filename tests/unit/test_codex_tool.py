@@ -1166,3 +1166,30 @@ class TestApprovalProtocol:
         assert self._response(method, {}, True) == {"decision": "approved"}
         denied = self._response(method, {}, False)
         assert denied["decision"]["denied"]["rejection"]
+
+
+class TestTokenUsage:
+    """turn/completed carries no token figures; thread/tokenUsage/updated does,
+    and a caller reading the envelope's usage should see them."""
+
+    def test_the_usage_notification_lands_in_the_turn_result(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+        client._handle_notification("thread/tokenUsage/updated", {"tokenUsage": {"total": {
+            "inputTokens": 1200, "cachedInputTokens": 800, "outputTokens": 300, "reasoningOutputTokens": 90}}})
+        client._handle_notification("turn/completed", {"turn": {"id": "t1", "status": "completed"}})
+        assert client._turn_result["usage"] == {"input_tokens": 1200, "output_tokens": 300, "cached_input_tokens": 800}
+
+    def test_a_turn_that_reports_its_own_usage_keeps_it(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+        client._handle_notification("thread/tokenUsage/updated", {"tokenUsage": {"total": {"inputTokens": 1}}})
+        client._handle_notification("turn/completed", {"turn": {"status": "completed", "usage": {"input_tokens": 7}}})
+        assert client._turn_result["usage"] == {"input_tokens": 7}
+
+    def test_a_new_turn_starts_from_no_usage(self):
+        client = codex_module.CodexAppServer(["codex", "app-server"])
+        client._token_usage = {"input_tokens": 5}
+        done = MagicMock(); done.wait.return_value = True
+        client._turn_done = done
+        with patch.object(client, "request", return_value={}):
+            client.run_turn("thread-1", "continue", timeout=10)
+        assert client._token_usage == {}
