@@ -151,9 +151,9 @@ def test_the_runner_is_a_choice_between_the_two_harnesses(tmp_path):
     assert "codex" in str(caught.value) and "coai" in str(caught.value)
 
 
-def test_under_coai_the_page_is_read_back_from_disk_and_web_is_recorded(tmp_path, monkeypatch):
+def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
     """The Skill writes the page itself; what changed is what is on disk, and
-    the status line says the browser-capable harness ran."""
+    the status line names the sources this code searched."""
     from connectonion.wiki.config import prepare, set_config
     from connectonion.wiki import investigate as inv
     root = tmp_path / "wiki"; prepare(root); set_config(root, ["runner", "coai"])
@@ -178,6 +178,6 @@ def test_under_coai_the_page_is_read_back_from_disk_and_web_is_recorded(tmp_path
                           clients={"outlook": Quiet()}, subscriptions={})
     assert out["changed"] == ["people/vern.md"]
     status = [l for l in nb.read("people/vern.md").splitlines() if l.startswith("Investigation:")][0]
-    assert "web" in status and "outlook" in status
+    assert "outlook" in status
     material = root / ".state/investigations/vern.md"
     assert material.is_file() and "[page]" in material.read_text()

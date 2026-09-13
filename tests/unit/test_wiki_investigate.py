@@ -60,12 +60,13 @@ def test_runner_coai_is_co_ai_on_our_own_loop_and_its_own_default_model(tmp_path
     assert not {"--harness", "--sandbox", "--model"} & set(argv)
 
 
-def test_either_harness_records_that_the_web_was_searched(tmp_path, co_ai):
-    """The status line names what was reachable; both harnesses can open the web."""
+def test_the_status_line_names_the_sources_searched_and_does_not_claim_the_web(tmp_path, co_ai):
+    """Whether the web was reached is the Skill's to report on the page: a real
+    run had `co browser` fail inside the thread while the line still said web."""
     from connectonion.wiki.files import Notebook
     for runner in ("codex", "coai"):
         root = _notebook(tmp_path / runner, runner)
         inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                         clients={"outlook": Quiet()}, subscriptions={})
         status = [l for l in Notebook(root).read("people/vern.md").splitlines() if l.startswith("Investigation:")][0]
-        assert "web" in status and "outlook" in status, (runner, status)
+        assert "outlook" in status and "web" not in status, (runner, status)

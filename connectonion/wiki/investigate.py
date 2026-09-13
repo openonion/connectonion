@@ -218,14 +218,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         runner = run_under_co_ai
     result = runner(notebook, prompt_items, config, stage="investigate")
     usage_by_stage["investigate"] = result.get("usage")
-    web = runner is run_under_co_ai
     total = {}
     for stage_usage in usage_by_stage.values():
         for key, value in (stage_usage or {}).items():
             total[key] = total.get(key, 0) + value
+    # The status line names the sources this code searched. Whether the web
+    # was reached is the Skill's to report, on the page: a real run (2026-09-14)
+    # had `co browser` fail inside the thread while this line still said "web".
     searched = [c.split(" (")[0].split(":")[0] for c in coverage if not c.startswith(("budget", "digest"))]
-    if web:
-        searched.append("web")     # the one harness that can open the browser did
     notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
     return {"record": record, "items": len(items), "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,

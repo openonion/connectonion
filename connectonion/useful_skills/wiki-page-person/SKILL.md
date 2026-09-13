@@ -164,3 +164,9 @@ all. The labels under `Contact` are read back the same way: `Email:`,
 `Phone:`, `Company:`, `Role:`, `Signing entity:`, `Handles:`, `Language:`,
 `Also known as:`. A renamed label is an invisible one, and the next batch meets
 the person as a stranger.
+
+The `Investigation:` line at the foot of the page is not yours. The runner
+writes it after every pass — `investigated 2026-09-14 (outlook, gmail, codex)`
+— and reads it to pick the next subject. Leave it exactly as you found it; a
+pass that rewrote it in its own words (2026-09-14) got a second, machine
+stamp appended and the line then said two different things.
