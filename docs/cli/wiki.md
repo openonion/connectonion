@@ -32,7 +32,22 @@ co wiki usage --days 7
 co wiki open
 co wiki open --no-launch
 co wiki doctor
+co wiki scan people --days 150 --min-mails 3 --mine <address>   # no model
+co wiki scan projects --days 150                                 # no model
+co wiki stub person "Emma" --email szh526@gmail.com --handle 艾玛
+co wiki stub project "connectonion" --path ~/projects/connectonion
+co wiki unfinished
+co wiki investigate people/emma.md --handle szh526
 ```
+
+`scan`, `stub`, `unfinished` and `investigate` are the first run as commands,
+so the `wiki-init` Skill can drive them and a person can run any one by hand.
+`scan` enumerates what the sources already list and hands over signals, never
+verdicts; `stub` creates a page with every section present and the unknown
+ones marked so; `investigate` fills one page from everything every source
+holds about its subject and records on the page what it searched; `unfinished`
+is the notebook's own work list, least-investigated first. DD-066 has the
+reasoning.
 
 Every run record keeps the raw accounting — tokens per stage (`extract`,
 `maintain`), items per source, input characters, wall seconds — and `usage`
