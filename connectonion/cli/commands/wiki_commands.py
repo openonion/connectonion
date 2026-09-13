@@ -62,6 +62,85 @@ def make_wiki_app(factory):
         from ...wiki.service import subscriptions
         _handle(ctx, lambda root: (subscriptions(root), ["status"]), ["config"])
 
+    @wiki.command("scan")
+    def scan_sources(ctx: typer.Context,
+                     what: str = typer.Argument("people", help="people or projects"),
+                     days: int = typer.Option(150, "--days", help="How far back to look"),
+                     min_mails: int = typer.Option(3, "--min-mails", help="people: fewer than this is not listed"),
+                     mine: List[str] = typer.Option([], "--mine", help="An address that is yours (repeatable)")):
+        """Enumerate correspondents or projects from the sources, with counts and dates. No model."""
+        from ...wiki.scan import scan_people, scan_projects
+        from ...wiki.service import mail_client, subscriptions
+
+        def run(root):
+            if what == "projects":
+                return scan_projects(subscriptions(root), days), ["stub", "project", "<name>", "--path", "<cwd>"]
+            if what != "people":
+                raise WikiError("scan takes people or projects")
+            clients = {k: mail_client(k) for k in ("outlook", "gmail")}
+            rows = [p for p in scan_people(clients, days, set(mine)) if p["mails"] >= min_mails]
+            return rows, ["stub", "person", "<name>", "--handle", "<address>"]
+        from ...wiki.files import WikiError
+        _handle(ctx, run, ["status"])
+
+    @wiki.command("stub")
+    def stub_page(ctx: typer.Context,
+                  kind: str = typer.Argument(..., help="person or project"),
+                  name: str = typer.Argument(..., help="The page title"),
+                  handle: List[str] = typer.Option([], "--handle", help="A spelling, address or alias (repeatable)"),
+                  path: List[str] = typer.Option([], "--path", help="project: a directory it lives at (repeatable)"),
+                  email: str = typer.Option("", "--email", help="person: the address it was found by")):
+        """Create a page with its structure already in place; every unknown section says so. No model."""
+        import re
+        from ...wiki.files import Notebook, WikiError
+
+        def run(root):
+            slug = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "-", name.lower()).strip("-") or "page"
+            notebook = Notebook(root)
+            if kind == "person":
+                record = f"people/{slug}.md"
+                made = notebook.stub_person(record, name, handle, email=email)
+            elif kind == "project":
+                record = f"projects/{slug}.md"
+                made = notebook.stub_project(record, name, path)
+            else:
+                raise WikiError("stub takes person or project")
+            return {"record": record, "created": made}, ["investigate", record, *sum((["--handle", h] for h in handle), [])]
+        _handle(ctx, run, ["unfinished"])
+
+    @wiki.command("unfinished")
+    def list_unfinished(ctx: typer.Context, category: str = typer.Argument("", help="people, projects, or all")):
+        """Pages still carrying an Unknown section, least-investigated first. The notebook's own work list."""
+        from ...wiki.files import Notebook
+        _handle(ctx, lambda root: (Notebook(root).unfinished(category), ["investigate", "<path>"]), ["status"])
+
+    @wiki.command("investigate")
+    def investigate_page(ctx: typer.Context,
+                         record: str = typer.Argument(..., help="The page, e.g. people/emma.md"),
+                         handle: List[str] = typer.Option([], "--handle", help="Every spelling, address or alias (repeatable)"),
+                         days: int = typer.Option(150, "--days", help="How far back to search")):
+        """Fill one page from everything every source holds about its subject. One model turn."""
+        from ...wiki.files import Notebook
+        from ...wiki.investigate import investigate
+        from ...wiki.service import mail_client, subscriptions
+
+        def run(root):
+            notebook = Notebook(root)
+            text = notebook.read(record)
+            title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), record)
+            known = []
+            for line in text.splitlines():
+                low = line.strip().lstrip("-").strip().casefold()
+                if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
+                    known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",") if h.strip() and h.strip() != "Unknown"]
+            handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
+            clients = {k: mail_client(k) for k in ("outlook", "gmail")}
+            result = investigate(root, record, title, handles, days=days, clients=clients,
+                                 subscriptions=subscriptions(root),
+                                 progress=lambda k, stop, n: typer.echo(f"  {k}: to {stop:%Y-%m-%d}, {n} mails", err=True))
+            return result, ["show", record]
+        _handle(ctx, run, ["unfinished"])
+
     config_app = factory(help="Inspect or explicitly change Wiki configuration.", no_args_is_help=False)
     wiki.add_typer(config_app, name="config")
 

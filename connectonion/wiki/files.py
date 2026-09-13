@@ -107,6 +107,11 @@ def maintenance_lock(root: Path):
         os.close(fd)
 
 
+def _today() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
 class Notebook:
     """Small file API: semantic choices belong to the maintainer, not this class."""
 
@@ -140,6 +145,95 @@ class Notebook:
                 if path.is_file():
                     result.append(record)
         return result
+
+    PERSON_SECTIONS = ("Who they are", "Why they are here", "Our relationship",
+                       "History", "Open threads", "How they communicate",
+                       "How the user writes to them", "Cadence", "Uncertainties")
+    PERSON_CONTACT = ("Email", "Phone", "Company", "Role", "Signing entity",
+                      "Handles", "Language", "Also known as")
+
+    def stub_person(self, record: str, name: str, handles=(), **known) -> bool:
+        """Create the page with its sections already in place, all Unknown.
+
+        The structure is settled when the entry is created, not hoped for when
+        a model writes the page. Three runs in a row invented their own
+        headings or trailed a note onto one, and each time the roster stopped
+        recognising the person -- a shape asserted in a prompt is a request,
+        while a shape already on disk is a fact the next pass edits.
+
+        It also turns the notebook into its own work list: an `Unknown` is not
+        a gap in a report, it is the next thing to go and find out.
+        """
+        if self.path(record).is_file():
+            return False
+        # Whatever the enumeration already knew. A correspondent is discovered
+        # *by* their address, so leaving `Email: Unknown` on a page the roster
+        # sweep built from that very address throws away the one fact the free
+        # stage had, and sends the paid stage looking for it.
+        seeded = {"Handles": ", ".join(handles), "Also known as": ", ".join(handles)}
+        seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
+        lines = [f"# {name}", "", "## Contact"]
+        lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
+        for section in self.PERSON_SECTIONS:
+            lines += ["", f"## {section}", "- Unknown — not investigated yet"]
+        lines += ["", "## Sources", "- (none yet)", "",
+                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+        return self.write(record, "\n".join(lines))
+
+    PROJECT_SECTIONS = ("What it is", "Why it exists", "Where it stands", "How it is built",
+                        "Open threads", "Uncertainties")
+
+    def stub_project(self, record: str, name: str, paths=(), **known) -> bool:
+        """The project page, structure first, the same way as a person's.
+
+        A project is discovered by its path -- every session carries `cwd` --
+        so the path is the one fact the free stage has, and it goes on the page
+        before any model looks at it.
+        """
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}", "", "## Paths"]
+        lines += [f"- {path}" for path in paths] or ["- Unknown"]
+        for label, value in known.items():
+            if value:
+                lines.append(f"- {label.replace('_', ' ').capitalize()}: {value}")
+        for section in self.PROJECT_SECTIONS:
+            lines += ["", f"## {section}", "- Unknown — not investigated yet"]
+        lines += ["", "## Sources", "- (none yet)", "",
+                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+        return self.write(record, "\n".join(lines))
+
+    def unfinished(self, category: str = "") -> list[dict]:
+        """Pages still carrying an Unknown section, least-investigated first.
+
+        The page is its own work list: nothing else has to remember what is
+        left to find out. Ordered so the next daily run picks the page that has
+        had the least attention, not the one that happens to sort first.
+        """
+        found = []
+        for record in self.list(category):
+            text = self.read(record)
+            unknown = sum(1 for line in text.splitlines() if "Unknown" in line)
+            if not unknown:
+                continue
+            status = next((line for line in text.splitlines() if line.startswith("Investigation:")), "")
+            investigated = status.count("investigated ") - status.count("not investigated")
+            found.append({"path": record, "unknown": unknown, "status": status,
+                          "investigated_passes": max(investigated, 0)})
+        return sorted(found, key=lambda entry: (entry["investigated_passes"], -entry["unknown"], entry["path"]))
+
+    def note_investigation(self, record: str, what: str) -> None:
+        """Append one pass to the page's own status line: `investigated <date> (<what>)`."""
+        text = self.read(record)
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith("Investigation:"):
+                stamp = f"investigated {_today()} ({what})"
+                lines[i] = line.replace(" · not investigated yet", "") + f" · {stamp}"
+                break
+        else:
+            lines += ["", f"Investigation: investigated {_today()} ({what})"]
+        self.write(record, "\n".join(lines) + ("\n" if not text.endswith("\n") else ""))
 
     def people(self) -> list[dict]:
         """Who the notebook already knows, so the maintainer can recognise them again.

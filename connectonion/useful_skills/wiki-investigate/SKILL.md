@@ -5,10 +5,29 @@ description: Build one entity's page from everything every source holds about th
 
 # Investigate one subject
 
-You are given **one subject and all of its material at once**: every mail,
-every session, every mention, gathered across every source by the subject's
-known handles. This is not a slice of a timeline. It is the whole file on one
-person or one project, and your output is one page that is finished.
+You are given three things: **the page as it stands today**, **one subject's
+material gathered across every source**, and the handles that were searched.
+Your output is that same page, further along.
+
+You are not writing from scratch. The page already exists, with every section
+in place and the ones nobody has investigated marked `Unknown`. The structure
+is settled; you are filling it and keeping it current.
+
+**Read the current page first.** It tells you three different things, and they
+need three different treatments:
+
+| What you find | What to do |
+|---|---|
+| `Unknown — not investigated yet` | This is your work list. Go find it in the material. |
+| A value, and the material agrees | Leave it. Do not reword what is already right. |
+| A value, and the material has moved on | Update it, and keep the old state in `History` with its date. |
+| A value the material now contradicts | Say so in `Uncertainties`, naming both. Do not silently pick one. |
+
+An `Unknown` you looked for and did not find **stays `Unknown`, and the search
+goes in `Uncertainties`**: "Searched Gmail and Outlook over 150 days for
+szh526 and 艾玛; no signing entity or ABN appears." That sentence is what stops
+the next run from spending another pass on the same dead end, and it is the
+difference between "we do not know" and "nobody has looked".
 
 The stage this replaces produced 143 pages with a median of 700 bytes, twenty
 of them a single line, because it met each person a few messages at a time and
@@ -28,10 +47,11 @@ applies instead:
 - **Every handle you were given belongs on the page**, in `Also known as:` for
   a person or `Paths:` for a project, including spellings that were wrong. That
   line is how the daily pass will recognise the subject without thinking.
-- **A handle that produced nothing is a finding.** "Searched Gmail for
-  zhouodywork@gmail.com: no mail before 2026-07" belongs in `Uncertainties`.
-  Silence about a source you were asked to check reads as "there was nothing
-  there", and those are different.
+- **Add handles you discovered.** A signature, a second address, a name in
+  another script: put it on that line so the next sweep reaches material this
+  one could not.
+- **A handle that produced nothing is a finding**, and belongs in
+  `Uncertainties` with what was searched and over what window.
 
 ## Read across sources before writing anything
 
@@ -52,9 +72,18 @@ the rest.
 
 ## What to produce
 
-For a **person**, the page shape in `wiki-maintain` — fixed sections, `Unknown`
-where the evidence is absent, a claim number on every factual sentence. Read
-that shape from there; it is the same page, built better.
+A **person's** page follows `wiki-page-person`, appended to these
+instructions. Follow it exactly, including the headings and the `Contact`
+labels: the roster behind `wiki_people` finds a person's addresses and aliases
+by those labels, so a renamed section is an invisible one and the next batch
+meets them as a stranger again.
+
+**`Open threads` is not optional and is not prose scattered through the page.**
+It is the section the user reads first. From a real investigation: "the
+contract is still in draft, the listings are already co-hosted, and reported
+income is A$0 because the agreement is unsigned" was all present in the page --
+spread across three other sections, so it read as background rather than as the
+thing to act on. Each entry names who owes what, and since when.
 
 For a **project**, the same discipline in its own shape:
 
@@ -81,8 +110,12 @@ about someone quiet.
 ## What this stage must not do
 
 - **Do not spread one subject over several pages.** Everything you learned
-  about them goes on their page. A project they drove gets its own page and a
-  link, not a duplicate account of the same events.
+  about them goes on their page. Investigating one person produced three pages
+  — the person, plus two project pages restating the same negotiation — and
+  the reader now has to hold three accounts of one story. Write a second page
+  only when it is a subject in its own right that would still exist without
+  this person, and even then put the account on their page and a link on the
+  other. One investigation, one page, unless you can say why not.
 - **Do not write `agenda/` or `opportunities/`.** Both are views over the Open
   threads and state you are already recording.
 - **Do not extract decisions or principles here.** Note what was decided as

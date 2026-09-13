@@ -153,3 +153,48 @@ def test_a_notebook_with_no_people_has_an_empty_roster(tmp_path):
     for name in CATEGORIES:
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
     assert Notebook(tmp_path).people() == []
+
+
+def test_map_creates_the_page_with_its_structure_already_settled(tmp_path):
+    """A shape asserted in a prompt is a request; a shape on disk is a fact."""
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    notebook = Notebook(tmp_path)
+
+    assert notebook.stub_person("people/emma.md", "Emma (艾玛)",
+                                ["emma", "艾玛", "szh526"]) is True
+    page = notebook.read("people/emma.md")
+
+    for section in ("Contact", "Open threads", "Uncertainties", "Sources",
+                    *Notebook.PERSON_SECTIONS):
+        assert f"## {section}" in page, section
+    for label in Notebook.PERSON_CONTACT:
+        assert f"- {label}: " in page, label
+    # The handles it was given are on the page; everything else is a work item.
+    assert "- Handles: emma, 艾茅, szh526" not in page
+    assert "- Also known as: emma, 艾玛, szh526" in page
+    assert page.count("Unknown — not investigated yet") == len(Notebook.PERSON_SECTIONS)
+
+
+def test_a_second_map_pass_does_not_overwrite_an_investigated_page(tmp_path):
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/emma.md", "Emma", ["emma"])
+    notebook.write("people/emma.md", "# Emma\n\n## Contact\n- Email: szh526@gmail.com\n")
+
+    assert notebook.stub_person("people/emma.md", "Emma", ["emma"]) is False
+    assert "szh526@gmail.com" in notebook.read("people/emma.md")
+
+
+def test_the_roster_reads_a_page_that_has_only_been_mapped(tmp_path):
+    """A mapped-but-uninvestigated person must still be recognisable, or the
+    next batch creates a duplicate of someone the notebook already listed."""
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/ody-zhou.md", "Ody Zhou", ["Ody", "odi", "周泽凯"])
+
+    entry = notebook.people()[0]
+    assert entry["title"] == "Ody Zhou"
+    assert "odi" in entry["aliases"] and "周泽凯" in entry["aliases"]

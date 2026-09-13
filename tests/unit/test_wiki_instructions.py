@@ -40,3 +40,31 @@ def test_both_passes_of_a_batch_read_the_same_source_file():
     codex_only = instructions("extract", "codex").split("---\n\n")[-1]
     assert codex_only and codex_only in maintenance_instructions("codex")
     assert codex_only in extraction_instructions("codex")
+
+
+def test_a_page_shape_is_defined_once_and_reaches_every_stage_that_writes_one():
+    """It lived inside one stage, was copied into a second, and they drifted
+    within a day -- one renaming the headings the roster reads back."""
+    for stage in ("maintain", "investigate"):
+        text = instructions(stage)
+        assert "\n# A person's page\n" in text
+        for heading in ("## Contact", "## Open threads", "## Uncertainties"):
+            assert heading in text, (stage, heading)
+        for label in ("Email:", "Also known as:", "Signing entity:"):
+            assert label in text, (stage, label)
+
+
+def test_a_stage_that_writes_no_page_is_not_given_a_page_shape():
+    for stage in ("extract", "abstract"):
+        assert "\n# A person's page\n" not in instructions(stage)
+
+
+def test_no_stage_carries_its_own_second_copy_of_the_person_shape():
+    """Two definitions is how the drift happened; one is the fix."""
+    from connectonion.skills_catalog import useful_skills_dir
+
+    # The definition is the `#` heading; a `##` pointer to it is fine and wanted.
+    owners = [p.parent.name for p in useful_skills_dir().glob("wiki-*/SKILL.md")
+              if any(line.rstrip() == "# A person's page"
+                     for line in p.read_text(encoding="utf-8").splitlines())]
+    assert owners == ["wiki-page-person"], owners
