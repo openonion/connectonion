@@ -20,13 +20,18 @@ from .source import KINDS, collect, pending_metadata, timestamp
 MAIL_KINDS = ("gmail", "outlook")
 
 
-def mail_client(kind: str):
-    """The live client for a mail kind; tests replace this with a fake."""
+def mail_client(kind: str, *, attachments: bool = False):
+    """The live client for a mail kind; tests replace this with a fake.
+
+    `attachments=True` lets the client save files outside its own sandbox
+    root: the Wiki downloads a subject's contracts and decks into the
+    notebook's .state, which is operator territory, not an agent's.
+    """
     if kind == "outlook":
         from ..useful_tools.outlook import Outlook
-        return Outlook()
+        return Outlook(allow_external_attachments=attachments)
     from ..useful_tools.gmail import Gmail
-    return Gmail()
+    return Gmail(allow_external_attachments=attachments)
 
 
 def mail_available(kind: str) -> bool:

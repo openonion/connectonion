@@ -61,6 +61,12 @@ the rest.
 
 - **Mail gives identity and commitment** — the signature, the address, the
   legal entity, what was actually agreed and when.
+- **Attachments are where the terms are.** A `[attachment]` item is the text
+  of a file someone sent — a contract, a deck, a spreadsheet — read out of the
+  PDF or document. The mail says "please see attached"; the attachment says
+  7.5% of Net Booking Revenue. Cite the file by its source id. An item that
+  reads `[could not read PDF: …]` or `is not read` is a finding for
+  `Uncertainties`: the file exists and was not read.
 - **Coding sessions give intent** — why the user was doing it, what they were
   weighing, what they asked for in the moment. They almost never carry a full
   name; they carry a first name or whatever dictation heard.

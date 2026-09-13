@@ -134,7 +134,7 @@ def make_wiki_app(factory):
                 if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
                     known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",") if h.strip() and h.strip() != "Unknown"]
             handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
-            clients = {k: mail_client(k) for k in ("outlook", "gmail")}
+            clients = {k: mail_client(k, attachments=True) for k in ("outlook", "gmail")}
             result = investigate(root, record, title, handles, days=days, clients=clients,
                                  subscriptions=subscriptions(root),
                                  progress=lambda k, stop, n: typer.echo(f"  {k}: to {stop:%Y-%m-%d}, {n} mails", err=True))

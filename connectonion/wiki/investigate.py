@@ -38,6 +38,31 @@ def _patient(call, *args, attempts: int = 4):
             time.sleep(2 ** attempt)
 
 
+def _download(client, email_id: str, folder: str):
+    """The two mailboxes save attachments through different doors.
+
+    Outlook: `download_attachments(email_id, out_dir)` -> list of paths.
+    Gmail (its mailbox mixin): `download_attachments(email_id, directory, *,
+    all_attachments=...)` -> a result dict, because it also reports partial
+    saves and budget stops. Both are asked the way they expect.
+    """
+    import inspect
+    parameters = inspect.signature(client.download_attachments).parameters
+    if "all_attachments" in parameters:
+        return client.download_attachments(email_id, folder, all_attachments=True)
+    return client.download_attachments(email_id, folder)
+
+
+def _saved_paths(result) -> list[str]:
+    """Whatever a download returned, the files that are now on disk."""
+    if isinstance(result, dict):
+        # Gmail's mixin: {'items': [{'status': 'saved', 'path': ...} | {'status': 'failed', ...}],
+        # 'complete': bool}. A row without a path was not saved; it is not a file.
+        return [str(row["path"]) for row in result.get("items") or []
+                if isinstance(row, dict) and row.get("path") and row.get("status", "saved") == "saved"]
+    return [str(f) for f in (result or [])]
+
+
 def _matches(row: dict, handles: list[str], mine: set) -> bool:
     haystack = " ".join([correspondent(row, mine), str(row.get("from", "")), str(row.get("to", "")),
                          str(row.get("subject", ""))]).lower()
@@ -45,7 +70,7 @@ def _matches(row: dict, handles: list[str], mine: set) -> bool:
 
 
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
-           progress=None) -> tuple[list[dict], list[str]]:
+           progress=None, attachments_dir: Path | None = None) -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched."""
     handles = [h.strip().lower() for h in handles if h.strip()]
     end = datetime.now(timezone.utc)
@@ -61,16 +86,32 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 progress(kind, stop, len(rows))
             cursor = stop
         hit = [r for r in rows if _matches(r, handles, mine)]
-        coverage.append(f"{kind} ({', '.join(sorted(mine))}): scanned {len(rows)} mails over {days} days, {len(hit)} matched")
+        attached = 0
         for r in sorted(hit, key=lambda r: str(r["date"])):
             body = _patient(client.get_email_body, r["id"])
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             own = _address(r["from"]) in mine or "@" not in _address(r["from"])
+            short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": _fit_text(body[:MAX_BODY_CHARS], 6000), "timestamp": str(r["date"]),
-                          "subject": r.get("subject", ""),
-                          "source": f"{kind}:" + hashlib.sha256(r["id"].encode()).hexdigest()[:12]})
+                          "subject": r.get("subject", ""), "source": f"{kind}:{short}"})
+            if attachments_dir is not None and hasattr(client, "download_attachments"):
+                from .attachments import extract_text
+                folder = attachments_dir / kind / short
+                try:
+                    paths = _saved_paths(_patient(_download, client, r["id"], str(folder)))
+                except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
+                    paths = []
+                    coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
+                for saved in paths or []:
+                    attached += 1
+                    items.append({"role": "attachment", "speaker": r["from"], "timestamp": str(r["date"]),
+                                  "subject": f"{r.get('subject', '')} — {Path(saved).name}",
+                                  "text": extract_text(Path(saved)), "file": saved,
+                                  "source": f"{kind}:{short}:{Path(saved).name}"})
+        coverage.append(f"{kind} ({', '.join(sorted(mine))}): scanned {len(rows)} mails over {days} days, "
+                        f"{len(hit)} matched, {attached} attachments read")
     for name, sub in subscriptions.items():
         if sub.get("kind") not in KINDS or not Path(sub.get("root", "")).is_dir():
             continue
@@ -143,8 +184,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise WikiError(f"{record} does not exist; create it with `co wiki stub` first")
-    items, coverage = gather(subject, handles, days=days, clients=clients,
-                             subscriptions=subscriptions, progress=progress)
+    items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
+                             progress=progress, attachments_dir=root / ".state" / "attachments")
     config = read_config(root)
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, tool_specs
