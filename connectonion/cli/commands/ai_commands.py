@@ -17,6 +17,7 @@ import typer
 from rich.console import Console
 
 from ...core.usage import DEFAULT_MODEL
+from ..co_ai import harness as _harness
 
 console = Console()
 
@@ -24,7 +25,7 @@ console = Console()
 def handle_ai(
     prompt: str = None,
     port: int = 8000,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     max_iterations: int = 100,
     full_access: bool = False,
     full_access_turns: int = 100,
@@ -34,13 +35,15 @@ def handle_ai(
     invite_code: str = None,
     invite_code_file: Path = None,
     listen: list | None = None,
+    harness: str = _harness.OURS,
+    sandbox: str = _harness.DEFAULT_SANDBOX,
 ):
     """Start AI coding agent or run one-shot prompt.
 
     Args:
         prompt: One-shot prompt (runs and exits)
         port: Port for web server
-        model: LLM model to use
+        model: LLM model to use; None means this harness's own default
         max_iterations: Max tool iterations
         full_access: Bypass tool approvals for a bounded user-driven turn budget
         full_access_turns: User-driven turns before expiry to Auto
@@ -50,6 +53,9 @@ def handle_ai(
         invite_code: In-memory invite code for this web-server run
         invite_code_file: File containing this web-server run's invite code
         listen: Channels to answer, overriding .co/host.yaml; [] answers none
+        harness: Which agent loop runs the task: ours, codex, or claude-code
+        sandbox: What a delegated Codex run may write: read-only,
+            workspace-write (cwd + TMPDIR), or danger-full-access
 
     Examples:
         co ai                                    # Start web server
@@ -69,6 +75,12 @@ def handle_ai(
         raise typer.Exit(2)
 
     runtime_invite_code = _read_runtime_invite_code(invite_code, invite_code_file)
+
+    if harness != _harness.OURS or harness not in _harness.HARNESSES:
+        _handle_delegated(harness, prompt, model, json_output, sandbox)
+        return
+
+    model = model or DEFAULT_MODEL
 
     if not prompt and (json_output or resume):
         message = "--json and --resume require a one-shot prompt"
@@ -126,6 +138,45 @@ def handle_ai(
             agent_factory=agent_factory,
             invite_code=runtime_invite_code,
         )
+
+
+def _handle_delegated(harness, prompt, model, json_output, sandbox) -> None:
+    """Hand the whole task to a native coding agent, spending none of our tokens.
+
+    This is the point of the flag: reaching Codex used to cost a full turn of
+    our own model first, purely to have it decide to call the codex tool.
+    """
+    problem = _harness.validate(harness, model) or _harness.validate_sandbox(harness, sandbox)
+    if not problem and not prompt:
+        # There is no web server to hand over: a delegate answers one task and exits.
+        problem = f"--harness {harness} needs a one-shot prompt."
+    if problem:
+        if json_output:
+            _print_envelope(None, None, "error", problem)
+        else:
+            console.print(f"[red]{problem}[/red]")
+        raise typer.Exit(2)
+
+    try:
+        # An unset --model means "your default", not ours, which names nothing
+        # in the delegate's catalogue.
+        answer = _harness.run(harness, prompt, model or "", sandbox=sandbox)
+    except ValueError as exc:  # skill missing, or its requirements are not met
+        if json_output:
+            _print_envelope(None, None, "error", str(exc))
+        else:
+            console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from None
+
+    if json_output:
+        _print_envelope(answer.get("session_id"), answer["result"], answer["outcome"],
+                        answer["error"], usage=answer["usage"])
+    elif answer["error"]:
+        console.print(f"[red]{answer['error']}[/red]")
+    else:
+        console.print(answer["result"] or "")
+    if answer["outcome"] != "natural":
+        raise typer.Exit(1)
 
 
 def _channels(override):
@@ -253,6 +304,10 @@ def _handle_json_one_shot(
     persist_session=True,
 ):
     session_id = resume if persist_session else None
+    # Bound before the try so a failure that happened *after* some LLM calls
+    # still reports what those cost. A run that burned tokens and then crashed
+    # is not a free run, and the caller settling the bill cannot see the trace.
+    agent = None
     try:
         with redirect_stdout(sys.stderr):
             from ..co_ai.agent import GLOBAL_CO_DIR
@@ -296,10 +351,10 @@ def _handle_json_one_shot(
                     )
     except Exception as exc:
         error_session_id = resume if persist_session else None
-        _print_envelope(error_session_id, None, "error", str(exc))
+        _print_envelope(error_session_id, None, "error", str(exc), agent)
         raise typer.Exit(1) from None
     outcome = _completed_outcome(agent)
-    _print_envelope(session_id, result, outcome, None)
+    _print_envelope(session_id, result, outcome, None, agent)
     if outcome == "max_iterations":
         raise typer.Exit(1)
 
@@ -327,11 +382,37 @@ def _completed_outcome(agent) -> str:
     raise RuntimeError("Completed Agent turn has no turn_result outcome")
 
 
-def _print_envelope(session_id, result, outcome, error) -> None:
+def _turn_usage(agent) -> dict | None:
+    """What this turn cost, sliced to this turn.
+
+    A caller that shells out to `co ai --json` has no other way to know: the
+    figure the terminal prints goes to stderr-shaped console output, and the
+    session YAML records `tokens` as one scalar, which cannot answer "how much
+    of that was cached". The trace carries the split, so the envelope can too.
+
+    Sliced by `current_turn_trace`, not summed over the whole trace: a `--resume`
+    run carries the earlier turns' `llm_result` entries in the same list, and
+    billing this turn for those would overstate every resumed run.
+    """
+    if agent is None:
+        return None
+    from ...core.trace import current_turn_trace
+    from ...core.usage import turn_usage_from_trace
+
+    session = getattr(agent, "current_session", None) or {}
+    return turn_usage_from_trace(
+        current_turn_trace(session.get("trace", []), session.get("turn"))
+    )
+
+
+def _print_envelope(session_id, result, outcome, error, agent=None, usage=None) -> None:
     envelope = {
         "session_id": session_id,
         "result": result,
         "outcome": outcome,
         "error": error,
+        # None when nothing measured — an all-zero usage would read as "free".
+        # A delegated harness reports its own; only our loop has a trace to read.
+        "usage": usage if usage is not None else _turn_usage(agent),
     }
     print(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")))
