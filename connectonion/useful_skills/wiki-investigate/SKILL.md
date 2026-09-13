@@ -135,9 +135,10 @@ and what you looked for and did not find in `Uncertainties`. A guess is worse
 than a gap: the next pass would build on it. Five page loads is generous; ten
 means the site does not have it.
 
-If `co browser` is not available where you are running — a read-only thread
-with no network — say so in `Uncertainties` ("web: not reachable on this
-runner") and leave the fields `Unknown`. Do not pretend to have looked.
+You should have `co browser`, `co outlook` and `co gmail` wherever you are
+running; if one of them fails to run or cannot reach the network, say so in
+`Uncertainties` ("web: not reachable on this runner") and leave the fields
+`Unknown`. Do not pretend to have looked.
 
 ## Finish, then say what you did not finish
 

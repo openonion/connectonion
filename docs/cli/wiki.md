@@ -45,11 +45,18 @@ so the `wiki-init` Skill can drive them and a person can run any one by hand.
 `scan` enumerates what the sources already list and hands over signals, never
 verdicts; `stub` creates a page with every section present and the unknown
 ones marked so; `investigate` fills one page from everything every source
-holds about its subject, then — when running under `runner: coai`, which has
-the browser — looks on the open web for the fields the sources left `Unknown`,
-and records on the page what it searched; `unfinished`
+holds about its subject, then looks on the open web for the fields the sources
+left `Unknown`, and records on the page what it searched; `unfinished`
 is the notebook's own work list, least-investigated first. DD-066 has the
 reasoning.
+
+`investigate` always runs under `co ai`; `runner` picks the harness. `codex`
+is `co ai --harness codex --sandbox danger-full-access --model <model>`: the
+task handed whole to Codex on the ChatGPT subscription, with the network and
+the user's own `co outlook` / `co gmail` / `co browser` available inside the
+thread. `coai` is our own agent loop on the co/ key, on the model `co ai`
+picks by default. Maintenance batches (`sync`) still open the Codex thread
+directly with the notebook's own read/write tools.
 
 Every run record keeps the raw accounting — tokens per stage (`extract`,
 `maintain`), items per source, input characters, wall seconds — and `usage`

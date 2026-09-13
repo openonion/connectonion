@@ -26,9 +26,11 @@ def local_timezone() -> str:
     return candidate
 
 
-# codex: the sandboxed thread -- read-only, no network, billed to the ChatGPT
-# subscription; reads sources and writes pages, cannot open the web. coai: our
-# own agent loop under co ai -- has co browser, billed per token to the co/ key.
+# Which harness `co ai` hands a turn to. codex: `co ai --harness codex`, Codex
+# on the ChatGPT subscription with the full-access sandbox, so it can run the
+# user's `co outlook` / `co gmail` / `co browser` itself. coai: our own agent
+# loop, billed per token to the co/ key. Maintenance batches still open the
+# Codex thread directly (runner.run_codex) with the notebook's dynamic tools.
 RUNNERS = ("codex", "coai")
 
 

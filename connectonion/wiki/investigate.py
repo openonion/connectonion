@@ -204,18 +204,21 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")
     now = datetime.now(timezone.utc).isoformat()
     prompt_items = [
-        {"role": "page", "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
-                                 f"has moved, keep what is right:\n\n{notebook.read(record)}",
+        {"role": "page", "record": record,
+         "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
+                 f"has moved, keep what is right:\n\n{notebook.read(record)}",
          "timestamp": now, "source": "investigation:page"},
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
     ] + items
+    # Both runners are `co ai`: it is the orchestrator, and the runner setting
+    # only picks which harness answers the Skill -- our own loop, or Codex
+    # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        from .runner import run_codex
-        runner = run_under_co_ai if config["runner"] == "coai" else run_codex
+        runner = run_under_co_ai
     result = runner(notebook, prompt_items, config, stage="investigate")
     usage_by_stage["investigate"] = result.get("usage")
-    web = config["runner"] == "coai"
+    web = runner is run_under_co_ai
     total = {}
     for stage_usage in usage_by_stage.values():
         for key, value in (stage_usage or {}).items():
@@ -230,9 +233,25 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "usage_by_stage": usage_by_stage, "report": result.get("report", "")}
 
 
+def harness_flags(config: dict) -> list[str]:
+    """How co ai runs the Skill for this runner setting.
+
+    codex: `co ai --harness codex`, the task handed whole to Codex on the
+    ChatGPT subscription, with the full-access sandbox. Investigating means
+    running the user's own `co outlook`, `co gmail` and `co browser` inside the
+    thread, and every one of them needs the network; a read-only, offline
+    thread could only write "web: not reachable" and leave the fields Unknown.
+    The model is the notebook's, since a delegate knows only its own catalogue.
+    coai: our own loop on the co/ key, on the model co ai picks by default.
+    """
+    if config["runner"] != "codex":
+        return []
+    return ["--harness", "codex", "--sandbox", "danger-full-access", "--model", config["model"]]
+
+
 def run_under_co_ai(notebook: Notebook, items: list[dict], config: dict, *, stage: str = "investigate",
                     timeout: int = 900) -> dict:
-    """The same turn under co ai, which has the browser the Codex thread does not.
+    """One investigate turn under co ai, whichever harness answers it.
 
     The material is written to a file the Skill reads rather than pasted into a
     prompt: a page, a coverage report and several digests run to hundreds of
@@ -242,13 +261,12 @@ def run_under_co_ai(notebook: Notebook, items: list[dict], config: dict, *, stag
     """
     import shutil
     import subprocess
-    record = next((i["text"].split(", at ", 1)[1].split(".", 1)[0] for i in items
-                   if i.get("role") == "page"), None)
+    record = next((i.get("record") for i in items if i.get("role") == "page"), None)
     if not record:
         raise WikiError("run_under_co_ai needs the page item to know which page to write")
     executable = shutil.which("co")
     if not executable:
-        raise WikiError("`co` is not on PATH; the coai runner drives co ai")
+        raise WikiError("`co` is not on PATH; both runners drive co ai")
     workdir = notebook.root / ".state" / "investigations"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     material = workdir / (Path(record).stem + ".md")
@@ -260,8 +278,8 @@ def run_under_co_ai(notebook: Notebook, items: list[dict], config: dict, *, stag
               f"it stands, the coverage report, and every source item or digest -- is in {material}. Read "
               f"both, fill the page's Unknowns from the material, then look on the open web for the fields "
               f"the material did not hold, and write the page back to that same path.")
-    completed = subprocess.run([executable, "ai", "--json", prompt], cwd=str(notebook.root),
-                               capture_output=True, text=True, timeout=timeout)
+    completed = subprocess.run([executable, "ai", "--json", *harness_flags(config), prompt],
+                               cwd=str(notebook.root), capture_output=True, text=True, timeout=timeout)
     envelope = {}
     for line in reversed(completed.stdout.splitlines()):
         line = line.strip()
