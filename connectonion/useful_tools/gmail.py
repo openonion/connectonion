@@ -1130,6 +1130,41 @@ class Gmail(GmailMailbox):
 
         return f"You have {count} unread email(s)."
 
+    def list_between(self, start: str, end: str, max_results: int = 200) -> list:
+        """Messages received in [start, end), oldest first, with ISO dates.
+
+        Gmail's search takes epoch seconds for after:/before:, returns newest
+        first, and reports the Date header in RFC 2822; the wiki importer wants
+        the opposite of all three, so it is normalised here.
+        """
+        from datetime import datetime
+        from email.utils import parsedate_to_datetime
+        first = int(datetime.fromisoformat(start).timestamp())
+        last = int(datetime.fromisoformat(end).timestamp())
+        rows = self.list_search(f"after:{first} before:{last}", max_results=max_results)
+        service = self._get_service()
+        for row in rows:
+            try:
+                row['date'] = parsedate_to_datetime(row['date']).isoformat()
+            except (TypeError, ValueError):
+                row['date'] = start
+            # The wiki files the user's own mail under the person it went to; the
+            # listing's metadata call asks for From only, so To/Cc are fetched here.
+            headers = service.users().messages().get(userId='me', id=row['id'], format='metadata',
+                                                     metadataHeaders=['To', 'Cc']).execute()['payload']['headers']
+            row['to'] = [h['value'] for h in headers if h['name'] == 'To']
+            row['cc'] = [h['value'] for h in headers if h['name'] == 'Cc']
+        return sorted(rows, key=lambda row: (row['date'], row['id']))
+
+    def my_addresses(self) -> set:
+        """Primary address plus send-as aliases, lower-cased; what counts as the user's own mail."""
+        service = self._get_service()
+        addresses = {service.users().getProfile(userId='me').execute().get('emailAddress', '').lower()}
+        for alias in service.users().settings().sendAs().list(userId='me').execute().get('sendAs', []):
+            if alias.get('sendAsEmail'):
+                addresses.add(alias['sendAsEmail'].lower())
+        return {address for address in addresses if address}
+
     def get_my_identity(self) -> str:
         """Get the user's email address and aliases (who am I?).
 
