@@ -87,6 +87,31 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     return items, coverage
 
 
+def fit_to_budget(items: list[dict], coverage: list[str], limit_chars: int) -> list[dict]:
+    """Keep the most recent material that fits; say what was left out.
+
+    The account's owner matches every mail there is: a ten-minute gather came
+    back far over the input limit and the run died at the runner's door, with
+    nothing written and the listings already paid for. A subject with more
+    material than one turn holds gets the newest of it, and the coverage line
+    says how much older material is waiting for a later pass -- which is a
+    finding the page can carry, where a crash is not.
+    """
+    kept, used = [], 0
+    for item in reversed(items):                      # newest first
+        size = len(json.dumps(item, ensure_ascii=False))
+        if used + size > limit_chars:
+            break
+        kept.append(item)
+        used += size
+    kept.reverse()
+    if len(kept) < len(items):
+        oldest_kept = kept[0]["timestamp"][:10] if kept else "none"
+        coverage.append(f"budget: {len(items)} items gathered, {len(kept)} newest kept "
+                        f"(from {oldest_kept}); {len(items) - len(kept)} older ones wait for a later pass")
+    return kept
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, progress=None) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
@@ -95,6 +120,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise WikiError(f"{record} does not exist; create it with `co wiki stub` first")
     items, coverage = gather(subject, handles, days=days, clients=clients,
                              subscriptions=subscriptions, progress=progress)
+    config = read_config(root)
+    # Room for the material after the page, the coverage and the Skill itself.
+    from .runner import instructions, tool_specs
+    overhead = len(instructions("investigate")) + len(json.dumps(tool_specs())) + len(notebook.read(record)) + 4000
+    items = fit_to_budget(items, coverage, config["limits"]["input_chars_per_batch"] - overhead)
     now = datetime.now(timezone.utc).isoformat()
     prompt_items = [
         {"role": "page", "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
@@ -105,7 +135,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     ] + items
     from .runner import run_codex
     runner = runner or run_codex
-    result = runner(notebook, prompt_items, read_config(root), stage="investigate")
+    result = runner(notebook, prompt_items, config, stage="investigate")
     searched = [c.split(" (")[0].split(":")[0] for c in coverage]
     notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
     return {"record": record, "items": len(items), "chars": sum(len(json.dumps(i, ensure_ascii=False)) for i in items),

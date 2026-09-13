@@ -89,3 +89,20 @@ def test_a_senders_name_is_read_from_from_name_when_from_is_a_bare_address():
     census left Tamara, Vern and Wisiani nameless for exactly this reason."""
     row = {"from": "tamara.berryman@unsw.edu.au", "from_name": "Tamara Berryman", "to": ["me@x.y"], "cc": []}
     assert _display_name(row, "tamara.berryman@unsw.edu.au") == "Tamara Berryman"
+
+
+def test_material_over_the_limit_keeps_the_newest_and_says_what_waits():
+    """The owner's gather came back over the input limit and died at the door."""
+    from connectonion.wiki.investigate import fit_to_budget
+    items = [{"text": "x" * 100, "timestamp": f"2026-09-{d:02d}T00:00:00+00:00"} for d in range(1, 11)]
+    coverage = []
+    kept = fit_to_budget(items, coverage, limit_chars=len(__import__("json").dumps(items[0])) * 3 + 10)
+    assert [i["timestamp"][8:10] for i in kept] == ["08", "09", "10"]   # newest three, in order
+    assert coverage and "10 items gathered, 3 newest kept" in coverage[0] and "7 older" in coverage[0]
+
+
+def test_material_within_the_limit_is_untouched_and_unremarked():
+    from connectonion.wiki.investigate import fit_to_budget
+    items = [{"text": "x", "timestamp": "2026-09-01T00:00:00+00:00"}]
+    coverage = []
+    assert fit_to_budget(items, coverage, 10_000) == items and coverage == []

@@ -68,7 +68,14 @@ The page is created with every section present and every unknown one marked
 `Unknown — not investigated yet`, and its own `Investigation:` line at the
 foot. Structure is now a fact on disk, not a request in a prompt.
 
-## 5. Investigate the owner first
+## 5. Investigate the owner first — from what they wrote, not what mentions them
+
+The owner's address is on every mail in the mailbox, so searching by their
+handles gathers the whole mailbox and nothing about them in particular. Their
+page is built from the other direction: what they said in sessions, what they
+sent and to whom, which projects they ran. Give `investigate` the owner's
+*names* as handles but **not their addresses**, and expect the budget line in
+the coverage — the newest material is kept and the rest waits.
 
 The first subject is **the person whose account this is** — the sender of the
 mail, the author of the sessions. Their page anchors everything else: every
