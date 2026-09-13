@@ -22,7 +22,7 @@ def test_gmail_inbox_routes_flags():
         result = runner.invoke(app, ["gmail", "inbox", "--last", "25", "--unread"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with(last=25, unread=True)
+    handler.assert_called_once_with(last=25, unread=True, since=None, until=None)
 
 
 def test_gmail_inbox_defaults():
@@ -30,7 +30,7 @@ def test_gmail_inbox_defaults():
         result = runner.invoke(app, ["gmail", "inbox"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with(last=10, unread=False)
+    handler.assert_called_once_with(last=10, unread=False, since=None, until=None)
 
 
 def test_gmail_inbox_short_flags():
@@ -38,7 +38,7 @@ def test_gmail_inbox_short_flags():
         result = runner.invoke(app, ["gmail", "inbox", "-n", "3", "-u"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with(last=3, unread=True)
+    handler.assert_called_once_with(last=3, unread=True, since=None, until=None)
 
 
 def test_gmail_read_routes_id():
@@ -232,3 +232,18 @@ def test_unknown_gmail_subcommand_fails():
     result = runner.invoke(app, ["gmail", "archive", "3"])
 
     assert result.exit_code != 0
+
+
+def test_gmail_inbox_forwards_a_window():
+    with patch("connectonion.cli.commands.gmail_commands.handle_gmail_inbox") as handler:
+        result = runner.invoke(app, ["gmail", "inbox", "--since", "30d", "--until", "2026-09-01"])
+    assert result.exit_code == 0
+    handler.assert_called_once_with(last=10, unread=False, since="30d", until="2026-09-01")
+
+
+def test_gmail_inbox_refuses_a_window_with_json_rather_than_dropping_it():
+    """The envelope path pages a Gmail query and takes no window; silently
+    ignoring --since would return the last 10 and look like it worked."""
+    result = runner.invoke(app, ["gmail", "inbox", "--since", "30d", "--json"])
+    assert result.exit_code != 0
+    assert "--since" in result.output and "1521" in result.output
