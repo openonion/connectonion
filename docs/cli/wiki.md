@@ -38,6 +38,7 @@ co wiki stub person "Emma" --email szh526@gmail.com --handle 艾玛
 co wiki stub project "connectonion" --path ~/projects/connectonion
 co wiki unfinished
 co wiki investigate people/emma.md --handle szh526
+co wiki enrich people/emma.md                 # after investigate; drives the browser via co ai
 ```
 
 `scan`, `stub`, `unfinished` and `investigate` are the first run as commands,

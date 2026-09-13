@@ -222,18 +222,27 @@ class Notebook:
                           "investigated_passes": max(investigated, 0)})
         return sorted(found, key=lambda entry: (entry["investigated_passes"], -entry["unknown"], entry["path"]))
 
-    def note_investigation(self, record: str, what: str) -> None:
-        """Append one pass to the page's own status line: `investigated <date> (<what>)`."""
+    def note_pass(self, record: str, verb: str, what: str) -> None:
+        """Append one pass to the page's own status line: `<verb> <date> (<what>)`.
+
+        Investigation and enrichment are separate passes with separate verbs --
+        `investigated 2026-09-13 (outlook, gmail, codex)` then `enriched
+        2026-09-13 (web)` -- so the line reads as the page's history and the
+        daily run can see which stage a page has not had yet.
+        """
         text = self.read(record)
         lines = text.splitlines()
+        stamp = f"{verb} {_today()} ({what})"
         for i, line in enumerate(lines):
             if line.startswith("Investigation:"):
-                stamp = f"investigated {_today()} ({what})"
                 lines[i] = line.replace(" · not investigated yet", "") + f" · {stamp}"
                 break
         else:
-            lines += ["", f"Investigation: investigated {_today()} ({what})"]
+            lines += ["", f"Investigation: {stamp}"]
         self.write(record, "\n".join(lines) + ("\n" if not text.endswith("\n") else ""))
+
+    def note_investigation(self, record: str, what: str) -> None:
+        self.note_pass(record, "investigated", what)
 
     def people(self) -> list[dict]:
         """Who the notebook already knows, so the maintainer can recognise them again.

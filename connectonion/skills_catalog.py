@@ -16,6 +16,11 @@ DEFAULT_LIBRARY_SKILLS = (
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
+    # The Wiki stages that run under co ai rather than the sandboxed Codex
+    # runner: init drives the CLI, enrich drives the browser. Neither can run
+    # in a thread with no network, and neither is discoverable unless listed.
+    "wiki-init",
+    "wiki-enrich",
 )
 
 
