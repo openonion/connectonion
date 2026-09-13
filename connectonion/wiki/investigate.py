@@ -19,6 +19,25 @@ from .source import KINDS, collect
 MAIL_KINDS = ("outlook", "gmail")
 
 
+def _patient(call, *args, attempts: int = 4):
+    """One transient timeout must not end a ten-minute gather.
+
+    The owner's first investigation died on the 300th body fetch with a
+    ReadTimeout from Graph -- one slow response, and everything gathered
+    before it was thrown away. Retried with a short backoff; a provider that
+    is really down still fails, after four tries rather than one.
+    """
+    import time
+    for attempt in range(attempts):
+        try:
+            return call(*args)
+        except Exception as error:  # noqa: BLE001 -- the providers raise their own timeout types
+            transient = "timeout" in type(error).__name__.lower() or "timed out" in str(error).lower()
+            if not transient or attempt == attempts - 1:
+                raise
+            time.sleep(2 ** attempt)
+
+
 def _matches(row: dict, handles: list[str], mine: set) -> bool:
     haystack = " ".join([correspondent(row, mine), str(row.get("from", "")), str(row.get("to", "")),
                          str(row.get("subject", ""))]).lower()
@@ -37,14 +56,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         rows, cursor = [], start
         while cursor < end:
             stop = min(cursor + timedelta(days=7), end)
-            rows += client.list_between(cursor.isoformat(), stop.isoformat(), 200) or []
+            rows += _patient(client.list_between, cursor.isoformat(), stop.isoformat(), 200) or []
             if progress:
                 progress(kind, stop, len(rows))
             cursor = stop
         hit = [r for r in rows if _matches(r, handles, mine)]
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): scanned {len(rows)} mails over {days} days, {len(hit)} matched")
         for r in sorted(hit, key=lambda r: str(r["date"])):
-            body = client.get_email_body(r["id"])
+            body = _patient(client.get_email_body, r["id"])
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             own = _address(r["from"]) in mine or "@" not in _address(r["from"])

@@ -44,3 +44,41 @@ def test_signals_are_handed_over_and_verdicts_are_not():
     assert "terms" in ody["subjects"][0]
     # nothing is dropped here: classifying is the Skill's job
     assert len(people) == 2
+
+
+def test_one_transient_timeout_does_not_end_the_gather(monkeypatch):
+    """The owner's first investigation died on one slow body fetch."""
+    from connectonion.wiki import investigate as inv
+
+    monkeypatch.setattr(inv.time if hasattr(inv, "time") else __import__("time"), "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    class Flaky:
+        def my_addresses(self): return {"me@x.y"}
+        def list_between(self, s, e, n):
+            return [{"id": "1", "from": "Ody <ody@g.com>", "to": ["me@x.y"], "cc": [],
+                     "date": "2026-09-10T00:00:00+00:00", "subject": "terms"}]
+        def get_email_body(self, i):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("The read operation timed out")
+            return "--- Email Body ---\nhello"
+
+    items, coverage = inv.gather("Ody", ["ody"], days=7, clients={"outlook": Flaky()}, subscriptions={})
+    assert len(items) == 1 and calls["n"] == 2
+    assert "1 matched" in coverage[0]
+
+
+def test_a_persistent_failure_still_surfaces(monkeypatch):
+    from connectonion.wiki import investigate as inv
+    import time
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    class Down:
+        def my_addresses(self): return {"me@x.y"}
+        def list_between(self, s, e, n): raise TimeoutError("timed out")
+        def get_email_body(self, i): return ""
+
+    import pytest
+    with pytest.raises(TimeoutError):
+        inv.gather("x", ["x"], days=7, clients={"outlook": Down()}, subscriptions={})
