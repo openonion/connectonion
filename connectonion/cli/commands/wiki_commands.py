@@ -141,13 +141,6 @@ def make_wiki_app(factory):
             return result, ["show", record]
         _handle(ctx, run, ["unfinished"])
 
-    @wiki.command("enrich")
-    def enrich_page(ctx: typer.Context,
-                    record: str = typer.Argument(..., help="A page already investigated, e.g. people/emma.md")):
-        """Fill what the sources could not from the open web, by driving the browser. Runs under co ai."""
-        from ...wiki.enrich import enrich
-        _handle(ctx, lambda root: (enrich(root, record), ["show", record]), ["unfinished"])
-
     config_app = factory(help="Inspect or explicitly change Wiki configuration.", no_args_is_help=False)
     wiki.add_typer(config_app, name="config")
 

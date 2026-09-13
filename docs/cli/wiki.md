@@ -38,7 +38,6 @@ co wiki stub person "Emma" --email szh526@gmail.com --handle 艾玛
 co wiki stub project "connectonion" --path ~/projects/connectonion
 co wiki unfinished
 co wiki investigate people/emma.md --handle szh526
-co wiki enrich people/emma.md                 # after investigate; drives the browser via co ai
 ```
 
 `scan`, `stub`, `unfinished` and `investigate` are the first run as commands,
@@ -46,7 +45,9 @@ so the `wiki-init` Skill can drive them and a person can run any one by hand.
 `scan` enumerates what the sources already list and hands over signals, never
 verdicts; `stub` creates a page with every section present and the unknown
 ones marked so; `investigate` fills one page from everything every source
-holds about its subject and records on the page what it searched; `unfinished`
+holds about its subject, then — when running under `runner: coai`, which has
+the browser — looks on the open web for the fields the sources left `Unknown`,
+and records on the page what it searched; `unfinished`
 is the notebook's own work list, least-investigated first. DD-066 has the
 reasoning.
 

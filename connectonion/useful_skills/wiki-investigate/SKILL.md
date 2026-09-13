@@ -100,6 +100,39 @@ For a **project**, the same discipline in its own shape:
 Sources
 ```
 
+## What the sources did not hold: look on the open web
+
+When every source is read and a field still says `Unknown`, some of what is
+left the web holds. Take **only** these, and only where they read `Unknown`:
+
+| Field | Where to look |
+|---|---|
+| Company | the domain of their address (`@unsw.edu.au` → unsw.edu.au), then that site |
+| Role | the employer's own site, a conference page, a public bio |
+| Phone | the company's contact page — a switchboard is a finding; a mobile is not yours to find |
+| Signing entity | a company register (ABN lookup for Australia), the site's footer |
+| Handles | the company site's "team" page, a public GitHub |
+
+```
+co browser go_to "https://<domain>"       # the site itself, first
+co browser get_text                        # read it; do not guess from the URL
+```
+
+One site, one read, one fact. **Do not open LinkedIn** — a run of automated
+profile views got the account flagged and force-logged-out on 2026-08-23.
+Do not look up `Who they are` or `Our relationship` on the web: those come from
+the user's own material, and a web bio pasted there is somebody else's page.
+
+Write a web fact with the page you read it from as its source
+(`- Phone: +61 2 9385 1000 [W1]`, `[W1] unsw.edu.au/contact — observed <date>`),
+and what you looked for and did not find in `Uncertainties`. A guess is worse
+than a gap: the next pass would build on it. Five page loads is generous; ten
+means the site does not have it.
+
+If `co browser` is not available where you are running — a read-only thread
+with no network — say so in `Uncertainties` ("web: not reachable on this
+runner") and leave the fields `Unknown`. Do not pretend to have looked.
+
 ## Finish, then say what you did not finish
 
 End the pass with a short account of coverage: which sources you read, how much

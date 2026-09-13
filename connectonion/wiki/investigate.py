@@ -169,17 +169,70 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
     ] + items
-    from .runner import run_codex
-    runner = runner or run_codex
+    if runner is None:
+        from .runner import run_codex
+        runner = run_under_co_ai if config["runner"] == "coai" else run_codex
     result = runner(notebook, prompt_items, config, stage="investigate")
     usage_by_stage["investigate"] = result.get("usage")
+    web = config["runner"] == "coai"
     total = {}
     for stage_usage in usage_by_stage.values():
         for key, value in (stage_usage or {}).items():
             total[key] = total.get(key, 0) + value
     searched = [c.split(" (")[0].split(":")[0] for c in coverage if not c.startswith(("budget", "digest"))]
+    if web:
+        searched.append("web")     # the one harness that can open the browser did
     notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
     return {"record": record, "items": len(items), "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", "")}
+
+
+def run_under_co_ai(notebook: Notebook, items: list[dict], config: dict, *, stage: str = "investigate",
+                    timeout: int = 900) -> dict:
+    """The same turn under co ai, which has the browser the Codex thread does not.
+
+    The material is written to a file the Skill reads rather than pasted into a
+    prompt: a page, a coverage report and several digests run to hundreds of
+    kilobytes, and an argv has limits a file does not. The Skill writes the page
+    itself; what changed is read back from disk rather than trusted from the
+    agent's own account of it.
+    """
+    import shutil
+    import subprocess
+    record = next((i["text"].split(", at ", 1)[1].split(".", 1)[0] for i in items
+                   if i.get("role") == "page"), None)
+    if not record:
+        raise WikiError("run_under_co_ai needs the page item to know which page to write")
+    executable = shutil.which("co")
+    if not executable:
+        raise WikiError("`co` is not on PATH; the coai runner drives co ai")
+    workdir = notebook.root / ".state" / "investigations"
+    workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    material = workdir / (Path(record).stem + ".md")
+    material.write_text("\n\n---\n\n".join(
+        f"[{i.get('role')}] {i.get('timestamp', '')} {i.get('source', '')}\n{i['text']}" for i in items),
+        encoding="utf-8")
+    before = {r: notebook.read(r) for r in notebook.list()}
+    prompt = (f"/wiki-{stage} The page is {notebook.root / record}; the material gathered for it -- the page as "
+              f"it stands, the coverage report, and every source item or digest -- is in {material}. Read "
+              f"both, fill the page's Unknowns from the material, then look on the open web for the fields "
+              f"the material did not hold, and write the page back to that same path.")
+    completed = subprocess.run([executable, "ai", "--json", prompt], cwd=str(notebook.root),
+                               capture_output=True, text=True, timeout=timeout)
+    envelope = {}
+    for line in reversed(completed.stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                envelope = json.loads(line); break
+            except ValueError:
+                continue
+    if envelope.get("error") or envelope.get("outcome") not in (None, "natural"):
+        raise WikiError(f"co ai did not complete ({envelope.get('outcome')}): "
+                        f"{str(envelope.get('error') or completed.stderr[-300:])[:300]}")
+    after = {r: notebook.read(r) for r in notebook.list()}
+    changed = sorted(r for r in after if before.get(r) != after[r])
+    return {"usage": envelope.get("usage"), "changed": changed, "refused": 0, "refusals": [],
+            "report": (envelope.get("result") or "")[:1000]}

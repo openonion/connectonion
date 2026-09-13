@@ -1,5 +1,7 @@
 """The census: what the sources already list, handed over as signals."""
 
+import pytest
+
 from connectonion.wiki.scan import _display_name, scan_people
 
 
@@ -135,3 +137,47 @@ def test_a_chunk_with_nothing_worth_keeping_yields_no_digest():
     items = [{"text": "noise", "source": "gmail:1", "timestamp": "2026-09-01T00:00:00+00:00", "project": ""}]
     digests, _ = digest_in_chunks(items, config, lambda c, cfg, k: {"notes": NOTHING, "usage": None})
     assert digests == []
+
+
+def test_the_runner_is_a_choice_between_the_two_harnesses(tmp_path):
+    from connectonion.wiki.config import prepare, read_config, set_config
+    from connectonion.wiki.files import WikiError
+    root = tmp_path / "wiki"; prepare(root)
+    assert read_config(root)["runner"] == "codex"
+    set_config(root, ["runner", "coai"])
+    assert read_config(root)["runner"] == "coai"
+    with pytest.raises(WikiError) as caught:
+        set_config(root, ["runner", "ollama"])
+    assert "codex" in str(caught.value) and "coai" in str(caught.value)
+
+
+def test_under_coai_the_page_is_read_back_from_disk_and_web_is_recorded(tmp_path, monkeypatch):
+    """The Skill writes the page itself; what changed is what is on disk, and
+    the status line says the browser-capable harness ran."""
+    from connectonion.wiki.config import prepare, set_config
+    from connectonion.wiki import investigate as inv
+    root = tmp_path / "wiki"; prepare(root); set_config(root, ["runner", "coai"])
+    nb = inv.Notebook(root)
+    nb.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+
+    class Quiet:
+        def my_addresses(self): return {"me@x.y"}
+        def list_between(self, s, e, n): return []
+        def get_email_body(self, i): return ""
+
+    def fake_co_ai(argv, cwd, capture_output, text, timeout):
+        page = root / "people/vern.md"
+        page.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]"))
+        import json, types
+        return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "filled", "usage": {"cost": 0.01}}),
+                                     stderr="", returncode=0)
+
+    monkeypatch.setattr(inv.subprocess if hasattr(inv, "subprocess") else __import__("subprocess"), "run", fake_co_ai)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    out = inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+                          clients={"outlook": Quiet()}, subscriptions={})
+    assert out["changed"] == ["people/vern.md"]
+    status = [l for l in nb.read("people/vern.md").splitlines() if l.startswith("Investigation:")][0]
+    assert "web" in status and "outlook" in status
+    material = root / ".state/investigations/vern.md"
+    assert material.is_file() and "[page]" in material.read_text()

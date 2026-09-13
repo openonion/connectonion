@@ -26,6 +26,12 @@ def local_timezone() -> str:
     return candidate
 
 
+# codex: the sandboxed thread -- read-only, no network, billed to the ChatGPT
+# subscription; reads sources and writes pages, cannot open the web. coai: our
+# own agent loop under co ai -- has co browser, billed per token to the co/ key.
+RUNNERS = ("codex", "coai")
+
+
 def default_config() -> dict:
     return {"version": 1, "runner": "codex", "model": "gpt-5.3-codex-spark",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
@@ -47,8 +53,8 @@ def validate(config: dict) -> dict:
     defaults = default_config()
     if not isinstance(config, dict) or set(config) != set(defaults) or config["version"] != 1:
         raise WikiError("Invalid Wiki config keys or version")
-    if config["runner"] != "codex" or not isinstance(config["model"], str) or not config["model"].strip():
-        raise WikiError("This milestone requires runner codex and an explicit model")
+    if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
+        raise WikiError(f"runner must be one of {', '.join(RUNNERS)}, with an explicit model")
     schedule, limits = config["schedule"], config["limits"]
     if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone"}:
         raise WikiError("Schedule requires times and timezone")
