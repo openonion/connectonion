@@ -1,0 +1,534 @@
+<!doctype html>
+<!--
+  co wiki reader. One self-contained file, no network, opened from file://.
+  Python embeds a snapshot of the notebook where the placeholder below sits;
+  everything after that is a client of the WIKI object and nothing else, so the
+  same client can be served by a local server or a site later without changes.
+  Note text is data: it reaches the DOM only through esc() or textContent.
+  Fonts are system faces on purpose: a page of someone's private notes must not
+  phone a font host on open.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiki</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #fbfcfa;
+    --paper-2: #f3f6f3;
+    --ink: #17211b;
+    --ink-2: #5a6a60;
+    --ink-3: #8d9a92;
+    --line: #dde5df;
+    --moss: #1e6b45;
+    --moss-ink: #155236;
+    --moss-soft: #e5f0e8;
+    --moss-line: #bcd6c5;
+    --mark: #fff3b0;
+    --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0f1512; --paper-2: #151d18; --ink: #e4ebe6; --ink-2: #9fb0a6; --ink-3: #6f7f75;
+      --line: #243029; --moss: #63c491; --moss-ink: #8ad6ad; --moss-soft: #172a1f; --moss-line: #2f4a3a; --mark: #4a4419;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1512; --paper-2: #151d18; --ink: #e4ebe6; --ink-2: #9fb0a6; --ink-3: #6f7f75;
+    --line: #243029; --moss: #63c491; --moss-ink: #8ad6ad; --moss-soft: #172a1f; --moss-line: #2f4a3a; --mark: #4a4419;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--moss); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+  code { font: 0.86em var(--mono); }
+
+  .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+
+  /* ---- rail ---- */
+  .rail { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 28px 20px 24px 24px; border-right: 1px solid var(--line); background: var(--paper-2); display: flex; flex-direction: column; gap: 22px; }
+  .brand { display: flex; align-items: baseline; gap: 10px; color: var(--ink); }
+  .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--moss); transform: translateY(-1px); }
+  .brand .name { font: 500 22px/1 var(--display); letter-spacing: 0.01em; }
+  .brand .sub { font-size: 12px; color: var(--ink-3); }
+  .search { position: relative; }
+  .search input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: 14px var(--body); }
+  .search input::placeholder { color: var(--ink-3); }
+  .search svg { position: absolute; left: 11px; top: 11px; width: 15px; height: 15px; fill: none; stroke: var(--ink-3); stroke-width: 2; }
+  nav { display: flex; flex-direction: column; gap: 2px; }
+  nav .label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 6px 0 6px 10px; }
+  nav a { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 10px; border-radius: 7px; color: var(--ink-2); font-size: 14.5px; }
+  nav a:hover { background: var(--paper); color: var(--ink); text-decoration: none; }
+  nav a.active { background: var(--moss-soft); color: var(--moss-ink); }
+  nav a .n { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-3); }
+  nav a.active .n { color: var(--moss-ink); }
+  nav a .n.zero { opacity: 0.55; }
+  .rail .foot { margin-top: auto; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+  .rail .foot code { font-size: 11px; color: var(--ink-2); }
+
+  /* ---- main ---- */
+  main { padding: 44px 56px 96px; max-width: 900px; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--moss); margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
+  .eyebrow .sep { color: var(--ink-3); letter-spacing: 0; }
+  .eyebrow .when { color: var(--ink-3); letter-spacing: 0.02em; text-transform: none; font-variant-numeric: tabular-nums; }
+  h1 { font: 500 34px/1.15 var(--display); letter-spacing: -0.005em; margin: 0 0 12px; text-wrap: balance; color: var(--ink); }
+  .lede { color: var(--ink-2); font-size: 15px; margin: 0 0 34px; max-width: 66ch; }
+  .lede-person { font-size: 18px; line-height: 1.55; color: var(--ink); margin-bottom: 28px; }
+  h2.section { font: 500 22px/1.2 var(--display); margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  h2.section .n { font: 13px var(--body); color: var(--ink-3); text-align: right; }
+
+  /* overview: the notebook's table of contents */
+  .toc { columns: 2; column-gap: 40px; list-style: none; margin: 0; padding: 0; }
+  .toc li { break-inside: avoid; padding: 4px 0; font-size: 15px; line-height: 1.45; }
+  .toc a { color: var(--ink); }
+  .toc a:hover { color: var(--moss); }
+  .toc .more { color: var(--ink-3); font-size: 13.5px; }
+  .maint { margin-top: 56px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
+  .maint h2 { font: 500 17px/1.2 var(--display); margin: 0 0 12px; }
+  .maint .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 22px; margin-bottom: 14px; }
+  .maint .k { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .maint .v { font-size: 15px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .maint .state { font-size: 13.5px; color: var(--ink-2); margin: 0 0 14px; }
+  table.runs { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+  table.runs td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  table.runs td:first-child { color: var(--ink); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--moss-soft); color: var(--moss-ink); }
+  .pill.quiet { background: var(--paper); border: 1px solid var(--line); color: var(--ink-2); }
+
+  /* record */
+  .note { max-width: 66ch; font-size: 16.5px; line-height: 1.68; }
+  .note p { margin: 0 0 1em; }
+  .note h2 { font: 500 21px/1.25 var(--display); margin: 1.7em 0 0.5em; }
+  .note h3 { font: 500 17.5px/1.3 var(--display); margin: 1.4em 0 0.4em; }
+  .note ul, .note ol { padding-left: 1.3em; margin: 0 0 1em; }
+  .note li { margin: 0.25em 0; }
+  .note li::marker { color: var(--ink-3); }
+  .note pre { background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  .note code { background: var(--paper-2); padding: 1px 5px; border-radius: 4px; }
+  .note pre code { background: none; padding: 0; }
+  .note blockquote { margin: 0 0 1em; padding: 4px 16px; border-left: 3px solid var(--moss-line); color: var(--ink-2); }
+  .note table { border-collapse: collapse; margin: 0 0 1.2em; font-size: 15px; }
+  .note th, .note td { border: 1px solid var(--line); padding: 6px 12px; text-align: left; vertical-align: top; }
+  .note th { background: var(--paper-2); font-weight: 500; }
+  .note hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
+  .note strong { font-weight: 600; }
+  .aside { max-width: 66ch; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px 1fr; gap: 10px 18px; font-size: 14px; }
+  .aside .k { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding-top: 3px; }
+  .aside .related a { display: inline-block; margin: 0 14px 6px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font: 12px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+  .chip .d { color: var(--ink-3); margin-left: 6px; }
+
+  /* lists of pages, search */
+  .hits { list-style: none; margin: 0; padding: 0; max-width: 72ch; }
+  .hits li { padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .hits .t { font: 500 18px/1.3 var(--display); }
+  .hits .t a { color: var(--ink); }
+  .hits .hit { margin-top: 6px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+  .hits .eyebrow { margin-bottom: 4px; }
+  .hits .open { color: var(--ink); }
+  .hits .open .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--moss); }
+  mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 2px; }
+  .empty { color: var(--ink-3); padding: 34px 0; font-size: 15px; max-width: 60ch; }
+
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    main { padding: 28px 22px 64px; }
+    .toc { columns: 1; }
+    .aside { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: no-preference) { a { transition: color 120ms ease; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <a class="brand" href="#"><span class="dot"></span><span class="name">Wiki</span><span class="sub" id="brand-sub"></span></a>
+    <div class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input id="q" type="search" placeholder="Search the notebook" autocomplete="off" aria-label="Search the notebook">
+    </div>
+    <nav id="nav" aria-label="Categories"></nav>
+    <div class="foot" id="foot"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<script>
+"use strict";
+const WIKI = /*__WIKI_DATA__*/null;
+
+// ---------- helpers ----------
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "text") node.textContent = v;
+    else if (k === "html") node.innerHTML = v;
+    else node.setAttribute(k, v);
+  }
+  for (const child of children || []) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  return node;
+}
+const CATEGORY_LABEL = { people: "People", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
+  opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
+  agenda: "Agenda", notes: "Notes" };
+const CATEGORY_ASK = { people: "who is this, and where did we leave off?", projects: "why, where are we, how to continue?",
+  skills: "repeatable procedures, recorded not installed", knowledge: "what is it, how does it work, when does it apply?",
+  opportunities: "worth exploring, not yet committed", decisions: "what we chose and why",
+  principles: "standing rules we adopted", works: "outputs that can be reused or shown",
+  agenda: "promises, waiting on others, dates that matter", notes: "everything durable that fits nowhere else" };
+function label(c) { return CATEGORY_LABEL[c] || c; }
+function byPath(path) { return WIKI.records.find(r => r.path === path); }
+function inCategory(category) { return WIKI.records.filter(r => r.category === category); }
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+function fmtTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function num(n) { return n == null ? "unknown" : Number(n).toLocaleString(); }
+function resolve(from, href) {
+  const base = from.split("/").slice(0, -1);
+  for (const part of href.split("/")) {
+    if (part === "..") base.pop();
+    else if (part !== "." && part !== "") base.push(part);
+  }
+  return base.join("/");
+}
+function safeHref(from, raw) {
+  const href = raw.trim();
+  if (/^(https?:|file:|mailto:)/i.test(href)) return { href, external: true };
+  if (href.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(href.slice(1)), external: false };
+  if (/\.md(#.*)?$/i.test(href) && !/^[a-z]+:/i.test(href)) {
+    const target = resolve(from, href.split("#")[0]);
+    if (byPath(target)) return { href: "#r=" + encodeURIComponent(target), external: false };
+  }
+  return null;
+}
+
+// ---------- markdown (small, escape-first) ----------
+function inline(text, from) {
+  let s = esc(text);
+  const codes = [];
+  // Code spans are parked behind a control-character sentinel (escaped text never
+  // contains one) so the link/emphasis passes below cannot touch their contents.
+  s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
+  s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
+    const link = safeHref(from, url.replace(/&amp;/g, "&"));
+    if (!link) return lbl;
+    const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
+    return '<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>";
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
+  s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
+  return s;
+}
+function markdown(text, from) {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  let i = 0;
+  const para = [];
+  const flush = () => { if (para.length) { out.push("<p>" + inline(para.join(" "), from) + "</p>"); para.length = 0; } };
+  while (i < lines.length) {
+    const line = lines[i];
+    let m;
+    if (/^```/.test(line)) {
+      flush();
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++;
+      out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+      continue;
+    }
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+      flush();
+      const level = Math.min(m[1].length + 1, 6);
+      out.push("<h" + level + ">" + inline(m[2], from) + "</h" + level + ">");
+      i++; continue;
+    }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push("<hr>"); i++; continue; }
+    if (/^>\s?/.test(line)) {
+      flush();
+      const quote = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ""));
+      out.push("<blockquote>" + markdown(quote.join("\n"), from) + "</blockquote>");
+      continue;
+    }
+    if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
+      flush();
+      const ordered = /^\s*\d+[.)]\s+/.test(line);
+      const items = [];
+      const re = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
+      while (i < lines.length && (re.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+        if (re.test(lines[i])) items.push(lines[i].replace(re, ""));
+        else items[items.length - 1] += " " + lines[i].trim();
+        i++;
+      }
+      out.push((ordered ? "<ol>" : "<ul>") + items.map(t => "<li>" + inline(t, from) + "</li>").join("") + (ordered ? "</ol>" : "</ul>"));
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      flush();
+      const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => inline(c.trim(), from));
+      const head = cells(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push("<table><thead><tr>" + head.map(c => "<th>" + c + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table>");
+      continue;
+    }
+    if (line.trim() === "") { flush(); i++; continue; }
+    para.push(line.trim());
+    i++;
+  }
+  flush();
+  return out.join("\n");
+}
+
+// The maintainer ends pages with "Related: …" and "Sources: …" lines. They are
+// rendered as their own block below the note rather than as trailing prose.
+function splitTrailers(text) {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const body = [], related = [], sources = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (/^(related|相关|相关页面|相关链接|相关项目|相关人物|相关决定|相关待办)[:：]/i.test(t)) related.push(t.replace(/^[^:：]+[:：]\s*/, ""));
+    else if (/^(sources?|来源)[:：]/i.test(t)) sources.push(t.replace(/^[^:：]+[:：]\s*/, ""));
+    else body.push(line);
+  }
+  return { body: body.join("\n").replace(/\n{3,}/g, "\n\n"), related: related.join(", "), sources: sources.join(", ") };
+}
+function sourceChips(text) {
+  const chips = [];
+  for (const part of text.split(/,\s*(?=[a-z][a-z-]*:)/i)) {
+    const m = /^([a-z][a-z-]*:[^\s(]+)\s*(?:\(([^)]*)\))?/i.exec(part.trim());
+    if (!m) continue;
+    const chip = el("span", { class: "chip", text: m[1] });
+    if (m[2]) chip.appendChild(el("span", { class: "d", text: m[2] }));
+    chips.push(chip);
+  }
+  return chips;
+}
+
+// ---------- views ----------
+function route() {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h") };
+}
+function renderRail(active) {
+  const nav = document.getElementById("nav");
+  nav.textContent = "";
+  nav.appendChild(el("div", { class: "label", text: "Notebook" }));
+  nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(WIKI.records.length) })]));
+  for (const c of WIKI.categories) {
+    const n = inCategory(c).length;
+    nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
+      [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
+  }
+  const s = WIKI.status || {};
+  const foot = document.getElementById("foot");
+  foot.textContent = "";
+  foot.appendChild(el("div", { text: "Snapshot " + fmtTime(WIKI.as_of) }));
+  foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
+  foot.appendChild(el("div", {}, [el("code", { text: "co wiki open" }), " re-renders"]));
+  document.getElementById("brand-sub").textContent = (WIKI.root || "").split("/").filter(Boolean).slice(-2).join("/");
+}
+function overview() {
+  const s = WIKI.status || {};
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Contents" }), el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: fmtDate(WIKI.as_of) })]));
+  main.appendChild(el("h1", { text: "What your assistant knows" }));
+  const n = WIKI.records.length;
+  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Nothing written yet. The first maintenance pass fills this in." :
+    n + (n === 1 ? " page" : " pages") + " your assistant wrote and keeps current, from the sessions and mail you authorized. Every page names its sources." }));
+  for (const c of WIKI.categories) {
+    const items = inCategory(c);
+    if (!items.length) continue;
+    main.appendChild(el("h2", { class: "section" }, [el("span", { text: label(c) }), el("span", { class: "n", text: CATEGORY_ASK[c] || "" })]));
+    const ul = el("ul", { class: "toc" });
+    const shown = items.slice(0, 24);
+    for (const r of shown) ul.appendChild(el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })]));
+    if (items.length > shown.length) ul.appendChild(el("li", {}, [el("a", { class: "more", href: "#c=" + c, text: "all " + items.length + " " + label(c).toLowerCase() + " →" })]));
+    main.appendChild(ul);
+  }
+  const maint = el("section", { class: "maint" });
+  maint.appendChild(el("h2", { text: "Maintenance" }));
+  maint.appendChild(el("p", { class: "state", text: s.state || "" }));
+  const usage = s.usage_today || {};
+  const row = el("div", { class: "row" });
+  const cell = (k, v) => row.appendChild(el("div", {}, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
+  cell("Batches today", String(s.batches_today ?? "—"));
+  cell("Model turns today", String(s.runner_attempts_today ?? "—"));
+  cell("Input tokens today", num(usage.input_tokens));
+  cell("Output tokens today", num(usage.output_tokens));
+  cell("Timezone", s.timezone || "—");
+  maint.appendChild(row);
+  const subs = Object.entries(WIKI.subscriptions || {});
+  if (subs.length) {
+    const line = el("p", { class: "state" });
+    line.appendChild(document.createTextNode("Sources: "));
+    subs.forEach(([name, sub], i) => {
+      const state = !sub.enabled ? "off" : sub.adapter === "available" ? (sub.consented ? "reading" : "waiting for start") : (sub.adapter || "");
+      line.appendChild(el("span", { class: "pill" + (state === "reading" ? "" : " quiet"), text: name + " · " + state }));
+      if (i < subs.length - 1) line.appendChild(document.createTextNode(" "));
+    });
+    maint.appendChild(line);
+  }
+  if ((WIKI.logs || []).length) {
+    const table = el("table", { class: "runs" });
+    table.appendChild(el("tr", {}, ["Run", "Outcome", "Items", "Pages changed", "Input", "Output", "Seconds"].map(h => el("th", { text: h }))));
+    for (const run of WIKI.logs.slice(0, 8)) {
+      const u = run.usage || {};
+      table.appendChild(el("tr", {}, [fmtTime(run.started_at), run.outcome, String(run.items ?? ""), String((run.changed || []).length),
+        num(u.input_tokens), num(u.output_tokens), run.seconds == null ? "—" : String(run.seconds)].map(t => el("td", { text: t }))));
+    }
+    maint.appendChild(table);
+  }
+  main.appendChild(maint);
+}
+function category(c) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Category" })]));
+  main.appendChild(el("h1", { text: label(c) }));
+  main.appendChild(el("p", { class: "lede", text: (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase()) }));
+  const items = inCategory(c);
+  if (!items.length) { main.appendChild(el("div", { class: "empty", text: "Nothing here yet. An empty category is not an error; the notebook fills what the sources support." })); return; }
+  const ul = el("ul", { class: "hits" });
+  for (const r of items) {
+    const text = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "");
+    const lead = text.replace(/[#*`>]/g, "").trim().split(/\n\s*\n/)[0] || "";
+    const li = el("li", {}, [el("div", { class: "t" }, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })]),
+      el("div", { class: "hit", text: lead.length > 220 ? lead.slice(0, 217) + "…" : lead })]);
+    const open = /\n##\s*(?:Open|Where we left off|待办|未决)[^\n]*\n+([^\n#]+)/i.exec(text);
+    if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: "Open · " }), open[1].trim()]));
+    ul.appendChild(li);
+  }
+  main.appendChild(ul);
+}
+function record(path, heading) {
+  const r = byPath(path);
+  const main = document.getElementById("main");
+  main.textContent = "";
+  if (!r) { main.appendChild(el("div", { class: "empty", text: "No such page in this snapshot: " + path })); return; }
+  const parts = splitTrailers(r.text);
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }),
+    el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: "updated " + fmtDate(r.updated) })]));
+  main.appendChild(el("h1", { text: r.title }));
+  let body = parts.body.replace(/^#[^\n]*\n?/, "");
+  const contacts = r.category === "people" ? [...new Set((r.text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []))] : [];
+  if (r.category === "people") {
+    // The first paragraph of a person's page is who they are; it reads as the lede.
+    const m = /^\s*([^\n]+(?:\n(?!\s*\n|#)[^\n]+)*)/.exec(body);
+    if (m && !m[1].startsWith("#") && !m[1].startsWith("-")) {
+      main.appendChild(el("p", { class: "lede lede-person", html: inline(m[1].replace(/\n/g, " "), r.path) }));
+      body = body.slice(m[0].length);
+    }
+  }
+  main.appendChild(el("div", { class: "note", html: markdown(body, r.path) }));
+  if (parts.related || parts.sources || contacts.length) {
+    const aside = el("div", { class: "aside" });
+    if (contacts.length) {
+      aside.appendChild(el("div", { class: "k", text: "Contact" }));
+      aside.appendChild(el("div", { class: "chips" }, contacts.map(a => el("a", { class: "chip", href: "mailto:" + a, text: a }))));
+    }
+    if (parts.related) {
+      aside.appendChild(el("div", { class: "k", text: "Related" }));
+      const links = [...parts.related.matchAll(/\[([^\]]+)\]\(([^)\s]+)\)/g)];
+      const box = el("div", { class: "related" });
+      if (links.length) {
+        for (const [, lbl, url] of links) {
+          const link = safeHref(r.path, url);
+          box.appendChild(link ? el("a", { href: link.href, text: lbl }) : el("span", { text: lbl }));
+        }
+      } else {
+        box.innerHTML = inline(parts.related, r.path);
+      }
+      aside.appendChild(box);
+    }
+    if (parts.sources) {
+      aside.appendChild(el("div", { class: "k", text: "Sources" }));
+      const chips = sourceChips(parts.sources);
+      aside.appendChild(chips.length ? el("div", { class: "chips" }, chips) : el("div", { text: parts.sources }));
+    }
+    main.appendChild(aside);
+  }
+  if (heading) {
+    const target = [...main.querySelectorAll("h2,h3,h4,h5,h6")].find(h => h.textContent.trim().toLowerCase().replace(/\s+/g, "-") === heading.toLowerCase());
+    if (target) target.scrollIntoView();
+  }
+}
+function highlight(line, needle) {
+  const lower = line.toLowerCase();
+  const out = [];
+  let i = 0, at;
+  while ((at = lower.indexOf(needle, i)) !== -1) {
+    out.push(esc(line.slice(i, at)), "<mark>", esc(line.slice(at, at + needle.length)), "</mark>");
+    i = at + needle.length;
+  }
+  out.push(esc(line.slice(i)));
+  return out.join("");
+}
+function search(q) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  const needle = q.toLowerCase();
+  const hits = [];
+  const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
+  for (const r of WIKI.records) {
+    const lines = splitTrailers(r.text).body.split("\n").map(plain)
+      .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
+    if (lines.length || r.title.toLowerCase().includes(needle)) hits.push({ r, lines });
+  }
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Search" })]));
+  main.appendChild(el("h1", { text: "“" + q + "”" }));
+  main.appendChild(el("p", { class: "lede", text: hits.length + (hits.length === 1 ? " page matches" : " pages match") + " — literal, case-insensitive" }));
+  if (!hits.length) { main.appendChild(el("div", { class: "empty", text: "No page contains that. Try a related term, a person's first name, or a project name." })); return; }
+  const ul = el("ul", { class: "hits" });
+  for (const { r, lines } of hits) {
+    const li = el("li", {}, [el("div", { class: "eyebrow" }, [el("span", { text: label(r.category) })]),
+      el("div", { class: "t" }, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })])]);
+    for (const l of lines) li.appendChild(el("div", { class: "hit", html: highlight(l.trim().replace(/^#+\s*/, ""), needle) }));
+    ul.appendChild(li);
+  }
+  main.appendChild(ul);
+}
+function render() {
+  if (!WIKI) return;
+  const { record: r, category: c, query, heading } = route();
+  renderRail(c || (r ? r.split("/")[0] : (query ? "search" : null)));
+  const box = document.getElementById("q");
+  if (query != null && box.value !== query) box.value = query;
+  if (query) search(query);
+  else if (r) record(r, heading);
+  else if (c) category(c);
+  else overview();
+  window.scrollTo(0, 0);
+}
+document.getElementById("q").addEventListener("input", e => {
+  const q = e.target.value.trim();
+  location.hash = q ? "q=" + encodeURIComponent(q) : "";
+});
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>

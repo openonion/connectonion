@@ -1160,12 +1160,14 @@ class CodexAppServer:
         on_event=None,
         on_approval=None,
         cancelled=None,
+        env=None,
     ):
         self.command = command
         self.cwd = cwd
         self.on_event = on_event or (lambda e: None)
         self.on_approval = on_approval or (lambda method, params: False)
         self.cancelled = cancelled or (lambda: False)
+        self.env = env
         self.proc = None
         self._next_id = 0
         self._pending = {}
@@ -1201,6 +1203,7 @@ class CodexAppServer:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             shell=False,
+            env=self.env,
             **platform_options,
         )
         self._stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
