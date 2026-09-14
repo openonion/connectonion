@@ -30,6 +30,8 @@ def _provider_clients():
     """(name, constructed client, expected retries) for every provider."""
     return [
         ("OpenAILLM", llm_module.OpenAILLM(api_key=DUMMY_KEY).client, LLM_MAX_RETRIES),
+        ("OpenAICompatibleLLM", llm_module.OpenAICompatibleLLM(model="local", base_url="http://localhost:1234/v1").client, LLM_MAX_RETRIES),
+        ("OllamaLLM", llm_module.OllamaLLM(model="ollama/local").client, LLM_MAX_RETRIES),
         ("AnthropicLLM", llm_module.AnthropicLLM(api_key=DUMMY_KEY).client, LLM_MAX_RETRIES),
         ("GeminiLLM", llm_module.GeminiLLM(api_key=DUMMY_KEY).client, LLM_MAX_RETRIES),
         ("GroqLLM", llm_module.GroqLLM(api_key=DUMMY_KEY).client, LLM_MAX_RETRIES),

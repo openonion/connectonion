@@ -254,3 +254,9 @@ except Exception as e:
 - Learn about [Agents](agent.md) for multi-step workflows
 - Explore [Tools](tools.md) for extending agents
 - See [xray](../debug/xray.md) for debugging
+
+## Local models (planned 1.8.6)
+
+Use `model="ollama/<model>:<tag>"` without cloud keys, or pass `base_url` with
+an arbitrary model ID for an OpenAI-compatible endpoint. See
+[Local models](local-models.md) for setup, structured notes and runtime limits.
