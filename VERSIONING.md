@@ -58,7 +58,20 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b4 (beta)
+## Release candidate: 1.8.5b5 (beta)
+
+Asking for the paid engine now fetches the private client it runs on, instead of
+returning an instruction to run a second command that, on an externally-managed
+interpreter, failed too. Importing ConnectOnion and taking the free engine still
+never mutate a Python environment: only a typed `--engine wtf` fetches anything.
+Separately, the paid browser now runs on Intel Macs — its object had been staged
+since 2026-09-04 and unpromoted because that day's native gate failed; the re-run
+passed on real Intel hardware on 2026-09-13 and the catalogue entry shipped in
+oo-api v0.1.17. Stable remains 1.8.4: the reconnect-gap gate in #1462 is the
+Feishu inbox and has not passed.
+See [1.8.5b5 notes](docs/releases/1.8.5b5.md).
+
+### Superseded: 1.8.5b4 (beta, published)
 
 `co browser install-onion` reported `pip could not install Onionwright (exit 1)`
 when pip had in fact declined by policy — PEP 668's externally-managed marker,
@@ -173,9 +186,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b4
+## Current Version: 1.8.5b5
 
 ### Version History
+- 1.8.5b5 (**beta: asking for the paid engine gets you the paid engine.** The
+  route to the WTF Browser was three commands and you learned the second by
+  failing; the first asked the caller to decide nothing, because the engine
+  cannot run without its client. An explicit `--engine wtf` now fetches it,
+  while `auto`, `system` and even `--engine wtf help` still install nothing.
+  The paid browser also runs on Intel Macs now: the object had been staged and
+  unpromoted since a gate failure on 2026-09-04, and its re-run passed on real
+  Intel hardware. Stable remains 1.8.4.)
 - 1.8.5b4 (**beta: pip declined, and we reported an exit code.**
   `co browser install-onion` ended on `pip could not install Onionwright
   (exit 1)` where pip had refused by PEP 668 policy and named the override
