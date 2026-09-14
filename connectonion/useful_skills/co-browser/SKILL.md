@@ -70,6 +70,23 @@ on a slow page or a human.
 When delegating browser work to subagents, write each subagent's tab name into its
 prompt — parallel agents share the one logged-in browser through separate tabs.
 
+**When the site opens its own tab** — a `target="_blank"` link, a "view invoice"
+button, a payment popup — that page belongs to no session, so `tab ls` cannot
+show it as yours and every `-t` command keeps running in the page you were on.
+`tab ls` tells you one exists; these two reach it:
+
+```bash
+co browser list_pages                  # every real page, with who is driving it
+co browser -t mytask switch_page 1     # your session now drives page 1
+co browser -t mytask get_text          # ...and every command after it
+co browser -t mytask switch_page 0     # back to where you were
+```
+
+Indexes come from `list_pages` and shift when pages open or close, so read the
+list again rather than reusing a number from earlier in the task. A page another
+session is driving is refused by name — two agents cannot share one page, the
+same rule as tabs.
+
 ## Step 3: Pick the right verb
 
 Two ways to drive the browser — pick per command, mix freely:

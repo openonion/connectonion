@@ -71,9 +71,23 @@ def test_public_surface_and_signatures_stay_identical():
         if not name.startswith("_")
     }
 
-    assert set(public) == set(legacy) | {"engine_status"}
+    # Verbs that exist only on the async core. The legacy class is the
+    # pre-asyncio oracle kept to prove the shared contract did not drift, and it
+    # is on its way out — writing sync Playwright there that nothing ever calls
+    # would be work pretending to be coverage.
+    #
+    # The bar for adding a name here: it is a NEW verb the oracle predates. A
+    # change to a verb both of them have — a limit, an argument, a behaviour —
+    # belongs in both, because a rule the two disagree about is not a rule.
+    ASYNC_ONLY = {
+        "engine_status",   # engine resolution arrived with the daemon
+        "list_pages",      # pages the site opened for itself
+        "switch_page",     # and reaching one of them
+    }
+
+    assert set(public) == set(legacy) | ASYNC_ONLY
     for name, method in public.items():
-        if name == "engine_status":
+        if name in ASYNC_ONLY:
             continue
         assert inspect.signature(method) == inspect.signature(legacy[name]), name
 
