@@ -18,6 +18,10 @@ MAGIC = b"OIP2"
 PROTOCOL_VERSION = 2
 CHUNK_BYTES = 256 * 1024
 MAX_FRAME_BYTES = CHUNK_BYTES + 64 * 1024
+#: Largest single ``argv`` entry a browser command may carry.
+ARGV_ENTRY_BYTES = 64 * 1024
+#: Largest total ``argv`` a browser command may carry, across all entries.
+ARGV_TOTAL_BYTES = 128 * 1024
 _HEADER = struct.Struct(">4sI")
 
 
@@ -46,13 +50,27 @@ def _validate(frame: wire.Envelope) -> None:
         if not argv or len(argv) > 128:
             raise ProtocolError("browser command requires 1 to 128 argv entries")
         encoded_size = 0
-        for value in argv:
+        for index, value in enumerate(argv):
             encoded = value.encode("utf-8")
-            if b"\x00" in encoded or len(encoded) > 64 * 1024:
-                raise ProtocolError("browser argv contains an invalid value")
+            # Two different refusals. A NUL byte is a malformed value; a
+            # large one is a well-formed value the protocol declines to
+            # carry. Reporting both as "contains an invalid value" sent
+            # callers looking for a bad character in a string that only had
+            # legal ones -- and the limit it was measured against appeared
+            # nowhere in the message, the help, or the docs.
+            if b"\x00" in encoded:
+                raise ProtocolError(f"browser argv entry {index} contains a NUL byte")
+            if len(encoded) > ARGV_ENTRY_BYTES:
+                raise ProtocolError(
+                    f"browser argv entry {index} is {len(encoded)} bytes; "
+                    f"the per-entry limit is {ARGV_ENTRY_BYTES} bytes"
+                )
             encoded_size += len(encoded)
-        if encoded_size > 128 * 1024:
-            raise ProtocolError("browser argv exceeds 128 KiB")
+        if encoded_size > ARGV_TOTAL_BYTES:
+            raise ProtocolError(
+                f"browser argv is {encoded_size} bytes across {len(argv)} entries; "
+                f"the total limit is {ARGV_TOTAL_BYTES} bytes"
+            )
     if kind == "result" and frame.result.artifact_count > 16:
         raise ProtocolError("BrowserResult declares too many artifacts")
     if kind == "stream_open":
