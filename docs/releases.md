@@ -22,7 +22,16 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b4** fixes what `b3` could not install. `co browser install-onion`
+Beta **1.8.5b5** makes asking for the paid engine enough. The route to the WTF
+Browser was three commands, and the first one asked the caller to decide nothing —
+the engine cannot run without its client. An explicit `--engine wtf` now fetches
+it; `auto`, `system` and `--engine wtf help` still install nothing, because
+importing ConnectOnion or taking the free engine must never mutate a Python
+environment. The paid browser also runs on **Intel Macs** now: its object had
+been staged and unpromoted since a gate failure on 2026-09-04, and the re-run
+passed on real Intel hardware on 2026-09-13.
+
+It carries `b4`, which fixes what `b3` could not install. `co browser install-onion`
 reported `pip could not install Onionwright (exit 1)` when pip had declined by
 policy — PEP 668's externally-managed marker, the default on Homebrew and most
 distro Pythons — and had named the override itself. pip's output is captured now
@@ -47,14 +56,14 @@ It carries everything from `b2`: `co browser config`, the paid engine called
 It is a beta because the no-loss-across-a-reconnect gate has not passed: the
 repair is offline-tested and has not been run against a real group. The release
 notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b4 release notes](releases/1.8.5b4.md).
+See [1.8.5b5 release notes](releases/1.8.5b5.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b4
+python -m pip install --pre connectonion==1.8.5b5
 co --version
 ```
 
-The 1.8.5a1, 1.8.5a2, 1.8.5b1, 1.8.5b2 and 1.8.5b3 previews are superseded; 1.8.4a1 and 1.8.4a2
+The 1.8.5a1, 1.8.5a2, 1.8.5b1, 1.8.5b2, 1.8.5b3 and 1.8.5b4 previews are superseded; 1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
