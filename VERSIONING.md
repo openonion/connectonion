@@ -58,7 +58,18 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b7 (beta)
+## Release candidate: 1.8.5b8 (beta)
+
+`co auth lark` begins on the Lark accounts domain and says Lark throughout.
+It used to print an open.feishu.cn link — the SDK starts on Feishu whichever
+brand you ask for and only switches after the scan — and its remedies told a
+Lark user to run `co auth feishu`. `brand` decided the env prefix and nothing
+else; now it decides everything beside it, and the reuse command offered from
+lark-cli's config takes its verb from the application's recorded brand. Stable
+remains 1.8.4: the reconnect-gap gate in #1462 has not passed.
+See [1.8.5b8 notes](docs/releases/1.8.5b8.md).
+
+### Superseded: 1.8.5b7 (beta, published)
 
 A page the site opens for itself — a payment popup, a `target="_blank"` link —
 can be reached now. `list_pages` shows the browser's real pages with the session
@@ -208,9 +219,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b7
+## Current Version: 1.8.5b8
 
 ### Version History
+- 1.8.5b8 (**beta: `co auth lark` begins on Lark.** It printed a Feishu link
+  and told Lark users to run `co auth feishu`; `brand` decided the env prefix
+  and nothing else. Now the accounts domain, every sentence, and the reuse
+  command offered from lark-cli's config follow the brand — the last from the
+  application's recorded brand, not the word typed. Stable remains 1.8.4.)
 - 1.8.5b7 (**beta: the tab the site opened is reachable.** A page arriving
   without a session appeared on no board, so every `-t` command kept running in
   the page before it. `list_pages` and `switch_page` fix that, and `tab ls`
