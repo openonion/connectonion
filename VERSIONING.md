@@ -58,7 +58,18 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b6 (beta)
+## Release candidate: 1.8.5b7 (beta)
+
+A page the site opens for itself — a payment popup, a `target="_blank"` link —
+can be reached now. `list_pages` shows the browser's real pages with the session
+driving each, `switch_page <index>` points a session at one, and `tab ls` counts
+what it cannot show and names the verb. Not the `use`/`switch` removed in 1.8:
+that chose which *session* a bare command meant; this chooses which *page* a
+session drives. Stable remains 1.8.4: the reconnect-gap gate in #1462 is the
+Feishu inbox and has not passed.
+See [1.8.5b7 notes](docs/releases/1.8.5b7.md).
+
+### Superseded: 1.8.5b6 (beta, published)
 
 `onionwright` is published to PyPI now, so ConnectOnion installs the paid
 browser's driver from there instead of through a signed-manifest download —
@@ -197,9 +208,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b6
+## Current Version: 1.8.5b7
 
 ### Version History
+- 1.8.5b7 (**beta: the tab the site opened is reachable.** A page arriving
+  without a session appeared on no board, so every `-t` command kept running in
+  the page before it. `list_pages` and `switch_page` fix that, and `tab ls`
+  names them when a page is unclaimed. A page another session drives is still
+  refused by name. Server side, the preview catalogue stopped advertising an
+  Intel build whose bytes were never uploaded — its digest disagreed with the
+  object at that key, so preview callers saw a checksum mismatch. Stable
+  remains 1.8.4.)
 - 1.8.5b6 (**beta: the driver comes from PyPI.** `onionwright` held only a name
   reservation there while the real client travelled a licence-gated endpoint;
   it is published normally now, so the installer is 289 lines shorter and
