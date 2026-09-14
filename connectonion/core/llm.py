@@ -319,6 +319,92 @@ class LLM(ABC):
         pass
 
 
+class OpenAICompatibleLLM(LLM):
+    """Explicit custom endpoint; no ambient cloud credentials or price guesses."""
+
+    def __init__(self, model: str, base_url: str, api_key: Optional[str] = None):
+        import openai
+        from urllib.parse import urlsplit
+
+        url = urlsplit(base_url)
+        if url.scheme not in ("http", "https") or not url.hostname or url.query or url.fragment:
+            raise ValueError("base_url must be an HTTP(S) API base URL without query or fragment")
+        if url.username or url.password:
+            raise ValueError("Pass credentials via api_key, not inside base_url")
+        if not model.strip():
+            raise ValueError("A non-empty model name is required")
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        if not url.path.strip("/"):
+            self.base_url += "/v1"
+        self.client = openai.OpenAI(
+            api_key=api_key or "not-required", base_url=self.base_url,
+            **_network_bounds(),
+        )
+
+    def complete(self, messages, tools=None, **kwargs) -> LLMResponse:
+        if kwargs.get("stream"):
+            raise ValueError("Streaming is not supported by complete(); use stream=False")
+        if tools:
+            kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(
+                model=self.model, messages=messages, **kwargs), base_url=self.base_url)
+        if not response.choices:
+            raise ValueError("The endpoint returned no completion choices")
+        choice = response.choices[0]
+        if choice.finish_reason in ("length", "content_filter"):
+            raise ValueError(f"Response incomplete: {choice.finish_reason}; check output/context limits")
+        message = choice.message
+        if getattr(message, "refusal", None):
+            raise ValueError(f"Model refused to respond: {message.refusal}")
+        tool_calls = self._tool_calls(message)
+        if message.content is None and not tool_calls:
+            raise ValueError("The endpoint returned neither text nor parsed tool calls")
+        usage = None
+        if response.usage:
+            usage = TokenUsage(
+                input_tokens=response.usage.prompt_tokens or 0,
+                output_tokens=response.usage.completion_tokens or 0,
+                total_tokens=response.usage.total_tokens or 0,
+                cost=0.0,  # Custom endpoint pricing is untracked; local inference has no API fee.
+            )
+        return LLMResponse(message.content, tool_calls, response, usage)
+
+    @staticmethod
+    def _tool_calls(message):
+        from uuid import uuid4
+
+        result = []
+        for call in message.tool_calls or []:
+            arguments = json.loads(call.function.arguments)
+            if not isinstance(arguments, dict):
+                raise ValueError("Tool call arguments must be a JSON object")
+            result.append(ToolCall(call.function.name, arguments, call.id or f"call_{uuid4().hex}"))
+        return result
+
+    def structured_complete(self, messages, output_schema, **kwargs):
+        kwargs["response_format"] = {"type": "json_schema", "json_schema": {
+            "name": output_schema.__name__, "schema": output_schema.model_json_schema(),
+        }}
+        response = self.complete(messages, **kwargs)
+        if response.tool_calls or response.content is None:
+            raise ValueError("Expected structured text, but the endpoint returned no JSON content")
+        return output_schema.model_validate_json(response.content)
+
+
+class OllamaLLM(OpenAICompatibleLLM):
+    """Ollama defaults on the same explicit compatible-endpoint contract."""
+
+    def __init__(self, model: str, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        super().__init__(
+            model=model.removeprefix("ollama/"),
+            base_url=base_url if base_url is not None else os.getenv(
+                "OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+            api_key=api_key or "ollama",
+        )
+
+
 class OpenAILLM(LLM):
     """OpenAI LLM implementation."""
 
@@ -1393,12 +1479,15 @@ class OpenOnionLLM(LLM):
 OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4")
 
 
-def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
+def create_llm(model: str, api_key: Optional[str] = None, *, base_url: Optional[str] = None, **kwargs) -> LLM:
     """Factory function to create the appropriate LLM based on model name.
     
     Args:
         model: The model name (e.g., "o4-mini", "claude-sonnet-4-20250514", "gemini-3.8-flash")
         api_key: Optional API key to override environment variable
+        base_url: Explicit Chat Completions API base for arbitrary model names.
+            Ollama also accepts OLLAMA_BASE_URL; custom endpoints never borrow
+            cloud keys. Incompatible with the managed co/ prefix.
         **kwargs: Additional arguments to pass to the LLM constructor
     
     Returns:
@@ -1407,6 +1496,15 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     Raises:
         ValueError: If the model is not recognized
     """
+    # Explicit endpoints precede name inference: even a locally named gpt-* is
+    # local when the caller supplies its server. Never borrow OPENAI_API_KEY.
+    if model.startswith("ollama/"):
+        return OllamaLLM(model=model, api_key=api_key, base_url=base_url, **kwargs)
+    if base_url is not None:
+        if model.startswith("co/"):
+            raise ValueError("Use a raw model name with base_url; co/ selects managed routing")
+        return OpenAICompatibleLLM(model=model, api_key=api_key, base_url=base_url, **kwargs)
+
     # Check if it's a co/ model (OpenOnion managed keys)
     if model.startswith("co/"):
         return OpenOnionLLM(api_key=api_key, model=model, **kwargs)

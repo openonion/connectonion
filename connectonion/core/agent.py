@@ -124,7 +124,10 @@ class Agent:
         on_events: Optional[List[EventHandler]] = None,
         co_dir: Optional[Union[str, Path]] = None,
         state_dir: Optional[Union[str, Path]] = None,
+        base_url: Optional[str] = None,
     ):
+        if llm is not None and base_url is not None:
+            raise ValueError("Configure base_url on the supplied llm, or omit llm")
         self.name = name
         self.co_dir = Path(co_dir) if co_dir else Path(".co")
         self.system_prompt = load_system_prompt(system_prompt)
@@ -226,7 +229,8 @@ class Agent:
             # - Anthropic models check ANTHROPIC_API_KEY
             # - Google models check GOOGLE_API_KEY
             # - co/ models check OPENONION_API_KEY
-            self.llm = create_llm(model=model, api_key=api_key)
+            init_kwargs = {"base_url": base_url} if base_url is not None else {}
+            self.llm = create_llm(model=model, api_key=api_key, **init_kwargs)
 
         # Fire on_agent_ready event (agent is fully initialized and ready to use)
         # Plugins can: add tools, modify system_prompt, initialize state

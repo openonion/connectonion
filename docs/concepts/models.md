@@ -703,3 +703,9 @@ response = agent.input(prompt)
 - [Getting Started](../quickstart.md) - Get started with ConnectOnion
 - [Authentication](../integrations/auth.md) - Using managed keys
 - [Tools](tools.md) - Using tools with models
+
+## Local and custom endpoints (planned 1.8.6)
+
+`Agent("local", model="ollama/qwen3.5:2b")` uses a local Ollama daemon.
+An explicit `base_url` supports arbitrary model IDs through Chat Completions.
+See [Local models](local-models.md) for configuration and compatibility limits.

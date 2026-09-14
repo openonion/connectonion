@@ -236,6 +236,7 @@ def llm_do(
     system_prompt: Optional[Union[str, Path]] = None,
     model: str = DEFAULT_MODEL,
     api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
     **kwargs
 ) -> Union[str, T]:
     """
@@ -253,6 +254,8 @@ def llm_do(
         system_prompt: Optional system prompt (string or file path)
         model: Model name (default: "co/gemini-3.8-flash")
         api_key: Optional API key (uses environment variable if not provided)
+        base_url: Optional OpenAI-compatible API base. Custom/local endpoints
+            use only an explicitly supplied key; see docs/concepts/local-models.md.
         **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
     Returns:
@@ -297,7 +300,8 @@ def llm_do(
     ]
 
     # Create LLM using factory (only pass api_key and initialization params)
-    llm = create_llm(model=model, api_key=api_key)
+    init_kwargs = {"base_url": base_url} if base_url is not None else {}
+    llm = create_llm(model=model, api_key=api_key, **init_kwargs)
 
     # Get response
     if output:
