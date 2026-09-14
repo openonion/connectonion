@@ -119,7 +119,7 @@ def make_wiki_app(factory):
                          record: str = typer.Argument(..., help="The page, e.g. people/emma.md"),
                          handle: List[str] = typer.Option([], "--handle", help="Every spelling, address or alias (repeatable)"),
                          days: int = typer.Option(150, "--days", help="How far back to search")):
-        """Fill one page from everything every source holds about its subject. One model turn."""
+        """Fill one page across sources, digesting large inputs before writing."""
         from ...wiki.files import Notebook
         from ...wiki.investigate import investigate
         from ...wiki.service import mail_client, subscriptions

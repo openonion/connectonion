@@ -49,13 +49,21 @@ applies instead:
   line is how the daily pass will recognise the subject without thinking.
 - **Add handles you discovered.** A signature, a second address, a name in
   another script: put it on that line so the next sweep reaches material this
-  one could not.
+  one could not. Company and project names belong in their own fields, not in
+  the person's aliases, unless a source explicitly uses them as that person's handle.
 - **A handle that produced nothing is a finding**, and belongs in
   `Uncertainties` with what was searched and over what window.
 - **A page titled by a handle takes the person's name once the material gives
   it.** The map created `# vern.chan` from an address; a signature reading
   "Vern Chan" makes the title `# Vern Chan`, with `vern.chan` kept in
   `Also known as:`. The title is what the user will search for.
+
+If the subject's address matches a mailbox owner named in the coverage, this
+is the user's own profile. Describe their work, commitments and projects from
+what they wrote. A notice addressed to them does not make its sender's role
+or company theirs. Keep the same headings, but identify `Our relationship`
+as the account owner and mark `How the user writes to them` as not applicable
+to a self-profile; do not invent a relationship between the user and themself.
 
 ## Read across sources before writing anything
 
@@ -83,7 +91,9 @@ the rest.
 ## What to produce
 
 A **person's** page follows `wiki-page-person`, appended to these
-instructions. Follow it exactly, including the headings and the `Contact`
+instructions by the notebook runner. If invoked directly through `co ai` and
+the template is not appended, read `../wiki-page-person/SKILL.md` relative to
+this Skill's directory before writing. Follow it exactly, including the headings and the `Contact`
 labels: the roster behind `wiki_people` finds a person's addresses and aliases
 by those labels, so a renamed section is an invisible one and the next batch
 meets them as a stranger again.

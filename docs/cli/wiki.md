@@ -58,6 +58,16 @@ thread. `coai` is our own agent loop on the co/ key, on the model `co ai`
 picks by default. Maintenance batches (`sync`) still open the Codex thread
 directly with the notebook's own read/write tools.
 
+An investigation larger than `limits.input_chars_per_batch` first summarises
+all gathered material in chronological order. Each extraction batch respects
+`limits.extract_items_per_batch` and `limits.extract_chars_per_batch`, including
+JSON framing; a single long attachment is split with its source and date intact.
+The writing pass reads the existing page and resulting digests from a file.
+Attachment destinations are created before downloading, as Gmail requires an
+existing directory while Outlook can create one itself.
+Known usage is returned separately for extraction and investigation. A failed,
+timed-out, or malformed `co ai` response leaves the investigation status unchanged.
+
 Every run record keeps the raw accounting — tokens per stage (`extract`,
 `maintain`), items per source, input characters, wall seconds — and `usage`
 computes from those records where the tokens went: totals, by stage, by model,

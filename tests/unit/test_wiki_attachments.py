@@ -77,3 +77,27 @@ def test_gmails_result_dict_yields_only_the_files_actually_saved():
     assert _saved_paths(result) == ["/x/deck.pdf"]
     assert _saved_paths(["/y/a.docx", "/y/b.txt"]) == ["/y/a.docx", "/y/b.txt"]   # Outlook's list
     assert _saved_paths(None) == []
+
+
+def test_gather_creates_gmail_download_directory(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.wiki.investigate import gather
+
+    class Gmail:
+        def my_addresses(self): return {"me@example.com"}
+        def list_between(self, *args):
+            return [{"id": "one", "from": "alice@example.com", "to": "me@example.com",
+                     "date": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+                     "subject": "Signed terms"}]
+        def get_email_body(self, email_id): return "Please see attached"
+        def download_attachments(self, email_id, directory, *, all_attachments=False):
+            destination = Path(directory).resolve(strict=True)  # Gmail's actual contract.
+            assert all_attachments
+            path = destination / "terms.txt"
+            path.write_text("Signed on 2026-09-14")
+            return {"items": [{"status": "saved", "path": str(path)}], "complete": True}
+
+    items, coverage = gather("Alice", ["alice@example.com"], days=1, clients={"gmail": Gmail()},
+                             subscriptions={}, attachments_dir=tmp_path / "attachments")
+    assert any(i["role"] == "attachment" and "Signed on" in i["text"] for i in items)
+    assert not any("could not be saved" in line for line in coverage)

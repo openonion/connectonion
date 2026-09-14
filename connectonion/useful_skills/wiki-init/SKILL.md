@@ -1,8 +1,6 @@
 ---
 name: wiki-init
 description: The first run of a notebook. Connect the sources, enumerate what they already list, build every page with its structure in place, rank who and what matters, and investigate the most important subject first — the account's owner. Drives `co wiki` and the mail CLIs; does the programmatic steps by command and the judgement steps itself.
-tools:
-  - bash
 ---
 
 # Initialise the notebook
@@ -71,11 +69,16 @@ foot. Structure is now a fact on disk, not a request in a prompt.
 ## 5. Investigate the owner first — from what they wrote, not what mentions them
 
 The owner's address is on every mail in the mailbox, so searching by their
-handles gathers the whole mailbox and nothing about them in particular. Their
-page is built from the other direction: what they said in sessions, what they
-sent and to whom, which projects they ran. Give `investigate` the owner's
-*names* as handles but **not their addresses**, and expect the budget line in
-the coverage — the newest material is kept and the rest waits.
+handles can gather the whole mailbox. Keep their names and addresses on the
+page: the command reads those handles back automatically. Build their profile
+from what they said in sessions, what they sent and to whom, and which projects
+they ran. Being the recipient of a notice does not establish a personal fact.
+
+When the gathered material exceeds one input, `investigate` summarises it in
+bounded chunks, oldest first, then supplies the digests and existing page to
+the writing pass. Long attachments are split too. Check the coverage and
+per-stage usage; do not claim that the oldest material was discarded or that
+one investigation necessarily costs one model call.
 
 The first subject is **the person whose account this is** — the sender of the
 mail, the author of the sessions. Their page anchors everything else: every

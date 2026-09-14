@@ -31,7 +31,9 @@ def co_ai(monkeypatch):
 
 
 def _notebook(tmp_path, runner):
-    root = tmp_path / "wiki"; prepare(root); set_config(root, ["runner", runner])
+    root = tmp_path / "wiki"
+    prepare(root)
+    set_config(root, ["runner", runner])
     inv.Notebook(root).stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
     return root
 
@@ -68,5 +70,111 @@ def test_the_status_line_names_the_sources_searched_and_does_not_claim_the_web(t
         root = _notebook(tmp_path / runner, runner)
         inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                         clients={"outlook": Quiet()}, subscriptions={})
-        status = [l for l in Notebook(root).read("people/vern.md").splitlines() if l.startswith("Investigation:")][0]
+        status = next(line for line in Notebook(root).read("people/vern.md").splitlines()
+                      if line.startswith("Investigation:"))
         assert "outlook" in status and "web" not in status, (runner, status)
+
+
+def test_oversized_attachment_is_split_without_losing_text_or_sources():
+    config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": 500}}
+    items = [{"text": '合同条款\\\"\n' * 600, "source": "gmail:contract.pdf",
+              "timestamp": "2026-09-01T00:00:00Z", "role": "attachment"},
+             {"text": "Latest signed terms", "source": "outlook:signed",
+              "timestamp": "2026-09-02T00:00:00Z", "role": "other"}]
+    seen = []
+
+    def extract(chunk, config, kind):
+        assert len(json.dumps(chunk, ensure_ascii=False)) <= 500
+        seen.extend(chunk)
+        return {"notes": "A sourced digest", "usage": {"input_tokens": 10}}
+
+    digests, usage = inv.digest_in_chunks(items, config, extract)
+    for original in items:
+        assert "".join(i["text"] for i in seen if i["source"] == original["source"]) == original["text"]
+    assert seen[-1]["source"] == "outlook:signed"
+    assert usage["input_tokens"] == len(digests) * 10
+
+
+def test_chunk_limit_includes_json_framing():
+    item = {"text": "x", "source": "gmail:1", "timestamp": "2026-09-01T00:00:00Z"}
+    limit = len(json.dumps([item, item], ensure_ascii=False)) - 1
+    config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": limit}}
+    batches = []
+
+    def extract(chunk, config, kind):
+        batches.append(chunk)
+        return {"notes": "Notes"}
+
+    inv.digest_in_chunks([item, item], config, extract)
+    assert len(batches) == 2
+    assert all(len(json.dumps(c, ensure_ascii=False)) <= limit for c in batches)
+
+
+def test_owner_over_input_limit_reaches_writer_with_every_digest_and_existing_page(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    config = read_config(root)
+    original = inv.Notebook(root).read("people/vern.md")
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    assert len(json.dumps(items)) > config["limits"]["input_chars_per_batch"]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    seen = []
+
+    def extract(chunk, config, kind):
+        seen.extend(chunk)
+        return {"notes": "\n".join(i["source"] for i in chunk), "usage": {"input_tokens": 10}}
+
+    def write(notebook, material, config, **kw):
+        assert original in material[0]["text"]
+        assert all(i["role"] == "extract" for i in material[2:])
+        text = "\n".join(i["text"] for i in material[2:])
+        assert all(i["source"] in text for i in items)
+        assert len(json.dumps(material)) < config["limits"]["input_chars_per_batch"]
+        page = notebook.path("people/vern.md")
+        page.write_text(original.replace("- Role: Unknown", "- Role: Account owner [1]"))
+        return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5}}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7,
+                          clients={}, subscriptions={}, extractor=extract, runner=write)
+    assert seen == items
+    assert out["changed"] == ["people/vern.md"]
+    assert out["usage"]["input_tokens"] == 10 * out["items"] + 5
+    assert "investigated" in inv.Notebook(root).read("people/vern.md")
+
+
+def test_impossible_chunk_limit_fails_before_spending_tokens():
+    config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": 5}}
+    items = [{"text": "x", "source": "outlook:1", "timestamp": "2026-09-01T00:00:00Z"}]
+    with pytest.raises(inv.WikiError, match="increase limits.extract_chars_per_batch"):
+        inv.digest_in_chunks(items, config, lambda *a: pytest.fail("must validate before calling the model"))
+
+
+@pytest.mark.parametrize("stdout,returncode", [
+    ("", 1), ("not JSON", 0), ("{}", 0),
+    (json.dumps({"outcome": "natural", "result": "ok"}), 1),
+    (json.dumps({"outcome": "error", "error": "model unavailable"}), 0),
+])
+def test_failed_command_never_marks_owner_investigated(tmp_path, monkeypatch, co_ai, stdout, returncode):
+    root = _notebook(tmp_path, "codex")
+    before = inv.Notebook(root).read("people/vern.md")
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: types.SimpleNamespace(
+        stdout=stdout, stderr="command failed", returncode=returncode))
+    with pytest.raises(inv.WikiError, match="co ai"):
+        inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
+                        clients={}, subscriptions={})
+    assert inv.Notebook(root).read("people/vern.md") == before
+
+
+def test_timeout_preserves_unfinished_page(tmp_path, monkeypatch, co_ai):
+    import subprocess
+    root = _notebook(tmp_path, "codex")
+    before = inv.Notebook(root).read("people/vern.md")
+
+    def timeout(*a, **kw):
+        raise subprocess.TimeoutExpired("co ai", 900)
+
+    monkeypatch.setattr("subprocess.run", timeout)
+    with pytest.raises(inv.WikiError, match="timed out"):
+        inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
+                        clients={}, subscriptions={})
+    assert inv.Notebook(root).read("people/vern.md") == before

@@ -100,6 +100,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 from .attachments import extract_text
                 folder = attachments_dir / kind / short
                 try:
+                    folder.mkdir(parents=True, exist_ok=True)
                     paths = _saved_paths(_patient(_download, client, r["id"], str(folder)))
                 except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
                     paths = []
@@ -128,17 +129,46 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     return items, coverage
 
 
+def _split_item(item: dict, limit_chars: int):
+    """Split a long document without losing its text, source or date."""
+    if len(json.dumps([item], ensure_ascii=False)) <= limit_chars:
+        yield item
+        return
+    if len(json.dumps([{**item, "text": ""}], ensure_ascii=False)) >= limit_chars:
+        raise WikiError("Extraction character limit is too small for source metadata; "
+                        "increase limits.extract_chars_per_batch")
+    remaining = item["text"]
+    while remaining:
+        low, high = 0, min(len(remaining), limit_chars)
+        while low < high:
+            middle = (low + high + 1) // 2
+            part = {**item, "text": remaining[:middle]}
+            if len(json.dumps([part], ensure_ascii=False)) <= limit_chars:
+                low = middle
+            else:
+                high = middle - 1
+        if not low:
+            raise WikiError("Extraction character limit cannot fit source text; "
+                            "increase limits.extract_chars_per_batch")
+        yield {**item, "text": remaining[:low]}
+        remaining = remaining[low:]
+
+
 def digest_in_chunks(items: list[dict], config: dict, extractor=None) -> tuple[list[dict], dict]:
     """Oldest first, each chunk within the extract limits, one digest item per chunk."""
     from .extract import NOTHING, extraction_item, run_extract
     limits = config["limits"]
     extractor = extractor or run_extract
-    chunks, current, size = [], [], 0
+    chunks, current, size = [], [], 2  # The serialized list's brackets count too.
     for item in items:
-        n = len(json.dumps(item, ensure_ascii=False))
-        if current and (len(current) >= limits["extract_items_per_batch"] or size + n > limits["extract_chars_per_batch"]):
-            chunks.append(current); current, size = [], 0
-        current.append(item); size += n
+        for part in _split_item(item, limits["extract_chars_per_batch"]):
+            n = len(json.dumps(part, ensure_ascii=False))
+            if current and (len(current) >= limits["extract_items_per_batch"]
+                            or size + 2 + n > limits["extract_chars_per_batch"]):
+                chunks.append(current)
+                current, size = [], 2
+            size += n + (2 if current else 0)
+            current.append(part)
     if current:
         chunks.append(current)
     digests, usage = [], {}
@@ -278,18 +308,23 @@ def run_under_co_ai(notebook: Notebook, items: list[dict], config: dict, *, stag
               f"it stands, the coverage report, and every source item or digest -- is in {material}. Read "
               f"both, fill the page's Unknowns from the material, then look on the open web for the fields "
               f"the material did not hold, and write the page back to that same path.")
-    completed = subprocess.run([executable, "ai", "--json", *harness_flags(config), prompt],
-                               cwd=str(notebook.root), capture_output=True, text=True, timeout=timeout)
+    try:
+        completed = subprocess.run([executable, "ai", "--json", *harness_flags(config), prompt],
+                                   cwd=str(notebook.root), capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise WikiError(f"co ai timed out after {timeout}s; investigation remains unfinished") from error
     envelope = {}
     for line in reversed(completed.stdout.splitlines()):
         line = line.strip()
         if line.startswith("{") and line.endswith("}"):
             try:
-                envelope = json.loads(line); break
+                envelope = json.loads(line)
+                break
             except ValueError:
                 continue
-    if envelope.get("error") or envelope.get("outcome") not in (None, "natural"):
-        raise WikiError(f"co ai did not complete ({envelope.get('outcome')}): "
+    if completed.returncode or envelope.get("error") or envelope.get("outcome") != "natural":
+        raise WikiError(f"co ai did not complete (exit {completed.returncode}, "
+                        f"outcome {envelope.get('outcome', 'missing')}): "
                         f"{str(envelope.get('error') or completed.stderr[-300:])[:300]}")
     after = {r: notebook.read(r) for r in notebook.list()}
     changed = sorted(r for r in after if before.get(r) != after[r])
