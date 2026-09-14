@@ -86,6 +86,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The paid browser's driver. An extra rather than a dependency: most people run
+# the free engine, and installing a commercial client for all of them to serve
+# the few would be the wrong default. `co browser --engine wtf` installs it on
+# demand too, so this is for anyone who would rather pin it in their own
+# requirements than have a command reach for pip.
+wtf = [
+    "onionwright>=0.0.14",
+]
 synology = [
     "keyring>=25,<26",
     "pysnmp>=7.1,<8",
