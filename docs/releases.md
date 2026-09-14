@@ -22,7 +22,14 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b6** installs the paid browser's driver from PyPI. `onionwright`
+Beta **1.8.5b7** lets an agent reach a tab the site opened for itself — a
+payment popup, a "view invoice" button, any `target="_blank"` link. Those pages
+belong to no session, so they appeared on no board and every `-t` command kept
+running in the page before them. `co browser list_pages` shows the browser's
+real pages with the session driving each, `switch_page <index>` points a session
+at one, and `tab ls` counts what it cannot show and names the verb.
+
+It carries `b6`, which installs the paid browser's driver from PyPI. `onionwright`
 held only a name reservation there — one file and a version string — while the
 real client travelled a licence-gated endpoint; it is published normally now, so
 `pip install 'connectonion[wtf]'` works and the installer is 289 lines shorter.
@@ -63,14 +70,14 @@ It carries everything from `b2`: `co browser config`, the paid engine called
 It is a beta because the no-loss-across-a-reconnect gate has not passed: the
 repair is offline-tested and has not been run against a real group. The release
 notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b6 release notes](releases/1.8.5b6.md).
+See [1.8.5b7 release notes](releases/1.8.5b7.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b6
+python -m pip install --pre connectonion==1.8.5b7
 co --version
 ```
 
-The 1.8.5a1 through 1.8.5b5 previews are superseded; 1.8.4a1 and 1.8.4a2
+The 1.8.5a1 through 1.8.5b6 previews are superseded; 1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
