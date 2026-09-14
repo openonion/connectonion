@@ -22,7 +22,14 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b5** makes asking for the paid engine enough. The route to the WTF
+Beta **1.8.5b6** installs the paid browser's driver from PyPI. `onionwright`
+held only a name reservation there — one file and a version string — while the
+real client travelled a licence-gated endpoint; it is published normally now, so
+`pip install 'connectonion[wtf]'` works and the installer is 289 lines shorter.
+The browser binary stays licence-gated and the runtime licence is still checked
+at launch.
+
+It carries `b5`, which makes asking for the paid engine enough. The route to the WTF
 Browser was three commands, and the first one asked the caller to decide nothing —
 the engine cannot run without its client. An explicit `--engine wtf` now fetches
 it; `auto`, `system` and `--engine wtf help` still install nothing, because
@@ -56,14 +63,14 @@ It carries everything from `b2`: `co browser config`, the paid engine called
 It is a beta because the no-loss-across-a-reconnect gate has not passed: the
 repair is offline-tested and has not been run against a real group. The release
 notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b5 release notes](releases/1.8.5b5.md).
+See [1.8.5b6 release notes](releases/1.8.5b6.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b5
+python -m pip install --pre connectonion==1.8.5b6
 co --version
 ```
 
-The 1.8.5a1, 1.8.5a2, 1.8.5b1, 1.8.5b2, 1.8.5b3 and 1.8.5b4 previews are superseded; 1.8.4a1 and 1.8.4a2
+The 1.8.5a1 through 1.8.5b5 previews are superseded; 1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.

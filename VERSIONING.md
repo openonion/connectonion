@@ -58,7 +58,18 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b5 (beta)
+## Release candidate: 1.8.5b6 (beta)
+
+`onionwright` is published to PyPI now, so ConnectOnion installs the paid
+browser's driver from there instead of through a signed-manifest download —
+289 lines of authenticate/verify/fetch/hash replaced by one requirement string,
+and `pip install 'connectonion[wtf]'` works. The browser binary stays
+licence-gated and the runtime licence is still checked at launch; a test asserts
+it. Stable remains 1.8.4: the reconnect-gap gate in #1462 is the Feishu inbox
+and has not passed.
+See [1.8.5b6 notes](docs/releases/1.8.5b6.md).
+
+### Superseded: 1.8.5b5 (beta, published)
 
 Asking for the paid engine now fetches the private client it runs on, instead of
 returning an instruction to run a second command that, on an externally-managed
@@ -186,9 +197,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b5
+## Current Version: 1.8.5b6
 
 ### Version History
+- 1.8.5b6 (**beta: the driver comes from PyPI.** `onionwright` held only a name
+  reservation there while the real client travelled a licence-gated endpoint;
+  it is published normally now, so the installer is 289 lines shorter and
+  `pip install 'connectonion[wtf]'` works. The version is a floor, not a pin —
+  oo-api enforces `minimum_client_version` per artifact. The browser binary is
+  still licence-gated. Stable remains 1.8.4.)
 - 1.8.5b5 (**beta: asking for the paid engine gets you the paid engine.** The
   route to the WTF Browser was three commands and you learned the second by
   failing; the first asked the caller to decide nothing, because the engine
