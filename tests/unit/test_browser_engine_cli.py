@@ -3,6 +3,7 @@ import json
 from connectonion.cli.browser_agent import client
 from connectonion.cli.browser_agent.daemon import BrowserDaemon
 from connectonion.cli.commands import browser_commands
+from connectonion.cli.commands import onionwright_install
 from connectonion.network.oip import browser_daemon_pb2 as wire
 from connectonion.network.oip.framing import decode_frame, encode_frame
 
@@ -34,6 +35,10 @@ def test_cli_passes_explicit_engine_to_client(monkeypatch):
         "send",
         lambda line, **kwargs: calls.append((line, kwargs)) or 0,
     )
+    # A paid command fetches the private client when it is missing. This test is
+    # about what reaches the client, so hold that precondition fixed instead of
+    # inheriting it from the machine.
+    monkeypatch.setattr(onionwright_install, "paid_client_is_ready", lambda: True)
     assert browser_commands.handle_browser(
         ["go_to", "https://example.com"],
         headless=True,

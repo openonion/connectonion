@@ -71,6 +71,16 @@ def _is_compatible(version: str | None) -> bool:
         return False
 
 
+def paid_client_is_ready() -> bool:
+    """Whether this interpreter already has a client the paid engine can use.
+
+    Cheap enough to ask before every paid command: one metadata lookup, no
+    network. That is what lets asking for the paid engine fetch its client
+    instead of returning an instruction to run a second command.
+    """
+    return _is_compatible(_installed_version())
+
+
 def _request_json(method: str, url: str, **kwargs) -> dict:
     try:
         response = requests.request(

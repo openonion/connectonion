@@ -14,6 +14,7 @@ instead, which reads like a second, unrelated fault.
 import pytest
 
 from connectonion.cli.commands import browser_commands
+from connectonion.cli.commands import onionwright_install
 from connectonion.useful_tools.browser_tools._async_browser import PaidSessionEndedError
 
 
@@ -26,6 +27,10 @@ def sent(monkeypatch):
     )
     monkeypatch.setattr(browser_commands, "tips_enabled", lambda: False, raising=False)
     monkeypatch.setenv("CO_DISABLE_TIPS", "1")
+    # These tests are about the billing notice, not about the private client.
+    # A paid command fetches the client when it is absent, so say it is present:
+    # otherwise the test measures whichever machine it runs on.
+    monkeypatch.setattr(onionwright_install, "paid_client_is_ready", lambda: True)
     return calls
 
 
