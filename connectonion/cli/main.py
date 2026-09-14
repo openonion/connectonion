@@ -575,10 +575,15 @@ def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
 
 @env_app.command("set")
 def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
-            value: str = typer.Argument(..., help="Value; quote it if it has spaces")):
+            value: str = typer.Argument(..., help="Value; quote it if it has spaces"),
+            from_console: bool = typer.Option(
+                False, "--from-console",
+                help="For FEISHU_/LARK_ app credentials copied from the Developer Console, "
+                     "when co auth cannot create the application for your tenant",
+            )):
     """Save one setting to the selected file, keeping every other line as it is."""
     from .commands.env_commands import handle_env_set
-    handle_env_set(key, value)
+    handle_env_set(key, value, from_console=from_console)
 
 
 @env_app.command("unset")

@@ -192,7 +192,7 @@ def handle_env_get(key: str) -> None:
           f"Next: co env set {key} <value>", 1)
 
 
-def handle_env_set(key: str, value: str) -> None:
+def handle_env_set(key: str, value: str, *, from_console: bool = False) -> None:
     """Save one setting to the selected file, preserving everything else in it."""
     _valid_name(key)
     if key == "AGENT_CONFIG_PATH":
@@ -200,11 +200,32 @@ def handle_env_set(key: str, value: str) -> None:
               "cannot set it. Export it in your shell instead:\n"
               "  export AGENT_CONFIG_PATH=/path/to/.co\nNext: co env", 2)
     app_provider = _APP_CREDENTIALS.get(key)
-    if app_provider is not None:
+    if from_console and app_provider is None:
+        # A flag that quietly does nothing on the wrong key teaches people it is
+        # a general override, and the next person tries it on the account fields
+        # below — which it must never open, because those are one record and a
+        # single hand-set field would describe a different account than the rest.
+        _fail(f"--from-console is for the Feishu/Lark application id and secret, and "
+              f"{key} is not one of those:\n"
+              f"  {', '.join(sorted(_APP_CREDENTIALS))}\n"
+              f"Next: co env set {key} <value>", 2)
+    if app_provider is not None and not from_console:
         auth = _PROVIDER_AUTH[app_provider]
+        # Refusing outright was right while `co auth` always worked: there is no
+        # API that hands out an app secret, so a typed one had no checkable
+        # source. It is wrong when `co auth` CANNOT work — on a data-residency
+        # tenant the platform's launcher drops the code and the scan can never
+        # complete (#1537). Refusing then leaves the two commands pointing at
+        # each other with no way through, and the Developer Console is a real
+        # source. So the door exists and has to be named on purpose.
         _fail(f"{key} is written by {auth}, which also creates the application it belongs to. "
-              f"Feishu has no API that hands out an app secret, so a hand-typed one came from "
-              f"somewhere this command cannot check. Next: {auth}", 2)
+              f"There is no API that hands out an app secret, so a hand-typed one came from "
+              f"somewhere this command cannot check.\n\n"
+              f"If {auth} cannot create an application for your tenant — the scan page says "
+              f"\"Link expired\" on a code that is still alive — take the id and secret from "
+              f"the Developer Console and say where they came from:\n"
+              f"  co env set {key} <value> --from-console\n\n"
+              f"Next: {auth}", 2)
     provider = _provider_of(key)
     if provider is not None:
         auth = _PROVIDER_AUTH[provider]
