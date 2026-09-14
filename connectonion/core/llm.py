@@ -384,10 +384,14 @@ class OpenAICompatibleLLM(LLM):
         return result
 
     def structured_complete(self, messages, output_schema, **kwargs):
+        schema = output_schema.model_json_schema()
+        # Some compatible servers constrain decoding without putting the schema
+        # in the model's prompt. Grammar alone yields valid but uninformed JSON.
+        instruction = "Return ONLY JSON matching this schema, using the supplied input:\n" + json.dumps(schema)
         kwargs["response_format"] = {"type": "json_schema", "json_schema": {
-            "name": output_schema.__name__, "schema": output_schema.model_json_schema(),
+            "name": output_schema.__name__, "schema": schema,
         }}
-        response = self.complete(messages, **kwargs)
+        response = self.complete([{"role": "system", "content": instruction}, *messages], **kwargs)
         if response.tool_calls or response.content is None:
             raise ValueError("Expected structured text, but the endpoint returned no JSON content")
         return output_schema.model_validate_json(response.content)

@@ -94,6 +94,7 @@ def test_structured_summary_uses_schema_and_validates(endpoint):
     note = llm_do('logs', model='ollama/local', output=Note)
     assert note.pending == ['deploy']
     assert calls[0][1]['response_format']['json_schema']['schema'] == Note.model_json_schema()
+    assert json.dumps(Note.model_json_schema()) in calls[0][1]['messages'][0]['content']
 
 
 @pytest.mark.parametrize('content,finish,error', [
