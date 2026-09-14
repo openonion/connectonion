@@ -50,6 +50,12 @@ APP_PRESET = {
     "desc": "Receives messages for a ConnectOnion agent and replies as this bot.",
 }
 
+# Feishu and Lark are two products with two account systems, and the SDK starts
+# on Feishu whichever one you asked for. `co auth lark` passes this so the link
+# it prints is the one the person expected; the SDK still switches the other way
+# by itself when a Feishu tenant scans a Lark link.
+LARK_ACCOUNTS = "https://accounts.larksuite.com"
+
 
 def _register_app():
     """The SDK's registration flow, imported late so the CLI starts without it."""
@@ -87,7 +93,7 @@ def lark_cli_applications() -> list:
     return found
 
 
-def _offer_existing() -> None:
+def _offer_existing(brand: str = "feishu") -> None:
     """Say that a reusable application is already configured, before creating one."""
     apps = lark_cli_applications()
     if not apps:
@@ -98,7 +104,12 @@ def _offer_existing() -> None:
         print(f"  {app['app_id']}  {app['brand']}{who}")
     print("To authorize one of those instead of creating a new one, and keep the")
     print("groups and permissions it already has:")
-    print(f"  co auth feishu --app-id {apps[0]['app_id']}")
+    # The application's own brand decides the verb. lark-cli recorded it when
+    # the person logged in there, which is better evidence than what they
+    # typed here — `co auth feishu` on a machine that only knows Lark apps
+    # should still print a command that works.
+    verb = apps[0]["brand"].lower() if apps[0]["brand"].lower() in ("lark", "feishu") else brand
+    print(f"  co auth {verb} --app-id {apps[0]['app_id']}")
     print()
 
 
@@ -130,8 +141,9 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
         raise SystemExit(3)
 
     if app_id is None:
-        _offer_existing()
-        print("Creating a Feishu application. Scan this with the Feishu or Lark app,")
+        _offer_existing(brand)
+        product = "Lark" if brand == "lark" else "Feishu"
+        print(f"Creating a {product} application. Scan this with the Feishu or Lark app,")
         print("or open the link, and approve it. The application is yours, in your tenant.")
     else:
         print(f"Authorizing {app_id}. Scan this with the Feishu or Lark app, or open")
@@ -147,6 +159,14 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
 
     try:
         options = {"source": "connectonion"}
+        if brand == "lark":
+            # `co auth lark` has to BEGIN on Lark. The SDK defaults to the
+            # Feishu accounts domain and only moves to Lark after polling
+            # notices the scanner's tenant is one — so a Lark user asking for
+            # Lark was handed an open.feishu.cn link and had to trust that it
+            # would sort itself out. It does, and it still reads like the wrong
+            # product.
+            options["domain"] = LARK_ACCOUNTS
         if app_id is None:
             # A preset only pre-fills the creation page, so it is meaningless
             # — and confusing — when the application already exists and has a
@@ -170,11 +190,16 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
     if not (app_id and app_secret):
         # Half a credential is worse than none: it would be written, then fail
         # at connect time with an error about the half that is there.
-        print("Feishu returned an incomplete registration; nothing was saved. Next: co auth feishu")
+        product = "Lark" if brand == "lark" else "Feishu"
+        print(
+            f"{product} returned an incomplete registration; nothing was saved. "
+            f"Next: co auth {brand}"
+        )
         raise SystemExit(1)
 
-    # The flow always begins on Feishu and moves to Lark if that is where the
-    # scanner's tenant lives, so which of the two this is, is known only now.
+    # `co auth lark` begins on Lark and `co auth feishu` on Feishu, but either
+    # flow switches to the other when the scanner's tenant turns out to live
+    # there — so which of the two this actually is, is known only now.
     tenant = ((result or {}).get("user_info") or {}).get("tenant_brand") or brand
     prefix = "LARK" if str(tenant).lower() == "lark" else "FEISHU"
 
