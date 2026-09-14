@@ -486,7 +486,15 @@ class BrowserDaemon:
         if verb == "engine_status":  # protocol/diagnostic probe; no claim and no launch
             return await self._call_verb_async("engine_status", [])
         if verb in ("use", "switch"):  # removed: no server-side cursor, targeting is per-command
-            return False, "use/switch removed — target a tab per command instead:  co browser -t <tab> <verb>"
+            # Two different things get called "switch", and answering only the
+            # one we removed sent people away from the one they wanted.
+            return False, (
+                "use/switch removed — which tab a command means is per command:\n"
+                "  co browser -t <tab> <verb>\n\n"
+                "Looking for a page the site opened for itself?\n"
+                "  co browser list_pages\n"
+                "  co browser -t <tab> switch_page <index>"
+            )
         if verb == "newtab":  # legacy spelling of `tab open` + go_to
             if session is not None:  # it allocates its OWN tab — a -t target would be ignored
                 return 2, "newtab allocates its own tab and ignores -t — use:  co browser tab open <name>, then  co browser -t <name> go_to <url>"
