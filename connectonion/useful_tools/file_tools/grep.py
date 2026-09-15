@@ -13,6 +13,8 @@ Usage:
     grep("import", output_mode="count")        # Count imports per file
 """
 
+import fnmatch
+import os
 import re
 from pathlib import Path
 from typing import Literal, Optional
@@ -29,6 +31,7 @@ def grep(
     context_lines: int = 0,
     ignore_case: bool = False,
     max_results: int = 50,
+    max_files: int = 20000,
 ) -> str:
     """
     Search for content in files using regex.
@@ -44,6 +47,7 @@ def grep(
         context_lines: Number of lines to show before/after match (for content mode)
         ignore_case: Case insensitive search
         max_results: Maximum number of results to return
+        max_files: Maximum number of candidate files to visit before stopping with a truncation note
 
     Returns:
         Search results based on output_mode
@@ -69,13 +73,24 @@ def grep(
     # Collect files to search
     if base.is_file():
         files = [base]
+        capped = False
     else:
-        if file_pattern:
-            files = list(base.glob(f"**/{file_pattern}"))
-        else:
-            files = list(base.glob("**/*"))
-
-        files = [f for f in files if f.is_file() and not _should_ignore(f) and _is_text_file(f)]
+        files = []
+        capped = False
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if not _is_ignored_dir(d)]
+            for name in filenames:
+                if file_pattern and not fnmatch.fnmatch(name, file_pattern):
+                    continue
+                f = Path(dirpath) / name
+                if not f.is_file() or _should_ignore(f) or not _is_text_file(f):
+                    continue
+                files.append(f)
+                if len(files) == max_files:
+                    capped = True
+                    break
+            if capped:
+                break
 
     results = []
     total_matches = 0
@@ -127,12 +142,17 @@ def grep(
                     break
 
     if not results:
+        if capped:
+            return f"No matches found for '{pattern}'\n\n... stopped after visiting {max_files} files (max_files); narrow `path` or pass `file_pattern`"
         return f"No matches found for '{pattern}'"
 
     output = "\n".join(results)
 
     if total_matches >= max_results:
         output += f"\n\n... results truncated at {max_results}"
+
+    if capped:
+        output += f"\n\n... stopped after visiting {max_files} files (max_files); narrow `path` or pass `file_pattern`"
 
     return output
 
@@ -146,6 +166,16 @@ def _should_ignore(path: Path) -> bool:
         for ignore in IGNORE_DIRS:
             if "*" in ignore and Path(part).match(ignore):
                 return True
+    return False
+
+
+def _is_ignored_dir(name: str) -> bool:
+    """Check if a directory name should be pruned during the walk."""
+    if name in IGNORE_DIRS:
+        return True
+    for ignore in IGNORE_DIRS:
+        if "*" in ignore and Path(name).match(ignore):
+            return True
     return False
 
 
