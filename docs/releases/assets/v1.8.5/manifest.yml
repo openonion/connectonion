@@ -1,0 +1,37 @@
+version: v1.8.5
+# 1.8.5's user-visible surface is the terminal, not a browser view. These are
+# captures of real output from the published 1.8.5b11 — the same code this
+# release promotes — run in a clean venv installed from PyPI, so the evidence
+# and the shipped behaviour cannot drift apart. `no_visual_change` would have
+# been the easy entry and a false one: what a person reads after mistyping a
+# command, after a refusal, and after inviting someone to a meeting all changed.
+images:
+- file: cli-typo-recovery.png
+  alt: Three mistyped commands, each answered with a runnable next command rather
+    than a pointer to --help.
+  caption: A mistyped command now ends at something you can run — the guess when
+    Click has one, and the full command list when it does not.
+  scenario: Clean venv with connectonion==1.8.5b11 from PyPI, isolated HOME, CO_TIPS=on;
+    output copied verbatim.
+  viewport: 1000x456 terminal capture
+  commit: 5a4799cfbe5bd7e1b014229c141360991b22b49f
+  source_run: https://github.com/openonion/connectonion/actions/runs/34936687948
+- file: cli-one-next-step.png
+  alt: A refused command showing a single Next line, with stdout and stderr merged.
+  caption: A refusal names one next step. It used to name two, and the useless one
+    came first for anyone merging streams.
+  scenario: Clean venv with connectonion==1.8.5b11 from PyPI, isolated HOME; stdout
+    and stderr merged as an agent caller sees them.
+  viewport: 1000x481 terminal capture
+  commit: 5a4799cfbe5bd7e1b014229c141360991b22b49f
+  source_run: https://github.com/openonion/connectonion/actions/runs/34936687948
+- file: gcalendar-invitation-sent.png
+  alt: A created meeting confirming the attendee it invited and the time in the zone
+    it was written in.
+  caption: An event with attendees now invites them, names who it reached, and echoes
+    the time as typed rather than converted.
+  scenario: connectonion==1.8.5b11 with the Google client replaced by a recorder;
+    the recorder confirmed sendUpdates=all reached the API.
+  viewport: 1000x431 terminal capture
+  commit: 5a4799cfbe5bd7e1b014229c141360991b22b49f
+  source_run: https://github.com/openonion/connectonion/actions/runs/34936687948

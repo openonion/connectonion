@@ -43,7 +43,35 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Stable release: 1.8.4
+## Stable release: 1.8.5
+
+A Feishu or Lark bot as a directory of files — nine verbs, an atomic take, and a
+message sent while the listener was down read back on reconnect and queued
+exactly once. That last property was the release gate, open since 8 September,
+and it closed on a live tenant on the 15th: history recovery delivered the
+during-gap message with no WebSocket line for it. What had blocked it was not a
+defect in the recovery code but a bot permission that neither setup route
+granted, so the path had never once been allowed to run.
+
+The command line's own contract is audited rather than asserted now: a refusal
+names one next step instead of two, a typo ends at a runnable command rather than
+`--help`, and `co commands` lists all 199. `co gcalendar` invitations reach their
+attendees — `sendUpdates` was never passed, so an event with `--attendees`
+notified nobody, and the confirmation read the same whether three people were
+invited or none.
+
+Eleven previews (1.8.5a1 through b11) fed this release. The offline suite passes
+9,491 tests; the live acceptance record is
+[docs/acceptance/1.8.5/lark-live-2026-09-15.md](docs/acceptance/1.8.5/lark-live-2026-09-15.md).
+See [1.8.5 notes](docs/releases/1.8.5.md) for the known limits — no sender
+allowlist until 1.9, and the reconnect run reproduced a killed and a frozen
+listener rather than an aborted transport.
+
+`co env pull` (#1476) and `co browser import` (#1477) were planned for this line
+and are not in it; both moved to 1.8.6 rather than being left as labels that
+disagree with the release.
+
+### Superseded: 1.8.4 (stable, published)
 
 This release promotes the reviewed global configuration, Gmail and Synology work,
 and includes `co env`, Outlook credential diagnostics and calendar commands.
@@ -58,7 +86,13 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b11 (beta)
+## Release candidate: none
+
+1.8.5 is stable and there is no open preview line. The next feature work enters
+through a 1.8.6 preview, per the rule above that a feature is proven in patch
+previews before the line it belongs to is called done.
+
+### Superseded: 1.8.5b11 (beta, published)
 
 The command line says what to run next, and calendar invitations reach people.
 `co gcalendar` never passed Google's `sendUpdates`, so an event with attendees
@@ -266,9 +300,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b11
+## Current Version: 1.8.5
 
 ### Version History
+- 1.8.5 (**stable: a chat bot is a directory of files.** `co feishu` / `co lark`
+  turn a bot into `~/.co/inbox/<provider>/` — nine verbs, an atomic take so two
+  consumers never get one message, and a message sent while the listener was
+  down read back on reconnect and queued exactly once. That last property was
+  the gate, open since 8 September and closed on a live tenant on the 15th; what
+  had blocked it was a bot permission neither setup route granted, not the
+  recovery code. The CLI's next-step contract is audited rather than asserted:
+  one next step per refusal, a typo ending at a runnable command, `co commands`
+  listing all 199. `co gcalendar` invitations reach their attendees. Secrets can
+  be encrypted under a key derived from the agent's own key with no keychain to
+  be unreachable. Promotes eleven previews; 9,491 offline tests pass. Known
+  limits: no sender allowlist until 1.9, and #1503, #1513, #1525.)
 - 1.8.5b11 (**beta: the CLI names a next command, and invitations arrive.**
   `co gcalendar` never passed Google's `sendUpdates`, so an event with attendees
   notified nobody — and the confirmation read identically whether three people
