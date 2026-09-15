@@ -13,6 +13,7 @@ Components under test:
 - Module: connectonion/inbox/whatsapp.py
 """
 
+import json
 import sys
 import threading
 import time
@@ -217,6 +218,17 @@ def test_whatsapp_is_a_provider_by_name():
 
 # ---- outbound --------------------------------------------------------------
 
+def wait_for_ticket(spool, timeout=5.0):
+    """The ticket of the request `send` just wrote, once it is on disk."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        pending = list(spool.glob("*.json")) if spool.exists() else []
+        if pending:
+            return pending[0].name[: -len(".json")]
+        time.sleep(0.01)
+    raise AssertionError("send never wrote a request into the outbox")
+
+
 def drain_once(bot, inbox):
     """One pass of the listener's sender thread, then stop."""
     stop = threading.Event()
@@ -228,12 +240,51 @@ def drain_once(bot, inbox):
 def test_send_hands_the_text_to_the_listener_and_returns_its_id(sdk):
     bot = WhatsApp()
     bot._client = SimpleNamespace(send_message=lambda to, text: SimpleNamespace(ID="3EB0SENT"))
-    stop, thread = drain_once(bot, Inbox("whatsapp"))
+    inbox = Inbox("whatsapp")
+    stop, thread = drain_once(bot, inbox)
     try:
         assert bot.send(f"1203630000000@{GROUP_SERVER}", "on it") == "3EB0SENT"
     finally:
         stop.set()
         thread.join(timeout=5)
+
+    # Request, answer and both staging files are consumed: a spool that grows
+    # by two files per reply would fill a disk over a long-running listener.
+    assert list((inbox.root / "outbox").iterdir()) == []
+
+
+def test_an_answer_that_is_not_there_yet_is_waited_for_not_read(sdk, monkeypatch):
+    """The failure CI found: `write_text` creates an empty file before it
+    writes, so a reader polling `exists()` could read zero bytes and die with
+    `JSONDecodeError: Expecting value: line 1 column 1`. `send` must treat an
+    unreadable answer as one that has not arrived."""
+    monkeypatch.setattr("connectonion.inbox.whatsapp.SEND_TIMEOUT_SECONDS", 10.0)
+    spool = Inbox("whatsapp").root / "outbox"
+    bot = WhatsApp()
+    answered = {}
+
+    def ask():
+        try:
+            answered["id"] = bot.send(f"{PEER}@{USER_SERVER}", "on it")
+        except Exception as exc:  # recorded, so the assert names it
+            answered["error"] = exc
+
+    caller = threading.Thread(target=ask, daemon=True)
+    caller.start()
+    try:
+        ticket = wait_for_ticket(spool)
+        # Exactly what the racing writer exposed: the name is there, the
+        # content is not.
+        (spool / f"{ticket}.result").write_text("")
+        time.sleep(0.3)
+        assert answered == {}, f"send did not survive an empty answer: {answered}"
+
+        (spool / f"{ticket}.result").write_text(json.dumps({"id": "3EB0LATE"}))
+        caller.join(timeout=5)
+    finally:
+        caller.join(timeout=5)
+
+    assert answered == {"id": "3EB0LATE"}
 
 
 def test_the_listener_addresses_the_chat_the_question_was_asked_in(sdk):
@@ -303,15 +354,15 @@ def test_an_unreadable_spool_file_is_discarded_rather_than_retried_forever(sdk):
 
 
 def test_a_half_written_request_is_never_glob_ed_as_a_send(sdk):
-    # send() stages to .tmp and renames, so the listener's *.json glob only
-    # ever sees a complete payload.
+    # send() stages to `<ticket>.json.partial` and renames, so the listener's
+    # *.json glob only ever sees a complete payload.
     bot = WhatsApp()
     sent = []
     bot._client = SimpleNamespace(send_message=lambda to, text: (sent.append(text), SimpleNamespace(ID="X"))[1])
     inbox = Inbox("whatsapp")
     spool = inbox.root / "outbox"
     spool.mkdir(parents=True, exist_ok=True)
-    (spool / "1-partial.tmp").write_text('{"chat": "x@s.whats')
+    (spool / "1-partial.json.partial").write_text('{"chat": "x@s.whats')
 
     stop, thread = drain_once(bot, inbox)
     try:

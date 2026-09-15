@@ -96,6 +96,41 @@ def _user_of(jid_text: str) -> str:
     return str(jid_text or "").split("@", 1)[0].split(":", 1)[0]
 
 
+def _publish(path: Path, payload: dict) -> None:
+    """Write JSON so that `path` never exists half-written.
+
+    Both ends of the outbox poll for a file by name, and `write_text` creates
+    an empty file first: a reader that checks `exists()` in that gap gets zero
+    bytes. CI caught it on the answer file — `JSONDecodeError: Expecting value:
+    line 1 column 1` — where a loaded runner descheduled the writer between the
+    create and the write. Staging beside the destination and renaming makes the
+    gap unobservable, because rename within a directory is atomic.
+    """
+    staged = path.with_name(path.name + ".partial")
+    staged.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    staged.replace(path)
+
+
+def _collect(path: Path) -> Optional[dict]:
+    """One published JSON file, consumed; None while it is not there yet.
+
+    A spool is a directory anyone can write to, so "present but not readable"
+    is one of its states, not an impossible one. `_publish` means our own
+    writer never produces it; treating it as "not yet" rather than as a crash
+    is what lets the caller keep waiting for the real thing.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return None
+    path.unlink(missing_ok=True)
+    return payload
+
+
 class WhatsApp:
     """One WhatsApp number linked as a companion device."""
 
@@ -328,21 +363,12 @@ class WhatsApp:
         ticket = f"{int(time.time() * 1000)}-{uuid.uuid4().hex}"
         request = spool / f"{ticket}.json"
         answer = spool / f"{ticket}.result"
-        payload = {"chat": chat, "text": text, "reply_to": reply_to}
-        # Written beside the spool and renamed in: the listener globs *.json
-        # four hundred times a minute, and a half-written file it happened to
-        # catch would be discarded as unreadable and the send silently lost.
-        staged = spool / f"{ticket}.tmp"
-        staged.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        staged.replace(request)
+        _publish(request, {"chat": chat, "text": text, "reply_to": reply_to})
 
         deadline = time.monotonic() + SEND_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            if answer.exists():
-                try:
-                    result = json.loads(answer.read_text(encoding="utf-8"))
-                finally:
-                    answer.unlink(missing_ok=True)
+            result = _collect(answer)
+            if result is not None:
                 if result.get("error"):
                     raise RuntimeError(result["error"])
                 return str(result.get("id", ""))
@@ -362,18 +388,17 @@ class WhatsApp:
         spool.mkdir(parents=True, exist_ok=True)
         while not stop.is_set():
             for request in sorted(spool.glob("*.json")):
-                try:
-                    payload = json.loads(request.read_text(encoding="utf-8"))
-                except (OSError, ValueError):
+                payload = _collect(request)
+                if payload is None:
+                    # Not ours, or not written by `send`. One log line, gone.
                     request.unlink(missing_ok=True)
+                    inbox.log(f"outbox file {request.name} is not a send request; discarded")
                     continue
-                request.unlink(missing_ok=True)
                 answer = request.with_suffix(".result")
                 try:
-                    sent = self._send_now(payload["chat"], payload["text"])
-                    answer.write_text(json.dumps({"id": sent}), encoding="utf-8")
+                    _publish(answer, {"id": self._send_now(payload["chat"], payload["text"])})
                 except Exception as exc:
-                    answer.write_text(json.dumps({"error": str(exc)}), encoding="utf-8")
+                    _publish(answer, {"error": str(exc)})
                     inbox.log(f"send to {payload.get('chat')} failed: {exc}")
             stop.wait(_SEND_POLL)
 
