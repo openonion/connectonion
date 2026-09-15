@@ -25,9 +25,38 @@ def selected_tip(message: str) -> str:
     return re.sub(r"(?<![\w-])co (?!\-\-env-file\b)", lambda _: prefix, message)
 
 
+# Whether anything in this process has already told the caller what to run.
+#
+# `_OneSuggestion.main` adds `Next: co <group> --help` to a bare exit 2, because
+# Click's own usage errors never reach a handler and "Try --help" names a flag
+# rather than a command. But exit 2 is also what a handler raises when it refuses
+# on purpose, and those have already named something far better — so the net was
+# firing on top of a good tip and printing two. An agent reading `2>&1` sees the
+# generic one first and resolves the fork by guessing.
+_NEXT_STEP_NAMED = False
+
+# "Next:" is the whole contract — a message without one has named no command, so
+# the net must still fire for it.
+_NAMES_A_NEXT_STEP = re.compile(r"(?m)^\s*Next:|(?<=[.\s])Next: ")
+
+
+def next_step_already_named() -> bool:
+    """True once something in this run has printed a `Next:` line."""
+    return _NEXT_STEP_NAMED
+
+
+def forget_next_step_named() -> None:
+    """Reset the flag. For tests, which run many commands in one process."""
+    global _NEXT_STEP_NAMED
+    _NEXT_STEP_NAMED = False
+
+
 def print_tip(message: str) -> None:
     """Print a plain, unwrapped tip; markup in a user-supplied path stays literal."""
+    global _NEXT_STEP_NAMED
     message = re.sub(r"\[/?(?:bold|dim|yellow|cyan|red|green)(?: [a-z]+)?\]", "", message)
+    if _NAMES_A_NEXT_STEP.search(message):
+        _NEXT_STEP_NAMED = True
     print(selected_tip(message))
 
 
