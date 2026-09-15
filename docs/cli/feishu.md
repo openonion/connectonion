@@ -47,13 +47,26 @@ that lists the ones you own. To use an existing one, configure it by hand:
 1. At <https://open.feishu.cn/app> (Lark: <https://open.larksuite.com/app>),
    enable the **bot** capability.
 2. Under *Permissions* add `im:message.group_at_msg:readonly` (group messages
-   that @ the bot) and `im:message:send_as_bot` (reply). Add
-   `im:message.p2p_msg:readonly` if people will message the bot directly.
+   that @ the bot), `im:message:send_as_bot` (reply), and
+   **`im:message.group_msg`** — that last one is what lets the listener read
+   back a gap after a disconnect, and without it recovery cannot run at all.
+   It is a sensitive scope: it lets the application read every message in the
+   groups it is in. Add `im:message.p2p_msg:readonly` if people will message
+   the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
    `im.message.receive_v1`. No request URL is needed.
 4. Publish it to your tenant, then write its credentials into
-   `~/.co/keys.env` with an editor — `co env set` refuses these two names,
-   because a hand-typed app secret came from somewhere it cannot check:
+   `~/.co/keys.env` — `co env set` refuses these two names by default, because
+   a hand-typed app secret came from somewhere it cannot check, so say where
+   they came from:
+
+   ```bash
+   co env set FEISHU_APP_ID cli_xxx --from-console
+   co env set FEISHU_APP_SECRET xxx --from-console --secret
+   ```
+
+   `--secret` encrypts the value rather than leaving it in the file. Or write
+   them with an editor:
 
    ```dotenv
    FEISHU_APP_ID=cli_xxx
@@ -377,13 +390,27 @@ retried after 60 seconds. `co lark check` reports an outstanding recovery failur
 This work runs outside the WebSocket callback so fetching history does not delay
 live-event acknowledgements.
 
-Recovery requires the bot's message-history read permissions and access to each
-known conversation. Group recovery admits only messages that mention this bot;
+Recovery needs the bot scope **`im:message.group_msg`** and access to each known
+conversation. Without it every pass fails with `230027 … need scope:
+im:message.group_msg`, the checkpoint is held rather than advanced, and
+`co <provider> check` prints a link that grants it — one click, no Developer
+Console. An application created by `co auth` asks for it up front.
+
+Group recovery admits only messages that mention this bot;
 it does not turn unrelated group discussion into agent work. Known direct chats
 retain their direct-message semantics. Known threads and threads discovered in
 history are paginated separately. Messages in conversations the inbox has never
 seen, deleted messages, and history the provider no longer exposes cannot be
 promised recoverable. These limits also apply to `co feishu`.
 
-This repair is awaiting a repeat of the live gap test. The earlier observed loss
-remains an open release gate until that run passes.
+Measured on a live Lark tenant, 15 September 2026: listener killed, a message
+posted during a 90-second gap, listener restarted — `history recovery complete:
+1 new message(s)`, the message queued exactly once, and no WebSocket `received`
+line for it, so recovery is what delivered it rather than platform redelivery.
+The 8 September loss that opened this gate is explained by the missing scope
+above, which no setup route granted at the time. See
+[the run](../acceptance/1.8.5/lark-live-2026-09-15.md).
+
+Not claimed: that run reproduced a killed listener and a frozen one, not a
+transport aborted with its reconnects rejected. What it shows is that when the
+platform does not redeliver, recovery does.

@@ -86,7 +86,23 @@ class TestItSaysTheThingsThatMatter:
             row = next(line for line in text.splitlines() if line.startswith(f"| {code} |"))
             assert command in row, f"exit {code} names no command: {row}"
 
-    def test_it_does_not_claim_the_gate_that_has_not_passed(self):
-        # The honesty rule: document only what has been run.
+    def test_it_states_the_condition_recovery_depends_on(self):
+        """The honesty rule, now pointing the other way.
+
+        This used to require the sentence "does not guarantee delivery across a
+        reconnect", which was true while the gate was open. The gate passed on
+        2026-09-15 with recovery as the measured mechanism, so keeping that
+        sentence would be its own kind of lie — it would tell a reader to treat
+        a recovered gap as possible loss.
+
+        What replaces it is the condition the guarantee actually rests on: the
+        scope. Without `im:message.group_msg` recovery cannot run at all, and a
+        reader who does not know that will report a gap as message loss when the
+        real answer is one command away.
+        """
         text = SKILL.read_text(encoding="utf-8")
-        assert "does not guarantee delivery across a reconnect" in text
+        assert "im:message.group_msg" in text
+        assert "check" in text, "the reader needs the command that reports it"
+        assert "does not guarantee delivery across a reconnect" not in text, (
+            "the gate passed; this sentence is now the inaccurate one"
+        )

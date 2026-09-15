@@ -135,7 +135,15 @@ read this directory, and the only filter the tool applies is the platform's own
 — a group message must @ the bot. Sender allowlists belong to whatever consumes
 the directory.
 
-It does not guarantee delivery across a reconnect. As of 1.8.5b1 that gate has
-not passed: a message sent while the listener's connection was down was not
-recovered in the observed window. Treat a gap as possible message loss until
-that is retested.
+It does not recover a gap without the scope for it. History recovery reads back
+what arrived while the listener was down, and that needs the bot scope
+`im:message.group_msg`. Without it every pass fails, the checkpoint is held
+rather than advanced, and `co <provider> check` exits 1 and prints a link that
+grants it — so check that before reporting a gap as message loss. Measured on a
+live tenant 2026-09-15: with the scope, a message posted during a 90-second gap
+was recovered and queued exactly once.
+
+It does not recover a conversation this inbox has never seen. Recovery reconciles
+only chats already in `received.jsonl`, and in a group it admits only messages
+that mention the bot — unrelated discussion during a gap is dropped on purpose,
+not lost.
