@@ -22,7 +22,22 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b8** makes `co auth lark` begin on Lark. It used to print an
+Beta **1.8.5b9** lets an app secret be stored encrypted. `co env set --secret`
+writes ciphertext under a key derived at a SLIP-0013 path and kept nowhere, and
+`co env rotate` moves it to the next index. There is no master key, so there is
+no keychain to be blocked by a sandbox or a machine with no logged-in human; the
+root is `.co/keys/agent.key`, not the optional `recovery.txt`, so writing your
+twelve words down and deleting that file cannot orphan a secret — and those
+words still reach it, because the agent key is derived from them.
+
+It also opens the door that made this necessary: `co env set --from-console`
+accepts the one app credential a person can legitimately type, for tenants where
+`co auth lark` cannot create an application. And `co auth lark` now reports the
+server's real link lifetime instead of the SDK's fallback, and explains the
+"Link expired" page some data-residency tenants render over a code that is still
+alive (#1537).
+
+It carries `b8`, which makes `co auth lark` begin on Lark. It used to print an
 `open.feishu.cn` link and, on failure, tell a Lark user to run `co auth feishu`;
 the accounts domain, the wording, and the reuse command offered from lark-cli's
 config all follow the brand now.
@@ -75,14 +90,14 @@ It carries everything from `b2`: `co browser config`, the paid engine called
 It is a beta because the no-loss-across-a-reconnect gate has not passed: the
 repair is offline-tested and has not been run against a real group. The release
 notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b8 release notes](releases/1.8.5b8.md).
+See [1.8.5b9 release notes](releases/1.8.5b9.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b8
+python -m pip install --pre connectonion==1.8.5b9
 co --version
 ```
 
-The 1.8.5a1 through 1.8.5b7 previews are superseded; 1.8.4a1 and 1.8.4a2
+The 1.8.5a1 through 1.8.5b8 previews are superseded; 1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.

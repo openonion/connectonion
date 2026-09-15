@@ -58,7 +58,21 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b8 (beta)
+## Release candidate: 1.8.5b9 (beta)
+
+An app secret can be stored encrypted. `co env set --secret` writes ciphertext
+under a key derived at a SLIP-0013 path and kept nowhere, and `co env rotate`
+moves it to the next index; the root is `.co/keys/agent.key`, not the optional
+`recovery.txt`, so deleting a written-down recovery phrase cannot orphan a
+secret — and the twelve words still reach it, because the agent key is itself
+derived from them. Alongside it, `co env set --from-console` accepts the one app
+credential a person can legitimately type, and `co auth lark` reports the
+server's real link lifetime and explains the "Link expired" page that some
+data-residency tenants render over a code that is still alive (#1537). Stable
+remains 1.8.4: the reconnect-gap gate in #1462 has not passed.
+See [1.8.5b9 notes](docs/releases/1.8.5b9.md).
+
+### Superseded: 1.8.5b8 (beta, published)
 
 `co auth lark` begins on the Lark accounts domain and says Lark throughout.
 It used to print an open.feishu.cn link — the SDK starts on Feishu whichever
@@ -219,9 +233,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b8
+## Current Version: 1.8.5b9
 
 ### Version History
+- 1.8.5b9 (**beta: an app secret can be encrypted.** `co env set --secret`
+  writes ciphertext under a key derived at a SLIP-0013 path and stored nowhere,
+  and `co env rotate` moves it to the next index — no master key, so no keychain
+  to be unreachable on a machine with no logged-in human. The root is
+  `.co/keys/agent.key`, not the optional `recovery.txt`: writing the twelve
+  words down and deleting that file is correct, and must not orphan a secret.
+  Those words still reach it, because the agent key is derived from them.
+  Alongside it, `co env set --from-console` accepts the one app credential a
+  person can legitimately type, and `co auth lark` reports the server's real
+  link lifetime — it had been quoting the SDK's fallback — and explains the
+  "Link expired" page some data-residency tenants render over a live code
+  (#1537). Stable remains 1.8.4.)
 - 1.8.5b8 (**beta: `co auth lark` begins on Lark.** It printed a Feishu link
   and told Lark users to run `co auth feishu`; `brand` decided the env prefix
   and nothing else. Now the accounts domain, every sentence, and the reuse
