@@ -58,7 +58,23 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b9 (beta)
+## Release candidate: 1.8.5b10 (beta)
+
+`co auth lark` creates an application and returns its secret, which b9 said it
+could not. The failure was never the tenant or the region: we printed the URL the
+SDK hands over, `<open-host>/page/launcher?user_code=…`, and that page renders
+"Link expired" whenever its own ack call fails — for a code the server reports as
+pending in the same second. `lark-cli` discards that URL and builds
+`<open-host>/page/cli?user_code=…`; pointed there, the same tenant produced the
+creation form, an application and a 32-character secret. b9's warning, which sent
+people to the Developer Console, is deleted, and b8's accounts-domain override is
+removed because brand selects the verification host rather than where the
+protocol begins. `--app-id` reuse works too — b9 said otherwise, having only
+tested it against the launcher. Stable remains 1.8.4: the reconnect-gap gate in
+#1462 has not passed.
+See [1.8.5b10 notes](docs/releases/1.8.5b10.md).
+
+### Superseded: 1.8.5b9 (beta, published)
 
 An app secret can be stored encrypted. `co env set --secret` writes ciphertext
 under a key derived at a SLIP-0013 path and kept nowhere, and `co env rotate`
@@ -68,7 +84,7 @@ secret — and the twelve words still reach it, because the agent key is itself
 derived from them. Alongside it, `co env set --from-console` accepts the one app
 credential a person can legitimately type, and `co auth lark` reports the
 server's real link lifetime and explains the "Link expired" page that some
-data-residency tenants render over a code that is still alive (#1537). Stable
+data-residency tenants render over a live code (#1537 — WRONG CAUSE, corrected in b10). Stable
 remains 1.8.4: the reconnect-gap gate in #1462 has not passed.
 See [1.8.5b9 notes](docs/releases/1.8.5b9.md).
 
@@ -233,9 +249,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b9
+## Current Version: 1.8.5b10
 
 ### Version History
+- 1.8.5b10 (**beta: `co auth lark` creates an application and returns its
+  secret** — correcting b9, which shipped a warning saying it could not. The
+  cause was one path segment: we printed the SDK's
+  `<open-host>/page/launcher?user_code=…`, and that page renders "Link expired"
+  when its own ack call fails, for a code the server reports as pending in the
+  same second. `lark-cli` never uses that URL; it builds
+  `<open-host>/page/cli?user_code=…`. Pointed there, the same tenant produced the
+  creation form, an application and a 32-character secret, verified end to end
+  through the real command and `co lark check`. b8's accounts-domain override is
+  removed — brand selects the verification host, not where the protocol begins.
+  `--app-id` reuse works; b9 claimed otherwise from a launcher-only test. Stable
+  remains 1.8.4.)
 - 1.8.5b9 (**beta: an app secret can be encrypted.** `co env set --secret`
   writes ciphertext under a key derived at a SLIP-0013 path and stored nowhere,
   and `co env rotate` moves it to the next index — no master key, so no keychain
@@ -245,9 +273,9 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
   Those words still reach it, because the agent key is derived from them.
   Alongside it, `co env set --from-console` accepts the one app credential a
   person can legitimately type, and `co auth lark` reports the server's real
-  link lifetime — it had been quoting the SDK's fallback — and explains the
-  "Link expired" page some data-residency tenants render over a live code
-  (#1537). Stable remains 1.8.4.)
+  link lifetime — it had been quoting the SDK's fallback. It also shipped a
+  warning about a "Link expired" page on data-residency tenants; **that named
+  the wrong cause and is corrected in b10** (#1537). Stable remains 1.8.4.)
 - 1.8.5b8 (**beta: `co auth lark` begins on Lark.** It printed a Feishu link
   and told Lark users to run `co auth feishu`; `brand` decided the env prefix
   and nothing else. Now the accounts domain, every sentence, and the reuse

@@ -72,15 +72,37 @@ def test_an_app_credential_is_still_refused_by_default(env_file, key):
     assert key not in env_file.read_text()
 
 
-def test_the_refusal_names_the_door_instead_of_only_the_closed_path(env_file):
-    """It used to end at `Next: co auth lark`, which is the command that cannot work."""
+def test_the_refusal_names_the_door_as_well_as_the_main_road(env_file):
+    """It used to end at `Next: co auth lark` with no way through at all.
+
+    It must still name `--from-console`, because someone who already keeps an
+    application in the Developer Console has a real credential and nowhere to
+    put it.
+    """
     with pytest.raises(typer.Exit):
         env_commands.handle_env_set("LARK_APP_SECRET", "x")
 
     out = env_file.told
     assert "--from-console" in out
     assert "Developer Console" in out
-    assert "Link expired" in out, "name the symptom, so the reader recognises their case"
+    assert "co auth lark" in out, "the main road is still the main road"
+
+
+def test_the_refusal_does_not_imply_co_auth_is_broken(env_file):
+    """1.8.5b9 justified this door with "if co auth cannot create an application
+    for your tenant — the scan page says 'Link expired' on a code that is still
+    alive".
+
+    That was the wrong cause and it is fixed (#1537). Leaving the sentence would
+    tell every reader that the command they are being sent to may not work.
+    """
+    with pytest.raises(typer.Exit):
+        env_commands.handle_env_set("LARK_APP_SECRET", "x")
+
+    out = env_file.told
+    assert "Link expired" not in out
+    assert "cannot create an application" not in out
+    assert "data-residency" not in out
 
 
 @pytest.mark.parametrize("key", ["LARK_APP_SECRET", "FEISHU_APP_ID"])
