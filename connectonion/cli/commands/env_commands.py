@@ -195,6 +195,15 @@ def handle_env_get(key: str) -> None:
     from ...secret_store import SecretStoreError, get as get_secret
 
     try:
+        # Plain on stdout, like every other branch of this command. `co env get`
+        # exists to be substituted — `export LARK_APP_SECRET=$(co env get
+        # LARK_APP_SECRET)` — so a redacted answer here would be a wrong answer.
+        # Encrypting changes what sits on disk, not what a caller asking for the
+        # value by name receives. `co env show` is the browsing command, and that
+        # one redacts by default. (CodeQL py/clear-text-logging-sensitive-data
+        # flags this line and not the three prints above it, which reveal OAuth
+        # tokens and API keys the same way; the rule is about incidental logging,
+        # and this is the command's contract.)
         print(get_secret(global_config_dir(), key))
         return
     except SecretStoreError as error:
