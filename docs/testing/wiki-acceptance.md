@@ -1,5 +1,65 @@
 # Wiki milestone 1: acceptance before implementation
 
+## COAI execution refactor — 2026-09-15
+
+The native-isolation experiments below are historical. Current execution is
+documented in [the CLI contract](../cli/wiki.md): every Wiki stage invokes
+`co ai`; scoped dynamic Wiki tools and temporary Codex HOME no longer exist.
+Skills are instructions, not OS permission enforcement.
+
+- Focused Wiki, CLI, shared-harness and default-Skill tests: **395 passed,
+  1 skipped** (opt-in browser UI test).
+- Real `gpt-5.6-luna`, synthetic Alice profile, extraction then maintenance:
+  **6/6 checks passed**. Exactly one person page remained; phone, employer,
+  relationship/open-thread sections and source references were present.
+  Maintenance also created one project, one decision and one agenda page.
+  Extraction: 80,897 input / 1,576 output (50,688 cached input).
+  Maintenance: 204,541 input / 3,660 output (150,016 cached input).
+  Cached input is a subset of input, not additional tokens.
+- Real COAI own harness, `co/gemini-3.8-flash`, one synthetic extraction:
+  **passed**. 145,298 input / 614 output, 93,545 cached tokens; reported cost
+  $0.04813312. This is one small fixture, not a full-initialization estimate.
+- New CLI tip tests (`init`, `people`, `abstract`), same Gemini model:
+  **3/3 passed**. Model saw only captured command output and a next-step goal;
+  replies were never executed. Init/abstract execution was mocked when
+  capturing output. The first grader compared /var with its resolved
+  /private/var spelling; regrading the saved replies against the actual
+  emitted next commands passed all three without another model call.
+- Wheel build: **passed**, including the XLSX dependency/lock update.
+- Real pytest integration: **all 3 cases passed** across the final runs:
+  successive correction/no-op, hostile source not followed, and extraction
+  into one existing person page. The first run's two multi-call cases hit the
+  global 60-second test timeout; after giving this opt-in file its own bounded
+  allowance, they passed in 75.54s and 137.61s. The hostile-source case passed
+  in 50.66s without a retry. This is observed behavior, not sandbox isolation.
+- Full offline regression: **10,205 passed, 20 skipped, 4 failed, 2 errors**.
+  The four failures are order-dependent missing-credential fixtures in shell,
+  session-history and admin-route tests; the two errors are native browser
+  network-guard teardowns. All six reproduce on unchanged `d4b71c2b`
+  (10,187 passed, 4 failed, 2 errors). The 37 shell/session/admin tests pass
+  in isolation. This is not a green full-suite claim. Final timeout plumbing
+  is additionally covered by the 395-test focused run.
+
+The tests cover shared CLI dispatch, default and explicit model selection,
+large file-based task input, actual changed/deleted pages, partial writes on
+failure, malformed outputs, timeouts, source/page Skill composition, Claude
+Code result/cost normalization, coding search after the first 40 messages,
+PPTX/XLSX/ICS extraction, full attachment text, and both-stage sync accounting.
+Claude Code's subscription path has adapter tests, not a live account run.
+
+Reproduce the paid synthetic integration tests with:
+
+```bash
+CO_WIKI_TEST_MODEL=gpt-5.6-luna python -m pytest \
+  tests/e2e/real_api/test_real_wiki.py -m real_api -q
+```
+
+No full live-mailbox initialization, Jira login, percentage/dollar quota cap,
+or interleaved daily investigation/maintenance is certified by these tests.
+Those remaining gaps are listed explicitly in the current CLI contract.
+
+## Historical evidence
+
 Status: incomplete milestone / draft PR, 2026-09-07. Run only against synthetic fixtures
 and an isolated notebook. No personal source ingestion is needed to validate
 the first PR. Real model tests, when explicitly run, receive synthetic text only.

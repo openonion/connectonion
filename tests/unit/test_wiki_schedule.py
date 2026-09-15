@@ -27,7 +27,7 @@ class Calls:
 def make(tmp_path, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda name: "/opt/codex/bin/codex" if name == "codex" else None)
     calls = Calls()
-    scheduler = Launchd(agents_dir=tmp_path / "LaunchAgents", uid=501, run=calls, python="/venv/bin/python")
+    scheduler = Launchd(agents_dir=tmp_path / "LaunchAgents", uid=501, run=calls, executable="/venv/bin/co")
     return scheduler, calls
 
 
@@ -38,7 +38,7 @@ def test_plist_runs_scheduled_sync_with_a_path_that_can_find_codex(tmp_path, mon
     config["schedule"]["timezone"] = "Australia/Sydney"
     plist = plistlib.loads(scheduler.render(root, config).encode())
     assert plist["Label"] == label_for(root)
-    assert plist["ProgramArguments"] == ["/venv/bin/python", "-m", "connectonion.cli.main",
+    assert plist["ProgramArguments"] == ["/venv/bin/co",
                                          "wiki", "--root", str(root), "sync", "--scheduled"]
     assert "/opt/codex/bin" in plist["EnvironmentVariables"]["PATH"]
     assert "/venv/bin" in plist["EnvironmentVariables"]["PATH"]

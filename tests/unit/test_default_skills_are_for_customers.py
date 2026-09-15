@@ -10,6 +10,9 @@ EXPECTED_DEFAULTS = {
     "co-mail-and-drive",
     "wiki-init",
     "wiki-investigate",
+    "wiki-extract",
+    "wiki-maintain",
+    "wiki-abstract",
 }
 CONTRIBUTOR_SKILLS = {"commit", "review-pr", "ship-feature"}
 

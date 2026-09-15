@@ -40,6 +40,49 @@ def test_long_text_is_capped_and_says_so(tmp_path):
     assert len(text) < 200 and "more characters not shown" in text
 
 
+def test_investigation_can_read_full_attachment_for_chunking(tmp_path):
+    path = tmp_path / "long.txt"
+    path.write_text("a " * 30000 + "important final clause")
+    text = extract_text(path, limit=None)
+    assert text.endswith("important final clause") and "not shown" not in text
+
+
+def test_spreadsheet_reads_all_sheets_and_cells(tmp_path):
+    from openpyxl import Workbook
+    book = Workbook()
+    book.active.title = "Contacts"
+    book.active.append(["Alice", "+61 2 5550 0100"])
+    book.create_sheet("Terms").append(["Fee", 0.08])
+    path = tmp_path / "terms.xlsx"
+    book.save(path)
+    text = extract_text(path)
+    assert "Contacts" in text and "+61 2 5550 0100" in text
+    assert "Terms" in text and "0.08" in text
+
+
+def test_presentation_reads_text_tables_and_speaker_notes(tmp_path):
+    from pptx import Presentation
+    from pptx.util import Inches
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[5])
+    slide.shapes.title.text = "Aurora partnership"
+    slide.notes_slide.notes_text_frame.text = "Alice is the lead."
+    table = slide.shapes.add_table(1, 2, Inches(1), Inches(1), Inches(4), Inches(1)).table
+    table.cell(0, 0).text = "Review"
+    table.cell(0, 1).text = "90 days"
+    path = tmp_path / "brief.pptx"
+    deck.save(path)
+    text = extract_text(path)
+    assert "Aurora partnership" in text and "Alice is the lead" in text and "Review | 90 days" in text
+
+
+def test_calendar_attachment_keeps_dates_and_organizer(tmp_path):
+    path = tmp_path / "event.ics"
+    path.write_text("BEGIN:VEVENT\nDTSTART:20260915T100000Z\nORGANIZER:mailto:alice@example.org\nEND:VEVENT")
+    text = extract_text(path)
+    assert "20260915T100000Z" in text and "alice@example.org" in text
+
+
 def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypatch):
     from connectonion.wiki import investigate as inv
     monkeypatch.setattr("time.sleep", lambda s: None)

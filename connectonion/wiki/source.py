@@ -33,6 +33,7 @@ INJECTED_BLOCK = re.compile(
     r"|>>> TRANSCRIPT START"
     r"|Caveat: The messages below"
     r"|This session is being continued from a previous conversation"
+    r"|Follow these instructions exactly\. They are the skill `"
     r"|Base directory for this skill:)")
 # What a typed Codex message looks like, and nothing else is read. Over 30 real days
 # the `role: user` slot holds exactly two shapes: 688 typed messages with these three

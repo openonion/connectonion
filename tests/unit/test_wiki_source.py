@@ -376,3 +376,11 @@ def test_a_subject_scope_keeps_the_whole_session_not_the_matching_lines(tmp_path
 def test_a_scope_that_matches_nothing_reads_nothing(tmp_path):
     rollout(tmp_path / "2026/09/07/rollout-a.jsonl", [("user", "Ship the browser release")])
     assert collect(subscription(tmp_path, about="lanestay"), {}, 10, 100000).items == []
+
+
+def test_delegated_skill_instructions_are_not_reingested_as_user_experience(tmp_path):
+    rollout(tmp_path / "rollout-skill.jsonl", [("user",
+        "Follow these instructions exactly. They are the skill `wiki-maintain`, installed at /skills.\nKeep notes.")])
+    batch = collect({"kind": "codex", "root": str(tmp_path), "since": "2020-01-01T00:00:00Z",
+                     "enabled": True, "consented": True}, {}, 20, 200000)
+    assert batch.items == []

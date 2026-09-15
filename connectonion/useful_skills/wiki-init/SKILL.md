@@ -7,7 +7,10 @@ description: The first run of a notebook. Connect the sources, enumerate what th
 
 You are building the frame once. Everything programmatic is a command; you
 supply the judgement between the commands. Do not reimplement in prose what a
-command already does.
+command already does. The task supplies the notebook root: include
+`co wiki --root "<root>"` in EVERY Wiki command below, including follow-ups.
+Read existing pages and `co wiki people` before creating another identity.
+Do not call `co wiki init` recursively or install a background schedule here.
 
 ## 1. Connect the sources
 
@@ -15,6 +18,7 @@ command already does.
 co outlook inbox -n 1          # authorised?  if not: co auth microsoft
 co gmail inbox -n 1            # authorised?  if not: co auth google
 co wiki subscriptions          # codex / claude-code roots exist? they need no auth
+co email addresses             # the account\'s own mail service; if not ready: co auth
 ```
 
 An account that is not authorised is opened in the browser for the user; you
@@ -24,7 +28,7 @@ do not enter credentials. Coding sessions are local and simply read.
 
 ```
 co wiki --json scan projects --days 150
-co wiki --json scan people   --days 150 --min-mails 3 --mine <every address that is the user's>
+co wiki --json scan people   --days 150 --min-mails 1 --mine <every address that is the user's>
 ```
 
 `--mine` takes every address the user sends from, across all mailboxes,
@@ -65,6 +69,11 @@ co wiki stub project "<Name>"  --path <cwd> --path <every worktree of it>
 The page is created with every section present and every unknown one marked
 `Unknown — not investigated yet`, and its own `Investigation:` line at the
 foot. Structure is now a fact on disk, not a request in a prompt.
+Before leaving the map stage, read a representative message/signature for each
+kept person using the mail CLI. Fill already-supported phone, company, role
+and address fields now, with references; unknown fields remain unknown.
+The person page template is the single canonical `wiki-page-person` Skill.
+Reuse an existing page when address, aliases and context identify the same person.
 
 ## 5. Investigate the owner first — from what they wrote, not what mentions them
 
@@ -85,15 +94,16 @@ mail, the author of the sessions. Their page anchors everything else: every
 other person's relationship is a relationship to them.
 
 ```
-co wiki stub person "<Owner>" --email <each of their addresses> --handle <their names>
+co wiki stub person "<Owner>" --email <primary-address> --handle <other-address> --handle <their-name>
 co wiki investigate people/<owner>.md
 ```
 
-Then the highest-ranked project, then people in rank order, **within budget**:
-read `co wiki status` for today's usage before each one and stop when the
-first-run budget (2% of the Codex weekly pool, or the configured amount) is
-reached. A run that stops with three people done and a ranking written down
-has done its job; the daily run continues from `co wiki unfinished`.
+Stop after the owner's first investigation and the ranked map unless the user
+explicitly requested more subjects. Do not invent a monetary or subscription
+meter: `co wiki status` reports attempts and known tokens, not percent of the
+Codex weekly pool. A 2% / 1% / dollar budget requires an actual provider meter;
+if it is unavailable, report that it was not enforced. Never infer a percentage
+from tokens. Record where to continue with `co wiki unfinished`.
 
 ## 6. Report
 

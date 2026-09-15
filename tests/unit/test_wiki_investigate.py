@@ -59,7 +59,8 @@ def test_runner_coai_is_co_ai_on_our_own_loop_and_its_own_default_model(tmp_path
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"] and argv[-1].startswith("/wiki-investigate ")
-    assert not {"--harness", "--sandbox", "--model"} & set(argv)
+    assert argv[3:5] == ["--harness", "ours"]
+    assert not {"--sandbox", "--model"} & set(argv)
 
 
 def test_the_status_line_names_the_sources_searched_and_does_not_claim_the_web(tmp_path, co_ai):
@@ -147,6 +148,25 @@ def test_impossible_chunk_limit_fails_before_spending_tokens():
     items = [{"text": "x", "source": "outlook:1", "timestamp": "2026-09-01T00:00:00Z"}]
     with pytest.raises(inv.WikiError, match="increase limits.extract_chars_per_batch"):
         inv.digest_in_chunks(items, config, lambda *a: pytest.fail("must validate before calling the model"))
+
+
+def test_coding_search_continues_past_first_batch_and_matches_aliases(tmp_path, monkeypatch):
+    from connectonion.wiki.source import Batch
+    seen = []
+    def collect(sub, cursor, *limits):
+        seen.append(cursor)
+        if not cursor:
+            return Batch([{"text": "unrelated", "timestamp": "2026-09-01", "source": "codex:1"}], {"offset": 40})
+        if cursor == {"offset": 40}:
+            return Batch([{"text": "odi accepted the terms", "timestamp": "2026-09-02",
+                           "source": "codex:2"}], {"offset": 80})
+        return Batch([], cursor)
+    monkeypatch.setattr(inv, "collect", collect)
+    items, coverage = inv.gather("Ody Zhou", ["ody@example.org", "odi"], days=30, clients={},
+                                subscriptions={"codex": {"kind": "codex", "root": str(tmp_path)}})
+    assert [i["source"] for i in items] == ["codex:2"]
+    assert seen == [{}, {"offset": 40}, {"offset": 80}]
+    assert "2 messages" in coverage[0]
 
 
 @pytest.mark.parametrize("stdout,returncode", [

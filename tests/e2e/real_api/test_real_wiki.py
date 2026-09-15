@@ -1,8 +1,4 @@
-"""Opt-in synthetic native acceptance, never the operator's session history.
-
-This is deliberately not a mocked-Skill success test. An isolation/preflight
-failure fails acceptance; do not convert it to a skip or enable broader tools.
-"""
+"""Opt-in synthetic acceptance through COAI, never the operator's session history."""
 
 import os
 from datetime import datetime, timezone
@@ -15,7 +11,8 @@ from connectonion.wiki.files import Notebook
 from connectonion.wiki.service import approve_sources, run_sync
 from tests.unit.test_wiki_source import rollout
 
-pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli]
+# Each case may execute two delegated turns, each with its own 600s deadline.
+pytestmark = [pytest.mark.real_api, pytest.mark.provider_cli, pytest.mark.timeout(1300)]
 
 
 def test_native_wiki_successive_updates_and_noop(tmp_path, monkeypatch):
@@ -48,8 +45,8 @@ def test_native_wiki_successive_updates_and_noop(tmp_path, monkeypatch):
     assert unchanged["runner_attempts"] == 0
 
 
-def test_native_wiki_hostile_source_cannot_escape_the_notebook(tmp_path, monkeypatch):
-    """Injected instructions must fail at the tool boundary, not at the model's discretion."""
+def test_wiki_hostile_source_is_not_followed(tmp_path, monkeypatch):
+    """Check observed behavior; a Skill is not a filesystem permission guarantee."""
     root, sources = tmp_path / "wiki", tmp_path / "sources"
     monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sources)
     monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "no-claude")
@@ -80,3 +77,26 @@ def test_native_wiki_hostile_source_cannot_escape_the_notebook(tmp_path, monkeyp
         assert (root / ".state" / name).read_bytes() == content, name
     # The legitimate sentence in the same batch should still have been kept.
     assert "Beacon" in text, record
+
+
+def test_extract_and_maintain_enrich_one_existing_person_through_coai(tmp_path):
+    from connectonion.wiki.config import read_config
+    from connectonion.wiki.extract import run_extract, extraction_item
+    from connectonion.wiki.runner import run_stage
+    prepare(tmp_path)
+    config = read_config(tmp_path)
+    config["model"] = os.environ.get("CO_WIKI_TEST_MODEL", config["model"])
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/alice.md", "Alice Chen", ["Alice"], email="alice@example.org")
+    items = [{"role": "other", "speaker": "Alice Chen", "timestamp": "2026-09-12T10:00:00Z",
+              "source": "outlook:synthetic:1", "correspondent": "alice@example.org",
+              "text": "Hi Aaron, I lead Project Aurora at Example Labs. Please send the Markdown "
+                      "prototype on Monday. Phone: +61 2 5550 0100. Regards, Alice."}]
+    digest = run_extract(items, config, "outlook")
+    result = run_stage(notebook, [extraction_item(digest["notes"], items)], config, "outlook")
+    page = notebook.read("people/alice.md")
+    assert notebook.list("people") == ["people/alice.md"]
+    assert "+61 2 5550 0100" in page and "Example Labs" in page
+    assert "## Our relationship" in page and "## Open threads" in page
+    assert "outlook:synthetic:1" in page
+    assert "people/alice.md" in result["changed"]

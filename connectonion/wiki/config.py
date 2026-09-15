@@ -26,13 +26,8 @@ def local_timezone() -> str:
     return candidate
 
 
-# Which harness `co ai` hands a turn to. codex: `co ai --harness codex`, Codex
-# on the ChatGPT subscription with the full-access sandbox, so it can run the
-# user's `co outlook` / `co gmail` / `co browser` itself. coai: our own agent
-# loop, billed per token to the co/ key. Maintenance batches still open the
-# Codex thread directly (runner.run_codex) with the notebook's dynamic tools.
-RUNNERS = ("codex", "coai")
-
+# Every stage runs through co ai. "default" lets the selected harness choose its model.
+RUNNERS = ("codex", "coai", "claude-code")
 
 def default_config() -> dict:
     return {"version": 1, "runner": "codex", "model": "gpt-5.3-codex-spark",
@@ -43,7 +38,7 @@ def default_config() -> dict:
             # batches (2026-09-07); 200k is ~50k tokens, small for the runner models.
             # items_per_batch is the most the maintainer reads raw. A sync gathers up
             # to extract_items_per_batch; a batch larger than items_per_batch is first
-            # digested by the tool-less wiki-extract pass and the maintainer reads that.
+            # digested by the wiki-extract pass and the maintainer reads that.
             # 40, not 150: one turn digesting 79 mails came back as 18 bullets, and a
             # person's page is only as full as the notes handed to the maintainer.
             "limits": {"runner_calls_per_day": 6, "items_per_batch": 20,
@@ -56,7 +51,7 @@ def validate(config: dict) -> dict:
     if not isinstance(config, dict) or set(config) != set(defaults) or config["version"] != 1:
         raise WikiError("Invalid Wiki config keys or version")
     if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
-        raise WikiError(f"runner must be one of {', '.join(RUNNERS)}, with an explicit model")
+        raise WikiError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
     schedule, limits = config["schedule"], config["limits"]
     if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone"}:
         raise WikiError("Schedule requires times and timezone")
@@ -89,6 +84,10 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
+    # Older coai notebooks retained the Codex default even though it was never
+    # forwarded. Preserve their effective behavior when all stages start using COAI.
+    if config.get("runner") == "coai" and config.get("model") == default_config()["model"]:
+        config["model"] = "default"
     return validate(config) if validated else config
 
 
@@ -108,6 +107,7 @@ def set_config(root: Path, pairs: list[str]) -> dict:
         raise WikiError("config set needs KEY VALUE pairs")
     with maintenance_lock(root):
         config = copy.deepcopy(read_config(root, validated=False))
+        previous_runner = config["runner"]
         for key, raw in zip(pairs[::2], pairs[1::2]):
             parts = key.split(".")
             target = config
@@ -129,6 +129,8 @@ def set_config(root: Path, pairs: list[str]) -> dict:
             else:
                 value = raw
             target[parts[-1]] = value
+        if config["runner"] != previous_runner and "model" not in pairs[::2]:
+            config["model"] = "default"
         validate(config)
         atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
         return config

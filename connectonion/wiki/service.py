@@ -456,17 +456,17 @@ def _terminate_as_interrupt():
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False,
                  with_person=""):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
-    from .runner import maintenance_instructions, run_codex, tool_specs
+    from .runner import maintenance_instructions, run_stage
 
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
     kind = ""   # the one source this batch is drawn from; see the loop below
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
-    # tool-less extraction pass reads it once. A batch that fits items_per_batch
+    # extraction pass reads it once. A batch that fits items_per_batch
     # is small enough for the maintainer to read directly and skips extraction.
     # The widest source Skill, so the budget holds whichever source this batch is.
     widest_maintain = max(len(maintenance_instructions(k)) for k in ("", *KINDS, *MAIL_KINDS))
-    maintain_room = limits["input_chars_per_batch"] - widest_maintain - len(json.dumps(tool_specs())) - 1000
+    maintain_room = limits["input_chars_per_batch"] - widest_maintain - 1000
     if maintain_room <= 0:
         raise WikiError("Configured input limit is too small for the maintenance Skill")
     # The largest source Skill, so the budget holds whichever source this batch turns out to be.
@@ -519,17 +519,18 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         write_json(state_path(root, "progress.json"), updated)
         write_json(path, record)
         return record
-    if not uncapped and status(root)["runner_attempts_today"] >= limits["runner_calls_per_day"]:
+    attempts = 2 if record["extracted"] else 1
+    if not uncapped and status(root)["runner_attempts_today"] + attempts > limits["runner_calls_per_day"]:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
-    runner = runner or run_codex
-    # A runner may carry a preflight (the native one checks login, binary and
-    # version). It raises before an attempt is reserved: a configuration error is
+    runner = runner or run_stage
+    # A runner may carry a preflight (the CLI adapter checks that co is installed). It raises before an attempt is reserved: a configuration error is
     # not a failed batch and must not spend one of the day's attempts.
     getattr(runner, "preflight", lambda: None)()
-    record.update(outcome="running", runner_attempts=2 if record["extracted"] else 1)
-    write_json(path, record)  # Reserve the attempts before starting a native process.
+    record.update(outcome="running", runner_attempts=attempts)
+    write_json(path, record)  # Reserve the attempts before starting a COAI process.
+    usage = {}
+    stage = "extract" if record["extracted"] else "maintain"
     try:
-        usage = {}
         if record["extracted"]:
             digest = (extractor or run_extract)(items, config, kind)
             usage = dict(digest.get("usage") or {})
@@ -543,6 +544,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             record["extract_notes"] = f".state/extracts/{record['id']}.md"
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
+            stage = "maintain"
             result = runner(Notebook(root), items, config, kind=kind)
             record["usage_by_stage"]["maintain"] = result.get("usage")
             for key, value in (result.get("usage") or {}).items():
@@ -554,8 +556,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                       report=result.get("report", ""))
         write_json(state_path(root, "progress.json"), updated)
     except BaseException as error:
+        failed_usage = getattr(error, "usage", None)
+        record["usage_by_stage"][stage] = failed_usage
+        for key, value in (failed_usage or {}).items():
+            usage[key] = usage.get(key, 0) + value
         record.update(outcome="interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else "failed",
-                      usage=getattr(error, "usage", None), changed=getattr(error, "changed", []),
+                      usage=usage or None, changed=getattr(error, "changed", []),
                       error=str(error) if isinstance(error, WikiError) else "Runner failed; source progress preserved")
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
             raise

@@ -19,6 +19,7 @@ protocol: `co ai --json --harness X /skill args` in, one envelope out.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 OURS = "ours"
@@ -138,6 +139,8 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
 
     try:
         answer = json.loads(raw)
+        if not isinstance(answer, dict):
+            raise ValueError("Delegate result is not an object")
     except (TypeError, ValueError):
         # A delegate that did not answer in its own format is a failure to
         # report, not a result to parse: keep what it did say.
@@ -146,12 +149,16 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
     error = answer.get("error")
     exit_code = answer.get("exit_code")
     failed = bool(error) or (isinstance(exit_code, int) and exit_code != 0)
+    usage = dict(answer["usage"]) if isinstance(answer.get("usage"), dict) else {}
+    cost = answer.get("total_cost_usd")
+    if type(cost) in (int, float) and math.isfinite(cost) and cost >= 0:
+        usage["cost"] = cost
     return {
-        "result": answer.get("last_message"),
+        "result": answer.get("last_message") if harness == "codex" else answer.get("result"),
         "outcome": "error" if failed else "natural",
         "error": error or (f"{harness} exited {exit_code}" if failed else None),
         # An empty usage means the delegate reported nothing, which is what
         # `null` says. Passing `{}` on lets a caller read "no tokens" out of it.
-        "usage": answer.get("usage") or None,
+        "usage": usage or None,
         "session_id": answer.get("session_id"),
     }

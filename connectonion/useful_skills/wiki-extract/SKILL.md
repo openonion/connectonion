@@ -1,6 +1,6 @@
 ---
 name: wiki-extract
-description: Read one batch of authorized session messages or mail and write the extraction notes the wiki-maintain runner will organize — every durable fact with who said it, when, and its source id. No tools; the notes are the whole output.
+description: Read one batch of authorized session messages or mail and write the extraction notes the wiki-maintain runner will organize — every durable fact with who said it, when, and its source id. Read the supplied material file and write the complete notes to the requested output file.
 ---
 
 # Extract what is worth keeping from a batch
@@ -39,8 +39,12 @@ way they write as it shows across every mail, the user's way with them across
 every reply. A correspondent with more mail than one batch continues in the
 next; write what is here and the maintainer extends the page.
 
-Your reply *is* the notes. No preamble, no closing remarks, no questions. If the
-batch holds nothing worth keeping, reply with exactly `Nothing worth keeping.`
+Read the full material file named in the task. Write the notes to the output
+file named in the task; if no file is requested, return the notes as your reply.
+No preamble, closing remarks, or questions belong in the notes. If the batch
+holds nothing worth keeping, write exactly `Nothing worth keeping.`
+Only read the supplied material and instruction files; this extraction stage
+does not investigate other sources or edit notebook pages.
 
 ## What to keep
 

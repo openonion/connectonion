@@ -1,5 +1,10 @@
 # DD-065: The AI owns the notebook; the wrapper owns execution
 
+**2026-09-15 update:** The execution/isolation design below is historical.
+Wiki now delegates all stages through the shared `co ai --harness` CLI.
+The native-only runner and dynamic tools described here have been removed.
+See [the current CLI and architecture contract](../cli/wiki.md).
+
 **Status:** Product direction accepted; implementation and native-runtime
 isolation still under verification. Not a release announcement.
 

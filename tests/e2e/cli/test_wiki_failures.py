@@ -38,29 +38,14 @@ def co(root, *args, env):
     return result.returncode, payload, result.stderr
 
 
-def test_missing_login_names_codex_login(consented, tmp_path):
-    empty_home = tmp_path / "empty-codex-home"
-    empty_home.mkdir()
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "CODEX_HOME": str(empty_home),
+def test_missing_co_names_install(consented, tmp_path):
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     code, payload, stderr = co(consented, "sync", env=env)
     assert code == 1, stderr
-    assert "codex login" in payload["data"], payload
+    assert "co CLI is missing" in payload["data"], payload
     assert "co wiki" in payload["next"]
-    assert not list((consented / ".state").glob("runs/*.json"))  # no attempt of the day was spent
-
-
-def test_missing_codex_binary_names_install(consented, tmp_path):
-    """A real login, so the missing binary is what the message is about."""
-    home = tmp_path / "codex-home"
-    home.mkdir()
-    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": "x"}}))
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "CODEX_HOME": str(home),
-           "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
-    code, payload, stderr = co(consented, "sync", env=env)
-    assert code == 1, stderr
-    assert "Codex CLI is missing" in payload["data"], payload
-    assert not list((consented / ".state").glob("runs/*.json"))  # preflight, not a failed batch
+    assert not list((consented / ".state").glob("runs/*.json"))
 
 
 def test_second_sync_while_one_runs_says_busy(consented, tmp_path):
@@ -83,25 +68,19 @@ def test_second_sync_while_one_runs_says_busy(consented, tmp_path):
 
 
 def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented, tmp_path):
-    """Past preflight, a failure is a real attempt: recorded, counted, and exit 1.
-
-    A credential that says it is a ChatGPT login but carries a dead token passes
-    preflight -- the file is there, it names the right billing, the binary is
-    there -- and fails inside the native handshake, which is what an expired
-    login looks like. (An empty `{}` no longer reaches here: preflight now reads
-    the file rather than only checking that it exists.)"""
-    import shutil
-    codex = shutil.which("codex")
-    if not codex:
-        pytest.skip("needs the codex binary on PATH")
-    home = tmp_path / "codex-home"
-    home.mkdir()
-    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": "dead"}}))
-    env = {"PATH": f"{Path(codex).parent}:/usr/bin:/bin", "HOME": str(tmp_path), "CODEX_HOME": str(home),
+    """COAI owns login errors; Wiki records the failed attempt and preserves progress."""
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    (binary / "co").write_text(
+        '#!/bin/sh\necho \'{"outcome":"error","error":"Login required; run codex login"}\'\nexit 1\n')
+    (binary / "co").chmod(0o755)
+    env = {"PATH": f"{binary}:/usr/bin:/bin", "HOME": str(tmp_path),
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     code, payload, stderr = co(consented, "sync", env=env)
     assert code == 1, stderr
     assert "failed" in payload["data"].lower() and "run_" in payload["data"], payload
     runs = list((consented / ".state" / "runs").glob("*.json"))
-    assert len(runs) == 1 and json.loads(runs[0].read_text())["outcome"] == "failed"
-    assert "dead" not in payload["data"]  # nothing from the credential file is echoed
+    record = json.loads(runs[0].read_text())
+    assert len(runs) == 1 and record["outcome"] == "failed"
+    assert "codex login" in record["error"]
+    assert not (consented / ".state" / "progress.json").exists()

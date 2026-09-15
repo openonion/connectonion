@@ -135,6 +135,32 @@ def test_a_completed_delegate_run_reports_its_own_usage(monkeypatch):
                       "session_id": "t1"}
 
 
+def test_claude_code_result_and_subscription_cost_survive_shared_adapter(monkeypatch):
+    import importlib
+    module = importlib.import_module("connectonion.useful_tools.claude_code")
+    monkeypatch.setattr(module, "_run_claude_code", lambda **kw: json.dumps({
+        "provider": "claude_code", "status": "completed", "result": "Updated Alice",
+        "session_id": "cc-1", "exit_code": 0, "error": "",
+        "usage": {"input_tokens": 12}, "total_cost_usd": 0.03}))
+    answer = harness_mod.run("claude-code", "do it", "")
+    assert answer["result"] == "Updated Alice"
+    assert answer["usage"] == {"input_tokens": 12, "cost": 0.03}
+    assert answer["outcome"] == "natural"
+
+
+def test_non_object_delegate_json_is_a_reported_error(monkeypatch):
+    monkeypatch.setattr(codex_module, "codex", lambda **kw: "[]")
+    assert harness_mod.run("codex", "do it", "")["outcome"] == "error"
+
+
+def test_cli_passes_timeout_to_shared_delegate(monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(harness_mod, "run", lambda *a, **kw: seen.append(kw) or {
+        "result": "done", "outcome": "natural", "error": None, "usage": None})
+    ai_commands.handle_ai(prompt="do it", harness="codex", json_output=True, timeout=37)
+    assert seen[0]["timeout"] == 37
+
+
 def test_the_requested_model_reaches_the_delegate(monkeypatch):
     seen = {}
 

@@ -454,6 +454,30 @@ def test_run_record_breaks_usage_down_by_stage_source_and_size(tmp_path, monkeyp
     assert record["chars_in"] > 40 * 6 and record["seconds"] >= 0
 
 
+def test_failed_maintain_keeps_extraction_usage_and_does_not_advance(tmp_path, monkeypatch):
+    from connectonion.wiki.runner import RunFailed
+    root = _extract_world(tmp_path, monkeypatch, 40)
+
+    def fail(*args, **kwargs):
+        raise RunFailed("co ai unavailable", {"input_tokens": 3})
+
+    record = run_sync(root, runner=fail, extractor=lambda *a, **kw: {
+        "notes": "A durable fact", "usage": {"input_tokens": 100}})
+    assert record["outcome"] == "failed" and record["usage"] == {"input_tokens": 103}
+    assert record["usage_by_stage"] == {"extract": {"input_tokens": 100}, "maintain": {"input_tokens": 3}}
+    assert not state_path(root, "progress.json").exists()
+
+
+def test_two_stage_batch_cannot_spend_one_remaining_attempt(tmp_path, monkeypatch):
+    from connectonion.wiki.config import set_config
+    root = _extract_world(tmp_path, monkeypatch, 40)
+    set_config(root, ["limits.runner_calls_per_day", "1"])
+    with pytest.raises(WikiError, match="Daily"):
+        run_sync(root, runner=lambda *a, **kw: pytest.fail("must not run"),
+                 extractor=lambda *a, **kw: pytest.fail("must not run"))
+    assert not state_path(root, "progress.json").exists()
+
+
 def test_usage_report_aggregates_raw_records_by_stage_source_and_model(tmp_path):
     from connectonion.wiki.service import usage_report
     prepare(tmp_path)

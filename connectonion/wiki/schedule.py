@@ -51,23 +51,25 @@ def label_for(root: Path) -> str:
 class Launchd:
     """macOS LaunchAgent for the current user; no root, survives logout/login."""
 
-    def __init__(self, agents_dir=None, uid=None, run=subprocess.run, python=None):
+    def __init__(self, agents_dir=None, uid=None, run=subprocess.run, executable=None):
         self.agents_dir = Path(agents_dir or Path.home() / "Library" / "LaunchAgents")
         self.uid = os.getuid() if uid is None else uid
         self.run = run
-        self.python = python or sys.executable
+        self.executable = executable or shutil.which("co")
 
     def plist_path(self, root: Path) -> Path:
         return self.agents_dir / f"{label_for(root)}.plist"
 
     def render(self, root: Path, config: dict) -> str:
         root = Path(root).resolve()
-        # launchd starts jobs with an almost empty PATH, so the job must be told
-        # where this Python and the codex binary live at install time.
-        codex = shutil.which("codex")
-        dirs = [str(Path(self.python).parent)]
-        if codex:
-            dirs.append(str(Path(codex).parent))
+        if not self.executable:
+            raise WikiError("co CLI is missing from PATH; install it, then run co wiki start")
+        # Resolve the CLI and delegate binaries when installing, before launchd's sparse PATH.
+        dirs = [str(Path(self.executable).parent)]
+        for name in ("codex", "claude"):
+            binary = shutil.which(name)
+            if binary:
+                dirs.append(str(Path(binary).parent))
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
         if os.environ.get("PYTHONPATH"):
@@ -76,7 +78,7 @@ class Launchd:
             env["PYTHONPATH"] = os.environ["PYTHONPATH"]
         job = {
             "Label": label_for(root),
-            "ProgramArguments": [self.python, "-m", "connectonion.cli.main",
+            "ProgramArguments": [self.executable,
                                  "wiki", "--root", str(root), "sync", "--scheduled"],
             "StartInterval": TICK_SECONDS,
             "RunAtLoad": False,

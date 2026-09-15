@@ -56,6 +56,33 @@ def make_wiki_app(factory):
         from ...wiki.service import status
         _handle(ctx, lambda root: (status(root), ["logs"]), ["config"])
 
+    @wiki.command("init")
+    def init_wiki(ctx: typer.Context):
+        """Run the initialization Skill: discover sources, build the map, investigate the owner."""
+        from ...wiki.config import prepare, read_config
+        from ...wiki.files import Notebook
+        from ...wiki.runner import run_stage
+
+        def run(root):
+            prepare(root)
+            return run_stage(Notebook(root), [], read_config(root), stage="init"), ["unfinished"]
+        _handle(ctx, run, ["status"])
+
+    @wiki.command("people")
+    def list_people(ctx: typer.Context):
+        """List known identities, aliases and contact addresses; no source reads."""
+        from ...wiki.files import Notebook
+        _handle(ctx, lambda root: (Notebook(root).people(), ["list", "people"]), ["list", "people"])
+
+    @wiki.command("abstract")
+    def abstract_pages(ctx: typer.Context):
+        """Run the abstraction Skill on existing pages and their evidence."""
+        from ...wiki.config import read_config
+        from ...wiki.files import Notebook
+        from ...wiki.runner import run_stage
+        _handle(ctx, lambda root: (
+            run_stage(Notebook(root), [], read_config(root), stage="abstract"), ["list"]), ["status"])
+
     @wiki.command("subscriptions")
     def inspect_subscriptions(ctx: typer.Context):
         """Show saved source choices or unsaved defaults; no body reads."""
@@ -65,7 +92,7 @@ def make_wiki_app(factory):
     @wiki.command("scan")
     def scan_sources(ctx: typer.Context,
                      what: str = typer.Argument("people", help="people or projects"),
-                     days: int = typer.Option(150, "--days", help="How far back to look"),
+                     days: int = typer.Option(150, "--days", min=1, help="How far back to look"),
                      min_mails: int = typer.Option(3, "--min-mails", help="people: fewer than this is not listed"),
                      mine: List[str] = typer.Option([], "--mine", help="An address that is yours (repeatable)")):
         """Enumerate correspondents or projects from the sources, with counts and dates. No model."""
@@ -118,7 +145,7 @@ def make_wiki_app(factory):
     def investigate_page(ctx: typer.Context,
                          record: str = typer.Argument(..., help="The page, e.g. people/emma.md"),
                          handle: List[str] = typer.Option([], "--handle", help="Every spelling, address or alias (repeatable)"),
-                         days: int = typer.Option(150, "--days", help="How far back to search")):
+                         days: int = typer.Option(150, "--days", min=1, help="How far back to search")):
         """Fill one page across sources, digesting large inputs before writing."""
         from ...wiki.files import Notebook
         from ...wiki.investigate import investigate
@@ -129,6 +156,9 @@ def make_wiki_app(factory):
             text = notebook.read(record)
             title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), record)
             known = []
+            if record.startswith("people/"):
+                person = next((p for p in notebook.people() if p["path"] == record), {})
+                known += person.get("emails", []) + person.get("aliases", [])
             for line in text.splitlines():
                 low = line.strip().lstrip("-").strip().casefold()
                 if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:

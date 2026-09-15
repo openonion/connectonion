@@ -1,8 +1,8 @@
 # 066 — The notebook is built in layers, and the Skills are two axes
 
 Status: accepted 2026-09-12. Supersedes the single-pass shape in
-[065](./065-ai-owned-wiki.md), which still describes the runner and the
-sources correctly.
+[065](./065-ai-owned-wiki.md). Execution was subsequently unified through
+COAI on 2026-09-15; see [the current contract](../cli/wiki.md).
 
 ## What went wrong with one pass over the timeline
 

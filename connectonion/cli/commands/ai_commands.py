@@ -37,6 +37,7 @@ def handle_ai(
     listen: list | None = None,
     harness: str = _harness.OURS,
     sandbox: str = _harness.DEFAULT_SANDBOX,
+    timeout: int = 600,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -77,7 +78,7 @@ def handle_ai(
     runtime_invite_code = _read_runtime_invite_code(invite_code, invite_code_file)
 
     if harness != _harness.OURS or harness not in _harness.HARNESSES:
-        _handle_delegated(harness, prompt, model, json_output, sandbox)
+        _handle_delegated(harness, prompt, model, json_output, sandbox, timeout)
         return
 
     model = model or DEFAULT_MODEL
@@ -140,7 +141,7 @@ def handle_ai(
         )
 
 
-def _handle_delegated(harness, prompt, model, json_output, sandbox) -> None:
+def _handle_delegated(harness, prompt, model, json_output, sandbox, timeout=600) -> None:
     """Hand the whole task to a native coding agent, spending none of our tokens.
 
     This is the point of the flag: reaching Codex used to cost a full turn of
@@ -160,7 +161,7 @@ def _handle_delegated(harness, prompt, model, json_output, sandbox) -> None:
     try:
         # An unset --model means "your default", not ours, which names nothing
         # in the delegate's catalogue.
-        answer = _harness.run(harness, prompt, model or "", sandbox=sandbox)
+        answer = _harness.run(harness, prompt, model or "", sandbox=sandbox, timeout=timeout)
     except ValueError as exc:  # skill missing, or its requirements are not met
         if json_output:
             _print_envelope(None, None, "error", str(exc))

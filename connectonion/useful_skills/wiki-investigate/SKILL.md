@@ -94,7 +94,7 @@ A **person's** page follows `wiki-page-person`, appended to these
 instructions by the notebook runner. If invoked directly through `co ai` and
 the template is not appended, read `../wiki-page-person/SKILL.md` relative to
 this Skill's directory before writing. Follow it exactly, including the headings and the `Contact`
-labels: the roster behind `wiki_people` finds a person's addresses and aliases
+labels: the roster behind `co wiki people` finds a person's addresses and aliases
 by those labels, so a renamed section is an invisible one and the next batch
 meets them as a stranger again.
 
@@ -119,6 +119,27 @@ For a **project**, the same discipline in its own shape:
 ## Uncertainties    what was checked and not found
 Sources
 ```
+
+## Supplement sources through their own tools
+
+The supplied material lists exactly which sources the collector searched. Check
+that coverage before claiming a complete investigation. Use the existing CLIs
+for additional searches; do not invent a second mail client or credentials flow.
+
+- Run `co email addresses` for the account's own email service. If authorized,
+  inspect `co email inbox -n 100 --offset 0`, then subsequent offsets, and
+  `co email sent -n 100 --to <address>`. Read relevant messages with
+  `co email read <id>` and `co email sent read <id>`. This service is distinct
+  from Gmail and Outlook. Its sent listing has no offset: report that coverage
+  limit; do not claim it searched all sent history.
+- Read relevant documents in the known project/source directories. PDFs, Word
+  documents, spreadsheets, slides and calendar attachments are evidence, too.
+  Follow file references from messages; do not sweep unrelated private folders.
+- For a project, inspect the recorded repo/paths and its README, issues and PRs
+  if access is available. Distinguish user intent in sessions from verified
+  repository state. A directory name alone does not establish a project.
+- Record each source as searched (with window/query), unavailable, or not
+  searched. Authentication failures and unreadable files leave gaps open.
 
 ## What the sources did not hold: look on the open web
 

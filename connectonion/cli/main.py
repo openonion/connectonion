@@ -480,6 +480,7 @@ def ai(
              "subscription with its own tools, and spends none of our tokens "
              "deciding to delegate.",
     ),
+    timeout: int = typer.Option(600, "--timeout", min=1, help="Delegated harness task timeout, in seconds"),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -502,6 +503,7 @@ def ai(
         listen=channels,
         harness=harness,
         sandbox=sandbox,
+        timeout=timeout,
     )
 
 

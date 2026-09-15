@@ -159,7 +159,7 @@ Rules that make this page work, and that a thin page always breaks:
 
 Nothing else goes on a heading line. A stage handed this shape with notes
 beside the headings wrote `## Our relationship          state and shape, not a
-log` into a real page, and `wiki_people` then found no `Our relationship` at
+log` into a real page, and `co wiki people` then found no `Our relationship` at
 all. The labels under `Contact` are read back the same way: `Email:`,
 `Phone:`, `Company:`, `Role:`, `Signing entity:`, `Handles:`, `Language:`,
 `Also known as:`. A renamed label is an invisible one, and the next batch meets

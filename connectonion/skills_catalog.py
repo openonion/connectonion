@@ -16,12 +16,12 @@ DEFAULT_LIBRARY_SKILLS = (
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
-    # The Wiki stages that can run under co ai: init drives the CLI, and
-    # investigate drives the browser for what the sources did not hold. A
-    # read-only Codex thread cannot do either, and neither is discoverable
-    # under co ai unless listed here.
+    # Wiki stages share the same CLI skill resolution for every harness.
     "wiki-init",
     "wiki-investigate",
+    "wiki-extract",
+    "wiki-maintain",
+    "wiki-abstract",
 )
 
 

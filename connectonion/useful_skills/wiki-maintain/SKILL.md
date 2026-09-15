@@ -1,15 +1,16 @@
 ---
 name: wiki-maintain
-description: Maintain an AI-owned personal Wiki from explicitly authorized source messages using the Wiki runner's scoped Markdown tools. Use for organizing, correcting, and consolidating that notebook, not for changing source apps or installing learned Skills.
+description: Maintain an AI-owned personal Wiki from explicitly authorized source messages through co ai and ordinary Markdown file operations. Use for organizing, correcting, and consolidating that notebook, not for changing source apps or installing learned Skills.
 ---
 
 # Maintain the current notebook
 
 Your output is the notebook itself, not a proposed patch or a summary for a human
-to copy. Use `wiki_search`, `wiki_list` and `wiki_read` to find relevant existing
-understanding; use `wiki_write` and `wiki_delete` to organize it directly. These
-tools act on the authorized notebook only. They do not need semantic approval or
-a review queue. Do not call `co wiki start` or `co wiki sync` recursively.
+to copy. Use `co wiki --root <root> list`, `search QUERY`, and `show PATH` to
+find and read existing pages. Write and remove Markdown files with the harness's
+ordinary file tools, inside the authorized notebook. The task supplies its root.
+No special wiki_* tools are installed. Do not call `co wiki start` or
+`co wiki sync` recursively.
 
 New messages carry their speaker, time, project, source identifier, and reference.
 A large batch reaches you already digested: one item with role `extract` whose
@@ -34,17 +35,17 @@ When evidence does not settle a conflict, retain the uncertainty.
 
 ## Work a batch in this order
 
-1. **Find before you write.** Call `wiki_people` first, every batch — it hands
+1. **Find before you write.** Run `co wiki --root <root> people` first, every batch — it hands
    back everyone the notebook already knows, with their aliases, addresses and
    one-line identity. Then for every project, organization and topic the new
-   messages mention, `wiki_search` its name and key terms; if a search is empty,
-   `wiki_list` the likely category once. The notebook is the authority on what
+   messages mention, search its name and key terms; if a search is empty,
+   list the likely category once. The notebook is the authority on what
    already exists; your memory of it is not.
 
    **Recognising a person is your judgement, not a string match.** A name in a
    coding session is whatever the user typed at the time: a first name, a
    nickname, a typo, or what dictation heard. Measured: a session said "odi"
-   and the notebook already held "Ody Zhou" — `wiki_search("odi")` finds
+   and the notebook already held "Ody Zhou" — a literal search for "odi" finds
    nothing, because literal search cannot bridge a changed letter, and a second
    page for the same person was created. Work down this order:
 
@@ -61,11 +62,11 @@ When evidence does not settle a conflict, retain the uncertainty.
      candidate. Do not merge on a guess and do not silently leave a twin: a
      marked page can be merged later by anyone, an unmarked one is found by
      nobody.
-2. **Read what you will change.** `wiki_read` every page you intend to rewrite
+2. **Read what you will change.** Read every page you intend to rewrite
    and any page that overlaps it, before writing.
 3. **One subject, one page; one fact, one place.** Rewrite the existing page
    rather than creating a sibling. If you find two pages about the same subject,
-   merge them into one and `wiki_delete` the other. When a project page, a
+   merge them into one and remove the obsolete file. When a project page, a
    decision and an agenda item all touch the same status, state it once where it
    belongs and link to it from the others instead of restating it. Filenames are
    lowercase with hyphens, named after the subject: `people/alice-chen.md`,

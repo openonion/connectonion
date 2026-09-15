@@ -1,208 +1,129 @@
-"""The native adapter exposes file tools, not a second semantic merge engine."""
+"""Wiki sends tasks to the COAI CLI; harness internals belong to COAI."""
 
+import json
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from connectonion.wiki.config import default_config, prepare
-from connectonion.wiki.files import CATEGORIES, Notebook, WikiError
-from connectonion.wiki.runner import (
-    FileTools,
-    WikiServer,
-    maintenance_instructions,
-    thread_parameters,
-    tool_specs,
-    verify_native_config,
-)
+from connectonion.wiki.files import Notebook
+from connectonion.wiki.runner import RunFailed, run_stage
+from connectonion.wiki.extract import run_extract
 
 
-def test_dynamic_file_tools_write_read_and_reorganize(tmp_path):
-    prepare(tmp_path)
-    tools = FileTools(Notebook(tmp_path), 10000)
-    assert tools.call("wiki_write", {"path": "notes/a.md", "content": "# First"})["changed"]
-    assert tools.call("wiki_read", {"path": "notes/a.md"}) == "# First"
-    tools.call("wiki_write", {"path": "decisions/a.md", "content": "# First"})
-    tools.call("wiki_delete", {"path": "notes/a.md"})
-    assert tools.call("wiki_list", {}) == ["decisions/a.md"]
-    assert tools.changed == {"notes/a.md", "decisions/a.md"}
+@pytest.fixture
+def notebook(tmp_path):
+    root = tmp_path / "wiki"
+    prepare(root)
+    nb = Notebook(root)
+    nb.write("notes/old.md", "# Existing\nKeep this.")
+    return nb
 
 
-def test_unknown_tools_and_state_writes_are_rejected(tmp_path):
-    prepare(tmp_path)
-    tools = FileTools(Notebook(tmp_path), 1000)
-    for name, args in [("exec", {"command": "anything"}),
-                       ("wiki_write", {"path": ".state/config.md", "content": "bad"})]:
-        with pytest.raises(WikiError):
-            tools.call(name, args)
+@pytest.fixture
+def delegate(monkeypatch):
+    calls = []
+
+    def run(argv, **kw):
+        calls.append((argv, kw))
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
+
+    monkeypatch.setattr("connectonion.wiki.runner.shutil.which", lambda name: "/opt/bin/co")
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", run)
+    return calls
 
 
-def test_context_reads_share_a_budget(tmp_path):
-    prepare(tmp_path)
-    Notebook(tmp_path).write("notes/a.md", "x" * 200)
-    tools = FileTools(Notebook(tmp_path), 100)
-    with pytest.raises(WikiError, match="context"):
-        tools.call("wiki_read", {"path": "notes/a.md"})
+@pytest.mark.parametrize("stage", ["maintain", "investigate", "abstract", "init"])
+@pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
+def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):
+    config = default_config()
+    config.update(runner=harness, model="default")
+    item = {"role": "page", "record": "notes/old.md", "text": "x" * 300000}
+    result = run_stage(notebook, [item], config, stage=stage)
+    argv, options = delegate[0]
+    assert argv[:5] == ["/opt/bin/co", "ai", "--json", "--harness",
+                        "ours" if harness == "coai" else harness]
+    assert argv[-1].startswith(f"/wiki-{stage} ")
+    assert len(argv[-1]) < 8000  # Large material must not go through argv.
+    assert options["cwd"] == str(notebook.root)
+    seconds = config["limits"]["timeout_seconds"]
+    assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
+    if harness != "coai":
+        assert argv[argv.index("--timeout") + 1] == str(seconds)
+    material = next((notebook.root / ".state/tasks").glob("*/material.json"))
+    assert json.loads(material.read_text()) == [item]
+    assert result["usage"] == {"input_tokens": 13}
+    assert result["changed"] == []
 
 
-def test_thread_is_ephemeral_and_has_no_execution_environment(tmp_path):
-    params = thread_parameters(str(tmp_path), default_config())
-    assert params["environments"] == []
-    assert params["sandbox"] == "read-only"
-    assert params["approvalPolicy"] == "never"
-    assert params["ephemeral"] is True
-    assert params["allowProviderModelFallback"] is False
-    assert params["model"] == "gpt-5.3-codex-spark"
-    assert params["baseInstructions"] == maintenance_instructions()
-    assert {t["name"] for t in params["dynamicTools"]} == {
-        "wiki_people", "wiki_list", "wiki_search", "wiki_read", "wiki_write", "wiki_delete"}
+def test_changes_include_deleted_and_partial_files(notebook, monkeypatch, delegate):
+    def fail(argv, **kw):
+        notebook.delete("notes/old.md")
+        notebook.write("notes/new.md", "# New\nOnly partly finished.")
+        return SimpleNamespace(returncode=1, stdout=json.dumps({
+            "outcome": "error", "error": "model unavailable",
+            "usage": {"input_tokens": 7}}), stderr="")
+
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", fail)
+    with pytest.raises(RunFailed) as caught:
+        run_stage(notebook, [], default_config())
+    assert caught.value.changed == ["notes/new.md", "notes/old.md"]
+    assert caught.value.usage == {"input_tokens": 7}
 
 
-def test_usage_notifications_replace_cumulative_counts_not_sum(tmp_path):
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000), {})
-    usage = {"inputTokens": 20, "outputTokens": 5, "cachedInputTokens": 10}
-    for _ in range(2):
-        server._handle_notification("thread/tokenUsage/updated", {
-            "threadId": "thread-1", "tokenUsage": {"total": usage}})
-    assert server.usage == {"input_tokens": 20, "output_tokens": 5, "cached_input_tokens": 10}
+def test_timeout_reports_partial_changes(notebook, monkeypatch, delegate):
+    def timeout(argv, **kw):
+        notebook.write("notes/new.md", "# Partial")
+        raise subprocess.TimeoutExpired(argv, kw["timeout"])
+
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", timeout)
+    with pytest.raises(RunFailed, match="timed out") as caught:
+        run_stage(notebook, [], default_config())
+    assert caught.value.changed == ["notes/new.md"]
 
 
-def test_unsupported_server_request_does_not_execute(tmp_path, monkeypatch):
-    prepare(tmp_path)
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000), {})
-    sent = []
-    monkeypatch.setattr(server, "_send", sent.append)
-    server._handle_server_request(1, "item/tool/call", {
-        "tool": "wiki_write", "arguments": {"path": "../escape.md", "content": "bad"}})
-    assert sent[0]["result"]["success"] is False
-    assert server.file_operation_failed is False and server.refused == 1
-    server._handle_server_request(2, "item/commandExecution/requestApproval", {})
-    assert sent[-1]["result"]["decision"] in ("decline", "cancel")
+@pytest.mark.parametrize("payload", ['[]', '42', '{}', '{"outcome":"natural","usage":"oops"}'])
+def test_invalid_envelope_fails(notebook, monkeypatch, delegate, payload):
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run",
+                        lambda *a, **kw: SimpleNamespace(returncode=0, stdout=payload, stderr=""))
+    with pytest.raises(RunFailed):
+        run_stage(notebook, [], default_config())
 
 
-def test_context_limit_does_not_report_success_after_failed_read(tmp_path, monkeypatch):
-    prepare(tmp_path)
-    Notebook(tmp_path).write("notes/long.md", "x" * 300)
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 100), {})
-    sent = []
-    monkeypatch.setattr(server, "_send", sent.append)
-    server._handle_server_request(1, "item/tool/call", {
-        "tool": "wiki_read", "arguments": {"path": "notes/long.md"}})
-    assert server.file_operation_failed is False and server.refused == 1
-    assert sent[0]["result"]["success"] is False
+def test_extract_reads_written_notes_not_status_text(monkeypatch, delegate):
+    def extract(argv, **kw):
+        directory = Path(kw["cwd"])
+        assert argv[-1].startswith("/wiki-extract ")
+        assert "--harness" in argv
+        assert json.loads((directory / "material.json").read_text())[0]["text"] == "source"
+        (directory / "notes.md").write_text("## People\n- Alice agreed [mail:1]")
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "outcome": "natural", "result": "I wrote the notes", "usage": {"input_tokens": 9}}), stderr="")
+
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", extract)
+    result = run_extract([{"text": "source", "source": "gmail:1"}], default_config(), "gmail")
+    assert result == {"notes": "## People\n- Alice agreed [mail:1]", "usage": {"input_tokens": 9}}
 
 
-def test_empty_mcp_override_is_not_assumed_to_clear_inherited_servers():
-    # Measured on 0.147.0: -c mcp_servers={} retains inherited server entries.
-    with pytest.raises(WikiError, match="MCP"):
-        verify_native_config({"mcp_servers": {"inherited": {"command": "do-not-run"}}})
+def test_extract_without_output_fails_and_preserves_usage(delegate):
+    with pytest.raises(RunFailed, match="notes") as caught:
+        run_extract([], default_config())
+    assert caught.value.usage == {"input_tokens": 13}
 
 
-def test_native_config_rejects_unknown_or_active_feature_surfaces():
-    for config in ({}, {"features": {"shell_tool": True}, "mcp_servers": {}}):
-        with pytest.raises(WikiError):
-            verify_native_config(config)
+def test_coai_cache_metadata_does_not_break_usage_accounting(notebook, monkeypatch, delegate):
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", lambda *a, **kw:
+        SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+            "outcome": "natural", "usage": {"input_tokens": 5, "cache_metadata_status": "measured"}})))
+    result = run_stage(notebook, [], default_config())
+    assert result["usage"] == {"input_tokens": 5}
 
 
-def test_refused_file_operation_is_reported_but_does_not_fail_the_run(tmp_path, monkeypatch):
-    """A refusal is the boundary working; the model is told and continues. Failing the
-    whole run here would re-feed the same hostile message every pass, forever."""
-    prepare(tmp_path)
-    server = WikiServer(["fake"], str(tmp_path), FileTools(Notebook(tmp_path), 1000), {})
-    sent = []
-    monkeypatch.setattr(server, "_send", sent.append)
-    server._handle_server_request(1, "item/tool/call", {
-        "tool": "wiki_write", "arguments": {"path": ".state/progress.json", "content": "{}"}})
-    assert sent[0]["result"]["success"] is False
-    assert server.file_operation_failed is False
-    assert server.refused == 1
-    assert server.refusals == ["wiki_write: Hidden paths and traversal are not notebook content"]
-
-
-def test_disk_failure_still_fails_the_run(tmp_path, monkeypatch):
-    prepare(tmp_path)
-    tools = FileTools(Notebook(tmp_path), 1000)
-    monkeypatch.setattr(tools.notebook, "write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk")))
-    server = WikiServer(["fake"], str(tmp_path), tools, {})
-    monkeypatch.setattr(server, "_send", lambda m: None)
-    server._handle_server_request(1, "item/tool/call", {
-        "tool": "wiki_write", "arguments": {"path": "notes/a.md", "content": "x"}})
-    assert server.file_operation_failed is True
-
-
-def test_search_tool_finds_existing_pages_without_reading_them_all(tmp_path):
-    prepare(tmp_path)
-    Notebook(tmp_path).write("people/alice-chen.md", "# Alice Chen\nPrefers email.")
-    Notebook(tmp_path).write("people/bob.md", "# Bob\n")
-    tools = FileTools(Notebook(tmp_path), 10000)
-    found = tools.call("wiki_search", {"query": "alice"})
-    assert [hit["record"] for hit in found] == ["people/alice-chen.md"]
-    assert {t["name"] for t in thread_parameters(str(tmp_path), default_config())["dynamicTools"]} >= {"wiki_search"}
-
-
-def test_category_arguments_are_an_enum_the_model_cannot_get_wrong():
-    """Spark passed 'skills/candidates' and 'people/' as categories and was refused each time."""
-    specs = {spec["name"]: spec for spec in tool_specs()}
-    for name in ("wiki_list", "wiki_search"):
-        assert specs[name]["inputSchema"]["properties"]["category"]["enum"] == list(CATEGORIES)
-
-
-def test_kept_features_are_requested_on_and_forbidden_ones_off():
-    """code_mode_host bridges tools to non-codex models; hooks/plugins/apps must stay off."""
-    import shutil
-
-    from connectonion.wiki.runner import KEPT_FEATURES, native_command
-    if not shutil.which("codex"):
-        pytest.skip("needs the codex binary to list features")
-    command = " ".join(native_command({"PATH": __import__("os").environ["PATH"]}))
-    for kept in KEPT_FEATURES:
-        assert f"{kept}=false" not in command
-    for forbidden in ("hooks", "plugins", "apps", "multi_agent"):
-        assert f"{forbidden}=false" in command
-
-
-def test_shell_is_on_but_the_sandbox_is_read_only_and_writes_still_go_through_wiki_tools():
-    """The user chose shell for retrieval. What keeps it safe is the sandbox (read-only, no
-    network), the notebook tools as the only write path, and the secret guard on pages."""
-    from connectonion.wiki.runner import KEPT_FEATURES
-    assert {"shell_tool", "unified_exec", "code_mode_host"} <= KEPT_FEATURES
-    assert "hooks" not in KEPT_FEATURES and "plugins" not in KEPT_FEATURES and "apps" not in KEPT_FEATURES
-    params = thread_parameters("/tmp/x", default_config())
-    assert params["sandbox"] == "read-only" and params["approvalPolicy"] == "never"
-    verify_native_config({"mcp_servers": {}, "features": {
-        "shell_tool": True, "unified_exec": True, "hooks": False, "plugins": False, "apps": False,
-        "multi_agent": False, "view_image": False, "code_mode_host": True}})
-    with pytest.raises(WikiError):
-        verify_native_config({"mcp_servers": {}, "features": {
-            "shell_tool": True, "unified_exec": True, "hooks": True, "plugins": False, "apps": False,
-            "multi_agent": False, "view_image": False, "code_mode_host": True}})
-
-
-def test_login_is_proved_by_the_stored_credential_not_by_account_read(tmp_path, monkeypatch):
-    """Codex 0.147.0 answers `account/read` with `{"account": null, "requiresOpenaiAuth": true}`
-    for a login that works: measured 2026-09-12, when the same login's rate-limit meters
-    read fine and a full maintenance turn completed and wrote its page. Gating the run on
-    that field stopped every batch with "run codex login", which was not the problem -- and
-    it stopped it *after* the extraction pass had already been paid for."""
-    import json
-
-    from connectonion.wiki.runner import verify_login
-    home = tmp_path / ".codex"
-    home.mkdir()
-    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "OPENAI_API_KEY": None,
-                                                "tokens": {"access_token": "x", "refresh_token": "y"}}))
-    monkeypatch.setenv("CODEX_HOME", str(home))
-    assert verify_login() == "chatgpt"
-
-
-def test_api_key_billing_is_refused_before_any_model_turn(tmp_path, monkeypatch):
-    """The wiki is for a subscription, not a metered key: a batch is millions of tokens."""
-    import json
-
-    from connectonion.wiki.runner import preflight, verify_login
-    home = tmp_path / ".codex"
-    home.mkdir()
-    (home / "auth.json").write_text(json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-live"}))
-    monkeypatch.setenv("CODEX_HOME", str(home))
-    with pytest.raises(WikiError, match="API billing"):
-        verify_login()
-    with pytest.raises(WikiError, match="API billing"):  # preflight is what runs before a paid pass
-        preflight()
+def test_skill_composition_keeps_source_and_page_definition(notebook, delegate):
+    run_stage(notebook, [], default_config(), kind="codex")
+    text = next((notebook.root / ".state/tasks").glob("*/instructions.md")).read_text()
+    assert "wiki-source-codex" in text and "# A person's page" in text
+    assert "wiki_write" not in text and "wiki_people" not in text

@@ -33,9 +33,9 @@ def test_inspection_before_start_does_not_create_files(tmp_path, args):
 def test_help_lists_only_implemented_commands_and_no_fake_start(tmp_path):
     result = invoke(tmp_path, "--help")
     assert result.exit_code == 0
-    for name in ("status", "config", "subscriptions", "list", "show", "search", "logs", "doctor"):
+    for name in ("status", "config", "subscriptions", "list", "show", "search", "logs", "doctor", "init", "people", "abstract"):
         assert name in result.output
-    for name in ("approve", "reject", "template", "init"):
+    for name in ("approve", "reject", "template"):
         assert name not in result.output.split("Commands")[1]
 
 
@@ -179,7 +179,7 @@ def lifecycle(tmp_path, monkeypatch):
     def fake_codex(notebook, items, config):
         calls.append(items)
         return {"usage": None, "changed": []}
-    monkeypatch.setattr("connectonion.wiki.runner.run_codex", fake_codex)
+    monkeypatch.setattr("connectonion.wiki.runner.run_stage", fake_codex)
     return tmp_path / "wiki", sessions, calls
 
 
@@ -262,3 +262,30 @@ def test_usage_command_shows_where_tokens_went(tmp_path):
     assert "Next:" in result.output
     empty = invoke(tmp_path / "nothing", "usage")
     assert empty.exit_code == 0 and "0" in empty.output
+
+
+@pytest.mark.parametrize("stage", ["init", "abstract"])
+def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeypatch, stage):
+    calls = []
+
+    def run(notebook, items, config, **kw):
+        calls.append((notebook.root, items, kw["stage"]))
+        return {"changed": [], "usage": None, "report": "done"}
+
+    monkeypatch.setattr("connectonion.wiki.runner.run_stage", run)
+    result = invoke(tmp_path, "--json", stage)
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert output["ok"] and output["next"].startswith("co wiki")
+    assert calls == [(tmp_path, [], stage)]
+
+
+def test_people_roster_returns_identity_and_existing_path(tmp_path):
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person("people/ody.md", "Ody Zhou", ["odi"], email="ody@example.org")
+    result = invoke(tmp_path, "--json", "people")
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert "ody@example.org" in str(output["data"])
+    assert "people/ody.md" in str(output["data"]) and "odi" in str(output["data"])
+    assert output["next"].endswith("list people")
