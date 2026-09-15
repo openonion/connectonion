@@ -34,6 +34,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from ...environment import display_path, selected_env_file
 from ...env_file import upsert_env
@@ -50,36 +51,74 @@ APP_PRESET = {
     "desc": "Receives messages for a ConnectOnion agent and replies as this bot.",
 }
 
-# Feishu and Lark are two products with two account systems, and the SDK starts
-# on Feishu whichever one you asked for. `co auth lark` passes this so the link
-# it prints is the one the person expected; the SDK still switches the other way
-# by itself when a Feishu tenant scans a Lark link.
-LARK_ACCOUNTS = "https://accounts.larksuite.com"
+# Where a person actually approves.
+#
+# The SDK hands us the server's `verification_uri_complete`, which is
+# `<open-host>/page/launcher?user_code=…`. That page is the wrong one: it reads
+# the code, deletes it from the address bar, calls its own ack endpoint, and on
+# any failure renders **"Link expired"** — for a code the registration endpoint
+# reports as `authorization_pending` in the same second. Measured twice, on
+# 2026-09-14 and again on 2026-09-15.
+#
+# `lark-cli` never sees that problem because it never uses that URL. It ignores
+# `verification_uri_complete` and builds its own (MIT, larksuite/cli,
+# internal/auth/app_registration.go):
+#
+#     verificationUriComplete := fmt.Sprintf("%s/page/cli?user_code=%s", ep.Open, userCode)
+#
+# `/page/cli` is the page that serves this flow. Pointed there, the same code
+# that had just rendered "Link expired" produced the creation form, an
+# application, and its secret — verified end to end on the same tenant.
+#
+# So the difference was never the tenant, the region, or the code's lifetime.
+# It was one path segment.
+OPEN_HOSTS = {
+    "lark": "https://open.larksuite.com",
+    "feishu": "https://open.feishu.cn",
+}
+CLI_PAGE = "/page/cli"
 
-# The launcher page renders "Link expired" for a code the server still reports
-# as pending. Measured 2026-09-14 on a JP data-residency tenant: a code issued
-# seconds earlier, opened once, and the page dropped user_code from the URL
-# entirely — while the poll endpoint answered authorization_pending in the same
-# second. Four codes were spent before anyone doubted the word on the screen.
-#
-# Nothing here can prevent it. The verdict is rendered client-side after the
-# page resolves the browser's tenant, so a server-side fetch returns 200 with
-# the code intact and predicts nothing (checked). And `--app-id` reuse goes
-# through the same launcher and fails identically (checked) — which is why it
-# is NOT offered below as a way around this.
-#
-# So the honest thing is to say it before it happens, and to say the one number
-# that settles it: the server's own TTL.
-EXPIRED_MEANS_SOMETHING_ELSE = (
-    'If that page says "Link expired" straight away, the code is almost\n'
-    "certainly still alive and this flow cannot create an application for your\n"
-    "tenant — some data-residency tenants are served a launcher that drops the\n"
-    "code. Reusing an existing application with --app-id goes through the same\n"
-    "page and fails the same way.\n"
-    "  Create the application in the Lark Developer Console instead, then put\n"
-    "  its id and secret in the env file with:  co env set\n"
-    "  Details and what was measured:  https://github.com/openonion/connectonion/issues/1537"
-)
+# lark-cli sends these three, and the launcher bundle reads `from` to pick its
+# copy ("Re-run the CLI command" rather than a generic expiry). Ours says
+# connectonion so the platform's own analytics do not attribute our traffic to
+# their CLI.
+CLI_QUERY_MARKS = {"from": "cli", "lpv": "connectonion", "ocv": "connectonion"}
+
+
+def cli_page_url(url: str, brand: str) -> str:
+    """The SDK's launcher link, pointed at the page that serves this flow.
+
+    Host and path are replaced; the query is kept. The query is not decoration —
+    it carries `user_code`, and the app preset that pre-fills the creation form's
+    name and description. Rebuilding the URL from scratch, the way lark-cli does,
+    would drop the preset, so this rewrites instead of reconstructing.
+
+    An unparseable or empty URL is returned untouched: printing a link that at
+    least matches what the SDK is polling for beats printing nothing.
+    """
+    if not url:
+        return url
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    if not parsed.scheme or not parsed.netloc:
+        return url
+
+    host = OPEN_HOSTS.get(brand, OPEN_HOSTS["feishu"])
+    target = urlparse(host)
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.update(CLI_QUERY_MARKS)
+
+    return urlunparse((
+        target.scheme,
+        target.netloc,
+        CLI_PAGE,
+        parsed.params,
+        urlencode(query),
+        parsed.fragment,
+    ))
 
 
 def _link_life(expire_in) -> str:
@@ -193,26 +232,28 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
     print()
 
     def show(info) -> None:
-        url = info.get("url", "")
+        url = cli_page_url(info.get("url", ""), brand)
         print(_qr(url))
         print(url)
         print()
         print(_link_life(info.get("expire_in")))
         print()
-        print(EXPIRED_MEANS_SOMETHING_ELSE)
-        print()
         print("Waiting for approval. Ctrl-C to stop.")
 
     try:
         options = {"source": "connectonion"}
-        if brand == "lark":
-            # `co auth lark` has to BEGIN on Lark. The SDK defaults to the
-            # Feishu accounts domain and only moves to Lark after polling
-            # notices the scanner's tenant is one — so a Lark user asking for
-            # Lark was handed an open.feishu.cn link and had to trust that it
-            # would sort itself out. It does, and it still reads like the wrong
-            # product.
-            options["domain"] = LARK_ACCOUNTS
+        # No `domain` override. The registration protocol bootstraps on the
+        # Feishu accounts host whichever brand you asked for, and lark-cli
+        # leaves it there on purpose — `registrationBootstrapBrand =
+        # core.BrandFeishu` — because brand selects the *verification host*, not
+        # where the protocol begins. Polling moves to the scanner's tenant by
+        # itself. This is the path verified end to end on a Lark tenant on
+        # 2026-09-15: begin on accounts.feishu.cn, approve on
+        # open.larksuite.com/page/cli, credentials returned by the poll.
+        #
+        # 1.8.5b8 set this to the Lark accounts host so a Lark user would not be
+        # handed an open.feishu.cn link. That aim is right and is now met by
+        # cli_page_url(), which decides the host the person actually sees.
         if app_id is None:
             # A preset only pre-fills the creation page, so it is meaningless
             # — and confusing — when the application already exists and has a
