@@ -10,19 +10,40 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release
 
-Stable **1.8.4** brings explicit global configuration, `co env`, reviewed Gmail
-operations, verified Synology sharing and Outlook calendar commands. See
-[1.8.4 release notes](releases/1.8.4.md) for migration and acceptance limits.
+Stable **1.8.5** turns a Feishu or Lark bot into a directory of files. One
+process holds the connection and writes every message into
+`~/.co/inbox/<provider>/`; anything that can read a file can answer it. Taking a
+message is an atomic rename, so two consumers never get the same one, and a
+message sent while the listener was down is read back on reconnect and queued
+exactly once — the property that was this release's gate, closed on a live
+tenant on 15 September.
+
+The command line also names what to run next, and that contract is now audited
+rather than asserted: one next step per refusal instead of two, a typo ending at
+a runnable command rather than `--help`, and `co commands` listing all 199. And
+`co gcalendar` invitations reach their attendees — `sendUpdates` was never
+passed, so an event created with `--attendees` had been notifying nobody.
+
+See [1.8.5 release notes](releases/1.8.5.md) for the known limits, and
+[the live acceptance record](acceptance/1.8.5/lark-live-2026-09-15.md) for what
+was measured.
 
 ```bash
-python -m pip install --upgrade connectonion==1.8.4
+python -m pip install --upgrade connectonion==1.8.5
 co --version
-co env
+co lark check
 ```
 
 ## Current preview
 
-Beta **1.8.5b11** makes the command line name what to run next, and makes
+**None.** 1.8.5 is stable and there is no open preview line; the next feature
+work enters through a 1.8.6 preview. `pip install connectonion` gives you 1.8.5,
+and `--pre` currently resolves to the same thing.
+
+<details>
+<summary>The preview line that became 1.8.5</summary>
+
+Beta **1.8.5b11** made the command line name what to run next, and made
 calendar invitations actually arrive. `co gcalendar` never passed Google's
 `sendUpdates`, so an event with attendees invited nobody — and `Event created`
 read the same whether three people were invited or none, so the silent failure
@@ -121,17 +142,13 @@ It carries everything from `b2`: `co browser config`, the paid engine called
 `wtf`, `consume`, and `co auth feishu --app-id`.
 
 The no-loss-across-a-reconnect gate passed on 15 September, against a real
-group. It stays a beta because a stable `X.Y.0` is cut deliberately, not as a
-consequence of a green checklist — the release notes list what is still worth
-deciding before putting it on a machine other people use.
+group — the last thing between this line and stable.
 See [1.8.5b11 release notes](releases/1.8.5b11.md).
 
-```bash
-python -m pip install --pre connectonion==1.8.5b11
-co --version
-```
+</details>
 
-The 1.8.5a1 through 1.8.5b10 previews are superseded; 1.8.4a1 and 1.8.4a2
+All eleven 1.8.5 previews (a1 through b11) are superseded by stable 1.8.5;
+1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.
