@@ -38,6 +38,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from ...environment import display_path, selected_env_file
 from ...env_file import upsert_env
+from .command_tips import print_tip
 
 SDK_MISSING = "The Feishu SDK is not installed. Run: pip install lark-oapi"
 
@@ -212,8 +213,13 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
         # Checked before the scan: a typo here sends someone to a page that
         # cannot work, and they find out after waiting for a QR to expire.
         if not _APP_ID.match(app_id):
-            print(f"{app_id!r} is not an application id. They look like cli_a1b2c3d4e5f6g7h8 "
-                  "and are shown by `co auth feishu` when lark-cli has any configured.")
+            # Naming the command to run, not only the shape of the thing that
+            # was wrong: the caller is here because they do not have a valid id
+            # to hand, and `co auth <brand>` with no --app-id both lists the ids
+            # lark-cli knows and creates one when there are none.
+            product = "lark" if brand == "lark" else "feishu"
+            print(f"{app_id!r} is not an application id. They look like cli_a1b2c3d4e5f6g7h8.")
+            print_tip(f"Next: co auth {product}")
             raise SystemExit(2)
     try:
         register_app = _register_app()

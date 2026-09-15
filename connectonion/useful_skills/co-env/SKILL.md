@@ -18,8 +18,11 @@ other human-output commands end with one `Next:` line. JSON output contains its 
 | The file's path, for a script | `co env path` |
 | One value as a command would see it (whole provider record, otherwise process then file) | `co env get KEY` |
 | Save a setting, creating the file if needed | `co env set KEY VALUE` |
+| Save one that should not sit in the file in plain text | `co env set KEY VALUE --secret` |
+| Change which key opens a stored secret | `co env rotate KEY` |
 | Remove a setting | `co env unset KEY` |
 | Connect a Google / Microsoft account | `co auth google` / `co auth microsoft` — not `co env set` |
+| Use a Feishu/Lark app id or secret copied from the Developer Console | `co env set LARK_APP_SECRET VALUE --from-console` |
 | Disconnect one from this file | `co env unset GOOGLE_EMAIL` (removes the whole record) |
 | Do any of this on a project file | `co --env-file /abs/path/.env env …` (selector **before** `env`) |
 
@@ -48,13 +51,33 @@ co --env-file ./project.env env set MODEL co/gemini-3.7-flash
   in an editor.
 - **Nothing here selects a file.** `co env` shows the file the invocation
   already chose. To switch, put `--env-file` before the command.
+- **`--secret` changes where a value rests, not what `get` returns.** The value
+  is encrypted at `.co/keys/secrets/<name>.enc`; `co env get KEY` still prints it
+  plainly, because it is the substitution form (`export K=$(co env get K)`) and a
+  redacted answer would be a wrong one. `co env show` is the browsing command and
+  redacts by default.
+- **The encrypted store is consulted last** — after the process environment and
+  the file — so storing a name that is already set elsewhere changes nothing
+  about what commands see. `set --secret` says so when your shell exports it.
+- **A stored secret is unlocked by this agent's own key**, derived from
+  `.co/keys/agent.key`. Nothing is written to hold it, so there is nothing extra
+  to back up; your recovery phrase reaches it on another machine. Deleting
+  `.co/keys/recovery.txt` does not orphan it. Deleting `agent.key` does.
+- **`rotate` re-encrypts at the next index and keeps the value.** What changes is
+  which key opens it; anything holding the previous ciphertext can no longer read
+  it. It is not a way to change the value — use `set` for that.
+- **Feishu/Lark app credentials are refused by default** and named
+  `co auth feishu` / `co auth lark`, because a hand-typed app secret has no source
+  this command can check. `--from-console` is the way in when you already keep the
+  application in the Developer Console. It is accepted on those names only;
+  anywhere else it is an error, not a no-op.
 
 ## Exit codes
 
 | exit | provoked by | next command (printed) |
 | --- | --- | --- |
 | 0 | done; or the global file does not exist yet | `co env set <KEY> <value>` · `co env get KEY` · `co init` |
-| 1 | `get`/`unset` of a setting that is not there | `co env set KEY <value>` · `co env` |
-| 2 | bad name · `AGENT_CONFIG_PATH` · provider record field · missing `--env-file` target · file does not parse | `co env set <KEY> <value>` · shell `export …` · `co auth google|microsoft` · `co --env-file … env set …` · `co env` |
+| 1 | `get`/`unset` of a setting that is not there · `rotate` of a name with nothing stored · a stored secret that will not open | `co env set KEY <value>` · `co env set KEY <value> --secret` · `co env` |
+| 2 | bad name · `AGENT_CONFIG_PATH` · provider record field · Feishu/Lark app credential without `--from-console` · `--from-console` on any other name · missing `--env-file` target · file does not parse | `co env set <KEY> <value>` · shell `export …` · `co auth google|microsoft` · `co auth feishu|lark` · `co env set KEY <value> --from-console` · `co --env-file … env set …` · `co env` |
 
 `co env --json` and `co env show --json` return redacted provenance. JSON values are always hidden. Default human output also hides every value, including custom names and credential-bearing URLs; only `show --reveal` displays them. `get` explicitly returns one effective value and respects whole Google/Microsoft records: it never fills a missing process field from another account in the file.

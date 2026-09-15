@@ -88,7 +88,15 @@ class _OneSuggestion(typer.core.TyperGroup):
         try:
             return super().main(*args, **kwargs)
         except SystemExit as exiting:
-            if exiting.code == 2:
+            from .commands.command_tips import next_step_already_named
+
+            # Exit 2 is both Click's usage error and what a handler raises when
+            # it refuses on purpose. Only the first kind arrives here having told
+            # the caller nothing; the second has already named a precise command,
+            # and adding a generic one on top makes two tips — a fork the agent
+            # resolves by guessing, and it reads the worse one first because
+            # stderr is what most callers merge in front.
+            if exiting.code == 2 and not next_step_already_named():
                 import sys
 
                 # `co`, not argv[0]: the root's name is whatever invoked it,

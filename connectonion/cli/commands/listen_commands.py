@@ -20,6 +20,7 @@ from typing import List, Optional
 from rich.console import Console
 
 from ...inbox import Inbox, provider
+from .command_tips import print_tip
 
 console = Console()
 errors = Console(stderr=True)
@@ -199,9 +200,17 @@ def handle_check(name: str) -> None:
     inbox = Inbox(name)
     recovery_error = inbox.root / "recovery-error.txt"
     if recovery_error.exists():
-        errors.print("History recovery is incomplete. Check bot history permissions and network; "
-                     f"the listener retains its checkpoint and retries. Details: {recovery_error}",
+        # The reason, not a category. "Check bot history permissions and
+        # network" named no command and covered two unrelated causes, so a
+        # reader could not tell a missing scope from a dropped connection
+        # without opening the file themselves. The file's first line is the
+        # platform's own sentence — print it.
+        reason = recovery_error.read_text(encoding="utf-8").strip().splitlines()
+        errors.print(f"History recovery is incomplete: {reason[0] if reason else 'no reason recorded'}",
                      style="red")
+        errors.print(f"The listener retains its checkpoint and retries. Details: {recovery_error}",
+                     style="red")
+        print_tip(f"Next: co {name} log")
         sys.exit(1)
     pid = inbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
