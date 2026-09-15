@@ -87,43 +87,32 @@ def test_an_absent_lifetime_says_so_instead_of_guessing(rig, monkeypatch, capsys
     assert "600" not in out
 
 
-def test_it_warns_that_expired_can_mean_the_tenant_not_the_clock(rig, monkeypatch, capsys):
-    run(monkeypatch)
+def test_nothing_tells_the_person_this_cannot_work(rig, monkeypatch, capsys):
+    """1.8.5b9 printed a warning saying this flow could not create an
+    application on some data-residency tenants, and sent people to the Developer
+    Console instead.
 
-    out = capsys.readouterr().out
-    assert "Link expired" in out
-    assert "still alive" in out
-    assert "data-residency" in out
-
-
-def test_it_does_not_offer_app_id_as_the_way_around_this(rig, monkeypatch, capsys):
-    """--app-id uses the same launcher and fails the same way (checked).
-
-    A remedy that cannot work is worse than none: it sends the reader in a
-    circle with the confidence of an instruction.
+    That was false. The failure was the launcher page, not the tenant: pointed
+    at /page/cli, the same tenant created an application and returned its
+    secret. Advice built on a wrong cause sends people to do unnecessary work
+    and to distrust a command that works — the costly kind of wrong message.
     """
     run(monkeypatch)
 
     out = capsys.readouterr().out
-    warning = out[out.index("Link expired"):]
-    assert "co auth lark --app-id" not in warning
-    assert "co auth feishu --app-id" not in warning
-    assert "fails the same way" in warning
+    assert "Link expired" not in out
+    assert "data-residency" not in out
+    assert "Developer Console" not in out
+    assert "issues/1537" not in out
 
 
-def test_the_warning_names_where_the_evidence_is(rig, monkeypatch, capsys):
-    run(monkeypatch)
-
-    assert "issues/1537" in capsys.readouterr().out
-
-
-def test_the_link_itself_is_still_printed_first(rig, monkeypatch, capsys):
-    """A warning must not bury the thing the person came for."""
-    out = capsys.readouterr().out
+def test_the_link_is_printed_before_the_wait(rig, monkeypatch, capsys):
+    """Nothing may bury the thing the person came for."""
+    capsys.readouterr()
     run(monkeypatch)
     out = capsys.readouterr().out
 
-    assert out.index("page/launcher?user_code=ABCD-1234") < out.index("Link expired")
+    assert out.index("page/cli?user_code=ABCD-1234") < out.index("Waiting for approval")
 
 
 @pytest.mark.parametrize(

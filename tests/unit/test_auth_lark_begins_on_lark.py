@@ -51,13 +51,24 @@ def lark_cli_config(apps):
     )
 
 
-def test_lark_starts_on_the_lark_accounts_domain(rig, monkeypatch):
+def test_lark_leaves_the_protocol_on_its_bootstrap_host(rig, monkeypatch):
+    """1.8.5b8 pinned this to the Lark accounts host. That was the wrong lever.
+
+    The registration protocol bootstraps on Feishu whichever brand is asked for,
+    and lark-cli leaves it there deliberately — `registrationBootstrapBrand =
+    core.BrandFeishu` — because brand chooses the *verification host*, not where
+    the protocol begins. Polling follows the scanner's tenant by itself.
+
+    What b8 was actually trying to fix — a Lark user handed an open.feishu.cn
+    link — is now fixed where it belongs, in the link itself. See
+    test_the_link_a_lark_user_is_shown_is_a_lark_link below.
+    """
     register = FakeRegistration()
     monkeypatch.setattr(feishu_auth, "_register_app", lambda: register)
 
     feishu_auth.handle_feishu_auth(brand="lark")
 
-    assert register.kwargs.get("domain") == feishu_auth.LARK_ACCOUNTS
+    assert "domain" not in register.kwargs
 
 
 def test_feishu_leaves_the_sdk_on_its_feishu_default(rig, monkeypatch):
