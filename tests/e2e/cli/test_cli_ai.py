@@ -24,7 +24,10 @@ def test_ai_forwards_full_access_options():
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model=DEFAULT_MODEL,
+        # No --model: the sentinel, so the harness's own default applies. Our
+        # own default cannot stand in for it — typing it is not the same as
+        # omitting it, and a delegated harness has a different default.
+        model=None,
         max_iterations=100,
         full_access=True,
         full_access_turns=4,
@@ -35,6 +38,8 @@ def test_ai_forwards_full_access_options():
         invite_code_file=None,
         # No flag: the channels in .co/host.yaml decide, which is the normal case.
         listen=None,
+        harness="ours",
+        sandbox="workspace-write",
     )
 
 
@@ -49,7 +54,10 @@ def test_ai_forwards_json_and_resume_options():
     handler.assert_called_once_with(
         prompt="task",
         port=8000,
-        model=DEFAULT_MODEL,
+        # No --model: the sentinel, so the harness's own default applies. Our
+        # own default cannot stand in for it — typing it is not the same as
+        # omitting it, and a delegated harness has a different default.
+        model=None,
         max_iterations=100,
         full_access=False,
         full_access_turns=100,
@@ -60,6 +68,8 @@ def test_ai_forwards_json_and_resume_options():
         invite_code_file=None,
         # No flag: the channels in .co/host.yaml decide, which is the normal case.
         listen=None,
+        harness="ours",
+        sandbox="workspace-write",
     )
 
 
