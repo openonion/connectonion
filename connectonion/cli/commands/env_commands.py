@@ -188,13 +188,89 @@ def handle_env_get(key: str) -> None:
     if key in values:
         print(values[key])
         return
-    _fail(f"{key} is not set in the process environment or {display_path(path)}. "
-          f"Next: co env set {key} <value>", 1)
+
+    # The encrypted store is last, after the process and the file, so adding it
+    # cannot change what any existing setup resolves to.
+    from ...environment import global_config_dir
+    from ...secret_store import SecretStoreError, get as get_secret
+
+    try:
+        print(get_secret(global_config_dir(), key))
+        return
+    except SecretStoreError as error:
+        # Only surface this when something is actually stored under the name;
+        # otherwise "not set" is the honest answer and the agent key is beside
+        # the point.
+        from ...secret_store import stored_names
+        if key.strip().lower() in stored_names(global_config_dir()):
+            _fail(str(error), 1)
+
+    _fail(f"{key} is not set in the process environment, {display_path(path)}, "
+          f"or the encrypted store. Next: co env set {key} <value>", 1)
 
 
-def handle_env_set(key: str, value: str, *, from_console: bool = False) -> None:
+def handle_env_rotate(key: str) -> None:
+    """Re-encrypt one stored secret under the next derived key.
+
+    The value never changes — what changes is which key opens it. The old
+    ciphertext stops being derivable, which is the whole reason `slip13_path`
+    carries an index.
+    """
+    _valid_name(key)
+    from ...environment import global_config_dir
+    from ...secret_store import SecretStoreError, rotate
+
+    try:
+        index = rotate(global_config_dir(), key)
+    except SecretStoreError as error:
+        _fail(f"{error}\nNext: co env set {key} <value> --secret", 1)
+
+    print(f"✓ {key} re-encrypted at index {index}")
+    print("  Anything holding the previous ciphertext can no longer open it.")
+    print_tip(f"Next: co env get {key}")
+
+
+def _set_encrypted(key: str, value: str, *, from_console: bool) -> None:
+    """Store one value encrypted under a key derived from this agent's own key.
+
+    The same rule as the plaintext path applies first: an app credential still
+    has to say where it came from. Encrypting it does not make a value pasted
+    from the wrong place any more checkable.
+    """
+    from ...environment import global_config_dir
+    from ...secret_store import MissingAgentKey, put
+
+    app_provider = _APP_CREDENTIALS.get(key)
+    if app_provider is not None and not from_console:
+        auth = _PROVIDER_AUTH[app_provider]
+        _fail(f"{key} is written by {auth}. Encrypting a hand-typed one does not make "
+              f"its source checkable, so --secret does not waive that.\n"
+              f"  co env set {key} <value> --from-console --secret\n"
+              f"Next: {auth}", 2)
+
+    co_dir = global_config_dir()
+    try:
+        path = put(co_dir, key, value)
+    except MissingAgentKey as error:
+        _fail(f"{error}", 2)
+
+    print(f"✓ {key} encrypted to {display_path(path)}")
+    print("  The key is derived from this agent's own key and is not stored "
+          "anywhere; your recovery phrase reaches it on any machine.")
+    inherited = process_environment()
+    if key in inherited:
+        print(f"! Your shell exports {key}, and process values win over stored ones. "
+              f"Commands in this shell keep the shell's value until you run: unset {key}")
+    print_tip(f"Next: co env get {key}")
+
+
+def handle_env_set(key: str, value: str, *, from_console: bool = False,
+                   secret: bool = False) -> None:
     """Save one setting to the selected file, preserving everything else in it."""
     _valid_name(key)
+    if secret:
+        _set_encrypted(key, value, from_console=from_console)
+        return
     if key == "AGENT_CONFIG_PATH":
         _fail("AGENT_CONFIG_PATH chooses which global directory is read, so a file inside it "
               "cannot set it. Export it in your shell instead:\n"
