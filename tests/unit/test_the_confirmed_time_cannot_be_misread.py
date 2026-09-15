@@ -79,4 +79,38 @@ def test_the_confirmation_carries_the_label(cal, monkeypatch):
     out = cal.create_meet("Intro", "2026-09-15T16:30:00+10:00",
                           "2026-09-15T17:15:00+10:00", attendees="g@example.com")
 
-    assert "UTC" in out, f"a bare time is what made this unreadable:\n{out}"
+    # Not "UTC": this input said which zone it meant, so the confirmation says
+    # it back. A bare `06:30 AM` is what made the line unreadable, and
+    # `06:30 AM UTC` was only half the fix — see TestItConfirmsTheTimeYouTyped.
+    assert "04:30 PM +10:00" in out, f"should echo the time as typed:\n{out}"
+    assert "06:30" not in out
+
+
+class TestItConfirmsTheTimeYouTyped:
+    """#1547 asked for "the local time with its offset, or the original string".
+
+    Labelling the converted value UTC made the line unambiguous, which was the
+    defect. It still answered "16:30 in Sydney?" with "06:30 AM UTC" — a
+    subtraction the reader has to perform to check their own meeting. A
+    confirmation you have to do arithmetic on is only half a confirmation.
+    """
+
+    def test_an_offset_input_is_confirmed_in_that_offset(self, cal):
+        shown = cal._confirmed_time("2026-09-15T16:30:00+10:00",
+                                    cal._parse_time("2026-09-15T16:30:00+10:00"))
+
+        assert "04:30 PM +10:00" in shown
+        assert "06:30" not in shown
+
+    def test_a_naive_input_falls_back_to_the_stored_value(self, cal):
+        """Nothing to preserve: naive means UTC, and the label says so."""
+        shown = cal._confirmed_time("2026-09-15 16:30",
+                                    cal._parse_time("2026-09-15 16:30"))
+
+        assert "04:30 PM UTC" in shown
+
+    def test_an_unparseable_input_still_confirms_something(self, cal):
+        """The event was created; refusing to describe it would be worse."""
+        shown = cal._confirmed_time("whenever", cal._parse_time("2026-09-15 16:30"))
+
+        assert "04:30 PM UTC" in shown

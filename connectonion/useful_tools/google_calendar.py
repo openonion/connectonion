@@ -154,6 +154,27 @@ class GoogleCalendar:
         return refresh_credentials(self._credentials, backend=backend_url(),
                                    api_key=api_key)
 
+    def _confirmed_time(self, typed: str, converted: datetime) -> str:
+        """The time as the caller wrote it, when they said which zone they meant.
+
+        `_parse_time` converts to UTC and drops the offset, so confirming the
+        converted value answered "16:30 in Sydney?" with "06:30 AM UTC". True,
+        unambiguous since the zone is labelled — and still a subtraction the
+        reader has to do to check their own meeting.
+
+        So when the input carried an offset, confirm in that offset: the line
+        can then be compared with what was typed, character for character,
+        which is the whole job of a confirmation. A naive input has no zone to
+        preserve and falls back to the converted value, labelled UTC.
+        """
+        try:
+            original = datetime.fromisoformat(str(typed).replace('Z', '+00:00'))
+        except (TypeError, ValueError):
+            return self._format_datetime(converted.isoformat())
+        if original.tzinfo is None:
+            return self._format_datetime(converted.isoformat())
+        return self._format_datetime(original.isoformat())
+
     def _format_datetime(self, dt_str: str) -> str:
         """A readable time that says which zone it is in.
 
@@ -366,7 +387,7 @@ class GoogleCalendar:
         ).execute()
 
         return (f"Event created: {title}\n"
-                f"Start: {self._format_datetime(start_dt.isoformat())}\n"
+                f"Start: {self._confirmed_time(start_time, start_dt)}\n"
                 f"{_invited_line(invited)}"
                 f"Event ID: {created_event['id']}\n"
                 f"Link: {created_event.get('htmlLink', '')}")
@@ -425,7 +446,7 @@ class GoogleCalendar:
         meet_link = created_event.get('hangoutLink', 'No Meet link generated')
 
         return (f"Meeting created: {title}\n"
-                f"Start: {self._format_datetime(start_dt.isoformat())}\n"
+                f"Start: {self._confirmed_time(start_time, start_dt)}\n"
                 f"Meet link: {meet_link}\n"
                 f"{_invited_line([a['email'] for a in attendee_list])}"
                 f"Event ID: {created_event['id']}")
