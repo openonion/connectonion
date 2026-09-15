@@ -53,6 +53,35 @@ from ..credentials import require_ambient_api_key
 from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
 
+def _addresses(attendees) -> list:
+    """The comma-separated list as clean addresses, empty when there are none."""
+    if not attendees:
+        return []
+    return [email.strip() for email in attendees.split(',') if email.strip()]
+
+
+def _send_updates(invited) -> str:
+    """Google defaults this to 'none', which is why invitations reached nobody.
+
+    'all' whenever there is somebody to tell. 'none' for a solo event, because
+    asking Google to mail an empty list is a pointless round trip and it makes
+    "who was notified" unanswerable by always being "everyone".
+    """
+    return 'all' if invited else 'none'
+
+
+def _invited_line(invited) -> str:
+    """Who was told, so the operator can check it from the output.
+
+    "Event created" read identically whether three people were invited or
+    nobody was, so a silent failure looked exactly like a success — which is
+    how this went unnoticed until an attendee said they got nothing.
+    """
+    if not invited:
+        return ""
+    return f"Invitations sent: {', '.join(invited)}\n"
+
+
 class GoogleCalendar:
     """Google Calendar tool for managing events and meetings."""
 
@@ -310,16 +339,21 @@ class GoogleCalendar:
         if location:
             event['location'] = location
 
-        if attendees:
-            attendee_list = [{'email': email.strip()} for email in attendees.split(',')]
-            event['attendees'] = attendee_list
+        invited = _addresses(attendees)
+        if invited:
+            event['attendees'] = [{'email': email} for email in invited]
 
         created_event = service.events().insert(
             calendarId='primary',
-            body=event
+            body=event,
+            sendUpdates=_send_updates(invited),
         ).execute()
 
-        return f"Event created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nEvent ID: {created_event['id']}\nLink: {created_event.get('htmlLink', '')}"
+        return (f"Event created: {title}\n"
+                f"Start: {self._format_datetime(start_dt.isoformat())}\n"
+                f"{_invited_line(invited)}"
+                f"Event ID: {created_event['id']}\n"
+                f"Link: {created_event.get('htmlLink', '')}")
 
     def create_meet(self, title: str, start_time: str, end_time: str,
                     attendees: str, description: str = None) -> str:
@@ -341,7 +375,7 @@ class GoogleCalendar:
         start_dt = self._parse_time(start_time)
         end_dt = self._parse_time(end_time)
 
-        attendee_list = [{'email': email.strip()} for email in attendees.split(',')]
+        attendee_list = [{'email': email} for email in _addresses(attendees)]
 
         event = {
             'summary': title,
@@ -368,12 +402,17 @@ class GoogleCalendar:
         created_event = service.events().insert(
             calendarId='primary',
             body=event,
-            conferenceDataVersion=1
+            conferenceDataVersion=1,
+            sendUpdates=_send_updates(attendee_list),
         ).execute()
 
         meet_link = created_event.get('hangoutLink', 'No Meet link generated')
 
-        return f"Meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nMeet link: {meet_link}\nEvent ID: {created_event['id']}"
+        return (f"Meeting created: {title}\n"
+                f"Start: {self._format_datetime(start_dt.isoformat())}\n"
+                f"Meet link: {meet_link}\n"
+                f"{_invited_line([a['email'] for a in attendee_list])}"
+                f"Event ID: {created_event['id']}")
 
     def update_event(self, event_id: str, title: str = None, start_time: str = None,
                      end_time: str = None, description: str = None,
@@ -420,13 +459,18 @@ class GoogleCalendar:
                 'timeZone': 'UTC',
             }
         if attendees:
-            attendee_list = [{'email': email.strip()} for email in attendees.split(',')]
+            attendee_list = [{'email': email} for email in _addresses(attendees)]
             event['attendees'] = attendee_list
 
+        # 'all' unconditionally, unlike create: the people to tell are the ones
+        # already on the event, and this call does not know who they are. An
+        # attendee who is never told a meeting moved is worse off than one who
+        # was never invited — they hold the old slot and arrive at nothing.
         updated_event = service.events().update(
             calendarId='primary',
             eventId=event_id,
-            body=event
+            body=event,
+            sendUpdates='all',
         ).execute()
 
         return f"Event updated: {updated_event['summary']}\nEvent ID: {event_id}"
@@ -444,7 +488,8 @@ class GoogleCalendar:
 
         service.events().delete(
             calendarId='primary',
-            eventId=event_id
+            eventId=event_id,
+            sendUpdates='all',
         ).execute()
 
         return f"Event deleted: {event_id}"
