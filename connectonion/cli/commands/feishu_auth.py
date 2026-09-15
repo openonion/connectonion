@@ -30,6 +30,7 @@ same credential with the platform's consent instead of the operating system's.
 """
 
 import io
+import json
 import re
 import sys
 from pathlib import Path
@@ -51,6 +52,83 @@ APP_PRESET = {
     "name": "ConnectOnion",
     "desc": "Receives messages for a ConnectOnion agent and replies as this bot.",
 }
+
+# What the application has to be allowed to do, declared at the moment someone
+# approves it — so one scan produces a bot that works, rather than a bot that
+# receives messages and then fails at the first thing it tries.
+#
+# Until this was added, `co auth` created an application with no scopes of its
+# own. Receiving and replying happened to work; history recovery did not, and
+# could not for anyone, by either the automatic or the documented manual route
+# (#1544). Measured 2026-09-15: the bot's own token was refused with
+# `230027 … need scope: im:message.group_msg`, which is the call
+# inbox/recovery.py makes after a connection gap.
+#
+# These are *tenant* scopes on purpose. The bot acts as itself, not on a
+# person's behalf: `im/v1/messages` is called with a tenant token, and the
+# user-delegated grant from `lark-cli auth login` does not satisfy it — checked,
+# after that route reported "no permissions to add or authorize here" while the
+# tenant call kept failing.
+# Both sides of every section are always present, even when empty. The spec reads
+# a missing `tenant` or `user` as an empty array, and lark-cli is explicit about
+# keeping them non-nil for exactly that reason — the first version of this omitted
+# `user`, and the page answered "App updated" while granting nothing.
+APP_ADDONS = {
+    "scopes": {
+        "tenant": [
+            "im:message.group_at_msg:readonly",  # group messages that @ the bot
+            "im:message.p2p_msg:readonly",       # direct messages
+            "im:message:send_as_bot",            # reply
+            "im:message.group_msg",              # read group history, for recovery
+        ],
+        "user": [],
+    },
+    "events": {"items": {"tenant": ["im.message.receive_v1"], "user": []}},
+}
+
+# The scan-to-enable deep link: one URL that adds scopes to an existing
+# application's manifest, with no Developer Console visit.
+#
+# From lark-cli, `cmd/event/console_url.go` (MIT, larksuite/cli), whose own
+# comment is the contract: "The bot-specific scan-to-enable link adds the scopes
+# to the app manifest, after which the tenant token carries them."
+#
+#     {open-host}/page/launcher?clientID=<appID>&addons=<base64url(gzip(json))>
+#
+# Three details are load-bearing, and getting any of them wrong produces a page
+# that looks right and grants nothing — measured, on all three:
+#   * `/page/launcher`, not the `/page/cli` the registration flow uses
+#   * `clientID`, camelCase, carrying the app's own id — and no user_code, because
+#     this is not part of registration
+#   * both scope sides present as arrays
+_ADDONS_PATH = "/page/launcher"
+
+
+def _encode_addons(payload: dict) -> str:
+    """JSON → gzip → base64url without padding, the chain the page decodes."""
+    import base64
+    import gzip
+
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return base64.urlsafe_b64encode(gzip.compress(raw, mtime=0)).decode("ascii").rstrip("=")
+
+
+def scan_to_enable_url(brand: str, app_id: str, *, tenant=(), user=(), events=()) -> str:
+    """A link that, once approved, leaves `app_id` holding these scopes.
+
+    Raises rather than returning a link that would grant nothing: an empty one
+    still renders a confirmation page, so the reader clicks, sees success, and
+    learns nothing about why their command still fails.
+    """
+    tenant, user, events = list(tenant), list(user), list(events)
+    if not (tenant or user or events):
+        raise ValueError("scan_to_enable_url needs at least one scope or event to ask for")
+
+    payload = {"scopes": {"tenant": tenant, "user": user}}
+    if events:
+        payload["events"] = {"items": {"tenant": events, "user": []}}
+    host = OPEN_HOSTS.get(brand, OPEN_HOSTS["feishu"])
+    return f"{host}{_ADDONS_PATH}?clientID={app_id}&addons={_encode_addons(payload)}"
 
 # Where a person actually approves.
 #
@@ -260,6 +338,12 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
         # 1.8.5b8 set this to the Lark accounts host so a Lark user would not be
         # handed an open.feishu.cn link. That aim is right and is now met by
         # cli_page_url(), which decides the host the person actually sees.
+        # Asked for on both paths, unlike the preset. A new application needs
+        # them to work at all; an existing one reached with --app-id is shown
+        # them on the same confirmation page as "your app will be updated with
+        # these settings", which is how someone whose bot predates this adds
+        # what it is missing — without a trip to the Developer Console.
+        options["addons"] = dict(APP_ADDONS)
         if app_id is None:
             # A preset only pre-fills the creation page, so it is meaningless
             # — and confusing — when the application already exists and has a

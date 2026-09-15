@@ -9,6 +9,7 @@ LLM-Note:
 """
 
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -27,6 +28,17 @@ errors = Console(stderr=True)
 
 EXIT_CONFIG = 3
 EXIT_TIMEOUT = 124
+
+
+# What the platform says when a bot token lacks a permission, e.g.
+# "Lark error 230027: Lack of necessary permissions, ext=need scope: im:message.group_msg"
+_NEEDS_SCOPE = re.compile(r"need scope:\s*([A-Za-z0-9_.:]+)")
+
+
+def _missing_scope(text: str):
+    """The one scope the platform asked for, or None for any other failure."""
+    found = _NEEDS_SCOPE.search(text or "")
+    return found.group(1) if found else None
 
 
 def _configured(name: str):
@@ -205,12 +217,29 @@ def handle_check(name: str) -> None:
         # reader could not tell a missing scope from a dropped connection
         # without opening the file themselves. The file's first line is the
         # platform's own sentence — print it.
-        reason = recovery_error.read_text(encoding="utf-8").strip().splitlines()
-        errors.print(f"History recovery is incomplete: {reason[0] if reason else 'no reason recorded'}",
-                     style="red")
-        errors.print(f"The listener retains its checkpoint and retries. Details: {recovery_error}",
-                     style="red")
-        print_tip(f"Next: co {name} log")
+        reason = recovery_error.read_text(encoding="utf-8").strip()
+        first = reason.splitlines()[0] if reason else "no reason recorded"
+        errors.print(f"History recovery is incomplete: {first}", style="red")
+
+        # A missing scope is one click away, so say which click. The platform
+        # names the scope it wanted in its own error; turning that into the
+        # scan-to-enable link is the difference between "your bot lacks a
+        # permission" and a thing the reader can do. Anything else — a dropped
+        # connection, a revoked app — has no link, and gets the log instead.
+        missing = _missing_scope(reason)
+        if missing:
+            from .feishu_auth import scan_to_enable_url
+
+            app_id = p.app_id
+            errors.print("The bot is missing a permission. This is a sensitive scope: it lets "
+                         f"the app read every message in the groups it is in.", style="red")
+            print(f"Open this, approve it, and the listener picks it up on its next retry:")
+            print(scan_to_enable_url(name, app_id, tenant=[missing]))
+            print_tip(f"Next: co {name} check")
+        else:
+            errors.print(f"The listener retains its checkpoint and retries. Details: {recovery_error}",
+                         style="red")
+            print_tip(f"Next: co {name} log")
         sys.exit(1)
     pid = inbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
