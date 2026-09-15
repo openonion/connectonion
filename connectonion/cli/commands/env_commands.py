@@ -296,19 +296,21 @@ def handle_env_set(key: str, value: str, *, from_console: bool = False,
               f"Next: co env set {key} <value>", 2)
     if app_provider is not None and not from_console:
         auth = _PROVIDER_AUTH[app_provider]
-        # Refusing outright was right while `co auth` always worked: there is no
-        # API that hands out an app secret, so a typed one had no checkable
-        # source. It is wrong when `co auth` CANNOT work — on a data-residency
-        # tenant the platform's launcher drops the code and the scan can never
-        # complete (#1537). Refusing then leaves the two commands pointing at
-        # each other with no way through, and the Developer Console is a real
-        # source. So the door exists and has to be named on purpose.
+        # Refusing outright is right by default: there is no API that hands out
+        # an app secret, so a typed one has no source this command can check.
+        #
+        # The door exists because plenty of people already keep an application in
+        # the Developer Console and have its credentials in hand — not, as this
+        # message claimed in 1.8.5b9, because `co auth` cannot serve some
+        # tenants. It can; that claim named the wrong cause (#1537, fixed in
+        # b10) and pointed people at manual work they did not need. A refusal
+        # that offers a detour must not imply the main road is closed.
         _fail(f"{key} is written by {auth}, which also creates the application it belongs to. "
               f"There is no API that hands out an app secret, so a hand-typed one came from "
               f"somewhere this command cannot check.\n\n"
-              f"If {auth} cannot create an application for your tenant — the scan page says "
-              f"\"Link expired\" on a code that is still alive — take the id and secret from "
-              f"the Developer Console and say where they came from:\n"
+              f"If you already have an application in the Developer Console and want to use "
+              f"its credentials, take the id and secret from there and say where they came "
+              f"from:\n"
               f"  co env set {key} <value> --from-console\n\n"
               f"Next: {auth}", 2)
     provider = _provider_of(key)
