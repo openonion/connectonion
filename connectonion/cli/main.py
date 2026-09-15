@@ -575,10 +575,27 @@ def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
 
 @env_app.command("set")
 def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
-            value: str = typer.Argument(..., help="Value; quote it if it has spaces")):
+            value: str = typer.Argument(..., help="Value; quote it if it has spaces"),
+            from_console: bool = typer.Option(
+                False, "--from-console",
+                help="For FEISHU_/LARK_ app credentials copied from the Developer Console, "
+                     "when co auth cannot create the application for your tenant",
+            ),
+            secret: bool = typer.Option(
+                False, "--secret",
+                help="Encrypt it instead of writing it in plain text. The key is derived "
+                     "from this agent's own key and stored nowhere; rotate with co env rotate",
+            )):
     """Save one setting to the selected file, keeping every other line as it is."""
     from .commands.env_commands import handle_env_set
-    handle_env_set(key, value)
+    handle_env_set(key, value, from_console=from_console, secret=secret)
+
+
+@env_app.command("rotate")
+def env_rotate(key: str = typer.Argument(..., help="An encrypted setting, e.g. LARK_APP_SECRET")):
+    """Re-encrypt one stored secret at the next derivation index."""
+    from .commands.env_commands import handle_env_rotate
+    handle_env_rotate(key)
 
 
 @env_app.command("unset")

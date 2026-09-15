@@ -116,7 +116,14 @@ class TestTheHintFromLarkCli:
         register = FakeRegistration()
         monkeypatch.setattr(feishu_auth, "_register_app", lambda: register)
         feishu_auth.handle_feishu_auth()
-        assert "--app-id" not in capsys.readouterr().out
+        out = capsys.readouterr().out
+        # Was `"--app-id" not in out`. The "Link expired" warning now mentions
+        # --app-id too — to say it does NOT help on a data-residency tenant —
+        # so a bare substring can no longer tell an offer from a caution.
+        # What this test is about is the offer: no lark-cli, nothing to reuse.
+        assert "lark-cli has" not in out
+        assert "co auth feishu --app-id" not in out
+        assert "co auth lark --app-id" not in out
 
     def test_a_config_that_does_not_parse_is_not_an_error(self, rig, monkeypatch):
         directory = Path.home() / ".lark-cli"

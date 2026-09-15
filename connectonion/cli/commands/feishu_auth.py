@@ -56,6 +56,48 @@ APP_PRESET = {
 # by itself when a Feishu tenant scans a Lark link.
 LARK_ACCOUNTS = "https://accounts.larksuite.com"
 
+# The launcher page renders "Link expired" for a code the server still reports
+# as pending. Measured 2026-09-14 on a JP data-residency tenant: a code issued
+# seconds earlier, opened once, and the page dropped user_code from the URL
+# entirely — while the poll endpoint answered authorization_pending in the same
+# second. Four codes were spent before anyone doubted the word on the screen.
+#
+# Nothing here can prevent it. The verdict is rendered client-side after the
+# page resolves the browser's tenant, so a server-side fetch returns 200 with
+# the code intact and predicts nothing (checked). And `--app-id` reuse goes
+# through the same launcher and fails identically (checked) — which is why it
+# is NOT offered below as a way around this.
+#
+# So the honest thing is to say it before it happens, and to say the one number
+# that settles it: the server's own TTL.
+EXPIRED_MEANS_SOMETHING_ELSE = (
+    'If that page says "Link expired" straight away, the code is almost\n'
+    "certainly still alive and this flow cannot create an application for your\n"
+    "tenant — some data-residency tenants are served a launcher that drops the\n"
+    "code. Reusing an existing application with --app-id goes through the same\n"
+    "page and fails the same way.\n"
+    "  Create the application in the Lark Developer Console instead, then put\n"
+    "  its id and secret in the env file with:  co env set\n"
+    "  Details and what was measured:  https://github.com/openonion/connectonion/issues/1537"
+)
+
+
+def _link_life(expire_in) -> str:
+    """State the TTL the server actually gave, never a guess.
+
+    The SDK falls back to 600 when the response omits expires_in, and quoting
+    that fallback as though it were measured is how "it expired after two
+    minutes" got investigated as a timeout for an hour. If the number is not
+    known, say that rather than inventing one.
+    """
+    try:
+        seconds = int(expire_in)
+    except (TypeError, ValueError):
+        return "The platform did not say how long this link is valid."
+    if seconds >= 120:
+        return f"This link is valid for {seconds // 60} minutes ({seconds}s)."
+    return f"This link is valid for {seconds}s."
+
 
 def _register_app():
     """The SDK's registration flow, imported late so the CLI starts without it."""
@@ -154,6 +196,10 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
         url = info.get("url", "")
         print(_qr(url))
         print(url)
+        print()
+        print(_link_life(info.get("expire_in")))
+        print()
+        print(EXPIRED_MEANS_SOMETHING_ELSE)
         print()
         print("Waiting for approval. Ctrl-C to stop.")
 
