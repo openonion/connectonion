@@ -155,9 +155,25 @@ class GoogleCalendar:
                                    api_key=api_key)
 
     def _format_datetime(self, dt_str: str) -> str:
-        """Format datetime string to readable format."""
+        """A readable time that says which zone it is in.
+
+        Without the zone this sentence is a trap. `_parse_time` converts an
+        offset to UTC, so a meeting entered as 16:30+10:00 was confirmed as
+        "2026-09-15 06:30 AM" — the right instant, described in a way no reader
+        interprets correctly. The event was fine; the sentence about it was not.
+
+        A value carrying its own offset keeps it, because relabelling that as
+        UTC would be the same bug pointed the other way.
+        """
         dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-        return dt.strftime('%Y-%m-%d %I:%M %p')
+        shown = dt.strftime('%Y-%m-%d %I:%M %p')
+        if dt.tzinfo is None:
+            # Naive here always means UTC: it is what _parse_time produces and
+            # what the event body is labelled with.
+            return f"{shown} UTC"
+        if dt.utcoffset() == timedelta(0):
+            return f"{shown} UTC"
+        return f"{shown} {dt.strftime('%z')[:3]}:{dt.strftime('%z')[3:]}"
 
     # === Reading Events ===
 
