@@ -22,7 +22,30 @@ co env
 
 ## Current preview
 
-Beta **1.8.5b10** makes `co auth lark` create an application and return its
+Beta **1.8.5b11** makes the command line name what to run next, and makes
+calendar invitations actually arrive. `co gcalendar` never passed Google's
+`sendUpdates`, so an event with attendees invited nobody — and `Event created`
+read the same whether three people were invited or none, so the silent failure
+was indistinguishable from success until a client's guest said they got nothing.
+Moving or cancelling a meeting told its attendees nothing either, which is worse.
+The confirmation now names who was invited, and echoes the time in the zone it
+was written in: `16:30+10:00` used to be confirmed as `06:30 AM`.
+
+An audit against `useful_skills/cli-skill-design` fixed four things in the CLI
+itself. Every deliberate refusal printed two next steps, one of them useless and
+read first by anyone merging streams. A typo ended at `co --help` even when
+Click had already worked out the answer — `co larc` now says `Next: co lark`,
+and `co like`, which nothing matches, says `Next: co commands` rather than
+pointing at a boxed screen of groups. Two failures named no command at all. And
+the `co env` skill had never learned about `rotate`, `--secret` or
+`--from-console`.
+
+A missing bot permission is now one link away instead of a Developer Console
+visit, and #1462's reconnect gate passed: history recovery had never once been
+allowed to run, and once it was, a message posted during a 90-second gap came
+back exactly once.
+
+It carries `b10`, which makes `co auth lark` create an application and return its
 secret — **correcting b9, which shipped a warning saying it could not.** The
 cause was one path segment. We printed the URL the SDK hands over,
 `<open-host>/page/launcher?user_code=…`, and that page renders "Link expired"
@@ -97,17 +120,18 @@ it bills before it spends.
 It carries everything from `b2`: `co browser config`, the paid engine called
 `wtf`, `consume`, and `co auth feishu --app-id`.
 
-It is a beta because the no-loss-across-a-reconnect gate has not passed: the
-repair is offline-tested and has not been run against a real group. The release
-notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b10 release notes](releases/1.8.5b10.md).
+The no-loss-across-a-reconnect gate passed on 15 September, against a real
+group. It stays a beta because a stable `X.Y.0` is cut deliberately, not as a
+consequence of a green checklist — the release notes list what is still worth
+deciding before putting it on a machine other people use.
+See [1.8.5b11 release notes](releases/1.8.5b11.md).
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b10
+python -m pip install --pre connectonion==1.8.5b11
 co --version
 ```
 
-The 1.8.5a1 through 1.8.5b9 previews are superseded; 1.8.4a1 and 1.8.4a2
+The 1.8.5a1 through 1.8.5b10 previews are superseded; 1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.

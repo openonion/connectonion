@@ -58,7 +58,24 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b10 (beta)
+## Release candidate: 1.8.5b11 (beta)
+
+The command line says what to run next, and calendar invitations reach people.
+`co gcalendar` never passed Google's `sendUpdates`, so an event with attendees
+invited nobody — and `Event created` read the same whether three people were
+invited or none, which is why it survived until a client's guest said they got
+nothing; update and delete were worse, never telling anyone a meeting had moved.
+Audited against `useful_skills/cli-skill-design`: every deliberate refusal
+printed two next steps, a typo ended at `--help` even when Click had worked out
+the answer, two failures named no command at all, and the `co env` skill had
+never learned about b9. A missing bot permission is now a link away rather than
+a Developer Console visit. #1462's reconnect gate passed — history recovery had
+never been allowed to run, and once it was, a message posted during a 90-second
+gap came back exactly once. Stable remains 1.8.4: cutting `X.Y.0` is a
+deliberate decision, not a consequence of a green checklist.
+See [1.8.5b11 notes](docs/releases/1.8.5b11.md).
+
+### Superseded: 1.8.5b10 (beta, published)
 
 `co auth lark` creates an application and returns its secret, which b9 said it
 could not. The failure was never the tenant or the region: we printed the URL the
@@ -249,9 +266,22 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b10
+## Current Version: 1.8.5b11
 
 ### Version History
+- 1.8.5b11 (**beta: the CLI names a next command, and invitations arrive.**
+  `co gcalendar` never passed Google's `sendUpdates`, so an event with attendees
+  notified nobody — and the confirmation read identically whether three people
+  were invited or none, so the silent failure looked like success until a
+  client's guest mentioned it. Update and delete were worse: an attendee was
+  never told a meeting moved. A time entered as `16:30+10:00` also confirmed as
+  `06:30 AM` with no zone, and is now echoed in the zone it was written in. The
+  `cli-skill-design` audit found every deliberate
+  refusal printing two next steps, typos ending at `--help` even when the answer
+  was known, two failures naming no command, and the `co env` skill missing
+  everything b9 shipped. A missing bot scope now prints a link that grants it.
+  #1462's reconnect gate passed, recovery having never been permitted to run
+  before. Stable remains 1.8.4.)
 - 1.8.5b10 (**beta: `co auth lark` creates an application and returns its
   secret** — correcting b9, which shipped a warning saying it could not. The
   cause was one path segment: we printed the SDK's
