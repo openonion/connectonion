@@ -17,6 +17,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from .mail_window import print_json_listing, window_listing
 from .microsoft_errors import microsoft_errors
 from .command_tips import print_tip
 
@@ -188,10 +189,21 @@ def _after_send(send_at: str | None) -> None:
 
 
 @microsoft_errors("co outlook inbox")
-def handle_outlook_inbox(last: int = 10, unread: bool = False):
+def handle_outlook_inbox(last: int = 10, unread: bool = False,
+                        since: str = None, until: str = None, json_output: bool = False):
     """List recent Outlook inbox emails as a numbered table, and remember the numbering for 'read'."""
     outlook = _outlook()
-    emails = outlook.list_inbox(last=last, unread=unread)
+    if since:
+        try:
+            emails = window_listing(outlook, since, until, last)
+        except ValueError as error:
+            console.print(f"[red]{error}[/red]")
+            raise typer.Exit(2) from None
+    else:
+        emails = outlook.list_inbox(last=last, unread=unread)
+    if json_output:
+        print_json_listing(emails)
+        return
     if not emails:
         scope = "unread " if unread else ""
         console.print(f"\n[cyan]Outlook inbox:[/cyan] no {scope}emails\n")
