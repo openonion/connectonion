@@ -31,6 +31,9 @@ def test_only_environment_key_tests_need_the_global_auth_skip():
     assert root_conftest._needs_environment_api_key(
         Item("real_api", "provider_cli")
     ) is False
+    assert root_conftest._needs_environment_api_key(
+        Item("real_api", "local_api")
+    ) is False
 
 
 def test_default_macos_auth_keeps_the_keychain_context():
